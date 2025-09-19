@@ -97,8 +97,10 @@ func (m *BaseMultisigCommitteeQuery) GetMultisigCommittee(
 	for _, aggChainSigner := range aggChainSigners {
 		signerInfos = append(signerInfos, types.NewSignerInfo(aggChainSigner.Url, aggChainSigner.Addr))
 	}
-
-	return types.NewMultisigCommittee(signerInfos, threshold)
+	if !threshold.IsUint64() {
+		return nil, fmt.Errorf("threshold is not uint64: %s", threshold.String())
+	}
+	return types.NewMultisigCommittee(signerInfos, threshold.Uint64())
 }
 
 // ContractMode returns the mode of the multisig contract (PP or FEP)

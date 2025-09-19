@@ -2,7 +2,6 @@ package flows
 
 import (
 	"errors"
-	"math/big"
 	"testing"
 	"time"
 
@@ -40,7 +39,7 @@ func TestNewFlow(t *testing.T) {
 				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
-				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, big.NewInt(1))
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
 				require.NoError(t, err)
 
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Maybe()
@@ -89,7 +88,7 @@ func TestNewFlow(t *testing.T) {
 					types.NewSignerInfo("http://signer4", common.HexToAddress("0x4444444444444444444444444444444444")),
 				}
 
-				committee, err := types.NewMultisigCommittee(signers, big.NewInt(2))
+				committee, err := types.NewMultisigCommittee(signers, 2)
 				require.NoError(t, err)
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Maybe()
 			},
@@ -110,7 +109,7 @@ func TestNewFlow(t *testing.T) {
 					types.NewSignerInfo("http://signer4", common.HexToAddress("0x4444444444444444444444444444444444444444")),
 				}
 
-				committee, err := types.NewMultisigCommittee(signers, big.NewInt(2))
+				committee, err := types.NewMultisigCommittee(signers, 2)
 				require.NoError(t, err)
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Maybe()
 			},

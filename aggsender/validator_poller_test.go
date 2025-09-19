@@ -101,7 +101,7 @@ func TestIsThresholdReached(t *testing.T) {
 
 			vp := &validatorPoller{log: log.WithFields("test", tc.name)}
 
-			result, err := vp.isThresholdReached(tc.multisig, tc.cert, tc.threshold, tc.errs)
+			result, err := vp.isThresholdReached(tc.multisig, tc.cert, tc.threshold.Uint64(), tc.errs)
 			if tc.expectedErr == "" {
 				require.NoError(t, err)
 				require.Equal(t, tc.multisig, result)
@@ -365,7 +365,7 @@ func TestGetValidators(t *testing.T) {
 		name              string
 		setupMocks        func(*mocks.MultisigQuerier, *mocks.Signer)
 		expectedCount     int
-		expectedThreshold *big.Int
+		expectedThreshold uint64
 		expectedErr       string
 	}{
 		{
@@ -374,7 +374,7 @@ func TestGetValidators(t *testing.T) {
 				signers := []types.SignerInfo{
 					{Address: proposerAddr, URL: "http://validator1:8001"},
 				}
-				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, big.NewInt(1))
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, 1)
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -386,7 +386,7 @@ func TestGetValidators(t *testing.T) {
 				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
 			},
 			expectedCount:     1,
-			expectedThreshold: big.NewInt(1),
+			expectedThreshold: 1,
 		},
 		{
 			name: "successful retrieval with multiple validators",
@@ -398,7 +398,7 @@ func TestGetValidators(t *testing.T) {
 					{Address: validator3Addr, URL: "http://validator3:8003"},
 				}
 				signersPtr := []*types.SignerInfo{&signers[0], &signers[1], &signers[2]}
-				committee, err := types.NewMultisigCommittee(signersPtr, big.NewInt(2))
+				committee, err := types.NewMultisigCommittee(signersPtr, 2)
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -409,7 +409,7 @@ func TestGetValidators(t *testing.T) {
 				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
 			},
 			expectedCount:     3,
-			expectedThreshold: big.NewInt(2),
+			expectedThreshold: 2,
 		},
 		{
 			name: "multisig querier fails",
@@ -440,7 +440,7 @@ func TestGetValidators(t *testing.T) {
 					{Address: proposerAddr, URL: "http://validator1:8001"},   // Proposer second
 				}
 				signersPtr := []*types.SignerInfo{&signers[0], &signers[1]}
-				committee, err := types.NewMultisigCommittee(signersPtr, big.NewInt(1))
+				committee, err := types.NewMultisigCommittee(signersPtr, 1)
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -515,6 +515,7 @@ func TestExecuteRequest(t *testing.T) {
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0xdeadbeef")).Once()
 
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().String().Return("validator-1").Maybe()
 				mockValidator.EXPECT().Address().Return(common.HexToAddress("0x2")).Once()
 				mockValidator.EXPECT().Index().Return(uint32(1))
 				mockValidator.EXPECT().
@@ -535,6 +536,7 @@ func TestExecuteRequest(t *testing.T) {
 				v3 := mocks.NewCertificateValidateAndSigner(t)
 
 				for i, v := range [](*mocks.CertificateValidateAndSigner){v1, v2, v3} {
+					v.EXPECT().String().Return(fmt.Sprintf("validator-%d", i)).Maybe()
 					v.EXPECT().Index().Return(uint32(i)).Maybe()
 					v.EXPECT().Address().Return(common.HexToAddress(fmt.Sprintf("0x%d", i+1))).Maybe()
 					v.EXPECT().
@@ -602,7 +604,7 @@ func TestExecuteRequest(t *testing.T) {
 			result, err := poller.executeRequest(ctx, &types.ValidationRequest{
 				Certificate:       certificate,
 				LastL2BlockInCert: 10,
-			}, threshold, validators)
+			}, threshold.Uint64(), validators)
 
 			if tc.expectErrSubstring != "" {
 				require.ErrorContains(t, err, tc.expectErrSubstring)

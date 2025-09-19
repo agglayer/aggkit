@@ -1,7 +1,6 @@
 package types
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -16,42 +15,42 @@ func TestMultisigCommittee_NewMultisigCommittee(t *testing.T) {
 	tests := []struct {
 		name        string
 		members     []*SignerInfo
-		threshold   *big.Int
+		threshold   uint64
 		errContains string
 	}{
 		{
 			name:      "valid initialization (unique signers)",
 			members:   []*SignerInfo{s1, s2},
-			threshold: big.NewInt(1),
+			threshold: 1,
 		},
 		{
 			name:        "initialize with duplicate signer (same url and address)",
 			members:     []*SignerInfo{s1, s1},
-			threshold:   big.NewInt(1),
+			threshold:   1,
 			errContains: "already in committee",
 		},
 		{
 			name:        "initialize with duplicate signer (same url diff address)",
 			members:     []*SignerInfo{s1, s3},
-			threshold:   big.NewInt(1),
+			threshold:   1,
 			errContains: "already in committee",
 		},
 		{
 			name:        "initialize committee size less than threshold",
 			members:     []*SignerInfo{s1, s2},
-			threshold:   big.NewInt(5),
+			threshold:   5,
 			errContains: "committee size (2) must be greater than or equal to the signatures threshold (5)",
 		},
 		{
 			name:        "initialize empty committee",
 			members:     nil,
-			threshold:   big.NewInt(5),
+			threshold:   5,
 			errContains: errEmptyCommittee.Error(),
 		},
 		{
 			name:        "initialize zero threshold",
 			members:     []*SignerInfo{s1},
-			threshold:   big.NewInt(0),
+			threshold:   0,
 			errContains: errZeroThreshold.Error(),
 		},
 	}
@@ -95,7 +94,7 @@ func TestMultisigCommittee_AddSigner(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mc, err := NewMultisigCommittee(tc.initial, big.NewInt(1))
+			mc, err := NewMultisigCommittee(tc.initial, 1)
 			require.NoError(t, err)
 
 			err = mc.AddSigner(tc.toAdd)
@@ -120,7 +119,7 @@ func TestMultisigCommittee_Signers(t *testing.T) {
 		ptrs[i] = &signers[i]
 	}
 
-	mc, err := NewMultisigCommittee(ptrs, big.NewInt(int64(len(signers)-1)))
+	mc, err := NewMultisigCommittee(ptrs, uint64(len(signers)-1))
 	require.NoError(t, err)
 
 	cpySigners := mc.Signers()
@@ -135,7 +134,7 @@ func TestMultisigCommittee_IsMember(t *testing.T) {
 	s1 := NewSignerInfo("http://localhost:7001", common.HexToAddress("0x1"))
 	s2 := NewSignerInfo("http://localhost:7002", common.HexToAddress("0x2"))
 
-	mc, err := NewMultisigCommittee([]*SignerInfo{s1}, big.NewInt(1))
+	mc, err := NewMultisigCommittee([]*SignerInfo{s1}, 1)
 	require.NoError(t, err)
 
 	// existing member
@@ -160,25 +159,25 @@ func TestMultisigCommittee_String(t *testing.T) {
 	tests := []struct {
 		name      string
 		members   []*SignerInfo
-		threshold *big.Int
+		threshold uint64
 		expected  string
 	}{
 		{
 			name:      "single signer",
 			members:   []*SignerInfo{s1},
-			threshold: big.NewInt(1),
+			threshold: 1,
 			expected:  "{Committee: {0x0000000000000000000000000000000000000001=http://localhost:7001},  Threshold: 1}",
 		},
 		{
 			name:      "two signers",
 			members:   []*SignerInfo{s1, s2},
-			threshold: big.NewInt(2),
+			threshold: 2,
 			expected:  "{Committee: {0x0000000000000000000000000000000000000001=http://localhost:7001, 0x0000000000000000000000000000000000000002=http://localhost:7002},  Threshold: 2}",
 		},
 		{
 			name:      "three signers, threshold less than size",
 			members:   []*SignerInfo{s1, s2, s3},
-			threshold: big.NewInt(2),
+			threshold: 2,
 			expected:  "{Committee: {0x0000000000000000000000000000000000000001=http://localhost:7001, 0x0000000000000000000000000000000000000002=http://localhost:7002, 0x0000000000000000000000000000000000000003=http://localhost:7003},  Threshold: 2}",
 		},
 	}
