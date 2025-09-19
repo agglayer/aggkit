@@ -17,7 +17,7 @@ import (
 func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	type testCase struct {
 		name               string
-		threshold          *big.Int
+		threshold          uint64
 		signerInfos        []aggchainbase.IAggchainSignersSignerInfo
 		overrideURL        *CommitteeOverride
 		thresholdErr       error
@@ -30,7 +30,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:      "successfully returns committee",
-			threshold: big.NewInt(2),
+			threshold: 2,
 			signerInfos: []aggchainbase.IAggchainSignersSignerInfo{
 				{
 					Addr: common.HexToAddress("0x1"),
@@ -51,13 +51,13 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 		},
 		{
 			name:          "signers query fails",
-			threshold:     big.NewInt(1),
+			threshold:     1,
 			getSignersErr: errors.New("signers error"),
 			expectedErr:   "failed to query the committee signers",
 		},
 		{
 			name:      "successfully returns committee",
-			threshold: big.NewInt(2),
+			threshold: 2,
 			signerInfos: []aggchainbase.IAggchainSignersSignerInfo{
 				{
 					Addr: common.HexToAddress("0x1"),
@@ -83,9 +83,9 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockSC := new(mocks.MultisigContract)
-
+			th := big.NewInt(int64(tc.threshold))
 			mockSC.EXPECT().Threshold(mock.Anything).
-				Return(tc.threshold, tc.thresholdErr)
+				Return(th, tc.thresholdErr)
 
 			if tc.thresholdErr == nil {
 				mockSC.EXPECT().GetAggchainSignerInfos(mock.Anything).
