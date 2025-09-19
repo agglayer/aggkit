@@ -227,6 +227,7 @@ func (vp *validatorPoller) processResults(
 		if res.err != nil {
 			errs = append(errs, res.err)
 			vp.log.Errorf("validatorRequest returned an error: %s", res.String())
+			metrics.ValidatorError(res.validator.Address())
 			continue
 		}
 

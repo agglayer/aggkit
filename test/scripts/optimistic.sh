@@ -1,5 +1,5 @@
 #!/bin/bash
-KURTOSIS_ARTIFACT_AGGKIT_CONFIG=${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-" aggkit-config-artifact"}
+KURTOSIS_ARTIFACT_AGGKIT_CONFIG=${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-"aggkit-config-artifact"}
 KURTOSIS_ENCLAVE=${KURTOSIS_ENCLAVE:-op}
 # https://github.com/0xPolygon/kurtosis-cdk/blob/64c640ee0effea15c6ac76a9c5dd5869d79e0393/input_parser.star#L196
 PRIVATE_KEY=${PRIVATE_KEY:-"0x12d7de8621a77640c9241b2595ba78ce443d05e94090365ab3bb5e19df82c625"}
@@ -34,7 +34,6 @@ echo "Trusted sequencer address: $trustedSequencer"
 echo "optimisticMode           : $optimisticMode"
 case "$1" in
     enable)
-        echo cast send $ROLLUP_ADDRESS "enableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "$PRIVATE_KEY"'
         cast send $ROLLUP_ADDRESS "enableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "$PRIVATE_KEY"
         echo "Optimistic mode enabled."
         ;;
