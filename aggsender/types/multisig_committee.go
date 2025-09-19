@@ -3,7 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,20 +39,20 @@ func (s *SignerInfo) String() string {
 type MultisigCommittee struct {
 	signers    []*SignerInfo
 	signersSet map[common.Address]struct{}
-	threshold  *big.Int
+	threshold  uint64
 }
 
 // NewMultisigCommittee creates a new committee and builds the address set for quick lookup.
-func NewMultisigCommittee(signers []*SignerInfo, threshold *big.Int) (*MultisigCommittee, error) {
+func NewMultisigCommittee(signers []*SignerInfo, threshold uint64) (*MultisigCommittee, error) {
 	if len(signers) == 0 {
 		return nil, errEmptyCommittee
 	}
 
-	if threshold.Cmp(big.NewInt(0)) == 0 {
+	if threshold == 0 {
 		return nil, errZeroThreshold
 	}
 
-	if big.NewInt(int64(len(signers))).Cmp(threshold) < 0 {
+	if uint64(len(signers)) < threshold {
 		return nil, fmt.Errorf("committee size (%d) must be greater than or equal to the signatures threshold (%d)",
 			len(signers), threshold)
 	}
@@ -86,17 +85,9 @@ func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
 	return nil
 }
 
-// Threshold returns the signature threshold required for quorum.
-func (m *MultisigCommittee) Threshold() *big.Int {
+// ThresholdInt returns the signature threshold required for quorum as an int64.
+func (m MultisigCommittee) Threshold() uint64 {
 	return m.threshold
-}
-
-// ThresholdInt returns the signature threshold as an int64.
-func (m *MultisigCommittee) ThresholdInt() (int64, error) {
-	if m.threshold.IsInt64() {
-		return m.threshold.Int64(), nil
-	}
-	return 0, fmt.Errorf("threshold %s doesn't fit in int64", m.threshold.String())
 }
 
 // Signers returns a shallow copy of the committee's signers slice

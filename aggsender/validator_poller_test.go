@@ -101,7 +101,7 @@ func TestIsThresholdReached(t *testing.T) {
 
 			vp := &validatorPoller{log: log.WithFields("test", tc.name)}
 
-			result, err := vp.isThresholdReached(tc.multisig, tc.cert, tc.threshold.Int64(), tc.errs)
+			result, err := vp.isThresholdReached(tc.multisig, tc.cert, tc.threshold.Uint64(), tc.errs)
 			if tc.expectedErr == "" {
 				require.NoError(t, err)
 				require.Equal(t, tc.multisig, result)
@@ -374,7 +374,7 @@ func TestGetValidators(t *testing.T) {
 				signers := []types.SignerInfo{
 					{Address: proposerAddr, URL: "http://validator1:8001"},
 				}
-				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, big.NewInt(1))
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, 1)
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -398,7 +398,7 @@ func TestGetValidators(t *testing.T) {
 					{Address: validator3Addr, URL: "http://validator3:8003"},
 				}
 				signersPtr := []*types.SignerInfo{&signers[0], &signers[1], &signers[2]}
-				committee, err := types.NewMultisigCommittee(signersPtr, big.NewInt(2))
+				committee, err := types.NewMultisigCommittee(signersPtr, 2)
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -440,7 +440,7 @@ func TestGetValidators(t *testing.T) {
 					{Address: proposerAddr, URL: "http://validator1:8001"},   // Proposer second
 				}
 				signersPtr := []*types.SignerInfo{&signers[0], &signers[1]}
-				committee, err := types.NewMultisigCommittee(signersPtr, big.NewInt(1))
+				committee, err := types.NewMultisigCommittee(signersPtr, 1)
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -486,7 +486,7 @@ func TestGetValidators(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, validators)
 				require.Len(t, validators, tc.expectedCount)
-				require.Equal(t, tc.expectedThreshold, threshold)
+				require.Equal(t, tc.expectedThreshold.Int64(), threshold)
 			}
 
 			mockQuerier.AssertExpectations(t)
@@ -602,7 +602,7 @@ func TestExecuteRequest(t *testing.T) {
 			result, err := poller.executeRequest(ctx, &types.ValidationRequest{
 				Certificate:       certificate,
 				LastL2BlockInCert: 10,
-			}, threshold.Int64(), validators)
+			}, threshold.Uint64(), validators)
 
 			if tc.expectErrSubstring != "" {
 				require.ErrorContains(t, err, tc.expectErrSubstring)

@@ -89,7 +89,7 @@ func (vp *validatorPoller) PollValidators(
 func (vp *validatorPoller) executeRequest(
 	ctx context.Context,
 	req *types.ValidationRequest,
-	threshold int64,
+	threshold uint64,
 	validators []types.CertificateValidateAndSigner) (*agglayertypes.Multisig, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -114,7 +114,7 @@ func (vp *validatorPoller) validateRequest(req *types.ValidationRequest) error {
 
 // getValidators retrieves the actual multisig committee and creates a set of the validators
 // that are going to validate the provided certificate
-func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, int64, error) {
+func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, uint64, error) {
 	committee, err := vp.multisigQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
@@ -142,11 +142,7 @@ func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.Certifica
 		return nil, 0, fmt.Errorf("expected proposer %s to be the first member of the validator committee, got %s",
 			proposerAddress, firstValidatorAddress)
 	}
-	threshold, err := committee.ThresholdInt()
-	if err != nil {
-		return nil, 0, fmt.Errorf("validatorPoller invalid committee threshold: %w", err)
-	}
-	return validators, threshold, nil
+	return validators, committee.Threshold(), nil
 }
 
 // executeValidation runs validation across all validators concurrently
@@ -218,7 +214,7 @@ func (vp *validatorPoller) signCertificateForMultisigAsProposer(
 // processResults collects and validates all results from validators
 func (vp *validatorPoller) processResults(
 	resultsCh <-chan signResult,
-	threshold int64,
+	threshold uint64,
 	cert *agglayertypes.Certificate,
 	cancel context.CancelFunc,
 ) (*agglayertypes.Multisig, error) {
@@ -248,7 +244,7 @@ func (vp *validatorPoller) processResults(
 			Signature: res.signature,
 		})
 
-		if int64(len(multisig.Signatures)) >= threshold {
+		if uint64(len(multisig.Signatures)) >= threshold {
 			vp.log.Infof("validatorRequest reach expected threshold with %d signatures", len(multisig.Signatures))
 			cancel()
 			break // signal other goroutines to stop early
@@ -267,10 +263,10 @@ func (vp *validatorPoller) isValidSignature(signature []byte) bool {
 func (vp *validatorPoller) isThresholdReached(
 	multisig *agglayertypes.Multisig,
 	cert *agglayertypes.Certificate,
-	threshold int64,
+	threshold uint64,
 	errs []error,
 ) (*agglayertypes.Multisig, error) {
-	if int64(len(multisig.Signatures)) < threshold {
+	if uint64(len(multisig.Signatures)) < threshold {
 		metrics.MultiSigThresholdNotReached()
 		return nil, fmt.Errorf("validatorPoller threshold not reached: %d/%d. Errors: %w",
 			len(multisig.Signatures), threshold, errors.Join(errs...))
