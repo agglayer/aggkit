@@ -589,18 +589,10 @@ func runL2GERSyncIfNeeded(
 	}
 	l2GERSync, err := l2gersync.New(
 		ctx,
-		cfg.DBPath,
+		cfg,
 		reorgDetectorL2,
 		l2Client,
-		cfg.GlobalExitRootL2Addr,
 		l1InfoTreeSync,
-		cfg.SyncBlockChunkSize,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
-		cfg.BlockFinality,
-		cfg.WaitForNewBlocksPeriod.Duration,
-		cfg.DownloadBufferSize,
-		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatalf("error creating l2GERSync: %s", err)
