@@ -43,16 +43,16 @@ single-l2-network-op-succinct-aggoracle-committee)
     ENCLAVE_NAME="op"
     ;;
 single-l2-network-op-pessimistic)
-    ENCLAVE_NAME="op"
+    ENCLAVE_NAME="aggkit"
     ;;
 single-l2-network-fork12-global-index-pp-old-contracts)
     ENCLAVE_NAME="aggkit"
     ;;
 multi-l2-networks-2-chains-op-pessimistic)
-    ENCLAVE_NAME="op"
+    ENCLAVE_NAME="aggkit"
     ;;
 multi-l2-networks-3-chains-op-pessimistic)
-    ENCLAVE_NAME="op"
+    ENCLAVE_NAME="aggkit"
     ;;
 *)
     log_error "Unknown test type: $TEST_TYPE"
