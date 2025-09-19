@@ -90,36 +90,43 @@ jobs:
       - name: Read kurtosis-cdk-args from file
         id: read-args
         run: |
-          BASE_CONTENT=$(cat ./.github/test_e2e_cdk_args_base.json | jq -c .)
+          BASE=./.github/test_e2e_cdk_args_base.json
+
+          # Helper: merge base with override (if any), output to GITHUB_OUTPUT, and pretty print
+          put_args() {
+            local name="$1"
+            local override="$2"
+            local content
+
+            if [ -n "$override" ]; then
+              content=$(jq -s '.[0] * .[1]' "$BASE" "$override" | jq -c .)
+            else
+              content=$(jq -c . "$BASE")
+            fi
+
+            echo "${name}=${content}" >> "$GITHUB_OUTPUT"
+            echo "### $name"
+            echo "$content" | jq .
+          }
+
           # single l2 network (fork 12, op-succinct)
-          CONTENT=$(cat ./.github/test_e2e_single_chain_op_succinct_args.json | jq -c .)
-          echo "op_succinct_args=${CONTENT}" >> $GITHUB_OUTPUT
+          put_args op_succinct_args ./.github/test_e2e_single_chain_op_succinct_args.json
+
           # single l2 network (fork 12, op-succinct with aggoracle committee)
-          CONTENT=$(cat ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json | jq -c .)
-          echo "op_succinct_aggoracle_committee_args=${CONTENT}" >> $GITHUB_OUTPUT
+          put_args op_succinct_aggoracle_committee_args ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
+
           # single l2 network (op, pessimistic)
-          echo "fork12_pessimistic_args=${BASE_CONTENT}" >> $GITHUB_OUTPUT
+          put_args fork12_pessimistic_args
+
           # single l2 network (fork 12, global index pp old contracts)
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json | jq -c .)
-          echo "fork12_global_index_pp_old_contracts_args=${CONTENT}" >> $GITHUB_OUTPUT
+          put_args fork12_global_index_pp_old_contracts_args ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json
+
           # multi l2 networks
-          echo "kurtosis-cdk-args-1=${BASE_CONTENT}" >> $GITHUB_OUTPUT
-          CONTENT=$(jq -s 'reduce .[] as $item ({}; . * $item)' \
-            ./.github/test_e2e_cdk_args_base.json \
-            ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
-          echo "kurtosis-cdk-args-2=${CONTENT}" >> $GITHUB_OUTPUT
-          # Merge base_1 args with args_3 for kurtosis-cdk-args-3
-          echo "kurtosis-cdk-args-3=${BASE_CONTENT}" >> $GITHUB_OUTPUT
-          # Merge base_2 args with args_4 for kurtosis-cdk-args-4
-          CONTENT=$(jq -s 'reduce .[] as $item ({}; . * $item)' \
-            ./.github/test_e2e_cdk_args_base.json \
-            ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
-          echo "kurtosis-cdk-args-4=${CONTENT}" >> $GITHUB_OUTPUT
-          # Merge base_2 args with args_5 for kurtosis-cdk-args-5
-          CONTENT=$(jq -s 'reduce .[] as $item ({}; . * $item)' \
-            ./.github/test_e2e_cdk_args_base.json \
-            ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
-          echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
+          put_args kurtosis-cdk-args-1
+          put_args kurtosis-cdk-args-2 ./.github/test_e2e_multi_chains_args_2.json
+          put_args kurtosis-cdk-args-3
+          put_args kurtosis-cdk-args-4 ./.github/test_e2e_multi_chains_args_2.json
+          put_args kurtosis-cdk-args-5 ./.github/test_e2e_multi_chains_args_3.json
 
   build-tools:
     name: Build aggsender find imported bridge tool
