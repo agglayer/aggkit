@@ -74,7 +74,7 @@ jobs:
       # single l2 network (op-succinct with aggoracle committee)
       kurtosis-cdk-args-single-op-succinct-aggoracle-committee: ${{ steps.read-args.outputs.op_succinct_aggoracle_committee_args }}
       # single l2 network (op, pessimistic)
-      kurtosis-cdk-args-single-fork12-pessimistic: ${{ steps.read-args.outputs.fork12_pessimistic_args }}
+      kurtosis-cdk-args-single-op-pessimistic: ${{ steps.read-args.outputs.single_op_chain_pessimistic_args }}
       # single l2 network (fork 12, global index pp old contracts)
       kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts: ${{ steps.read-args.outputs.fork12_global_index_pp_old_contracts_args }}
       # multi l2 networks
@@ -116,7 +116,7 @@ jobs:
           put_args op_succinct_aggoracle_committee_args ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
 
           # single l2 network (op, pessimistic)
-          put_args fork12_pessimistic_args
+          put_args single_op_chain_pessimistic_args
 
           # single l2 network (fork 12, global index pp old contracts)
           put_args fork12_global_index_pp_old_contracts_args ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json
@@ -160,7 +160,7 @@ jobs:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: d000ca0a0bfcfa15db77468621f561763f1403ef
       kurtosis-cdk-enclave-name: aggkit
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
       event-name: ${{ github.event_name }}
 
