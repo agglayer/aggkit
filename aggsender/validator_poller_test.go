@@ -101,7 +101,7 @@ func TestIsThresholdReached(t *testing.T) {
 
 			vp := &validatorPoller{log: log.WithFields("test", tc.name)}
 
-			result, err := vp.isThresholdReached(tc.multisig, tc.cert, tc.threshold, tc.errs)
+			result, err := vp.isThresholdReached(tc.multisig, tc.cert, tc.threshold.Int64(), tc.errs)
 			if tc.expectedErr == "" {
 				require.NoError(t, err)
 				require.Equal(t, tc.multisig, result)
@@ -602,7 +602,7 @@ func TestExecuteRequest(t *testing.T) {
 			result, err := poller.executeRequest(ctx, &types.ValidationRequest{
 				Certificate:       certificate,
 				LastL2BlockInCert: 10,
-			}, threshold, validators)
+			}, threshold.Int64(), validators)
 
 			if tc.expectErrSubstring != "" {
 				require.ErrorContains(t, err, tc.expectErrSubstring)

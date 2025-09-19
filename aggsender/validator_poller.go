@@ -52,7 +52,20 @@ func NewValidatorPoller(
 type signResult struct {
 	signature []byte
 	err       error
+	elapsed   time.Duration
 	validator types.CertificateValidateAndSigner
+}
+
+func (s *signResult) String() string {
+	if s == nil {
+		return "<nil>"
+	}
+	if s.err != nil {
+		return fmt.Sprintf("ERROR {validator: %s, err: %v, elapsed: %s}",
+			s.validator.String(), s.err, s.elapsed.String())
+	}
+	return fmt.Sprintf("OK {validator: %s, signature length: %d, elapsed: %s}",
+		s.validator.String(), len(s.signature), s.elapsed.String())
 }
 
 // PollValidators orchestrates the validation process across all committee members
@@ -76,7 +89,7 @@ func (vp *validatorPoller) PollValidators(
 func (vp *validatorPoller) executeRequest(
 	ctx context.Context,
 	req *types.ValidationRequest,
-	threshold *big.Int,
+	threshold int64,
 	validators []types.CertificateValidateAndSigner) (*agglayertypes.Multisig, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -101,10 +114,10 @@ func (vp *validatorPoller) validateRequest(req *types.ValidationRequest) error {
 
 // getValidators retrieves the actual multisig committee and creates a set of the validators
 // that are going to validate the provided certificate
-func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, *big.Int, error) {
+func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, int64, error) {
 	committee, err := vp.multisigQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
+		return nil, 0, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
 	}
 
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
@@ -112,7 +125,7 @@ func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.Certifica
 		clientCfg := vp.validatorClientCfg.WithURL(signer.URL)
 		validator, err := validator.NewRemoteValidator(&clientCfg, vp.storage, signer.Address, uint32(i))
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
+			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)
 		}
 
@@ -120,17 +133,20 @@ func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.Certifica
 	}
 
 	if len(validators) == 0 {
-		return nil, nil, errors.New("no validators available in the committee")
+		return nil, 0, errors.New("no validators available in the committee")
 	}
 
 	firstValidatorAddress := validators[0].Address()
 	proposerAddress := vp.proposerSigner.PublicAddress()
 	if firstValidatorAddress != proposerAddress {
-		return nil, nil, fmt.Errorf("expected proposer %s to be the first member of the validator committee, got %s",
+		return nil, 0, fmt.Errorf("expected proposer %s to be the first member of the validator committee, got %s",
 			proposerAddress, firstValidatorAddress)
 	}
-
-	return validators, committee.Threshold(), nil
+	threshold, err := committee.ThresholdInt()
+	if err != nil {
+		return nil, 0, fmt.Errorf("validatorPoller invalid committee threshold: %w", err)
+	}
+	return validators, threshold, nil
 }
 
 // executeValidation runs validation across all validators concurrently
@@ -155,15 +171,9 @@ func (vp *validatorPoller) executeValidation(
 				return
 			default:
 			}
-
+			timeStart := time.Now()
 			signature, err := vp.getSignatureFromValidator(ctx, validator, cert, lastL2BlockInCert)
-			if err != nil {
-				vp.log.Errorf("validator %s failed to validate the certificate: %v", validator.String(), err)
-				resultsCh <- signResult{err: err, validator: validator}
-				return
-			}
-
-			resultsCh <- signResult{signature: signature, validator: validator}
+			resultsCh <- signResult{signature: signature, validator: validator, err: err, elapsed: time.Since(timeStart)}
 		}(validator)
 	}
 
@@ -208,7 +218,7 @@ func (vp *validatorPoller) signCertificateForMultisigAsProposer(
 // processResults collects and validates all results from validators
 func (vp *validatorPoller) processResults(
 	resultsCh <-chan signResult,
-	threshold *big.Int,
+	threshold int64,
 	cert *agglayertypes.Certificate,
 	cancel context.CancelFunc,
 ) (*agglayertypes.Multisig, error) {
@@ -220,30 +230,26 @@ func (vp *validatorPoller) processResults(
 	for res := range resultsCh {
 		if res.err != nil {
 			errs = append(errs, res.err)
-
-			metrics.ValidatorError(res.validator.Address())
-
+			vp.log.Errorf("validatorRequest returned an error: %s", res.String())
 			continue
 		}
 
 		if !vp.isValidSignature(res.signature) {
-			err := fmt.Errorf("validator %s returned an invalid signature with length %d",
-				res.validator.String(), len(res.signature))
+			err := fmt.Errorf("validatorRequest returned an invalid signature: %s",
+				res.String())
 			errs = append(errs, err)
-
 			vp.log.Error(err.Error())
-
 			metrics.ValidatorInvalidSignature(res.validator.Address())
-
 			continue
 		}
-
+		vp.log.Infof("validatorRequest returned a valid signature: %s", res.String())
 		multisig.Signatures = append(multisig.Signatures, agglayertypes.ECDSAMultisigEntry{
 			Index:     res.validator.Index(),
 			Signature: res.signature,
 		})
 
-		if big.NewInt(int64(len(multisig.Signatures))).Cmp(threshold) >= 0 {
+		if int64(len(multisig.Signatures)) >= threshold {
+			vp.log.Infof("validatorRequest reach expected threshold with %d signatures", len(multisig.Signatures))
 			cancel()
 			break // signal other goroutines to stop early
 		}
@@ -261,16 +267,16 @@ func (vp *validatorPoller) isValidSignature(signature []byte) bool {
 func (vp *validatorPoller) isThresholdReached(
 	multisig *agglayertypes.Multisig,
 	cert *agglayertypes.Certificate,
-	threshold *big.Int,
+	threshold int64,
 	errs []error,
 ) (*agglayertypes.Multisig, error) {
-	if big.NewInt(int64(len(multisig.Signatures))).Cmp(threshold) < 0 {
+	if int64(len(multisig.Signatures)) < threshold {
 		metrics.MultiSigThresholdNotReached()
-		return nil, fmt.Errorf("threshold not reached: %d/%d. Errors: %w",
+		return nil, fmt.Errorf("validatorPoller threshold not reached: %d/%d. Errors: %w",
 			len(multisig.Signatures), threshold, errors.Join(errs...))
 	}
 
-	vp.log.Infof("certificate validation passed with %d/%d signatures: %s",
+	vp.log.Infof("validatorPoller certificate validation passed with %d/%d signatures: %s",
 		len(multisig.Signatures), threshold, cert.Brief())
 
 	return multisig, nil

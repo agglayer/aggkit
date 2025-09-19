@@ -91,6 +91,14 @@ func (m *MultisigCommittee) Threshold() *big.Int {
 	return m.threshold
 }
 
+// ThresholdInt returns the signature threshold as an int64.
+func (m *MultisigCommittee) ThresholdInt() (int64, error) {
+	if m.threshold.IsInt64() {
+		return m.threshold.Int64(), nil
+	}
+	return 0, fmt.Errorf("threshold %s doesn't fit in int64", m.threshold.String())
+}
+
 // Signers returns a shallow copy of the committee's signers slice
 // to prevent external modification of the internal slice.
 func (m *MultisigCommittee) Signers() []SignerInfo {
