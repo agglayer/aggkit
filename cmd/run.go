@@ -484,19 +484,11 @@ func runL1InfoTreeSyncerIfNeeded(
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
-		cfg.L1InfoTreeSync.DBPath,
-		cfg.L1InfoTreeSync.GlobalExitRootAddr,
-		cfg.L1InfoTreeSync.RollupManagerAddr,
-		cfg.L1InfoTreeSync.SyncBlockChunkSize,
+		cfg.L1InfoTreeSync,
 		aggkittypes.FinalizedBlock,
 		l1Client,
-		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
-		cfg.L1InfoTreeSync.InitialBlock,
-		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
-		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
 		aggkittypes.FinalizedBlock,
-		cfg.L1InfoTreeSync.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatal(err)
