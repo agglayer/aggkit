@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
@@ -457,10 +458,8 @@ func newReorgDetector(
 
 func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	for _, actualCase := range actualCases {
-		for _, caseWhereNeeded := range casesWhereNeeded {
-			if actualCase == caseWhereNeeded {
-				return true
-			}
+		if slices.Contains(casesWhereNeeded, actualCase) {
+			return true
 		}
 	}
 
