@@ -30,10 +30,9 @@ import (
 )
 
 const (
-	rollupID                = uint32(1)
-	aggOracleCommitteeNonce = 4
-	syncBlockChunkSize      = 10
-	defaultDBQueryTimeout   = 30 * time.Second
+	rollupID              = uint32(1)
+	syncBlockChunkSize    = 10
+	defaultDBQueryTimeout = 30 * time.Second
 )
 
 type L2GERManagerContractType int
@@ -241,9 +240,14 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			gerInjectionFrequency = time.Millisecond * 20
 		)
 
+		evmSenderCfg := chaingersender.EVMConfig{
+			GlobalExitRootL2Addr:   gerL2Addr,
+			AggOracleCommitteeAddr: aggOracleCommitteeAddr,
+			WaitPeriodMonitorTx:    cfgtypes.NewDuration(gerCheckFrequency),
+		}
 		sender, err = chaingersender.NewEVMChainGERSender(
-			log.GetDefaultLogger(), gerL2Addr, aggOracleCommitteeAddr,
-			l2Client.Client(), ethTxManagerMock, 0, gerCheckFrequency, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
+			log.GetDefaultLogger(), evmSenderCfg, l2Client.Client(),
+			ethTxManagerMock, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
 		)
 		require.NoError(t, err)
 
