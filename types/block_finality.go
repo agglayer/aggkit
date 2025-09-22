@@ -13,6 +13,23 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+const (
+	SafeBlockName      = "SafeBlock"
+	FinalizedBlockName = "FinalizedBlock"
+	LatestBlockName    = "LatestBlock"
+	PendingBlockName   = "PendingBlock"
+	EmptyBlockName     = ""
+
+	blockNameAndOffsetSeparator = "/"
+)
+
+var (
+	FinalizedBlock = BlockNumberFinality{Block: Finalized}
+	LatestBlock    = BlockNumberFinality{Block: Latest}
+	SafeBlock      = BlockNumberFinality{Block: Safe}
+	PendingBlock   = BlockNumberFinality{Block: Pending}
+)
+
 // BlockNumberFinality represents a block finality with an optional offset
 type BlockNumberFinality struct {
 	Block  BlockNumber
@@ -45,32 +62,15 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	return result, nil
 }
 
-const (
-	SafeBlockName      = "SafeBlock"
-	FinalizedBlockName = "FinalizedBlock"
-	LatestBlockName    = "LatestBlock"
-	PendingBlockName   = "PendingBlock"
-	EmptyBlockName     = ""
-
-	blockNameAndOffsetSeparator = "/"
-)
-
-var (
-	FinalizedBlock = BlockNumberFinality{Block: Finalized}
-	LatestBlock    = BlockNumberFinality{Block: Latest}
-	SafeBlock      = BlockNumberFinality{Block: Safe}
-	PendingBlock   = BlockNumberFinality{Block: Pending}
-)
-
 // String returns the string representation of the BlockNumberFinality
 func (b *BlockNumberFinality) String() string {
 	if b == nil {
 		return "nil"
 	}
 	if b.Offset == 0 {
-		return b.Block.ToString()
+		return b.Block.String()
 	}
-	return fmt.Sprintf("%s%s%d", b.Block.ToString(), blockNameAndOffsetSeparator, b.Offset)
+	return fmt.Sprintf("%s%s%d", b.Block.String(), blockNameAndOffsetSeparator, b.Offset)
 }
 
 // UnmarshalText unmarshalls BlockNumberFinality from text.
@@ -188,7 +188,7 @@ func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
 	return blockNumber
 }
 
-func (b BlockNumber) ToString() string {
+func (b BlockNumber) String() string {
 	switch b {
 	case Finalized:
 		return FinalizedBlockName

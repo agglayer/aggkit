@@ -80,7 +80,7 @@ func NewEVMDownloader(
 	}
 
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
-		finality, fbtEthermanType, syncBlockChunkSize)
+		finality.String(), fbtEthermanType.String(), syncBlockChunkSize)
 
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
