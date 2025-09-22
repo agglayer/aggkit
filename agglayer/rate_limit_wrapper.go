@@ -55,7 +55,7 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 	// It must call to rateLimiter.Call until no sleep time is required
 	for !done {
 		r.mu.Lock()
-		rateLimitSleepTime := rateLimiter.Call(methodName, false)
+		rateLimitSleepTime := rateLimiter.Call(methodName, aggkitcommon.NoSleepReturnTime)
 		r.mu.Unlock()
 
 		if rateLimitSleepTime != nil {
