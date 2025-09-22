@@ -53,7 +53,7 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 	}
 	done := false
 	// It must call to rateLimiter.Call until no sleep time is required
-	for done {
+	for !done {
 		r.mu.Lock()
 		rateLimitSleepTime := rateLimiter.Call(methodName, false)
 		r.mu.Unlock()
