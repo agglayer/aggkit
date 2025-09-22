@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
@@ -379,15 +380,25 @@ func createAggoracle(
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		l2GERManagerAddr := cfg.AggOracle.EVMSender.GlobalExitRootL2Addr
 		logger.Infof("AggOracle sender address: %s | GER contract address on L2: %s",
 			ethTxManager.From().Hex(),
-			cfg.AggOracle.EVMSender.GlobalExitRootL2Addr.Hex(),
+			l2GERManagerAddr.Hex(),
 		)
 		go ethTxManager.Start()
+
+		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+			l2GERManagerAddr, l2Client)
+		if err != nil {
+			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
+		}
+
 		sender, err = chaingersender.NewEVMChainGERSender(
 			logger,
 			cfg.AggOracle.EVMSender,
 			l2Client,
+			l2GERManager,
 			ethTxManager,
 			cfg.AggOracle.EnableAggOracleCommittee,
 		)

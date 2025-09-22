@@ -245,8 +245,13 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			AggOracleCommitteeAddr: aggOracleCommitteeAddr,
 			WaitPeriodMonitorTx:    cfgtypes.NewDuration(gerCheckFrequency),
 		}
+		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+			gerL2Addr, l2Client.Client())
+		if err != nil {
+			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", gerL2Addr, err)
+		}
 		sender, err = chaingersender.NewEVMChainGERSender(
-			log.GetDefaultLogger(), evmSenderCfg, l2Client.Client(),
+			log.GetDefaultLogger(), evmSenderCfg, l2Client.Client(), l2GERManager,
 			ethTxManagerMock, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
 		)
 		require.NoError(t, err)

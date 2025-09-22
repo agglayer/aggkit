@@ -66,6 +66,7 @@ func NewEVMChainGERSender(
 	logger *log.Logger,
 	cfg EVMConfig,
 	l2Client aggkittypes.BaseEthereumClienter,
+	l2GERManager types.L2GERManagerContract,
 	ethTxMan types.EthTxManager,
 	enableAggOracleCommittee bool,
 ) (*EVMChainGERSender, error) {
@@ -75,14 +76,6 @@ func NewEVMChainGERSender(
 		mode = AggOracleCommitteeMode
 	}
 	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
-
-	// Always initialize L2 GER Manager (needed for checking if GER is injected)
-	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
-		cfg.GlobalExitRootL2Addr, l2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create binding for GER L2 manager (SC address: %s): %w",
-			cfg.GlobalExitRootL2Addr, err)
-	}
 
 	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
 	if err != nil {

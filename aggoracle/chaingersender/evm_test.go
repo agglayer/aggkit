@@ -18,6 +18,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNEWEVMChainGERSender_DirectMode(t *testing.T) {
+	txManagerMock := mocks.NewEthTxManager(t)
+	txManagerMock.EXPECT().From().Return(common.HexToAddress("0x123")).Once()
+
+	l2GERManagerMock := mocks.NewL2GERManagerContract(t)
+	l2GERManagerMock.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(common.HexToAddress("0x123"), nil).Once()
+
+	gerSender, err := NewEVMChainGERSender(log.GetDefaultLogger(), EVMConfig{}, nil, l2GERManagerMock, txManagerMock, false)
+	require.NoError(t, err)
+	require.NotNil(t, gerSender)
+	require.Equal(t, DirectInjectionMode, gerSender.mode)
+}
+
 func TestEVMChainGERSender_InitializeAndValidateMode(t *testing.T) {
 	tests := []struct {
 		name        string
