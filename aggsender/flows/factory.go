@@ -19,6 +19,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -44,7 +45,7 @@ func NewFlow(
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, cfg.BridgeL2SovereignAddr, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
@@ -90,7 +91,7 @@ func NewFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, cfg.BridgeL2SovereignAddr, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
@@ -114,7 +115,7 @@ func NewFlow(
 			optimisticSigner,
 			commonFlowComponents.BaseFlow,
 			query.NewGERDataQuerier(commonFlowComponents.L1InfoTreeDataQuerier, l2GERReader),
-			l2BridgeQuerier,
+			commonFlowComponents.L2BridgeQuerier,
 		)
 
 		return NewAggchainProverFlow(
@@ -147,7 +148,9 @@ func CreateCommonFlowComponents(
 	ctx context.Context,
 	logger *log.Logger,
 	storage db.AggSenderStorage,
+	bridgeAddr ethCommon.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -172,7 +175,7 @@ func CreateCommonFlowComponents(
 		return nil, err
 	}
 
-	bridgeL2SovereignReader, err := bridgeL2SovereignReaderFactory(cfg.BridgeL2SovereignAddr, l2Client)
+	bridgeL2SovereignReader, err := bridgeL2SovereignReaderFactory(bridgeAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
