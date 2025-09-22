@@ -26,7 +26,7 @@ func createTestImportedBridgeExitWithBlockNumber() []*agglayer.ImportedBridgeExi
 					Amount:             nil,
 					Metadata:           []byte{0x01, 0x02, 0x03},
 				},
-				ClaimData: &agglayer.ClaimFromMainnnet{
+				ClaimData: &agglayer.ClaimFromMainnet{
 					ProofLeafMER: &agglayer.MerkleProof{
 						Root:  common.HexToHash("0x1010101010101010"),
 						Proof: [32]common.Hash{common.HexToHash("0x2020202020202020")},
