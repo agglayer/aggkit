@@ -51,16 +51,22 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 	if !exists {
 		return
 	}
+	done := false
+	// It must call to rateLimiter.Call until no sleep time is required
+	for done {
+		r.mu.Lock()
+		rateLimitSleepTime := rateLimiter.Call(methodName, false)
+		r.mu.Unlock()
 
-	r.mu.Lock()
-	rateLimitSleepTime := rateLimiter.Call(methodName, false)
-	r.mu.Unlock()
-
-	if rateLimitSleepTime != nil {
-		r.logger.Warnf("rate limit reached for %s, sleeping for %s. Rate:%s",
-			methodName,
-			rateLimitSleepTime.String(), rateLimiter.String())
-		time.Sleep(*rateLimitSleepTime)
+		if rateLimitSleepTime != nil {
+			r.logger.Warnf("rate limit reached for %s, sleeping for %s. Rate:%s",
+				methodName,
+				rateLimitSleepTime.String(), rateLimiter.String())
+			time.Sleep(*rateLimitSleepTime)
+		} else {
+			// No sleep time needed, proceed
+			done = true
+		}
 	}
 }
 

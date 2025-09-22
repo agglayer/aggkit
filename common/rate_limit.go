@@ -8,6 +8,15 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
+type RateLimitParam bool
+
+const (
+	// The call to RateLimit.Call will sleep if the rate limit is reached
+	AllowToSleep RateLimitParam = true
+	// The call to RateLimit.Call will return the required sleep time if the rate limit is reached
+	NoSleepReturnTime RateLimitParam = false
+)
+
 var (
 	TimeProvider = time.Now
 )
@@ -61,12 +70,19 @@ func (r *RateLimit) String() string {
 	return fmt.Sprintf("RateLimit{cfg: %s, bucket len: %v}", r.cfg, len(r.calls))
 }
 
-// Call is used before making a call, it will sleep if the rate limit is reached if param allowToSleep is true
-func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
+// Call is used before making a call, it will sleep if the rate limit is reached.
+//
+//	if param allowToSleep is true ->
+//	    - it sleeps the required time and returns nil
+//	    - it assume that the call is done and register it
+//	if param allowToSleep is false ->
+//	     - if require time to sleep it return it (and don't register the call)
+//	     - if no sleep is required it returns nil and register the call
+func (r *RateLimit) Call(msg string, allowToSleep RateLimitParam) *time.Duration {
 	if r == nil || !r.cfg.Enabled() {
 		return nil
 	}
-	var returnSleepTime *time.Duration
+
 	now := TimeProvider()
 	r.cleanOutdatedCalls(now)
 
@@ -79,14 +95,16 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 			}
 			time.Sleep(sleepTime)
 		} else {
-			// If no sleep, we return the time
-			returnSleepTime = &sleepTime
+			// If not allowed to sleep, return a sleepTime indicating how long
+			// but don't include the call, the user must sleep and after call again
+			// this function
+			return &sleepTime
 		}
 	}
 
 	// Add the current call to the tracking
 	r.calls = append(r.calls, now)
-	return returnSleepTime
+	return nil
 }
 
 func (r *RateLimit) cleanOutdatedCalls(now time.Time) {
