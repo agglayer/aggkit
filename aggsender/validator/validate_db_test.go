@@ -1,7 +1,6 @@
 package validator
 
 import (
-	"context"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -16,7 +15,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/agglayer/go_signer/signer"
-	signerTypes "github.com/agglayer/go_signer/signer/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
@@ -27,7 +26,7 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	// Test real db verification
 	testDataPath := getTestDataPath(t)
 	logger := log.WithFields("test", "TestValidateFullAggsenderDB")
-	ctx := context.TODO()
+	ctx := t.Context()
 	dbQueryTimeout := 30 * time.Second
 	mockL2EthClient := mocksethclient.NewEthClienter(t)
 	mockL2EthClient.EXPECT().BlockByNumber(ctx, mock.Anything).Return(&types.Block{}, nil).Maybe()
@@ -56,8 +55,8 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	lerQuerier, err := query.NewLERDataQuerier(common.Address{}, 1, mockRollupDataQuerier)
 	require.NoError(t, err)
 	chainID := uint64(1)
-	signer, err := signer.NewSigner(ctx, chainID, signerTypes.SignerConfig{
-		Method: signerTypes.MethodMock,
+	signer, err := signer.NewSigner(ctx, chainID, signertypes.SignerConfig{
+		Method: signertypes.MethodMock,
 	}, "test", logger)
 	require.NoError(t, err)
 
