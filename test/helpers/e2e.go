@@ -15,7 +15,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
-	cfgTypes "github.com/agglayer/aggkit/config/types"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -30,10 +30,9 @@ import (
 )
 
 const (
-	rollupID                = uint32(1)
-	aggOracleCommitteeNonce = 4
-	syncBlockChunkSize      = 10
-	defaultDBQueryTimeout   = 30 * time.Second
+	rollupID              = uint32(1)
+	syncBlockChunkSize    = 10
+	defaultDBQueryTimeout = 30 * time.Second
 )
 
 type L2GERManagerContractType int
@@ -126,15 +125,24 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		l1InfoTreeSyncerRetryFreq = time.Millisecond * 100
 	)
 
+	l1InfoTreeSyncCfg := l1infotreesync.Config{
+		DBPath:                             dbPathL1InfoTreeSync,
+		InitialBlock:                       0,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		GlobalExitRootAddr:                 gerL1Addr,
+		RollupManagerAddr:                  common.Address{},
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(l1InfoTreeSyncerRetryFreq),
+		MaxRetryAttemptsAfterError:         l1InfoTreeSyncerRetries,
+		RequireStorageContentCompatibility: true,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
+	}
 	l1InfoTreeSync, err := l1infotreesync.New(
-		ctx, dbPathL1InfoTreeSync,
-		gerL1Addr, common.Address{},
-		syncBlockChunkSize, aggkittypes.LatestBlock,
+		ctx,
+		l1InfoTreeSyncCfg,
+		aggkittypes.LatestBlock,
 		l1Client.Client(),
-		time.Millisecond, 0, l1InfoTreeSyncerRetryFreq,
-		l1InfoTreeSyncerRetries, l1infotreesync.FlagAllowWrongContractsAddrs,
+		l1infotreesync.FlagAllowWrongContractsAddrs,
 		aggkittypes.SafeBlock,
-		true,
 	)
 	require.NoError(t, err)
 
@@ -152,11 +160,18 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 
-	bridgeL1Sync, err := bridgesync.NewL1(
-		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
-		syncBlockChunkSize, aggkittypes.LatestBlock, testClient,
-		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, true, defaultDBQueryTimeout)
+	bridgeSyncCfg := bridgesync.Config{
+		DBPath:                             dbPathBridgeSyncL1,
+		BridgeAddr:                         bridgeL1Addr,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryPeriod),
+		MaxRetryAttemptsAfterError:         retriesCount,
+		RequireStorageContentCompatibility: true,
+		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
+	}
+	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, aggkittypes.LatestBlock, testClient, originNetwork, false)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -225,9 +240,19 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			gerInjectionFrequency = time.Millisecond * 20
 		)
 
+		evmSenderCfg := chaingersender.EVMConfig{
+			GlobalExitRootL2Addr:   gerL2Addr,
+			AggOracleCommitteeAddr: aggOracleCommitteeAddr,
+			WaitPeriodMonitorTx:    cfgtypes.NewDuration(gerCheckFrequency),
+		}
+		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+			gerL2Addr, l2Client.Client())
+		if err != nil {
+			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", gerL2Addr, err)
+		}
 		sender, err = chaingersender.NewEVMChainGERSender(
-			log.GetDefaultLogger(), gerL2Addr, aggOracleCommitteeAddr,
-			l2Client.Client(), ethTxManagerMock, 0, gerCheckFrequency, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
+			log.GetDefaultLogger(), evmSenderCfg, l2Client.Client(), l2GERManager,
+			ethTxManagerMock, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
 		)
 		require.NoError(t, err)
 
@@ -244,7 +269,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
 	rdL2, err := reorgdetector.New(l2Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
-		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	},
 		reorgdetector.L2,
@@ -253,7 +278,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	go rdL2.Start(ctx) //nolint:errcheck
 
 	// Bridge sync
-	dbPathL2BridgeSync := path.Join(t.TempDir(), "BridgeSyncL2.sqlite")
+	dbPathBridgeSyncL2 := path.Join(t.TempDir(), "BridgeSyncL2.sqlite")
 	testClient := NewTestClient(l2Client.Client(), WithRPCClienter(cfg.L2RPCClient))
 
 	const (
@@ -264,11 +289,19 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		retriesCount           = 100
 	)
 
-	bridgeL2Sync, err := bridgesync.NewL2(
-		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
-		aggkittypes.LatestBlock, rdL2, testClient,
-		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, true, defaultDBQueryTimeout)
+	bridgeSyncCfg := bridgesync.Config{
+		DBPath:                             dbPathBridgeSyncL2,
+		BridgeAddr:                         bridgeL2Addr,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryPeriod),
+		MaxRetryAttemptsAfterError:         retriesCount,
+		RequireStorageContentCompatibility: true,
+		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
+	}
+	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)

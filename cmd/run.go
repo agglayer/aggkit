@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
@@ -45,6 +47,12 @@ import (
 )
 
 func start(cliCtx *cli.Context) error {
+	// Validate components first before loading configuration
+	components := cliCtx.StringSlice(config.FlagComponents)
+	if err := aggkitcommon.ValidateComponents(components); err != nil {
+		return err
+	}
+
 	cfg, err := config.Load(cliCtx)
 	if err != nil {
 		return err
@@ -71,7 +79,6 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
-	components := cliCtx.StringSlice(config.FlagComponents)
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 
@@ -420,19 +427,26 @@ func createAggoracle(
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		l2GERManagerAddr := cfg.AggOracle.EVMSender.GlobalExitRootL2Addr
 		logger.Infof("AggOracle sender address: %s | GER contract address on L2: %s",
 			ethTxManager.From().Hex(),
-			cfg.AggOracle.EVMSender.GlobalExitRootL2Addr.Hex(),
+			l2GERManagerAddr.Hex(),
 		)
 		go ethTxManager.Start()
+
+		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+			l2GERManagerAddr, l2Client)
+		if err != nil {
+			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
+		}
+
 		sender, err = chaingersender.NewEVMChainGERSender(
 			logger,
-			cfg.AggOracle.EVMSender.GlobalExitRootL2Addr,
-			cfg.AggOracle.EVMSender.AggOracleCommitteeAddr,
+			cfg.AggOracle.EVMSender,
 			l2Client,
+			l2GERManager,
 			ethTxManager,
-			cfg.AggOracle.EVMSender.GasOffset,
-			cfg.AggOracle.EVMSender.WaitPeriodMonitorTx.Duration,
 			cfg.AggOracle.EnableAggOracleCommittee,
 		)
 		if err != nil {
@@ -502,10 +516,8 @@ func newReorgDetector(
 
 func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	for _, actualCase := range actualCases {
-		for _, caseWhereNeeded := range casesWhereNeeded {
-			if actualCase == caseWhereNeeded {
-				return true
-			}
+		if slices.Contains(casesWhereNeeded, actualCase) {
+			return true
 		}
 	}
 
@@ -526,19 +538,11 @@ func runL1InfoTreeSyncerIfNeeded(
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
-		cfg.L1InfoTreeSync.DBPath,
-		cfg.L1InfoTreeSync.GlobalExitRootAddr,
-		cfg.L1InfoTreeSync.RollupManagerAddr,
-		cfg.L1InfoTreeSync.SyncBlockChunkSize,
+		cfg.L1InfoTreeSync,
 		aggkittypes.FinalizedBlock,
 		l1Client,
-		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
-		cfg.L1InfoTreeSync.InitialBlock,
-		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
-		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
 		aggkittypes.FinalizedBlock,
-		cfg.L1InfoTreeSync.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -639,18 +643,10 @@ func runL2GERSyncIfNeeded(
 	}
 	l2GERSync, err := l2gersync.New(
 		ctx,
-		cfg.DBPath,
+		cfg,
 		reorgDetectorL2,
 		l2Client,
-		cfg.GlobalExitRootL2Addr,
 		l1InfoTreeSync,
-		cfg.SyncBlockChunkSize,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
-		cfg.BlockFinality,
-		cfg.WaitForNewBlocksPeriod.Duration,
-		cfg.DownloadBufferSize,
-		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatalf("error creating l2GERSync: %s", err)
@@ -674,19 +670,11 @@ func runBridgeSyncL1IfNeeded(
 
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
-		cfg.DBPath,
-		cfg.BridgeAddr,
-		cfg.SyncBlockChunkSize,
+		cfg,
 		aggkittypes.FinalizedBlock,
 		l1Client,
-		cfg.InitialBlockNum,
-		cfg.WaitForNewBlocksPeriod.Duration,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
-		cfg.RequireStorageContentCompatibility,
-		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -720,20 +708,11 @@ func runBridgeSyncL2IfNeeded(
 
 	bridgeSyncL2, err := bridgesync.NewL2(
 		ctx,
-		cfg.DBPath,
-		cfg.BridgeAddr,
-		cfg.SyncBlockChunkSize,
-		cfg.BlockFinality,
+		cfg,
 		reorgDetectorL2,
 		l2Client,
-		cfg.InitialBlockNum,
-		cfg.WaitForNewBlocksPeriod.Duration,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		fullClaimsNeeded,
-		cfg.RequireStorageContentCompatibility,
-		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
