@@ -90,7 +90,7 @@ jobs:
       - name: Read kurtosis-cdk-args from file
         id: read-args
         run: |
-          BASE=./.github/test_e2e_cdk_args_base.json
+          BASE=./.github/test_e2e_args_base.json
 
           # Helper: merge base with override (if any), output to GITHUB_OUTPUT, and pretty print
           put_args() {
