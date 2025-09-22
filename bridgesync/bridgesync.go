@@ -73,37 +73,21 @@ type noOpReorgDetectorWrapper struct {
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
 func NewL1(
 	ctx context.Context,
-	dbPath string,
-	bridge common.Address,
-	syncBlockChunkSize uint64,
+	cfg Config,
 	blockFinalityType aggkittypes.BlockNumberFinality,
 	ethClient aggkittypes.EthClienter,
-	initialBlock uint64,
-	waitForNewBlocksPeriod time.Duration,
-	retryAfterErrorPeriod time.Duration,
-	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	requireStorageContentCompatibility bool,
-	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
+		cfg,
 		blockFinalityType,
 		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()},
 		ethClient,
-		initialBlock,
 		L1BridgeSyncer,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		requireStorageContentCompatibility,
-		dbQueryTimeout,
 	)
 }
 
@@ -128,80 +112,56 @@ func NewL2ReadOnly(
 // NewL2 creates a bridge syncer that synchronizes the local exit tree
 func NewL2(
 	ctx context.Context,
-	dbPath string,
-	bridge common.Address,
-	syncBlockChunkSize uint64,
-	blockFinalityType aggkittypes.BlockNumberFinality,
+	cfg Config,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
-	initialBlock uint64,
-	waitForNewBlocksPeriod time.Duration,
-	retryAfterErrorPeriod time.Duration,
-	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	requireStorageContentCompatibility bool,
-	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		cfg,
+		cfg.BlockFinality,
 		rd,
 		ethClient,
-		initialBlock,
 		L2BridgeSyncer,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		requireStorageContentCompatibility,
-		dbQueryTimeout,
 	)
 }
 
 func newBridgeSync(
 	ctx context.Context,
-	dbPath string,
-	bridge common.Address,
-	syncBlockChunkSize uint64,
+	cfg Config,
 	blockFinalityType aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
-	initialBlock uint64,
 	syncerID BridgeSyncerType,
-	waitForNewBlocksPeriod time.Duration,
-	retryAfterErrorPeriod time.Duration,
-	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	requireStorageContentCompatibility bool,
-	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
-	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridge, ethClient)
+	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, err
 	}
 
-	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridge, ethClient)
+	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
-			bridge, err)
+			cfg.BridgeAddr.String(), err)
 	}
 
-	err = sanityCheckContract(logger, bridge, bridgeContractV2)
+	logger.Infof("Bridge sync %s, syncing full claims: %t", syncerID.String(), syncFullClaims)
+	err = sanityCheckContract(logger, cfg.BridgeAddr, bridgeContractV2)
 	if err != nil {
-		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
-			bridge.String(), err)
+		logger.Errorf("sanityCheckContract(bridge: %s) fails sanity check. Err: %w",
+			cfg.BridgeAddr.String(), err)
 		return nil, err
 	}
 
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
+	processor, err := newProcessor(cfg.DBPath, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
 	if err != nil {
 		return nil, err
 	}
@@ -211,14 +171,14 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	if lastProcessedBlock < initialBlock {
-		block, err := ethClient.BlockByNumber(ctx, new(big.Int).SetUint64(initialBlock))
+	if lastProcessedBlock < cfg.InitialBlockNum {
+		block, err := ethClient.BlockByNumber(ctx, new(big.Int).SetUint64(cfg.InitialBlockNum))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get initial block %d: %w", initialBlock, err)
+			return nil, fmt.Errorf("failed to get initial block %d: %w", cfg.InitialBlockNum, err)
 		}
 
 		err = processor.ProcessBlock(ctx, sync.Block{
-			Num:  initialBlock,
+			Num:  cfg.InitialBlockNum,
 			Hash: block.Hash(),
 		})
 		if err != nil {
@@ -226,22 +186,22 @@ func newBridgeSync(
 		}
 	}
 	rh := &sync.RetryHandler{
-		MaxRetryAttemptsAfterError: maxRetryAttemptsAfterError,
-		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
+		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
+		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 	}
 
-	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2, bridgeSovereignChain, logger)
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, bridgeContractV2, bridgeSovereignChain, logger)
 	if err != nil {
 		return nil, err
 	}
 	downloader, err := sync.NewEVMDownloader(
 		syncerID.String(),
 		ethClient,
-		syncBlockChunkSize,
-		blockFinalityType,
-		waitForNewBlocksPeriod,
+		cfg.SyncBlockChunkSize,
+		cfg.BlockFinality,
+		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
-		[]common.Address{bridge},
+		[]common.Address{cfg.BridgeAddr},
 		rh,
 		rd.GetFinalizedBlockType(),
 	)
@@ -249,7 +209,7 @@ func newBridgeSync(
 		return nil, err
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
-		requireStorageContentCompatibility,
+		cfg.RequireStorageContentCompatibility,
 		func(ctx context.Context) (BridgeSyncRuntimeData, error) {
 			tmp, err := downloader.RuntimeData(ctx)
 			if err != nil {
@@ -282,15 +242,15 @@ func newBridgeSync(
 			"  ReorgDetector: %s\n"+
 			"  waitForNewBlocksPeriod: %s",
 		syncerID,
-		dbPath,
-		initialBlock,
-		bridge.String(),
+		cfg.DBPath,
+		cfg.InitialBlockNum,
+		cfg.BridgeAddr.String(),
 		syncFullClaims,
-		maxRetryAttemptsAfterError,
-		retryAfterErrorPeriod.String(),
-		syncBlockChunkSize,
+		cfg.MaxRetryAttemptsAfterError,
+		cfg.RetryAfterErrorPeriod.String(),
+		cfg.SyncBlockChunkSize,
 		rd.String(),
-		waitForNewBlocksPeriod.String(),
+		cfg.WaitForNewBlocksPeriod.String(),
 	)
 
 	return &BridgeSync{
@@ -339,11 +299,18 @@ func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) 
 	return s.processor.GetLastProcessedBlock(ctx)
 }
 
-func (s *BridgeSync) GetBridgeRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
+func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.exitTree.GetRootByHash(ctx, root)
+}
+
+func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.GetClaimsByGlobalIndex(ctx, globalIndex)
 }
 
 func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {

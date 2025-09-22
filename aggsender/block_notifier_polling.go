@@ -152,7 +152,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	}
 	if previousState.lastBlockSeen > currentBlock {
 		b.logger.Warnf("Block number decreased [finality:%s]: %d -> %d",
-			b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock)
+			b.config.BlockFinalityType.String(), previousState.lastBlockSeen, currentBlock)
 		// It start from scratch because something fails in calculation of block period
 		newState := previousState.initialBlock(currentBlock)
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
@@ -161,16 +161,16 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	if currentBlock-previousState.lastBlockSeen != 1 {
 		if !b.config.BlockFinalityType.IsSafe() && !b.config.BlockFinalityType.IsFinalized() {
 			b.logger.Warnf("Missed block(s) [finality:%s]: %d -> %d",
-				b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock)
+				b.config.BlockFinalityType.String(), previousState.lastBlockSeen, currentBlock)
 		}
 
 		// It start from scratch because something fails in calculation of block period
 		newState := previousState.initialBlock(currentBlock)
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
 	}
-	newState := previousState.incommingNewBlock(currentBlock)
+	newState := previousState.incomingNewBlock(currentBlock)
 	b.logger.Debugf("New block seen [finality:%s]: %d. blockRate:%s",
-		b.config.BlockFinalityType, currentBlock, newState.previousBlockTime)
+		b.config.BlockFinalityType.String(), currentBlock, newState.previousBlockTime)
 	eventToEmit.BlockRate = *newState.previousBlockTime
 	return b.nextBlockRequestDelay(newState, nil), newState, eventToEmit
 }
@@ -221,7 +221,7 @@ func (s *blockNotifierPollingInternalStatus) initialBlock(block uint64) *blockNo
 	}
 }
 
-func (s *blockNotifierPollingInternalStatus) incommingNewBlock(block uint64) *blockNotifierPollingInternalStatus {
+func (s *blockNotifierPollingInternalStatus) incomingNewBlock(block uint64) *blockNotifierPollingInternalStatus {
 	now := timeNowFunc()
 	timePreviousBlock := now.Sub(s.lastBlockTime)
 	return &blockNotifierPollingInternalStatus{

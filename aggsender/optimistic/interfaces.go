@@ -1,6 +1,8 @@
 package optimistic
 
 import (
+	"math/big"
+
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -13,6 +15,9 @@ type OpNodeClienter interface {
 
 // FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
 type FEPContractQuerier interface {
+	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
 	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
 	RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error)
 	OptimisticMode(opts *bind.CallOpts) (bool, error)

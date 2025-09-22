@@ -91,9 +91,11 @@ type ValidateCertificateRequest struct {
 	// Previous certificate identifier
 	PreviousCertificateId *v1.CertificateId `protobuf:"bytes,1,opt,name=previous_certificate_id,json=previousCertificateId,proto3" json:"previous_certificate_id,omitempty"`
 	// Certificate to be validated
-	Certificate   *v1.Certificate `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Certificate *v1.Certificate `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"`
+	// Last L2 block number included in the certificate
+	LastL2BlockInCert uint64 `protobuf:"varint,3,opt,name=last_l2_block_in_cert,json=lastL2BlockInCert,proto3" json:"last_l2_block_in_cert,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ValidateCertificateRequest) Reset() {
@@ -138,6 +140,13 @@ func (x *ValidateCertificateRequest) GetCertificate() *v1.Certificate {
 		return x.Certificate
 	}
 	return nil
+}
+
+func (x *ValidateCertificateRequest) GetLastL2BlockInCert() uint64 {
+	if x != nil {
+		return x.LastL2BlockInCert
+	}
+	return 0
 }
 
 // Type used as response to a certificate validation request.
@@ -194,10 +203,11 @@ const file_aggsender_validator_proto_v1_validator_proto_rawDesc = "" +
 	"\x13HealthCheckResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xc2\x01\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xf4\x01\n" +
 	"\x1aValidateCertificateRequest\x12]\n" +
 	"\x17previous_certificate_id\x18\x01 \x01(\v2%.agglayer.node.types.v1.CertificateIdR\x15previousCertificateId\x12E\n" +
-	"\vcertificate\x18\x02 \x01(\v2#.agglayer.node.types.v1.CertificateR\vcertificate\"d\n" +
+	"\vcertificate\x18\x02 \x01(\v2#.agglayer.node.types.v1.CertificateR\vcertificate\x120\n" +
+	"\x15last_l2_block_in_cert\x18\x03 \x01(\x04R\x11lastL2BlockInCert\"d\n" +
 	"\x1bValidateCertificateResponse\x12E\n" +
 	"\tsignature\x18\x01 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\tsignature2\xfe\x01\n" +
 	"\x12AggsenderValidator\x12Y\n" +

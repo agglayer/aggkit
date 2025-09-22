@@ -192,8 +192,8 @@ KeepCertificatesHistory = true
 MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
-# PessimisticProof or AggchainProver
-Mode = "PessimisticProof"
+# PessimisticProof, AggchainProof or Auto
+Mode = "Auto"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
@@ -206,7 +206,7 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
-RequireValidatorCall = false
+RequireCommitteeMembershipCheck = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
@@ -248,7 +248,10 @@ RequireValidatorCall = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
-
+# Overide a committee URL to point to a local service
+#  	[AggSender.CommitteeOverride]
+#		URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
+	
 [Prometheus]
 Enabled = true
 Host = "localhost"
@@ -276,6 +279,9 @@ Signer = {{AggsenderPrivateKey}}
 MaxCertSize = "{{AggSender.MaxCertSize}}"
 MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
 DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
+# PessimisticProof, AggchainProof or Auto
+Mode = "{{AggSender.Mode}}"
+RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578
@@ -288,6 +294,9 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 	BridgeL2SovereignAddr = "{{L2Config.BridgeAddr}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
+[Validator.FEPConfig]
+	SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
+	RequireNoBlockGap = "{{AggSender.RequireNoFEPBlockGap}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]

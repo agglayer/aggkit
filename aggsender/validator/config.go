@@ -1,12 +1,18 @@
 package validator
 
 import (
+	"fmt"
+
 	"github.com/agglayer/aggkit/agglayer"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
+
+var errInvalidSovereignRollupAddr = fmt.Errorf("SovereignRollupAddr must be set for AggchainProof mode")
 
 // Config defines the configuration for the validator validator service.
 type Config struct {
@@ -29,17 +35,31 @@ type Config struct {
 	// which is used to query the LER data from the RollupManager contract
 	LerQuerier LerQuerierConfig `mapstructure:"LerQuerierConfig"`
 	// PPConfig specific configuration for Pessimistic mode
-	PPConfig `mapstructure:"PPConfig"`
+	PPConfig PPConfig `mapstructure:"PPConfig"`
+	// FEPConfig specific configuration for FEP mode
+	FEPConfig FEPConfig `mapstructure:"FEPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// BridgeQuerier contains the configuration for the bridge querier
 	BridgeQuerier BridgeQuerierConfig `mapstructure:"BridgeQuerier"`
+	// Mode is the mode of the AggSender Validator (regular pessimistic proof mode or the aggchain proof mode)
+	Mode aggsendertypes.AggsenderMode `jsonschema:"enum=PessimisticProof, enum=AggchainProof, enum=Auto" mapstructure:"Mode"` //nolint:lll
+	// RequireCommitteeMembershipCheck indicates whether to check if the validator is part of the committee
+	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 }
 
 type PPConfig struct {
 	// RequireOneBridgeInPPCertificate is a flag to force the validator to have at least one bridge exit
 	// for the Pessimistic Proof certificates
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
+}
+
+type FEPConfig struct {
+	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
+	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
+	// RequireNoBlockGap is true if the AggSender should not accept a gap between
+	// lastBlock from lastCertificate and first block of FEP
+	RequireNoBlockGap bool `mapstructure:"RequireNoBlockGap"`
 }
 
 type LerQuerierConfig struct {
@@ -52,4 +72,24 @@ type LerQuerierConfig struct {
 type BridgeQuerierConfig struct {
 	// BridgeL2SovereignAddr is the address of the bridge L2 sovereign contract on L2 sovereign chain
 	BridgeL2SovereignAddr ethCommon.Address `mapstructure:"BridgeL2SovereignAddr"`
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	err := c.Mode.Validate()
+	if err != nil {
+		return fmt.Errorf("invalid mode %s, must be one of PessimisticProof, AggchainProof, Auto: %w", c.Mode, err)
+	}
+
+	if c.Mode == aggsendertypes.AggchainProofMode {
+		if c.FEPConfig.SovereignRollupAddr == aggkitcommon.ZeroAddress {
+			return errInvalidSovereignRollupAddr
+		}
+	}
+
+	if err := c.AgglayerClient.Validate(); err != nil {
+		return fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	return nil
 }

@@ -9,13 +9,14 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	"github.com/ethereum/go-ethereum/common"
 )
+
+var _ types.AggsenderFlow = (*PPFlow)(nil)
 
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
 	baseFlow              types.AggsenderFlowBaser
-	signer                signertypes.Signer
+	certificateSigner     signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 
@@ -39,7 +40,7 @@ func NewPPFlow(log types.Logger,
 		forceOneBridgeExit,
 	)
 	return &PPFlow{
-		signer:                signer,
+		certificateSigner:     signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		baseFlow:              baseFlow,
@@ -52,10 +53,6 @@ func NewPPFlow(log types.Logger,
 // For PPFlow  there are no special checks to do, so it just returns nil
 func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
-}
-
-func (p *PPFlow) GeneratePreBuildParams(ctx context.Context) (*types.CertificatePreBuildParams, error) {
-	return p.baseFlow.GeneratePreBuildParams(ctx, types.CertificateTypePP)
 }
 
 func (p *PPFlow) GenerateBuildParams(ctx context.Context,
@@ -124,32 +121,27 @@ func (p *PPFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}
 
-	signedCert, err := p.signCertificate(ctx, certificate)
-	if err != nil {
-		return nil, fmt.Errorf("ppFlow - error signing certificate: %w", err)
-	}
-
-	return signedCert, nil
+	return certificate, nil
 }
 
-// signCertificate signs a certificate with the aggsender key
-func (p *PPFlow) signCertificate(ctx context.Context,
-	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
-	hashToSign := certificate.PPHashToSign()
-	sig, err := p.signer.SignHash(ctx, hashToSign)
-	if err != nil {
-		return nil, err
+// UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
+func (p *PPFlow) UpdateAggchainData(
+	cert *agglayertypes.Certificate,
+	multisig *agglayertypes.Multisig) error {
+	if multisig == nil {
+		// multisig not turned on, we don't need to update the certificate
+		return nil
 	}
 
-	p.log.Infof("ppFlow - Signed certificate. Sequencer address: %s. New local exit root: %s Hash signed: %s",
-		p.signer.PublicAddress().String(),
-		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
-		hashToSign.String(),
-	)
-
-	certificate.AggchainData = &agglayertypes.AggchainDataSignature{
-		Signature: sig,
+	// update the aggchain data with multisig
+	cert.AggchainData = &agglayertypes.AggchainDataMultisig{
+		Multisig: multisig,
 	}
 
-	return certificate, nil
+	return nil
+}
+
+// Signer returns the signer used to sign the certificate
+func (p *PPFlow) Signer() signertypes.Signer {
+	return p.certificateSigner
 }

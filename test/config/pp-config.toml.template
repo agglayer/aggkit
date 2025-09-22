@@ -165,7 +165,7 @@ Port = "{{.aggkit_node_rest_api_port}}"
 # ------------------------------------------------------------------------------
 AggSenderPrivateKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Password = "{{.zkevm_l2_keystore_password}}"}
 
-Mode = "PessimisticProof"
+Mode = "Auto"
 CheckStatusCertificateInterval = "1s"
 
 # ------------------------------------------------------------------------------
@@ -226,6 +226,8 @@ BlockFinality = "LatestBlock"
 # ------------------------------------------------------------------------------
 # EnableRPC = false
 
+[AggSender.CommitteeOverride]
+    URLMapping = {{.aggsender_committee_override_urls}}
 # ==============================================================================
 #     _    ____  ____  ___  ____      _    ____ _     _____
 #    / \  / ___|/ ___|/ _ \|  _ \    / \  / ___| |   | ____|

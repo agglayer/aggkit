@@ -1,11 +1,9 @@
 package validator
 
 import (
-	"bytes"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/types"
 )
 
 // DiffsCertificate compares two certificates and returns a slice of strings
@@ -40,30 +38,6 @@ func DiffsCertificate(
 			expectedCertificate.NewLocalExitRoot.Hex(), validatingCertificate.NewLocalExitRoot.Hex()))
 	}
 
-	if validatingCertificate.Metadata != expectedCertificate.Metadata {
-		msg1 := fmt.Sprintf("Expected: %s", expectedCertificate.Metadata.Hex())
-		metadataUnmarshal, err := types.NewCertificateMetadataFromHash(expectedCertificate.Metadata)
-		if err != nil {
-			msg1 += fmt.Sprintf(" Error: %v", err)
-		} else {
-			msg1 += fmt.Sprintf(" (%s)", metadataUnmarshal.String())
-		}
-		msg2 := fmt.Sprintf("Certificate: %s", validatingCertificate.Metadata.Hex())
-		metadataUnmarshal, err = types.NewCertificateMetadataFromHash(validatingCertificate.Metadata)
-		if err != nil {
-			msg2 += fmt.Sprintf(" Error: %v", err)
-		} else {
-			msg2 += fmt.Sprintf(" (%s)", metadataUnmarshal.String())
-		}
-		diffs = append(diffs, fmt.Sprintf("Metadata mismatch. %s, %s",
-			msg1, msg2))
-	}
-
-	if !bytes.Equal(validatingCertificate.CustomChainData, expectedCertificate.CustomChainData) {
-		diffs = append(diffs, fmt.Sprintf("CustomChainData mismatch. Expected: %x, Certificate: %x",
-			expectedCertificate.CustomChainData, validatingCertificate.CustomChainData))
-	}
-
 	if validatingCertificate.L1InfoTreeLeafCount != expectedCertificate.L1InfoTreeLeafCount {
 		diffs = append(diffs, fmt.Sprintf("L1InfoTreeLeafCount mismatch. Expected: %d, Certificate: %d",
 			expectedCertificate.L1InfoTreeLeafCount, validatingCertificate.L1InfoTreeLeafCount))
@@ -71,8 +45,9 @@ func DiffsCertificate(
 
 	// BridgeExits
 	diffs = append(diffs, DiffsBridgeExits(expectedCertificate.BridgeExits, validatingCertificate.BridgeExits)...)
-	// ImportedBridgeExit
-	diffs = append(diffs, DiffsImportedBridgeExit(expectedCertificate.ImportedBridgeExits,
+
+	// ImportedBridge exits
+	diffs = append(diffs, DiffsImportedBridgeExits(expectedCertificate.ImportedBridgeExits,
 		validatingCertificate.ImportedBridgeExits)...)
 
 	return diffs
@@ -99,23 +74,27 @@ func DiffsBridgeExits(
 	return diffs
 }
 
-// DiffsImportedBridgeExit compares two slices of ImportedBridgeExit and returns a slice of strings
+// DiffsImportedBridgeExits compares two slices of ImportedBridgeExit and returns a slice of strings
 // containing the differences between them.
-func DiffsImportedBridgeExit(expected []*agglayertypes.ImportedBridgeExit,
+func DiffsImportedBridgeExits(
+	expected []*agglayertypes.ImportedBridgeExit,
 	validating []*agglayertypes.ImportedBridgeExit) []string {
 	diffs := make([]string, 0)
 	if len(expected) != len(validating) {
-		diffs = append(diffs, fmt.Sprintf("BridgeExits length mismatch. Expected: %d, Certificate: %d",
+		diffs = append(diffs, fmt.Sprintf("ImportedBridgeExits length mismatch. Expected: %d, Certificate: %d",
 			len(expected), len(validating)))
 		return diffs
 	}
+
 	for i, expectedImportedBridge := range expected {
 		importedBridgeValidating := validating[i]
-		if importedBridgeValidating.Hash() != expectedImportedBridge.Hash() {
-			diffs = append(diffs, fmt.Sprintf("ImportedBridgeExit %d hash mismatch.\n Expected: %s,\n"+
-				"Certificate: %s",
-				i, expectedImportedBridge.String(), importedBridgeValidating.String()))
+
+		// check if global index matches
+		if importedBridgeValidating.GlobalIndex.Hash() != expectedImportedBridge.GlobalIndex.Hash() {
+			diffs = append(diffs, fmt.Sprintf("ImportedBridgeExit %d GlobalIndex mismatch. Expected: %s, Certificate: %s",
+				i, expectedImportedBridge.GlobalIndex.String(), importedBridgeValidating.GlobalIndex.String()))
 		}
 	}
+
 	return diffs
 }

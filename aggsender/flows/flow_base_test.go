@@ -123,7 +123,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				NewBaseFlowConfig(tt.maxCertSize, 0, false))
+				NewBaseFlowConfig(tt.maxCertSize, 0, false, true))
 
 			result, err := f.LimitCertSize(tt.fullCert)
 
@@ -332,9 +332,9 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			name:           "no last sent certificate - zero start LER",
 			lastSentCert:   nil,
 			expectedHeight: 0,
-			expectedLER:    emptyLER,
+			expectedLER:    types.EmptyLER,
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(aggkitcommon.ZeroHash, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 			},
 		},
 		{
@@ -351,7 +351,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCert:   nil,
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
-			expectedError:  "error getting last local exit root: some error",
+			expectedError:  "some error",
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
 				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(common.Hash{}, errors.New("some error"))
 			},
@@ -395,9 +395,9 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 				NewLocalExitRoot:      common.HexToHash("0x789"),
 			},
 			expectedHeight: 0,
-			expectedLER:    emptyLER,
+			expectedLER:    types.EmptyLER,
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 			},
 		},
 		{

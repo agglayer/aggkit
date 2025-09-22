@@ -3,7 +3,11 @@
 package mocks
 
 import (
+	big "math/big"
+
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
+	common "github.com/ethereum/go-ethereum/common"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -18,6 +22,122 @@ type FEPContractQuerier_Expecter struct {
 
 func (_m *FEPContractQuerier) EXPECT() *FEPContractQuerier_Expecter {
 	return &FEPContractQuerier_Expecter{mock: &_m.Mock}
+}
+
+// GetAggchainSigners provides a mock function with given fields: opts
+func (_m *FEPContractQuerier) GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAggchainSigners")
+	}
+
+	var r0 []common.Address
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]common.Address, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []common.Address); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]common.Address)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// FEPContractQuerier_GetAggchainSigners_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAggchainSigners'
+type FEPContractQuerier_GetAggchainSigners_Call struct {
+	*mock.Call
+}
+
+// GetAggchainSigners is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *FEPContractQuerier_Expecter) GetAggchainSigners(opts interface{}) *FEPContractQuerier_GetAggchainSigners_Call {
+	return &FEPContractQuerier_GetAggchainSigners_Call{Call: _e.mock.On("GetAggchainSigners", opts)}
+}
+
+func (_c *FEPContractQuerier_GetAggchainSigners_Call) Run(run func(opts *bind.CallOpts)) *FEPContractQuerier_GetAggchainSigners_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *FEPContractQuerier_GetAggchainSigners_Call) Return(_a0 []common.Address, _a1 error) *FEPContractQuerier_GetAggchainSigners_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *FEPContractQuerier_GetAggchainSigners_Call) RunAndReturn(run func(*bind.CallOpts) ([]common.Address, error)) *FEPContractQuerier_GetAggchainSigners_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// LatestBlockNumber provides a mock function with given fields: opts
+func (_m *FEPContractQuerier) LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LatestBlockNumber")
+	}
+
+	var r0 *big.Int
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (*big.Int, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) *big.Int); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// FEPContractQuerier_LatestBlockNumber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LatestBlockNumber'
+type FEPContractQuerier_LatestBlockNumber_Call struct {
+	*mock.Call
+}
+
+// LatestBlockNumber is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *FEPContractQuerier_Expecter) LatestBlockNumber(opts interface{}) *FEPContractQuerier_LatestBlockNumber_Call {
+	return &FEPContractQuerier_LatestBlockNumber_Call{Call: _e.mock.On("LatestBlockNumber", opts)}
+}
+
+func (_c *FEPContractQuerier_LatestBlockNumber_Call) Run(run func(opts *bind.CallOpts)) *FEPContractQuerier_LatestBlockNumber_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *FEPContractQuerier_LatestBlockNumber_Call) Return(_a0 *big.Int, _a1 error) *FEPContractQuerier_LatestBlockNumber_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *FEPContractQuerier_LatestBlockNumber_Call) RunAndReturn(run func(*bind.CallOpts) (*big.Int, error)) *FEPContractQuerier_LatestBlockNumber_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // OptimisticMode provides a mock function with given fields: opts
@@ -188,6 +308,64 @@ func (_c *FEPContractQuerier_RollupConfigHash_Call) Return(_a0 [32]byte, _a1 err
 }
 
 func (_c *FEPContractQuerier_RollupConfigHash_Call) RunAndReturn(run func(*bind.CallOpts) ([32]byte, error)) *FEPContractQuerier_RollupConfigHash_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// StartingBlockNumber provides a mock function with given fields: opts
+func (_m *FEPContractQuerier) StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StartingBlockNumber")
+	}
+
+	var r0 *big.Int
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (*big.Int, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) *big.Int); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// FEPContractQuerier_StartingBlockNumber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StartingBlockNumber'
+type FEPContractQuerier_StartingBlockNumber_Call struct {
+	*mock.Call
+}
+
+// StartingBlockNumber is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *FEPContractQuerier_Expecter) StartingBlockNumber(opts interface{}) *FEPContractQuerier_StartingBlockNumber_Call {
+	return &FEPContractQuerier_StartingBlockNumber_Call{Call: _e.mock.On("StartingBlockNumber", opts)}
+}
+
+func (_c *FEPContractQuerier_StartingBlockNumber_Call) Run(run func(opts *bind.CallOpts)) *FEPContractQuerier_StartingBlockNumber_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *FEPContractQuerier_StartingBlockNumber_Call) Return(_a0 *big.Int, _a1 error) *FEPContractQuerier_StartingBlockNumber_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *FEPContractQuerier_StartingBlockNumber_Call) RunAndReturn(run func(*bind.CallOpts) (*big.Int, error)) *FEPContractQuerier_StartingBlockNumber_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -13,6 +14,8 @@ import (
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -29,6 +32,10 @@ type AggsenderFlow interface {
 	// GenerateBuildParams generates the build parameters based on the preParams
 	GenerateBuildParams(ctx context.Context,
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
+	// UpdateAggchainData updates the aggchain data field for the given certificate
+	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
+	// Signer is the signer used to sign the certificate
+	Signer() signertypes.Signer
 }
 
 type AggsenderFlowBaser interface {
@@ -47,7 +54,6 @@ type AggsenderFlowBaser interface {
 		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
-
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)
 	GenerateBuildParams(ctx context.Context,
@@ -77,6 +83,8 @@ type L2BridgeSyncer interface {
 	OriginNetwork() uint32
 	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
+	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -189,6 +197,7 @@ type MaxL2BlockNumberLimiterInterface interface {
 type VerifyIncomingRequest struct {
 	Certificate         *agglayertypes.Certificate
 	PreviousCertificate *agglayertypes.CertificateHeader
+	LastL2BlockInCert   uint64
 }
 
 // HealthCheckStatus defines the status of a health check
@@ -233,8 +242,12 @@ type CertificateValidateAndSigner interface {
 	ValidateAndSignCertificate(
 		ctx context.Context,
 		certificate *agglayertypes.Certificate,
+		lastL2BlockInCert uint64,
 	) ([]byte, error)
+	URL() string
 	String() string
+	Address() common.Address
+	Index() uint32
 }
 
 // ValidatorClient is an interface defining functions that a ValidatorClient should implement
@@ -244,6 +257,7 @@ type ValidatorClient interface {
 		ctx context.Context,
 		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 		certificate *agglayertypes.Certificate,
+		lastL2BlockInCert uint64,
 	) ([]byte, error)
 }
 
@@ -260,4 +274,43 @@ type AggchainProofQuerier interface {
 		lastProvenBlock, toBlock uint64,
 		certBuildParams *CertificateBuildParams,
 	) (*AggchainProof, *treetypes.Root, error)
+}
+
+// MultisigContract is an abstraction for Multisig smart contract
+type MultisigContract interface {
+	Threshold(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)
+	AGGCHAINTYPE(opts *bind.CallOpts) ([2]byte, error)
+	CONSENSUSTYPE(opts *bind.CallOpts) (uint32, error)
+}
+
+// MultisigQuerier is an abstraction for querying the multisig committee
+type MultisigQuerier interface {
+	GetMultisigCommittee(ctx context.Context, blockNum *big.Int) (*MultisigCommittee, error)
+	ContractMode() (AggsenderMode, error)
+	ResolveAutoMode(cfgMode AggsenderMode) (AggsenderMode, error)
+}
+
+// ValidatorPoller is an interface defining functions that a ValidatorPoller should implement
+type ValidatorPoller interface {
+	PollValidators(ctx context.Context, req *ValidationRequest) (*agglayertypes.Multisig, error)
+}
+
+// AggchainFEPRollupQuerier is an interface defining functions that an AggchainFEPRollupQuerier should implement
+type AggchainFEPRollupQuerier interface {
+	StartL2Block() uint64
+	GetLastSettledL2Block() (uint64, error)
+	IsFEP() bool
+}
+
+// CertificateQuerier is an interface defining functions that a CertificateQuerier should implement
+type CertificateQuerier interface {
+	GetLastSettledCertificateToBlock(
+		ctx context.Context,
+		cert *agglayertypes.CertificateHeader) (uint64, error)
+	GetNewCertificateToBlock(
+		ctx context.Context,
+		cert *agglayertypes.Certificate) (uint64, error)
+	CalculateCertificateType(cert *agglayertypes.Certificate, certToBlock uint64) CertificateType
+	CalculateCertificateTypeFromToBlock(certToBlock uint64) CertificateType
 }

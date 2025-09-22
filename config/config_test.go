@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
@@ -68,7 +69,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.MinConnectTimeout, cfg.AggSender.AgglayerClient.GRPC.MinConnectTimeout)
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.Retry.MaxAttempts, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts)
 	require.Equal(t, cfg.AggSender.RollupManagerAddr, cfg.Validator.LerQuerier.RollupManagerAddr)
-	t.Logf("cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey: %+v", cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey)
+	require.Equal(t, aggsendertypes.AutoMode, cfg.AggSender.Mode)
+	require.Equal(t, aggsendertypes.AutoMode, cfg.Validator.Mode)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
@@ -137,6 +139,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
 	DelayBeetweenRetries = "1s"
+	RequireValidatorCall = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -206,5 +209,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
+	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 }

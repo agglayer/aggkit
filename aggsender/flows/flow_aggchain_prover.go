@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/query"
@@ -14,6 +14,8 @@ import (
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+var _ types.AggsenderFlow = (*AggchainProverFlow)(nil)
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
@@ -24,7 +26,6 @@ type AggchainProverFlow struct {
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 	l2BridgeQuerier       types.BridgeQuerier
 
-	gerQuerier            types.GERQuerier
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	aggchainProofQuerier  types.AggchainProofQuerier
@@ -77,7 +78,6 @@ func NewAggchainProverFlow(
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	gerQuerier types.GERQuerier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
@@ -94,7 +94,6 @@ func NewAggchainProverFlow(
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		l2BridgeQuerier:       l2BridgeQuerier,
-		gerQuerier:            gerQuerier,
 		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
@@ -144,9 +143,25 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 	return types.CertificateTypeFEP, nil
 }
 
+// GeneratePreBuildParams generates the pre-build parameters for the AggchainProverFlow
+// Only used in aggsender validator
 func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
-	return nil, fmt.Errorf("aggchainProverFlow - GenerateBuildParams is not implemented")
+	if preParams == nil {
+		return nil, fmt.Errorf("aggchainProverFlow - preParams is nil")
+	}
+
+	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error generating build params: %w", err)
+	}
+
+	// we do not limit the size of the certificate in FEP flow,
+	// it was already resized and limited by the prover when proposer called it
+	// when building the certificate, so the block range is already limited
+	// when it gets to the validator
+
+	return params, nil
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
@@ -305,22 +320,50 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
 
-	cert.AggchainData = &agglayertypes.AggchainDataProof{
-		Proof:          buildParams.AggchainProof.SP1StarkProof.Proof,
-		Version:        buildParams.AggchainProof.SP1StarkProof.Version,
-		Vkey:           buildParams.AggchainProof.SP1StarkProof.Vkey,
-		AggchainParams: buildParams.AggchainProof.AggchainParams,
-		Context:        buildParams.AggchainProof.Context,
+	if buildParams.AggchainProof != nil {
+		// this case can happen only when aggsender validator calls this function
+		// since the validator does not call the aggchain prover to get the proof
+		cert.AggchainData = &agglayertypes.AggchainDataProof{
+			Proof:          buildParams.AggchainProof.SP1StarkProof.Proof,
+			Version:        buildParams.AggchainProof.SP1StarkProof.Version,
+			Vkey:           buildParams.AggchainProof.SP1StarkProof.Vkey,
+			AggchainParams: buildParams.AggchainProof.AggchainParams,
+			Context:        buildParams.AggchainProof.Context,
+		}
+
+		cert.CustomChainData = buildParams.AggchainProof.CustomChainData
 	}
 
-	cert.CustomChainData = buildParams.AggchainProof.CustomChainData
+	return cert, nil
+}
 
-	signedCert, err := a.signCertificate(ctx, cert)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error signing certificate: %w", err)
+// UpdateAggchainData updates the AggchainData field in certificate with the multisig if provided.
+func (a *AggchainProverFlow) UpdateAggchainData(
+	cert *agglayertypes.Certificate,
+	multisig *agglayertypes.Multisig,
+) error {
+	if multisig == nil {
+		// Multisig not enabled, nothing to do
+		return nil
 	}
 
-	return signedCert, nil
+	var proof *agglayertypes.AggchainDataProof
+
+	switch data := cert.AggchainData.(type) {
+	case *agglayertypes.AggchainDataProof:
+		proof = data
+	case *agglayertypes.AggchainDataMultisigWithProof:
+		proof = data.AggchainProof
+	default:
+		return fmt.Errorf("aggchainProverFlow: AggchainData of unknown type %T received", data)
+	}
+
+	cert.AggchainData = &agglayertypes.AggchainDataMultisigWithProof{
+		Multisig:      multisig,
+		AggchainProof: proof,
+	}
+
+	return nil
 }
 
 // adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
@@ -363,30 +406,7 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 	return fromBlock - 1
 }
 
-// signCertificate signs a certificate with the aggsender key
-func (a *AggchainProverFlow) signCertificate(
-	ctx context.Context, cert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
-	aggchainData, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-	if !ok {
-		return nil, fmt.Errorf("aggchainProverFlow - signCertificate - AggchainData is not of type AggchainDataProof")
-	}
-
-	hashToSign := cert.FEPHashToSign()
-	sig, err := a.certificateSigner.SignHash(ctx, hashToSign)
-	if err != nil {
-		return nil, err
-	}
-
-	aggchainData.Signature = sig
-
-	a.log.Infof("aggchainProverFlow - Signed certificate. Sequencer address: %s. "+
-		"New local exit root: %s. Aggchain Params: %s. Height: %d Hash signed: %s",
-		a.certificateSigner.PublicAddress().String(),
-		cert.NewLocalExitRoot.String(),
-		aggchainData.AggchainParams.String(),
-		cert.Height,
-		hashToSign.String(),
-	)
-
-	return cert, nil
+// Signer returns the signer used to sign the certificate
+func (a *AggchainProverFlow) Signer() signertypes.Signer {
+	return a.certificateSigner
 }

@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,54 +25,86 @@ type OptimisticSignatureCalculatorImpl struct {
 func NewOptimisticSignatureCalculatorImpl(
 	ctx context.Context,
 	logger *log.Logger,
-	l1Client aggkittypes.BaseEthereumClienter,
+	aggchainFEPContract FEPContractQuerier,
 	chainID uint64,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
-	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.SovereignRollupAddr, l1Client)
-	if err != nil {
-		return nil, fmt.Errorf("newOptimisticSignatureCalculatorImpl.NewAggchainfep Err: %w", err)
-	}
 	signer, err := signer.NewSigner(ctx, chainID, cfg.TrustedSequencerKey, "optimistic", logger)
 	if err != nil {
-		return nil, fmt.Errorf("optimistic. error NewSigner. Err: %w", err)
+		return nil, fmt.Errorf("[OPTIMISTIC] failed to instantiate signer. Err: %w", err)
 	}
 
 	if err := signer.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("optimistic. error signer.Initialize. Err: %w", err)
-	}
-	publicAddrSigner := signer.PublicAddress()
-	trustedSequencerAddr, err := aggchainFEPContract.TrustedSequencer(nil)
-	if err != nil {
-		err = fmt.Errorf("optimistic. error aggchainFEPContract.TrustedSequencer. Err: %w", err)
-		if cfg.RequireKeyMatchTrustedSequencer {
-			return nil, err
-		}
-		logger.Warn(err.Error())
-	}
-	if err == nil && publicAddrSigner != trustedSequencerAddr {
-		err := fmt.Errorf("optimistic. error signer.PublicAddress() %s != aggchainFEPContract.TrustedSequencer %s",
-			publicAddrSigner.Hex(), trustedSequencerAddr.Hex())
-		if cfg.RequireKeyMatchTrustedSequencer {
-			return nil, err
-		}
-		logger.Warn(err.Error())
+		return nil, fmt.Errorf("[OPTIMISTIC] failed to initialize signer. Err: %w", err)
 	}
 
-	logger.Infof("OptimisticSignatureCalculatorImpl.signerPublicKey: %s, trustedSequencerAddr: %s",
-		signer.PublicAddress().Hex(),
-		trustedSequencerAddr.Hex())
+	signerAddr := signer.PublicAddress()
+	trustedSignerAddr, err := validateSignerAgainstContract(
+		logger,
+		aggchainFEPContract,
+		signerAddr,
+		cfg.RequireKeyMatchTrustedSequencer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("OptimisticSignatureCalculatorImpl.signerAddress: %s, trustedSignerAddr: %s",
+		signerAddr.Hex(),
+		trustedSignerAddr.Hex(),
+	)
+
 	query := NewOptimisticAggregationProofPublicValuesQuery(
 		aggchainFEPContract,
 		cfg.SovereignRollupAddr,
 		opnode.NewOpNodeClient(cfg.OpNodeURL),
-		signer.PublicAddress())
+		signerAddr,
+	)
 
 	return &OptimisticSignatureCalculatorImpl{
 		queryAggregationProofPublicValues: query,
 		signer:                            signer,
 		logger:                            logger,
 	}, nil
+}
+
+// validateSignerAgainstContract ensures the signer is present in the AggchainFEP contract signers
+// and matches the trusted signer address if required.
+func validateSignerAgainstContract(
+	logger *log.Logger,
+	contract FEPContractQuerier,
+	signerAddr common.Address,
+	requireKeyMatch bool,
+) (common.Address, error) {
+	signers, err := contract.GetAggchainSigners(nil)
+	if err != nil {
+		err = fmt.Errorf("[OPTIMISTIC] failed to fetch the aggchain signers from the AggchainFEP contract. Err: %w", err)
+		if requireKeyMatch {
+			return common.Address{}, err
+		}
+		logger.Warn(err.Error())
+	}
+
+	if len(signers) < 1 {
+		err = fmt.Errorf("[OPTIMISTIC] there should be at least one aggchain signer in the AggchainFEP contract")
+		if requireKeyMatch {
+			return common.Address{}, err
+		}
+		logger.Warn(err.Error())
+	}
+
+	trustedSignerAddr := signers[0]
+	if err == nil && signerAddr != trustedSignerAddr {
+		err := fmt.Errorf("[OPTIMISTIC] "+
+			"configured trusted signer address (%s) differs from the one initialized on the AggchainFEP contract (%s)",
+			signerAddr.Hex(), trustedSignerAddr.Hex())
+		if requireKeyMatch {
+			return trustedSignerAddr, err
+		}
+		logger.Warn(err.Error())
+	}
+
+	return trustedSignerAddr, nil
 }
 
 // Sign calculate hash and sign it.

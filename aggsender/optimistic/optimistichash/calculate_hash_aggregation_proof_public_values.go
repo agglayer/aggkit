@@ -10,7 +10,7 @@ import (
 
 // This file calculate the hash of AggregationProofPublicValues
 
-// // AggregationProofPublicValues represents the public values used in the aggregation proof.
+// AggregationProofPublicValues represents the public values used in the aggregation proof.
 type AggregationProofPublicValues struct {
 	L1Head           common.Hash
 	L2PreRoot        common.Hash

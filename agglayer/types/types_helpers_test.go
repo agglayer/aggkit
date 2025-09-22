@@ -30,10 +30,10 @@ func createDummyGlobalIndex(t *testing.T) *GlobalIndex {
 }
 
 // Helper function to create a dummy Claim
-func createDummyClaim(t *testing.T) *ClaimFromMainnnet {
+func createDummyClaim(t *testing.T) *ClaimFromMainnet {
 	t.Helper()
 
-	return &ClaimFromMainnnet{
+	return &ClaimFromMainnet{
 		ProofLeafMER: &MerkleProof{
 			Root: common.HexToHash("0x1234"),
 			Proof: [common.HashLength]common.Hash{
