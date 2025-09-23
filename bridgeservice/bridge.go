@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -51,9 +52,9 @@ const (
 	originTokenAddrParam = "origin_token_address"
 	leafIndexParam       = "leaf_index"
 	includeAllFields     = "include_all_fields"
+	globalIndexParam     = "global_index"
 
 	binarySearchDivider = 2
-	mainnetNetworkID    = 0
 
 	errNetworkID         = "unsupported network id: %v"
 	errSetupRequest      = "failed to setup request: %v"
@@ -264,6 +265,7 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 // @Param deposit_count query uint64 false "Filter by deposit count"
 // @Param from_address query string false "Filter by from address"
 // @Param network_ids query []uint32 false "Filter by one or more destination network IDs"
+// @Param global_index query uint32 false "Filter by global index"
 // @Produce json
 // @Success 200 {object} types.BridgesResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -309,9 +311,15 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	}
 	defer cancel()
 
+	globalIndexRaw := c.Query(globalIndexParam)
+	var globalIndex *big.Int
+	if globalIndexRaw != "" {
+		globalIndex, _ = new(big.Int).SetString(globalIndexRaw, 10)
+	}
+
 	b.logger.Debugf(
-		"fetching bridges (network id=%d, page=%d, size=%d, deposit_count=%v, network_ids=%v, from_address=%s)",
-		networkID, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
+		"fetching bridges (network id=%d, page=%d, size=%d, deposit_count=%v, network_ids=%v, from_address=%s, global_index=%s)",
+		networkID, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress, globalIndexRaw)
 
 	var (
 		bridges []*bridgesync.Bridge
@@ -319,8 +327,9 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case mainnetNetworkID:
-		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
+	case bridgesync.MainnetNetworkID:
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize,
+			depositCountPtr, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L1 network: %v", err)
 			c.JSON(http.StatusInternalServerError,
@@ -328,7 +337,8 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 			return
 		}
 	case b.networkID:
-		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize,
+			depositCountPtr, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L2 network (ID=%d): %v", networkID, err)
 			c.JSON(http.StatusInternalServerError,
@@ -416,7 +426,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
@@ -491,7 +501,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	case b.networkID:
 		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
@@ -553,7 +563,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	case b.networkID:
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
@@ -619,7 +629,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	var l1InfoTreeIndex uint32
 
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
 	case b.networkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
@@ -686,7 +696,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	var l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
 
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 	case b.networkID:
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
@@ -781,7 +791,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	var proofLocalExitRoot tree.Proof
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
 		if err != nil {
 			b.logger.Errorf("failed to get local exit proof for L1: %v", err)
@@ -865,7 +875,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	var reorgEvent *bridgesync.LastReorg
 
 	switch networkID {
-	case mainnetNetworkID:
+	case bridgesync.MainnetNetworkID:
 		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
 		if err != nil {
 			b.logger.Errorf("failed to get last reorg event for L1 network: %v", err)
@@ -926,7 +936,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	}
 
 	// Get the last bridge from L1 database
-	_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+	_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get bridges from L1 database: %s", err)})
@@ -946,7 +956,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	}
 
 	// Get the last bridge from L2 database
-	_, bridgesCount, err = b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+	_, bridgesCount, err = b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get bridges from L2 database: %s", err)})

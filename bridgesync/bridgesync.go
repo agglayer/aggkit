@@ -136,7 +136,7 @@ func newBridgeSync(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	syncerID BridgeSyncerType,
-	originNetwork uint32,
+	networkID uint32,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
@@ -182,7 +182,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 	}
 
-	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, bridgeContractV2, logger)
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, bridgeContractV2, networkID, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func newBridgeSync(
 		processor:        processor,
 		driver:           driver,
 		downloader:       downloader,
-		originNetwork:    originNetwork,
+		originNetwork:    networkID,
 		reorgDetector:    rd,
 		blockFinality:    blockFinalityType,
 		ethClient:        ethClient,
@@ -276,7 +276,7 @@ func (s *BridgeSync) Start(ctx context.Context) {
 func (s *BridgeSync) GetBridgesPaged(
 	ctx context.Context,
 	page, pageSize uint32,
-	depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*Bridge, int, error) {
+	depositCount *uint64, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*Bridge, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}

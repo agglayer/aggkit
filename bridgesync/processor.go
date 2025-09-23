@@ -62,6 +62,7 @@ type Bridge struct {
 	BlockPos           uint64         `meddler:"block_pos"`
 	FromAddress        common.Address `meddler:"from_address,address"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash"`
+	GlobalIndex        *big.Int       `meddler:"global_index,bigint"`
 	Calldata           []byte         `meddler:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
