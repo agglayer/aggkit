@@ -112,7 +112,7 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     multi-l2-networks-3-chains-cdk-erigon-pessimistic)
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_erigon_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_erigon_multi_chains_args_2.json" > /tmp/merged_args_2.json
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_erigon_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_erigon_multi_chains_args_3.json" > /tmp/merged_args_3.json
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" .
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_cdk_erigon_args_base.json" .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_3.json .
         ;;
