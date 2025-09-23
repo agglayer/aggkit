@@ -13,7 +13,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-fork12-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | single-l2-network-op-pessimistic | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
+    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-op-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | multi-l2-networks-2-chains-op-pessimistic | multi-l2-networks-3-chains-op-pessimistic> <kurtosis_repo_path> <e2e_repo_path>"
     echo ""
     echo "Arguments:"
     echo "  test_type           Type of test to run"
@@ -42,19 +42,16 @@ single-l2-network-op-succinct)
 single-l2-network-op-succinct-aggoracle-committee)
     ENCLAVE_NAME="op"
     ;;
-single-l2-network-fork12-pessimistic)
+single-l2-network-op-pessimistic)
     ENCLAVE_NAME="aggkit"
     ;;
 single-l2-network-fork12-global-index-pp-old-contracts)
     ENCLAVE_NAME="aggkit"
     ;;
-single-l2-network-op-pessimistic)
-    ENCLAVE_NAME="op"
-    ;;
-multi-l2-networks-2-chains)
+multi-l2-networks-2-chains-op-pessimistic)
     ENCLAVE_NAME="aggkit"
     ;;
-multi-l2-networks-3-chains)
+multi-l2-networks-3-chains-op-pessimistic)
     ENCLAVE_NAME="aggkit"
     ;;
 *)
@@ -81,9 +78,9 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         log_info "Docker image aggkit:local already exists."
     fi
     if docker run --entrypoint /bin/sh --rm aggkit:local > /dev/null 2>&1 ; then
-        log_info "Docker image aggkit:local ✅🖥️   have shell."
+        log_info "Docker image aggkit:local ✅🖥️ have shell."
     else
-        log_warn "Docker image aggkit:local ❌🖥️   have no shell  (you can generate with shell using make build-docker-ci)."
+        log_warn "Docker image aggkit:local ❌🖥️ have no shell (you can generate with shell using make build-docker-ci)."
     fi
 
     log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_REPO_PATH"
@@ -100,25 +97,22 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     single-l2-network-op-succinct-aggoracle-committee)
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" .
         ;;
-    single-l2-network-fork12-pessimistic)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" .
+    single-l2-network-op-pessimistic)
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_args_base.json" .
         ;;
     single-l2-network-fork12-global-index-pp-old-contracts)
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_args_global_index_pp_old_contracts.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_args_global_index_pp_old_contracts.json" > /tmp/merged_args_1.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
-    single-l2-network-op-pessimistic)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_op_args.json" .
-        ;;
-    multi-l2-networks-2-chains)
-        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" > /tmp/merged_args_2.json
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" .
+    multi-l2-networks-2-chains-op-pessimistic)
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" > /tmp/merged_args_2.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_args_base.json" .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         ;;
-    multi-l2-networks-3-chains)
-        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" > /tmp/merged_args_2.json
-        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_3.json
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" .
+    multi-l2-networks-3-chains-op-pessimistic)
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" > /tmp/merged_args_2.json
+        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_3.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_args_base.json" .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_3.json .
         ;;
@@ -166,10 +160,10 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
         ;;
-    single-l2-network-fork12-pessimistic)
+    single-l2-network-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e.bats \
              ./tests/aggkit/e2e-pp.bats \
-             ./tests/aggkit/bridge-e2e-custom-gas.bats \
+             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
              ./tests/aggkit/bridge-e2e-nightly.bats \
              ./tests/aggkit/internal-claims.bats \
              ./tests/aggkit/claim-reetrancy.bats
@@ -178,13 +172,10 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         bats \
             ./tests/aggkit/global-index-pp-old-contracts.bats
         ;;
-    single-l2-network-op-pessimistic)
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
-        ;;
-    multi-l2-networks-2-chains)
+    multi-l2-networks-2-chains-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e-2-chains.bats
         ;;
-    multi-l2-networks-3-chains)
+    multi-l2-networks-3-chains-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e-3-chains.bats
         ;;
     esac
