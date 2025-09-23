@@ -1021,7 +1021,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL1.GetRootByLER(ctx, lastInfo.MainnetExitRoot)
 	if err != nil {
-		b.logger.Warnf(
+		b.logger.Infof(
 			"failed to get root by LER for L1, using fallback mechanism: %v (lastInfo MainnetExitRoot: %s)",
 			err,
 			lastInfo.MainnetExitRoot.Hex(),
@@ -1086,7 +1086,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL2.GetRootByLER(ctx, lastVerified.ExitRoot)
 	if err != nil {
-		b.logger.Warnf(
+		b.logger.Infof(
 			"failed to get root by LER for L2: %v, lastVerified ExitRoot: %s, using fallback mechanism",
 			err,
 			lastVerified.ExitRoot.Hex(),
