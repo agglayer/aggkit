@@ -65,13 +65,11 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		Number: big.NewInt(int64(latestBlock)),
 	}, nil).Maybe()
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
-	// Mock L1 client expectations for IsUpToDate check
 	mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
 		&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
 		nil, nil, nil,
 	), nil).Maybe()
 
-	// Note: IsUpToDate is called via type assertion, so we don't need to mock it here
 	mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
 		L1InfoTreeIndex:   testL1InfoTreeIndex,
 		GlobalExitRoot:    testGER,

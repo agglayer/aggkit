@@ -204,7 +204,6 @@ func TestIsUpToDate(t *testing.T) {
 	t.Run("processor halted", func(t *testing.T) {
 		t.Parallel()
 
-		// Create L1InfoTreeSync with halted processor
 		s := L1InfoTreeSync{
 			processor: &processor{
 				halted: true,
