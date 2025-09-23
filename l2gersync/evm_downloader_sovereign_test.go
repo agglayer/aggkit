@@ -26,6 +26,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
 	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 	mockL1InfoTreeSync := &l2gersyncmocks.L1InfoTreeQuerier{}
 	rh := &sync.RetryHandler{
 		MaxRetryAttemptsAfterError: 5,
@@ -64,6 +65,13 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		Number: big.NewInt(int64(latestBlock)),
 	}, nil).Maybe()
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
+	// Mock L1 client expectations for IsUpToDate check
+	mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
+		&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
+		nil, nil, nil,
+	), nil).Maybe()
+
+	// Note: IsUpToDate is called via type assertion, so we don't need to mock it here
 	mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
 		L1InfoTreeIndex:   testL1InfoTreeIndex,
 		GlobalExitRoot:    testGER,
@@ -74,13 +82,14 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		MainnetExitRoot:   common.Hash{},
 		RollupExitRoot:    common.Hash{},
 		Hash:              common.Hash{},
-	}, nil)
+	}, nil).Maybe()
 	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
 
 	downloader, err := newDownloaderSovereign(
 		mockL2Client,
 		l2GERAddr,
 		mockL1InfoTreeSync,
+		mockL1Client,
 		rh,
 		aggkittypes.LatestBlock,
 		time.Millisecond*10, // waitForNewBlocksPeriod
@@ -110,4 +119,100 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 
 	mockL2Client.AssertExpectations(t)
 	mockL1InfoTreeSync.AssertExpectations(t)
+}
+
+// mockL1InfoTreeSyncWithIsUpToDate extends the generated mock to include IsUpToDate method
+type mockL1InfoTreeSyncWithIsUpToDate struct {
+	*l2gersyncmocks.L1InfoTreeQuerier
+	isUpToDateResult bool
+	isUpToDateError  error
+}
+
+func (m *mockL1InfoTreeSyncWithIsUpToDate) IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error) {
+	return m.isUpToDateResult, m.isUpToDateError
+}
+
+func TestIsL1InfoTreeSyncUpToDate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		hasIsUpToDate    bool
+		isUpToDateResult bool
+		isUpToDateError  error
+		expectedResult   bool
+		expectedError    bool
+	}{
+		{
+			name:             "L1InfoTreeSync with IsUpToDate method returns true",
+			hasIsUpToDate:    true,
+			isUpToDateResult: true,
+			isUpToDateError:  nil,
+			expectedResult:   true,
+			expectedError:    false,
+		},
+		{
+			name:             "L1InfoTreeSync with IsUpToDate method returns false",
+			hasIsUpToDate:    true,
+			isUpToDateResult: false,
+			isUpToDateError:  nil,
+			expectedResult:   false,
+			expectedError:    false,
+		},
+		{
+			name:             "L1InfoTreeSync without IsUpToDate method",
+			hasIsUpToDate:    false,
+			isUpToDateResult: false,
+			isUpToDateError:  nil,
+			expectedResult:   false,
+			expectedError:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+
+			var mockL1InfoTreeSync interface{}
+			if tt.hasIsUpToDate {
+				mockL1InfoTreeSync = &mockL1InfoTreeSyncWithIsUpToDate{
+					L1InfoTreeQuerier: l2gersyncmocks.NewL1InfoTreeQuerier(t),
+					isUpToDateResult:  tt.isUpToDateResult,
+					isUpToDateError:   tt.isUpToDateError,
+				}
+			} else {
+				mockL1InfoTreeSync = l2gersyncmocks.NewL1InfoTreeQuerier(t)
+			}
+
+			rh := &sync.RetryHandler{
+				MaxRetryAttemptsAfterError: 5,
+				RetryAfterErrorPeriod:      time.Millisecond,
+			}
+
+			downloader, err := newDownloaderSovereign(
+				mockL2Client,
+				common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				mockL1InfoTreeSync.(L1InfoTreeQuerier),
+				mockL1Client,
+				rh,
+				aggkittypes.LatestBlock,
+				time.Millisecond*10,
+				10,
+			)
+			require.NoError(t, err)
+
+			ctx := context.Background()
+			result, err := downloader.isL1InfoTreeSyncUpToDate(ctx)
+
+			if tt.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedResult, result)
+			}
+		})
+	}
 }

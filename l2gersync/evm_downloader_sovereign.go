@@ -27,6 +27,7 @@ type downloaderSovereign struct {
 	l2GERManager       *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	l2GERAddr          common.Address
 	l1InfoTreeSync     L1InfoTreeQuerier
+	l1Client           aggkittypes.BaseEthereumClienter
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
 }
@@ -35,6 +36,7 @@ func newDownloaderSovereign(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
+	l1Client aggkittypes.BaseEthereumClienter,
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -49,6 +51,7 @@ func newDownloaderSovereign(
 		l2GERManager:       l2GERManager,
 		l2GERAddr:          l2GERAddr,
 		l1InfoTreeSync:     l1InfoTreeSync,
+		l1Client:           l1Client,
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
 	}
@@ -131,9 +134,21 @@ func (d *downloaderSovereign) buildAppender(
 			return fmt.Errorf("error parsing UpdateHashChainValue event log %+v: %w", l, err)
 		}
 
+		// Check if L1InfoTreeSync is up to date before trying to get GER info
+		ctx := context.Background()
+		isUpToDate, err := d.isL1InfoTreeSyncUpToDate(ctx)
+		if err != nil {
+			log.Warnf("Failed to check if L1InfoTreeSync is up to date: %v", err)
+		}
+
+		// L1InfoTreeSync is up to date, proceed with GER lookup
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
-			log.Fatalf("GER %s received from L2 is not present in L1InfoTreeSync: %v",
+			if isUpToDate {
+				log.Fatal("L1InfoTreeSync is to date, GER lookup for %s failed: %v", insertGEREvent.NewGlobalExitRoot, err)
+			}
+
+			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
 				insertGEREvent.NewGlobalExitRoot, err)
 		}
 
@@ -150,4 +165,16 @@ func (d *downloaderSovereign) buildAppender(
 	}
 
 	return appender
+}
+
+// isL1InfoTreeSyncUpToDate checks if L1InfoTreeSync is up to date with L1 blocks
+func (d *downloaderSovereign) isL1InfoTreeSyncUpToDate(ctx context.Context) (bool, error) {
+	// We need to cast to the concrete type to access IsUpToDate method
+	if l1InfoTreeSync, ok := d.l1InfoTreeSync.(interface {
+		IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
+	}); ok {
+		return l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
+	}
+
+	return false, nil
 }

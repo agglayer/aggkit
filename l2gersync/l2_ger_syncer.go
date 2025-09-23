@@ -51,6 +51,7 @@ func New(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERManagerAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
+	l1Client aggkittypes.BaseEthereumClienter,
 	syncBlockChunkSize uint64,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
@@ -91,7 +92,7 @@ func New(
 	case SovereignChain:
 		downloader, err = newDownloaderSovereign(
 			l2Client, l2GERManagerAddr,
-			l1InfoTreeSync,
+			l1InfoTreeSync, l1Client,
 			rh, blockFinality, waitForNewBlocksPeriod,
 			syncBlockChunkSize,
 		)

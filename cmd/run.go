@@ -97,7 +97,7 @@ func start(cliCtx *cli.Context) error {
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID)
 	l2GERSync := runL2GERSyncIfNeeded(
-		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
+		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
 	var rpcServices []jRPC.Service
 	for _, component := range components {
@@ -591,6 +591,7 @@ func runL2GERSyncIfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l1Client aggkittypes.BaseEthereumClienter,
 ) *l2gersync.L2GERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC}, components) {
 		return nil
@@ -602,6 +603,7 @@ func runL2GERSyncIfNeeded(
 		l2Client,
 		cfg.GlobalExitRootL2Addr,
 		l1InfoTreeSync,
+		l1Client,
 		cfg.SyncBlockChunkSize,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
