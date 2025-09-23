@@ -54,7 +54,7 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="ce9630dcef1d8df6a8ec929ae1cd6bb4dad9f889"
+            COMMIT="1b98990fad3c2e56956e6628180b576cf8f93076"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
@@ -90,18 +90,20 @@ jobs:
       - name: Read kurtosis-cdk-args from file
         id: read-args
         run: |
-          BASE=./.github/test_e2e_args_base.json
+          BASE_OP=./.github/test_e2e_op_args_base.json
+          BASE_CRK_ERIGON=./.github/test_e2e_cdk_erigon_args_base.json
 
           # Helper: merge base with override (if any), output to GITHUB_OUTPUT, and pretty print
           put_args() {
             local name="$1"
-            local override="$2"
+            local base="$2"
+            local override="$3"
             local content
 
             if [ -n "$override" ]; then
-              content=$(jq -s '.[0] * .[1]' "$BASE" "$override" | jq -c .)
+              content=$(jq -s '.[0] * .[1]' "$base" "$override" | jq -c .)
             else
-              content=$(jq -c . "$BASE")
+              content=$(jq -c . "$base")
             fi
 
             echo "${name}=${content}" >> "$GITHUB_OUTPUT"
@@ -110,23 +112,23 @@ jobs:
           }
 
           # single l2 network (fork 12, op-succinct)
-          put_args op_succinct_args ./.github/test_e2e_single_chain_op_succinct_args.json
+          put_args op_succinct_args "$BASE_OP" ./.github/test_e2e_single_chain_op_succinct_args.json
 
           # single l2 network (fork 12, op-succinct with aggoracle committee)
-          put_args op_succinct_aggoracle_committee_args ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
+          put_args op_succinct_aggoracle_committee_args "$BASE_OP" ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
 
           # single l2 network (op, pessimistic)
-          put_args single_op_chain_pessimistic_args
+          put_args single_op_chain_pessimistic_args "$BASE_OP"
 
           # single l2 network (fork 12, global index pp old contracts)
-          put_args fork12_global_index_pp_old_contracts_args ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json
+          put_args fork12_global_index_pp_old_contracts_args "$BASE_CRK_ERIGON" ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json
 
           # multi l2 networks
-          put_args kurtosis-cdk-args-1
-          put_args kurtosis-cdk-args-2 ./.github/test_e2e_multi_chains_args_2.json
-          put_args kurtosis-cdk-args-3
-          put_args kurtosis-cdk-args-4 ./.github/test_e2e_multi_chains_args_2.json
-          put_args kurtosis-cdk-args-5 ./.github/test_e2e_multi_chains_args_3.json
+          put_args kurtosis-cdk-args-1 "$BASE_OP"
+          put_args kurtosis-cdk-args-2 "$BASE_OP" ./.github/test_e2e_op_multi_chains_args_2.json
+          put_args kurtosis-cdk-args-3 "$BASE_CRK_ERIGON"
+          put_args kurtosis-cdk-args-4 "$BASE_CRK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_2.json
+          put_args kurtosis-cdk-args-5 "$BASE_CRK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
 
   build-tools:
     name: Build aggsender find imported bridge tool
