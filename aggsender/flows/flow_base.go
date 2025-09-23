@@ -369,16 +369,6 @@ func (f *baseFlow) getImportedBridgeExits(
 	return nil, nil
 }
 
-// getStartLER returns the last local exit root (LER) based on the configuration
-func (f *baseFlow) getStartLER() (common.Hash, error) {
-	ler, err := f.lerQuerier.GetLastLocalExitRoot()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
-	}
-
-	return ler, nil
-}
-
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
