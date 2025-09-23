@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/sync"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -195,4 +196,27 @@ func TestGetL1InfoTreeMerkleProofFromIndexToRoot(t *testing.T) {
 	_, err := s.GetL1InfoTreeMerkleProofFromIndexToRoot(context.Background(), 0, common.Hash{})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
+}
+
+func TestIsUpToDate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("processor halted", func(t *testing.T) {
+		t.Parallel()
+
+		// Create L1InfoTreeSync with halted processor
+		s := L1InfoTreeSync{
+			processor: &processor{
+				halted: true,
+			},
+		}
+
+		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		ctx := context.Background()
+		result, err := s.IsUpToDate(ctx, mockL1Client)
+
+		require.Error(t, err)
+		require.True(t, errors.Is(err, sync.ErrInconsistentState))
+		require.False(t, result)
+	})
 }
