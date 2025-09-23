@@ -282,8 +282,8 @@ jobs:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains-op-pessimistic.result) }}
 
-  test-multi-l2-networks-3-chains-op-pessimistic:
-    name: Multi chains E2E tests (OP, pessimistic, 3 chains)
+  test-multi-l2-networks-3-chains-cdk-erigon-pessimistic:
+    name: Multi chains E2E tests (CDK Erigon, pessimistic, 3 chains)
     needs:
       - build-aggkit-image
       - build-tools
@@ -303,14 +303,14 @@ jobs:
       number-of-chains: 3
 
   check-multi-l2-networks-3-chains-tests-result:
-    name: Check results for multi l2 networks (OP, pessimisstic, 3 chains)
+    name: Check results for multi l2 networks (CDK Erigon, pessimisstic, 3 chains)
     needs:
-      - test-multi-l2-networks-3-chains-op-pessimistic
+      - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
     runs-on: ubuntu-latest
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains-op-pessimistic.result) }}
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result) }}
 
   notify-slack:
     name: Notify Slack
@@ -319,7 +319,7 @@ jobs:
       - test-single-l2-network-op-succinct
       - test-single-l2-network-op-succinct-aggoracle-committee
       - test-multi-l2-networks-2-chains-op-pessimistic
-      - test-multi-l2-networks-3-chains-op-pessimistic
+      - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
       - test-single-l2-network-fork12-global-index-pp-old-contracts
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
@@ -340,7 +340,7 @@ jobs:
             • Single L2 (op-succinct): ${{ needs.test-single-l2-network-op-succinct.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (op-succinct with aggoracle committee): ${{ needs.test-single-l2-network-op-succinct-aggoracle-committee.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (OP, pessimistic, 2 chains): ${{ needs.test-multi-l2-networks-2-chains-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
-            • Multi L2 (OP, pessimistic, 3 chains): ${{ needs.test-multi-l2-networks-3-chains-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
+            • Multi L2 (OP, pessimistic, 3 chains): ${{ needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (global index pp old contracts): ${{ needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result == 'success' && '🟢' || '🔴' }}
 
             <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
