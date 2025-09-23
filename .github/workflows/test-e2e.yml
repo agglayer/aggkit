@@ -291,7 +291,6 @@ jobs:
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@6c51d2dfda0bd8fd9a572ef6fab67784a9239393
     secrets: inherit
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: 6c51d2dfda0bd8fd9a572ef6fab67784a9239393
