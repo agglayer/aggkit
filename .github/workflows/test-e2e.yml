@@ -164,6 +164,7 @@ jobs:
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
       event-name: ${{ github.event_name }}
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-fork12-pessimistic-tests-result:
     name: Check results for single l2 network (OP, pessimistic)
@@ -247,6 +248,7 @@ jobs:
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
       test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
       event-name: ${{ github.event_name }}
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-succinct-aggoracle-committee-tests-result:
     name: Check results for single l2 network (op-succinct with aggoracle committee)
