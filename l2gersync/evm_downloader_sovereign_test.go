@@ -192,10 +192,11 @@ func TestIsL1InfoTreeSyncUpToDate(t *testing.T) {
 				RetryAfterErrorPeriod:      time.Millisecond,
 			}
 
+			l1InfoTreeSync := mockL1InfoTreeSync.(L1InfoTreeQuerier)
 			downloader, err := newDownloaderSovereign(
 				mockL2Client,
 				common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				mockL1InfoTreeSync.(L1InfoTreeQuerier),
+				l1InfoTreeSync,
 				mockL1Client,
 				rh,
 				aggkittypes.LatestBlock,
