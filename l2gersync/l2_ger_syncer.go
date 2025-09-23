@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
@@ -46,35 +45,27 @@ type L2GERSync struct {
 // New initializes and returns a new instance of L2GERSync
 func New(
 	ctx context.Context,
-	dbPath string,
+	cfg Config,
 	rdL2 sync.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
-	l2GERManagerAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	l1Client aggkittypes.BaseEthereumClienter,
-	syncBlockChunkSize uint64,
-	retryAfterErrorPeriod time.Duration,
-	maxRetryAttemptsAfterError int,
-	blockFinality aggkittypes.BlockNumberFinality,
-	waitForNewBlocksPeriod time.Duration,
-	downloadBufferSize int,
-	requireStorageContentCompatibility bool,
 ) (*L2GERSync, error) {
-	if syncBlockChunkSize == 0 {
+	if cfg.SyncBlockChunkSize == 0 {
 		return nil, fmt.Errorf("syncBlockChunkSize must be greater than 0")
 	}
 
-	processor, err := newProcessor(dbPath)
+	processor, err := newProcessor(cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create processor: %w", err)
 	}
 
 	rh := &sync.RetryHandler{
-		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
-		MaxRetryAttemptsAfterError: maxRetryAttemptsAfterError,
+		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
+		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
 	}
 
-	syncMode, err := resolveSyncMode(ctx, l2GERManagerAddr, l2Client)
+	syncMode, err := resolveSyncMode(ctx, cfg.GlobalExitRootL2Addr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve l2 ger syncer sync mode: %w", err)
 	}
@@ -84,17 +75,17 @@ func New(
 	switch syncMode {
 	case Legacy:
 		downloader, err = newDownloaderLegacy(
-			l2Client, l2GERManagerAddr,
+			l2Client, cfg.GlobalExitRootL2Addr,
 			l1InfoTreeSync, processor,
-			rh, blockFinality, waitForNewBlocksPeriod,
+			rh, cfg.BlockFinality, cfg.WaitForNewBlocksPeriod.Duration,
 		)
 
 	case SovereignChain:
 		downloader, err = newDownloaderSovereign(
-			l2Client, l2GERManagerAddr,
+			l2Client, cfg.GlobalExitRootL2Addr,
 			l1InfoTreeSync, l1Client,
-			rh, blockFinality, waitForNewBlocksPeriod,
-			syncBlockChunkSize,
+			rh, cfg.BlockFinality, cfg.WaitForNewBlocksPeriod.Duration,
+			cfg.SyncBlockChunkSize,
 		)
 
 	default:
@@ -105,11 +96,11 @@ func New(
 		return nil, err
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
-		requireStorageContentCompatibility,
+		cfg.RequireStorageContentCompatibility,
 		downloader.RuntimeData,
 		processor)
 	driver, err := sync.NewEVMDriver(rdL2, processor, downloader, reorgDetectorID,
-		downloadBufferSize, rh, compatibilityChecker)
+		cfg.DownloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}
