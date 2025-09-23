@@ -192,7 +192,8 @@ func TestIsL1InfoTreeSyncUpToDate(t *testing.T) {
 				RetryAfterErrorPeriod:      time.Millisecond,
 			}
 
-			l1InfoTreeSync := mockL1InfoTreeSync.(L1InfoTreeQuerier)
+			l1InfoTreeSync, ok := mockL1InfoTreeSync.(L1InfoTreeQuerier)
+			require.True(t, ok, "mockL1InfoTreeSync should implement L1InfoTreeQuerier")
 			downloader, err := newDownloaderSovereign(
 				mockL2Client,
 				common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
