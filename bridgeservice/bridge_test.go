@@ -2060,8 +2060,6 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string, body 
 }
 
 func TestGetSyncStatusHandler(t *testing.T) {
-	b := newBridgeWithMocks(t, l2NetworkID)
-
 	// Deduplicated test cases for sync status
 	testCases := []struct {
 		description     string
@@ -2106,6 +2104,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
 			b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 				Return(tc.l1ContractCount, nil).
 				Once()
@@ -2143,35 +2142,40 @@ func TestGetSyncStatusHandler(t *testing.T) {
 	// Error test cases
 	errorTestCases := []struct {
 		description        string
-		setupMocks         func()
+		setupMocks         func() bridgeWithMocks
 		expectedStatusCode int
 		expectedError      string
 	}{
 		{
 			description: "error getting L1 contract deposit count",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), errors.New("L1 contract error")).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L1 bridge contract: L1 contract error",
 		},
 		{
 			description: "error getting L1 bridges from database",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 0, errors.New("L1 database error"))
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get bridges from L1 database: L1 database error",
 		},
 		{
 			description: "error getting L2 contract deposit count",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
@@ -2181,13 +2185,15 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), errors.New("L2 contract error")).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L2 bridge contract: L2 contract error",
 		},
 		{
 			description: "error getting L2 bridges from database",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
@@ -2200,23 +2206,27 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 0, errors.New("L2 database error")).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get bridges from L2 database: L2 database error",
 		},
 		{
 			description: "error getting L1 contract deposit count with context timeout",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), context.DeadlineExceeded).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L1 bridge contract: context deadline exceeded",
 		},
 		{
 			description: "error getting L2 contract deposit count with context timeout",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
@@ -2226,6 +2236,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), context.DeadlineExceeded).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L2 bridge contract: context deadline exceeded",
@@ -2234,7 +2245,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 	for _, tc := range errorTestCases {
 		t.Run(tc.description, func(t *testing.T) {
-			tc.setupMocks()
+			b := tc.setupMocks()
 
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
