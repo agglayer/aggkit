@@ -54,6 +54,8 @@ const (
 	includeAllFields     = "include_all_fields"
 	globalIndexParam     = "global_index"
 
+	// mainnetNetworkID is the network ID of L1 network
+	mainnetNetworkID    = 0
 	binarySearchDivider = 2
 
 	errNetworkID         = "unsupported network id: %v"
@@ -320,7 +322,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L1 network: %v", err)
@@ -430,7 +432,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
@@ -505,7 +507,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	case b.networkID:
 		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
@@ -567,7 +569,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	)
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	case b.networkID:
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
@@ -633,7 +635,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	var l1InfoTreeIndex uint32
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
 	case b.networkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
@@ -700,7 +702,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	var l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 	case b.networkID:
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
@@ -795,7 +797,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	var proofLocalExitRoot tree.Proof
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
 		if err != nil {
 			b.logger.Errorf("failed to get local exit proof for L1: %v", err)
@@ -879,7 +881,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	var reorgEvent *bridgesync.LastReorg
 
 	switch networkID {
-	case bridgesync.MainnetNetworkID:
+	case mainnetNetworkID:
 		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
 		if err != nil {
 			b.logger.Errorf("failed to get last reorg event for L1 network: %v", err)

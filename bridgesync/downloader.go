@@ -55,9 +55,6 @@ const (
 
 	// methodIDLength is the length of the method ID in bytes
 	methodIDLength = 4
-
-	// MainnetNetworkID is the network ID of L1 network
-	MainnetNetworkID = 0
 )
 
 func buildAppender(

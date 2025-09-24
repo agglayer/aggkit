@@ -529,7 +529,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			Return(expectedBridges, len(expectedBridges), nil)
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
@@ -552,7 +552,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			Return(nil, 0, fmt.Errorf("L1 network error"))
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
@@ -677,7 +677,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
-			networkIDParam:  []string{fmt.Sprintf("%d", bridgesync.MainnetNetworkID)},
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
 			pageNumberParam: []string{"1"},
 			pageSizeParam:   []string{"10"},
 		}
@@ -831,7 +831,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
-			networkIDParam:   []string{fmt.Sprintf("%d", bridgesync.MainnetNetworkID)},
+			networkIDParam:   []string{fmt.Sprintf("%d", mainnetNetworkID)},
 			pageNumberParam:  []string{"1"},
 			pageSizeParam:    []string{"10"},
 			includeAllFields: []string{"true"},
@@ -975,7 +975,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
-			networkIDParam:   []string{fmt.Sprintf("%d", bridgesync.MainnetNetworkID)},
+			networkIDParam:   []string{fmt.Sprintf("%d", mainnetNetworkID)},
 			pageNumberParam:  []string{"1"},
 			pageSizeParam:    []string{"10"},
 			includeAllFields: []string{"false"},
@@ -1630,14 +1630,14 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 			Return(nil, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, fmt.Sprintf("%d", bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(),
 			fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
-				bridgesync.MainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
+				mainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
 	})
 
 	t.Run("L2 network - GetFirstGERAfterL1InfoTreeIndex error", func(t *testing.T) {
@@ -1724,7 +1724,7 @@ func TestClaimProofHandler(t *testing.T) {
 			Return(nil, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
@@ -1752,6 +1752,7 @@ func TestClaimProofHandler(t *testing.T) {
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get claim proof, unsupported network %d", unsupportedNetworkID))
 	})
 
+	//nolint:dupl
 	t.Run("Failed to get LER for L1 network", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -1764,7 +1765,7 @@ func TestClaimProofHandler(t *testing.T) {
 			Return(tree.Proof{}, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, fmt.Sprintf("%d", bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
@@ -1788,16 +1789,17 @@ func TestClaimProofHandler(t *testing.T) {
 			Return(tree.Proof{}, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, fmt.Sprintf("%d", bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d), error: %s",
-			bridgesync.MainnetNetworkID, l1InfoTreeIndex, depositCount, fooErrMsg))
+			mainnetNetworkID, l1InfoTreeIndex, depositCount, fooErrMsg))
 	})
 
+	//nolint:dupl
 	t.Run("Failed to get LER for L2 network", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -1877,7 +1879,7 @@ func TestClaimProofHandler(t *testing.T) {
 			Return(rollupExitTreeProof, nil)
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, fmt.Sprintf("%d", bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
@@ -1907,7 +1909,7 @@ func TestClaimProofHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, fmt.Sprintf("%d", bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, "invalid")
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
@@ -1920,7 +1922,7 @@ func TestClaimProofHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, fmt.Sprintf("%d", bridgesync.MainnetNetworkID))
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, "invalid")
 
@@ -1943,7 +1945,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(reorgEvent, nil)
 
 		queryParams := url.Values{
-			networkIDParam: []string{strconv.Itoa(bridgesync.MainnetNetworkID)},
+			networkIDParam: []string{strconv.Itoa(mainnetNetworkID)},
 		}
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
@@ -1994,7 +1996,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(fooErrMsg))
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, bridgesync.MainnetNetworkID), nil)
+			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, mainnetNetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", fooErrMsg))
 	})

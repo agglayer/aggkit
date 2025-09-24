@@ -1155,9 +1155,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize,
-				tc.depositCount, tc.networkIDs,
-				tc.fromAddress)
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount, tc.networkIDs, tc.fromAddress)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
