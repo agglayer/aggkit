@@ -82,6 +82,10 @@ definitions:
         description: Hash of the transaction that included the bridge event
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
         type: string
+      tx_sender:
+        description: Address of the transaction sender who initiated the bridge transaction
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
     type: object
   types.BridgesResult:
     description: Paginated response of bridge events
@@ -198,6 +202,10 @@ definitions:
       tx_hash:
         description: Transaction hash associated with the claim
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+      tx_sender:
+        description: Address of the transaction sender who initiated the claim transaction
+        example: 0xabc1234567890abcdef1234567890abcdef1234
         type: string
     type: object
   types.ClaimsResult:

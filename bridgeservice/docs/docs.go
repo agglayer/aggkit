@@ -637,6 +637,11 @@ const docTemplate = `{
                     "description": "Hash of the transaction that included the bridge event",
                     "type": "string",
                     "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "tx_sender": {
+                    "description": "Address of the transaction sender who initiated the bridge transaction",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 }
             }
         },
@@ -793,6 +798,11 @@ const docTemplate = `{
                     "description": "Transaction hash associated with the claim",
                     "type": "string",
                     "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "tx_sender": {
+                    "description": "Address of the transaction sender who initiated the claim transaction",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 }
             }
         },
