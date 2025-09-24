@@ -41,8 +41,9 @@ func TestMigration0001(t *testing.T) {
 			destination_address,
 			amount,
 			metadata,
-			deposit_count
-		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0);
+			deposit_count,
+			tx_sender
+		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0, '0x0000');
 
 		INSERT INTO claim (
 			block_num,
@@ -59,8 +60,9 @@ func TestMigration0001(t *testing.T) {
 			global_exit_root,
 			destination_network,
 			metadata,
-			is_message
-		) VALUES (1, 0, 0, 0, '0x0000', '0x0000', 0, '0x000,0x000', '0x000,0x000', '0x000', '0x000', '0x0', 0, NULL, FALSE);
+			is_message,
+			tx_sender
+		) VALUES (1, 0, 0, 0, '0x0000', '0x0000', 0, '0x000,0x000', '0x000,0x000', '0x000', '0x000', '0x0', 0, NULL, FALSE, '0x0000');
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -110,8 +112,9 @@ func TestMigration0002(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata
-		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123', NULL);
+			calldata,
+			tx_sender
+		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123', NULL, '0x123');
 
 		INSERT INTO claim (
 			block_num,
@@ -126,8 +129,9 @@ func TestMigration0002(t *testing.T) {
 			is_message,
 			block_timestamp,
 			tx_hash,
-			from_address
-		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd', '0x123');
+			from_address,
+			tx_sender
+		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd', '0x123', '0x123');
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
