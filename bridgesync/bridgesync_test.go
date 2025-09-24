@@ -135,6 +135,81 @@ func TestGetLastProcessedBlock(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
+func TestGetLatestNetworkBlock(t *testing.T) {
+	ctx := context.Background()
+	mockEthClient := mocksethclient.NewEthClienter(t)
+
+	t.Run("successful block number retrieval", func(t *testing.T) {
+		expectedBlockNumber := uint64(12345678)
+		mockEthClient.EXPECT().BlockNumber(mock.Anything).Return(expectedBlockNumber, nil).Once()
+
+		s := BridgeSync{
+			processor: &processor{
+				halted: false,
+				log:    log.WithFields("module", "L2BridgeSyncer"),
+			},
+			ethClient: mockEthClient,
+		}
+
+		blockNumber, err := s.GetLatestNetworkBlock(ctx)
+		require.NoError(t, err)
+		require.Equal(t, expectedBlockNumber, blockNumber)
+	})
+
+	t.Run("error from eth client", func(t *testing.T) {
+		expectedError := errors.New("network error")
+		mockEthClient.EXPECT().BlockNumber(mock.Anything).Return(uint64(0), expectedError).Once()
+
+		s := BridgeSync{
+			processor: &processor{
+				halted: false,
+				log:    log.WithFields("module", "L2BridgeSyncer"),
+			},
+			ethClient: mockEthClient,
+		}
+
+		blockNumber, err := s.GetLatestNetworkBlock(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get latest block number")
+		require.Equal(t, uint64(0), blockNumber)
+	})
+
+	t.Run("processor halted", func(t *testing.T) {
+		s := BridgeSync{processor: &processor{
+			halted: true,
+			log:    log.WithFields("module", "L2BridgeSyncer"),
+		}}
+
+		blockNumber, err := s.GetLatestNetworkBlock(ctx)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		require.Equal(t, uint64(0), blockNumber)
+	})
+}
+
+func TestIsActive(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("active syncer", func(t *testing.T) {
+		s := BridgeSync{processor: &processor{
+			halted: false,
+			log:    log.WithFields("module", "L2BridgeSyncer"),
+		}}
+
+		isActive := s.IsActive(ctx)
+		require.True(t, isActive)
+	})
+
+	t.Run("inactive syncer", func(t *testing.T) {
+		s := BridgeSync{processor: &processor{
+			halted: true,
+			log:    log.WithFields("module", "L2BridgeSyncer"),
+		}}
+
+		isActive := s.IsActive(ctx)
+		require.False(t, isActive)
+	})
+}
+
 func TestGetBridgeRootByHash(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
 	_, err := s.GetBridgeRootByHash(context.Background(), common.Hash{})
