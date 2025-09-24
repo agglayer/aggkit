@@ -36,7 +36,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Health status and version information",
                         "schema": {
-                            "$ref": "#/definitions/types.HealthCheckResponse"
+                            "$ref": "#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse"
                         }
                     },
                     "500": {
@@ -61,7 +61,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -96,7 +96,7 @@ const docTemplate = `{
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more network IDs",
+                        "description": "Filter by one or more destination network IDs",
                         "name": "network_ids",
                         "in": "query"
                     }
@@ -136,7 +136,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -191,7 +191,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -214,7 +214,7 @@ const docTemplate = `{
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more network IDs",
+                        "description": "Filter by one or more destination network IDs",
                         "name": "network_ids",
                         "in": "query"
                     },
@@ -498,6 +498,12 @@ const docTemplate = `{
                         "description": "Page size",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by origin token address",
+                        "name": "origin_token_address",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -535,6 +541,21 @@ const docTemplate = `{
                 },
                 "to_block": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse": {
+            "description": "Contains basic health‐check information for the bridge service",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },
@@ -591,11 +612,6 @@ const docTemplate = `{
                     "description": "Address that initiated the bridge transaction",
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"
-                },
-                "is_native_token": {
-                    "description": "Indicates whether the bridged token is a native token (true) or wrapped (false)",
-                    "type": "boolean",
-                    "example": true
                 },
                 "leaf_type": {
                     "description": "Type of leaf (bridge event type) used in the tree structure",
@@ -805,21 +821,6 @@ const docTemplate = `{
                 "error": {
                     "type": "string",
                     "example": "Error message"
-                }
-            }
-        },
-        "types.HealthCheckResponse": {
-            "description": "Contains basic health‐check information for the bridge service",
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string"
-                },
-                "time": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
                 }
             }
         },

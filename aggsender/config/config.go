@@ -19,14 +19,14 @@ var errValidatorClientURLNotSet = fmt.Errorf("ValidatorClient URL must be set wh
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
+	// CertificatesDir is the directory where certificate JSON files will be stored
+	CertificatesDir string `mapstructure:"CertificatesDir"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
-	// BlockFinality indicates which finality the AggLayer follows
-	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// EpochNotificationPercentage indicates the percentage of the epoch
 	// the AggSender should send the certificate
 	// 0 -> Begin
@@ -57,8 +57,6 @@ type Config struct {
 	// RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will try to resend it immediately
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
-	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
-	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
@@ -100,9 +98,9 @@ func (c Config) CheckCertConfigBriefString() string {
 // String returns a string representation of the Config
 func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
+		"CertificatesDir: " + c.CertificatesDir + "\n" +
 		"AgglayerClient: " + c.AgglayerClient.String() + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
-		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
@@ -110,7 +108,6 @@ func (c Config) String() string {
 		"Mode: " + c.Mode + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
-		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
 		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"

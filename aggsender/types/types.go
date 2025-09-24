@@ -230,7 +230,7 @@ func (c *CertificateHeader) String() string {
 	)
 }
 
-// ID returns a string with the unique identifier of the cerificate (height+certificateID)
+// ID returns a string with the unique identifier of the certificate (height+certificateID)
 func (c *CertificateHeader) ID() string {
 	if c == nil {
 		return NilStr

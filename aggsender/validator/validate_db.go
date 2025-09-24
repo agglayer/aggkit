@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -32,6 +33,7 @@ func (b *DBValidator) ValidateDB(dbPath string) (string, rpc.Error) {
 	b.logger.Infof("Validating Aggsender DB at path: %s", dbPath)
 	cfg := db.AggSenderSQLStorageConfig{
 		DBPath:                  dbPath,
+		CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 	database, err := db.NewAggSenderSQLStorage(b.logger, cfg)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
 	"github.com/agglayer/aggkit/test/helpers"
@@ -65,8 +66,19 @@ func TestE2E(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestE2E.sqlite")
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
-	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
+	cfg := l1infotreesync.Config{
+		DBPath:                             dbPath,
+		InitialBlock:                       0,
+		SyncBlockChunkSize:                 10,
+		GlobalExitRootAddr:                 gerAddr,
+		RollupManagerAddr:                  verifyAddr,
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
+		MaxRetryAttemptsAfterError:         25,
+		RequireStorageContentCompatibility: true,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
+	}
+	syncer, err := l1infotreesync.New(ctx, cfg, aggkittypes.LatestBlock, client.Client(),
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock)
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -82,7 +94,7 @@ func TestE2E(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		// Let the processor catch up
-		helpers.RequireProcessorUpdated(t, syncer, receipt.BlockNumber.Uint64())
+		helpers.RequireProcessorUpdated(t, syncer, receipt.BlockNumber.Uint64(), nil)
 
 		expectedGER, err := gerSc.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 		require.NoError(t, err)
@@ -113,8 +125,19 @@ func TestStress(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, client.Client(), time.Millisecond, 0, time.Second, 100,
-		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
+	cfg := l1infotreesync.Config{
+		DBPath:                             dbPathSyncer,
+		InitialBlock:                       0,
+		SyncBlockChunkSize:                 10,
+		GlobalExitRootAddr:                 gerAddr,
+		RollupManagerAddr:                  verifyAddr,
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
+		MaxRetryAttemptsAfterError:         100,
+		RequireStorageContentCompatibility: true,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
+	}
+	syncer, err := l1infotreesync.New(ctx, cfg, aggkittypes.LatestBlock, client.Client(),
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -165,7 +188,7 @@ func waitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer *l1infotre
 	for {
 		lastBlockNum, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)
-		helpers.RequireProcessorUpdated(t, syncer, lastBlockNum)
+		helpers.RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
 		time.Sleep(time.Second / 2)
 		lastBlockNum2, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)

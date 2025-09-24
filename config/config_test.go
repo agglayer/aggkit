@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -37,8 +38,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts, 20)
-	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
-	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
@@ -47,11 +46,14 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 	require.Equal(t, L2RPCClientConfig{
 		RPCClientConfig: RPCClientConfig{
-			URL:               "http://localhost:8123",
-			MaxRetries:        5,
-			InitialBackoff:    types.NewDuration(2 * time.Second),
-			MaxBackoff:        types.NewDuration(10 * time.Second),
-			BackoffMultiplier: 2.0,
+			URL: "http://localhost:8123",
+			RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+				Mode:              aggkitcommon.RetryConfigModeBackoff,
+				MaxRetries:        5,
+				InitialBackoff:    types.NewDuration(2 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+			},
 		},
 		Mode: RPCModeBasic,
 	}, cfg.Common.L2RPC)
@@ -134,6 +136,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
 	DelayBeetweenRetries = "1s"
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1h"
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
@@ -200,4 +205,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
+	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 }

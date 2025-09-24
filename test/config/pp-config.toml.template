@@ -178,10 +178,6 @@ CheckStatusCertificateInterval = "1s"
 [AggSender.AggkitProverClient]
 UseTLS = false
 
-[AggSender.MaxSubmitCertificateRate]
-NumRequests = 20
-Interval = "1m"
-
 # ------------------------------------------------------------------------------
 # BlockFinality indicates which finality follows AggLayer accepted values are:
 # LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
@@ -196,11 +192,6 @@ BlockFinality = "LatestBlock"
 # 50 -> Middle
 # ------------------------------------------------------------------------------
 # EpochNotificationPercentage = 50
-
-# ------------------------------------------------------------------------------
-# AggSender will save the certificates to a file in this path
-# ------------------------------------------------------------------------------
-SaveCertificatesToFilesPath = "{{.zkevm_path_rw_data}}"
 
 # ------------------------------------------------------------------------------
 # MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
@@ -443,12 +434,12 @@ BlockFinality = "FinalizedBlock"
 InitialBlock = "{{.zkevm_rollup_manager_block_number}}"
 
 # ==============================================================================
-#  _     ____   ____ _____ ____  ______   ___   _  ____ 
+#  _     ____   ____ _____ ____  ______   ___   _  ____
 # | |   |___ \ / ___| ____|  _ \/ ___\ \ / / \ | |/ ___|
-# | |     __) | |  _|  _| | |_) \___ \\ V /|  \| | |    
-# | |___ / __/| |_| | |___|  _ < ___) || | | |\  | |___ 
+# | |     __) | |  _|  _| | |_) \___ \\ V /|  \| | |
+# | |___ / __/| |_| | |___|  _ < ___) || | | |\  | |___
 # |_____|_____|\____|_____|_| \_\____/ |_| |_| \_|\____|
-#                                                      
+#
 # ==============================================================================
 [L2GERSync]
 # ------------------------------------------------------------------------------
@@ -457,6 +448,12 @@ InitialBlock = "{{.zkevm_rollup_manager_block_number}}"
 # Default value is "LatestBlock"
 # ------------------------------------------------------------------------------
 BlockFinality = "LatestBlock"
+
+# ------------------------------------------------------------------------------
+# The amount of blocks that will be queried in each request
+# Default value is 100
+# ------------------------------------------------------------------------------
+SyncBlockChunkSize = 100
 
 # ==============================================================================
 #   ____ _        _    ___ __  __ ____  ____   ___  _   _ ____   ___  ____

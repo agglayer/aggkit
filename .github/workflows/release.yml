@@ -52,7 +52,7 @@ jobs:
           echo "PLATFORM_VARIANT=$PLATFORM_VARIANT" >> $GITHUB_ENV
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Docker meta (prod)
         id: meta_prod

@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +32,7 @@ func Test_StorageExploratory(t *testing.T) {
 	}
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -37,7 +40,12 @@ func Test_StorageExploratory(t *testing.T) {
 	cert, err := storage.GetLastSentCertificate()
 	require.NoError(t, err)
 	require.NotNil(t, cert)
+
+	cfg.DBPath = "/nonexistent"
+	_, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.Error(t, err)
 }
+
 func Test_Storage(t *testing.T) {
 	ctx := context.Background()
 
@@ -45,6 +53,7 @@ func Test_Storage(t *testing.T) {
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 
@@ -356,6 +365,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 
@@ -613,7 +623,7 @@ func Test_StorageAggchainProof(t *testing.T) {
 		DBPath:                  dbPath,
 		KeepCertificatesHistory: true,
 	}
-	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	storage, err := NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, storage)
 
@@ -776,6 +786,19 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 	})
 }
 
+func Test_SaveNonAcceptedCertificate_Nil(t *testing.T) {
+	path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+	log.Debugf("sqlite path: %s", path)
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:          path,
+		CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	err = storage.SaveNonAcceptedCertificate(context.Background(), nil)
+	require.ErrorContains(t, err, "param nonAcceptedCert is nil")
+}
+
 func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	ctx := context.Background()
 
@@ -803,11 +826,12 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	createdAt := uint32(time.Now().UTC().UnixMilli())
 
 	testCases := []struct {
-		name          string
-		mockDBFn      func()
-		certificates  []*agglayertypes.Certificate
-		certError     string
-		expectedError string
+		name                string
+		mockDBFn            func()
+		certificates        []*agglayertypes.Certificate
+		OverrideFileContent bool
+		certError           string
+		expectedError       string
 	}{
 		{
 			name: "SaveNonAcceptedCertificate_Success_PP_Certificate",
@@ -887,7 +911,26 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			},
 			certError: "yet another error occurred",
 		},
-
+		{
+			name: "SaveNonAcceptedCertificate_Mismatch_file_on_disk",
+			certificates: []*agglayertypes.Certificate{
+				{
+					Height:              11,
+					PrevLocalExitRoot:   common.HexToHash("0x11"),
+					NewLocalExitRoot:    common.HexToHash("0x22"),
+					Metadata:            common.HexToHash("0x33"),
+					NetworkID:           2,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 12,
+					AggchainData: &agglayertypes.AggchainDataSignature{
+						Signature: common.Hex2Bytes("0x1234567890abcdef"),
+					},
+				},
+			},
+			certError:           "yet another error occurred",
+			OverrideFileContent: true,
+		},
 		{
 			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
 			certificates: []*agglayertypes.Certificate{{}},
@@ -896,9 +939,9 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
 					return txnMock, nil
 				}
-				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
-				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx"))
-				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx"))
+				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx")).Once()
+				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx")).Once()
 			},
 			expectedError: "failed to commit tx",
 		},
@@ -911,12 +954,13 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 				err     error
 			)
 
-			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate"+tc.name+".sqlite")
 			log.Debugf("sqlite path: %s", path)
 			cfg := AggSenderSQLStorageConfig{
-				DBPath: path,
+				DBPath:          path,
+				CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
 			}
-			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+			storage, err = NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 			require.NoError(t, err)
 
 			if tc.mockDBFn != nil {
@@ -933,19 +977,29 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 					require.NoError(t, err, "should save non-accepted certificate without error")
 				}
 			}
+			if tc.OverrideFileContent {
+				// Override the content of the last saved certificate file to simulate file read error
+				certFilePath := filepath.Join(cfg.CertificatesDir, nonAcceptedCertFilename)
+				err = os.WriteFile(certFilePath, []byte("invalid json"), 0o644)
+				require.NoError(t, err, "should override certificate file content without error")
+			}
 
 			if tc.expectedError == "" {
 				nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
-				require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
+				if tc.OverrideFileContent {
+					require.ErrorContains(t, err, "certificate hash mismatch")
+				} else {
+					require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
 
-				var certificate agglayertypes.Certificate
-				if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
-					t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+					var certificate agglayertypes.Certificate
+					if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
+						t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+					}
+
+					require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
+					require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
+					require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 				}
-
-				require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
-				require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
-				require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 			}
 		})
 	}
@@ -954,7 +1008,8 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 func Test_GetNonAcceptedCert(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath: dbPath,
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 	}
 
 	newTxer = db.NewTx
@@ -996,7 +1051,8 @@ func Test_GetNonAcceptedCert(t *testing.T) {
 func TestSaveOrUpdateCertificate(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath: dbPath,
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 	}
 
 	newTxer = db.NewTx
@@ -1149,5 +1205,254 @@ func Test_GetLastSettledCertificate(t *testing.T) {
 		header, err := storage.GetLastSettledCertificate()
 		require.Error(t, err)
 		require.Nil(t, header)
+	})
+}
+
+func Test_RuntimeData_IsCompatible(t *testing.T) {
+	tests := []struct {
+		name        string
+		runtime     RuntimeData
+		storage     RuntimeData
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Compatible - same network ID",
+			runtime:     RuntimeData{NetworkID: 1},
+			storage:     RuntimeData{NetworkID: 1},
+			expectError: false,
+		},
+		{
+			name:        "Compatible - same network ID zero",
+			runtime:     RuntimeData{NetworkID: 0},
+			storage:     RuntimeData{NetworkID: 0},
+			expectError: false,
+		},
+		{
+			name:        "Incompatible - different network IDs",
+			runtime:     RuntimeData{NetworkID: 1},
+			storage:     RuntimeData{NetworkID: 2},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 1 != 2",
+		},
+		{
+			name:        "Incompatible - runtime zero, storage non-zero",
+			runtime:     RuntimeData{NetworkID: 0},
+			storage:     RuntimeData{NetworkID: 1},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 0 != 1",
+		},
+		{
+			name:        "Incompatible - runtime non-zero, storage zero",
+			runtime:     RuntimeData{NetworkID: 5},
+			storage:     RuntimeData{NetworkID: 0},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 5 != 0",
+		},
+		{
+			name:        "Incompatible - large network IDs",
+			runtime:     RuntimeData{NetworkID: 4294967295}, // max uint32
+			storage:     RuntimeData{NetworkID: 4294967294},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 4294967295 != 4294967294",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.runtime.IsCompatible(tt.storage)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Equal(t, tt.errorMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_deleteCertificate(t *testing.T) {
+	ctx := context.Background()
+	logger := log.WithFields("test")
+
+	// Helper function to setup database and create certificate
+	setupCertificate := func(t *testing.T, testName string, signedCert *string) (*AggSenderSQLStorage, common.Hash, *certificateInfo) {
+		t.Helper()
+		dbPath := path.Join(t.TempDir(), testName+".sqlite")
+		cfg := AggSenderSQLStorageConfig{
+			DBPath:          dbPath,
+			CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
+		}
+		storage, err := NewAggSenderSQLStorage(logger, cfg)
+		require.NoError(t, err)
+
+		testCertID := common.HexToHash("0x1234")
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    testCertID,
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        uint32(time.Now().Unix()),
+				UpdatedAt:        uint32(time.Now().Unix()),
+			},
+			SignedCertificate: signedCert,
+		}
+
+		if signedCert != nil {
+			require.NoError(t, storage.SaveOrUpdateCertificate(ctx, certificate))
+		} else {
+			require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
+		}
+
+		// Get certificate info from database if signed certificate exists
+		var certInfo *certificateInfo
+		if signedCert != nil {
+			var info certificateInfo
+			err = meddler.QueryRow(storage.db, &info,
+				"SELECT * FROM certificate_info WHERE certificate_id = $1", testCertID.String())
+			require.NoError(t, err)
+			certInfo = &info
+		}
+
+		return storage, testCertID, certInfo
+	}
+
+	// Helper function to test certificate deletion with file
+	testCertificateDeleteWithFile := func(t *testing.T, testName string, certData *string, shouldFileBeDeleted bool) {
+		t.Helper()
+		storage, testCertID, certInfo := setupCertificate(t, testName, certData)
+		require.NotNil(t, certInfo.SignedCertificate)
+
+		// Verify the generated file exists
+		generatedFilePath := *certInfo.SignedCertificate
+		_, err := os.Stat(generatedFilePath)
+		require.NoError(t, err)
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		shouldRollback := true
+		defer func() {
+			if shouldRollback {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					t.Logf("Failed to rollback transaction: %v", rollbackErr)
+				}
+			}
+		}()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+		shouldRollback = false
+
+		// Verify certificate is deleted from database
+		_, err = storage.GetCertificateByHeight(1)
+		require.ErrorIs(t, err, db.ErrNotFound)
+
+		// Verify the generated file is deleted
+		_, err = os.Stat(generatedFilePath)
+		if shouldFileBeDeleted {
+			require.True(t, os.IsNotExist(err))
+		} else {
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("successful deletion without file", func(t *testing.T) {
+		storage, testCertID, _ := setupCertificate(t, "test_delete_no_file", nil)
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		shouldRollback := true
+		defer func() {
+			if shouldRollback {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					t.Logf("Failed to rollback transaction: %v", rollbackErr)
+				}
+			}
+		}()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+		shouldRollback = false
+
+		// Verify certificate is deleted
+		_, err = storage.GetCertificateByHeight(1)
+		require.ErrorIs(t, err, db.ErrNotFound)
+	})
+
+	t.Run("successful deletion with JSON file", func(t *testing.T) {
+		signedCertData := `{"test": "signed certificate data"}`
+		testCertificateDeleteWithFile(t, "test_delete_with_file", &signedCertData, true)
+	})
+
+	t.Run("deletion with JSON file path containing non-path data", func(t *testing.T) {
+		rawCertData := "raw certificate data, not a file path"
+		testCertificateDeleteWithFile(t, "test_delete_non_json", &rawCertData, true)
+	})
+
+	t.Run("non-existent certificate", func(t *testing.T) {
+		storage, _, _ := setupCertificate(t, "test_delete_nonexistent", nil)
+
+		// Try to delete a certificate that doesn't exist
+		testCertID := common.HexToHash("0x9999")
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		shouldRollback := true
+		defer func() {
+			if shouldRollback {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					t.Logf("Failed to rollback transaction: %v", rollbackErr)
+				}
+			}
+		}()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error loading certificate info")
+	})
+
+	t.Run("file deletion error should not fail the function", func(t *testing.T) {
+		signedCertData := `{"test": "certificate data"}`
+		storage, testCertID, certInfo := setupCertificate(t, "test_delete_file_error", &signedCertData)
+		require.NotNil(t, certInfo.SignedCertificate)
+
+		// Delete the file manually to simulate a file deletion error scenario
+		generatedFilePath := *certInfo.SignedCertificate
+		err := os.Remove(generatedFilePath)
+		require.NoError(t, err)
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		shouldRollback := true
+		defer func() {
+			if shouldRollback {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					t.Logf("Failed to rollback transaction: %v", rollbackErr)
+				}
+			}
+		}()
+
+		// This should succeed despite the file being already deleted
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+		shouldRollback = false
+
+		// Verify certificate is deleted from database
+		_, err = storage.GetCertificateByHeight(1)
+		require.ErrorIs(t, err, db.ErrNotFound)
 	})
 }

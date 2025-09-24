@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	ethereum "github.com/ethereum/go-ethereum"
@@ -103,8 +104,21 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, originNetwork, networkID)
 
-	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.FinalizedBlock, client,
-		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPathBridgeSyncL1,
+		BlockFinality:                      aggkittypes.FinalizedBlock,
+		BridgeAddr:                         bridgeProxyAddr,
+		SyncBlockChunkSize:                 1,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryPeriod),
+		MaxRetryAttemptsAfterError:         retriesCount,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
+	bridgeSync, err := NewL1(ctx, bridgeSyncCfg, aggkittypes.FinalizedBlock, client, originNetwork, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
 

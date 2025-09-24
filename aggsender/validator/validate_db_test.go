@@ -1,10 +1,10 @@
 package validator
 
 import (
-	"context"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/aggsender/flows"
@@ -15,7 +15,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/agglayer/go_signer/signer"
-	signerTypes "github.com/agglayer/go_signer/signer/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
@@ -26,13 +26,15 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	// Test real db verification
 	testDataPath := getTestDataPath(t)
 	logger := log.WithFields("test", "TestValidateFullAggsenderDB")
-	ctx := context.TODO()
+	ctx := t.Context()
+	dbQueryTimeout := 30 * time.Second
 	mockL2EthClient := mocksethclient.NewEthClienter(t)
 	mockL2EthClient.EXPECT().BlockByNumber(ctx, mock.Anything).Return(&types.Block{}, nil).Maybe()
 	bridgeSyncL2, err := bridgesync.NewL2ReadOnly(
 		ctx,
 		testDataPath+"/bridgel2sync.sqlite",
 		1, // OrigNetwork
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 	lastProcessBlock, err := bridgeSyncL2.GetLastProcessedBlock(ctx)
@@ -52,8 +54,9 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
 	lerQuerier, err := query.NewLERDataQuerier(common.Address{}, 1, mockRollupDataQuerier)
 	require.NoError(t, err)
-	signer, err := signer.NewSigner(ctx, 0, signerTypes.SignerConfig{
-		Method: signerTypes.MethodMock,
+	chainID := uint64(1)
+	signer, err := signer.NewSigner(ctx, chainID, signertypes.SignerConfig{
+		Method: signertypes.MethodMock,
 	}, "test", logger)
 	require.NoError(t, err)
 

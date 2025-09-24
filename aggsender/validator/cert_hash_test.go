@@ -2,6 +2,7 @@ package validator
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -78,6 +79,7 @@ func getCertFromAggsenderDBForTest(t *testing.T) (*types.Certificate, *agglayert
 
 	cfg := db.AggSenderSQLStorageConfig{
 		DBPath:                  dbPath,
+		CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 	logger := log.WithFields("test", "TestCertificateHash")

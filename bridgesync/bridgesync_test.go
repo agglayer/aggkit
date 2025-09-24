@@ -10,6 +10,7 @@ import (
 	"time"
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -53,20 +54,28 @@ func TestNewLx(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncL1Cfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: true,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	l1BridgeSync, err := NewL1(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
+		bridgeSyncL1Cfg,
 		blockFinalityType,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		true,
 	)
 
 	require.NoError(t, err)
@@ -74,21 +83,25 @@ func TestNewLx(t *testing.T) {
 	require.Equal(t, originNetwork, l1BridgeSync.OriginNetwork())
 	require.Equal(t, blockFinalityType, l1BridgeSync.BlockFinality())
 
+	bridgeSyncL2Cfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.SafeBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: true,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	l2BridgdeSync, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncL2Cfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		true,
 	)
 
 	require.NoError(t, err)
@@ -100,25 +113,18 @@ func TestNewLx(t *testing.T) {
 	mockEthClient = mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	mockEthClient.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
-	l2BridgdeSyncErr, err := NewL2(
+
+	l2BridgeSyncer, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncL2Cfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		true,
 	)
 	t.Log(err)
 	require.Error(t, err)
-	require.Nil(t, l2BridgdeSyncErr)
+	require.Nil(t, l2BridgeSyncer)
 }
 
 func TestGetLastProcessedBlock(t *testing.T) {
@@ -208,20 +214,26 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	s, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncCfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
-		false,
 		false,
 	)
 	require.NoError(t, err)
@@ -251,7 +263,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("retrieve all mappings", func(t *testing.T) {
-		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount)
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, "")
 		require.NoError(t, err)
 		require.Equal(t, tokenMappingsCount, totalTokenMappings)
 		require.Equal(t, allTokenMappings, tokenMappings)
@@ -261,7 +273,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(5)
 
 		for page := uint32(1); page <= 4; page++ {
-			tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), page, pageSize)
+			tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), page, pageSize, "")
 			require.NoError(t, err)
 			require.Equal(t, tokenMappingsCount, totalTokenMappings)
 
@@ -275,7 +287,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(5)
 		pageNum := uint32(5)
 
-		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorContains(t, err, "invalid page number for given page size and total number of token mappings")
 		require.Equal(t, 0, totalTokenMappings)
 		require.Nil(t, tokenMappings)
@@ -285,7 +297,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(0)
 
-		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorIs(t, err, ErrInvalidPageNumber)
 	})
 
@@ -293,13 +305,36 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(4)
 
-		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorIs(t, err, ErrInvalidPageSize)
+	})
+
+	t.Run("filter by valid origin token address", func(t *testing.T) {
+		s.processor.halted = false
+
+		targetOriginAddress := common.HexToAddress("5").Hex()
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, targetOriginAddress)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, totalTokenMappings)
+		require.Len(t, tokenMappings, 1)
+		require.Equal(t, common.HexToAddress("5"), tokenMappings[0].OriginTokenAddress)
+		require.Equal(t, uint32(5), tokenMappings[0].OriginNetwork)
+		require.Equal(t, common.HexToAddress("6"), tokenMappings[0].WrappedTokenAddress)
+	})
+
+	t.Run("filter by non-existent origin token address", func(t *testing.T) {
+		nonExistentAddress := common.HexToAddress("999").Hex()
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, nonExistentAddress)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, totalTokenMappings)
+		require.Empty(t, tokenMappings)
 	})
 
 	t.Run("inconsistent state", func(t *testing.T) {
 		s.processor.halted = true
-		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0, "")
 		require.ErrorIs(t, err, sync.ErrInconsistentState)
 	})
 }
@@ -340,20 +375,26 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	s, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncCfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
-		false,
 		false,
 	)
 	require.NoError(t, err)
@@ -426,13 +467,13 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(4)
 
-		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorIs(t, err, ErrInvalidPageSize)
 	})
 
 	t.Run("inconsistent state", func(t *testing.T) {
 		s.processor.halted = true
-		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0, "")
 		require.ErrorIs(t, err, sync.ErrInconsistentState)
 	})
 }
@@ -484,5 +525,174 @@ func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 		reorgEvent, err := s.GetLastReorgEvent(ctx)
 		require.Error(t, err)
 		require.Nil(t, reorgEvent)
+	})
+}
+
+func TestBridgeSync_GetLastRoot(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetLastRoot.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
+	s, err := NewL2(
+		ctx,
+		bridgeSyncCfg,
+		mockReorgDetector,
+		mockEthClient,
+		originNetwork,
+		false,
+	)
+	require.NoError(t, err)
+
+	t.Run("get last root when no roots exist", func(t *testing.T) {
+		root, err := s.GetLastRoot(ctx)
+		require.Error(t, err)
+		require.Nil(t, root)
+		// The error should be db.ErrNotFound from the tree package
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("get last root after processing bridge events", func(t *testing.T) {
+		// Create some bridge events to process
+		bridgeEvents := []interface{}{
+			Event{Bridge: &Bridge{
+				BlockNum:           1,
+				BlockPos:           0,
+				FromAddress:        common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxHash:             common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				Calldata:           []byte{0x01, 0x02, 0x03},
+				BlockTimestamp:     1234567890,
+				LeafType:           1,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x4444444444444444444444444444444444444444"),
+				Amount:             big.NewInt(1000000),
+				Metadata:           []byte{0x04, 0x05, 0x06},
+				DepositCount:       0,
+			}},
+			Event{Bridge: &Bridge{
+				BlockNum:           1,
+				BlockPos:           1,
+				FromAddress:        common.HexToAddress("0x5555555555555555555555555555555555555555"),
+				TxHash:             common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				Calldata:           []byte{0x07, 0x08, 0x09},
+				BlockTimestamp:     1234567890,
+				LeafType:           1,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x7777777777777777777777777777777777777777"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x8888888888888888888888888888888888888888"),
+				Amount:             big.NewInt(2000000),
+				Metadata:           []byte{0x0a, 0x0b, 0x0c},
+				DepositCount:       1,
+			}},
+		}
+
+		block := sync.Block{
+			Num:    1,
+			Events: bridgeEvents,
+		}
+
+		err = s.processor.ProcessBlock(ctx, block)
+		require.NoError(t, err)
+
+		root, err := s.GetLastRoot(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, root)
+		require.Equal(t, uint64(1), root.BlockNum)
+		require.Equal(t, uint64(1), root.BlockPosition)
+		require.Equal(t, uint32(1), root.Index)
+		require.NotEqual(t, common.Hash{}, root.Hash)
+	})
+
+	t.Run("get last root when processor is halted", func(t *testing.T) {
+		s.processor.halted = true
+		root, err := s.GetLastRoot(ctx)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		require.Nil(t, root)
+	})
+
+	t.Run("get last root after multiple blocks", func(t *testing.T) {
+		// Reset halted state
+		s.processor.halted = false
+
+		// Process another block with more bridge events
+		bridgeEvents := []interface{}{
+			Event{Bridge: &Bridge{
+				BlockNum:           2,
+				BlockPos:           0,
+				FromAddress:        common.HexToAddress("0x9999999999999999999999999999999999999999"),
+				TxHash:             common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+				Calldata:           []byte{0x0d, 0x0e, 0x0f},
+				BlockTimestamp:     1234567891,
+				LeafType:           1,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0xcccccccccccccccccccccccccccccccccccccccc"),
+				Amount:             big.NewInt(3000000),
+				Metadata:           []byte{0x10, 0x11, 0x12},
+				DepositCount:       2,
+			}},
+		}
+
+		block := sync.Block{
+			Num:    2,
+			Events: bridgeEvents,
+		}
+
+		err = s.processor.ProcessBlock(ctx, block)
+		require.NoError(t, err)
+
+		root, err := s.GetLastRoot(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, root)
+		require.Equal(t, uint64(2), root.BlockNum)
+		require.Equal(t, uint64(0), root.BlockPosition)
+		require.Equal(t, uint32(2), root.Index)
+		require.NotEqual(t, common.Hash{}, root.Hash)
 	})
 }

@@ -1,0 +1,150 @@
+# ==============================================================================
+#     _    ____  ____ _  _____ _____
+#    / \  / ___|/ ___| |/ /_ _|_   _|
+#   / _ \| |  _| |  _| ' / | |  | |
+#  / ___ \ |_| | |_| | . \ | |  | |
+# /_/   \_\____|\____|_|\_\___| |_|
+#
+# This is a reference config file used for Aggkit
+# setup.
+# The below configs are the default mandatory parameters to be used.
+# ==============================================================================
+
+L1URL = "https://xxxx/"
+L2URL = "https://xxxx/"
+# ------------------------------------------------------------------------------
+# OP Node URL. To be used when deploying OP stack
+# ------------------------------------------------------------------------------
+OpNodeURL = "https://xxxx/"
+
+AggLayerURL = "https://xxxx/"
+# ------------------------------------------------------------------------------
+# Aggkit Prover URL. To be used when FEP is enabled
+# ------------------------------------------------------------------------------
+AggchainProofURL = "https://xxxx/"
+
+NetworkID = 1
+SequencerPrivateKeyPath = "/path/to/keystore"
+SequencerPrivateKeyPassword = "test"
+
+polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+
+# This values can be override directly from genesis.json
+rollupCreationBlockNumber = 0
+rollupManagerCreationBlockNumber = 0
+genesisBlockNumber = 0
+
+# Default database query timeout
+
+[L1Config]
+    # ------------------------------------------------------------------------------
+    # URL is the L1 network url
+    # ------------------------------------------------------------------------------
+	URL = "{{L1URL}}"
+    # ------------------------------------------------------------------------------
+    # Address of the zkevm global exit root contract on L1
+    # ------------------------------------------------------------------------------
+	polygonZkEVMGlobalExitRootAddress = "0x0000000000000000000000000000000000000000"
+    # ------------------------------------------------------------------------------
+    # Address of the rollup manager contract on L1
+    # ------------------------------------------------------------------------------
+	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
+    # ------------------------------------------------------------------------------
+    # Address of the pol token address on L1
+    # ------------------------------------------------------------------------------
+	polTokenAddress = "0x0000000000000000000000000000000000000000"
+    # ------------------------------------------------------------------------------
+    # Address of the sovereign rollup contract on L1
+    # ------------------------------------------------------------------------------
+	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+
+[L2Config]
+    # ------------------------------------------------------------------------------
+    # Address of the sovereign global exit root proxy contract on L2
+    # ------------------------------------------------------------------------------
+	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
+    # ------------------------------------------------------------------------------
+    # Address of the aggoracle committee. To be used when aggoracle committee is enabled
+    # ------------------------------------------------------------------------------
+	AggOracleCommitteeAddr = "0x0000000000000000000000000000000000000000"
+
+
+# ==============================================================================
+# The below configs are the default parameters to be used.
+# The user can modify it based on requirements
+# ==============================================================================
+
+# PathRWData = "/tmp/aggkit"
+# RequireStorageContentCompatibility = true
+# GenerateAggchainProofTimeout = "1h"
+# defaultDBQueryTimeout = "30s"
+# [L2RPC]
+# ------------------------------------------------------------------------------
+# Possible values for Mode - "basic", "op"
+# ------------------------------------------------------------------------------
+# 	Mode = "basic"
+# 	URL = "{{L2URL}}"
+# 	RetryMode = "backoff"
+# 	MaxRetries = 5
+# 	InitialBackoff = "2s"
+# 	MaxBackoff = "10s"
+# 	BackoffMultiplier = 2.0
+#
+# [Log]
+# ------------------------------------------------------------------------------
+# Possible values for Environment - "production", "development"
+# ------------------------------------------------------------------------------
+# Environment = "production"
+# ------------------------------------------------------------------------------
+# Possible values for Level - "debug", "info", "warn", "error", "panic", "fatal"
+# ------------------------------------------------------------------------------
+# Level = "info"
+#
+# [L1InfoTreeSync]
+# SyncBlockChunkSize = 100
+#
+[AggOracle]
+# ------------------------------------------------------------------------------
+# Set to true if enabling aggoracle committee mode
+# ------------------------------------------------------------------------------
+EnableAggOracleCommittee = false
+	    [AggOracle.EVMSender.EthTxManager]
+# ------------------------------------------------------------------------------
+# PrivateKeys is private key for aggoracle keystore
+# ------------------------------------------------------------------------------
+				PrivateKeys = [
+					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
+				]
+#
+# [RPC]
+# Host = "0.0.0.0"
+# Port = 5576
+#
+# [REST]
+# Host = "0.0.0.0"
+# Port = 5577
+#
+[AggSender]
+# ------------------------------------------------------------------------------
+# Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof"
+# ------------------------------------------------------------------------------
+Mode = "PessimisticProof"
+#
+# [Prometheus]
+# Enabled = true
+# Host = "localhost"
+# Port = 9091
+#
+# [AggchainProofGen]
+# 	[AggchainProofGen.AggkitProverClient]
+# 		UseTLS = false
+#
+# [Profiling]
+# ProfilingHost = "localhost"
+# ProfilingPort = 6060
+# ProfilingEnabled = false
+#
+# [Validator]
+# [Validator.ServerConfig]
+# 	Host = "0.0.0.0"
+# 	Port = 5578

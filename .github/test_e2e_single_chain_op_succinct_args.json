@@ -1,0 +1,26 @@
+{
+  "deployment_stages": {
+    "deploy_op_succinct": true,
+    "deploy_cdk_bridge_infra": false
+  },
+  "args": {
+    "verbosity": "debug",
+    "aggkit_image": "aggkit:local",
+    "consensus_contract_type": "fep",
+    "op_succinct_mock": true,
+    "op_succinct_agglayer": true,
+    "op_succinct_agg_proof_mode": "compressed",
+    "op_succinct_submission_interval": "1",
+    "op_succinct_max_concurrent_proof_requests": "1",
+    "op_succinct_max_concurrent_witness_gen": "1",
+    "op_succinct_range_proof_interval": "60",
+    "additional_services": [
+      "bridge_spammer"
+    ]
+  },
+  "optimism_package": {
+    "observability": {
+      "enabled": false
+    }
+  }
+}

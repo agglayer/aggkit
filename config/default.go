@@ -28,7 +28,6 @@ genesisBlockNumber = 0
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
-	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
@@ -41,9 +40,12 @@ const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
+# Default database query timeout
+defaultDBQueryTimeout = "30s"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
+	RetryMode = "backoff"
 	MaxRetries = 5
 	InitialBackoff = "2s"
 	MaxBackoff = "10s"
@@ -71,6 +73,7 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"
+		RetryMode = "backoff"
 		MaxRetries = 5
 		InitialBackoff = "2s"
 		MaxBackoff = "10s"
@@ -117,6 +120,7 @@ EnableAggOracleCommittee = false
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10
+				EstimateGasMaxRetries = 1
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
@@ -148,6 +152,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -159,12 +164,14 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
+SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
@@ -173,8 +180,8 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
+CertificatesDir = "{{PathRWData}}/certificates/"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
-BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
@@ -198,11 +205,16 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
-		Mode = "delays"
+		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
-		MaxRetries = 6 # 1+6 attempts, around 22m 
+		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
+		[[AggSender.AgglayerClient.APIRateLimits]]
+			MethodName = "SendCertificate"
+			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
+				NumRequests = 20
+				Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
 			Capacity = 100
@@ -221,9 +233,6 @@ RequireValidatorCall = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
-	[AggSender.MaxSubmitCertificateRate]
-		NumRequests = 20
-		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 		# By default use the same key that aggsender signs certs

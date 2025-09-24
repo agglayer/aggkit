@@ -64,27 +64,18 @@ type EVMChainGERSender struct {
 
 func NewEVMChainGERSender(
 	logger *log.Logger,
-	l2GERManagerAddr common.Address,
-	aggOracleCommitteeAddr common.Address,
+	cfg EVMConfig,
 	l2Client aggkittypes.BaseEthereumClienter,
+	l2GERManager types.L2GERManagerContract,
 	ethTxMan types.EthTxManager,
-	gasOffset uint64,
-	waitPeriodMonitorTx time.Duration,
 	enableAggOracleCommittee bool,
 ) (*EVMChainGERSender, error) {
 	// Determine mode based on configuration
 	mode := DirectInjectionMode
-	if enableAggOracleCommittee && aggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
+	if enableAggOracleCommittee && cfg.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
 		mode = AggOracleCommitteeMode
 	}
 	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
-
-	// Always initialize L2 GER Manager (needed for checking if GER is injected)
-	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
-		l2GERManagerAddr, l2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
-	}
 
 	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
 	if err != nil {
@@ -95,13 +86,13 @@ func NewEVMChainGERSender(
 		logger:                 logger,
 		mode:                   mode,
 		l2GERManager:           l2GERManager,
-		l2GERManagerAddr:       l2GERManagerAddr,
+		l2GERManagerAddr:       cfg.GlobalExitRootL2Addr,
 		l2GERManagerAbi:        l2GERAbi,
-		aggOracleCommitteeAddr: aggOracleCommitteeAddr,
+		aggOracleCommitteeAddr: cfg.AggOracleCommitteeAddr,
 		l2Client:               l2Client,
 		ethTxMan:               ethTxMan,
-		gasOffset:              gasOffset,
-		waitPeriodMonitorTx:    waitPeriodMonitorTx,
+		gasOffset:              cfg.GasOffset,
+		waitPeriodMonitorTx:    cfg.WaitPeriodMonitorTx.Duration,
 	}
 
 	// Initialize and validate mode-specific components
@@ -264,6 +255,9 @@ func (c *EVMChainGERSender) submitTransaction(
 				continue
 			case ethtxtypes.MonitoredTxStatusFailed:
 				return fmt.Errorf("%s GER tx %s failed", action, id.Hex())
+			case ethtxtypes.MonitoredTxStatusEvicted:
+				c.logger.Debugf("%s GER tx %s was evicted", action, id.Hex())
+				return nil
 			case ethtxtypes.MonitoredTxStatusMined,
 				ethtxtypes.MonitoredTxStatusSafe,
 				ethtxtypes.MonitoredTxStatusFinalized:

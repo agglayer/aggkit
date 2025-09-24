@@ -44,7 +44,6 @@ var (
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
-	zeroAddress                  = common.HexToAddress("0x0")
 )
 
 const (
@@ -76,16 +75,11 @@ func buildAppender(
 			bridgeAddr, err)
 	}
 
-	gasTokenAddress, err := bridgeContractV2.GasTokenAddress(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gas token address: %w", err)
-	}
-
 	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		bridgeContractV2, client, bridgeAddr, gasTokenAddress, logger)
+		bridgeContractV2, client, bridgeAddr, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
 		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
@@ -106,7 +100,7 @@ func buildAppender(
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address, gasTokenAddress common.Address, logger *logger.Logger,
+	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
@@ -118,8 +112,6 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
-
-		isNativeToken := bridgeEvent.OriginAddress == gasTokenAddress || bridgeEvent.OriginAddress == zeroAddress
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
@@ -136,7 +128,6 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
-			IsNativeToken:      isNativeToken,
 		}})
 		return nil
 	}
@@ -155,14 +146,13 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
+			BlockTimestamp:     b.Timestamp,
+			TxHash:             l.TxHash,
 			GlobalIndex:        claimEvent.GlobalIndex,
 			OriginNetwork:      claimEvent.OriginNetwork,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
-			BlockTimestamp:     b.Timestamp,
-			TxHash:             l.TxHash,
-			FromAddress:        l.Address,
 		}
 
 		if syncFullClaims {
@@ -189,7 +179,9 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
-			GlobalIndex:        big.NewInt(int64(claimEvent.Index)),
+			BlockTimestamp:     b.Timestamp,
+			TxHash:             l.TxHash,
+			GlobalIndex:        new(big.Int).SetUint64(uint64(claimEvent.Index)),
 			OriginNetwork:      claimEvent.OriginNetwork,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
@@ -419,7 +411,7 @@ func (c *Claim) setClaimCalldata(
 
 	// Check if the root call was successful
 	if callFrame.Err != nil {
-		return fmt.Errorf("root call reverted: %s", *callFrame.Err)
+		return fmt.Errorf("execution reverted in root call (block %d, tx %s): %s", c.BlockNum, txHash.Hex(), *callFrame.Err)
 	}
 
 	_, err = findCall(*callFrame, bridge,

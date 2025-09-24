@@ -453,6 +453,13 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	nextBlockRange := types.NewBlockRange(newFromBlock, newToBlock)
 	lastBlockRange := types.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
 
+	if lastBlockRange.Greater(nextBlockRange) {
+		// This is a strange situation, but don't need to check anything.
+		// the way of using this function is that newXXXBlock is SC.StartingBlockNumber
+		// so newXXXBlock can be a previous block
+		return nil
+	}
+
 	// case 2: is a new cert but is not contiguous to previous one
 	gap := nextBlockRange.Gap(lastBlockRange)
 	if gap.IsEmpty() {
@@ -480,7 +487,7 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 }
 
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns startL2Block and 0
+// if there is no previously sent certificate, it returns startL2Block and 0
 func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateHeader) (uint64, int) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block
