@@ -1122,6 +1122,9 @@ func TestClaimCalldata(t *testing.T) {
 			rootCall, err := extractRootCall(client, tc.log.TxHash)
 			require.NoError(t, err)
 
+			// Set TxSender from root call (same as in production code)
+			actualClaim.TxSender = rootCall.From
+
 			// Use setClaimCalldataFromRoot instead of setClaimCalldata
 			err = actualClaim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
 			require.NoError(t, err)

@@ -681,7 +681,8 @@ func TestTxSenderField(t *testing.T) {
 			require.Len(t, block.Events, 1)
 
 			// Check TxSender field
-			event := block.Events[0].(Event)
+			event, ok := block.Events[0].(Event)
+			require.True(t, ok, "Expected block.Events[0] to be of type Event")
 			if event.Bridge != nil {
 				require.Equal(t, tt.expectedTxSender, event.Bridge.TxSender, "Bridge TxSender should match expected value")
 			}
