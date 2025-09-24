@@ -62,7 +62,6 @@ type Bridge struct {
 	BlockPos           uint64         `meddler:"block_pos"`
 	FromAddress        common.Address `meddler:"from_address,address"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	GlobalIndex        *big.Int       `meddler:"global_index,bigint"`
 	Calldata           []byte         `meddler:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
@@ -449,7 +448,8 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
+	ctx context.Context, pageNumber, pageSize uint32,
+	depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
@@ -494,7 +494,7 @@ func (p *processor) GetBridgesPaged(
 }
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
-// based on the provided depositCount and networkIDs
+// based on the provided depositCount, networkIDs, fromAddress and globalIndex
 func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32, fromAddress string) string {
 	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
@@ -517,9 +517,10 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
+	ctx context.Context, pageNumber, pageSize uint32,
+	networkIDs []uint32, fromAddress string, globalIndex *big.Int,
 ) ([]*Claim, int, error) {
-	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
+	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress, globalIndex)
 	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -562,9 +563,9 @@ func (p *processor) GetClaimsPaged(
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
-// based on the provided networkIDs and fromAddress
-func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string) string {
-	const clauseCapacity = 2
+// based on the provided networkIDs, fromAddress and globalIndex
+func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string, globalIndex *big.Int) string {
+	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
 	if len(networkIDs) > 0 {
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
@@ -572,6 +573,12 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 
 	if fromAddress != "" && common.IsHexAddress(fromAddress) {
 		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+	}
+
+	if globalIndex != nil {
+		clauses = append(clauses,
+			fmt.Sprintf("global_index = '%s'", globalIndex.String()),
+		)
 	}
 
 	if len(clauses) > 0 {

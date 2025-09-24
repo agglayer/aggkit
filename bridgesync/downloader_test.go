@@ -263,8 +263,7 @@ func TestBuildAppender(t *testing.T) {
 			require.NoError(t, err)
 
 			logger := logger.WithFields("module", "test")
-			networkID := uint32(2)
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, networkID, logger)
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

@@ -65,7 +65,6 @@ func buildAppender(
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2,
-	networkID uint32,
 	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
@@ -83,7 +82,7 @@ func buildAppender(
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		networkID, bridgeContractV2, bridgeAddr, client, logger)
+		bridgeContractV2, bridgeAddr, client, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
 		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
@@ -103,7 +102,6 @@ func buildAppender(
 
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(
-	networkID uint32,
 	contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 	bridgeAddr common.Address,
 	client aggkittypes.EthClienter,
@@ -120,13 +118,11 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
-		globalIndex := GenerateGlobalIndex(bridgeEvent.OriginNetwork == MainnetNetworkID, networkID, bridgeEvent.DepositCount)
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
 			FromAddress:        foundCall.From,
 			TxHash:             l.TxHash,
-			GlobalIndex:        globalIndex,
 			Calldata:           foundCall.Input,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,

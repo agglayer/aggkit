@@ -1001,15 +1001,13 @@ func TestGetBridgesPaged(t *testing.T) {
 		expectedError   string
 	}{
 		{
-			name:          "t1",
-			pageSize:      1,
-			page:          1,
-			depositCount:  nil,
-			expectedCount: len(bridges),
-			expectedBridges: []*Bridge{
-				bridges[6],
-			},
-			expectedError: "",
+			name:            "t1",
+			pageSize:        1,
+			page:            1,
+			depositCount:    nil,
+			expectedCount:   len(bridges),
+			expectedBridges: []*Bridge{bridges[6]},
+			expectedError:   "",
 		},
 		{
 			name:          "t2",
@@ -1042,15 +1040,13 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:          "t4",
-			pageSize:      1,
-			page:          1,
-			depositCount:  depositCountPtr(1),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[1],
-			},
-			expectedError: "",
+			name:            "t4",
+			pageSize:        1,
+			page:            1,
+			depositCount:    depositCountPtr(1),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[1]},
+			expectedError:   "",
 		},
 		{
 			name:            "t5",
@@ -1071,15 +1067,13 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError:   "invalid page number for given page size and total number of bridges",
 		},
 		{
-			name:          "t7",
-			pageSize:      1,
-			page:          1,
-			depositCount:  depositCountPtr(0),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[0],
-			},
-			expectedError: "",
+			name:            "t7",
+			pageSize:        1,
+			page:            1,
+			depositCount:    depositCountPtr(0),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[0]},
+			expectedError:   "",
 		},
 		{
 			name:         "t8",
@@ -1115,28 +1109,24 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError:   "",
 		},
 		{
-			name:          "t10",
-			pageSize:      1,
-			page:          1,
-			fromAddress:   "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:  depositCountPtr(0),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[0],
-			},
-			expectedError: "",
+			name:            "t10",
+			pageSize:        1,
+			page:            1,
+			fromAddress:     "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    depositCountPtr(0),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[0]},
+			expectedError:   "",
 		},
 		{
-			name:          "t11",
-			pageSize:      1,
-			page:          1,
-			fromAddress:   "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:  depositCountPtr(0),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[0],
-			},
-			expectedError: "",
+			name:            "t11",
+			pageSize:        1,
+			page:            1,
+			fromAddress:     "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    depositCountPtr(0),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[0]},
+			expectedError:   "",
 		},
 		{
 			name:            "t12",
@@ -1149,27 +1139,25 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError:   "",
 		},
 		{
-			name:          "t13",
-			pageSize:      10,
-			page:          1,
-			fromAddress:   "0xD34AAF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:  nil,
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[6],
-			},
-			expectedError: "",
+			name:            "t13",
+			pageSize:        10,
+			page:            1,
+			fromAddress:     "0xD34AAF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    nil,
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[6]},
+			expectedError:   "",
 		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount, tc.networkIDs, tc.fromAddress)
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize,
+				tc.depositCount, tc.networkIDs,
+				tc.fromAddress)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -1230,6 +1218,7 @@ func TestGetClaimsPaged(t *testing.T) {
 		page           uint32
 		networkIDs     []uint32
 		fromAddress    string
+		globalIndex    *big.Int
 		expectedCount  int
 		expectedClaims []*Claim
 		expectedError  string
@@ -1304,16 +1293,24 @@ func TestGetClaimsPaged(t *testing.T) {
 			expectedClaims: []*Claim{},
 			expectedError:  "",
 		},
+		{
+			name:           "filter by global index",
+			pageSize:       3,
+			page:           1,
+			globalIndex:    big.NewInt(5),
+			expectedCount:  1,
+			expectedClaims: []*Claim{claims[4]},
+			expectedError:  "",
+		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, tc.networkIDs, tc.fromAddress)
+			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize,
+				tc.networkIDs, tc.fromAddress, tc.globalIndex)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -2222,12 +2219,12 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
 
 		// Test invalid page number (page 10 with only 1 record and page size 5)
-		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, "")
+		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, "", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid page number")
 
 		// Test successful case with valid page
-		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, "")
+		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, "", nil)
 		require.NoError(t, err)
 		require.Len(t, claims, 1)
 		require.Equal(t, 1, count)
