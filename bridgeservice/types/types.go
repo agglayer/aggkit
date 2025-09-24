@@ -324,8 +324,9 @@ type L1InfoTreeLeafResponse struct {
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks
 // @Description Bridge sync status comparing on-chain deposit counts with local database counts
-// @example {"l1_info":{"contract_deposit_count":100,"synchronized_deposit_count":100,"is_synced":true,"is_active":true}, //nolint:lll
-// "l2_info":{"contract_deposit_count":200,"synchronized_deposit_count":200,"is_synced":true,"is_active":true}}
+// @example {"l1_info":{"contract_deposit_count":100,"synchronized_deposit_count":100,
+// "is_synced":true,"is_active":true},"l2_info":{"contract_deposit_count":200,
+// "synchronized_deposit_count":200,"is_synced":true,"is_active":true}}
 type SyncStatus struct {
 	L1Info *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
 	L2Info *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
