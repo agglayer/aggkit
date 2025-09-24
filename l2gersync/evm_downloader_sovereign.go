@@ -134,22 +134,21 @@ func (d *downloaderSovereign) buildAppender(
 			return fmt.Errorf("error parsing UpdateHashChainValue event log %+v: %w", l, err)
 		}
 
-		// Check if L1InfoTreeSync is up to date before trying to get GER info
-		ctx := context.Background()
-		isUpToDate, err := d.isL1InfoTreeSyncUpToDate(ctx)
-		if err != nil {
-			log.Warnf("Failed to check if L1InfoTreeSync is up to date: %v", err)
-		}
-
 		// L1InfoTreeSync is up to date, proceed with GER lookup
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
+			ctx := context.Background()
+			isUpToDate, err := d.isL1InfoTreeSyncUpToDate(ctx)
+			if err != nil {
+				log.Warnf("Failed to check if L1InfoTreeSync is up to date: %v", err)
+			}
 			if isUpToDate {
-				log.Fatal("L1InfoTreeSync is to date, GER lookup for %s failed: %v", insertGEREvent.NewGlobalExitRoot, err)
+				log.Fatal("L1InfoTreeSync is to date, GER lookup for %s failed: %v",
+					common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 			}
 
 			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
-				insertGEREvent.NewGlobalExitRoot, err)
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 		}
 
 		b.Events = []any{
