@@ -99,7 +99,7 @@ type BridgeResponse struct {
 	// Position of the bridge event within the block
 	BlockPos uint64 `json:"block_pos" example:"1"`
 
-	// Address that initiated the bridge transaction
+	// Address that initiated the txn on bridge contract. It can be intermediary contract or EOA
 	FromAddress Address `json:"from_address" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 
 	// Hash of the transaction that included the bridge event

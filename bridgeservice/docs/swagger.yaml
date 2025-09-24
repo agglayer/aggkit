@@ -59,7 +59,8 @@ definitions:
         example: 42161
         type: integer
       from_address:
-        description: Address that initiated the bridge transaction
+        description: Address that initiated the txn on bridge contract. It can be
+          intermediary contract or EOA
         example: 0xabc1234567890abcdef1234567890abcdef1234
         type: string
       leaf_type:
