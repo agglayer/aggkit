@@ -450,3 +450,22 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 
 	return uint32(depositCount.Int64()), nil
 }
+
+// GetLatestNetworkBlock returns the latest block number from the network
+func (s *BridgeSync) GetLatestNetworkBlock(ctx context.Context) (uint64, error) {
+	if s.processor.isHalted() {
+		return 0, sync.ErrInconsistentState
+	}
+
+	blockNumber, err := s.ethClient.BlockNumber(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get latest block number: %w", err)
+	}
+
+	return blockNumber, nil
+}
+
+// IsActive returns true if the syncer is active (not halted)
+func (s *BridgeSync) IsActive(ctx context.Context) bool {
+	return !s.processor.isHalted()
+}
