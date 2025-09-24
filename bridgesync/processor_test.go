@@ -1302,6 +1302,16 @@ func TestGetClaimsPaged(t *testing.T) {
 			expectedClaims: []*Claim{claims[4]},
 			expectedError:  "",
 		},
+		{
+			name:           "filter by network ids and global index",
+			pageSize:       3,
+			page:           1,
+			networkIDs:     []uint32{2, 3, 4},
+			globalIndex:    uint64Max,
+			expectedCount:  1,
+			expectedClaims: []*Claim{claims[2]},
+			expectedError:  "",
+		},
 	}
 
 	for _, tc := range testCases {

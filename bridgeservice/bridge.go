@@ -321,8 +321,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	switch networkID {
 	case bridgesync.MainnetNetworkID:
-		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize,
-			depositCountPtr, networkIDs, fromAddress)
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L1 network: %v", err)
 			c.JSON(http.StatusInternalServerError,
@@ -330,8 +329,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 			return
 		}
 	case b.networkID:
-		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize,
-			depositCountPtr, networkIDs, fromAddress)
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L2 network (ID=%d): %v", networkID, err)
 			c.JSON(http.StatusInternalServerError,
@@ -375,8 +373,10 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
-	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, include_all_fields=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(includeAllFields))
+	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, "+
+		"include_all_fields=%s, global_index=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam),
+		c.Query(includeAllFields), c.Query(globalIndexParam))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
