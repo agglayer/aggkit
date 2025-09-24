@@ -2403,7 +2403,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 			// Check L1 info
 			require.NotNil(t, response.L1Info)
-			require.Equal(t, tc.l1BridgeCount, response.L1Info.BridgeDepositCount)
+			require.Equal(t, tc.l1BridgeCount, response.L1Info.SynchronizedDepositCount)
 			require.Equal(t, tc.l1ContractCount, response.L1Info.ContractDepositCount)
 			require.Equal(t, tc.l1IsSynced, response.L1Info.IsSynced)
 			require.True(t, response.L1Info.IsActive) // L1 syncer is always active in tests
@@ -2414,7 +2414,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 			// Check L2 info
 			require.NotNil(t, response.L2Info)
-			require.Equal(t, tc.l2BridgeCount, response.L2Info.BridgeDepositCount)
+			require.Equal(t, tc.l2BridgeCount, response.L2Info.SynchronizedDepositCount)
 			require.Equal(t, tc.l2ContractCount, response.L2Info.ContractDepositCount)
 			require.Equal(t, tc.l2IsSynced, response.L2Info.IsSynced)
 			require.True(t, response.L2Info.IsActive) // L2 syncer is always active in tests
@@ -2618,7 +2618,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				case "L1 syncer inactive - only isActive field populated":
 					require.NotNil(t, response.L1Info)
 					require.False(t, response.L1Info.IsActive)
-					require.Equal(t, uint32(0), response.L1Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L1Info.SynchronizedDepositCount)
 					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
 					require.False(t, response.L1Info.IsSynced)
 					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
@@ -2626,19 +2626,19 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 					require.NotNil(t, response.L2Info)
 					require.True(t, response.L2Info.IsActive)
-					require.Equal(t, uint32(200), response.L2Info.BridgeDepositCount)
+					require.Equal(t, uint32(200), response.L2Info.SynchronizedDepositCount)
 					require.Equal(t, uint32(200), response.L2Info.ContractDepositCount)
 					require.True(t, response.L2Info.IsSynced)
 				case "L2 syncer inactive - only isActive field populated":
 					require.NotNil(t, response.L1Info)
 					require.True(t, response.L1Info.IsActive)
-					require.Equal(t, uint32(100), response.L1Info.BridgeDepositCount)
+					require.Equal(t, uint32(100), response.L1Info.SynchronizedDepositCount)
 					require.Equal(t, uint32(100), response.L1Info.ContractDepositCount)
 					require.True(t, response.L1Info.IsSynced)
 
 					require.NotNil(t, response.L2Info)
 					require.False(t, response.L2Info.IsActive)
-					require.Equal(t, uint32(0), response.L2Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L2Info.SynchronizedDepositCount)
 					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
 					require.False(t, response.L2Info.IsSynced)
 					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
@@ -2646,7 +2646,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				case "Both syncers inactive - only isActive fields populated":
 					require.NotNil(t, response.L1Info)
 					require.False(t, response.L1Info.IsActive)
-					require.Equal(t, uint32(0), response.L1Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L1Info.SynchronizedDepositCount)
 					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
 					require.False(t, response.L1Info.IsSynced)
 					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
@@ -2654,7 +2654,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 					require.NotNil(t, response.L2Info)
 					require.False(t, response.L2Info.IsActive)
-					require.Equal(t, uint32(0), response.L2Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L2Info.SynchronizedDepositCount)
 					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
 					require.False(t, response.L2Info.IsSynced)
 					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
@@ -2756,7 +2756,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 			require.True(t, result)
 			require.Equal(t, http.StatusOK, w.Code)
 			require.Equal(t, tc.contractCount, networkInfo.ContractDepositCount)
-			require.Equal(t, tc.bridgeCount, networkInfo.BridgeDepositCount)
+			require.Equal(t, tc.bridgeCount, networkInfo.SynchronizedDepositCount)
 			require.Equal(t, tc.expectedIsSynced, networkInfo.IsSynced)
 
 			if tc.shouldHaveBlocks {

@@ -324,8 +324,8 @@ type L1InfoTreeLeafResponse struct {
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks
 // @Description Bridge sync status comparing on-chain deposit counts with local database counts
-// @example {"l1_info":{"contract_deposit_count":100,"bridge_deposit_count":100,"is_synced":true,"is_active":true},
-// "l2_info":{"contract_deposit_count":200,"bridge_deposit_count":200,"is_synced":true,"is_active":true}}
+// @example {"l1_info":{"contract_deposit_count":100,"synchronized_deposit_count":100,"is_synced":true,"is_active":true},
+// "l2_info":{"contract_deposit_count":200,"synchronized_deposit_count":200,"is_synced":true,"is_active":true}}
 type SyncStatus struct {
 	L1Info *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
 	L2Info *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
@@ -333,15 +333,15 @@ type SyncStatus struct {
 
 // NetworkSyncInfo represents the bridge synchronization status of a single network (L1 or L2)
 // @Description Network-specific bridge sync status with deposit counts and block information
-// @example {"contract_deposit_count":100,"bridge_deposit_count":100,"is_synced":true,"is_active":true,
+// @example {"contract_deposit_count":100,"synchronized_deposit_count":100,"is_synced":true,"is_active":true,
 // "last_processed_block":1234,"network_block":2555}
 type NetworkSyncInfo struct {
-	ContractDepositCount uint32 `json:"contract_deposit_count" example:"676797" description:"Bridge deposits in contract"`
-	BridgeDepositCount   uint32 `json:"bridge_deposit_count" example:"676797" description:"Bridge deposits in database"`
-	IsSynced             bool   `json:"is_synced" example:"true" description:"True if counts match (sync up-to-date)"`
-	IsActive             bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
-	LastProcessedBlock   uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"` //nolint:lll
-	NetworkBlock         uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block"`
+	ContractDepositCount     uint32 `json:"contract_deposit_count" example:"676797" description:"Bridge deposits in contract"`
+	SynchronizedDepositCount uint32 `json:"synchronized_deposit_count" example:"676797" description:"Bridge deposits in database"`
+	IsSynced                 bool   `json:"is_synced" example:"true" description:"True if counts match (sync up-to-date)"`
+	IsActive                 bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
+	LastProcessedBlock       uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"` //nolint:lll
+	NetworkBlock             uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block"`
 }
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.

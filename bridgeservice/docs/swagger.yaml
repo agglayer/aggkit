@@ -317,9 +317,6 @@ definitions:
     description: Network-specific bridge sync status with deposit counts and block
       information
     properties:
-      bridge_deposit_count:
-        example: 676797
-        type: integer
       contract_deposit_count:
         example: 676797
         type: integer
@@ -334,6 +331,9 @@ definitions:
         type: integer
       network_block:
         example: 12350000
+        type: integer
+      synchronized_deposit_count:
+        example: 676797
         type: integer
     type: object
   types.SyncStatus:

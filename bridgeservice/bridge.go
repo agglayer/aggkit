@@ -974,9 +974,9 @@ func (b *BridgeService) populateNetworkSyncInfo(
 		return false
 	}
 
-	networkInfo.BridgeDepositCount = uint32(bridgesCount)
+	networkInfo.SynchronizedDepositCount = uint32(bridgesCount)
 	networkInfo.ContractDepositCount = contractDepositCount
-	networkInfo.IsSynced = networkInfo.ContractDepositCount == networkInfo.BridgeDepositCount
+	networkInfo.IsSynced = networkInfo.ContractDepositCount == networkInfo.SynchronizedDepositCount
 
 	if !networkInfo.IsSynced {
 		lastProcessedBlock, err := bridge.GetLastProcessedBlock(ctx)

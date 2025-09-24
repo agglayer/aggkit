@@ -946,10 +946,6 @@ const docTemplate = `{
             "description": "Network-specific bridge sync status with deposit counts and block information",
             "type": "object",
             "properties": {
-                "bridge_deposit_count": {
-                    "type": "integer",
-                    "example": 676797
-                },
                 "contract_deposit_count": {
                     "type": "integer",
                     "example": 676797
@@ -969,6 +965,10 @@ const docTemplate = `{
                 "network_block": {
                     "type": "integer",
                     "example": 12350000
+                },
+                "synchronized_deposit_count": {
+                    "type": "integer",
+                    "example": 676797
                 }
             }
         },
