@@ -428,44 +428,6 @@ func extractRootCall(client aggkittypes.RPCClienter, txHash common.Hash) (*call,
 	return rootCall, nil
 }
 
-// setClaimCalldata traces the transaction to find and decode calldata for the given bridge address.
-//
-// Parameters:
-// - client: RPC client to fetch the transaction trace.
-// - bridge: Target contract address.
-// - txHash: Transaction hash to trace.
-// - logger: Logger instance for debug logging.
-//
-// Returns an error if tracing fails or calldata isn't found.
-func (c *Claim) setClaimCalldata(
-	client aggkittypes.RPCClienter,
-	bridge common.Address,
-	txHash common.Hash,
-	logger *logger.Logger,
-) error {
-	callFrame := &call{}
-	err := client.Call(callFrame, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
-	if err != nil {
-		return err
-	}
-
-	// Check if the root call was successful
-	if callFrame.Err != nil {
-		return fmt.Errorf("execution reverted in root call (block %d, tx %s): %s", c.BlockNum, txHash.Hex(), *callFrame.Err)
-	}
-
-	_, err = findCall(*callFrame, bridge,
-		func(call call) (bool, error) {
-			// Skip reverted calls
-			if call.Err != nil {
-				return false, nil
-			}
-			return c.tryDecodeClaimCalldata(call.From, call.Input, logger)
-		}, logger)
-
-	return err
-}
-
 // setClaimCalldataFromRoot finds and decodes calldata for the given bridge address using an already traced root call.
 //
 // Parameters:

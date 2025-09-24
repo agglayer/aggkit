@@ -60,6 +60,7 @@ func TestClaimCalldata(t *testing.T) {
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
 		FromAddress:         auth.From,
+		TxSender:            auth.From,
 	}
 	expectedClaim2 := Claim{
 		OriginNetwork:       87,
@@ -74,6 +75,7 @@ func TestClaimCalldata(t *testing.T) {
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
 		FromAddress:         auth.From,
+		TxSender:            auth.From,
 	}
 	expectedClaim3 := Claim{
 		OriginNetwork:       69,
@@ -88,6 +90,7 @@ func TestClaimCalldata(t *testing.T) {
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
 		FromAddress:         auth.From,
+		TxSender:            auth.From,
 	}
 	auth.GasLimit = 999999 // for some reason gas estimation fails :(
 
@@ -1114,10 +1117,17 @@ func TestClaimCalldata(t *testing.T) {
 				Amount:             claimEvent.Amount,
 			}
 			logger := log.WithFields("module", "test")
-			err = actualClaim.setClaimCalldata(client, bridgeAddr, tc.log.TxHash, logger)
+
+			// Extract root call first
+			rootCall, err := extractRootCall(client, tc.log.TxHash)
+			require.NoError(t, err)
+
+			// Use setClaimCalldataFromRoot instead of setClaimCalldata
+			err = actualClaim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 			require.Equal(t, tc.expectedClaim.FromAddress, actualClaim.FromAddress)
+			require.Equal(t, tc.expectedClaim.TxSender, actualClaim.TxSender)
 		})
 	}
 }
