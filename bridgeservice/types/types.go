@@ -137,6 +137,9 @@ type BridgeResponse struct {
 
 	// Unique hash representing the bridge event, often used as an identifier
 	BridgeHash Hash `json:"bridge_hash" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"`
+
+	// Address of the transaction sender who initiated the bridge transaction
+	TxSender Address `json:"tx_sender" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 }
 
 // ClaimsResult contains the list of claim records and the total count
@@ -199,6 +202,9 @@ type ClaimResponse struct {
 
 	// Metadata associated with the claim
 	Metadata string `json:"metadata" example:"0xdeadbeef"`
+
+	// Address of the transaction sender who initiated the claim transaction
+	TxSender Address `json:"tx_sender" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings

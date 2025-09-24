@@ -109,6 +109,7 @@ func NewBridgeResponse(bridge *bridgesync.Bridge) *bridgetypes.BridgeResponse {
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Metadata)),
 		DepositCount:       bridge.DepositCount,
 		BridgeHash:         bridgetypes.Hash(bridge.Hash().Hex()),
+		TxSender:           bridgetypes.Address(bridge.TxSender.Hex()),
 	}
 }
 
@@ -129,6 +130,7 @@ func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes
 		RollupExitRoot:     bridgetypes.Hash(claim.RollupExitRoot.Hex()),
 		GlobalExitRoot:     bridgetypes.Hash(claim.GlobalExitRoot.Hex()),
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(claim.Metadata)),
+		TxSender:           bridgetypes.Address(claim.TxSender.Hex()),
 	}
 
 	// Only populate proof fields if requested

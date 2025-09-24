@@ -72,6 +72,7 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
+	TxSender           common.Address `meddler:"tx_sender,address"`
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
@@ -123,6 +124,7 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	TxSender            common.Address `meddler:"tx_sender,address"`
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
