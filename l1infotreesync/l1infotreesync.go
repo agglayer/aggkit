@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -52,24 +51,16 @@ func NewReadOnly(
 	}, nil
 }
 
-// New creates a L1 Info tree syncer that syncs the L1 info tree
-// and the rollup exit tree
+// New creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
 func New(
 	ctx context.Context,
-	dbPath string,
-	globalExitRoot, rollupManager common.Address,
-	syncBlockChunkSize uint64,
+	cfg Config,
 	blockFinalityType aggkittypes.BlockNumberFinality,
 	l1Client aggkittypes.BaseEthereumClienter,
-	waitForNewBlocksPeriod time.Duration,
-	initialBlock uint64,
-	retryAfterErrorPeriod time.Duration,
-	maxRetryAttemptsAfterError int,
 	flags CreationFlags,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
-	requireStorageContentCompatibility bool,
 ) (*L1InfoTreeSync, error) {
-	processor, err := newProcessor(dbPath)
+	processor, err := newProcessor(cfg.DBPath)
 	if err != nil {
 		return nil, err
 	}
@@ -78,14 +69,16 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	if initialBlock > 0 && lastProcessedBlock < initialBlock-1 {
-		block, err := l1Client.BlockByNumber(ctx, new(big.Int).SetUint64(initialBlock-1))
+
+	parentBlockNumber := cfg.InitialBlock - 1
+	if cfg.InitialBlock > 0 && lastProcessedBlock < parentBlockNumber {
+		block, err := l1Client.BlockByNumber(ctx, new(big.Int).SetUint64(parentBlockNumber))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get initial block %d: %w", initialBlock-1, err)
+			return nil, fmt.Errorf("failed to get initial block %d: %w", parentBlockNumber, err)
 		}
 
 		err = processor.ProcessBlock(ctx, sync.Block{
-			Num:  initialBlock - 1,
+			Num:  parentBlockNumber,
 			Hash: block.Hash(),
 		})
 		if err != nil {
@@ -93,22 +86,22 @@ func New(
 		}
 	}
 	rh := &sync.RetryHandler{
-		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
-		MaxRetryAttemptsAfterError: maxRetryAttemptsAfterError,
+		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
+		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
 	}
 
-	appender, err := buildAppender(l1Client, globalExitRoot, rollupManager, flags)
+	appender, err := buildAppender(l1Client, cfg.GlobalExitRootAddr, cfg.RollupManagerAddr, flags)
 	if err != nil {
 		return nil, err
 	}
 	downloader, err := sync.NewEVMDownloader(
 		"l1infotreesync",
 		l1Client,
-		syncBlockChunkSize,
+		cfg.SyncBlockChunkSize,
 		blockFinalityType,
-		waitForNewBlocksPeriod,
+		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
-		[]common.Address{globalExitRoot, rollupManager},
+		[]common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr},
 		rh,
 		finalizedBlockType,
 	)
@@ -116,7 +109,7 @@ func New(
 		return nil, err
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
-		requireStorageContentCompatibility,
+		cfg.RequireStorageContentCompatibility,
 		downloader.RuntimeData,
 		processor)
 
