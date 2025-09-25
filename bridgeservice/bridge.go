@@ -320,6 +320,11 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	switch networkID {
 	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
 		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L1 network: %v", err)
@@ -328,6 +333,11 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 			return
 		}
 	case b.networkID:
+		if b.bridgeL2 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
 		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L2 network (ID=%d): %v", networkID, err)
@@ -417,6 +427,11 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	switch networkID {
 	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
 		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
@@ -425,6 +440,11 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 	case b.networkID:
+		if b.bridgeL2 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
 		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
@@ -492,8 +512,18 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	switch networkID {
 	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
 		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	case b.networkID:
+		if b.bridgeL2 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
 		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
@@ -554,8 +584,18 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 	switch networkID {
 	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	case b.networkID:
+		if b.bridgeL2 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
@@ -782,6 +822,11 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	var proofLocalExitRoot tree.Proof
 	switch networkID {
 	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
 		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
 		if err != nil {
 			b.logger.Errorf("failed to get local exit proof for L1: %v", err)
@@ -796,6 +841,11 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 			b.logger.Errorf("failed to get local exit root from rollup exit tree: %v", err)
 			c.JSON(http.StatusInternalServerError,
 				gin.H{"error": fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err)})
+			return
+		}
+		if b.bridgeL2 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
 		proofLocalExitRoot, err = b.bridgeL2.GetProof(ctx, depositCount, localExitRoot)
@@ -866,6 +916,11 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 
 	switch networkID {
 	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
 		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
 		if err != nil {
 			b.logger.Errorf("failed to get last reorg event for L1 network: %v", err)
@@ -874,6 +929,11 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 			return
 		}
 	case b.networkID:
+		if b.bridgeL2 == nil {
+			c.JSON(http.StatusServiceUnavailable,
+				gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
 		reorgEvent, err = b.bridgeL2.GetLastReorgEvent(ctx)
 		if err != nil {
 			b.logger.Errorf("failed to get last reorg event for L2 network (ID=%d): %v", networkID, err)
@@ -891,14 +951,60 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, reorgEvent)
 }
 
-// GetSyncStatusHandler returns the sync status of the bridge service.
+// populateNetworkSyncInfo populates sync information for a network if it's active
+func (b *BridgeService) populateNetworkSyncInfo(
+	ctx context.Context,
+	c *gin.Context,
+	bridge Bridger,
+	networkInfo *types.NetworkSyncInfo,
+	networkName string,
+) bool {
+	contractDepositCount, err := bridge.GetContractDepositCount(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get deposit count from %s bridge contract: %s", networkName, err)})
+		return false
+	}
+
+	// Get the last bridge from database
+	_, bridgesCount, err := bridge.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get bridges from %s database: %s", networkName, err)})
+		return false
+	}
+
+	networkInfo.SynchronizedDepositCount = uint32(bridgesCount)
+	networkInfo.ContractDepositCount = contractDepositCount
+	networkInfo.IsSynced = networkInfo.ContractDepositCount == networkInfo.SynchronizedDepositCount
+
+	if !networkInfo.IsSynced {
+		lastProcessedBlock, err := bridge.GetLastProcessedBlock(ctx)
+		if err != nil {
+			b.logger.Warnf("failed to get last processed block for %s: %s", networkName, err)
+		} else {
+			networkInfo.LastProcessedBlock = lastProcessedBlock
+		}
+
+		networkBlock, err := bridge.GetLatestNetworkBlock(ctx)
+		if err != nil {
+			b.logger.Warnf("failed to get latest network block for %s: %s", networkName, err)
+		} else {
+			networkInfo.NetworkBlock = networkBlock
+		}
+	}
+
+	return true
+}
+
+// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks.
 //
-// @Summary Get bridge sync status
-// @Description Returns the sync status by comparing the deposit count
-// @Description from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+// @Summary Get bridge synchronization status
+// @Description Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
+// @Description Shows if bridge syncers are active and whether they're keeping up with on-chain events.
 // @Tags sync
 // @Produce json
-// @Success 200 {object} types.SyncStatus "Bridge sync status for both L1 and L2 networks"
+// @Success 200 {object} types.SyncStatus "Bridge synchronization status for L1 and L2 networks"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /sync-status [get]
 func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
@@ -914,53 +1020,53 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	cnt.Add(ctx, 1)
 
 	var syncStatus types.SyncStatus
-	syncStatus.L1Info = &types.NetworkSyncInfo{}
-	syncStatus.L2Info = &types.NetworkSyncInfo{}
 
 	// Check L1 sync status
-	l1ContractDepositCount, err := b.bridgeL1.GetContractDepositCount(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get deposit count from L1 bridge contract: %s", err)})
-		return
-	}
+	var l1IsActive bool
+	if b.bridgeL1 != nil {
+		l1IsActive = b.bridgeL1.IsActive(ctx)
+		syncStatus.L1Info = &types.NetworkSyncInfo{
+			IsActive: l1IsActive,
+		}
 
-	// Get the last bridge from L1 database
-	_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get bridges from L1 database: %s", err)})
-		return
+		if l1IsActive {
+			if !b.populateNetworkSyncInfo(ctx, c, b.bridgeL1, syncStatus.L1Info, "L1") {
+				return
+			}
+		}
+	} else {
+		syncStatus.L1Info = &types.NetworkSyncInfo{
+			IsActive: false,
+		}
 	}
-
-	syncStatus.L1Info.BridgeDepositCount = uint32(bridgesCount)
-	syncStatus.L1Info.ContractDepositCount = l1ContractDepositCount
-	syncStatus.L1Info.IsSynced = syncStatus.L1Info.ContractDepositCount == syncStatus.L1Info.BridgeDepositCount
 
 	// Check L2 sync status
-	l2ContractDepositCount, err := b.bridgeL2.GetContractDepositCount(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get deposit count from L2 bridge contract: %s", err)})
-		return
-	}
+	var l2IsActive bool
+	if b.bridgeL2 != nil {
+		l2IsActive = b.bridgeL2.IsActive(ctx)
+		syncStatus.L2Info = &types.NetworkSyncInfo{
+			IsActive: l2IsActive,
+		}
 
-	// Get the last bridge from L2 database
-	_, bridgesCount, err = b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get bridges from L2 database: %s", err)})
-		return
+		if l2IsActive {
+			if !b.populateNetworkSyncInfo(ctx, c, b.bridgeL2, syncStatus.L2Info, "L2") {
+				return
+			}
+		}
+	} else {
+		syncStatus.L2Info = &types.NetworkSyncInfo{
+			IsActive: false,
+		}
 	}
-
-	syncStatus.L2Info.BridgeDepositCount = uint32(bridgesCount)
-	syncStatus.L2Info.ContractDepositCount = l2ContractDepositCount
-	syncStatus.L2Info.IsSynced = syncStatus.L2Info.ContractDepositCount == syncStatus.L2Info.BridgeDepositCount
 
 	c.JSON(http.StatusOK, syncStatus)
 }
 
 func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
+	if b.bridgeL1 == nil {
+		return 0, fmt.Errorf("L1 bridge syncer is not available")
+	}
+
 	lastInfo, err := b.l1InfoTree.GetLastInfo()
 	if err != nil {
 		return 0, err
@@ -1022,6 +1128,10 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 }
 
 func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
+	if b.bridgeL2 == nil {
+		return 0, fmt.Errorf("L2 bridge syncer is not available")
+	}
+
 	// NOTE: this code assumes that all the rollup exit roots
 	// (produced by the smart contract call verifyBatches / verifyBatchesTrustedAggregator)
 	// are included in the L1 info tree. As per the current implementation (smart contracts) of the protocol

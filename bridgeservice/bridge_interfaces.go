@@ -24,6 +24,9 @@ type Bridger interface {
 		networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
+	IsActive(ctx context.Context) bool
 }
 
 type L2GERSyncer interface {
