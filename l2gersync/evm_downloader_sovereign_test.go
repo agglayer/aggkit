@@ -120,7 +120,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	mockL1InfoTreeSync.AssertExpectations(t)
 }
 
-func TestIsL1InfoTreeSyncUpToDate(t *testing.T) {
+func TestIsL1InfoTreeQuerierUpToDate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -182,7 +182,7 @@ func TestIsL1InfoTreeSyncUpToDate(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := context.Background()
-			result, err := downloader.isL1InfoTreeSyncUpToDate(ctx)
+			result, err := downloader.l1InfoTreeSync.IsUpToDate(ctx, mockL1Client)
 
 			if tt.expectedError {
 				require.Error(t, err)
