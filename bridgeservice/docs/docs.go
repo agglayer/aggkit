@@ -609,7 +609,7 @@ const docTemplate = `{
                     "example": 42161
                 },
                 "from_address": {
-                    "description": "Address that initiated the txn on bridge contract. It can be intermediary contract or EOA",
+                    "description": "Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA",
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 },
