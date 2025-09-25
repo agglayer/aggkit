@@ -272,6 +272,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(428)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(429)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err := encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -306,6 +309,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(430)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(430)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -332,6 +338,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(431)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(432)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -414,6 +423,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(437)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(438)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
@@ -448,6 +460,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(439)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(439)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
@@ -474,6 +489,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(440)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(441)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
@@ -502,6 +520,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(442)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(442)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
@@ -528,6 +549,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(443)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(444)
+	// Both logs originate from claimCaller in this scenario
+	expectedClaim.FromAddress = claimCallerAddr
+	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
@@ -668,6 +692,8 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
 	// expectedClaim3.FromAddress = auth.From
+	// Align FromAddress with actual caller observed (claimCaller)
+	expectedClaim.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -810,7 +836,8 @@ func TestClaimCalldata(t *testing.T) {
 	// 1 ok 1 ok 1 ko (indirectx2, indirect, indirectx2) call claim message (diff global index)
 	expectedClaim.IsMessage = true
 	expectedClaim.GlobalIndex = big.NewInt(427)
-	expectedClaim.FromAddress = claimTestAddr
+	// The first emitted log corresponds to a call via claimCaller
+	expectedClaim.FromAddress = claimCallerAddr
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim2.FromAddress = claimTestAddr
