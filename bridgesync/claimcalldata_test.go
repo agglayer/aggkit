@@ -1119,7 +1119,7 @@ func TestClaimCalldata(t *testing.T) {
 			logger := log.WithFields("module", "test")
 
 			// Extract root call first
-			rootCall, err := extractRootCall(client, tc.log.TxHash)
+			rootCall, err := extractRootCall(client, bridgeAddr, tc.log.TxHash)
 			require.NoError(t, err)
 
 			// Set TxSender from root call (same as in production code)

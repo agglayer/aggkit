@@ -109,7 +109,7 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 		}
 
 		// Extract root call first to get both TxSender and calldata
-		rootCall, err := extractRootCall(client, l.TxHash)
+		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event root call (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -164,7 +164,7 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		}
 
 		// Extract TxSender from the root call
-		rootCall, err := extractRootCall(client, l.TxHash)
+		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -204,7 +204,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		}
 
 		// Extract TxSender from the root call
-		rootCall, err := extractRootCall(client, l.TxHash)
+		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -234,7 +234,7 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 		}
 
 		// Extract root call first to get calldata
-		rootCall, err := extractRootCall(client, l.TxHash)
+		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the NewWrappedToken event root call (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -274,7 +274,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 		}
 
 		// Extract root call first to get calldata
-		rootCall, err := extractRootCall(client, l.TxHash)
+		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event root call (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -312,7 +312,7 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 		}
 
 		// Extract root call first to get calldata
-		rootCall, err := extractRootCall(client, l.TxHash)
+		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the MigrateLegacyToken event root call (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -419,8 +419,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 }
 
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
-func extractRootCall(client aggkittypes.RPCClienter, txHash common.Hash) (*call, error) {
-	rootCall := &call{}
+func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
+	rootCall := &call{To: contractAddr}
 	err := client.Call(rootCall, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
