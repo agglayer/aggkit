@@ -419,9 +419,18 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	}
 
 	globalIndexRaw := c.Query(globalIndexParam)
-	var globalIndex *big.Int
+	var (
+		globalIndex *big.Int
+		ok          bool
+	)
 	if globalIndexRaw != "" {
-		globalIndex, _ = new(big.Int).SetString(globalIndexRaw, 0)
+		globalIndex, ok = new(big.Int).SetString(globalIndexRaw, 0)
+		if !ok {
+			b.logger.Warnf("invalid %s parameter", globalIndexParam)
+			c.JSON(http.StatusBadRequest,
+				gin.H{"error": fmt.Sprintf("invalid %s parameter, it should be a numeric", globalIndexParam)})
+			return
+		}
 	}
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_claims")
