@@ -168,12 +168,5 @@ func (d *downloaderSovereign) buildAppender(
 
 // isL1InfoTreeSyncUpToDate checks if L1InfoTreeSync is up to date with L1 blocks
 func (d *downloaderSovereign) isL1InfoTreeSyncUpToDate(ctx context.Context) (bool, error) {
-	// We need to cast to the concrete type to access IsUpToDate method
-	if l1InfoTreeSync, ok := d.l1InfoTreeSync.(interface {
-		IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
-	}); ok {
-		return l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
-	}
-
-	return false, nil
+	return d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
 }
