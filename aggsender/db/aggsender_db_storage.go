@@ -22,11 +22,16 @@ import (
 	"github.com/russross/meddler"
 )
 
+type tableName = string
+
 const (
 	errWhileRollbackFormat  = "error while rolling back tx: %w"
 	nonAcceptedCertKey      = "non_accepted_cert"
 	nonAcceptedCertFilename = "last_rejected_cert.json"
 	prefixFilename          = "@"
+
+	tableCertificate        tableName = "certificate_info"
+	tableCertificateHistory tableName = "certificate_info_history"
 )
 
 var newTxer = db.NewTx
@@ -46,16 +51,25 @@ func (r RuntimeData) IsCompatible(storage RuntimeData) error {
 	return nil
 }
 
+type AggSendeStorageMaintenancer interface {
+	// Move to certificate_info_history the certificate identified by CertificateKey
+	MoveCertificateToHistory(tx dbtypes.Querier, height uint64) error
+	// Delete from certificate_info and certificate_info_history the certificate CertificateKey
+	DeleteCertificate(tx dbtypes.Querier, height uint64) error
+	// Delete from certificate_info and certificate_info_history all certificates older than olderThanHeight
+	DeleteOldCertificates(tx dbtypes.Querier, olderThanHeight uint64) error
+}
+
 // AggSenderStorage is the interface that defines the methods to interact with the storage
 type AggSenderStorage interface {
+	AggSendeStorageMaintenancer
+
 	// GetCertificateByHeight returns a certificate by its height
 	GetCertificateByHeight(height uint64) (*types.Certificate, error)
 	// GetLastSentCertificate returns the last certificate sent to the aggLayer
 	GetLastSentCertificate() (*types.Certificate, error)
 	// SaveLastSentCertificate saves the last certificate sent to the aggLayer
 	SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error
-	// DeleteCertificate deletes a certificate from the storage
-	DeleteCertificate(ctx context.Context, certificateID common.Hash) error
 	// GetCertificateHeadersByStatus returns a list of certificate headers by their status
 	GetCertificateHeadersByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error)
 	// UpdateCertificateStatus updates certificate status in db
@@ -94,9 +108,10 @@ type AggSenderSQLStorageConfig struct {
 // AggSenderSQLStorage is the struct that implements the AggSenderStorage interface
 type AggSenderSQLStorage struct {
 	dbtypes.KeyValueStorager
-	logger aggkitcommon.Logger
-	db     *sql.DB
-	cfg    AggSenderSQLStorageConfig
+	logger       aggkitcommon.Logger
+	db           *sql.DB
+	cfg          AggSenderSQLStorageConfig
+	retainPolicy StorageRetainCertificatesPolicier
 }
 
 // NewAggSenderSQLStorage creates a new AggSenderSQLStorage
@@ -179,8 +194,29 @@ func getCertificateByHeight(db dbtypes.Querier,
 		"SELECT * FROM certificate_info WHERE height = $1;", height); err != nil {
 		return nil, getSelectQueryError(height, err)
 	}
-
 	return &certificateInfo, nil
+}
+
+// getCertificatesByHeight returns a certificates in the required table
+func getCertificatesByHeight(db dbtypes.Querier, table tableName,
+	height uint64) ([]*certificateInfo, error) {
+	var certificates []*certificateInfo
+	if err := meddler.QueryAll(db, &certificates,
+		fmt.Sprintf("SELECT * FROM %s WHERE height = $1;", table), height); err != nil {
+		return nil, err
+	}
+	return certificates, nil
+}
+
+// getCertificatesHeightOlderThanHeight returns a list of certificate heights older than the provided height
+func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
+	olderThanHeight uint64) ([]uint64, error) {
+	var heights []uint64
+	if err := meddler.QueryAll(db, &heights,
+		"SELECT DISTINCT height FROM %s WHERE height < $1;", table, olderThanHeight); err != nil {
+		return nil, err
+	}
+	return heights, nil
 }
 
 // GetLastSentCertificate returns the last certificate sent to the aggLayer
@@ -324,18 +360,22 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	if err != nil {
 		return fmt.Errorf("error converting certificate to certificate info: %w", err)
 	}
-
-	certInDB, err := getCertificateByHeight(tx, certInfo.Height)
-	if err != nil && !errors.Is(err, db.ErrNotFound) {
-		return fmt.Errorf("saveLastSentCertificate getCertificateByHeight. Err: %w", err)
-	}
-
-	if certInDB != nil {
-		// we already have a certificate with this height
-		// we need to delete it before inserting the new one
-		if err = a.moveCertificateToHistoryOrDelete(tx, certInDB); err != nil {
-			return fmt.Errorf("saveLastSentCertificate moveCertificateToHistory Err: %w", err)
+	/*
+		certInDB, err := getCertificateByHeight(tx, certInfo.Height)
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			return fmt.Errorf("saveLastSentCertificate getCertificateByHeight. Err: %w", err)
 		}
+
+		if certInDB != nil {
+			// we already have a certificate with this height
+			// we need to delete it before inserting the new one
+			if err = a.moveCertificateToHistoryOrDelete(tx, certInDB); err != nil {
+				return fmt.Errorf("saveLastSentCertificate moveCertificateToHistory Err: %w", err)
+			}
+		}
+	*/
+	if a.retainPolicy != nil {
+		a.retainPolicy.OnNewCert(tx, a, CertificateKey{certInfo.Height, certInfo.RetryCount})
 	}
 
 	if err = meddler.Insert(tx, "certificate_info", certInfo); err != nil {
@@ -353,6 +393,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	return nil
 }
 
+/*
 func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx dbtypes.Querier,
 	certificate *certificateInfo) error {
 	if a.cfg.KeepCertificatesHistory {
@@ -423,6 +464,7 @@ func deleteCertificate(logger aggkitcommon.Logger, tx dbtypes.Querier, certifica
 
 	return nil
 }
+*/
 
 // UpdateCertificateStatus updates a certificate status in the storage
 func (a *AggSenderSQLStorage) UpdateCertificateStatus(
@@ -597,6 +639,62 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 	return &nonAcceptedCert, nil
 }
 
+// Move to certificate_info_history the certificate identified by CertificateKey
+func (a *AggSenderSQLStorage) MoveCertificateToHistory(tx dbtypes.Querier, height uint64) error {
+	a.logger.Debugf("moving certificate to history - height: %d", height)
+	if _, err := tx.Exec(`INSERT INTO certificate_info_history SELECT * FROM certificate_info WHERE height = $1;`,
+		height); err != nil {
+		return fmt.Errorf("error moving certificate height: %d to history: %w", height, err)
+	}
+	return nil
+}
+
+// Delete from certificate_info and certificate_info_history the certificate CertificateKey
+// if you don't need a tx just pass nil
+func (a *AggSenderSQLStorage) DeleteCertificate(tx dbtypes.Querier, height uint64) error {
+	if tx == nil {
+		tx = a.db
+	}
+	if err := a.deleteCertificates(tx, tableCertificate, height); err != nil {
+		return fmt.Errorf("error deleting certificate height %d from cert table: %w", height, err)
+	}
+	if err := a.deleteCertificates(tx, tableCertificateHistory, height); err != nil {
+		return fmt.Errorf("error deleting certificate height %d from cert history table: %w", height, err)
+	}
+	return nil
+}
+
+// deleteCertificateHistory deletes the certificate history for the given height
+func (a *AggSenderSQLStorage) deleteCertificates(tx dbtypes.Querier, table tableName, height uint64) error {
+	certInfos, err := getCertificatesByHeight(tx, tableCertificateHistory, height)
+	if err != nil {
+		return fmt.Errorf("error deleting certificate history height %d when reading it: %w", height, err)
+	}
+	for _, certInfo := range certInfos {
+		a.deleteCertificateFile(certInfo.SignedCertificate)
+	}
+	if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM %s WHERE height = $1;`, table), height); err != nil {
+		return fmt.Errorf("error deleting certificate history height %d: %w", height, err)
+	}
+	return nil
+}
+
+// Delete from certificate_info and certificate_info_history all certificates older than olderThanHeight
+func (a *AggSenderSQLStorage) DeleteOldCertificates(tx dbtypes.Querier, olderThanHeight uint64) error {
+	// We get list of heights from certificate_info table,  we assume that
+	// history table require the same heights into certificate_info table
+	heights, err := getCertificatesHeightOlderThanHeight(tx, tableCertificate, olderThanHeight)
+	if err != nil {
+		return fmt.Errorf("error getting old certificate heights: %w", err)
+	}
+	for _, height := range heights {
+		if err := a.DeleteCertificate(tx, height); err != nil {
+			return fmt.Errorf("error deleting old certificate height %d: %w", height, err)
+		}
+	}
+	return nil
+}
+
 // handleCertificateFile Handle signed certificate file storage before database operations
 func (a *AggSenderSQLStorage) handleCertificateFile(certificate *types.Certificate) error {
 	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
@@ -613,6 +711,21 @@ func (a *AggSenderSQLStorage) handleCertificateFile(certificate *types.Certifica
 		certificate.SignedCertificate = &filePath
 	}
 
+	return nil
+}
+
+// deleteFile deletes the certificate file if it exists,
+// the case that doesn't exists is not an error
+func (a *AggSenderSQLStorage) deleteCertificateFile(filename *string) error {
+	if filename == nil {
+		return nil
+	}
+	// Try to delete the file
+	if err := os.Remove(*filename); err != nil {
+		a.logger.Warnf("error deleting certificate file %s: %w", *filename, err)
+		return nil
+	}
+	a.logger.Debugf("deleted certificate file - Filename: %s", *filename)
 	return nil
 }
 

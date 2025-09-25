@@ -19,6 +19,8 @@ var errValidatorClientURLNotSet = fmt.Errorf("ValidatorClient URL must be set wh
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
+	// RetainCertificatesPolicy is the policy to retain certificates in the database
+	StorageRetainCertificatesPolicy retainpolicy.StorageRetainCertificatesPolicy `mapstructure:"StorageRetainCertificatesPolicy"`
 	// CertificatesDir is the directory where certificate JSON files will be stored
 	CertificatesDir string `mapstructure:"CertificatesDir"`
 	// AgglayerClient is the Agglayer gRPC client configuration

@@ -13,6 +13,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+type CertificateKey struct {
+	Height     uint64 `meddler:"height"`
+	RetryCount int    `meddler:"retry_count"`
+}
+
+func (c CertificateKey) IsRetry() bool {
+	return c.RetryCount > 0
+}
+
+func (c CertificateKey) String() string {
+	return fmt.Sprintf("height: %d,retry: %d", c.Height, c.RetryCount)
+}
+
 // certificateInfo is a struct that holds the information of a certificate in the database
 // It is used to store the information of a certificate in the database
 // and to retrieve it when needed.

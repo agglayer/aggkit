@@ -128,7 +128,7 @@ func Test_Storage(t *testing.T) {
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		require.NoError(t, storage.DeleteCertificate(ctx, certificate.Header.CertificateID))
+		require.NoError(t, storage.DeleteCertificate(nil, certificate.Header.Height))
 
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.ErrorIs(t, err, db.ErrNotFound)
@@ -1324,7 +1324,7 @@ func Test_deleteCertificate(t *testing.T) {
 	// Helper function to test certificate deletion with file
 	testCertificateDeleteWithFile := func(t *testing.T, testName string, certData *string, shouldFileBeDeleted bool) {
 		t.Helper()
-		storage, testCertID, certInfo := setupCertificate(t, testName, certData)
+		storage, _, certInfo := setupCertificate(t, testName, certData)
 		require.NotNil(t, certInfo.SignedCertificate)
 
 		// Verify the generated file exists
@@ -1344,7 +1344,7 @@ func Test_deleteCertificate(t *testing.T) {
 			}
 		}()
 
-		err = deleteCertificate(logger, tx, testCertID)
+		err = storage.DeleteCertificate(tx, certInfo.Height)
 		require.NoError(t, err)
 
 		require.NoError(t, tx.Commit())
@@ -1364,7 +1364,7 @@ func Test_deleteCertificate(t *testing.T) {
 	}
 
 	t.Run("successful deletion without file", func(t *testing.T) {
-		storage, testCertID, _ := setupCertificate(t, "test_delete_no_file", nil)
+		storage, _, _ := setupCertificate(t, "test_delete_no_file", nil)
 
 		// Create transaction and test deleteCertificate
 		tx, err := db.NewTx(ctx, storage.db)
@@ -1377,8 +1377,8 @@ func Test_deleteCertificate(t *testing.T) {
 				}
 			}
 		}()
-
-		err = deleteCertificate(logger, tx, testCertID)
+		height := uint64(1)
+		err = storage.DeleteCertificate(tx, height)
 		require.NoError(t, err)
 
 		require.NoError(t, tx.Commit())
@@ -1403,8 +1403,7 @@ func Test_deleteCertificate(t *testing.T) {
 		storage, _, _ := setupCertificate(t, "test_delete_nonexistent", nil)
 
 		// Try to delete a certificate that doesn't exist
-		testCertID := common.HexToHash("0x9999")
-
+		testNonExistingHeight := uint64(9999)
 		// Create transaction and test deleteCertificate
 		tx, err := db.NewTx(ctx, storage.db)
 		require.NoError(t, err)
@@ -1417,14 +1416,14 @@ func Test_deleteCertificate(t *testing.T) {
 			}
 		}()
 
-		err = deleteCertificate(logger, tx, testCertID)
+		err = storage.DeleteCertificate(tx, testNonExistingHeight)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error loading certificate info")
 	})
 
 	t.Run("file deletion error should not fail the function", func(t *testing.T) {
 		signedCertData := `{"test": "certificate data"}`
-		storage, testCertID, certInfo := setupCertificate(t, "test_delete_file_error", &signedCertData)
+		storage, _, certInfo := setupCertificate(t, "test_delete_file_error", &signedCertData)
 		require.NotNil(t, certInfo.SignedCertificate)
 
 		// Delete the file manually to simulate a file deletion error scenario
@@ -1445,7 +1444,7 @@ func Test_deleteCertificate(t *testing.T) {
 		}()
 
 		// This should succeed despite the file being already deleted
-		err = deleteCertificate(logger, tx, testCertID)
+		err = storage.DeleteCertificate(tx, certInfo.Height)
 		require.NoError(t, err)
 
 		require.NoError(t, tx.Commit())
