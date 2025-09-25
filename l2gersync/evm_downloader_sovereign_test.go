@@ -193,3 +193,125 @@ func TestIsL1InfoTreeSyncUpToDate(t *testing.T) {
 		})
 	}
 }
+
+func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *testing.T) {
+	t.Parallel()
+
+	fromBlock := uint64(100)
+	syncBlockChunkSize := uint64(10)
+	latestBlock := uint64(120)
+	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	testGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+	testHashChainValue := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+	testBlockHeader := &ethtypes.Header{
+		Number:      big.NewInt(int64(fromBlock)),
+		ParentHash:  common.HexToHash("0xabc123"),
+		Root:        common.HexToHash("0xdef456"),
+		TxHash:      common.HexToHash("0x789abc"),
+		ReceiptHash: common.HexToHash("0x101112"),
+		Time:        uint64(time.Now().Unix()),
+		GasLimit:    8000000,
+		GasUsed:     21000,
+	}
+	testBlockHash := testBlockHeader.Hash()
+	testLogs := []ethtypes.Log{
+		{
+			Address:     l2GERAddr,
+			Topics:      []common.Hash{insertGEREventSignature, testGER, testHashChainValue},
+			Data:        []byte{},
+			BlockNumber: fromBlock,
+			TxHash:      common.HexToHash("0x111"),
+			TxIndex:     0,
+			BlockHash:   testBlockHash,
+			Index:       0,
+		},
+	}
+
+	tests := []struct {
+		name                 string
+		getInfoByGERError    error
+		isUpToDateResult     bool
+		isUpToDateError      error
+		expectError          bool
+		expectedErrorMessage string
+	}{
+		{
+			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_returns_error",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     false,
+			isUpToDateError:      fmt.Errorf("L1InfoTreeSync check failed"),
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
+		{
+			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_returns_false",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     false,
+			isUpToDateError:      nil,
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+			mockL1InfoTreeSync := l2gersyncmocks.NewL1InfoTreeQuerier(t)
+			rh := &sync.RetryHandler{
+				MaxRetryAttemptsAfterError: 5,
+				RetryAfterErrorPeriod:      time.Millisecond,
+			}
+
+			// Set up mock expectations
+			mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
+			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+				Number: big.NewInt(int64(latestBlock)),
+			}, nil).Maybe()
+			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
+			mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
+				&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
+				nil, nil, nil,
+			), nil).Maybe()
+
+			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
+			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mock.Anything).Return(tt.isUpToDateResult, tt.isUpToDateError).Maybe()
+
+			mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
+
+			downloader, err := newDownloaderSovereign(
+				mockL2Client,
+				l2GERAddr,
+				mockL1InfoTreeSync,
+				mockL1Client,
+				rh,
+				aggkittypes.LatestBlock,
+				time.Millisecond*10,
+				syncBlockChunkSize,
+			)
+			require.NoError(t, err)
+
+			// Test the appender function directly to cover the error paths
+			appender := downloader.buildAppender(downloader.l2GERManager)
+			insertAppender := appender[insertGEREventSignature]
+
+			block := &sync.EVMBlock{
+				EVMBlockHeader: sync.EVMBlockHeader{
+					Num: fromBlock,
+				},
+				Events: []any{},
+			}
+
+			// This should trigger the error path
+			err = insertAppender(block, testLogs[0])
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectedErrorMessage)
+
+			mockL2Client.AssertExpectations(t)
+			mockL1InfoTreeSync.AssertExpectations(t)
+		})
+	}
+}
