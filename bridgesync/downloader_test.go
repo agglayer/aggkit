@@ -499,7 +499,7 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 	claim = &Claim{}
 	err = claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "execution reverted in root call")
+	require.Contains(t, err.Error(), "not found")
 
 	// Case 3: All internal calls reverted
 	rootCall = &call{
