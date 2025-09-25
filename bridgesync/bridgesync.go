@@ -136,7 +136,7 @@ func newBridgeSync(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	syncerID BridgeSyncerType,
-	originNetwork uint32,
+	networkID uint32,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
@@ -249,22 +249,12 @@ func newBridgeSync(
 		processor:        processor,
 		driver:           driver,
 		downloader:       downloader,
-		originNetwork:    originNetwork,
+		originNetwork:    networkID,
 		reorgDetector:    rd,
 		blockFinality:    blockFinalityType,
 		ethClient:        ethClient,
 		bridgeContractV2: bridgeContractV2,
 	}, nil
-}
-
-func (s *BridgeSync) GetClaimsPaged(
-	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*Claim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress)
 }
 
 // Start starts the synchronization process
@@ -281,6 +271,16 @@ func (s *BridgeSync) GetBridgesPaged(
 		return nil, 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount, networkIDs, fromAddress)
+}
+
+func (s *BridgeSync) GetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*Claim, int, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get claims")
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {

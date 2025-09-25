@@ -229,6 +229,12 @@ const docTemplate = `{
                         "description": "Whether to include full response fields (default false)",
                         "name": "include_all_fields",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by global index",
+                        "name": "global_index",
+                        "in": "query"
                     }
                 ],
                 "responses": {
