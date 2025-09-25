@@ -290,6 +290,9 @@ function common_aggsender_committee_override_urls(){
         # Remove last ',' and add the {}
         aggsender_committee_override_urls="{ ${aggsender_committee_override_urls::-1} }"
     fi
+    if [ -z "$aggsender_committee_override_urls" ];then
+        aggsender_committee_override_urls="{}"
+    fi
     log_debug "aggsender_committee_override_urls=${aggsender_committee_override_urls}"
 }
 ###############################################################################
