@@ -30,7 +30,7 @@ import (
 const dbQueryTimeout = 30 * time.Second
 
 func TestBigIntString(t *testing.T) {
-	globalIndex := GenerateGlobalIndexForRollupIndex(true, 0, 1093)
+	globalIndex := GenerateGlobalIndex(true, 0, 1093)
 	fmt.Println(globalIndex.String())
 
 	_, ok := new(big.Int).SetString(globalIndex.String(), 10)
@@ -50,7 +50,7 @@ func TestBigIntString(t *testing.T) {
 	claim := &Claim{
 		BlockNum:            1,
 		BlockPos:            0,
-		GlobalIndex:         GenerateGlobalIndexForRollupIndex(true, 0, 1093),
+		GlobalIndex:         GenerateGlobalIndex(true, 0, 1093),
 		OriginNetwork:       11,
 		Amount:              big.NewInt(11),
 		OriginAddress:       common.HexToAddress("0x11"),
@@ -724,61 +724,62 @@ func TestHashBridge(t *testing.T) {
 	}
 }
 
-func TestGenerateGlobalIndexForOriginNetwork(t *testing.T) {
+func TestGenerateGlobalIndexForNetworkID(t *testing.T) {
 	tests := []struct {
-		name            string
-		sourceNetworkID uint32
-		depositCount    uint32
-		expected        string // use string to avoid precision issues
+		name                string
+		sourceNetworkID     uint32
+		depositCount        uint32
+		expectedGlobalIndex *big.Int
 	}{
 		{
-			name:            "mainnet, deposit 0",
-			sourceNetworkID: 0,
-			depositCount:    0,
-			expected:        new(big.Int).Lsh(big.NewInt(1), 64).String(),
+			name:                "mainnet, deposit 0",
+			sourceNetworkID:     0,
+			depositCount:        0,
+			expectedGlobalIndex: new(big.Int).Lsh(big.NewInt(1), mainnetFlagPosition),
 		},
 		{
 			name:            "mainnet, deposit 3",
 			sourceNetworkID: 0,
 			depositCount:    3,
-			expected: new(big.Int).Add(
-				new(big.Int).Lsh(big.NewInt(1), 64),
+			expectedGlobalIndex: new(big.Int).Add(
+				new(big.Int).Lsh(big.NewInt(1), mainnetFlagPosition),
 				big.NewInt(3),
-			).String(),
+			),
 		},
 		{
-			name:            "rollup 1, deposit 3",
-			sourceNetworkID: 1,
-			depositCount:    3,
-			expected:        big.NewInt(3).String(), // (1-1)<<32 + 3 = 3
+			name:                "rollup 1, deposit 3",
+			sourceNetworkID:     1,
+			depositCount:        3,
+			expectedGlobalIndex: big.NewInt(3), // (1-1)<<32 + 3 = 3
 		},
 		{
-			name:            "rollup 2, deposit 0",
-			sourceNetworkID: 2,
-			depositCount:    0,
-			expected:        new(big.Int).Lsh(big.NewInt(1), 32).String(), // (2-1)<<32
+			name:                "rollup 2, deposit 0",
+			sourceNetworkID:     2,
+			depositCount:        0,
+			expectedGlobalIndex: new(big.Int).Lsh(big.NewInt(1), rollupIndexPosition), // (2-1)<<32
 		},
 		{
-			name:            "rollup 2, deposit 42",
-			sourceNetworkID: 2,
+			name:            "rollup 3, deposit 42",
+			sourceNetworkID: 3,
 			depositCount:    42,
-			expected: new(big.Int).Add(
-				new(big.Int).Lsh(big.NewInt(1), 32),
+			expectedGlobalIndex: new(big.Int).Add(
+				new(big.Int).Lsh(big.NewInt(2), rollupIndexPosition),
 				big.NewInt(42),
-			).String(),
+			),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GenerateGlobalIndex(tt.sourceNetworkID, tt.depositCount)
-			require.Equal(t, tt.expected, got.String())
+			expectedIsMainnet := tt.sourceNetworkID == 0
+			globalIndex := GenerateGlobalIndexForNetworkID(tt.sourceNetworkID, tt.depositCount)
+			require.Equal(t, tt.expectedGlobalIndex, globalIndex)
 
-			isMainnet, rollupIndex, localExitRootIndex, err := DecodeGlobalIndex(got)
-			require.Equal(t, isMainnet, tt.sourceNetworkID == 0)
+			isMainnet, rollupIndex, localExitRootIndex, err := DecodeGlobalIndex(globalIndex)
+			require.Equal(t, expectedIsMainnet, isMainnet)
 
 			expectedRollupIndex := uint32(0)
-			if !isMainnet {
+			if !expectedIsMainnet {
 				expectedRollupIndex = tt.sourceNetworkID - 1
 			}
 			require.Equal(t, expectedRollupIndex, rollupIndex)
@@ -803,7 +804,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 	}{
 		{
 			name:                "Mainnet flag true, rollup index 0",
-			globalIndex:         GenerateGlobalIndex(0, 2),
+			globalIndex:         GenerateGlobalIndex(true, 0, 2),
 			expectedMainnetFlag: true,
 			expectedRollupIndex: 0,
 			expectedLocalIndex:  2,
@@ -811,7 +812,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		},
 		{
 			name:                "Mainnet flag true, indexes 0",
-			globalIndex:         GenerateGlobalIndex(0, 0),
+			globalIndex:         GenerateGlobalIndex(true, 0, 0),
 			expectedMainnetFlag: true,
 			expectedRollupIndex: 0,
 			expectedLocalIndex:  0,
@@ -819,7 +820,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		},
 		{
 			name:                "Mainnet flag false, rollup index 0",
-			globalIndex:         GenerateGlobalIndex(1, 2),
+			globalIndex:         GenerateGlobalIndex(false, 0, 2),
 			expectedMainnetFlag: false,
 			expectedRollupIndex: 0,
 			expectedLocalIndex:  2,
@@ -827,7 +828,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		},
 		{
 			name:                "Mainnet flag false, rollup index non-zero",
-			globalIndex:         GenerateGlobalIndex(12, 0),
+			globalIndex:         GenerateGlobalIndex(false, 11, 0),
 			expectedMainnetFlag: false,
 			expectedRollupIndex: 11,
 			expectedLocalIndex:  0,
@@ -835,7 +836,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		},
 		{
 			name:                "Mainnet flag false, indexes 0",
-			globalIndex:         GenerateGlobalIndex(1, 0),
+			globalIndex:         GenerateGlobalIndex(false, 0, 0),
 			expectedMainnetFlag: false,
 			expectedRollupIndex: 0,
 			expectedLocalIndex:  0,
@@ -843,7 +844,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		},
 		{
 			name:                "Mainnet flag false, indexes non zero",
-			globalIndex:         GenerateGlobalIndex(1232, 111234),
+			globalIndex:         GenerateGlobalIndex(false, 1231, 111234),
 			expectedMainnetFlag: false,
 			expectedRollupIndex: 1231,
 			expectedLocalIndex:  111234,
@@ -892,7 +893,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	testClaim := &Claim{
 		BlockNum:            1,
 		BlockPos:            0,
-		GlobalIndex:         GenerateGlobalIndex(0, 1093),
+		GlobalIndex:         GenerateGlobalIndexForNetworkID(0, 1093),
 		OriginNetwork:       11,
 		OriginAddress:       common.HexToAddress("0x11"),
 		DestinationAddress:  common.HexToAddress("0x11"),

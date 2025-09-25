@@ -93,7 +93,7 @@ func parseUint32SliceParam(c *gin.Context, key string) ([]uint32, error) {
 
 // NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
 func NewBridgeResponse(bridge *bridgesync.Bridge) *bridgetypes.BridgeResponse {
-	globalIndex := bridgesync.GenerateGlobalIndex(bridge.OriginNetwork, bridge.DepositCount)
+	globalIndex := bridgesync.GenerateGlobalIndexForNetworkID(bridge.OriginNetwork, bridge.DepositCount)
 
 	return &bridgetypes.BridgeResponse{
 		BlockNum:           bridge.BlockNum,

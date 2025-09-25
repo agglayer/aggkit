@@ -486,7 +486,7 @@ func (g *GlobalIndex) String() string {
 func (g *GlobalIndex) Hash() common.Hash {
 	return crypto.Keccak256Hash(
 		aggkitcommon.BigIntToLittleEndianBytes(
-			bridgesync.GenerateGlobalIndexForRollupIndex(g.MainnetFlag, g.RollupIndex, g.LeafIndex),
+			bridgesync.GenerateGlobalIndex(g.MainnetFlag, g.RollupIndex, g.LeafIndex),
 		),
 	)
 }
@@ -1039,7 +1039,7 @@ func (c *ImportedBridgeExit) Validate() error {
 // GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format
 func (c *ImportedBridgeExit) GlobalIndexToLittleEndianBytes() []byte {
 	return aggkitcommon.BigIntToLittleEndianBytes(
-		bridgesync.GenerateGlobalIndexForRollupIndex(
+		bridgesync.GenerateGlobalIndex(
 			c.GlobalIndex.MainnetFlag,
 			c.GlobalIndex.RollupIndex,
 			c.GlobalIndex.LeafIndex,
