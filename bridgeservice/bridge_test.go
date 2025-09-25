@@ -537,7 +537,10 @@ func TestGetBridgesHandler(t *testing.T) {
 			},
 		}
 
-		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
+		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
+		for _, bridge := range expectedBridges {
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, mainnetNetworkID))
+		}
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
@@ -556,7 +559,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
-		require.Equal(t, bridgesResp, response.Bridges)
+		require.Equal(t, bridgeResponses, response.Bridges)
 		require.Equal(t, len(expectedBridges), response.Count)
 	})
 
@@ -615,7 +618,10 @@ func TestGetBridgesHandler(t *testing.T) {
 			},
 		}
 
-		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
+		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
+		for _, bridge := range expectedBridges {
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, l2NetworkID))
+		}
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
@@ -635,7 +641,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
-		require.Equal(t, bridgesResp, response.Bridges)
+		require.Equal(t, bridgeResponses, response.Bridges)
 		require.Equal(t, len(expectedBridges), response.Count)
 	})
 

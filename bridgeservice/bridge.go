@@ -356,7 +356,10 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	}
 
 	b.logger.Debugf("successfully retrieved %d bridges for network %d", count, networkID)
-	bridgeResponses := aggkitcommon.MapSlice(bridges, NewBridgeResponse)
+	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
+	for _, bridge := range bridges {
+		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID))
+	}
 
 	c.JSON(http.StatusOK,
 		types.BridgesResult{

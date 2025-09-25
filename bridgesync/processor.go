@@ -985,7 +985,7 @@ func GenerateGlobalIndexForNetworkID(networkID uint32, depositCount uint32) *big
 //
 // Encoding layout (big-endian concatenation of 4-byte chunks):
 //
-//	[ mainnetFlagOrRollupIndex ] [ rollup filler or rollupIndex ] [ depositCount ]
+//	[ mainnetFlag ] [ rollupIndex ] [ depositCount ]
 //
 // Examples:
 //
