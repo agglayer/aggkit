@@ -54,7 +54,8 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="ce9630dcef1d8df6a8ec929ae1cd6bb4dad9f889"
+            # jhilliard/aggsender-validator-committee
+            COMMIT="cbc66efb5ebf6478722d1200e5e2848de81124cb" 
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
