@@ -168,6 +168,10 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
+		// Check if the root call was successful
+		if rootCall.Err != nil {
+			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
+		}
 		claim.TxSender = rootCall.From
 
 		if syncFullClaims {
@@ -207,6 +211,10 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
+		}
+		// Check if the root call was successful
+		if rootCall.Err != nil {
+			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
 		}
 		claim.TxSender = rootCall.From
 
@@ -441,11 +449,6 @@ func (c *Claim) setClaimCalldataFromRoot(
 	bridge common.Address,
 	logger *logger.Logger,
 ) error {
-	// Check if the root call was successful
-	if rootCall.Err != nil {
-		return fmt.Errorf("execution reverted in root call (block %d): %s", c.BlockNum, *rootCall.Err)
-	}
-
 	_, err := findCall(*rootCall, bridge,
 		func(call call) (bool, error) {
 			// Skip reverted calls
