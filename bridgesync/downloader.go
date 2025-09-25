@@ -79,7 +79,7 @@ func buildAppender(
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		bridgeContractV2, client, bridgeAddr, logger)
+		bridgeContractV2, bridgeAddr, client, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
 		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
@@ -98,9 +98,11 @@ func buildAppender(
 }
 
 // buildBridgeEventHandler creates a handler for the Bridge event log.
-func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+func buildBridgeEventHandler(
+	contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	bridgeAddr common.Address,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address, logger *logger.Logger,
+	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)

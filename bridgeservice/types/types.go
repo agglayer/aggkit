@@ -105,6 +105,9 @@ type BridgeResponse struct {
 	// Hash of the transaction that included the bridge event
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
+	// Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)
+	GlobalIndex *big.Int `json:"global_index" example:"4294967296"`
+
 	// Raw calldata submitted in the transaction
 	Calldata string `json:"calldata" example:"deadbeef"`
 

@@ -122,7 +122,6 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 	)
-	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, l2BridgeSyncer)
 }
@@ -564,7 +563,7 @@ func TestGetClaimPaged(t *testing.T) {
 		halted: true,
 		log:    log.WithFields("module", "L2BridgeSyncer"),
 	}}
-	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "")
+	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "", nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
