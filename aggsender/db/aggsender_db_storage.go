@@ -371,7 +371,6 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		if err := a.DeleteCertificate(tx, certInfo.Height, MaybeDelete); err != nil {
 			return fmt.Errorf("saveLastSentCertificate error deleting existing certificate (no retain obj): %w", err)
 		}
-
 	}
 
 	if err = meddler.Insert(tx, "certificate_info", certInfo); err != nil {
@@ -585,7 +584,6 @@ func (a *AggSenderSQLStorage) DeleteCertificate(tx dbtypes.Querier, height uint6
 		if !errors.Is(err, ErrNoCertDeleted) || mustDelete {
 			return fmt.Errorf("error deleting certificate height %d from cert table: %w", height, err)
 		}
-
 	}
 	// If there are no certificates in history table, we ignore the error
 	if err := a.deleteCertificates(tx, tableCertificateHistory, height); err != nil && !errors.Is(err, ErrNoCertDeleted) {

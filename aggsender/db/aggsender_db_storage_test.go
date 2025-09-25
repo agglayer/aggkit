@@ -1418,7 +1418,6 @@ func Test_deleteCertificate(t *testing.T) {
 
 		err = storage.DeleteCertificate(tx, testNonExistingHeight, MustDelete)
 		require.ErrorIs(t, err, ErrNoCertDeleted)
-		//require.Contains(t, err.Error(), "error loading certificate info")
 	})
 
 	t.Run("file deletion error should not fail the function", func(t *testing.T) {

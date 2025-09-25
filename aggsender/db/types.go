@@ -8,7 +8,6 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -77,21 +76,27 @@ func (c *certificateInfo) SignedCertificateFilename() *string {
 	return nil
 }
 
-// toCertificate converts the certificateInfo struct to a Certificate struct
-func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
-	signedCert := c.SignedCertificateFilename()
-
-	// If SignedCertificate contains a file path, read the content from the file
-	if signedCert != nil {
-		if content, err := os.ReadFile(*signedCert); err == nil {
-			contentStr := string(content)
-			signedCert = &contentStr
-		} else {
-			log.Errorf("Failed to read signed certificate file %s: %v", *signedCert, err)
-			return nil, err
+func (c *certificateInfo) SignedCertificateData() (*string, error) {
+	if c == nil || c.SignedCertificate == nil {
+		return nil, nil
+	}
+	filename := c.SignedCertificateFilename()
+	if filename != nil {
+		if content, err := os.ReadFile(*filename); err == nil {
+			s := string(content)
+			return &s, nil
 		}
 	}
 
+	return c.SignedCertificate, nil
+}
+
+// toCertificate converts the certificateInfo struct to a Certificate struct
+func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
+	signedCert, err := c.SignedCertificateData()
+	if err != nil {
+		return nil, err
+	}
 	return &types.Certificate{
 		Header: &types.CertificateHeader{
 			Height:                  c.Height,
