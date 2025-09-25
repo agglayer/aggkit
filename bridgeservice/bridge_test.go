@@ -537,10 +537,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			},
 		}
 
-		bridgesResp := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
-		for _, bridge := range expectedBridges {
-			bridgesResp = append(bridgesResp, NewBridgeResponse(bridge, l2NetworkID))
-		}
+		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
@@ -612,19 +609,15 @@ func TestGetBridgesHandler(t *testing.T) {
 				DestinationNetwork: 20,
 				DestinationAddress: common.HexToAddress("0x3"),
 				Amount:             common.Big0,
-				DepositCount:       0,
+				DepositCount:       1,
 				Metadata:           []byte("metadata"),
 				Calldata:           []byte{},
 			},
 		}
 
-		bridgesResp := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
-		for _, bridge := range expectedBridges {
-			bridgesResp = append(bridgesResp, NewBridgeResponse(bridge, l2NetworkID))
-		}
+		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
 		bridgeMocks.bridgeL2.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
