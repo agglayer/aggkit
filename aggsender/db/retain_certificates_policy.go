@@ -45,7 +45,7 @@ func (r *StorageRetainCertificatesPolicy) OnRetOnNewCertryCert(tx dbtypes.Querie
 		if r.KeepCertificatesHistory {
 			return storage.MoveCertificateToHistory(tx, certKey.Height)
 		}
-		return storage.DeleteCertificate(tx, certKey.Height)
+		return storage.DeleteCertificate(tx, certKey.Height, MaybeDelete)
 	}
 	// Is the first cert for this height
 	if r.RetainNCertificates == KeepAllCertificates {

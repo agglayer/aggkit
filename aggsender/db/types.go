@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+)
+
+const (
+	PrefixFilename = "@"
 )
 
 type CertificateKey struct {
@@ -50,12 +53,36 @@ type certificateInfo struct {
 	ExtraData               string                          `meddler:"extra_data"`
 }
 
+// SetSignedCertificateFilename sets the SignedCertificate field to external file
+func (c *certificateInfo) SetSignedCertificateFilename(filename string) {
+	if c == nil {
+		return
+	}
+	c.SignedCertificate = nil
+	if filename != "" {
+		c.SignedCertificate = new(string)
+		*c.SignedCertificate = PrefixFilename + filename
+	}
+}
+
+// SignedCertificateFilename returns the filename if SignedCertificate is a file reference
+func (c *certificateInfo) SignedCertificateFilename() *string {
+	if c == nil || c.SignedCertificate == nil {
+		return nil
+	}
+	if strings.HasPrefix(*c.SignedCertificate, PrefixFilename) {
+		filename := strings.TrimPrefix(*c.SignedCertificate, PrefixFilename)
+		return &filename
+	}
+	return nil
+}
+
 // toCertificate converts the certificateInfo struct to a Certificate struct
 func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
-	signedCert := c.SignedCertificate
+	signedCert := c.SignedCertificateFilename()
 
 	// If SignedCertificate contains a file path, read the content from the file
-	if signedCert != nil && *signedCert != "" && IsJSONFilePath(*signedCert) {
+	if signedCert != nil {
 		if content, err := os.ReadFile(*signedCert); err == nil {
 			contentStr := string(content)
 			signedCert = &contentStr
@@ -122,12 +149,4 @@ func NewNonAcceptedCertificate(
 		CreatedAt:         createdAt,
 		Error:             certError,
 	}, nil
-}
-
-// IsJSONFilePath determines if the given string is likely a JSON file path
-// by checking if it contains path separators and has a file extension
-func IsJSONFilePath(s string) bool {
-	// Check if it contains path separators and has a file extension
-	return (strings.Contains(s, "/") || strings.Contains(s, "\\")) &&
-		filepath.Ext(s) == ".json"
 }
