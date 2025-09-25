@@ -29,7 +29,8 @@ import (
 
 const (
 	globalIndexPartSize = 4
-	globalIndexBitIndex = 64
+	mainnetFlagIndex    = 64
+	rollupIndexShift    = 32
 
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
@@ -962,25 +963,51 @@ func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
 }
 
-func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
-	var (
-		globalIndexBytes []byte
-		buf              [globalIndexPartSize]byte
-	)
-	if mainnetFlag {
-		globalIndexBytes = append(globalIndexBytes, big.NewInt(1).Bytes()...)
-		ri := new(big.Int).FillBytes(buf[:])
-		globalIndexBytes = append(globalIndexBytes, ri...)
+// GenerateGlobalIndex builds the "global index" used to identify bridges and claims.
+// The layout is as following:
+// If networkID == 0 (mainnet):
+//
+//	Set the mainnet flag at bit 192 (1 << 64 here)
+//	Deposit count is stored in the lowest 32 bits
+//
+// If networkID > 0 (rollup):
+//
+//	Store (networkID - 1) shifted left by 32 bits (occupying bits 193–224)
+//	Deposit count is stored in the lowest 32 bits
+//
+// In both cases, the result is a big.Int value that encodes:
+//
+//	[ Mainnet flag | Rollup index | Deposit count ]
+func GenerateGlobalIndex(networkID uint32, depositCount uint32) *big.Int {
+	final := big.NewInt(0)
+
+	isMainnetFlag := networkID == 0
+	if isMainnetFlag {
+		// 192nd bit: (if the origin network is mainnet, then add 2^64)
+		mainnetContribution := new(big.Int).Lsh(common.Big1, mainnetFlagIndex)
+		final.Add(final, mainnetContribution)
 	} else {
-		ri := new(big.Int).SetUint64(uint64(rollupIndex)).FillBytes(buf[:])
-		globalIndexBytes = append(globalIndexBytes, ri...)
+		// 193-224 bits: (if the origin is rollup network (originNetwork - 1) << 32)
+		rollupContribution := new(big.Int).Lsh(
+			new(big.Int).SetUint64(uint64(networkID-1)),
+			rollupIndexShift,
+		)
+		final.Add(final, rollupContribution)
 	}
-	leri := new(big.Int).SetUint64(uint64(localExitRootIndex)).FillBytes(buf[:])
-	globalIndexBytes = append(globalIndexBytes, leri...)
 
-	result := new(big.Int).SetBytes(globalIndexBytes)
+	// 225-256 bits: depositCount (added directly, no shift)
+	depositContribution := new(big.Int).SetUint64(uint64(depositCount))
+	final.Add(final, depositContribution)
 
-	return result
+	return final
+}
+
+func GenerateGlobalIndexForRollupIndex(mainnetFlag bool, rollupIndex uint32, depositCount uint32) *big.Int {
+	networkID := uint32(0)
+	if !mainnetFlag {
+		networkID = rollupIndex + 1
+	}
+	return GenerateGlobalIndex(networkID, depositCount)
 }
 
 // Decodes global index to its three parts:
@@ -1000,7 +1027,7 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 		return
 	}
 
-	bit := globalIndex.Bit(globalIndexBitIndex)
+	bit := globalIndex.Bit(mainnetFlagIndex)
 	if bit == 1 {
 		// true, rollupIndex, localExitRootIndex
 		mainnetFlag = true

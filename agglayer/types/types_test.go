@@ -1268,7 +1268,7 @@ func TestCertificate_FEPHashToSign(t *testing.T) {
 			expectedHash: crypto.Keccak256Hash(
 				common.HexToHash("0xdef456").Bytes(),
 				crypto.Keccak256(aggkitcommon.BigIntToLittleEndianBytes(
-					bridgesync.GenerateGlobalIndex(true, 0, 1),
+					bridgesync.GenerateGlobalIndex(0, 1),
 				), bridgeExit.Hash().Bytes()),
 				aggkitcommon.Uint64ToLittleEndianBytes(100),
 				common.HexToHash("0x123abc").Bytes(),
