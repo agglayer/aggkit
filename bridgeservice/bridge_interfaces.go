@@ -2,6 +2,7 @@ package bridgeservice
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -21,9 +22,12 @@ type Bridger interface {
 	GetLegacyTokenMigrations(ctx context.Context,
 		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
-		networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error)
+		networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*bridgesync.Claim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
+	IsActive(ctx context.Context) bool
 }
 
 type L2GERSyncer interface {
