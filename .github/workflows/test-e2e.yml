@@ -184,7 +184,6 @@ jobs:
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@6c51d2dfda0bd8fd9a572ef6fab67784a9239393
     secrets: inherit
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: 6c51d2dfda0bd8fd9a572ef6fab67784a9239393
@@ -198,7 +197,6 @@ jobs:
     name: Check results for single l2 network (global index pp old contracts)
     needs:
       - test-single-l2-network-fork12-global-index-pp-old-contracts
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -237,7 +235,6 @@ jobs:
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@6c51d2dfda0bd8fd9a572ef6fab67784a9239393
     secrets: inherit
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: 6c51d2dfda0bd8fd9a572ef6fab67784a9239393
@@ -250,7 +247,6 @@ jobs:
     name: Check results for single l2 network (op-succinct with aggoracle committee)
     needs:
       - test-single-l2-network-op-succinct-aggoracle-committee
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -306,7 +302,6 @@ jobs:
     needs:
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result) }}
