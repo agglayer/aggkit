@@ -410,7 +410,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		// Update the certificate with the same height (next retry)
+		// Update the certificate with a new retry for the same height
 		updatedCertificate := types.Certificate{
 			Header: &types.CertificateHeader{
 				Height:           2,

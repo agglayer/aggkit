@@ -23,6 +23,7 @@ import (
 )
 
 type tableName = string
+type DeleteFlag = bool
 
 const (
 	errWhileRollbackFormat  = "error while rolling back tx: %w"
@@ -32,8 +33,8 @@ const (
 	tableCertificate        tableName = "certificate_info"
 	tableCertificateHistory tableName = "certificate_info_history"
 
-	MustDelete  = true  // the delete action must affect at least one row
-	MaybeDelete = false // the delete action may affect zero rows
+	MustDelete  DeleteFlag = true  // the delete action must affect at least one row
+	MaybeDelete DeleteFlag = false // the delete action may affect zero rows
 )
 
 var (
