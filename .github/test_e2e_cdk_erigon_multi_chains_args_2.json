@@ -6,6 +6,8 @@
   "args": {
     "deployment_suffix": "-002",
     "zkevm_rollup_chain_id": 20202,
-    "zkevm_rollup_id": 2
+    "zkevm_rollup_id": 2,
+    "gas_token_enabled": true,
+    "gas_token_address": ""
   }
 }

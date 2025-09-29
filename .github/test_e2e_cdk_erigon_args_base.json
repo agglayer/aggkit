@@ -21,7 +21,6 @@
     "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.63.0-rc4",
     "enable_normalcy": true,
     "erigon_strict_mode": false,
-    "gas_token_enabled": true,
-    "gas_token_address": ""
+    "gas_token_enabled": false
   }
 }
