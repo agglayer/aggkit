@@ -33,6 +33,13 @@ type AggsenderFlow interface {
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 	// UpdateAggchainData updates the aggchain data field for the given certificate
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
+	// VerifyAggchainData verifies the aggchain data field for the given certificate
+	VerifyAggchainData(
+		ctx context.Context,
+		cert *agglayertypes.Certificate,
+		requestedEndBlock uint64,
+		lastProvenBlock uint64,
+		aggchainFEPQuerier AggchainFEPRollupQuerier) error
 	// Signer is the signer used to sign the certificate
 	Signer() signertypes.Signer
 }
@@ -129,6 +136,9 @@ type L1InfoTreeDataQuerier interface {
 
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
+
+	// GetInfoByIndex returns the L1 Info tree leaf for the given index
+	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement
@@ -288,6 +298,9 @@ type AggchainFEPRollupQuerier interface {
 	StartL2Block() uint64
 	GetLastSettledL2Block() (uint64, error)
 	IsFEP() bool
+	GetAggregationProofPublicValuesData(
+		lastProvenBlock, requestedEndBlock uint64,
+		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
 }
 
 // CertificateQuerier is an interface defining functions that a CertificateQuerier should implement

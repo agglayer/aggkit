@@ -19,13 +19,6 @@ var (
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
-type FlowInterface interface {
-	GenerateBuildParams(ctx context.Context,
-		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
-	BuildCertificate(ctx context.Context,
-		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
-}
-
 type L1InfoTreeRootByLeafQuerier interface {
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
@@ -34,23 +27,26 @@ type L1InfoTreeRootByLeafQuerier interface {
 // CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
-	flow                  FlowInterface
+	flow                  types.AggsenderFlow
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
 	certQuerier           types.CertificateQuerier
 	lerQuerier            types.LERQuerier
+	aggchainFEPQuerier    types.AggchainFEPRollupQuerier
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
-	flow FlowInterface,
+	flow types.AggsenderFlow,
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
 	certQuerier types.CertificateQuerier,
-	lerQuerier types.LERQuerier) *CertificateValidator {
+	lerQuerier types.LERQuerier,
+	aggchainFEPQuerier types.AggchainFEPRollupQuerier) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
 		flow:                  flow,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		certQuerier:           certQuerier,
 		lerQuerier:            lerQuerier,
+		aggchainFEPQuerier:    aggchainFEPQuerier,
 	}
 }
 
@@ -117,6 +113,16 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		params.Certificate.ImportedBridgeExits,
 		buildParams.L1InfoTreeRootFromWhichToProve); err != nil {
 		return fmt.Errorf("failed to verify claim proofs: %w", err)
+	}
+
+	// Verify AggchainData specific to each flow
+	if err := a.flow.VerifyAggchainData(
+		ctx,
+		params.Certificate,
+		params.LastL2BlockInCert,
+		previousCertificateToBlock,
+		a.aggchainFEPQuerier); err != nil {
+		return fmt.Errorf("failed to verify AggchainData: %w", err)
 	}
 
 	return nil

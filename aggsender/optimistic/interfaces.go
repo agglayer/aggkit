@@ -3,7 +3,7 @@ package optimistic
 import (
 	"math/big"
 
-	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
+	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -31,5 +31,5 @@ type FEPContractQuerier interface {
 // querying aggregation proof public values in optimistic mode.
 type OptimisticAggregationProofPublicValuesQuerier interface {
 	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
-		l1InfoTreeLeafHash common.Hash) (*optimistichash.AggregationProofPublicValues, error)
+		l1InfoTreeLeafHash common.Hash) (*types.AggregationProofPublicValues, error)
 }

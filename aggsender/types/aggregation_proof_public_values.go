@@ -1,4 +1,4 @@
-package optimistichash
+package types
 
 import (
 	"crypto/sha256"

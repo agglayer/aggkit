@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	optimisticmocks "github.com/agglayer/aggkit/aggsender/optimistic/mocks"
-	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -130,7 +129,7 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 			PreviousBlockHash: common.HexToHash("0xabc"),
 		},
 	}
-	aggProof := &optimistichash.AggregationProofPublicValues{
+	aggProof := &types.AggregationProofPublicValues{
 		L1Head:           common.HexToHash("0x123"),
 		L2PreRoot:        common.HexToHash("0x456"),
 		ClaimRoot:        common.HexToHash("0x789"),
@@ -147,7 +146,7 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 
 	testCases := []struct {
 		name                  string
-		mockQueryReturn       *optimistichash.AggregationProofPublicValues
+		mockQueryReturn       *types.AggregationProofPublicValues
 		mockQueryError        error
 		mockSignerReturn      []byte
 		mockSignerError       error

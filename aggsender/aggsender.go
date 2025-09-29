@@ -121,7 +121,7 @@ func New(
 	)
 
 	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, mode,
-		cfg.SovereignRollupAddr, l1Client)
+		cfg.SovereignRollupAddr, cfg.OptimisticModeConfig.OpNodeURL, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
 	}
@@ -141,6 +141,7 @@ func New(
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			certQuerier,
 			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+			aggchainFEPCaller,
 		),
 	)
 

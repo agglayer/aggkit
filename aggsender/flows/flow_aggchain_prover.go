@@ -357,6 +357,58 @@ func (a *AggchainProverFlow) UpdateAggchainData(
 	return nil
 }
 
+// VerifyAggchainData verifies the AggchainData field in certificate
+func (a *AggchainProverFlow) VerifyAggchainData(
+	ctx context.Context,
+	cert *agglayertypes.Certificate,
+	requestedEndBlock uint64,
+	lastProvenBlock uint64,
+	aggchainFEPQuerier types.AggchainFEPRollupQuerier) error {
+	if cert.AggchainData == nil {
+		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is nil")
+	}
+
+	aggchainDataProof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+	if !ok {
+		// If the AggchainData is of type MultisigWithProof, we extract the proof and verify it
+		aggchainDataMultisigWithProof, ok := cert.AggchainData.(*agglayertypes.AggchainDataMultisigWithProof)
+		if !ok {
+			return fmt.Errorf("aggchainProverFlow: certificate AggchainData is of unknown type %T", cert.AggchainData)
+		}
+
+		aggchainDataProof = aggchainDataMultisigWithProof.AggchainProof
+	}
+
+	// we need to reconstruct the AggchainParams field using what proposer provided,
+	// plus, the current data from the L1 and L2 networks (what was last settled)
+	l1InfoLeaf, err := a.l1InfoTreeDataQuerier.GetInfoByIndex(ctx, cert.L1InfoTreeLeafCount-1)
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error getting L1InfoLeaf by index %d: %w",
+			cert.L1InfoTreeLeafCount-1, err)
+	}
+
+	expectedAggchainProofPublicValues, err := aggchainFEPQuerier.GetAggregationProofPublicValuesData(
+		lastProvenBlock,
+		requestedEndBlock,
+		l1InfoLeaf.Hash,
+	)
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error getting expected aggchain proof public values: %w", err)
+	}
+
+	expectedAggchainParams, err := expectedAggchainProofPublicValues.Hash()
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error calculating expected aggchain params hash: %w", err)
+	}
+
+	if aggchainDataProof.AggchainParams != expectedAggchainParams {
+		return fmt.Errorf("aggchainProverFlow - aggchain params do not match: expected %s, got %s",
+			expectedAggchainParams, aggchainDataProof.AggchainParams)
+	}
+
+	return nil
+}
+
 // adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
 func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	requestedToBlock, aggchainProverToBlock uint64) (*types.CertificateBuildParams, error) {

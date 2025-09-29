@@ -80,7 +80,7 @@ func NewFlow(
 		}
 
 		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
-			cfg.SovereignRollupAddr, l1Client)
+			cfg.SovereignRollupAddr, cfg.OptimisticModeConfig.OpNodeURL, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
 		}

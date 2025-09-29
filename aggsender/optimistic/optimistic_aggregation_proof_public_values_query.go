@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
-	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
+	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/opnode"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -43,28 +44,39 @@ func NewOptimisticAggregationProofPublicValuesQuery(
 // the optimistic aggregation proof
 func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(
 	lastProvenBlock, requestedEndBlock uint64,
-	l1InfoTreeLeafHash common.Hash) (*optimistichash.AggregationProofPublicValues, error) {
+	l1InfoTreeLeafHash common.Hash) (*types.AggregationProofPublicValues, error) {
 	l2PreRoot, err := o.opNodeClient.OutputAtBlockRoot(lastProvenBlock)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. l2PreRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
+		return nil, fmt.Errorf("opAggProofPublicValuesQuery. l2PreRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
 			lastProvenBlock, err)
 	}
 	claimRoot, err := o.opNodeClient.OutputAtBlockRoot(requestedEndBlock)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. claimRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
+		return nil, fmt.Errorf("opAggProofPublicValuesQuery. claimRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
 			requestedEndBlock, err)
 	}
 	configName, err := o.aggchainFEPContract.SelectedOpSuccinctConfigName(nil)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. contract.SelectedOpSuccinctConfigName from contract %s. Err: %w",
+		return nil, fmt.Errorf("opAggProofPublicValuesQuery. contract.SelectedOpSuccinctConfigName from contract %s. Err: %w",
 			o.aggchainFEPAddr, err)
 	}
 	opConfig, err := o.aggchainFEPContract.OpSuccinctConfigs(nil, configName)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. contract.OpSuccinctConfigs from contract %s. Err: %w",
+		return nil, fmt.Errorf("opAggProofPublicValuesQuery. contract.OpSuccinctConfigs from contract %s. Err: %w",
 			o.aggchainFEPAddr, err)
 	}
-	return &optimistichash.AggregationProofPublicValues{
+
+	trustedSequencerAddr := o.proverAddress
+	if trustedSequencerAddr == aggkitcommon.ZeroAddress {
+		// if proverAddress is zero, get the trusted sequencer from the contract
+		trustedSequencerAddr, err = o.trustedSequencerAddr()
+		if err != nil {
+			return nil, fmt.Errorf("opAggProofPublicValuesQuery. trustedSequencerAddr from contract %s. Err: %w",
+				o.aggchainFEPAddr, err)
+		}
+	}
+
+	return &types.AggregationProofPublicValues{
 		L1Head:           l1InfoTreeLeafHash,
 		L2PreRoot:        l2PreRoot,
 		ClaimRoot:        claimRoot,
@@ -73,4 +85,19 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 		MultiBlockVKey:   opConfig.RangeVkeyCommitment,
 		ProverAddress:    o.proverAddress,
 	}, nil
+}
+
+func (o *OptimisticAggregationProofPublicValuesQuery) trustedSequencerAddr() (common.Address, error) {
+	signers, err := o.aggchainFEPContract.GetAggchainSigners(nil)
+	if err != nil {
+		return aggkitcommon.ZeroAddress, fmt.Errorf("failed to get aggchain signers from contract %s. Err: %w",
+			o.aggchainFEPAddr.String(), err)
+	}
+
+	if len(signers) < 1 {
+		return aggkitcommon.ZeroAddress, fmt.Errorf("no signers found in the aggchainFEP contract %s. Required at least one",
+			o.aggchainFEPAddr.String())
+	}
+
+	return signers[0], nil
 }

@@ -306,13 +306,14 @@ func TestCompareCertificates(t *testing.T) {
 }
 
 type testDataCertificateValidator struct {
-	ctx                   context.Context
-	logger                *log.Logger
-	mockFlow              *mocks.AggsenderFlow
-	mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier
-	mockCertQuerier       *mocks.CertificateQuerier
-	mockLERQuerier        *mocks.LERQuerier
-	sut                   *CertificateValidator
+	ctx                    context.Context
+	logger                 *log.Logger
+	mockFlow               *mocks.AggsenderFlow
+	mockL1InfoTreeQuerier  *mocks.L1InfoTreeDataQuerier
+	mockCertQuerier        *mocks.CertificateQuerier
+	mockLERQuerier         *mocks.LERQuerier
+	mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier
+	sut                    *CertificateValidator
 }
 
 func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator {
@@ -322,6 +323,7 @@ func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator 
 	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockCertQuerier := mocks.NewCertificateQuerier(t)
 	lerQuerier := mocks.NewLERQuerier(t)
+	aggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
 
 	return testDataCertificateValidator{
 		ctx:                   context.TODO(),
@@ -330,6 +332,6 @@ func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator 
 		mockL1InfoTreeQuerier: mockL1InfoTreeQuerier,
 		mockCertQuerier:       mockCertQuerier,
 		mockLERQuerier:        lerQuerier,
-		sut:                   NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier, mockCertQuerier, lerQuerier),
+		sut:                   NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier, mockCertQuerier, lerQuerier, aggchainFEPQuerier),
 	}
 }

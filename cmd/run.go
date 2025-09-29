@@ -262,7 +262,7 @@ func createAggSenderValidator(ctx context.Context,
 	}
 
 	var (
-		flow                 validator.FlowInterface
+		flow                 aggsendertypes.AggsenderFlow
 		commonFlowComponents *flows.CommonFlowComponents
 	)
 
@@ -331,6 +331,7 @@ func createAggSenderValidator(ctx context.Context,
 		logger,
 		cfg.Mode,
 		cfg.FEPConfig.SovereignRollupAddr,
+		cfg.FEPConfig.OpNodeURL,
 		l1Client,
 	)
 	if err != nil {
@@ -348,6 +349,7 @@ func createAggSenderValidator(ctx context.Context,
 		commonFlowComponents.L1InfoTreeDataQuerier,
 		agglayerClient,
 		certQuerier,
+		aggchainFEPQuerier,
 		commonFlowComponents.LERQuerier,
 		commonFlowComponents.Signer,
 	)

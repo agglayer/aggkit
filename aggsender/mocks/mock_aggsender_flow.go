@@ -343,6 +343,56 @@ func (_c *AggsenderFlow_UpdateAggchainData_Call) RunAndReturn(run func(*agglayer
 	return _c
 }
 
+// VerifyAggchainData provides a mock function with given fields: ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier
+func (_m *AggsenderFlow) VerifyAggchainData(ctx context.Context, cert *agglayertypes.Certificate, requestedEndBlock uint64, lastProvenBlock uint64, aggchainFEPQuerier types.AggchainFEPRollupQuerier) error {
+	ret := _m.Called(ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier)
+
+	if len(ret) == 0 {
+		panic("no return value specified for VerifyAggchainData")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint64, uint64, types.AggchainFEPRollupQuerier) error); ok {
+		r0 = rf(ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// AggsenderFlow_VerifyAggchainData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerifyAggchainData'
+type AggsenderFlow_VerifyAggchainData_Call struct {
+	*mock.Call
+}
+
+// VerifyAggchainData is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cert *agglayertypes.Certificate
+//   - requestedEndBlock uint64
+//   - lastProvenBlock uint64
+//   - aggchainFEPQuerier types.AggchainFEPRollupQuerier
+func (_e *AggsenderFlow_Expecter) VerifyAggchainData(ctx interface{}, cert interface{}, requestedEndBlock interface{}, lastProvenBlock interface{}, aggchainFEPQuerier interface{}) *AggsenderFlow_VerifyAggchainData_Call {
+	return &AggsenderFlow_VerifyAggchainData_Call{Call: _e.mock.On("VerifyAggchainData", ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier)}
+}
+
+func (_c *AggsenderFlow_VerifyAggchainData_Call) Run(run func(ctx context.Context, cert *agglayertypes.Certificate, requestedEndBlock uint64, lastProvenBlock uint64, aggchainFEPQuerier types.AggchainFEPRollupQuerier)) *AggsenderFlow_VerifyAggchainData_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate), args[2].(uint64), args[3].(uint64), args[4].(types.AggchainFEPRollupQuerier))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlow_VerifyAggchainData_Call) Return(_a0 error) *AggsenderFlow_VerifyAggchainData_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *AggsenderFlow_VerifyAggchainData_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate, uint64, uint64, types.AggchainFEPRollupQuerier) error) *AggsenderFlow_VerifyAggchainData_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewAggsenderFlow creates a new instance of AggsenderFlow. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewAggsenderFlow(t interface {

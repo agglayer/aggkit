@@ -141,6 +141,19 @@ func (p *PPFlow) UpdateAggchainData(
 	return nil
 }
 
+// VerifyAggchainData verifies the AggchainData field in certificate
+func (p *PPFlow) VerifyAggchainData(
+	ctx context.Context,
+	cert *agglayertypes.Certificate,
+	requestedEndBlock uint64,
+	lastProvenBlock uint64,
+	aggchainFEPQuerier types.AggchainFEPRollupQuerier) error {
+	// for PP certificates there is nothing to verify in AggchainData
+	// signature of the proposer will be added with signatures of other committee members
+	// in the multisig, so no need to verify anything here
+	return nil
+}
+
 // Signer returns the signer used to sign the certificate
 func (p *PPFlow) Signer() signertypes.Signer {
 	return p.certificateSigner
