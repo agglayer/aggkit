@@ -30,7 +30,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 			howManyCertsToInsert:           5,
 			howmanyRetriesPerCert:          2,
 			expectedCentificateInfo:        []CertificateKey{{Height: 3, RetryCount: 1}, {Height: 4, RetryCount: 1}},
-			expectedCentificateInfoHistory: nil,
+			expectedCentificateInfoHistory: []CertificateKey{},
 		},
 		{
 			name:                           "retain 1 certs with history",
@@ -98,7 +98,6 @@ func TestRetainPolicy_Validate(t *testing.T) {
 	require.NoError(t, NewStorageRetainCertificatesPolicy(2, false).Validate())
 	var rp *StorageRetainCertificatesPolicy
 	require.Error(t, rp.Validate())
-
 }
 
 func TestRetainPolicy_String(t *testing.T) {
