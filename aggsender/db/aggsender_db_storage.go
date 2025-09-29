@@ -56,7 +56,7 @@ func (r RuntimeData) IsCompatible(storage RuntimeData) error {
 	return nil
 }
 
-type AggSendeStorageMaintenancer interface {
+type AggSenderStorageMaintenancer interface {
 	// Move to certificate_info_history the certificate identified by CertificateKey
 	MoveCertificateToHistory(tx dbtypes.Querier, height uint64) error
 	// Delete from certificate_info and certificate_info_history the certificate CertificateKey
@@ -67,7 +67,7 @@ type AggSendeStorageMaintenancer interface {
 
 // AggSenderStorage is the interface that defines the methods to interact with the storage
 type AggSenderStorage interface {
-	AggSendeStorageMaintenancer
+	AggSenderStorageMaintenancer
 
 	// GetCertificateByHeight returns a certificate by its height
 	GetCertificateByHeight(height uint64) (*types.Certificate, error)
