@@ -31,9 +31,9 @@ func Test_StorageExploratory(t *testing.T) {
 		t.Fatalf("environment variable DB_AGGSENDER_0_2 is not set")
 	}
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  path,
-		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   path,
+		CertificatesDir:          filepath.Join(filepath.Dir(path), "certificates"),
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -52,9 +52,9 @@ func Test_Storage(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTest_Storage.sqlite")
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  path,
-		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   path,
+		CertificatesDir:          filepath.Join(filepath.Dir(path), "certificates"),
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -252,7 +252,7 @@ func Test_Storage(t *testing.T) {
 					UpdatedAt:               updateTime,
 					PreviousLocalExitRoot:   &prevLER,
 					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
-					RetryCount:              1,
+					RetryCount:              0,
 					L1InfoTreeLeafCount:     10,
 				},
 			},
@@ -269,7 +269,7 @@ func Test_Storage(t *testing.T) {
 					PreviousLocalExitRoot:   &prevLER,
 					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
 					L1InfoTreeLeafCount:     15,
-					RetryCount:              2,
+					RetryCount:              0,
 				},
 				SignedCertificate: &signedCert,
 				AggchainProof: &types.AggchainProof{
@@ -330,7 +330,7 @@ func Test_Storage(t *testing.T) {
 		certificate := types.Certificate{
 			Header: &types.CertificateHeader{
 				Height:           13,
-				RetryCount:       1234,
+				RetryCount:       0,
 				CertificateID:    common.HexToHash("0xD"),
 				NewLocalExitRoot: common.HexToHash("0xE"),
 				FromBlock:        13,
@@ -364,9 +364,9 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTest_SaveLastSentCertificate.sqlite")
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  path,
-		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   path,
+		CertificatesDir:          filepath.Join(filepath.Dir(path), "certificates"),
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -410,7 +410,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		// Update the certificate with the same height
+		// Update the certificate with the same height (next retry)
 		updatedCertificate := types.Certificate{
 			Header: &types.CertificateHeader{
 				Height:           2,
@@ -419,6 +419,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 				FromBlock:        3,
 				ToBlock:          6,
 				Status:           agglayertypes.Pending,
+				RetryCount:       1,
 			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, updatedCertificate))
@@ -528,8 +529,8 @@ func Test_StoragePreviousLER(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_StoragePreviousLER.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -573,8 +574,8 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_StorageFinalizedL1InfoRoot.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -620,8 +621,8 @@ func Test_StorageAggchainProof(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_StorageAggchainProof.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -681,8 +682,8 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_GetLastSentCertificateHeaderWithProofIfInError.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -1096,8 +1097,8 @@ func Test_GetLastSettledCertificate(t *testing.T) {
 	ctx := context.Background()
 	dbPath := path.Join(t.TempDir(), "Test_GetLastSettledCertificate.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -1454,4 +1455,19 @@ func Test_deleteCertificate(t *testing.T) {
 		_, err = storage.GetCertificateByHeight(1)
 		require.ErrorIs(t, err, db.ErrNotFound)
 	})
+}
+
+func newTestStorage(t *testing.T, dbName string,
+	retainCfg *StorageRetainCertificatesPolicy) *AggSenderSQLStorage {
+	t.Helper()
+	dbPath := path.Join(t.TempDir(), dbName)
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:                   dbPath,
+		CertificatesDir:          filepath.Join(filepath.Dir(dbPath), "certificates"),
+		RetainCertificatesPolicy: *retainCfg,
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, storage)
+	return storage
 }

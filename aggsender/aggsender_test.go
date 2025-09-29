@@ -757,9 +757,9 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	} else {
 		dbPath := path.Join(t.TempDir(), "newAggsenderTestData.sqlite")
 		storageConfig := db.AggSenderSQLStorageConfig{
-			DBPath:                  dbPath,
-			CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
-			KeepCertificatesHistory: true,
+			DBPath:                   dbPath,
+			CertificatesDir:          filepath.Join(filepath.Dir(dbPath), "certificates"),
+			RetainCertificatesPolicy: *db.NewStorageRetainCertificatesPolicyDefault(),
 		}
 		storage, err = db.NewAggSenderSQLStorage(logger, storageConfig)
 		require.NoError(t, err)

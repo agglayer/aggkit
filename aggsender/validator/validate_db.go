@@ -32,9 +32,9 @@ func NewDBValidator(
 func (b *DBValidator) ValidateDB(dbPath string) (string, rpc.Error) {
 	b.logger.Infof("Validating Aggsender DB at path: %s", dbPath)
 	cfg := db.AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		CertificatesDir:          filepath.Join(filepath.Dir(dbPath), "certificates"),
+		RetainCertificatesPolicy: *db.NewStorageRetainCertificatesPolicyDefault(),
 	}
 	database, err := db.NewAggSenderSQLStorage(b.logger, cfg)
 	if err != nil {

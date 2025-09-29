@@ -105,9 +105,9 @@ var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
 
 // AggSenderSQLStorageConfig is the configuration for the AggSenderSQLStorage
 type AggSenderSQLStorageConfig struct {
-	DBPath                  string
-	CertificatesDir         string
-	KeepCertificatesHistory bool
+	DBPath                   string
+	CertificatesDir          string
+	RetainCertificatesPolicy StorageRetainCertificatesPolicy
 }
 
 // AggSenderSQLStorage is the struct that implements the AggSenderStorage interface
@@ -134,13 +134,13 @@ func NewAggSenderSQLStorage(logger aggkitcommon.Logger, cfg AggSenderSQLStorageC
 		logger:           logger,
 		cfg:              cfg,
 		KeyValueStorager: db.NewKeyValueStorage(database),
-	}, nil
+		retainPolicy:     &cfg.RetainCertificatesPolicy}, nil
 }
 
 // GetCertificateHeadersByStatus returns a list of certificate headers by their status
 func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
 	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error) {
-	query := selectQueryCertificateHeader
+	condition := ""
 
 	args := make([]any, len(statuses))
 
@@ -153,17 +153,28 @@ func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
 		}
 
 		// Build the WHERE clause with the joined placeholders
-		query += " WHERE status IN (" + strings.Join(placeholders, ", ") + ")"
+		condition += "status IN (" + strings.Join(placeholders, ", ") + ")"
 	}
 
 	// Add ordering by creation date (oldest first)
-	query += " ORDER BY height ASC"
+	condition += " ORDER BY height ASC"
 
+	return a.getAllCerts(nil, tableCertificate, condition, args)
+}
+
+func (a *AggSenderSQLStorage) getAllCerts(tx dbtypes.Querier, table tableName,
+	condition string, args []any) ([]*types.CertificateHeader, error) {
+	if tx == nil {
+		tx = a.db
+	}
+	query := fmt.Sprintf("SELECT * FROM %s", table)
+	if condition != "" {
+		query += " WHERE " + condition
+	}
 	var certificates []*types.CertificateHeader
-	if err := meddler.QueryAll(a.db, &certificates, query, args...); err != nil {
+	if err := meddler.QueryAll(tx, &certificates, query, args...); err != nil {
 		return nil, err
 	}
-
 	return certificates, nil
 }
 
@@ -216,12 +227,19 @@ func getCertificatesByHeight(db dbtypes.Querier, table tableName,
 // getCertificatesHeightOlderThanHeight returns a list of certificate heights older than the provided height
 func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
 	olderThanHeight uint64) ([]uint64, error) {
-	var heights []uint64
-	if err := meddler.QueryAll(db, &heights,
-		"SELECT DISTINCT height FROM %s WHERE height < $1;", table, olderThanHeight); err != nil {
+	type heightRow struct {
+		Height uint64 `meddler:"height"`
+	}
+	var rows []*heightRow
+	if err := meddler.QueryAll(db, &rows,
+		fmt.Sprintf("SELECT DISTINCT height FROM %s WHERE height < $1;", table), olderThanHeight); err != nil {
 		return nil, err
 	}
-	return heights, nil
+	res := make([]uint64, len(rows))
+	for i, row := range rows {
+		res[i] = row.Height
+	}
+	return res, nil
 }
 
 // GetLastSentCertificate returns the last certificate sent to the aggLayer
@@ -568,7 +586,7 @@ func (a *AggSenderSQLStorage) MoveCertificateToHistory(tx dbtypes.Querier, heigh
 		height); err != nil {
 		return fmt.Errorf("error moving certificate height: %d to history: %w", height, err)
 	}
-	return nil
+	return a.deleteCertificates(tx, tableCertificate, height)
 }
 
 // Delete from certificate_info and certificate_info_history the certificate CertificateKey

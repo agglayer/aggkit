@@ -1,6 +1,8 @@
 package db
 
 import (
+	"fmt"
+
 	dbtypes "github.com/agglayer/aggkit/db/types"
 )
 
@@ -35,11 +37,48 @@ type StorageRetainCertificatesPolicy struct {
 	KeepCertificatesHistory bool   `mapstructure:"KeepCertificatesHistory"`
 }
 
+func (r *StorageRetainCertificatesPolicy) Validate() error {
+	if r.RetainNCertificates == 0 {
+		r.RetainNCertificates = KeepAllCertificates
+	}
+	return nil
+}
+
+func (r *StorageRetainCertificatesPolicy) String() string {
+	if r == nil {
+		return "nil"
+	}
+	var res string
+	if r.RetainNCertificates == KeepAllCertificates {
+		res = "retain all certificates, "
+	} else {
+		res = fmt.Sprintf("retain last %d certificates, ", r.RetainNCertificates)
+	}
+	return res + fmt.Sprintf("keep history: %t", r.KeepCertificatesHistory)
+}
+
 type StorageRetainCertificatesPolicier interface {
 	OnNewCert(tx dbtypes.Querier, storage AggSendeStorageMaintenancer, certKey CertificateKey) error
 }
 
-func (r *StorageRetainCertificatesPolicy) OnRetOnNewCertryCert(tx dbtypes.Querier,
+// NewStorageRetainCertificatesPolicyDefault creates a new StorageRetainCertificatesPolicy with default values
+func NewStorageRetainCertificatesPolicyDefault() *StorageRetainCertificatesPolicy {
+	return &StorageRetainCertificatesPolicy{
+		RetainNCertificates:     KeepAllCertificates,
+		KeepCertificatesHistory: true,
+	}
+}
+
+// NewStorageRetainCertificatesPolicy creates a new StorageRetainCertificatesPolicy
+func NewStorageRetainCertificatesPolicy(retainNCertificates uint32,
+	keepCertificatesHistory bool) *StorageRetainCertificatesPolicy {
+	return &StorageRetainCertificatesPolicy{
+		RetainNCertificates:     retainNCertificates,
+		KeepCertificatesHistory: keepCertificatesHistory,
+	}
+}
+
+func (r *StorageRetainCertificatesPolicy) OnNewCert(tx dbtypes.Querier,
 	storage AggSendeStorageMaintenancer, certKey CertificateKey) error {
 	if certKey.IsRetry() {
 		if r.KeepCertificatesHistory {
@@ -51,6 +90,7 @@ func (r *StorageRetainCertificatesPolicy) OnRetOnNewCertryCert(tx dbtypes.Querie
 	if r.RetainNCertificates == KeepAllCertificates {
 		return nil
 	}
+	// There are not enough certificates yet to delete
 	if certKey.Height < uint64(r.RetainNCertificates) {
 		return nil
 	}
