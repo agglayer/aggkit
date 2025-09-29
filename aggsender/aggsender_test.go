@@ -64,7 +64,8 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n"+
-		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
+		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
+		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
