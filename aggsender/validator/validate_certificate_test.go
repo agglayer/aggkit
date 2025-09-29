@@ -323,15 +323,16 @@ func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator 
 	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockCertQuerier := mocks.NewCertificateQuerier(t)
 	lerQuerier := mocks.NewLERQuerier(t)
-	aggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
+	mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
 
 	return testDataCertificateValidator{
-		ctx:                   context.TODO(),
-		logger:                mockLogger,
-		mockFlow:              mockFlow,
-		mockL1InfoTreeQuerier: mockL1InfoTreeQuerier,
-		mockCertQuerier:       mockCertQuerier,
-		mockLERQuerier:        lerQuerier,
-		sut:                   NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier, mockCertQuerier, lerQuerier, aggchainFEPQuerier),
+		ctx:                    context.TODO(),
+		logger:                 mockLogger,
+		mockFlow:               mockFlow,
+		mockL1InfoTreeQuerier:  mockL1InfoTreeQuerier,
+		mockCertQuerier:        mockCertQuerier,
+		mockLERQuerier:         lerQuerier,
+		mockAggchainFEPQuerier: mockAggchainFEPQuerier,
+		sut:                    NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier, mockCertQuerier, lerQuerier, mockAggchainFEPQuerier),
 	}
 }

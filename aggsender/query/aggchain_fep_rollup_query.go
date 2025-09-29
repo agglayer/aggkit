@@ -100,7 +100,8 @@ func newAggchainFEPQuerier(
 	logger *log.Logger,
 	aggchainFEPAddr common.Address,
 	aggchainFEPCaller optimistic.FEPContractQuerier,
-	opPublicValuesQuerier optimistic.OptimisticAggregationProofPublicValuesQuerier) (types.AggchainFEPRollupQuerier, error) {
+	opPublicValuesQuerier optimistic.OptimisticAggregationProofPublicValuesQuerier,
+) (types.AggchainFEPRollupQuerier, error) {
 	startL2Block, err := aggchainFEPCaller.StartingBlockNumber(nil)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error AggChainFEPContract.StartingBlockNumber (%s): %w",
