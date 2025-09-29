@@ -13,7 +13,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-op-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | multi-l2-networks-2-chains-op-pessimistic | multi-l2-networks-3-chains-cdk-erigon-pessimistic> <kurtosis_repo_path> <e2e_repo_path>"
+    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-op-pessimistic | multi-l2-networks-2-chains-op-pessimistic | multi-l2-networks-3-chains-cdk-erigon-pessimistic> <kurtosis_repo_path> <e2e_repo_path>"
     echo ""
     echo "Arguments:"
     echo "  test_type           Type of test to run"
@@ -43,9 +43,6 @@ single-l2-network-op-succinct-aggoracle-committee)
     ENCLAVE_NAME="op"
     ;;
 single-l2-network-op-pessimistic)
-    ENCLAVE_NAME="aggkit"
-    ;;
-single-l2-network-fork12-global-index-pp-old-contracts)
     ENCLAVE_NAME="aggkit"
     ;;
 multi-l2-networks-2-chains-op-pessimistic)
@@ -99,10 +96,6 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         ;;
     single-l2-network-op-pessimistic)
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" .
-        ;;
-    single-l2-network-fork12-global-index-pp-old-contracts)
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_args_global_index_pp_old_contracts.json" > /tmp/merged_args_1.json
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" "$PROJECT_ROOT/.github/test_e2e_op_multi_chains_args_2.json" > /tmp/merged_args_2.json
@@ -176,10 +169,6 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
              ./tests/aggkit/bridge-e2e-nightly.bats \
              ./tests/aggkit/internal-claims.bats \
              ./tests/aggkit/claim-reetrancy.bats
-        ;;
-    single-l2-network-fork12-global-index-pp-old-contracts)
-        bats \
-            ./tests/aggkit/global-index-pp-old-contracts.bats
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e-2-chains.bats

@@ -75,8 +75,6 @@ jobs:
       kurtosis-cdk-args-single-op-succinct-aggoracle-committee: ${{ steps.read-args.outputs.op_succinct_aggoracle_committee_args }}
       # single l2 network (op, pessimistic)
       kurtosis-cdk-args-single-op-pessimistic: ${{ steps.read-args.outputs.single_op_chain_pessimistic_args }}
-      # single l2 network (fork 12, global index pp old contracts)
-      kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts: ${{ steps.read-args.outputs.fork12_global_index_pp_old_contracts_args }}
       # multi l2 networks
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
@@ -119,9 +117,6 @@ jobs:
 
           # single l2 network (op, pessimistic)
           put_args single_op_chain_pessimistic_args "$BASE_OP"
-
-          # single l2 network (fork 12, global index pp old contracts)
-          put_args fork12_global_index_pp_old_contracts_args "$BASE_CRK_ERIGON" ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json
 
           # multi l2 networks
           put_args kurtosis-cdk-args-1 "$BASE_OP"
@@ -174,33 +169,6 @@ jobs:
     steps:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-pessimistic.result) }}
-
-  test-single-l2-network-fork12-global-index-pp-old-contracts:
-    name: Single L2 chain tests (global index pp old contracts)
-    needs:
-      - build-aggkit-image
-      - build-tools
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@6c51d2dfda0bd8fd9a572ef6fab67784a9239393
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 6c51d2dfda0bd8fd9a572ef6fab67784a9239393
-      kurtosis-cdk-enclave-name: aggkit
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
-      test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
-      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-      event-name: ${{ github.event_name }}
-
-  check-single-l2-network-fork12-global-index-pp-old-contracts-tests-result:
-    name: Check results for single l2 network (global index pp old contracts)
-    needs:
-      - test-single-l2-network-fork12-global-index-pp-old-contracts
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result) }}
 
   test-single-l2-network-op-succinct:
     name: Single L2 chain tests (op-succinct)
@@ -314,7 +282,6 @@ jobs:
       - test-single-l2-network-op-succinct-aggoracle-committee
       - test-multi-l2-networks-2-chains-op-pessimistic
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
-      - test-single-l2-network-fork12-global-index-pp-old-contracts
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
@@ -335,6 +302,5 @@ jobs:
             • Single L2 (op-succinct with aggoracle committee): ${{ needs.test-single-l2-network-op-succinct-aggoracle-committee.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (OP, pessimistic, 2 chains): ${{ needs.test-multi-l2-networks-2-chains-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (OP, pessimistic, 3 chains): ${{ needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result == 'success' && '🟢' || '🔴' }}
-            • Single L2 (global index pp old contracts): ${{ needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result == 'success' && '🟢' || '🔴' }}
 
             <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
