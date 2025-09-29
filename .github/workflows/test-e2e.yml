@@ -89,7 +89,7 @@ jobs:
         id: read-args
         run: |
           BASE_OP=./.github/test_e2e_op_args_base.json
-          BASE_CRK_ERIGON=./.github/test_e2e_cdk_erigon_args_base.json
+          BASE_CDK_ERIGON=./.github/test_e2e_cdk_erigon_args_base.json
 
           # Helper: merge base with override (if any), output to GITHUB_OUTPUT, and pretty print
           put_args() {
@@ -121,9 +121,9 @@ jobs:
           # multi l2 networks
           put_args kurtosis-cdk-args-1 "$BASE_OP"
           put_args kurtosis-cdk-args-2 "$BASE_OP" ./.github/test_e2e_op_multi_chains_args_2.json
-          put_args kurtosis-cdk-args-3 "$BASE_CRK_ERIGON"
-          put_args kurtosis-cdk-args-4 "$BASE_CRK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_2.json
-          put_args kurtosis-cdk-args-5 "$BASE_CRK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
+          put_args kurtosis-cdk-args-3 "$BASE_CDK_ERIGON"
+          put_args kurtosis-cdk-args-4 "$BASE_CDK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_2.json
+          put_args kurtosis-cdk-args-5 "$BASE_CDK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
 
   build-tools:
     name: Build aggsender find imported bridge tool
