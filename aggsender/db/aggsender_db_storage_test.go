@@ -1456,18 +1456,3 @@ func Test_deleteCertificate(t *testing.T) {
 		require.ErrorIs(t, err, db.ErrNotFound)
 	})
 }
-
-func newTestStorage(t *testing.T, dbName string,
-	retainCfg *StorageRetainCertificatesPolicy) *AggSenderSQLStorage {
-	t.Helper()
-	dbPath := path.Join(t.TempDir(), dbName)
-	cfg := AggSenderSQLStorageConfig{
-		DBPath:                   dbPath,
-		CertificatesDir:          filepath.Join(filepath.Dir(dbPath), "certificates"),
-		RetainCertificatesPolicy: *retainCfg,
-	}
-	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
-	require.NoError(t, err)
-	require.NotNil(t, storage)
-	return storage
-}
