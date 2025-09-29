@@ -138,3 +138,47 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 		mockCaller.AssertExpectations(t)
 	})
 }
+
+func TestGetAggregationProofPublicValuesData(t *testing.T) {
+	t.Parallel()
+
+	mockOpQuerier := opmocks.NewOptimisticAggregationProofPublicValuesQuerier(t)
+	mockCaller := mocks.NewAggchainFEPCaller(t)
+	startingBlock := big.NewInt(1000)
+	mockCaller.EXPECT().StartingBlockNumber((*bind.CallOpts)(nil)).Return(startingBlock, nil).Once()
+
+	lastProvenBlock := uint64(123)
+	requestedEndBlock := uint64(456)
+	l1Hash := common.HexToHash("0xabc")
+	expected := &types.AggregationProofPublicValues{}
+
+	mockOpQuerier.
+		EXPECT().
+		GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1Hash).
+		Return(nil, errors.New("some error")).
+		Once()
+
+	querier, err := newAggchainFEPQuerier(
+		log.WithFields("test", "GetAggregationProofPublicValuesData"),
+		common.HexToAddress("0x1"),
+		mockCaller,
+		mockOpQuerier,
+	)
+	require.NoError(t, err)
+
+	_, err = querier.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1Hash)
+	require.ErrorContains(t, err, "some error")
+
+	mockOpQuerier.
+		EXPECT().
+		GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock+1, l1Hash).
+		Return(expected, nil).
+		Once()
+
+	got, err := querier.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock+1, l1Hash)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+
+	mockCaller.AssertExpectations(t)
+	mockOpQuerier.AssertExpectations(t)
+}

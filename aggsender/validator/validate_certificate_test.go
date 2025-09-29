@@ -197,6 +197,36 @@ func TestValidateCertificate(t *testing.T) {
 		})
 		require.ErrorContains(t, err, "certificate not equal to expected")
 	})
+
+	t.Run("fails VerifyAggchainData", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		certificate := &agglayertypes.Certificate{
+			Height:              0,
+			L1InfoTreeLeafCount: 10,
+			PrevLocalExitRoot:   types.EmptyLER,
+		}
+
+		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
+		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
+		testData.mockL1InfoTreeQuerier.EXPECT().
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
+		testData.mockFlow.EXPECT().
+			GenerateBuildParams(testData.ctx, mock.Anything).Return(&types.CertificateBuildParams{
+			L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
+		}, nil)
+		testData.mockFlow.EXPECT().
+			BuildCertificate(testData.ctx, mock.Anything).Return(certificate, nil)
+		testData.mockFlow.EXPECT().
+			VerifyAggchainData(testData.ctx, certificate, uint64(10), uint64(0), testData.mockAggchainFEPQuerier).Return(errGenericForTesting)
+
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
+			Certificate:         certificate,
+			PreviousCertificate: nil,
+			LastL2BlockInCert:   10,
+		})
+		require.ErrorContains(t, err, "failed to verify AggchainData")
+	})
 }
 
 func TestCheckContigousCertificates(t *testing.T) {
