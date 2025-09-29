@@ -111,7 +111,8 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
-		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"
+		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n" +
+		"StorageRetainCertificatesPolicy: " + c.StorageRetainCertificatesPolicy.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
@@ -137,6 +138,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.RetriesToBuildAndSendCertificate.Validate(); err != nil {
 		return fmt.Errorf("invalid RetriesToBuildAndSendCertificate config: %w", err)
+	}
+	if err := c.StorageRetainCertificatesPolicy.Validate(); err != nil {
+		return fmt.Errorf("invalid StorageRetainCertificatesPolicy config: %w", err)
 	}
 	return nil
 }

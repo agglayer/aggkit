@@ -38,8 +38,8 @@ type StorageRetainCertificatesPolicy struct {
 }
 
 func (r *StorageRetainCertificatesPolicy) Validate() error {
-	if r.RetainNCertificates == 0 {
-		r.RetainNCertificates = KeepAllCertificates
+	if r == nil {
+		return fmt.Errorf("retain certificates policy is nil")
 	}
 	return nil
 }
