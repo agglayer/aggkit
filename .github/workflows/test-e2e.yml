@@ -91,18 +91,27 @@ jobs:
           BASE_OP=./.github/test_e2e_op_args_base.json
           BASE_CDK_ERIGON=./.github/test_e2e_cdk_erigon_args_base.json
 
-          # Helper: merge base with override (if any), output to GITHUB_OUTPUT, and pretty print
+          # Helper: merge provided JSON files, output to GITHUB_OUTPUT, and pretty print
           put_args() {
             local name="$1"
-            local base="$2"
-            local override="$3"
+            shift
+            local files=("$@")
             local content
 
-            if [ -n "$override" ]; then
-              content=$(jq -s '.[0] * .[1]' "$base" "$override" | jq -c .)
-            else
-              content=$(jq -c . "$base")
+            if [ "${#files[@]}" -eq 0 ]; then
+              echo "❌ Error: put_args requires at least one JSON file" >&2
+              exit 1
             fi
+
+            # Verify that all files exist
+            for f in "${files[@]}"; do
+              if [ ! -f "$f" ]; then
+                echo "❌ Error: JSON file not found: $f" >&2
+                exit 1
+              fi
+            done
+
+            content=$(jq -s 'reduce .[] as $item ({}; . * $item)' "${files[@]}" | jq -c .)
 
             echo "${name}=${content}" >> "$GITHUB_OUTPUT"
             echo "### $name"
@@ -110,20 +119,31 @@ jobs:
           }
 
           # single l2 network (fork 12, op-succinct)
-          put_args op_succinct_args "$BASE_OP" ./.github/test_e2e_single_chain_op_succinct_args.json
+          put_args op_succinct_args "$BASE_OP" \
+            ./.github/test_e2e_single_chain_op_succinct_args.json
 
           # single l2 network (fork 12, op-succinct with aggoracle committee)
-          put_args op_succinct_aggoracle_committee_args "$BASE_OP" ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
+          put_args op_succinct_aggoracle_committee_args "$BASE_OP" \
+            ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
 
           # single l2 network (op, pessimistic)
           put_args single_op_chain_pessimistic_args "$BASE_OP"
 
           # multi l2 networks
           put_args kurtosis-cdk-args-1 "$BASE_OP"
-          put_args kurtosis-cdk-args-2 "$BASE_OP" ./.github/test_e2e_op_multi_chains_args_2.json
-          put_args kurtosis-cdk-args-3 "$BASE_CDK_ERIGON"
-          put_args kurtosis-cdk-args-4 "$BASE_CDK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_2.json
-          put_args kurtosis-cdk-args-5 "$BASE_CDK_ERIGON" ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
+
+          put_args kurtosis-cdk-args-2 "$BASE_OP" \
+            ./.github/test_e2e_op_multi_chains_args_2.json
+
+          put_args kurtosis-cdk-args-3 "$BASE_CDK_ERIGON" \
+            ./.github/test_e2e_cdk_erigon_custom_gas_token.json
+
+          put_args kurtosis-cdk-args-4 "$BASE_CDK_ERIGON" \
+            ./.github/test_e2e_cdk_erigon_multi_chains_args_2.json \
+            ./.github/test_e2e_cdk_erigon_custom_gas_token.json
+
+          put_args kurtosis-cdk-args-5 "$BASE_CDK_ERIGON" \
+            ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
 
   build-tools:
     name: Build aggsender find imported bridge tool
