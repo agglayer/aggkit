@@ -56,12 +56,12 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	}
 	configName, err := o.aggchainFEPContract.SelectedOpSuccinctConfigName(nil)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. SelectedOpSuccinctConfigName from contract %s. Err: %w",
+		return nil, fmt.Errorf("optimisticModeSignQuery. contract.SelectedOpSuccinctConfigName from contract %s. Err: %w",
 			o.aggchainFEPAddr, err)
 	}
 	opConfig, err := o.aggchainFEPContract.OpSuccinctConfigs(nil, configName)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. OpSuccinctConfigs from contract %s. Err: %w",
+		return nil, fmt.Errorf("optimisticModeSignQuery. contract.OpSuccinctConfigs from contract %s. Err: %w",
 			o.aggchainFEPAddr, err)
 	}
 	return &optimistichash.AggregationProofPublicValues{
