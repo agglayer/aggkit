@@ -154,11 +154,11 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@321627814a3c6d8ced385710febbb0cc89ca4b09
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f39a4e6a47bab2f35f0455a59e1a72d86cb97640
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 321627814a3c6d8ced385710febbb0cc89ca4b09
+      agglayer-e2e-ref: f39a4e6a47bab2f35f0455a59e1a72d86cb97640
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
@@ -180,12 +180,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@321627814a3c6d8ced385710febbb0cc89ca4b09
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f39a4e6a47bab2f35f0455a59e1a72d86cb97640
     secrets: inherit
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 321627814a3c6d8ced385710febbb0cc89ca4b09
+      agglayer-e2e-ref: f39a4e6a47bab2f35f0455a59e1a72d86cb97640
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
       test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
@@ -208,11 +208,11 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@321627814a3c6d8ced385710febbb0cc89ca4b09
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f39a4e6a47bab2f35f0455a59e1a72d86cb97640
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 321627814a3c6d8ced385710febbb0cc89ca4b09
+      agglayer-e2e-ref: f39a4e6a47bab2f35f0455a59e1a72d86cb97640
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       test-name: "test-single-l2-network-op-succinct"
@@ -233,12 +233,12 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@321627814a3c6d8ced385710febbb0cc89ca4b09
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f39a4e6a47bab2f35f0455a59e1a72d86cb97640
     secrets: inherit
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 321627814a3c6d8ced385710febbb0cc89ca4b09
+      agglayer-e2e-ref: f39a4e6a47bab2f35f0455a59e1a72d86cb97640
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
       test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
@@ -261,11 +261,11 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@321627814a3c6d8ced385710febbb0cc89ca4b09
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@f39a4e6a47bab2f35f0455a59e1a72d86cb97640
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 321627814a3c6d8ced385710febbb0cc89ca4b09
+      agglayer-e2e-ref: f39a4e6a47bab2f35f0455a59e1a72d86cb97640
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -287,12 +287,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@321627814a3c6d8ced385710febbb0cc89ca4b09
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@f39a4e6a47bab2f35f0455a59e1a72d86cb97640
     secrets: inherit
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 321627814a3c6d8ced385710febbb0cc89ca4b09
+      agglayer-e2e-ref: f39a4e6a47bab2f35f0455a59e1a72d86cb97640
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
