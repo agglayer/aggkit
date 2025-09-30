@@ -645,6 +645,13 @@ func runBridgeSyncL1IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
 	}
+
+	// Run tx_sender backfilling before starting the bridge sync
+	if err := runTxSenderBackfill(ctx, cfg, l1Client); err != nil {
+		log.Errorf("tx_sender backfilling failed: %v", err)
+		// Don't fail the entire process, just log the error and continue
+	}
+
 	go bridgeSyncL1.Start(ctx)
 
 	return bridgeSyncL1
@@ -678,6 +685,13 @@ func runBridgeSyncL2IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
 	}
+
+	// Run tx_sender backfilling before starting the bridge sync
+	if err := runTxSenderBackfill(ctx, cfg, l2Client); err != nil {
+		log.Errorf("tx_sender backfilling failed: %v", err)
+		// Don't fail the entire process, just log the error and continue
+	}
+
 	go bridgeSyncL2.Start(ctx)
 
 	return bridgeSyncL2
@@ -769,4 +783,44 @@ func createRollupDataQuerier(ctx context.Context,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
 			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
 		})
+}
+
+// runTxSenderBackfill runs the tx_sender backfilling process
+func runTxSenderBackfill(ctx context.Context, cfg bridgesync.Config, client aggkittypes.EthClienter) error {
+	// Only run backfilling if we have a database path configured
+	if cfg.DBPath == "" {
+		log.Debug("No database path configured, skipping tx_sender backfilling")
+		return nil
+	}
+
+	log.Info("Starting tx_sender backfilling process")
+
+	// Create backfill instance
+	backfiller, err := bridgesync.NewBackfillTxSender(cfg.DBPath, client, cfg.BridgeAddr, log.WithFields("module", "tx-sender-backfill"))
+	if err != nil {
+		return fmt.Errorf("failed to create backfill instance: %w", err)
+	}
+	defer backfiller.Close()
+
+	// Create context with timeout for backfilling
+	backfillCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	// Run backfilling
+	start := time.Now()
+	if err := backfiller.BackfillAll(backfillCtx); err != nil {
+		return fmt.Errorf("backfilling failed: %w", err)
+	}
+
+	duration := time.Since(start)
+	processed, errors := backfiller.GetStats()
+
+	log.Infof("tx_sender backfilling completed in %v", duration)
+	log.Infof("Processed: %d records, Errors: %d records", processed, errors)
+
+	if errors > 0 {
+		log.Warnf("Some records failed to process during tx_sender backfilling. Check logs for details.")
+	}
+
+	return nil
 }
