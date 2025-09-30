@@ -19,6 +19,11 @@
   "optimism_package": {
     "chains": [
       {
+        "participants": [
+          {
+            "cl_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.5"
+          }
+        ],
         "proposer_params": {
           "enabled": false
         },
