@@ -27,10 +27,18 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 	expectedRollupConfigHash := [32]byte{0x01}
 	expectedMultiBlockVKey := [32]byte{0x02}
 
-	mockOPNodeClient.On("OutputAtBlockRoot", lastProvenBlock).Return(expectedL2PreRoot, nil)
-	mockOPNodeClient.On("OutputAtBlockRoot", requestedEndBlock).Return(expectedClaimRoot, nil)
-	mockFEPContract.On("RollupConfigHash", (*bind.CallOpts)(nil)).Return(expectedRollupConfigHash, nil)
-	mockFEPContract.On("RangeVkeyCommitment", (*bind.CallOpts)(nil)).Return(expectedMultiBlockVKey, nil)
+	mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(expectedL2PreRoot, nil)
+	mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(expectedClaimRoot, nil)
+	mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([32]byte{0x00}, nil).Once()
+	mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [32]byte{0x00}).Return(struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}{
+		AggregationVkey:     [32]byte{},
+		RangeVkeyCommitment: expectedMultiBlockVKey,
+		RollupConfigHash:    expectedRollupConfigHash,
+	}, nil).Once()
 
 	result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
 
@@ -46,22 +54,69 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 }
 
 func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
-	mockFEPContract := mocks.NewFEPContractQuerier(t)
-	mockOPNodeClient := mocks.NewOpNodeClienter(t)
-
 	contractAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
 	proverAddress := common.HexToAddress("0x0987654321098765432109876543210987654321")
-	sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
 	lastProvenBlock := uint64(1)
 	requestedEndBlock := uint64(2)
 	l1InfoTreeLeafHash := common.HexToHash("0xbeef")
+	t.Run("opNodeClient.OutputAtBlockRoot error on l2PreRoot", func(t *testing.T) {
+		mockFEPContract := mocks.NewFEPContractQuerier(t)
+		mockOPNodeClient := mocks.NewOpNodeClienter(t)
+		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
-	mockOPNodeClient.On("OutputAtBlockRoot", lastProvenBlock).Return(common.Hash{}, errors.New("mock error"))
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, errors.New("mock error")).Once()
 
-	result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
+		result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
 
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "l2PreRoot")
+		assert.ErrorContains(t, err, "l2PreRoot")
+		assert.Nil(t, result)
+	})
+	t.Run("opNodeClient.OutputAtBlockRoot error on claimRoot", func(t *testing.T) {
+		mockFEPContract := mocks.NewFEPContractQuerier(t)
+		mockOPNodeClient := mocks.NewOpNodeClienter(t)
+		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, errors.New("mock error"))
+
+		result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
+
+		assert.ErrorContains(t, err, "claimRoot")
+		assert.Nil(t, result)
+	})
+
+	t.Run("opNodeClient.OutputAtBlockRoot error on contract.SelectedOpSuccinctConfigName", func(t *testing.T) {
+		mockFEPContract := mocks.NewFEPContractQuerier(t)
+		mockOPNodeClient := mocks.NewOpNodeClienter(t)
+		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, nil)
+		mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([32]byte{0x00}, errors.New("mock error")).Once()
+
+		result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
+
+		assert.ErrorContains(t, err, "SelectedOpSuccinctConfigName")
+		assert.Nil(t, result)
+	})
+
+	t.Run("opNodeClient.OutputAtBlockRoot error on contract.OpSuccinctConfigs", func(t *testing.T) {
+		mockFEPContract := mocks.NewFEPContractQuerier(t)
+		mockOPNodeClient := mocks.NewOpNodeClienter(t)
+		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
+		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, nil)
+		mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([32]byte{0x00}, nil).Once()
+		mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [32]byte{0x00}).Return(struct {
+			AggregationVkey     [32]byte
+			RangeVkeyCommitment [32]byte
+			RollupConfigHash    [32]byte
+		}{}, errors.New("mock error")).Once()
+		result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
+
+		assert.ErrorContains(t, err, "OpSuccinctConfigs")
+		assert.Nil(t, result)
+	})
 }

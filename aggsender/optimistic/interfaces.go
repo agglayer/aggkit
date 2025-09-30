@@ -18,9 +18,13 @@ type FEPContractQuerier interface {
 	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
-	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
-	RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error)
 	OptimisticMode(opts *bind.CallOpts) (bool, error)
+	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error)
+	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}, error)
 }
 
 // OptimisticAggregationProofPublicValuesQuerier defines an interface for
