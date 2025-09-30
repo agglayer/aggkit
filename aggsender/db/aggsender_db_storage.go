@@ -61,7 +61,7 @@ type AggSenderStorageMaintainer interface {
 	// Move to certificate_info_history the certificate identified by CertificateKey
 	MoveCertificateToHistory(tx dbtypes.Querier, height uint64) error
 	// Delete from certificate_info and certificate_info_history the certificate identified by CertificateKey
-	DeleteCertificate(tx dbtypes.Querier, height uint64, mustDelete bool) error
+	DeleteCertificate(tx dbtypes.Querier, height uint64, mustDelete DeleteFlag) error
 	// Delete from certificate_info and certificate_info_history all certificates older than olderThanHeight
 	DeleteOldCertificates(tx dbtypes.Querier, olderThanHeight uint64) error
 }
@@ -382,14 +382,11 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		return err
 	}
 
-	if a.retainPolicy != nil {
-		if err := a.retainPolicy.OnNewCert(tx, a, CertificateKey{certInfo.Height, certInfo.RetryCount}); err != nil {
-			return fmt.Errorf("saveLastSentCertificate error applying retain policy: %w", err)
-		}
-	} else {
-		if err := a.DeleteCertificate(tx, certInfo.Height, MaybeDelete); err != nil {
-			return fmt.Errorf("saveLastSentCertificate error deleting existing certificate (no retain obj): %w", err)
-		}
+	if a.retainPolicy == nil {
+		return errors.New("saveLastSentCertificate retainPolicy is nil")
+	}
+	if err := a.retainPolicy.OnNewCert(tx, a, CertificateKey{certInfo.Height, certInfo.RetryCount}); err != nil {
+		return fmt.Errorf("saveLastSentCertificate error applying retain policy: %w", err)
 	}
 
 	if err = meddler.Insert(tx, "certificate_info", certInfo); err != nil {
@@ -593,7 +590,7 @@ func (a *AggSenderSQLStorage) MoveCertificateToHistory(tx dbtypes.Querier, heigh
 // Delete from certificate_info and certificate_info_history the certificate CertificateKey
 // if you don't need a tx just pass nil
 // It required to be in certificate_info table, if not found it returns ErrNoCertDeleted error
-func (a *AggSenderSQLStorage) DeleteCertificate(tx dbtypes.Querier, height uint64, mustDelete bool) error {
+func (a *AggSenderSQLStorage) DeleteCertificate(tx dbtypes.Querier, height uint64, mustDelete DeleteFlag) error {
 	if tx == nil {
 		tx = a.db
 	}
