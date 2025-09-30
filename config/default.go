@@ -41,7 +41,7 @@ PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
 # Default database query timeout
-defaultDBQueryTimeout = "30s"
+defaultDBQueryTimeout = "60s"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
