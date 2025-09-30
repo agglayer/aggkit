@@ -371,15 +371,14 @@ func (a *AggchainProverFlow) VerifyCertificate(
 		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is nil")
 	}
 
-	aggchainDataProof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-	if !ok {
-		// If the AggchainData is of type MultisigWithProof, we extract the proof and verify it
-		aggchainDataMultisigWithProof, ok := cert.AggchainData.(*agglayertypes.AggchainDataMultisigWithProof)
-		if !ok {
-			return fmt.Errorf("aggchainProverFlow: certificate AggchainData is of unknown type %T", cert.AggchainData)
-		}
-
-		aggchainDataProof = aggchainDataMultisigWithProof.AggchainProof
+	var aggchainDataProof *agglayertypes.AggchainDataProof
+	switch v := cert.AggchainData.(type) {
+	case *agglayertypes.AggchainDataProof:
+		aggchainDataProof = v
+	case *agglayertypes.AggchainDataMultisigWithProof:
+		aggchainDataProof = v.AggchainProof
+	default:
+		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is of unknown type %T", cert.AggchainData)
 	}
 
 	// we need to reconstruct the AggchainParams field using what proposer provided,
