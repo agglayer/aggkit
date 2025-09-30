@@ -76,7 +76,7 @@ func validateSignerAgainstContract(
 	signerAddr common.Address,
 	requireKeyMatch bool,
 ) (common.Address, error) {
-	signers, err := contract.GetAggchainSigners(nil)
+	trustedSequencerAddr, err := getTrustedSequencerAddr(contract)
 	if err != nil {
 		err = fmt.Errorf("[OPTIMISTIC] failed to fetch the aggchain signers from the AggchainFEP contract. Err: %w", err)
 		if requireKeyMatch {
@@ -85,26 +85,17 @@ func validateSignerAgainstContract(
 		logger.Warn(err.Error())
 	}
 
-	if len(signers) < 1 {
-		err = fmt.Errorf("[OPTIMISTIC] there should be at least one aggchain signer in the AggchainFEP contract")
-		if requireKeyMatch {
-			return common.Address{}, err
-		}
-		logger.Warn(err.Error())
-	}
-
-	trustedSignerAddr := signers[0]
-	if err == nil && signerAddr != trustedSignerAddr {
+	if err == nil && signerAddr != trustedSequencerAddr {
 		err := fmt.Errorf("[OPTIMISTIC] "+
 			"configured trusted signer address (%s) differs from the one initialized on the AggchainFEP contract (%s)",
-			signerAddr.Hex(), trustedSignerAddr.Hex())
+			signerAddr.Hex(), trustedSequencerAddr.Hex())
 		if requireKeyMatch {
-			return trustedSignerAddr, err
+			return trustedSequencerAddr, err
 		}
 		logger.Warn(err.Error())
 	}
 
-	return trustedSignerAddr, nil
+	return trustedSequencerAddr, nil
 }
 
 // Sign calculate hash and sign it.

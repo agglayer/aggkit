@@ -78,7 +78,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 				RequireKeyMatchTrustedSequencer: true,
 				TrustedSequencerKey:             signerKeyCfg,
 			},
-			expectedErr: "there should be at least one aggchain signer",
+			expectedErr: "should be at least one signer",
 		},
 		{
 			name: "signer differs from trusted sequencer address and RequireKeyMatchTrustedSequencer = false",
@@ -110,7 +110,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 			)
 
 			if tt.expectedErr != "" {
-				require.Contains(t, err.Error(), tt.expectedErr)
+				require.ErrorContains(t, err, tt.expectedErr)
 				require.Nil(t, impl)
 			} else {
 				require.NoError(t, err)

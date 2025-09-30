@@ -1,6 +1,7 @@
 package optimistic
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
@@ -15,6 +16,8 @@ var (
 	_ OpNodeClienter                                = (*opnode.OpNodeClient)(nil)
 	_ FEPContractQuerier                            = (*aggchainfep.Aggchainfep)(nil)
 	_ OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
+
+	errNoSigners = errors.New("no signers found in the AggchainFEP contract. There should be at least one signer")
 )
 
 // OptimisticAggregationProofPublicValuesQuery implements OptimisticAggregationProofPublicValuesQuerier
@@ -69,7 +72,7 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	trustedSequencerAddr := o.proverAddress
 	if trustedSequencerAddr == aggkitcommon.ZeroAddress {
 		// if proverAddress is zero, get the trusted sequencer from the contract
-		trustedSequencerAddr, err = o.trustedSequencerAddr()
+		trustedSequencerAddr, err = getTrustedSequencerAddr(o.aggchainFEPContract)
 		if err != nil {
 			return nil, fmt.Errorf("opAggProofPublicValuesQuery. trustedSequencerAddr from contract %s. Err: %w",
 				o.aggchainFEPAddr, err)
@@ -87,16 +90,15 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	}, nil
 }
 
-func (o *OptimisticAggregationProofPublicValuesQuery) trustedSequencerAddr() (common.Address, error) {
-	signers, err := o.aggchainFEPContract.GetAggchainSigners(nil)
+func getTrustedSequencerAddr(aggchainFEPContract FEPContractQuerier) (common.Address, error) {
+	signers, err := aggchainFEPContract.GetAggchainSigners(nil)
 	if err != nil {
-		return aggkitcommon.ZeroAddress, fmt.Errorf("failed to get aggchain signers from contract %s. Err: %w",
-			o.aggchainFEPAddr.String(), err)
+		return aggkitcommon.ZeroAddress,
+			fmt.Errorf("failed to get aggchain signers from AggchainFEP contract. Err: %w", err)
 	}
 
 	if len(signers) < 1 {
-		return aggkitcommon.ZeroAddress, fmt.Errorf("no signers found in the aggchainFEP contract %s. Required at least one",
-			o.aggchainFEPAddr.String())
+		return aggkitcommon.ZeroAddress, errNoSigners
 	}
 
 	return signers[0], nil
