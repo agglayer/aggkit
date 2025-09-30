@@ -27,10 +27,18 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 	expectedRollupConfigHash := [32]byte{0x01}
 	expectedMultiBlockVKey := [32]byte{0x02}
 
-	mockOPNodeClient.On("OutputAtBlockRoot", lastProvenBlock).Return(expectedL2PreRoot, nil)
-	mockOPNodeClient.On("OutputAtBlockRoot", requestedEndBlock).Return(expectedClaimRoot, nil)
-	mockFEPContract.On("RollupConfigHash", (*bind.CallOpts)(nil)).Return(expectedRollupConfigHash, nil)
-	mockFEPContract.On("RangeVkeyCommitment", (*bind.CallOpts)(nil)).Return(expectedMultiBlockVKey, nil)
+	mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(expectedL2PreRoot, nil)
+	mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(expectedClaimRoot, nil)
+	mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([32]byte{0x00}, nil).Once()
+	mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [32]byte{0x00}).Return(struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}{
+		AggregationVkey:     [32]byte{},
+		RangeVkeyCommitment: expectedMultiBlockVKey,
+		RollupConfigHash:    expectedRollupConfigHash,
+	}, nil).Once()
 
 	result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
 

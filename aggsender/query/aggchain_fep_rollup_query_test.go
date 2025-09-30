@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/agglayer/aggkit/aggsender/mocks"
+	optimisticmocks "github.com/agglayer/aggkit/aggsender/optimistic/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
@@ -54,8 +54,7 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 
 	t.Run("aggchain FEP caller returns error", func(t *testing.T) {
 		t.Parallel()
-
-		mockCaller := mocks.NewAggchainFEPCaller(t)
+		mockCaller := optimisticmocks.NewFEPContractQuerier(t)
 		mockCaller.EXPECT().StartingBlockNumber((*bind.CallOpts)(nil)).Return(nil, errors.New("mock error")).Once()
 
 		_, err := newAggchainFEPQuerier(
@@ -70,7 +69,7 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 	t.Run("aggchain FEP caller returns valid starting block", func(t *testing.T) {
 		t.Parallel()
 
-		mockCaller := mocks.NewAggchainFEPCaller(t)
+		mockCaller := optimisticmocks.NewFEPContractQuerier(t)
 		startingBlock := big.NewInt(1000)
 		mockCaller.EXPECT().StartingBlockNumber((*bind.CallOpts)(nil)).Return(startingBlock, nil).Once()
 
@@ -88,7 +87,7 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 	t.Run("aggchain FEP caller returns error on last settled block", func(t *testing.T) {
 		t.Parallel()
 
-		mockCaller := mocks.NewAggchainFEPCaller(t)
+		mockCaller := optimisticmocks.NewFEPContractQuerier(t)
 		mockCaller.EXPECT().StartingBlockNumber((*bind.CallOpts)(nil)).Return(big.NewInt(1000), nil).Once()
 		mockCaller.EXPECT().LatestBlockNumber((*bind.CallOpts)(nil)).Return(nil, errors.New("mock error")).Once()
 
@@ -108,7 +107,7 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 	t.Run("aggchain FEP caller returns valid last settled block", func(t *testing.T) {
 		t.Parallel()
 
-		mockCaller := mocks.NewAggchainFEPCaller(t)
+		mockCaller := optimisticmocks.NewFEPContractQuerier(t)
 		startingBlock := big.NewInt(1000)
 		lastSettledBlock := big.NewInt(2000)
 

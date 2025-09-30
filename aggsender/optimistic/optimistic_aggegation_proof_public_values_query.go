@@ -54,24 +54,20 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 		return nil, fmt.Errorf("optimisticModeSignQuery. claimRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
 			requestedEndBlock, err)
 	}
-	rollupConfigHash, err := o.aggchainFEPContract.RollupConfigHash(nil)
-	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. rollupConfigHash from contract %s. Err: %w",
-			o.aggchainFEPAddr, err)
-	}
-	multiBlockVKey, err := o.aggchainFEPContract.RangeVkeyCommitment(nil)
-	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. multiBlockVKey(AggregationVkey) from contract %s. Err: %w",
-			o.aggchainFEPAddr, err)
-	}
+	configName, err := o.aggchainFEPContract.SelectedOpSuccinctConfigName(nil)
 
+	opConfig, err := o.aggchainFEPContract.OpSuccinctConfigs(nil, configName)
+	if err != nil {
+		return nil, fmt.Errorf("optimisticModeSignQuery. OpSuccinctConfigs from contract %s. Err: %w",
+			o.aggchainFEPAddr, err)
+	}
 	return &optimistichash.AggregationProofPublicValues{
 		L1Head:           l1InfoTreeLeafHash,
 		L2PreRoot:        l2PreRoot,
 		ClaimRoot:        claimRoot,
 		L2BlockNumber:    requestedEndBlock,
-		RollupConfigHash: rollupConfigHash,
-		MultiBlockVKey:   multiBlockVKey,
+		RollupConfigHash: opConfig.RollupConfigHash,
+		MultiBlockVKey:   opConfig.RangeVkeyCommitment,
 		ProverAddress:    o.proverAddress,
 	}, nil
 }
