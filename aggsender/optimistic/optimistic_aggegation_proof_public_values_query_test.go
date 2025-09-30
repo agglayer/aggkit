@@ -54,7 +54,6 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 }
 
 func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
-
 	contractAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
 	proverAddress := common.HexToAddress("0x0987654321098765432109876543210987654321")
 

@@ -19,7 +19,6 @@ type FEPContractQuerier interface {
 	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
 	OptimisticMode(opts *bind.CallOpts) (bool, error)
-
 	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error)
 	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
 		AggregationVkey     [32]byte
