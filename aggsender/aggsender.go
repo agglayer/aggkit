@@ -141,7 +141,6 @@ func New(
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			certQuerier,
 			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
-			aggchainFEPCaller,
 		),
 	)
 

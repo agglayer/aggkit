@@ -123,6 +123,7 @@ func NewFlow(
 			commonFlowComponents.Signer,
 			optimisticModeQuerier,
 			aggchainProofQuerier,
+			aggchainFEPQuerier,
 		), nil
 
 	default:

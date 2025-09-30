@@ -141,14 +141,14 @@ func (p *PPFlow) UpdateAggchainData(
 	return nil
 }
 
-// VerifyAggchainData verifies the AggchainData field in certificate
-func (p *PPFlow) VerifyAggchainData(
+// VerifyCertificate verifies the new certificate
+// This function is used in the validator to verify the certificate
+func (p *PPFlow) VerifyCertificate(
 	ctx context.Context,
 	cert *agglayertypes.Certificate,
-	requestedEndBlock uint64,
-	lastProvenBlock uint64,
-	aggchainFEPQuerier types.AggchainFEPRollupQuerier) error {
-	// for PP certificates there is nothing to verify in AggchainData
+	lastBlockInCert uint64,
+	lastSettledBlock uint64) error {
+	// for PP certificates there is nothing to verify specific to PP flow
 	// signature of the proposer will be added with signatures of other committee members
 	// in the multisig, so no need to verify anything here
 	return nil

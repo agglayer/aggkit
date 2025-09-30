@@ -343,17 +343,17 @@ func (_c *AggsenderFlow_UpdateAggchainData_Call) RunAndReturn(run func(*agglayer
 	return _c
 }
 
-// VerifyAggchainData provides a mock function with given fields: ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier
-func (_m *AggsenderFlow) VerifyAggchainData(ctx context.Context, cert *agglayertypes.Certificate, requestedEndBlock uint64, lastProvenBlock uint64, aggchainFEPQuerier types.AggchainFEPRollupQuerier) error {
-	ret := _m.Called(ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier)
+// VerifyCertificate provides a mock function with given fields: ctx, cert, lastBlockInCert, lastSettledBlock
+func (_m *AggsenderFlow) VerifyCertificate(ctx context.Context, cert *agglayertypes.Certificate, lastBlockInCert uint64, lastSettledBlock uint64) error {
+	ret := _m.Called(ctx, cert, lastBlockInCert, lastSettledBlock)
 
 	if len(ret) == 0 {
-		panic("no return value specified for VerifyAggchainData")
+		panic("no return value specified for VerifyCertificate")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint64, uint64, types.AggchainFEPRollupQuerier) error); ok {
-		r0 = rf(ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier)
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint64, uint64) error); ok {
+		r0 = rf(ctx, cert, lastBlockInCert, lastSettledBlock)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -361,34 +361,33 @@ func (_m *AggsenderFlow) VerifyAggchainData(ctx context.Context, cert *agglayert
 	return r0
 }
 
-// AggsenderFlow_VerifyAggchainData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerifyAggchainData'
-type AggsenderFlow_VerifyAggchainData_Call struct {
+// AggsenderFlow_VerifyCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerifyCertificate'
+type AggsenderFlow_VerifyCertificate_Call struct {
 	*mock.Call
 }
 
-// VerifyAggchainData is a helper method to define mock.On call
+// VerifyCertificate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - cert *agglayertypes.Certificate
-//   - requestedEndBlock uint64
-//   - lastProvenBlock uint64
-//   - aggchainFEPQuerier types.AggchainFEPRollupQuerier
-func (_e *AggsenderFlow_Expecter) VerifyAggchainData(ctx interface{}, cert interface{}, requestedEndBlock interface{}, lastProvenBlock interface{}, aggchainFEPQuerier interface{}) *AggsenderFlow_VerifyAggchainData_Call {
-	return &AggsenderFlow_VerifyAggchainData_Call{Call: _e.mock.On("VerifyAggchainData", ctx, cert, requestedEndBlock, lastProvenBlock, aggchainFEPQuerier)}
+//   - lastBlockInCert uint64
+//   - lastSettledBlock uint64
+func (_e *AggsenderFlow_Expecter) VerifyCertificate(ctx interface{}, cert interface{}, lastBlockInCert interface{}, lastSettledBlock interface{}) *AggsenderFlow_VerifyCertificate_Call {
+	return &AggsenderFlow_VerifyCertificate_Call{Call: _e.mock.On("VerifyCertificate", ctx, cert, lastBlockInCert, lastSettledBlock)}
 }
 
-func (_c *AggsenderFlow_VerifyAggchainData_Call) Run(run func(ctx context.Context, cert *agglayertypes.Certificate, requestedEndBlock uint64, lastProvenBlock uint64, aggchainFEPQuerier types.AggchainFEPRollupQuerier)) *AggsenderFlow_VerifyAggchainData_Call {
+func (_c *AggsenderFlow_VerifyCertificate_Call) Run(run func(ctx context.Context, cert *agglayertypes.Certificate, lastBlockInCert uint64, lastSettledBlock uint64)) *AggsenderFlow_VerifyCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate), args[2].(uint64), args[3].(uint64), args[4].(types.AggchainFEPRollupQuerier))
+		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate), args[2].(uint64), args[3].(uint64))
 	})
 	return _c
 }
 
-func (_c *AggsenderFlow_VerifyAggchainData_Call) Return(_a0 error) *AggsenderFlow_VerifyAggchainData_Call {
+func (_c *AggsenderFlow_VerifyCertificate_Call) Return(_a0 error) *AggsenderFlow_VerifyCertificate_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *AggsenderFlow_VerifyAggchainData_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate, uint64, uint64, types.AggchainFEPRollupQuerier) error) *AggsenderFlow_VerifyAggchainData_Call {
+func (_c *AggsenderFlow_VerifyCertificate_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate, uint64, uint64) error) *AggsenderFlow_VerifyCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

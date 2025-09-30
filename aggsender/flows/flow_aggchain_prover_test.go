@@ -334,6 +334,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			mockLERQuerier := mocks.NewLERQuerier(t)
 			mockSigner := mocks.NewSigner(t)
+			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
 			flowBase := NewBaseFlow(
 				logger,
@@ -354,6 +355,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockSigner,
 				mockOptimistic,
 				mockAggchainProofQuerier,
+				mockAggchainFEPQuerier,
 			)
 			mockOptimistic.EXPECT().IsOptimisticModeOn().Return(false, nil).Maybe()
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofQuerier, mockL1InfoTreeDataQuerier)
@@ -473,6 +475,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // mockSigner
 				nil, // optimisticModeQuerier
 				nil, // aggchainProofQuerier
+				nil, // aggchainFEPQuerier
 			)
 
 			result := flow.getLastProvenBlock(tc.fromBlock, tc.lastSentCertificate)
@@ -591,6 +594,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockSigner,
 				nil, // optimisticModeQuerier
 				nil, // aggchainProofQuerier
+				nil, // aggchainFEPQuerier
 			)
 
 			certificate, err := aggchainFlow.BuildCertificate(ctx, tc.buildParams)
@@ -605,7 +609,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 	}
 }
 
-func Test_AggchainProverFlow_VerifyAggchainData(t *testing.T) {
+func Test_AggchainProverFlow_VerifyCertificate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -756,13 +760,14 @@ func Test_AggchainProverFlow_VerifyAggchainData(t *testing.T) {
 			flow := &AggchainProverFlow{
 				log:                   logger,
 				l1InfoTreeDataQuerier: mockL1InfoTreeDataQuerier,
+				aggchainFEPQuerier:    mockAggchainFEPQuerier,
 			}
 
 			if tc.mockFn != nil {
 				tc.mockFn(mockL1InfoTreeDataQuerier, mockAggchainFEPQuerier)
 			}
 
-			err := flow.VerifyAggchainData(ctx, tc.certificate, requestedEndBlock, lastProvenBlock, mockAggchainFEPQuerier)
+			err := flow.VerifyCertificate(ctx, tc.certificate, requestedEndBlock, lastProvenBlock)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

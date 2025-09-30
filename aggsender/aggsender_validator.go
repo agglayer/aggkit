@@ -36,7 +36,7 @@ func NewAggsenderValidator(ctx context.Context,
 	lerQuerier types.LERQuerier,
 	signer signertypes.Signer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
-		logger, flow, l1InfoTreeDataQuerier, certQuerier, lerQuerier, aggchainFEPQuerier)
+		logger, flow, l1InfoTreeDataQuerier, certQuerier, lerQuerier)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)
 	if err != nil {
 		return nil, err

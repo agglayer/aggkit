@@ -31,6 +31,7 @@ type AggchainProverFlow struct {
 	aggchainProofQuerier  types.AggchainProofQuerier
 	config                AggchainProverFlowConfig
 	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
+	aggchainFEPQuerier    types.AggchainFEPRollupQuerier
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
@@ -82,6 +83,7 @@ func NewAggchainProverFlow(
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	aggchainProofQuerier types.AggchainProofQuerier,
+	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 ) *AggchainProverFlow {
 	feature := NewMaxL2BlockNumberLimiter(
 		aggChainProverConfig.maxL2BlockNumber,
@@ -100,6 +102,7 @@ func NewAggchainProverFlow(
 		aggchainProofQuerier:  aggchainProofQuerier,
 		baseFlow:              baseFlow,
 		featureMaxL2Block:     feature,
+		aggchainFEPQuerier:    aggchainFEPQuerier,
 	}
 }
 
@@ -357,13 +360,13 @@ func (a *AggchainProverFlow) UpdateAggchainData(
 	return nil
 }
 
-// VerifyAggchainData verifies the AggchainData field in certificate
-func (a *AggchainProverFlow) VerifyAggchainData(
+// VerifyCertificate verifies the new certificate
+// This function is used in the validator to verify the certificate
+func (a *AggchainProverFlow) VerifyCertificate(
 	ctx context.Context,
 	cert *agglayertypes.Certificate,
-	requestedEndBlock uint64,
-	lastProvenBlock uint64,
-	aggchainFEPQuerier types.AggchainFEPRollupQuerier) error {
+	lastBlockInCert uint64,
+	lastSettledBlock uint64) error {
 	if cert.AggchainData == nil {
 		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is nil")
 	}
@@ -387,9 +390,9 @@ func (a *AggchainProverFlow) VerifyAggchainData(
 			cert.L1InfoTreeLeafCount-1, err)
 	}
 
-	expectedAggchainProofPublicValues, err := aggchainFEPQuerier.GetAggregationProofPublicValuesData(
-		lastProvenBlock,
-		requestedEndBlock,
+	expectedAggchainProofPublicValues, err := a.aggchainFEPQuerier.GetAggregationProofPublicValuesData(
+		lastSettledBlock,
+		lastBlockInCert,
 		l1InfoLeaf.Hash,
 	)
 	if err != nil {

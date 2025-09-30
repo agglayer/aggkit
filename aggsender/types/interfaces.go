@@ -33,13 +33,12 @@ type AggsenderFlow interface {
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 	// UpdateAggchainData updates the aggchain data field for the given certificate
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
-	// VerifyAggchainData verifies the aggchain data field for the given certificate
-	VerifyAggchainData(
+	// VerifyCertificate verifies the certificate field for the given certificate
+	VerifyCertificate(
 		ctx context.Context,
 		cert *agglayertypes.Certificate,
-		requestedEndBlock uint64,
-		lastProvenBlock uint64,
-		aggchainFEPQuerier AggchainFEPRollupQuerier) error
+		lastBlockInCert uint64,
+		lastSettledBlock uint64) error
 	// Signer is the signer used to sign the certificate
 	Signer() signertypes.Signer
 }

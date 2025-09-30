@@ -38,15 +38,13 @@ func NewAggsenderValidator(logger aggkitcommon.Logger,
 	flow types.AggsenderFlow,
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
 	certQuerier types.CertificateQuerier,
-	lerQuerier types.LERQuerier,
-	aggchainFEPQuerier types.AggchainFEPRollupQuerier) *CertificateValidator {
+	lerQuerier types.LERQuerier) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
 		flow:                  flow,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		certQuerier:           certQuerier,
 		lerQuerier:            lerQuerier,
-		aggchainFEPQuerier:    aggchainFEPQuerier,
 	}
 }
 
@@ -116,13 +114,12 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	}
 
 	// Verify AggchainData specific to each flow
-	if err := a.flow.VerifyAggchainData(
+	if err := a.flow.VerifyCertificate(
 		ctx,
 		params.Certificate,
 		params.LastL2BlockInCert,
-		previousCertificateToBlock,
-		a.aggchainFEPQuerier); err != nil {
-		return fmt.Errorf("failed to verify AggchainData: %w", err)
+		previousCertificateToBlock); err != nil {
+		return fmt.Errorf("failed to verify certificate in flow: %w", err)
 	}
 
 	return nil

@@ -112,6 +112,7 @@ type AggchainProverFlowTestData struct {
 	mockSigner                *mocks.Signer
 	mockFlowBase              *mocks.AggsenderFlowBaser
 	mockAggchainProofQuerier  *mocks.AggchainProofQuerier
+	mockAggchainFEPQuerier    *mocks.AggchainFEPRollupQuerier
 
 	ctx context.Context
 
@@ -129,6 +130,7 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 		mockSigner:                mocks.NewSigner(t),
 		mockAggchainProofQuerier:  mocks.NewAggchainProofQuerier(t),
 		mockFlowBase:              mocks.NewAggsenderFlowBaser(t),
+		mockAggchainFEPQuerier:    mocks.NewAggchainFEPRollupQuerier(t),
 		ctx:                       context.TODO(),
 	}
 
@@ -146,6 +148,7 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 		res.mockSigner,
 		res.mockOptimisticModeQuerier,
 		res.mockAggchainProofQuerier,
+		res.mockAggchainFEPQuerier,
 	)
 
 	return res

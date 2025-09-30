@@ -261,6 +261,23 @@ func createAggSenderValidator(ctx context.Context,
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
 
+	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
+		logger,
+		cfg.Mode,
+		cfg.FEPConfig.SovereignRollupAddr,
+		cfg.FEPConfig.OpNodeURL,
+		l1Client,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggchainFEPQuerier: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPQuerier,
+		agglayerClient,
+	)
+
 	var (
 		flow                 aggsendertypes.AggsenderFlow
 		commonFlowComponents *flows.CommonFlowComponents
@@ -322,27 +339,11 @@ func createAggSenderValidator(ctx context.Context,
 			commonFlowComponents.Signer,
 			optimisticModeQuerier,
 			nil, // we don't query the prover in validator mode
+			aggchainFEPQuerier,
 		)
 	default:
 		return nil, fmt.Errorf("unsupported mode %s", cfg.Mode)
 	}
-
-	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
-		logger,
-		cfg.Mode,
-		cfg.FEPConfig.SovereignRollupAddr,
-		cfg.FEPConfig.OpNodeURL,
-		l1Client,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AggchainFEPQuerier: %w", err)
-	}
-
-	certQuerier := query.NewCertificateQuerier(
-		l2Syncer,
-		aggchainFEPQuerier,
-		agglayerClient,
-	)
 
 	return aggsender.NewAggsenderValidator(
 		ctx, logger, cfg, flow,
