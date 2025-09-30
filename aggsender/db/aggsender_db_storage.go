@@ -60,7 +60,7 @@ func (r RuntimeData) IsCompatible(storage RuntimeData) error {
 type AggSenderStorageMaintainer interface {
 	// Move to certificate_info_history the certificate identified by CertificateKey
 	MoveCertificateToHistory(tx dbtypes.Querier, height uint64) error
-	// Delete from certificate_info and certificate_info_history the certificate CertificateKey
+	// Delete from certificate_info and certificate_info_history the certificate identified by CertificateKey
 	DeleteCertificate(tx dbtypes.Querier, height uint64, mustDelete bool) error
 	// Delete from certificate_info and certificate_info_history all certificates older than olderThanHeight
 	DeleteOldCertificates(tx dbtypes.Querier, olderThanHeight uint64) error
