@@ -122,8 +122,8 @@ type RecordToBackfill struct {
 // getRecordsNeedingBackfillCount returns the count of records that need tx_sender backfilling
 func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
 	query := fmt.Sprintf(`
-		SELECT COUNT(*) 
-		FROM %s 
+		SELECT COUNT(*)
+		FROM %s
 		WHERE tx_sender = '' OR tx_sender IS NULL
 	`, tableName)
 
@@ -139,8 +139,8 @@ func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, t
 // getRecordsNeedingBackfill retrieves records that need tx_sender backfilling
 func (b *BackfillTxSender) getRecordsNeedingBackfill(ctx context.Context, tableName string, offset, limit int) ([]RecordToBackfill, error) {
 	query := fmt.Sprintf(`
-		SELECT block_num, block_pos, tx_hash 
-		FROM %s 
+		SELECT block_num, block_pos, tx_hash
+		FROM %s
 		WHERE tx_sender = '' OR tx_sender IS NULL
 		ORDER BY block_num, block_pos
 		LIMIT %d OFFSET %d
@@ -182,7 +182,7 @@ func (b *BackfillTxSender) processBatch(ctx context.Context, tableName string, r
 
 		// Update the record with the tx_sender
 		if err := b.updateRecordTxSender(ctx, tableName, record.BlockNum, record.BlockPos, txSender); err != nil {
-			b.log.Errorf("Failed to update tx_sender for record (block_num=%d, block_pos=%d): %v", 
+			b.log.Errorf("Failed to update tx_sender for record (block_num=%d, block_pos=%d): %v",
 				record.BlockNum, record.BlockPos, err)
 			b.errorCount++
 			continue
@@ -208,8 +208,8 @@ func (b *BackfillTxSender) extractTxSender(ctx context.Context, txHash common.Ha
 // updateRecordTxSender updates a specific record with the tx_sender value
 func (b *BackfillTxSender) updateRecordTxSender(ctx context.Context, tableName string, blockNum, blockPos uint64, txSender common.Address) error {
 	query := fmt.Sprintf(`
-		UPDATE %s 
-		SET tx_sender = $1 
+		UPDATE %s
+		SET tx_sender = $1
 		WHERE block_num = $2 AND block_pos = $3
 	`, tableName)
 
