@@ -31,7 +31,6 @@ type CertificateValidator struct {
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
 	certQuerier           types.CertificateQuerier
 	lerQuerier            types.LERQuerier
-	aggchainFEPQuerier    types.AggchainFEPRollupQuerier
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
