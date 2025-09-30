@@ -145,7 +145,11 @@ func TestGetAggregationProofPublicValuesData_GetTrustedSequencerFromContract(t *
 		AggregationVkey     [32]byte
 		RangeVkeyCommitment [32]byte
 		RollupConfigHash    [32]byte
-	}{}, errors.New("mock error")).Once()
+	}{
+		AggregationVkey:     [32]byte{0x01},
+		RangeVkeyCommitment: [32]byte{0x02},
+		RollupConfigHash:    expectedRollupConfigHash,
+	}, nil).Once()
 	mockFEPContract.EXPECT().GetAggchainSigners((*bind.CallOpts)(nil)).Return([]common.Address{expectedTrustedSequencer}, nil)
 
 	result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)

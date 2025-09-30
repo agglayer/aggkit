@@ -142,8 +142,8 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 func TestGetAggregationProofPublicValuesData(t *testing.T) {
 	t.Parallel()
 
-	mockOpQuerier := opmocks.NewOptimisticAggregationProofPublicValuesQuerier(t)
-	mockCaller := mocks.NewAggchainFEPCaller(t)
+	mockOpQuerier := optimisticmocks.NewOptimisticAggregationProofPublicValuesQuerier(t)
+	mockCaller := optimisticmocks.NewFEPContractQuerier(t)
 	startingBlock := big.NewInt(1000)
 	mockCaller.EXPECT().StartingBlockNumber((*bind.CallOpts)(nil)).Return(startingBlock, nil).Once()
 

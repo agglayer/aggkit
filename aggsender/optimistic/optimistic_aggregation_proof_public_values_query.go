@@ -69,12 +69,12 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 			o.aggchainFEPAddr, err)
 	}
 
-	trustedSequencerAddr := o.proverAddress
-	if trustedSequencerAddr == aggkitcommon.ZeroAddress {
-		// if proverAddress is zero, get the trusted sequencer from the contract
-		trustedSequencerAddr, err = getTrustedSequencerAddr(o.aggchainFEPContract)
+	trustedSignerAddr := o.proverAddress
+	if trustedSignerAddr == aggkitcommon.ZeroAddress {
+		// if proverAddress is zero, get the trusted signer from the contract
+		trustedSignerAddr, err = getTrustedSignerAddr(o.aggchainFEPContract)
 		if err != nil {
-			return nil, fmt.Errorf("opAggProofPublicValuesQuery. trustedSequencerAddr from contract %s. Err: %w",
+			return nil, fmt.Errorf("opAggProofPublicValuesQuery. trustedSignerAddr from contract %s. Err: %w",
 				o.aggchainFEPAddr, err)
 		}
 	}
@@ -86,11 +86,11 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 		L2BlockNumber:    requestedEndBlock,
 		RollupConfigHash: opConfig.RollupConfigHash,
 		MultiBlockVKey:   opConfig.RangeVkeyCommitment,
-		ProverAddress:    o.proverAddress,
+		ProverAddress:    trustedSignerAddr,
 	}, nil
 }
 
-func getTrustedSequencerAddr(aggchainFEPContract FEPContractQuerier) (common.Address, error) {
+func getTrustedSignerAddr(aggchainFEPContract FEPContractQuerier) (common.Address, error) {
 	signers, err := aggchainFEPContract.GetAggchainSigners(nil)
 	if err != nil {
 		return aggkitcommon.ZeroAddress,
