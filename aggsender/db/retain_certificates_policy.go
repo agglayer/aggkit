@@ -58,7 +58,7 @@ func (r *StorageRetainCertificatesPolicy) String() string {
 }
 
 type StorageRetainCertificatesPolicier interface {
-	OnNewCert(tx dbtypes.Querier, storage AggSenderStorageMaintenancer, certKey CertificateKey) error
+	OnNewCert(tx dbtypes.Querier, storage AggSenderStorageMaintainer, certKey CertificateKey) error
 }
 
 // NewStorageRetainCertificatesPolicyDefault creates a new StorageRetainCertificatesPolicy with default values
@@ -79,7 +79,7 @@ func NewStorageRetainCertificatesPolicy(retainNCertificates uint32,
 }
 
 func (r *StorageRetainCertificatesPolicy) OnNewCert(tx dbtypes.Querier,
-	storage AggSenderStorageMaintenancer, certKey CertificateKey) error {
+	storage AggSenderStorageMaintainer, certKey CertificateKey) error {
 	if certKey.IsRetry() {
 		if r.KeepCertificatesHistory {
 			return storage.MoveCertificateToHistory(tx, certKey.Height)
