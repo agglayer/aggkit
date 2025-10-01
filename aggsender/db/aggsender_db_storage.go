@@ -160,10 +160,10 @@ func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
 	// Add ordering by creation date (oldest first)
 	condition += " ORDER BY height ASC"
 
-	return a.getAllCerts(nil, tableCertificate, condition, args)
+	return a.getCerts(nil, tableCertificate, condition, args)
 }
 
-func (a *AggSenderSQLStorage) getAllCerts(tx dbtypes.Querier, table tableName,
+func (a *AggSenderSQLStorage) getCerts(tx dbtypes.Querier, table tableName,
 	condition string, args []any) ([]*types.CertificateHeader, error) {
 	if tx == nil {
 		tx = a.db
@@ -627,11 +627,11 @@ func (a *AggSenderSQLStorage) deleteCertificates(tx dbtypes.Querier, table table
 	return nil
 }
 
-// Delete from certificate_info and certificate_info_history all certificates older than olderThanHeight
-func (a *AggSenderSQLStorage) DeleteOldCertificates(tx dbtypes.Querier, olderThanHeight uint64) error {
+// Delete from certificate_info and certificate_info_history all certificates older than maxHeight
+func (a *AggSenderSQLStorage) DeleteOldCertificates(tx dbtypes.Querier, maxHeight uint64) error {
 	// We get list of heights from certificate_info table,  we assume that
 	// history table require the same heights into certificate_info table
-	heights, err := getCertificatesHeightOlderThanHeight(tx, tableCertificate, olderThanHeight)
+	heights, err := getCertificatesHeightOlderThanHeight(tx, tableCertificate, maxHeight)
 	if err != nil {
 		return fmt.Errorf("error getting old certificate heights: %w", err)
 	}
