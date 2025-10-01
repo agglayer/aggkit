@@ -220,13 +220,13 @@ func getCertificatesByHeight(db dbtypes.Querier, table tableName,
 	var certificates []*certificateInfo
 	if err := meddler.QueryAll(db, &certificates,
 		fmt.Sprintf("SELECT * FROM %s WHERE height = $1;", table), height); err != nil {
-		return nil, err
+		return nil, getSelectQueryError(height, err)
 	}
 	return certificates, nil
 }
 
 // getCertificatesHeightOlderThanHeight returns a list of certificate heights older than the provided height
-func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
+func getCertificatesHeightOlderThanHeightOld(db dbtypes.Querier, table tableName,
 	olderThanHeight uint64) ([]uint64, error) {
 	type heightRow struct {
 		Height uint64 `meddler:"height"`
@@ -241,6 +241,31 @@ func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
 		res[i] = row.Height
 	}
 	return res, nil
+}
+
+// getCertificatesHeightOlderThanHeight returns a list of certificate heights older than the provided height
+func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
+	olderThanHeight uint64) ([]string, error) {
+	type signedCertificateRow struct {
+		SignedCertificate string `meddler:"signed_certificate"`
+	}
+	var rows []*signedCertificateRow
+	if err := meddler.QueryAll(db, &rows,
+		fmt.Sprintf("SELECT signed_certificate FROM %s WHERE height < $1;", table), olderThanHeight); err != nil {
+		return nil, err
+	}
+	res := make([]string, len(rows))
+	for i, row := range rows {
+		res[i] = row.SignedCertificate
+	}
+	return res, nil
+}
+
+func deleteCertificatesOlderThanHeight(tx dbtypes.Querier, olderThanHeight uint64) error {
+	if _, err := tx.Exec(`DELETE FROM certificate_info WHERE height < $1;DELETE FROM certificate_info_history WHERE height < $2;`, olderThanHeight, olderThanHeight); err != nil {
+		return fmt.Errorf("error deleting old certificates: %w", err)
+	}
+	return nil
 }
 
 // GetLastSentCertificate returns the last certificate sent to the aggLayer
@@ -626,18 +651,29 @@ func (a *AggSenderSQLStorage) deleteCertificates(tx dbtypes.Querier, table table
 
 // Delete from certificate_info and certificate_info_history all certificates older than maxHeight
 func (a *AggSenderSQLStorage) DeleteOldCertificates(tx dbtypes.Querier, maxHeight uint64) error {
-	// We get list of heights from certificate_info table,  we assume that
-	// history table require the same heights into certificate_info table
-	heights, err := getCertificatesHeightOlderThanHeight(tx, tableCertificate, maxHeight)
+	// We get list of signedCertificates from certificate_info table
+	// and also from certificate_info_history table
+	certs, err := getCertificatesHeightOlderThanHeight(tx, tableCertificate, maxHeight)
 	if err != nil {
-		return fmt.Errorf("error getting old certificate heights: %w", err)
+		return fmt.Errorf("error getting old certificate from table %s: %w", tableCertificate, err)
 	}
-	for _, height := range heights {
-		if err := a.DeleteCertificate(tx, height, MaybeDelete); err != nil {
-			return fmt.Errorf("error deleting old certificate height %d: %w", height, err)
+	certsHistory, err := getCertificatesHeightOlderThanHeight(tx, tableCertificateHistory, maxHeight)
+	if err != nil {
+		return fmt.Errorf("error getting old certificate from table %s: %w", tableCertificateHistory, err)
+	}
+	certs = append(certs, certsHistory...)
+
+	for _, cert := range certs {
+		certInfo := certificateInfo{
+			SignedCertificate: &cert,
+		}
+		filename := certInfo.SignedCertificateFilename()
+		if filename != nil {
+			a.logger.Infof("deleting old certificate file: %s", *filename)
+			a.deleteCertificateFile(filename)
 		}
 	}
-	return nil
+	return deleteCertificatesOlderThanHeight(tx, maxHeight)
 }
 
 // handleCertificateFile Handle signed certificate file storage before database operations

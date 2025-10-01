@@ -74,9 +74,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 						SignedCertificate: &signedData,
 					}
 					err := storage.SaveLastSentCertificate(t.Context(), cert)
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err, "inserting cert height %d retry %d", i, r)
 				}
 			}
 			// Check the expected number of certs in the main table
