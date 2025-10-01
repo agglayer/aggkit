@@ -33,7 +33,7 @@ const (
 )
 
 type StorageRetainCertificatesPolicy struct {
-	RetainNCertificates     uint32 `mapstructure:"RetainNCertificates"` // 0 = retain all certificates
+	RetainCertificatesCount uint32 `mapstructure:"RetainCertificatesCount"` // 0 = retain all certificates
 	KeepCertificatesHistory bool   `mapstructure:"KeepCertificatesHistory"`
 }
 
@@ -49,10 +49,10 @@ func (r *StorageRetainCertificatesPolicy) String() string {
 		return "nil"
 	}
 	var res string
-	if r.RetainNCertificates == KeepAllCertificates {
+	if r.RetainCertificatesCount == KeepAllCertificates {
 		res = "retain all certificates, "
 	} else {
-		res = fmt.Sprintf("retain last %d certificates, ", r.RetainNCertificates)
+		res = fmt.Sprintf("retain last %d certificates, ", r.RetainCertificatesCount)
 	}
 	return res + fmt.Sprintf("keep history: %t", r.KeepCertificatesHistory)
 }
@@ -64,16 +64,16 @@ type StorageRetainCertificatesPolicier interface {
 // NewStorageRetainCertificatesPolicyDefault creates a new StorageRetainCertificatesPolicy with default values
 func NewStorageRetainCertificatesPolicyDefault() *StorageRetainCertificatesPolicy {
 	return &StorageRetainCertificatesPolicy{
-		RetainNCertificates:     KeepAllCertificates,
+		RetainCertificatesCount: KeepAllCertificates,
 		KeepCertificatesHistory: true,
 	}
 }
 
 // NewStorageRetainCertificatesPolicy creates a new StorageRetainCertificatesPolicy
-func NewStorageRetainCertificatesPolicy(retainNCertificates uint32,
+func NewStorageRetainCertificatesPolicy(retainCertificatesCount uint32,
 	keepCertificatesHistory bool) *StorageRetainCertificatesPolicy {
 	return &StorageRetainCertificatesPolicy{
-		RetainNCertificates:     retainNCertificates,
+		RetainCertificatesCount: retainCertificatesCount,
 		KeepCertificatesHistory: keepCertificatesHistory,
 	}
 }
@@ -87,12 +87,12 @@ func (r *StorageRetainCertificatesPolicy) OnNewCert(tx dbtypes.Querier,
 		return storage.DeleteCertificate(tx, certKey.Height, MaybeDelete)
 	}
 	// Is the first cert for this height
-	if r.RetainNCertificates == KeepAllCertificates {
+	if r.RetainCertificatesCount == KeepAllCertificates {
 		return nil
 	}
 	// There are not enough certificates yet to delete
-	if certKey.Height < uint64(r.RetainNCertificates) {
+	if certKey.Height < uint64(r.RetainCertificatesCount) {
 		return nil
 	}
-	return storage.DeleteOldCertificates(tx, certKey.Height-uint64(r.RetainNCertificates))
+	return storage.DeleteOldCertificates(tx, certKey.Height-uint64(r.RetainCertificatesCount))
 }

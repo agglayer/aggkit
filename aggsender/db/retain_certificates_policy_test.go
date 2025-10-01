@@ -15,7 +15,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 	testCases := []struct {
 		name                           string
 		cfgString                      string
-		retainNCertificates            uint32
+		RetainCertificatesCount        uint32
 		keepCertificatesHistory        bool
 		howManyCertsToInsert           int
 		howmanyRetriesPerCert          int
@@ -25,7 +25,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 		{
 			name:                           "retain 1 certs with no history",
 			cfgString:                      "retain last 1 certificates, keep history: false",
-			retainNCertificates:            1,
+			RetainCertificatesCount:        1,
 			keepCertificatesHistory:        false,
 			howManyCertsToInsert:           5,
 			howmanyRetriesPerCert:          2,
@@ -35,7 +35,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 		{
 			name:                           "retain 1 certs with history",
 			cfgString:                      "retain last 1 certificates, keep history: true",
-			retainNCertificates:            1,
+			RetainCertificatesCount:        1,
 			keepCertificatesHistory:        true,
 			howManyCertsToInsert:           5,
 			howmanyRetriesPerCert:          2,
@@ -45,7 +45,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 		{
 			name:                           "retain all certs, with history",
 			cfgString:                      "retain all certificates, keep history: true",
-			retainNCertificates:            KeepAllCertificates,
+			RetainCertificatesCount:        KeepAllCertificates,
 			keepCertificatesHistory:        true,
 			howManyCertsToInsert:           3,
 			howmanyRetriesPerCert:          2,
@@ -57,7 +57,7 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			storage := newTestStorage(t, "rcpt_1", &StorageRetainCertificatesPolicy{
-				RetainNCertificates:     tc.retainNCertificates,
+				RetainCertificatesCount: tc.RetainCertificatesCount,
 				KeepCertificatesHistory: tc.keepCertificatesHistory,
 			})
 			if tc.cfgString != "" {

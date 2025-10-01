@@ -245,7 +245,7 @@ RequireValidatorCall = false
 		RequestTimeout = "30s"
 		UseTLS = false
 	[AggSender.StorageRetainCertificatesPolicy]
-		RetainNCertificates = 0 # 0 means keep all certificates
+		RetainCertificatesCount = 0 # 0 means keep all certificates
 		KeepCertificatesHistory = true
 
 [Prometheus]
