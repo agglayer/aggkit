@@ -226,24 +226,6 @@ func getCertificatesByHeight(db dbtypes.Querier, table tableName,
 }
 
 // getCertificatesHeightOlderThanHeight returns a list of certificate heights older than the provided height
-func getCertificatesHeightOlderThanHeightOld(db dbtypes.Querier, table tableName,
-	olderThanHeight uint64) ([]uint64, error) {
-	type heightRow struct {
-		Height uint64 `meddler:"height"`
-	}
-	var rows []*heightRow
-	if err := meddler.QueryAll(db, &rows,
-		fmt.Sprintf("SELECT DISTINCT height FROM %s WHERE height < $1;", table), olderThanHeight); err != nil {
-		return nil, err
-	}
-	res := make([]uint64, len(rows))
-	for i, row := range rows {
-		res[i] = row.Height
-	}
-	return res, nil
-}
-
-// getCertificatesHeightOlderThanHeight returns a list of certificate heights older than the provided height
 func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
 	olderThanHeight uint64) ([]string, error) {
 	type signedCertificateRow struct {
@@ -262,7 +244,8 @@ func getCertificatesHeightOlderThanHeight(db dbtypes.Querier, table tableName,
 }
 
 func deleteCertificatesOlderThanHeight(tx dbtypes.Querier, olderThanHeight uint64) error {
-	if _, err := tx.Exec(`DELETE FROM certificate_info WHERE height < $1;DELETE FROM certificate_info_history WHERE height < $2;`, olderThanHeight, olderThanHeight); err != nil {
+	if _, err := tx.Exec(`DELETE FROM certificate_info WHERE height < $1;
+	DELETE FROM certificate_info_history WHERE height < $2;`, olderThanHeight, olderThanHeight); err != nil {
 		return fmt.Errorf("error deleting old certificates: %w", err)
 	}
 	return nil
