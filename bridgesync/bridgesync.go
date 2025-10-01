@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -60,7 +60,7 @@ type BridgeSync struct {
 	originNetwork    uint32
 	reorgDetector    ReorgDetector
 	ethClient        aggkittypes.EthClienter
-	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	bridgeContractV2 *agglayerbridge.Agglayerbridge
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -135,7 +135,7 @@ func newBridgeSync(
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
-	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(cfg.BridgeAddr, ethClient)
+	bridgeContractV2, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +424,7 @@ func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) 
 }
 
 func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
-	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) error {
+	bridgeContractV2 *agglayerbridge.Agglayerbridge) error {
 	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
 	if err != nil {
 		logger.Errorf("failed to get last updated deposit count: %s", err)

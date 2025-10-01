@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
@@ -28,7 +28,7 @@ func newSimulatedClient(t *testing.T) (
 	*bind.TransactOpts,
 	common.Address,
 	common.Address,
-	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
+	*agglayerger.Agglayerger,
 	*verifybatchesmock.Verifybatchesmock,
 ) {
 	t.Helper()
@@ -48,7 +48,7 @@ func newSimulatedClient(t *testing.T) (
 	require.NoError(t, err)
 	client.Commit()
 
-	gerAddr, _, gerContract, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(setup.UserAuth, client.Client(), verifyAddr, setup.UserAuth.From)
+	gerAddr, _, gerContract, err := agglayerger.DeployAgglayerger(setup.UserAuth, client.Client(), verifyAddr, setup.UserAuth.From)
 
 	require.NoError(t, err)
 	require.Equal(t, precalculatedGERAddr, gerAddr)

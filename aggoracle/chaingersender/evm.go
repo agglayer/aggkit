@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggoraclecommittee"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
@@ -77,7 +77,7 @@ func NewEVMChainGERSender(
 	}
 	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
 
-	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
+	l2GERAbi, err := agglayergerl2.Agglayergerl2MetaData.GetAbi()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve GER L2 manager ABI: %w", err)
 	}

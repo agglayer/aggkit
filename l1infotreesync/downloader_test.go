@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -58,7 +58,7 @@ func TestBuildAppenderVerifiedContractAddr(t *testing.T) {
 	globalExitRoot := common.HexToAddress("0x1")
 	rollupManager := common.HexToAddress("0x2")
 
-	smcAbi, err := abi.JSON(strings.NewReader(polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2ABI))
+	smcAbi, err := abi.JSON(strings.NewReader(agglayerger.AgglayergerABI))
 	require.NoError(t, err)
 	bigInt := big.NewInt(1)
 	returnGER, err := smcAbi.Methods["depositCount"].Outputs.Pack(bigInt)

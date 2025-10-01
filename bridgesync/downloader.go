@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonzkevmbridge"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/db"
@@ -61,7 +61,7 @@ func buildAppender(
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
-	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	bridgeContractV2 *agglayerbridge.Agglayerbridge,
 	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
@@ -69,7 +69,7 @@ func buildAppender(
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
 
-	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
+	bridgeSovereignChain, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
 			bridgeAddr, err)
@@ -99,7 +99,7 @@ func buildAppender(
 
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(
-	contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	contract *agglayerbridge.Agglayerbridge,
 	bridgeAddr common.Address,
 	client aggkittypes.EthClienter,
 	logger *logger.Logger,
@@ -138,7 +138,7 @@ func buildBridgeEventHandler(
 }
 
 // buildClaimEventHandler creates a handler for the Claim event log.
-func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+func buildClaimEventHandler(contract *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
@@ -226,7 +226,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 // buildTokenMappingHandler creates a handler for the NewWrappedToken event log.
 //
 //nolint:dupl
-func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
@@ -260,7 +260,7 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 // buildSetSovereignTokenHandler creates a handler for the SetSovereignTokenAddress event log.
 //
 //nolint:dupl
-func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
+func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
@@ -292,7 +292,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 }
 
 // buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
-func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
+func buildMigrateLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
@@ -323,7 +323,7 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 }
 
 // buildRemoveLegacyTokenHandler creates a handler for the RemoveLegacySovereignTokenAddress event log.
-func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
+func buildRemoveLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock,
 	types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseRemoveLegacySovereignTokenAddress(l)
@@ -471,7 +471,7 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte, 
 	case bytes.Equal(methodID, claimAssetEtrogMethodID):
 		fallthrough
 	case bytes.Equal(methodID, claimMessageEtrogMethodID):
-		bridgeV2ABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+		bridgeV2ABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 		if err != nil {
 			return false, err
 		}
