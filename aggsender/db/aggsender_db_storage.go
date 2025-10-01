@@ -382,9 +382,6 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		return err
 	}
 
-	if a.retainPolicy == nil {
-		return errors.New("saveLastSentCertificate retainPolicy is nil")
-	}
 	if err := a.retainPolicy.OnNewCert(tx, a, CertificateKey{certInfo.Height, certInfo.RetryCount}); err != nil {
 		return fmt.Errorf("saveLastSentCertificate error applying retain policy: %w", err)
 	}
