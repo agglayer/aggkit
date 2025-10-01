@@ -200,7 +200,7 @@ jobs:
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: c2f47e133c59925c04d9096747e989e2634c6bc1 # main <- feat/fix_e2e_multisig
+      agglayer-e2e-ref: c2f47e133c59925c04d9096747e989e2634c6bc1 # main <- feat/fix_e2e_multisig 
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       test-name: "test-single-l2-network-op-succinct"
