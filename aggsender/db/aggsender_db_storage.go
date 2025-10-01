@@ -39,7 +39,7 @@ const (
 
 var (
 	newTxer          = db.NewTx
-	ErrNoCertDeleted = errors.New("no cert deleted")
+	ErrNoCertDeleted = errors.New("no certificates deleted")
 )
 
 type RuntimeData struct {
