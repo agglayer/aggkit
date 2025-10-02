@@ -376,7 +376,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	metrics.CertificateSent()
-	a.log.Debugf("certificate send: Height: %d cert: %s", certificate.Height, certificate.Brief())
+	a.log.Infof("certificate send: Height: %d blockRange: [%d - %d] cert: %s", certificate.Height,
+		certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	raw, err := json.Marshal(certificate)
 	if err != nil {
