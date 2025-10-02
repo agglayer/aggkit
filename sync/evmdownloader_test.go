@@ -32,6 +32,62 @@ const (
 
 type testEvent common.Hash
 
+func Test_ResolveBlockFinality(t *testing.T) {
+	tests := []struct {
+		name               string
+		finality           aggkittypes.BlockNumberFinality
+		finalizedBlockType aggkittypes.BlockNumberFinality
+		expectedFinality   aggkittypes.BlockNumberFinality
+	}{
+		{
+			name:               "empty finality defaults to FinalizedBlock",
+			finality:           aggkittypes.BlockNumberFinality{}, // IsEmpty()
+			finalizedBlockType: aggkittypes.SafeBlock,
+			expectedFinality:   aggkittypes.FinalizedBlock,
+		},
+		{
+			name:               "finalized block type greater than finality",
+			finality:           aggkittypes.PendingBlock,
+			finalizedBlockType: aggkittypes.FinalizedBlock,
+			expectedFinality:   aggkittypes.FinalizedBlock,
+		},
+		{
+			name: "finalized block type greater due to offset",
+			finality: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: 1,
+			},
+			finalizedBlockType: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: 5,
+			},
+			expectedFinality: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: 1,
+			},
+		},
+		{
+			name:               "valid finality and finalized block type are kept",
+			finality:           aggkittypes.SafeBlock,
+			finalizedBlockType: aggkittypes.SafeBlock,
+			expectedFinality:   aggkittypes.SafeBlock,
+		},
+		{
+			name:               "exact FinalizedBlock kept as-is",
+			finality:           aggkittypes.FinalizedBlock,
+			finalizedBlockType: aggkittypes.FinalizedBlock,
+			expectedFinality:   aggkittypes.FinalizedBlock,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolvedFinality := resolveBlockFinality(log.GetDefaultLogger(), tt.finality, tt.finalizedBlockType)
+			require.Equal(t, tt.expectedFinality, resolvedFinality)
+		})
+	}
+}
+
 func TestGetEventsByBlockRange(t *testing.T) {
 	type testCase struct {
 		description        string

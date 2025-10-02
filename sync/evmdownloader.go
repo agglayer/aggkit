@@ -69,25 +69,14 @@ func NewEVMDownloader(
 ) (*EVMDownloader, error) {
 	logger := log.WithFields("syncer", syncerID)
 
-	overridenFinality := finalizedBlockType
-	if finality.IsEmpty() {
-		overridenFinality = aggkittypes.FinalizedBlock
-		logger.Warnf("Block finality is not set. Setting to finalized block")
-	} else if finalizedBlockType.GreaterThan(&finality) {
-		overridenFinality = finality
-		// if someone configured the syncer to query blocks by Safe or Finalized block
-		// finalized block type should be at least the same as the block finality
-		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
-			finalizedBlockType.String(), finality.String(), overridenFinality.String())
-	}
-
+	resolvedBlockFinality := resolveBlockFinality(logger, finality, finalizedBlockType)
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
-		finality.String(), overridenFinality.String(), syncBlockChunkSize)
+		finality.String(), resolvedBlockFinality.String(), syncBlockChunkSize)
 
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
-		finalizedBlockType: &overridenFinality,
+		finalizedBlockType: &resolvedBlockFinality,
 		addressesToQuery:   addressesToQuery,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
@@ -100,6 +89,22 @@ func NewEVMDownloader(
 			&finalizedBlockType,
 		),
 	}, nil
+}
+
+// resolveBlockFinality checks if the finalized block type is less or equal
+// than the block finality and resolves it accordingly
+func resolveBlockFinality(logger *log.Logger, finality aggkittypes.BlockNumberFinality,
+	finalizedBlockType aggkittypes.BlockNumberFinality) aggkittypes.BlockNumberFinality {
+	resolvedBlockFinality := finalizedBlockType
+	if finality.IsEmpty() {
+		resolvedBlockFinality = aggkittypes.FinalizedBlock
+		logger.Warnf("block finality is not set. fallbacking to finalized block")
+	} else if finalizedBlockType.GreaterThan(&finality) {
+		resolvedBlockFinality = finality
+		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
+			finalizedBlockType.String(), finality.String(), resolvedBlockFinality.String())
+	}
+	return resolvedBlockFinality
 }
 
 // setStopDownloaderOnIterationN sets the block number to stop the downloader (just for unittest)
