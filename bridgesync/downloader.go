@@ -61,10 +61,10 @@ func buildAppender(
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
-	bridgeContractV2 *agglayerbridge.Agglayerbridge,
+	agglayerBridge *agglayerbridge.Agglayerbridge,
 	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
-	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
+	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
@@ -79,14 +79,14 @@ func buildAppender(
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		bridgeContractV2, bridgeAddr, client, logger)
+		agglayerBridge, bridgeAddr, client, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
-		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
+		agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
-		bridgeContractV1, client,
+		legacyBridge, client,
 		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
-		bridgeContractV2, client, bridgeAddr, logger)
+		agglayerBridge, client, bridgeAddr, logger)
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
 		bridgeSovereignChain, client, bridgeAddr, logger)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(

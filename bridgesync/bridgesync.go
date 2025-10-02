@@ -57,10 +57,10 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork    uint32
-	reorgDetector    ReorgDetector
-	ethClient        aggkittypes.EthClienter
-	bridgeContractV2 *agglayerbridge.Agglayerbridge
+	originNetwork  uint32
+	reorgDetector  ReorgDetector
+	ethClient      aggkittypes.EthClienter
+	agglayerBridge *agglayerbridge.Agglayerbridge
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -135,14 +135,14 @@ func newBridgeSync(
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
-	bridgeContractV2, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.Infof("Bridge sync %s, syncing full claims: %t", syncerID.String(), syncFullClaims)
 
-	err = sanityCheckContract(logger, cfg.BridgeAddr, bridgeContractV2)
+	err = sanityCheckContract(logger, cfg.BridgeAddr, agglayerBridge)
 	if err != nil {
 		logger.Errorf("sanityCheckContract(bridge: %s) fails sanity check. Err: %w",
 			cfg.BridgeAddr.String(), err)
@@ -178,7 +178,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 	}
 
-	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, bridgeContractV2, logger)
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, agglayerBridge, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -244,13 +244,13 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:        processor,
-		driver:           driver,
-		downloader:       downloader,
-		originNetwork:    networkID,
-		reorgDetector:    rd,
-		ethClient:        ethClient,
-		bridgeContractV2: bridgeContractV2,
+		processor:      processor,
+		driver:         driver,
+		downloader:     downloader,
+		originNetwork:  networkID,
+		reorgDetector:  rd,
+		ethClient:      ethClient,
+		agglayerBridge: agglayerBridge,
 	}, nil
 }
 
@@ -424,8 +424,8 @@ func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) 
 }
 
 func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
-	bridgeContractV2 *agglayerbridge.Agglayerbridge) error {
-	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
+	agglayerBridge *agglayerbridge.Agglayerbridge) error {
+	lastUpdatedDespositCount, err := agglayerBridge.LastUpdatedDepositCount(nil)
 	if err != nil {
 		logger.Errorf("failed to get last updated deposit count: %s", err)
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
@@ -442,7 +442,7 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 		return 0, sync.ErrInconsistentState
 	}
 
-	depositCount, err := s.bridgeContractV2.DepositCount(nil)
+	depositCount, err := s.agglayerBridge.DepositCount(nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get deposit count: %w", err)
 	}
