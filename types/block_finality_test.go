@@ -64,10 +64,10 @@ func TestBlockNumberFinalityWithOffset(t *testing.T) {
 }
 
 func TestBlockNumberFinalityCmp(t *testing.T) {
-	require.True(t, SafeBlock.GreaterThan(&FinalizedBlock))
-	require.True(t, LatestBlock.GreaterThan(&FinalizedBlock))
-	require.True(t, LatestBlock.GreaterThan(&SafeBlock))
-	require.True(t, PendingBlock.GreaterThan(&LatestBlock))
+	require.True(t, SafeBlock.GreaterThan(FinalizedBlock))
+	require.True(t, LatestBlock.GreaterThan(FinalizedBlock))
+	require.True(t, LatestBlock.GreaterThan(SafeBlock))
+	require.True(t, PendingBlock.GreaterThan(LatestBlock))
 }
 
 func readConfigFile[T any](t *testing.T, configData string) (T, error) {

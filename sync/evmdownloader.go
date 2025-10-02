@@ -96,10 +96,7 @@ func NewEVMDownloader(
 func resolveBlockFinality(logger *log.Logger, finality aggkittypes.BlockNumberFinality,
 	finalizedBlockType aggkittypes.BlockNumberFinality) aggkittypes.BlockNumberFinality {
 	resolvedBlockFinality := finalizedBlockType
-	if finality.IsEmpty() {
-		resolvedBlockFinality = aggkittypes.FinalizedBlock
-		logger.Warnf("block finality is not set. fallbacking to finalized block")
-	} else if finalizedBlockType.GreaterThan(&finality) {
+	if finalizedBlockType.GreaterThan(finality) {
 		resolvedBlockFinality = finality
 		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
 			finalizedBlockType.String(), finality.String(), resolvedBlockFinality.String())

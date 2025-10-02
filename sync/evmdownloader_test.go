@@ -40,10 +40,10 @@ func Test_ResolveBlockFinality(t *testing.T) {
 		expectedFinality   aggkittypes.BlockNumberFinality
 	}{
 		{
-			name:               "empty finality defaults to FinalizedBlock",
+			name:               "empty finality defaults to finalized block type",
 			finality:           aggkittypes.BlockNumberFinality{}, // IsEmpty()
 			finalizedBlockType: aggkittypes.SafeBlock,
-			expectedFinality:   aggkittypes.FinalizedBlock,
+			expectedFinality:   aggkittypes.SafeBlock,
 		},
 		{
 			name:               "finalized block type greater than finality",

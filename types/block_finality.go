@@ -128,8 +128,8 @@ func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereu
 
 // IsGreaterThan returns true if v is greater than other
 // earliest ≤ finalized ≤ safe ≤ latest ≤ pending
-func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
-	if b == nil || other == nil {
+func (b *BlockNumberFinality) GreaterThan(other BlockNumberFinality) bool {
+	if b == nil || other.IsEmpty() {
 		return false
 	}
 	if blockOrder[b.Block] > blockOrder[other.Block] {
