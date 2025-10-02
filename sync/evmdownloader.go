@@ -69,14 +69,18 @@ func NewEVMDownloader(
 ) (*EVMDownloader, error) {
 	logger := log.WithFields("syncer", syncerID)
 
-	resolvedBlockFinality := resolveBlockFinality(logger, finality, finalizedBlockType)
+	resolvedFinalizedBlockType := resolveBlockFinality(logger, finality, finalizedBlockType)
+	if finality.IsEmpty() {
+		finality = resolvedFinalizedBlockType
+		logger.Infof("block finality not set, using finalized block type: %s", finality.String())
+	}
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
-		finality.String(), resolvedBlockFinality.String(), syncBlockChunkSize)
+		finality.String(), resolvedFinalizedBlockType.String(), syncBlockChunkSize)
 
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
-		finalizedBlockType: &resolvedBlockFinality,
+		finalizedBlockType: &resolvedFinalizedBlockType,
 		addressesToQuery:   addressesToQuery,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
