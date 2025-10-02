@@ -164,10 +164,10 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats ./tests/aggkit/bridge-e2e.bats \
-             ./tests/op/optimistic-mode.bats \
-             ./tests/aggkit/e2e-pp.bats \
-             ./tests/aggkit/bridge-sovereign-chain-e2e.bats 
+        bats ./tests/aggkit/bridge-e2e-joan.bats || exit 1 
+        bats     ./tests/op/optimistic-mode.bats || exit 1
+        bats     ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats  || exit 1
 
         ;;
     single-l2-network-op-succinct-aggoracle-committee)

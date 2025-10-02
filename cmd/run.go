@@ -512,10 +512,10 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		cfg.L1InfoTreeSync,
-		aggkittypes.FinalizedBlock,
+		aggkittypes.LatestBlock,
 		l1Client,
 		l1infotreesync.FlagNone,
-		aggkittypes.FinalizedBlock,
+		aggkittypes.LatestBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
