@@ -69,23 +69,25 @@ func NewEVMDownloader(
 ) (*EVMDownloader, error) {
 	logger := log.WithFields("syncer", syncerID)
 
-	fbtEthermanType := finalizedBlockType
-
-	if finalizedBlockType.GreaterThan(&finality) {
-		fbtEthermanType = finality
+	overridenFinality := finalizedBlockType
+	if finality.IsEmpty() {
+		overridenFinality = aggkittypes.FinalizedBlock
+		logger.Warnf("Block finality is not set. Setting to finalized block")
+	} else if finalizedBlockType.GreaterThan(&finality) {
+		overridenFinality = finality
 		// if someone configured the syncer to query blocks by Safe or Finalized block
 		// finalized block type should be at least the same as the block finality
 		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
-			finalizedBlockType.String(), finality.String(), fbtEthermanType.String())
+			finalizedBlockType.String(), finality.String(), overridenFinality.String())
 	}
 
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
-		finality.String(), fbtEthermanType.String(), syncBlockChunkSize)
+		finality.String(), overridenFinality.String(), syncBlockChunkSize)
 
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
-		finalizedBlockType: &fbtEthermanType,
+		finalizedBlockType: &overridenFinality,
 		addressesToQuery:   addressesToQuery,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
