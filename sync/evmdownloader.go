@@ -91,10 +91,20 @@ func NewEVMDownloader(
 	}, nil
 }
 
-// resolveBlockFinality checks if the finalized block type is less or equal
-// than the block finality and resolves it accordingly
-func resolveBlockFinality(logger *log.Logger, finality aggkittypes.BlockNumberFinality,
-	finalizedBlockType aggkittypes.BlockNumberFinality) aggkittypes.BlockNumberFinality {
+// resolveBlockFinality determines the effective block finality to use for the downloader.
+//
+// If the configured finalizedBlockType is "greater" (i.e., less final) than the target
+// block finality (ordering: Finalized ≤ Safe ≤ Latest ≤ Pending), then the block finality
+// is downgraded to match the target finality, and a warning is logged.
+//
+// Otherwise, the finalizedBlockType is returned as-is.
+//
+// Example:
+//   - finality=Finalized, finalizedBlockType=Safe  → returns Finalized (with warning)
+//   - finality=Safe,       finalizedBlockType=Safe → returns Safe
+//   - finality=Safe,       finalizedBlockType=Latest → returns Safe (with warning)
+func resolveBlockFinality(logger *log.Logger,
+	finality, finalizedBlockType aggkittypes.BlockNumberFinality) aggkittypes.BlockNumberFinality {
 	resolvedBlockFinality := finalizedBlockType
 	if finalizedBlockType.GreaterThan(finality) {
 		resolvedBlockFinality = finality
