@@ -96,6 +96,8 @@ func TestNewVerifierFlow(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := context.Background()
 			mockLogger := log.WithFields("test", "NewFlow")
 
@@ -228,6 +230,8 @@ func TestNewLocalVerifier(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := context.Background()
 
 			verifierFlow, err := NewLocalVerifier(ctx, tc.cfg, nil, tc.builderFlow)

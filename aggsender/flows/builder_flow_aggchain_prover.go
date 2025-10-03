@@ -169,7 +169,8 @@ func (a *AggchainProverBuilderFlow) GenerateBuildParams(ctx context.Context,
 // What differentiates this function from the regular PP flow is that,
 // if the last sent certificate is in error, we need to resend the exact same certificate
 // also, it calls the aggchain prover to get the aggchain proof
-func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
+	ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastSentCert, proof, err := a.storage.GetLastSentCertificateHeaderWithProofIfInError(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if last sent certificate is InError: %w", err)
@@ -373,7 +374,8 @@ func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	return buildParams, nil
 }
 
-func (a *AggchainProverBuilderFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateHeader) uint64 {
+func (a *AggchainProverBuilderFlow) getLastProvenBlock(
+	fromBlock uint64, lastCertificate *types.CertificateHeader) uint64 {
 	if fromBlock == 0 {
 		// if this is the first certificate, we need to start from the starting L2 block
 		// that we got from the sovereign rollup
