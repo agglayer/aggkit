@@ -81,7 +81,6 @@ func TestNewLx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l1BridgeSync.OriginNetwork())
-	require.Equal(t, blockFinalityType, l1BridgeSync.BlockFinality())
 
 	bridgeSyncL2Cfg := Config{
 		DBPath:                             dbPath,
@@ -107,7 +106,6 @@ func TestNewLx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
-	require.Equal(t, blockFinalityType, l2BridgdeSync.BlockFinality())
 
 	// Fails the sanity check of the contract address
 	mockEthClient = mocksethclient.NewEthClienter(t)

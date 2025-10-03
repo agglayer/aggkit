@@ -67,13 +67,11 @@ func NewEVMDownloader(
 	rh *RetryHandler,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*EVMDownloader, error) {
-	logger := log.WithFields("syncer", syncerID)
-
-	resolvedFinalizedBlockType := resolveBlockFinality(logger, finality, finalizedBlockType)
 	if finality.IsEmpty() {
-		finality = resolvedFinalizedBlockType
-		logger.Infof("block finality not set, using finalized block type: %s", finality.String())
+		return nil, fmt.Errorf("block finality must be set")
 	}
+	logger := log.WithFields("syncer", syncerID)
+	resolvedFinalizedBlockType := resolveBlockFinality(logger, finality, finalizedBlockType)
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
 		finality.String(), resolvedFinalizedBlockType.String(), syncBlockChunkSize)
 

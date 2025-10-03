@@ -52,7 +52,7 @@ func Test_ResolveBlockFinality(t *testing.T) {
 			expectedFinality:   aggkittypes.FinalizedBlock,
 		},
 		{
-			name: "finalized block type greater due to offset",
+			name: "finalized block type less strict due to offset",
 			finality: aggkittypes.BlockNumberFinality{
 				Block:  aggkittypes.Safe,
 				Offset: 1,
@@ -64,6 +64,21 @@ func Test_ResolveBlockFinality(t *testing.T) {
 			expectedFinality: aggkittypes.BlockNumberFinality{
 				Block:  aggkittypes.Safe,
 				Offset: 1,
+			},
+		},
+		{
+			name: "finalized block type stricter due to offset",
+			finality: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: 1,
+			},
+			finalizedBlockType: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: -5,
+			},
+			expectedFinality: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: -5,
 			},
 		},
 		{
