@@ -115,7 +115,7 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
-		b.Events = append(b.Events, Event{Bridge: &Bridge{
+		bridge := &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
 			FromAddress:        foundCall.From,
@@ -130,7 +130,9 @@ func buildBridgeEventHandler(
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
-		}})
+		}
+		b.Events = append(b.Events, Event{Bridge: bridge})
+		logger.Infof("processed Bridge event %+v", bridge)
 		return nil
 	}
 }
@@ -164,6 +166,7 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
+		logger.Infof("processed Claim event %+v", claim)
 		return nil
 	}
 }
