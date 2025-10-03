@@ -108,7 +108,7 @@ func NewEVMDownloader(
 func resolveBlockFinality(logger *log.Logger,
 	finality, finalizedBlockType aggkittypes.BlockNumberFinality) aggkittypes.BlockNumberFinality {
 	resolvedBlockFinality := finalizedBlockType
-	if finalizedBlockType.GreaterThan(finality) {
+	if finalizedBlockType.LessFinalThan(finality) {
 		resolvedBlockFinality = finality
 		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
 			finalizedBlockType.String(), finality.String(), resolvedBlockFinality.String())

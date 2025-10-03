@@ -126,9 +126,10 @@ func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereu
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }
 
-// IsGreaterThan returns true if v is greater than other
+// LessFinalThan returns true if b is less strict commitment level than other.
+// In case commitment level keywords are the same, it compares the offsets.
 // finalized ≤ safe ≤ latest ≤ pending
-func (b *BlockNumberFinality) GreaterThan(other BlockNumberFinality) bool {
+func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) bool {
 	if b == nil || other.IsEmpty() {
 		return false
 	}
