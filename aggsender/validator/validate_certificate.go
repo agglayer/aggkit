@@ -27,14 +27,14 @@ type L1InfoTreeRootByLeafQuerier interface {
 // CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
-	flow                  types.AggsenderFlow
+	flow                  types.AggsenderVerifierFlow
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
 	certQuerier           types.CertificateQuerier
 	lerQuerier            types.LERQuerier
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
-	flow types.AggsenderFlow,
+	flow types.AggsenderVerifierFlow,
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
 	certQuerier types.CertificateQuerier,
 	lerQuerier types.LERQuerier) *CertificateValidator {

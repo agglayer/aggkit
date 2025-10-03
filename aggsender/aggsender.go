@@ -53,7 +53,7 @@ type AggSender struct {
 	cfg config.Config
 
 	status *types.AggsenderStatus
-	flow   types.AggsenderFlow
+	flow   types.AggsenderBuilderFlow
 
 	l2OriginNetwork uint32
 }
@@ -92,7 +92,7 @@ func New(
 		return nil, err
 	}
 
-	flowManager, err := flows.NewFlow(
+	flowManager, err := flows.NewBuilderFlow(
 		ctx,
 		cfg,
 		logger,
@@ -121,7 +121,7 @@ func New(
 	)
 
 	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, mode,
-		cfg.SovereignRollupAddr, cfg.OptimisticModeConfig.OpNodeURL, l1Client)
+		cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
 	}
@@ -132,12 +132,22 @@ func New(
 		aggLayerClient,
 	)
 
+	verifierFlow, err := flows.NewLocalVerifier(
+		ctx,
+		cfg,
+		l1Client,
+		flowManager,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating verifier flow: %w", err)
+	}
+
 	localValidator := validator.NewLocalValidator(
 		logger,
 		storage,
 		validator.NewAggsenderValidator(
 			logger,
-			flowManager,
+			verifierFlow,
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			certQuerier,
 			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),

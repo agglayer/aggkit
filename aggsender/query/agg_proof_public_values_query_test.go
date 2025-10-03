@@ -1,10 +1,10 @@
-package optimistic
+package query
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/agglayer/aggkit/aggsender/optimistic/mocks"
+	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +16,7 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 
 	contractAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
 	proverAddress := common.HexToAddress("0x0987654321098765432109876543210987654321")
-	sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+	sut := NewAggProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
 	lastProvenBlock := uint64(1)
 	requestedEndBlock := uint64(2)
@@ -63,7 +63,7 @@ func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
 	t.Run("opNodeClient.OutputAtBlockRoot error on l2PreRoot", func(t *testing.T) {
 		mockFEPContract := mocks.NewFEPContractQuerier(t)
 		mockOPNodeClient := mocks.NewOpNodeClienter(t)
-		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+		sut := NewAggProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, errors.New("mock error")).Once()
 
@@ -75,7 +75,7 @@ func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
 	t.Run("opNodeClient.OutputAtBlockRoot error on claimRoot", func(t *testing.T) {
 		mockFEPContract := mocks.NewFEPContractQuerier(t)
 		mockOPNodeClient := mocks.NewOpNodeClienter(t)
-		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+		sut := NewAggProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, errors.New("mock error"))
@@ -89,7 +89,7 @@ func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
 	t.Run("opNodeClient.OutputAtBlockRoot error on contract.SelectedOpSuccinctConfigName", func(t *testing.T) {
 		mockFEPContract := mocks.NewFEPContractQuerier(t)
 		mockOPNodeClient := mocks.NewOpNodeClienter(t)
-		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+		sut := NewAggProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, nil)
@@ -104,7 +104,7 @@ func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
 	t.Run("opNodeClient.OutputAtBlockRoot error on contract.OpSuccinctConfigs", func(t *testing.T) {
 		mockFEPContract := mocks.NewFEPContractQuerier(t)
 		mockOPNodeClient := mocks.NewOpNodeClienter(t)
-		sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
+		sut := NewAggProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, proverAddress)
 
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, nil)
@@ -126,7 +126,7 @@ func TestGetAggregationProofPublicValuesData_GetTrustedSequencerFromContract(t *
 	mockOPNodeClient := mocks.NewOpNodeClienter(t)
 
 	contractAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
-	sut := NewOptimisticAggregationProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, common.Address{})
+	sut := NewAggProofPublicValuesQuery(mockFEPContract, contractAddr, mockOPNodeClient, common.Address{})
 
 	lastProvenBlock := uint64(1)
 	requestedEndBlock := uint64(2)

@@ -1,4 +1,4 @@
-package optimistic
+package query
 
 import (
 	"errors"
@@ -13,29 +13,29 @@ import (
 
 // This is just to check in build time that the expected objects fulfill the interfaces
 var (
-	_ OpNodeClienter                                = (*opnode.OpNodeClient)(nil)
-	_ FEPContractQuerier                            = (*aggchainfep.Aggchainfep)(nil)
-	_ OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
+	_ types.OpNodeClienter              = (*opnode.OpNodeClient)(nil)
+	_ types.FEPContractQuerier          = (*aggchainfep.Aggchainfep)(nil)
+	_ types.AggProofPublicValuesQuerier = (*AggProofPublicValuesQuery)(nil)
 
 	errNoSigners = errors.New("no signers found in the AggchainFEP contract. There should be at least one signer")
 )
 
-// OptimisticAggregationProofPublicValuesQuery implements OptimisticAggregationProofPublicValuesQuerier
-type OptimisticAggregationProofPublicValuesQuery struct {
-	aggchainFEPContract FEPContractQuerier
+// AggProofPublicValuesQuery implements AggProofPublicValuesQuerier
+type AggProofPublicValuesQuery struct {
+	aggchainFEPContract types.FEPContractQuerier
 	aggchainFEPAddr     common.Address
-	opNodeClient        OpNodeClienter
+	opNodeClient        types.OpNodeClienter
 	proverAddress       common.Address
 }
 
-// NewOptimisticAggregationProofPublicValuesQuery creates a new instance of OptimisticAggregationProofPublicValuesQuery
-func NewOptimisticAggregationProofPublicValuesQuery(
-	aggchainFEPContract FEPContractQuerier,
+// NewAggProofPublicValuesQuery creates a new instance of AggProofPublicValuesQuery
+func NewAggProofPublicValuesQuery(
+	aggchainFEPContract types.FEPContractQuerier,
 	aggchainFEPAddr common.Address,
-	opNodeClient OpNodeClienter,
+	opNodeClient types.OpNodeClienter,
 	proverAddress common.Address,
-) *OptimisticAggregationProofPublicValuesQuery {
-	return &OptimisticAggregationProofPublicValuesQuery{
+) *AggProofPublicValuesQuery {
+	return &AggProofPublicValuesQuery{
 		aggchainFEPContract: aggchainFEPContract,
 		aggchainFEPAddr:     aggchainFEPAddr,
 		opNodeClient:        opNodeClient,
@@ -45,37 +45,37 @@ func NewOptimisticAggregationProofPublicValuesQuery(
 
 // GetAggregationProofPublicValuesData retrieves the AggregationProofPublicValue required for
 // the optimistic aggregation proof
-func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(
+func (a *AggProofPublicValuesQuery) GetAggregationProofPublicValuesData(
 	lastProvenBlock, requestedEndBlock uint64,
 	l1InfoTreeLeafHash common.Hash) (*types.AggregationProofPublicValues, error) {
-	l2PreRoot, err := o.opNodeClient.OutputAtBlockRoot(lastProvenBlock)
+	l2PreRoot, err := a.opNodeClient.OutputAtBlockRoot(lastProvenBlock)
 	if err != nil {
 		return nil, fmt.Errorf("opAggProofPublicValuesQuery. l2PreRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
 			lastProvenBlock, err)
 	}
-	claimRoot, err := o.opNodeClient.OutputAtBlockRoot(requestedEndBlock)
+	claimRoot, err := a.opNodeClient.OutputAtBlockRoot(requestedEndBlock)
 	if err != nil {
 		return nil, fmt.Errorf("opAggProofPublicValuesQuery. claimRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
 			requestedEndBlock, err)
 	}
-	configName, err := o.aggchainFEPContract.SelectedOpSuccinctConfigName(nil)
+	configName, err := a.aggchainFEPContract.SelectedOpSuccinctConfigName(nil)
 	if err != nil {
 		return nil, fmt.Errorf("opAggProofPublicValuesQuery. contract.SelectedOpSuccinctConfigName from contract %s. Err: %w",
-			o.aggchainFEPAddr, err)
+			a.aggchainFEPAddr, err)
 	}
-	opConfig, err := o.aggchainFEPContract.OpSuccinctConfigs(nil, configName)
+	opConfig, err := a.aggchainFEPContract.OpSuccinctConfigs(nil, configName)
 	if err != nil {
 		return nil, fmt.Errorf("opAggProofPublicValuesQuery. contract.OpSuccinctConfigs from contract %s. Err: %w",
-			o.aggchainFEPAddr, err)
+			a.aggchainFEPAddr, err)
 	}
 
-	trustedSignerAddr := o.proverAddress
+	trustedSignerAddr := a.proverAddress
 	if trustedSignerAddr == aggkitcommon.ZeroAddress {
 		// if proverAddress is zero, get the trusted signer from the contract
-		trustedSignerAddr, err = getTrustedSignerAddr(o.aggchainFEPContract)
+		trustedSignerAddr, err = GetTrustedSignerAddr(a.aggchainFEPContract)
 		if err != nil {
 			return nil, fmt.Errorf("opAggProofPublicValuesQuery. trustedSignerAddr from contract %s. Err: %w",
-				o.aggchainFEPAddr, err)
+				a.aggchainFEPAddr, err)
 		}
 	}
 
@@ -90,7 +90,8 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	}, nil
 }
 
-func getTrustedSignerAddr(aggchainFEPContract FEPContractQuerier) (common.Address, error) {
+// GetTrustedSignerAddr retrieves the trusted signer address from the AggchainFEP contract
+func GetTrustedSignerAddr(aggchainFEPContract types.FEPContractQuerier) (common.Address, error) {
 	signers, err := aggchainFEPContract.GetAggchainSigners(nil)
 	if err != nil {
 		return aggkitcommon.ZeroAddress,

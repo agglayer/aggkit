@@ -4,11 +4,9 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
-	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/opnode"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -44,10 +42,9 @@ var _ types.AggchainFEPRollupQuerier = (*aggchainFEPRollupQuerier)(nil)
 // aggchainFEPRollupQuerier encapsulates the necessary information and interfaces required to query
 // the Aggchain FEP rollup contract
 type aggchainFEPRollupQuerier struct {
-	startL2BlockNum       uint64
-	aggchainFEPAddr       common.Address
-	aggchainFEPCaller     optimistic.FEPContractQuerier
-	opPublicValuesQuerier optimistic.OptimisticAggregationProofPublicValuesQuerier
+	startL2BlockNum   uint64
+	aggchainFEPAddr   common.Address
+	aggchainFEPCaller types.FEPContractQuerier
 }
 
 // NewAggchainFEPQuerier creates a new AggchainFEP querier instance for interacting with the AggchainFEP contract.
@@ -72,7 +69,6 @@ func NewAggchainFEPQuerier(
 	logger *log.Logger,
 	aggsenderMode types.AggsenderMode,
 	aggchainFEPAddr common.Address,
-	opNodeURL string,
 	l1Client aggkittypes.BaseEthereumClienter) (types.AggchainFEPRollupQuerier, error) {
 	if aggchainFEPAddr == aggkitcommon.ZeroAddress || aggsenderMode == types.PessimisticProofMode {
 		// its a PP network without AggchainFEP contract
@@ -86,21 +82,13 @@ func NewAggchainFEPQuerier(
 			aggchainFEPAddr.String(), err)
 	}
 
-	opPublicValuesQuerier := optimistic.NewOptimisticAggregationProofPublicValuesQuery(
-		aggChainFEPContract,
-		aggchainFEPAddr,
-		opnode.NewOpNodeClient(opNodeURL),
-		aggkitcommon.ZeroAddress,
-	)
-
-	return newAggchainFEPQuerier(logger, aggchainFEPAddr, aggChainFEPContract, opPublicValuesQuerier)
+	return newAggchainFEPQuerier(logger, aggchainFEPAddr, aggChainFEPContract)
 }
 
 func newAggchainFEPQuerier(
 	logger *log.Logger,
 	aggchainFEPAddr common.Address,
-	aggchainFEPCaller optimistic.FEPContractQuerier,
-	opPublicValuesQuerier optimistic.OptimisticAggregationProofPublicValuesQuerier,
+	aggchainFEPCaller types.FEPContractQuerier,
 ) (types.AggchainFEPRollupQuerier, error) {
 	startL2Block, err := aggchainFEPCaller.StartingBlockNumber(nil)
 	if err != nil {
@@ -111,10 +99,9 @@ func newAggchainFEPQuerier(
 	logger.Info("aggchainProverFlow - AggchainFEP contract address is not zero, using real querier")
 
 	return &aggchainFEPRollupQuerier{
-		startL2BlockNum:       startL2Block.Uint64(),
-		aggchainFEPCaller:     aggchainFEPCaller,
-		aggchainFEPAddr:       aggchainFEPAddr,
-		opPublicValuesQuerier: opPublicValuesQuerier,
+		startL2BlockNum:   startL2Block.Uint64(),
+		aggchainFEPCaller: aggchainFEPCaller,
+		aggchainFEPAddr:   aggchainFEPAddr,
 	}, nil
 }
 
@@ -139,15 +126,4 @@ func (a *aggchainFEPRollupQuerier) GetLastSettledL2Block() (uint64, error) {
 	}
 
 	return latestSettledL2Block.Uint64(), nil
-}
-
-// GetAggregationProofPublicValuesData retrieves the aggregation proof public values data
-func (a *aggchainFEPRollupQuerier) GetAggregationProofPublicValuesData(
-	lastProvenBlock, requestedEndBlock uint64,
-	l1InfoTreeLeafHash common.Hash) (*types.AggregationProofPublicValues, error) {
-	return a.opPublicValuesQuerier.GetAggregationProofPublicValuesData(
-		lastProvenBlock,
-		requestedEndBlock,
-		l1InfoTreeLeafHash,
-	)
 }

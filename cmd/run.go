@@ -23,7 +23,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/flows"
-	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
@@ -265,7 +264,6 @@ func createAggSenderValidator(ctx context.Context,
 		logger,
 		cfg.Mode,
 		cfg.FEPConfig.SovereignRollupAddr,
-		cfg.FEPConfig.OpNodeURL,
 		l1Client,
 	)
 	if err != nil {
@@ -278,81 +276,28 @@ func createAggSenderValidator(ctx context.Context,
 		agglayerClient,
 	)
 
-	var (
-		flow                 aggsendertypes.AggsenderFlow
-		commonFlowComponents *flows.CommonFlowComponents
+	flow, flowParams, err := flows.NewVerifierFlow(
+		ctx,
+		cfg,
+		logger,
+		l1Client,
+		l1InfoTreeSync,
+		l2Syncer,
+		rollupDataQuerier,
+		committeeQuerier,
 	)
-
-	switch cfg.Mode {
-	case aggsendertypes.PessimisticProofMode:
-		commonFlowComponents, err = flows.CreateCommonFlowComponents(
-			ctx, logger,
-			nil, // storage is not used in validator,
-			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
-			true, // full claims are (eventually) needed in validator mode
-			cfg.RequireCommitteeMembershipCheck,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create common flow components: %w", err)
-		}
-
-		flow = flows.NewPPFlow(
-			logger,
-			commonFlowComponents.BaseFlow,
-			nil, // storage is not used in validator
-			commonFlowComponents.L1InfoTreeDataQuerier,
-			commonFlowComponents.L2BridgeQuerier,
-			commonFlowComponents.Signer,
-			cfg.PPConfig.RequireOneBridgeInPPCertificate,
-			cfg.MaxL2BlockNumber,
-		)
-	case aggsendertypes.AggchainProofMode:
-		commonFlowComponents, err = flows.CreateCommonFlowComponents(
-			ctx, logger,
-			nil, // storage is not used in validator,
-			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier,
-			0, cfg.FEPConfig.RequireNoBlockGap,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
-			cfg.DelayBetweenRetries.Duration, cfg.Signer,
-			true, // full claims are (eventually) needed in validator mode
-			cfg.RequireCommitteeMembershipCheck,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create common flow components: %w", err)
-		}
-
-		optimisticModeQuerier, err := optimistic.NewOptimisticModeQuerierFromContract(
-			cfg.FEPConfig.SovereignRollupAddr, l1Client)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create optimistic mode querier: %w", err)
-		}
-
-		flow = flows.NewAggchainProverFlow(
-			logger,
-			flows.NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
-			commonFlowComponents.BaseFlow,
-			nil, // storage is not used in validator
-			commonFlowComponents.L1InfoTreeDataQuerier,
-			commonFlowComponents.L2BridgeQuerier,
-			l1Client,
-			commonFlowComponents.Signer,
-			optimisticModeQuerier,
-			nil, // we don't query the prover in validator mode
-			aggchainFEPQuerier,
-		)
-	default:
-		return nil, fmt.Errorf("unsupported mode %s", cfg.Mode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
 	}
 
 	return aggsender.NewAggsenderValidator(
 		ctx, logger, cfg, flow,
-		commonFlowComponents.L1InfoTreeDataQuerier,
+		flowParams.L1InfoTreeDataQuerier,
 		agglayerClient,
 		certQuerier,
 		aggchainFEPQuerier,
-		commonFlowComponents.LERQuerier,
-		commonFlowComponents.Signer,
+		flowParams.LERQuerier,
+		flowParams.Signer,
 	)
 }
 

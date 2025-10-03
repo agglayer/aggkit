@@ -25,7 +25,8 @@ var (
 	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
 )
 
-func NewFlow(
+// NewBuilderFlow creates a new AggsenderBuilderFlow based on the provided configuration.
+func NewBuilderFlow(
 	ctx context.Context,
 	cfg config.Config,
 	logger *log.Logger,
@@ -36,7 +37,7 @@ func NewFlow(
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
-) (types.AggsenderFlow, error) {
+) (types.AggsenderBuilderFlow, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
@@ -52,7 +53,7 @@ func NewFlow(
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
 		}
 
-		return NewPPFlow(
+		return NewPPBuilderFlow(
 			logger,
 			commonFlowComponents.BaseFlow,
 			storage,
@@ -80,7 +81,7 @@ func NewFlow(
 		}
 
 		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
-			cfg.SovereignRollupAddr, cfg.OptimisticModeConfig.OpNodeURL, l1Client)
+			cfg.SovereignRollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
 		}
@@ -112,7 +113,7 @@ func NewFlow(
 			query.NewGERDataQuerier(commonFlowComponents.L1InfoTreeDataQuerier, l2GERReader),
 		)
 
-		return NewAggchainProverFlow(
+		return NewAggchainProverBuilderFlow(
 			logger,
 			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			commonFlowComponents.BaseFlow,
@@ -123,7 +124,6 @@ func NewFlow(
 			commonFlowComponents.Signer,
 			optimisticModeQuerier,
 			aggchainProofQuerier,
-			aggchainFEPQuerier,
 		), nil
 
 	default:

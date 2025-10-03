@@ -18,9 +18,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
+// AggsenderBuilderFlow is an interface that defines the methods to manage the flow of the AggSender
 // based on the different prover types
-type AggsenderFlow interface {
+type AggsenderBuilderFlow interface {
 	// CheckInitialStatus checks the initial status for the flow it's ok
 	CheckInitialStatus(ctx context.Context) error
 	// GetCertificateBuildParams returns the parameters to build a certificate
@@ -33,14 +33,24 @@ type AggsenderFlow interface {
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 	// UpdateAggchainData updates the aggchain data field for the given certificate
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
+	// Signer is the signer used to sign the certificate
+	Signer() signertypes.Signer
+}
+
+// AggsenderVerifierFlow is an interface that defines the methods to verify the certificate
+type AggsenderVerifierFlow interface {
+	// BuildCertificate builds a certificate based on the buildParams
+	BuildCertificate(ctx context.Context,
+		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
+	// GenerateBuildParams generates the build parameters based on the preParams
+	GenerateBuildParams(ctx context.Context,
+		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 	// VerifyCertificate verifies the certificate field for the given certificate
 	VerifyCertificate(
 		ctx context.Context,
 		cert *agglayertypes.Certificate,
 		lastBlockInCert uint64,
 		lastSettledBlock uint64) error
-	// Signer is the signer used to sign the certificate
-	Signer() signertypes.Signer
 }
 
 type AggsenderFlowBaser interface {
@@ -297,9 +307,6 @@ type AggchainFEPRollupQuerier interface {
 	StartL2Block() uint64
 	GetLastSettledL2Block() (uint64, error)
 	IsFEP() bool
-	GetAggregationProofPublicValuesData(
-		lastProvenBlock, requestedEndBlock uint64,
-		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
 }
 
 // CertificateQuerier is an interface defining functions that a CertificateQuerier should implement
@@ -312,4 +319,30 @@ type CertificateQuerier interface {
 		cert *agglayertypes.Certificate) (uint64, error)
 	CalculateCertificateType(cert *agglayertypes.Certificate, certToBlock uint64) CertificateType
 	CalculateCertificateTypeFromToBlock(certToBlock uint64) CertificateType
+}
+
+// FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
+type FEPContractQuerier interface {
+	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
+	OptimisticMode(opts *bind.CallOpts) (bool, error)
+	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error)
+	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}, error)
+}
+
+// OpNodeClienter is an interface that defines the methods for interacting with the OpNode client.
+type OpNodeClienter interface {
+	OutputAtBlockRoot(blockNum uint64) (common.Hash, error)
+}
+
+// AggProofPublicValuesQuerier defines an interface for
+// querying aggregation proof public values.
+type AggProofPublicValuesQuerier interface {
+	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
+		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
 }

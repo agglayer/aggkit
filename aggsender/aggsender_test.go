@@ -228,7 +228,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		cfg:             config.Config{},
 		validatorPoller: mockValidatorPoller,
 		localValidator:  mockLocalValidator,
-		flow: flows.NewPPFlow(logger,
+		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
 			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
@@ -281,14 +281,14 @@ func TestSendCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name            string
-		mockFn          func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *agglayermocks.AgglayerClientMock)
+		mockFn          func(*mocks.AggSenderStorage, *mocks.AggsenderBuilderFlow, *agglayermocks.AgglayerClientMock)
 		mockValidatorFn func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner)
 		expectedError   string
 	}{
 		{
 			name: "error getting certificate build params",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
@@ -297,7 +297,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "no new blocks consumed",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
 			},
@@ -305,7 +305,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error building certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
@@ -317,7 +317,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error sending certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
@@ -347,7 +347,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error saving certificate to storage",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
@@ -377,7 +377,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error getting validator signature",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
@@ -403,7 +403,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "successful validation and sending of a certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
@@ -432,7 +432,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "successful sending and saving of a certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
+				mockFlow *mocks.AggsenderBuilderFlow,
 				mockAgglayerClient *agglayermocks.AgglayerClientMock) {
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
@@ -465,7 +465,7 @@ func TestSendCertificate(t *testing.T) {
 			t.Parallel()
 
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockAggsenderFlow := mocks.NewAggsenderFlow(t)
+			mockAggsenderFlow := mocks.NewAggsenderBuilderFlow(t)
 			mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
 			mockEpochNotifier := mocks.NewEpochNotifier(t)
 			tt.mockFn(mockStorage, mockAggsenderFlow, mockAgglayerClient)
@@ -560,7 +560,7 @@ func TestSendCertificatesRetry(t *testing.T) {
 	mockCertStatusChecker := mocks.NewCertificateStatusChecker(t)
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
 	mockStorage := mocks.NewAggSenderStorage(t)
-	mockFlow := mocks.NewAggsenderFlow(t)
+	mockFlow := mocks.NewAggsenderBuilderFlow(t)
 
 	logger := log.WithFields("aggsender-test", "TestSendCertificatesRetry")
 	aggSender := &AggSender{
@@ -612,20 +612,20 @@ func TestSendCertificates(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		mockFn                  func(*mocks.CertificateStatusChecker, *mocks.EpochNotifier, *mocks.AggSenderStorage, *mocks.AggsenderFlow)
+		mockFn                  func(*mocks.CertificateStatusChecker, *mocks.EpochNotifier, *mocks.AggSenderStorage, *mocks.AggsenderBuilderFlow)
 		returnAfterNIterations  int
 		certStatusCheckInterval time.Duration
 	}{
 		{
 			name: "context canceled",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
+			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()
 			},
 			returnAfterNIterations: 0,
 		},
 		{
 			name: "retry certificate after in-error",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
+			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts:   false,
 					ExistNewInErrorCert: true,
@@ -639,7 +639,7 @@ func TestSendCertificates(t *testing.T) {
 		},
 		{
 			name: "epoch received with no pending certificates",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
+			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
 				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
@@ -653,7 +653,7 @@ func TestSendCertificates(t *testing.T) {
 		},
 		{
 			name: "epoch received with pending certificates",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
+			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
 				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
@@ -674,7 +674,7 @@ func TestSendCertificates(t *testing.T) {
 			mockCertStatusChecker := mocks.NewCertificateStatusChecker(t)
 			mockEpochNotifier := mocks.NewEpochNotifier(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockFlow := mocks.NewAggsenderFlow(t)
+			mockFlow := mocks.NewAggsenderBuilderFlow(t)
 
 			tt.mockFn(mockCertStatusChecker, mockEpochNotifier, mockStorage, mockFlow)
 
@@ -727,7 +727,7 @@ type aggsenderTestData struct {
 	l2BridgeQuerier         *mocks.BridgeQuerier
 	storageMock             *mocks.AggSenderStorage
 	epochNotifierMock       *mocks.EpochNotifier
-	flowMock                *mocks.AggsenderFlow
+	flowMock                *mocks.AggsenderBuilderFlow
 	compatibilityChekerMock *mocksdb.CompatibilityChecker
 	certStatusCheckerMock   *mocks.CertificateStatusChecker
 	sut                     *AggSender
@@ -805,14 +805,14 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			DelayBetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
 		epochNotifier: epochNotifierMock,
-		flow: flows.NewPPFlow(logger,
+		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
 				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
 			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
-	var flowMock *mocks.AggsenderFlow
+	var flowMock *mocks.AggsenderBuilderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {
-		flowMock = mocks.NewAggsenderFlow(t)
+		flowMock = mocks.NewAggsenderBuilderFlow(t)
 		sut.flow = flowMock
 	}
 

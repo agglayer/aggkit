@@ -15,10 +15,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var _ types.AggsenderFlow = (*AggchainProverFlow)(nil)
+var _ types.AggsenderBuilderFlow = (*AggchainProverBuilderFlow)(nil)
 
-// AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
-type AggchainProverFlow struct {
+// AggchainProverBuilderFlow is a struct that holds the logic for the AggchainProver prover type flow
+type AggchainProverBuilderFlow struct {
 	baseFlow types.AggsenderFlowBaser
 
 	log                   types.Logger
@@ -31,7 +31,6 @@ type AggchainProverFlow struct {
 	aggchainProofQuerier  types.AggchainProofQuerier
 	config                AggchainProverFlowConfig
 	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
-	aggchainFEPQuerier    types.AggchainFEPRollupQuerier
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
@@ -70,9 +69,9 @@ func NewAggchainProverFlowConfig(
 	}
 }
 
-// NewAggchainProverFlow returns a new instance of the AggchainProverFlow injecting baseFlow instead of
+// NewAggchainProverBuilderFlow returns a new instance of the AggchainProverBuilderFlow injecting baseFlow instead of
 // creating it
-func NewAggchainProverFlow(
+func NewAggchainProverBuilderFlow(
 	log types.Logger,
 	aggChainProverConfig AggchainProverFlowConfig,
 	baseFlow types.AggsenderFlowBaser,
@@ -83,15 +82,14 @@ func NewAggchainProverFlow(
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	aggchainProofQuerier types.AggchainProofQuerier,
-	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
-) *AggchainProverFlow {
+) *AggchainProverBuilderFlow {
 	feature := NewMaxL2BlockNumberLimiter(
 		aggChainProverConfig.maxL2BlockNumber,
 		log,
 		false, // AggchainProverFlow allows to resize retry certs
 		false, // AggchainProverFlow allows to send no bridges certs
 	)
-	return &AggchainProverFlow{
+	return &AggchainProverBuilderFlow{
 		log:                   log,
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
@@ -102,13 +100,12 @@ func NewAggchainProverFlow(
 		aggchainProofQuerier:  aggchainProofQuerier,
 		baseFlow:              baseFlow,
 		featureMaxL2Block:     feature,
-		aggchainFEPQuerier:    aggchainFEPQuerier,
 	}
 }
 
 // CheckInitialStatus checks that initial status is correct.
 // For AggchainProverFlow checks that starting block and last certificate match
-func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
+func (a *AggchainProverBuilderFlow) CheckInitialStatus(ctx context.Context) error {
 	lastSentCertificate, err := a.storage.GetLastSentCertificateHeader()
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
@@ -133,7 +130,7 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 }
 
 // getCertificateTypeToGenerate returns the type of certificate to generate
-func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateType, error) {
+func (a *AggchainProverBuilderFlow) getCertificateTypeToGenerate() (types.CertificateType, error) {
 	// AggchainProverFlow only supports FEP certificates
 	optimisticMode, err := a.optimisticModeQuerier.IsOptimisticModeOn()
 	if err != nil {
@@ -148,7 +145,7 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 
 // GeneratePreBuildParams generates the pre-build parameters for the AggchainProverFlow
 // Only used in aggsender validator
-func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
+func (a *AggchainProverBuilderFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
 	if preParams == nil {
 		return nil, fmt.Errorf("aggchainProverFlow - preParams is nil")
@@ -172,7 +169,7 @@ func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
 // What differentiates this function from the regular PP flow is that,
 // if the last sent certificate is in error, we need to resend the exact same certificate
 // also, it calls the aggchain prover to get the aggchain proof
-func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastSentCert, proof, err := a.storage.GetLastSentCertificateHeaderWithProofIfInError(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if last sent certificate is InError: %w", err)
@@ -272,7 +269,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 // verifyBuildParams verifies the certificate build params and returns an error if they are not valid
 // it also calls the prover to get the aggchain proof
-func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
+func (a *AggchainProverBuilderFlow) verifyBuildParamsAndGenerateProof(
 	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	if err := a.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
@@ -307,7 +304,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
-func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
+func (a *AggchainProverBuilderFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	cert, err := a.baseFlow.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
@@ -332,7 +329,7 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 }
 
 // UpdateAggchainData updates the AggchainData field in certificate with the multisig if provided.
-func (a *AggchainProverFlow) UpdateAggchainData(
+func (a *AggchainProverBuilderFlow) UpdateAggchainData(
 	cert *agglayertypes.Certificate,
 	multisig *agglayertypes.Multisig,
 ) error {
@@ -360,57 +357,6 @@ func (a *AggchainProverFlow) UpdateAggchainData(
 	return nil
 }
 
-// VerifyCertificate verifies the new certificate
-// This function is used in the validator to verify the certificate
-func (a *AggchainProverFlow) VerifyCertificate(
-	ctx context.Context,
-	cert *agglayertypes.Certificate,
-	lastBlockInCert uint64,
-	lastSettledBlock uint64) error {
-	if cert.AggchainData == nil {
-		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is nil")
-	}
-
-	var aggchainDataProof *agglayertypes.AggchainDataProof
-	switch v := cert.AggchainData.(type) {
-	case *agglayertypes.AggchainDataProof:
-		aggchainDataProof = v
-	case *agglayertypes.AggchainDataMultisigWithProof:
-		aggchainDataProof = v.AggchainProof
-	default:
-		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is of unknown type %T", cert.AggchainData)
-	}
-
-	// we need to reconstruct the AggchainParams field using what proposer provided,
-	// plus, the current data from the L1 and L2 networks (what was last settled)
-	l1InfoLeaf, err := a.l1InfoTreeDataQuerier.GetInfoByIndex(ctx, cert.L1InfoTreeLeafCount-1)
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting L1InfoLeaf by index %d: %w",
-			cert.L1InfoTreeLeafCount-1, err)
-	}
-
-	expectedAggchainProofPublicValues, err := a.aggchainFEPQuerier.GetAggregationProofPublicValuesData(
-		lastSettledBlock,
-		lastBlockInCert,
-		l1InfoLeaf.Hash,
-	)
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting expected aggchain proof public values: %w", err)
-	}
-
-	expectedAggchainParams, err := expectedAggchainProofPublicValues.Hash()
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error calculating expected aggchain params hash: %w", err)
-	}
-
-	if aggchainDataProof.AggchainParams != expectedAggchainParams {
-		return fmt.Errorf("aggchainProverFlow - aggchain params do not match: expected %s, got %s",
-			expectedAggchainParams, aggchainDataProof.AggchainParams)
-	}
-
-	return nil
-}
-
 // adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
 func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	requestedToBlock, aggchainProverToBlock uint64) (*types.CertificateBuildParams, error) {
@@ -427,7 +373,7 @@ func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	return buildParams, nil
 }
 
-func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateHeader) uint64 {
+func (a *AggchainProverBuilderFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateHeader) uint64 {
 	if fromBlock == 0 {
 		// if this is the first certificate, we need to start from the starting L2 block
 		// that we got from the sovereign rollup
@@ -452,6 +398,6 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 }
 
 // Signer returns the signer used to sign the certificate
-func (a *AggchainProverFlow) Signer() signertypes.Signer {
+func (a *AggchainProverBuilderFlow) Signer() signertypes.Signer {
 	return a.certificateSigner
 }

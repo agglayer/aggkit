@@ -112,11 +112,10 @@ type AggchainProverFlowTestData struct {
 	mockSigner                *mocks.Signer
 	mockFlowBase              *mocks.AggsenderFlowBaser
 	mockAggchainProofQuerier  *mocks.AggchainProofQuerier
-	mockAggchainFEPQuerier    *mocks.AggchainFEPRollupQuerier
 
 	ctx context.Context
 
-	sut *AggchainProverFlow
+	sut *AggchainProverBuilderFlow
 }
 
 func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *AggchainProverFlowTestData {
@@ -130,14 +129,13 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 		mockSigner:                mocks.NewSigner(t),
 		mockAggchainProofQuerier:  mocks.NewAggchainProofQuerier(t),
 		mockFlowBase:              mocks.NewAggsenderFlowBaser(t),
-		mockAggchainFEPQuerier:    mocks.NewAggchainFEPRollupQuerier(t),
 		ctx:                       context.TODO(),
 	}
 
 	// Simulate the access to baseFlow variables
 	res.mockFlowBase.EXPECT().StartL2Block().Return(cfgBase.StartL2Block).Maybe()
 
-	res.sut = NewAggchainProverFlow(
+	res.sut = NewAggchainProverBuilderFlow(
 		log.WithFields("flowManager", "AggchainProverFlowTestData"),
 		NewAggchainProverFlowConfigDefault(),
 		res.mockFlowBase,
@@ -148,7 +146,6 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 		res.mockSigner,
 		res.mockOptimisticModeQuerier,
 		res.mockAggchainProofQuerier,
-		res.mockAggchainFEPQuerier,
 	)
 
 	return res

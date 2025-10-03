@@ -334,7 +334,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			mockLERQuerier := mocks.NewLERQuerier(t)
 			mockSigner := mocks.NewSigner(t)
-			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
 			flowBase := NewBaseFlow(
 				logger,
@@ -344,7 +343,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockLERQuerier,
 				NewBaseFlowConfigDefault())
 			flowBase.timeNowFunc = timeNowUTCForTest
-			aggchainFlow := NewAggchainProverFlow(
+			aggchainFlow := NewAggchainProverBuilderFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
 				flowBase,
@@ -355,7 +354,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockSigner,
 				mockOptimistic,
 				mockAggchainProofQuerier,
-				mockAggchainFEPQuerier,
 			)
 			mockOptimistic.EXPECT().IsOptimisticModeOn().Return(false, nil).Maybe()
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofQuerier, mockL1InfoTreeDataQuerier)
@@ -464,7 +462,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // lerQuerier
 				NewBaseFlowConfig(0, tc.startL2Block, false, true),
 			)
-			flow := NewAggchainProverFlow(
+			flow := NewAggchainProverBuilderFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
 				flowBase,
@@ -475,7 +473,6 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // mockSigner
 				nil, // optimisticModeQuerier
 				nil, // aggchainProofQuerier
-				nil, // aggchainFEPQuerier
 			)
 
 			result := flow.getLastProvenBlock(tc.fromBlock, tc.lastSentCertificate)
@@ -583,7 +580,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockLERQuerier,
 				NewBaseFlowConfigDefault(),
 			)
-			aggchainFlow := NewAggchainProverFlow(
+			aggchainFlow := NewAggchainProverBuilderFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
 				flowBase,
@@ -594,7 +591,6 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockSigner,
 				nil, // optimisticModeQuerier
 				nil, // aggchainProofQuerier
-				nil, // aggchainFEPQuerier
 			)
 
 			certificate, err := aggchainFlow.BuildCertificate(ctx, tc.buildParams)
@@ -605,177 +601,6 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				require.NotNil(t, certificate)
 				require.Equal(t, tc.expectedResult, certificate)
 			}
-		})
-	}
-}
-
-func Test_AggchainProverFlow_VerifyCertificate(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	requestedEndBlock := uint64(100)
-	lastProvenBlock := uint64(50)
-
-	validL1InfoLeaf := &l1infotreesync.L1InfoTreeLeaf{
-		Hash: common.HexToHash("0x123"),
-	}
-
-	validAggregationProofPublicValues := &types.AggregationProofPublicValues{
-		L1Head:           common.HexToHash("0x1"),
-		L2PreRoot:        common.HexToHash("0x2"),
-		ClaimRoot:        common.HexToHash("0x3"),
-		L2BlockNumber:    100,
-		RollupConfigHash: common.HexToHash("0x4"),
-		MultiBlockVKey:   common.HexToHash("0x5"),
-		ProverAddress:    common.HexToAddress("0x6"),
-	}
-
-	expectedAggchainParams, err := validAggregationProofPublicValues.Hash()
-	require.NoError(t, err)
-
-	testCases := []struct {
-		name          string
-		certificate   *agglayertypes.Certificate
-		mockFn        func(*mocks.L1InfoTreeDataQuerier, *mocks.AggchainFEPRollupQuerier)
-		expectedError string
-	}{
-		{
-			name: "certificate AggchainData is nil",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: nil,
-			},
-			expectedError: "aggchainProverFlow: certificate AggchainData is nil",
-		},
-		{
-			name: "certificate AggchainData is of unknown type",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: &agglayertypes.AggchainDataSignature{}, // wrong type
-			},
-			expectedError: "aggchainProverFlow: certificate AggchainData is of unknown type *types.AggchainDataSignature",
-		},
-		{
-			name: "error getting L1InfoLeaf by index",
-			certificate: &agglayertypes.Certificate{
-				L1InfoTreeLeafCount: 10,
-				AggchainData: &agglayertypes.AggchainDataProof{
-					AggchainParams: expectedAggchainParams,
-				},
-			},
-			mockFn: func(mockL1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier, mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier) {
-				mockL1InfoTreeDataQuerier.EXPECT().GetInfoByIndex(ctx, uint32(9)).Return(nil, errors.New("l1info error")).Once()
-			},
-			expectedError: "aggchainProverFlow - error getting L1InfoLeaf by index 9: l1info error",
-		},
-		{
-			name: "error getting expected aggchain proof public values",
-			certificate: &agglayertypes.Certificate{
-				L1InfoTreeLeafCount: 10,
-				AggchainData: &agglayertypes.AggchainDataProof{
-					AggchainParams: expectedAggchainParams,
-				},
-			},
-			mockFn: func(mockL1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier, mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier) {
-				mockL1InfoTreeDataQuerier.EXPECT().GetInfoByIndex(ctx, uint32(9)).Return(validL1InfoLeaf, nil).Once()
-				mockAggchainFEPQuerier.EXPECT().GetAggregationProofPublicValuesData(
-					lastProvenBlock, requestedEndBlock, validL1InfoLeaf.Hash).
-					Return(nil, errors.New("aggchain error")).Once()
-			},
-			expectedError: "aggchainProverFlow - error getting expected aggchain proof public values: aggchain error",
-		},
-		{
-			name: "aggchain params do not match",
-			certificate: &agglayertypes.Certificate{
-				L1InfoTreeLeafCount: 10,
-				AggchainData: &agglayertypes.AggchainDataProof{
-					AggchainParams: common.HexToHash("0xwrong"), // different from expected
-				},
-			},
-			mockFn: func(mockL1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier, mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier) {
-				mockL1InfoTreeDataQuerier.EXPECT().GetInfoByIndex(ctx, uint32(9)).Return(validL1InfoLeaf, nil).Once()
-				mockAggchainFEPQuerier.EXPECT().GetAggregationProofPublicValuesData(
-					lastProvenBlock, requestedEndBlock, validL1InfoLeaf.Hash).
-					Return(validAggregationProofPublicValues, nil).Once()
-			},
-			expectedError: "aggchainProverFlow - aggchain params do not match",
-		},
-		{
-			name: "successful verification with AggchainDataProof",
-			certificate: &agglayertypes.Certificate{
-				L1InfoTreeLeafCount: 10,
-				AggchainData: &agglayertypes.AggchainDataProof{
-					AggchainParams: expectedAggchainParams,
-				},
-			},
-			mockFn: func(mockL1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier, mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier) {
-				mockL1InfoTreeDataQuerier.EXPECT().GetInfoByIndex(ctx, uint32(9)).Return(validL1InfoLeaf, nil).Once()
-				mockAggchainFEPQuerier.EXPECT().GetAggregationProofPublicValuesData(
-					lastProvenBlock, requestedEndBlock, validL1InfoLeaf.Hash).
-					Return(validAggregationProofPublicValues, nil).Once()
-			},
-		},
-		{
-			name: "successful verification with AggchainDataMultisigWithProof",
-			certificate: &agglayertypes.Certificate{
-				L1InfoTreeLeafCount: 10,
-				AggchainData: &agglayertypes.AggchainDataMultisigWithProof{
-					Multisig: &agglayertypes.Multisig{},
-					AggchainProof: &agglayertypes.AggchainDataProof{
-						AggchainParams: expectedAggchainParams,
-					},
-				},
-			},
-			mockFn: func(mockL1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier, mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier) {
-				mockL1InfoTreeDataQuerier.EXPECT().GetInfoByIndex(ctx, uint32(9)).Return(validL1InfoLeaf, nil).Once()
-				mockAggchainFEPQuerier.EXPECT().GetAggregationProofPublicValuesData(
-					lastProvenBlock, requestedEndBlock, validL1InfoLeaf.Hash).
-					Return(validAggregationProofPublicValues, nil).Once()
-			},
-		},
-		{
-			name: "successful verification with edge case - L1InfoTreeLeafCount is 1",
-			certificate: &agglayertypes.Certificate{
-				L1InfoTreeLeafCount: 1,
-				AggchainData: &agglayertypes.AggchainDataProof{
-					AggchainParams: expectedAggchainParams,
-				},
-			},
-			mockFn: func(mockL1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier, mockAggchainFEPQuerier *mocks.AggchainFEPRollupQuerier) {
-				mockL1InfoTreeDataQuerier.EXPECT().GetInfoByIndex(ctx, uint32(0)).Return(validL1InfoLeaf, nil).Once()
-				mockAggchainFEPQuerier.EXPECT().GetAggregationProofPublicValuesData(
-					lastProvenBlock, requestedEndBlock, validL1InfoLeaf.Hash).
-					Return(validAggregationProofPublicValues, nil).Once()
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
-			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_VerifyAggchainData")
-
-			flow := &AggchainProverFlow{
-				log:                   logger,
-				l1InfoTreeDataQuerier: mockL1InfoTreeDataQuerier,
-				aggchainFEPQuerier:    mockAggchainFEPQuerier,
-			}
-
-			if tc.mockFn != nil {
-				tc.mockFn(mockL1InfoTreeDataQuerier, mockAggchainFEPQuerier)
-			}
-
-			err := flow.VerifyCertificate(ctx, tc.certificate, requestedEndBlock, lastProvenBlock)
-			if tc.expectedError != "" {
-				require.ErrorContains(t, err, tc.expectedError)
-			} else {
-				require.NoError(t, err)
-			}
-
-			mockL1InfoTreeDataQuerier.AssertExpectations(t)
-			mockAggchainFEPQuerier.AssertExpectations(t)
 		})
 	}
 }
@@ -931,7 +756,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			mockL2BridgeSyncer := mocks.NewBridgeQuerier(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
 
-			flow := &AggchainProverFlow{
+			flow := &AggchainProverBuilderFlow{
 				log:             logger,
 				storage:         mockStorage,
 				baseFlow:        mockBaseFlow,
@@ -1025,7 +850,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 				tc.mockFn(mockBaseFlow)
 			}
 
-			flow := &AggchainProverFlow{
+			flow := &AggchainProverBuilderFlow{
 				log:      logger,
 				baseFlow: mockBaseFlow,
 			}
@@ -1135,7 +960,7 @@ func Test_AggchainProverFlow_UpdateAggchainData(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_UpdateAggchainData")
-			flow := &AggchainProverFlow{
+			flow := &AggchainProverBuilderFlow{
 				log: logger,
 			}
 

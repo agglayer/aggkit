@@ -338,7 +338,7 @@ func TestCompareCertificates(t *testing.T) {
 type testDataCertificateValidator struct {
 	ctx                   context.Context
 	logger                *log.Logger
-	mockFlow              *mocks.AggsenderFlow
+	mockFlow              *mocks.AggsenderVerifierFlow
 	mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier
 	mockCertQuerier       *mocks.CertificateQuerier
 	mockLERQuerier        *mocks.LERQuerier
@@ -348,7 +348,7 @@ type testDataCertificateValidator struct {
 func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator {
 	t.Helper()
 	mockLogger := log.WithFields("test", "TestValidateCertificate")
-	mockFlow := mocks.NewAggsenderFlow(t)
+	mockFlow := mocks.NewAggsenderVerifierFlow(t)
 	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockCertQuerier := mocks.NewCertificateQuerier(t)
 	lerQuerier := mocks.NewLERQuerier(t)
