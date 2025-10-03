@@ -191,7 +191,7 @@ func newBridgeSync(
 		syncerID.String(),
 		ethClient,
 		cfg.SyncBlockChunkSize,
-		cfg.BlockFinality,
+		blockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
 		[]common.Address{cfg.BridgeAddr},
