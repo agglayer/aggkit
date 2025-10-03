@@ -1168,6 +1168,8 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		return 0, err
 	}
 
+	b.logger.Infof("last verified batches for L2: %+v", lastVerified)
+
 	root, err := b.bridgeL2.GetRootByLER(ctx, lastVerified.ExitRoot)
 	if err != nil {
 		b.logger.Infof(
@@ -1192,6 +1194,8 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	if err != nil {
 		return 0, err
 	}
+
+	b.logger.Infof("first verified batches for L2: %+v", firstVerified)
 
 	// Binary search between the first and last blocks where batches were verified.
 	// Find the smallest deposit count that is greater than depositCount and matches with
@@ -1224,6 +1228,8 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	if err != nil {
 		return 0, err
 	}
+
+	b.logger.Infof("found L1 info tree leaf for L2: %+v", info)
 	return info.L1InfoTreeIndex, nil
 }
 
