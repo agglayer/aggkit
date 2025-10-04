@@ -70,6 +70,66 @@ func TestBlockNumberLessFinalThan(t *testing.T) {
 	require.True(t, PendingBlock.LessFinalThan(LatestBlock))
 }
 
+func TestBlockNumber_ApplyOffset(t *testing.T) {
+	tests := []struct {
+		name           string
+		blockType      BlockNumber
+		blockNumber    uint64
+		offset         int64
+		expectedResult uint64
+	}{
+		{
+			name:           "positive offset",
+			blockType:      0,
+			blockNumber:    100,
+			offset:         5,
+			expectedResult: 105,
+		},
+		{
+			name:           "negative offset within range",
+			blockType:      0,
+			blockNumber:    100,
+			offset:         -10,
+			expectedResult: 90,
+		},
+		{
+			name:           "negative offset, capped to zero",
+			blockType:      0,
+			blockNumber:    5,
+			offset:         -10,
+			expectedResult: 0,
+		},
+		{
+			name:           "negative offset below zero",
+			blockType:      0,
+			blockNumber:    50,
+			offset:         -100,
+			expectedResult: 0,
+		},
+		{
+			name:           "zero offset",
+			blockType:      0,
+			blockNumber:    123,
+			offset:         0,
+			expectedResult: 123,
+		},
+		{
+			name:           "latest block ignores positive offset",
+			blockType:      Latest,
+			blockNumber:    500,
+			offset:         10,
+			expectedResult: 500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.blockType.ApplyOffset(tt.blockNumber, tt.offset)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
 func readConfigFile[T any](t *testing.T, configData string) (T, error) {
 	t.Helper()
 	viper.SetConfigType("toml")
