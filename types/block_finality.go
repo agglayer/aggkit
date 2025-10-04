@@ -99,19 +99,22 @@ func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
 	}
 }
 
-// IsEmpty returns true if v is empty
+// IsEmpty returns true if b is empty
 func (b BlockNumberFinality) IsEmpty() bool {
 	return b.Block == Empty
 }
 
-// IsLessThan returns true if v is less than other
+// IsFinalized returns true if b is finalized
 func (b BlockNumberFinality) IsFinalized() bool {
 	return b.Block == Finalized
 }
+
+// IsSafe returns true if b is safe
 func (b BlockNumberFinality) IsSafe() bool {
 	return b.Block == Safe
 }
 
+// IsLatest returns true if b is latest with non-negative offset
 func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
 }
@@ -145,7 +148,7 @@ func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) bool {
 type BlockNumber int64
 
 var (
-	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 0} //nolint:mnd
+	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4} //nolint:mnd
 )
 
 const (
