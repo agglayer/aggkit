@@ -1,2 +1,5 @@
 -- +migrate Up
-ALTER TABLE claim DROP COLUMN tx_sender;
+ALTER TABLE bridge ADD COLUMN tx_sender VARCHAR DEFAULT '';
+
+-- +migrate Down
+ALTER TABLE bridge DROP COLUMN tx_sender;

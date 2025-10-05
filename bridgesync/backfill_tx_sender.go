@@ -19,11 +19,10 @@ const (
 
 // BackfillTxSender handles the backfilling of tx_sender field for bridge records
 type BackfillTxSender struct {
-	db             *sql.DB
-	log            *log.Logger
-	client         types.EthClienter
-	bridgeAddr     common.Address
-	processedCount int
+	db         *sql.DB
+	log        *log.Logger
+	client     types.EthClienter
+	bridgeAddr common.Address
 }
 
 // NewBackfillTxSender creates a new instance of BackfillTxSender
@@ -60,7 +59,7 @@ func (b *BackfillTxSender) BackfillAll(ctx context.Context) error {
 		return fmt.Errorf("failed to backfill bridge table: %w", err)
 	}
 
-	b.log.Infof("Backfilling completed. Processed: %d", b.processedCount)
+	b.log.Infof("Backfilling completed")
 	return nil
 }
 
@@ -93,9 +92,7 @@ func (b *BackfillTxSender) backfillTable(ctx context.Context, tableName string) 
 			break
 		}
 
-		if err := b.processBatch(ctx, tableName, records); err != nil {
-			return fmt.Errorf("failed to process batch: %w", err)
-		}
+		b.processBatch(ctx, tableName, records)
 
 		offset += len(records)
 		b.log.Infof("Processed %d/%d records in %s table", offset, totalCount, tableName)
@@ -115,11 +112,11 @@ type RecordToBackfill struct {
 
 // getRecordsNeedingBackfillCount returns the count of records that need tx_sender backfilling
 func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
-	query := fmt.Sprintf(`
+	query := `
 		SELECT COUNT(*)
-		FROM %s
+		FROM ` + tableName + `
 		WHERE tx_sender = '' OR tx_sender IS NULL
-	`, tableName)
+	`
 
 	var count int
 	err := b.db.QueryRowContext(ctx, query).Scan(&count)
@@ -131,14 +128,17 @@ func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, t
 }
 
 // getRecordsNeedingBackfill retrieves records that need tx_sender backfilling
-func (b *BackfillTxSender) getRecordsNeedingBackfill(ctx context.Context, tableName string, offset, limit int) ([]RecordToBackfill, error) {
-	query := fmt.Sprintf(`
+func (b *BackfillTxSender) getRecordsNeedingBackfill(
+	ctx context.Context,
+	tableName string,
+	offset, limit int,
+) ([]RecordToBackfill, error) {
+	query := `
 		SELECT block_num, block_pos, tx_hash
-		FROM %s
+		FROM ` + tableName + `
 		WHERE tx_sender = '' OR tx_sender IS NULL
 		ORDER BY block_num, block_pos
-		LIMIT %d OFFSET %d
-	`, tableName, limit, offset)
+		LIMIT ` + fmt.Sprintf("%d", limit) + ` OFFSET ` + fmt.Sprintf("%d", offset)
 
 	rows, err := b.db.QueryContext(ctx, query)
 	if err != nil {
@@ -164,7 +164,11 @@ func (b *BackfillTxSender) getRecordsNeedingBackfill(ctx context.Context, tableN
 }
 
 // processBatch processes a batch of records to backfill tx_sender
-func (b *BackfillTxSender) processBatch(ctx context.Context, tableName string, records []RecordToBackfill) error {
+func (b *BackfillTxSender) processBatch(
+	ctx context.Context,
+	tableName string,
+	records []RecordToBackfill,
+) {
 	for _, record := range records {
 		// Extract tx_sender from transaction hash
 		txSender, err := b.extractTxSender(record.TxHash)
@@ -179,11 +183,7 @@ func (b *BackfillTxSender) processBatch(ctx context.Context, tableName string, r
 				record.BlockNum, record.BlockPos, err)
 			continue
 		}
-
-		b.processedCount++
 	}
-
-	return nil
 }
 
 // extractTxSender extracts the transaction sender from a transaction hash
@@ -198,12 +198,17 @@ func (b *BackfillTxSender) extractTxSender(txHash common.Hash) (common.Address, 
 }
 
 // updateRecordTxSender updates a specific record with the tx_sender value
-func (b *BackfillTxSender) updateRecordTxSender(ctx context.Context, tableName string, blockNum, blockPos uint64, txSender common.Address) error {
-	query := fmt.Sprintf(`
-		UPDATE %s
+func (b *BackfillTxSender) updateRecordTxSender(
+	ctx context.Context,
+	tableName string,
+	blockNum, blockPos uint64,
+	txSender common.Address,
+) error {
+	query := `
+		UPDATE ` + tableName + `
 		SET tx_sender = $1
 		WHERE block_num = $2 AND block_pos = $3
-	`, tableName)
+	`
 
 	_, err := b.db.ExecContext(ctx, query, txSender.Hex(), blockNum, blockPos)
 	if err != nil {
