@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/types"
@@ -32,11 +31,6 @@ func NewBackfillTxSender(
 	bridgeAddr common.Address,
 	logger *log.Logger,
 ) (*BackfillTxSender, error) {
-	// Run migrations to ensure database schema is up to date
-	if err := migrations.RunMigrations(dbPath); err != nil {
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
-	}
-
 	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
@@ -110,6 +104,13 @@ type RecordToBackfill struct {
 	TxSender common.Address
 }
 
+// RecordUpdate represents a record update with tx_sender data
+type RecordUpdate struct {
+	BlockNum uint64
+	BlockPos uint64
+	TxSender common.Address
+}
+
 // getRecordsNeedingBackfillCount returns the count of records that need tx_sender backfilling
 func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
 	query := `
@@ -169,20 +170,38 @@ func (b *BackfillTxSender) processBatch(
 	tableName string,
 	records []RecordToBackfill,
 ) {
+	// First, extract all tx_sender data
+	var updates []RecordUpdate
+	var failedExtractions []string
+
 	for _, record := range records {
 		// Extract tx_sender from transaction hash
 		txSender, err := b.extractTxSender(record.TxHash)
 		if err != nil {
 			b.log.Errorf("Failed to extract tx_sender for tx %s: %v", record.TxHash.Hex(), err)
+			failedExtractions = append(failedExtractions, record.TxHash.Hex())
 			continue
 		}
 
-		// Update the record with the tx_sender
-		if err := b.updateRecordTxSender(ctx, tableName, record.BlockNum, record.BlockPos, txSender); err != nil {
-			b.log.Errorf("Failed to update tx_sender for record (block_num=%d, block_pos=%d): %v",
-				record.BlockNum, record.BlockPos, err)
-			continue
+		updates = append(updates, RecordUpdate{
+			BlockNum: record.BlockNum,
+			BlockPos: record.BlockPos,
+			TxSender: txSender,
+		})
+	}
+
+	// Perform bulk update if we have any successful extractions
+	if len(updates) > 0 {
+		if err := b.bulkUpdateTxSender(ctx, tableName, updates); err != nil {
+			b.log.Errorf("Failed to bulk update tx_sender for %d records: %v", len(updates), err)
+		} else {
+			b.log.Infof("Successfully bulk updated tx_sender for %d records", len(updates))
 		}
+	}
+
+	// Log failed extractions
+	if len(failedExtractions) > 0 {
+		b.log.Errorf("Failed to extract tx_sender for %d transactions: %v", len(failedExtractions), failedExtractions)
 	}
 }
 
@@ -197,22 +216,41 @@ func (b *BackfillTxSender) extractTxSender(txHash common.Hash) (common.Address, 
 	return rootCall.From, nil
 }
 
-// updateRecordTxSender updates a specific record with the tx_sender value
-func (b *BackfillTxSender) updateRecordTxSender(
+// bulkUpdateTxSender performs a bulk update of tx_sender for multiple records
+func (b *BackfillTxSender) bulkUpdateTxSender(
 	ctx context.Context,
 	tableName string,
-	blockNum, blockPos uint64,
-	txSender common.Address,
+	updates []RecordUpdate,
 ) error {
-	query := `
-		UPDATE ` + tableName + `
-		SET tx_sender = $1
-		WHERE block_num = $2 AND block_pos = $3
-	`
+	if len(updates) == 0 {
+		return nil
+	}
 
-	_, err := b.db.ExecContext(ctx, query, txSender.Hex(), blockNum, blockPos)
+	// Build a CASE WHEN statement for bulk update
+	query := `UPDATE ` + tableName + ` SET tx_sender = CASE `
+	args := make([]interface{}, 0, len(updates)*3)
+
+	for i, update := range updates {
+		query += fmt.Sprintf("WHEN block_num = $%d AND block_pos = $%d THEN $%d ",
+			i*3+1, i*3+2, i*3+3)
+		args = append(args, update.BlockNum, update.BlockPos, update.TxSender.Hex())
+	}
+
+	// Add WHERE clause to limit the update to our specific records
+	query += "ELSE tx_sender END WHERE ("
+	for i, update := range updates {
+		if i > 0 {
+			query += " OR "
+		}
+		query += fmt.Sprintf("(block_num = $%d AND block_pos = $%d)",
+			len(updates)*3+i*2+1, len(updates)*3+i*2+2)
+		args = append(args, update.BlockNum, update.BlockPos)
+	}
+	query += ")"
+
+	_, err := b.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("failed to update tx_sender: %w", err)
+		return fmt.Errorf("failed to bulk update tx_sender: %w", err)
 	}
 
 	return nil

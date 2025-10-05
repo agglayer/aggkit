@@ -176,6 +176,7 @@ func TestMigration0002(t *testing.T) {
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
 		Calldata           []byte   `meddler:"calldata"`
+		TxSender           string   `meddler:"tx_sender"`
 	}
 
 	err = meddler.QueryRow(db, &bridge,
