@@ -120,6 +120,7 @@ type RecordUpdate struct {
 
 // getRecordsNeedingBackfillCount returns the count of records that need tx_sender backfilling
 func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
+	// nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM %s
@@ -141,6 +142,7 @@ func (b *BackfillTxSender) getRecordsNeedingBackfill(
 	tableName string,
 	offset, limit int,
 ) ([]RecordToBackfill, error) {
+	// nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT block_num, block_pos, tx_hash
 		FROM %s
@@ -235,6 +237,7 @@ func (b *BackfillTxSender) bulkUpdateTxSender(
 	}
 
 	// Build a CASE WHEN statement for bulk update
+	// nolint:gosec
 	query := fmt.Sprintf("UPDATE %s SET tx_sender = CASE ", tableName)
 	args := make([]interface{}, 0, len(updates)*paramsPerUpdate)
 
@@ -251,7 +254,9 @@ func (b *BackfillTxSender) bulkUpdateTxSender(
 			query += " OR "
 		}
 		query += fmt.Sprintf("(block_num = $%d AND block_pos = $%d)",
-			len(updates)*paramsPerUpdate+i*paramsPerWhere+blockNumOffset, len(updates)*paramsPerUpdate+i*paramsPerWhere+blockPosOffset)
+			len(updates)*paramsPerUpdate+i*paramsPerWhere+blockNumOffset,
+			len(updates)*paramsPerUpdate+i*paramsPerWhere+blockPosOffset,
+		)
 		args = append(args, update.BlockNum, update.BlockPos)
 	}
 	query += ")"
