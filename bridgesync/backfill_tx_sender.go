@@ -17,6 +17,10 @@ const (
 	// Constants for SQL parameter calculations
 	paramsPerUpdate = 3
 	paramsPerWhere  = 2
+	// Parameter offsets for SQL queries
+	blockNumOffset = 1
+	blockPosOffset = 2
+	txSenderOffset = 3
 )
 
 // BackfillTxSender handles the backfilling of tx_sender field for bridge records
@@ -116,11 +120,11 @@ type RecordUpdate struct {
 
 // getRecordsNeedingBackfillCount returns the count of records that need tx_sender backfilling
 func (b *BackfillTxSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT COUNT(*)
-		FROM ` + tableName + `
+		FROM %s
 		WHERE tx_sender = '' OR tx_sender IS NULL
-	`
+	`, tableName)
 
 	var count int
 	err := b.db.QueryRowContext(ctx, query).Scan(&count)
@@ -137,13 +141,13 @@ func (b *BackfillTxSender) getRecordsNeedingBackfill(
 	tableName string,
 	offset, limit int,
 ) ([]RecordToBackfill, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT block_num, block_pos, tx_hash
-		FROM ` + tableName + `
+		FROM %s
 		WHERE tx_sender = '' OR tx_sender IS NULL
 		ORDER BY block_num, block_pos
 		LIMIT $1 OFFSET $2
-	`
+	`, tableName)
 
 	rows, err := b.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
@@ -231,12 +235,12 @@ func (b *BackfillTxSender) bulkUpdateTxSender(
 	}
 
 	// Build a CASE WHEN statement for bulk update
-	query := `UPDATE ` + tableName + ` SET tx_sender = CASE `
+	query := fmt.Sprintf("UPDATE %s SET tx_sender = CASE ", tableName)
 	args := make([]interface{}, 0, len(updates)*paramsPerUpdate)
 
 	for i, update := range updates {
 		query += fmt.Sprintf("WHEN block_num = $%d AND block_pos = $%d THEN $%d ",
-			i*paramsPerUpdate+1, i*paramsPerUpdate+2, i*paramsPerUpdate+3)
+			i*paramsPerUpdate+blockNumOffset, i*paramsPerUpdate+blockPosOffset, i*paramsPerUpdate+txSenderOffset)
 		args = append(args, update.BlockNum, update.BlockPos, update.TxSender.Hex())
 	}
 
@@ -247,7 +251,7 @@ func (b *BackfillTxSender) bulkUpdateTxSender(
 			query += " OR "
 		}
 		query += fmt.Sprintf("(block_num = $%d AND block_pos = $%d)",
-			len(updates)*paramsPerUpdate+i*paramsPerWhere+1, len(updates)*paramsPerUpdate+i*paramsPerWhere+2)
+			len(updates)*paramsPerUpdate+i*paramsPerWhere+blockNumOffset, len(updates)*paramsPerUpdate+i*paramsPerWhere+blockPosOffset)
 		args = append(args, update.BlockNum, update.BlockPos)
 	}
 	query += ")"
