@@ -612,6 +612,11 @@
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 },
+                "global_index": {
+                    "description": "Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)",
+                    "type": "string",
+                    "example": "4294967296"
+                },
                 "leaf_type": {
                     "description": "Type of leaf (bridge event type) used in the tree structure",
                     "type": "integer",
@@ -797,11 +802,6 @@
                     "description": "Transaction hash associated with the claim",
                     "type": "string",
                     "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-                },
-                "tx_sender": {
-                    "description": "Address of the transaction sender who initiated the claim transaction",
-                    "type": "string",
-                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 }
             }
         },

@@ -60,9 +60,8 @@ func TestMigration0001(t *testing.T) {
 			global_exit_root,
 			destination_network,
 			metadata,
-			is_message,
-			tx_sender
-		) VALUES (1, 0, 0, 0, '0x0000', '0x0000', 0, '0x000,0x000', '0x000,0x000', '0x000', '0x000', '0x0', 0, NULL, FALSE, '0x0000');
+			is_message
+		) VALUES (1, 0, 0, 0, '0x0000', '0x0000', 0, '0x000,0x000', '0x000,0x000', '0x000', '0x000', '0x0', 0, NULL, FALSE);
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -129,9 +128,8 @@ func TestMigration0002(t *testing.T) {
 			is_message,
 			block_timestamp,
 			tx_hash,
-			from_address,
-			tx_sender
-		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd', '0x123', '0x123');
+			from_address
+		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd', '0x123');
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()

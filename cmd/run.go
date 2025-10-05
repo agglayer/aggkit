@@ -813,14 +813,7 @@ func runTxSenderBackfill(ctx context.Context, cfg bridgesync.Config, client aggk
 	}
 
 	duration := time.Since(start)
-	processed, errors := backfiller.GetStats()
-
 	log.Infof("tx_sender backfilling completed in %v", duration)
-	log.Infof("Processed: %d records, Errors: %d records", processed, errors)
-
-	if errors > 0 {
-		log.Warnf("Some records failed to process during tx_sender backfilling. Check logs for details.")
-	}
 
 	return nil
 }

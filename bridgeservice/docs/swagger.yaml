@@ -63,6 +63,11 @@ definitions:
           can be intermediary contract or EOA
         example: 0xabc1234567890abcdef1234567890abcdef1234
         type: string
+      global_index:
+        description: Global index of the bridge event (consisted of mainnet flag,
+          rollup id and deposit count)
+        example: "4294967296"
+        type: string
       leaf_type:
         description: Type of leaf (bridge event type) used in the tree structure
         example: 1
@@ -203,10 +208,6 @@ definitions:
       tx_hash:
         description: Transaction hash associated with the claim
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-        type: string
-      tx_sender:
-        description: Address of the transaction sender who initiated the claim transaction
-        example: 0xabc1234567890abcdef1234567890abcdef1234
         type: string
     type: object
   types.ClaimsResult:

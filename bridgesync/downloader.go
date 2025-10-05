@@ -174,7 +174,6 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		if rootCall.Err != nil {
 			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
 		}
-		claim.TxSender = rootCall.From
 
 		if syncFullClaims {
 			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {
@@ -218,7 +217,6 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		if rootCall.Err != nil {
 			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
 		}
-		claim.TxSender = rootCall.From
 
 		if syncFullClaims {
 			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {

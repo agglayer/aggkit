@@ -125,7 +125,6 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	TxSender            common.Address `meddler:"tx_sender,address"`
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork

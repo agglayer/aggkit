@@ -106,7 +106,7 @@ type BridgeResponse struct {
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
 	// Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)
-	GlobalIndex *big.Int `json:"global_index" example:"4294967296"`
+	GlobalIndex *big.Int `json:"global_index" example:"4294967296" swaggertype:"string"`
 
 	// Raw calldata submitted in the transaction
 	Calldata string `json:"calldata" example:"deadbeef"`
@@ -205,9 +205,6 @@ type ClaimResponse struct {
 
 	// Metadata associated with the claim
 	Metadata string `json:"metadata" example:"0xdeadbeef"`
-
-	// Address of the transaction sender who initiated the claim transaction
-	TxSender Address `json:"tx_sender" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings

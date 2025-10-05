@@ -17,14 +17,13 @@ const (
 	batchSize = 100
 )
 
-// BackfillTxSender handles the backfilling of tx_sender field for bridge and claim records
+// BackfillTxSender handles the backfilling of tx_sender field for bridge records
 type BackfillTxSender struct {
 	db             *sql.DB
 	log            *log.Logger
 	client         types.EthClienter
 	bridgeAddr     common.Address
 	processedCount int
-	errorCount     int
 }
 
 // NewBackfillTxSender creates a new instance of BackfillTxSender
@@ -52,7 +51,7 @@ func NewBackfillTxSender(
 	}, nil
 }
 
-// BackfillAll processes both bridge and claim tables to backfill tx_sender field
+// BackfillAll processes bridge table to backfill tx_sender field
 func (b *BackfillTxSender) BackfillAll(ctx context.Context) error {
 	b.log.Info("Starting tx_sender backfilling process")
 
@@ -61,12 +60,7 @@ func (b *BackfillTxSender) BackfillAll(ctx context.Context) error {
 		return fmt.Errorf("failed to backfill bridge table: %w", err)
 	}
 
-	// Process claim table
-	if err := b.backfillTable(ctx, "claim"); err != nil {
-		return fmt.Errorf("failed to backfill claim table: %w", err)
-	}
-
-	b.log.Infof("Backfilling completed. Processed: %d, Errors: %d", b.processedCount, b.errorCount)
+	b.log.Infof("Backfilling completed. Processed: %d", b.processedCount)
 	return nil
 }
 
@@ -173,10 +167,9 @@ func (b *BackfillTxSender) getRecordsNeedingBackfill(ctx context.Context, tableN
 func (b *BackfillTxSender) processBatch(ctx context.Context, tableName string, records []RecordToBackfill) error {
 	for _, record := range records {
 		// Extract tx_sender from transaction hash
-		txSender, err := b.extractTxSender(ctx, record.TxHash)
+		txSender, err := b.extractTxSender(record.TxHash)
 		if err != nil {
 			b.log.Errorf("Failed to extract tx_sender for tx %s: %v", record.TxHash.Hex(), err)
-			b.errorCount++
 			continue
 		}
 
@@ -184,7 +177,6 @@ func (b *BackfillTxSender) processBatch(ctx context.Context, tableName string, r
 		if err := b.updateRecordTxSender(ctx, tableName, record.BlockNum, record.BlockPos, txSender); err != nil {
 			b.log.Errorf("Failed to update tx_sender for record (block_num=%d, block_pos=%d): %v",
 				record.BlockNum, record.BlockPos, err)
-			b.errorCount++
 			continue
 		}
 
@@ -195,7 +187,7 @@ func (b *BackfillTxSender) processBatch(ctx context.Context, tableName string, r
 }
 
 // extractTxSender extracts the transaction sender from a transaction hash
-func (b *BackfillTxSender) extractTxSender(ctx context.Context, txHash common.Hash) (common.Address, error) {
+func (b *BackfillTxSender) extractTxSender(txHash common.Hash) (common.Address, error) {
 	// Use the existing extractRootCall function to get the transaction sender
 	rootCall, err := extractRootCall(b.client, b.bridgeAddr, txHash)
 	if err != nil {
@@ -224,9 +216,4 @@ func (b *BackfillTxSender) updateRecordTxSender(ctx context.Context, tableName s
 // Close closes the database connection
 func (b *BackfillTxSender) Close() error {
 	return b.db.Close()
-}
-
-// GetStats returns the current processing statistics
-func (b *BackfillTxSender) GetStats() (processed, errors int) {
-	return b.processedCount, b.errorCount
 }

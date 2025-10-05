@@ -60,7 +60,6 @@ func TestClaimCalldata(t *testing.T) {
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
 		FromAddress:         auth.From,
-		TxSender:            auth.From,
 	}
 	expectedClaim2 := Claim{
 		OriginNetwork:       87,
@@ -75,7 +74,6 @@ func TestClaimCalldata(t *testing.T) {
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
 		FromAddress:         auth.From,
-		TxSender:            auth.From,
 	}
 	expectedClaim3 := Claim{
 		OriginNetwork:       69,
@@ -90,7 +88,6 @@ func TestClaimCalldata(t *testing.T) {
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
 		FromAddress:         auth.From,
-		TxSender:            auth.From,
 	}
 	auth.GasLimit = 999999 // for some reason gas estimation fails :(
 
@@ -1122,15 +1119,11 @@ func TestClaimCalldata(t *testing.T) {
 			rootCall, err := extractRootCall(client, bridgeAddr, tc.log.TxHash)
 			require.NoError(t, err)
 
-			// Set TxSender from root call (same as in production code)
-			actualClaim.TxSender = rootCall.From
-
 			// Use setClaimCalldataFromRoot instead of setClaimCalldata
 			err = actualClaim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 			require.Equal(t, tc.expectedClaim.FromAddress, actualClaim.FromAddress)
-			require.Equal(t, tc.expectedClaim.TxSender, actualClaim.TxSender)
 		})
 	}
 }

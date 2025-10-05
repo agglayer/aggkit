@@ -686,9 +686,6 @@ func TestTxSenderField(t *testing.T) {
 			if event.Bridge != nil {
 				require.Equal(t, tt.expectedTxSender, event.Bridge.TxSender, "Bridge TxSender should match expected value")
 			}
-			if event.Claim != nil {
-				require.Equal(t, tt.expectedTxSender, event.Claim.TxSender, "Claim TxSender should match expected value")
-			}
 		})
 	}
 }
