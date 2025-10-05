@@ -646,10 +646,10 @@ func runBridgeSyncL1IfNeeded(
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
 	}
 
-	// Run tx_sender backfilling in a separate goroutine
+	// Run txn_sender backfilling in a separate goroutine
 	go func() {
-		if err := runTxSenderBackfill(ctx, cfg, l1Client); err != nil {
-			log.Errorf("tx_sender backfilling failed: %v", err)
+		if err := runTxnSenderBackfill(ctx, cfg, l1Client); err != nil {
+			log.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
 	}()
@@ -688,10 +688,10 @@ func runBridgeSyncL2IfNeeded(
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
 	}
 
-	// Run tx_sender backfilling in a separate goroutine
+	// Run txn_sender backfilling in a separate goroutine
 	go func() {
-		if err := runTxSenderBackfill(ctx, cfg, l2Client); err != nil {
-			log.Errorf("tx_sender backfilling failed: %v", err)
+		if err := runTxnSenderBackfill(ctx, cfg, l2Client); err != nil {
+			log.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
 	}()
@@ -789,20 +789,20 @@ func createRollupDataQuerier(ctx context.Context,
 		})
 }
 
-// runTxSenderBackfill runs the tx_sender backfilling process
-func runTxSenderBackfill(ctx context.Context, cfg bridgesync.Config, client aggkittypes.EthClienter) error {
+// runTxnSenderBackfill runs the txn_sender backfilling process
+func runTxnSenderBackfill(ctx context.Context, cfg bridgesync.Config, client aggkittypes.EthClienter) error {
 	const backfillTimeoutMinutes = 10
 
 	// Only run backfilling if we have a database path configured
 	if cfg.DBPath == "" {
-		log.Debug("No database path configured, skipping tx_sender backfilling")
+		log.Debug("No database path configured, skipping txn_sender backfilling")
 		return nil
 	}
 
-	log.Info("Starting tx_sender backfilling process")
+	log.Info("Starting txn_sender backfilling process")
 
 	// Create backfill instance
-	backfiller, err := bridgesync.NewBackfillTxSender(
+	backfiller, err := bridgesync.NewBackfillTxnSender(
 		cfg.DBPath,
 		client,
 		cfg.BridgeAddr,
@@ -820,13 +820,13 @@ func runTxSenderBackfill(ctx context.Context, cfg bridgesync.Config, client aggk
 	// Run backfilling
 	start := time.Now()
 	if err := backfiller.BackfillAll(backfillCtx); err != nil {
-		log.Errorf("tx_sender backfilling failed: %v", err)
+		log.Errorf("txn_sender backfilling failed: %v", err)
 		// Don't fail the entire process, just log the error and continue
 		return nil
 	}
 
 	duration := time.Since(start)
-	log.Infof("tx_sender backfilling completed in %v", duration)
+	log.Infof("txn_sender backfilling completed in %v", duration)
 
 	return nil
 }

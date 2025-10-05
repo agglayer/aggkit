@@ -531,27 +531,27 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 	require.Contains(t, err.Error(), "not found")
 }
 
-func TestTxSenderField(t *testing.T) {
+func TestTxnSenderField(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
-	expectedTxSender := common.HexToAddress("0x1234567890123456789012345678901234567890")
+	expectedTxnSender := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
 	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
-		name             string
-		eventSignature   common.Hash
-		callFrame        call
-		logBuilder       func() (types.Log, error)
-		expectedTxSender common.Address
+		name              string
+		eventSignature    common.Hash
+		callFrame         call
+		logBuilder        func() (types.Log, error)
+		expectedTxnSender common.Address
 	}{
 		{
-			name:           "bridgeEventSignature with TxSender",
+			name:           "bridgeEventSignature with TxnSender",
 			eventSignature: bridgeEventSignature,
 			callFrame: call{
 				To:   common.HexToAddress("0x01"),
-				From: expectedTxSender,
+				From: expectedTxnSender,
 				Err:  nil,
 				Calls: []call{
 					{
@@ -562,7 +562,7 @@ func TestTxSenderField(t *testing.T) {
 					},
 				},
 			},
-			expectedTxSender: expectedTxSender,
+			expectedTxnSender: expectedTxnSender,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
 				if err != nil {
@@ -593,11 +593,11 @@ func TestTxSenderField(t *testing.T) {
 			},
 		},
 		{
-			name:           "claimEventSignature with TxSender",
+			name:           "claimEventSignature with TxnSender",
 			eventSignature: claimEventSignature,
 			callFrame: call{
 				To:   common.HexToAddress("0x01"),
-				From: expectedTxSender,
+				From: expectedTxnSender,
 				Err:  nil,
 				Calls: []call{
 					{
@@ -608,7 +608,7 @@ func TestTxSenderField(t *testing.T) {
 					},
 				},
 			},
-			expectedTxSender: expectedTxSender,
+			expectedTxnSender: expectedTxnSender,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(claimEventSignature)
 				if err != nil {
@@ -680,11 +680,11 @@ func TestTxSenderField(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, block.Events, 1)
 
-			// Check TxSender field
+			// Check TxnSender field
 			event, ok := block.Events[0].(Event)
 			require.True(t, ok, "Expected block.Events[0] to be of type Event")
 			if event.Bridge != nil {
-				require.Equal(t, tt.expectedTxSender, event.Bridge.TxSender, "Bridge TxSender should match expected value")
+				require.Equal(t, tt.expectedTxnSender, event.Bridge.TxnSender, "Bridge TxnSender should match expected value")
 			}
 		})
 	}

@@ -88,7 +88,7 @@ definitions:
         description: Hash of the transaction that included the bridge event
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
         type: string
-      tx_sender:
+      txn_sender:
         description: Address of the transaction sender who initiated the bridge transaction
         example: 0xabc1234567890abcdef1234567890abcdef1234
         type: string

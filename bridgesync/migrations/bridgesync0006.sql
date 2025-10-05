@@ -1,7 +1,7 @@
 -- +migrate Up
-ALTER TABLE bridge ADD COLUMN tx_sender VARCHAR DEFAULT '';
+ALTER TABLE bridge ADD COLUMN txn_sender VARCHAR DEFAULT '';
 CREATE INDEX idx_bridge_block_num_block_pos_desc ON bridge (block_num DESC, block_pos DESC);
 
 -- +migrate Down
-ALTER TABLE bridge DROP COLUMN tx_sender;
+ALTER TABLE bridge DROP COLUMN txn_sender;
 DROP INDEX IF EXISTS idx_bridge_block_num_block_pos_desc;

@@ -142,7 +142,7 @@ type BridgeResponse struct {
 	BridgeHash Hash `json:"bridge_hash" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"`
 
 	// Address of the transaction sender who initiated the bridge transaction
-	TxSender Address `json:"tx_sender" example:"0xabc1234567890abcdef1234567890abcdef1234"`
+	TxnSender Address `json:"txn_sender" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 }
 
 // ClaimsResult contains the list of claim records and the total count

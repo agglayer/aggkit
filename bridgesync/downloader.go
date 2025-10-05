@@ -110,7 +110,7 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
-		// Extract root call first to get both TxSender and calldata
+		// Extract root call first to get both TxnSender and calldata
 		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event root call (tx hash: %s): %w", l.TxHash, err)
@@ -137,7 +137,7 @@ func buildBridgeEventHandler(
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
-			TxSender:           rootCall.From,
+			TxnSender:          rootCall.From,
 		}})
 		return nil
 	}
@@ -165,7 +165,7 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 			Amount:             claimEvent.Amount,
 		}
 
-		// Extract TxSender from the root call
+		// Extract TxnSender from the root call
 		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
@@ -208,7 +208,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 			Amount:             claimEvent.Amount,
 		}
 
-		// Extract TxSender from the root call
+		// Extract TxnSender from the root call
 		rootCall, err := extractRootCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)

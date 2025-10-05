@@ -642,7 +642,7 @@
                     "type": "string",
                     "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                 },
-                "tx_sender": {
+                "txn_sender": {
                     "description": "Address of the transaction sender who initiated the bridge transaction",
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"

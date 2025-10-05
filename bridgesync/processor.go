@@ -73,7 +73,7 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
-	TxSender           common.Address `meddler:"tx_sender,address"`
+	TxnSender          common.Address `meddler:"txn_sender,address"`
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree

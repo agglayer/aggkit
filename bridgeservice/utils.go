@@ -112,7 +112,7 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32) *bridgetypes
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Metadata)),
 		DepositCount:       bridge.DepositCount,
 		BridgeHash:         bridgetypes.Hash(bridge.Hash().Hex()),
-		TxSender:           bridgetypes.Address(bridge.TxSender.Hex()),
+		TxnSender:          bridgetypes.Address(bridge.TxnSender.Hex()),
 	}
 }
 

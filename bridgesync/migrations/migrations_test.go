@@ -41,9 +41,8 @@ func TestMigration0001(t *testing.T) {
 			destination_address,
 			amount,
 			metadata,
-			deposit_count,
-			tx_sender
-		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0, '0x0000');
+			deposit_count
+		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0);
 
 		INSERT INTO claim (
 			block_num,
@@ -111,9 +110,8 @@ func TestMigration0002(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata,
-			tx_sender
-		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123', NULL, '0x123');
+			calldata
+		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123', NULL);
 
 		INSERT INTO claim (
 			block_num,
@@ -176,7 +174,7 @@ func TestMigration0002(t *testing.T) {
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
 		Calldata           []byte   `meddler:"calldata"`
-		TxSender           string   `meddler:"tx_sender"`
+		TxnSender          string   `meddler:"txn_sender"`
 	}
 
 	err = meddler.QueryRow(db, &bridge,

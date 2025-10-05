@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBackfillTxSender(t *testing.T) {
+func TestBackfillTxnSender(t *testing.T) {
 	// Create temporary database
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "test.db")
@@ -30,12 +30,12 @@ func TestBackfillTxSender(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close()
 
-	// Create test data with empty tx_sender
+	// Create test data with empty txn_sender
 	ctx := context.Background()
 	tx, err := db.NewTx(ctx, database)
 	require.NoError(t, err)
 
-	// Insert test bridge record with empty tx_sender
+	// Insert test bridge record with empty txn_sender
 	_, err = tx.Exec(`
 		INSERT INTO block (num) VALUES (1)
 	`)
@@ -45,7 +45,7 @@ func TestBackfillTxSender(t *testing.T) {
 		INSERT INTO bridge (
 			block_num, block_pos, leaf_type, origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, calldata, tx_sender
+			tx_hash, block_timestamp, from_address, calldata, txn_sender
 		) VALUES (
 			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -80,7 +80,7 @@ func TestBackfillTxSender(t *testing.T) {
 
 	// Create backfill instance
 	logger := log.WithFields("module", "test")
-	backfiller, err := NewBackfillTxSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+	backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
 	require.NoError(t, err)
 	defer backfiller.Close()
 
@@ -97,7 +97,7 @@ func TestBackfillTxSender(t *testing.T) {
 	assert.Equal(t, uint64(0), bridgeRecords[0].BlockPos)
 }
 
-func TestBackfillTxSenderIntegration(t *testing.T) {
+func TestBackfillTxnSenderIntegration(t *testing.T) {
 	// Skip integration test if no RPC URL is provided
 	rpcURL := os.Getenv("TEST_RPC_URL")
 	if rpcURL == "" {
@@ -122,7 +122,7 @@ func TestBackfillTxSenderIntegration(t *testing.T) {
 	tx, err := db.NewTx(ctx, database)
 	require.NoError(t, err)
 
-	// Insert test records with empty tx_sender
+	// Insert test records with empty txn_sender
 	_, err = tx.Exec(`
 		INSERT INTO block (num) VALUES (1)
 	`)
@@ -132,7 +132,7 @@ func TestBackfillTxSenderIntegration(t *testing.T) {
 		INSERT INTO bridge (
 			block_num, block_pos, leaf_type, origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, calldata, tx_sender
+			tx_hash, block_timestamp, from_address, calldata, txn_sender
 		) VALUES (
 			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -151,7 +151,7 @@ func TestBackfillTxSenderIntegration(t *testing.T) {
 
 	// Create backfill instance
 	logger := log.WithFields("module", "test")
-	backfiller, err := NewBackfillTxSender(dbPath, client, common.HexToAddress("0x1234"), logger)
+	backfiller, err := NewBackfillTxnSender(dbPath, client, common.HexToAddress("0x1234"), logger)
 	require.NoError(t, err)
 	defer backfiller.Close()
 
