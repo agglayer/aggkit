@@ -14,6 +14,9 @@ import (
 const (
 	// Batch size for processing records
 	batchSize = 100
+	// Constants for SQL parameter calculations
+	paramsPerUpdate = 3
+	paramsPerWhere  = 2
 )
 
 // BackfillTxSender handles the backfilling of tx_sender field for bridge records
@@ -139,9 +142,10 @@ func (b *BackfillTxSender) getRecordsNeedingBackfill(
 		FROM ` + tableName + `
 		WHERE tx_sender = '' OR tx_sender IS NULL
 		ORDER BY block_num, block_pos
-		LIMIT ` + fmt.Sprintf("%d", limit) + ` OFFSET ` + fmt.Sprintf("%d", offset)
+		LIMIT $1 OFFSET $2
+	`
 
-	rows, err := b.db.QueryContext(ctx, query)
+	rows, err := b.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
@@ -171,7 +175,7 @@ func (b *BackfillTxSender) processBatch(
 	records []RecordToBackfill,
 ) {
 	// First, extract all tx_sender data
-	var updates []RecordUpdate
+	updates := make([]RecordUpdate, 0, len(records))
 	var failedExtractions []string
 
 	for _, record := range records {
@@ -228,11 +232,11 @@ func (b *BackfillTxSender) bulkUpdateTxSender(
 
 	// Build a CASE WHEN statement for bulk update
 	query := `UPDATE ` + tableName + ` SET tx_sender = CASE `
-	args := make([]interface{}, 0, len(updates)*3)
+	args := make([]interface{}, 0, len(updates)*paramsPerUpdate)
 
 	for i, update := range updates {
 		query += fmt.Sprintf("WHEN block_num = $%d AND block_pos = $%d THEN $%d ",
-			i*3+1, i*3+2, i*3+3)
+			i*paramsPerUpdate+1, i*paramsPerUpdate+2, i*paramsPerUpdate+3)
 		args = append(args, update.BlockNum, update.BlockPos, update.TxSender.Hex())
 	}
 
@@ -243,7 +247,7 @@ func (b *BackfillTxSender) bulkUpdateTxSender(
 			query += " OR "
 		}
 		query += fmt.Sprintf("(block_num = $%d AND block_pos = $%d)",
-			len(updates)*3+i*2+1, len(updates)*3+i*2+2)
+			len(updates)*paramsPerUpdate+i*paramsPerWhere+1, len(updates)*paramsPerUpdate+i*paramsPerWhere+2)
 		args = append(args, update.BlockNum, update.BlockPos)
 	}
 	query += ")"
