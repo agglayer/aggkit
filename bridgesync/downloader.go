@@ -424,7 +424,13 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 // - foundCall: The specific call to the bridge contract (for calldata)
 // - rootCall: The root call (only if needTxnSender is true, otherwise nil)
 // - error: Any error that occurred during extraction
-func extractCallData(client aggkittypes.RPCClienter, bridgeAddr common.Address, txHash common.Hash, needTxnSender bool, logger *logger.Logger) (*call, *call, error) {
+func extractCallData(
+	client aggkittypes.RPCClienter,
+	bridgeAddr common.Address,
+	txHash common.Hash,
+	needTxnSender bool,
+	logger *logger.Logger,
+) (*call, *call, error) {
 	// Extract root call first
 	rootCall, err := extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {

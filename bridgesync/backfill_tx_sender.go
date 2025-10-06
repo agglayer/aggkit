@@ -14,13 +14,6 @@ import (
 const (
 	// Batch size for processing records
 	batchSize = 100
-	// Constants for SQL parameter calculations
-	paramsPerUpdate = 3
-	paramsPerWhere  = 2
-	// Parameter offsets for SQL queries
-	blockNumOffset  = 1
-	blockPosOffset  = 2
-	txnSenderOffset = 3
 )
 
 // BackfillTxnSender handles the backfilling of txn_sender field for bridge records

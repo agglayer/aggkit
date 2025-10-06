@@ -806,7 +806,12 @@ func createRollupDataQuerier(ctx context.Context,
 }
 
 // runTxnSenderBackfill runs the txn_sender backfilling process
-func runTxnSenderBackfill(ctx context.Context, cfg bridgesync.Config, client aggkittypes.EthClienter, wg *sync.WaitGroup) error {
+func runTxnSenderBackfill(
+	ctx context.Context,
+	cfg bridgesync.Config,
+	client aggkittypes.EthClienter,
+	wg *sync.WaitGroup,
+) error {
 	const backfillTimeoutMinutes = 10
 
 	// Only run backfilling if we have a database path configured
