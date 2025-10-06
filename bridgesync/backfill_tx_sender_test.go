@@ -13,7 +13,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -89,14 +88,14 @@ func TestBackfillTxnSender(t *testing.T) {
 	// Test getting records needing backfill count
 	bridgeCount, err := backfiller.getRecordsNeedingBackfillCount(ctx, "bridge")
 	require.NoError(t, err)
-	assert.Equal(t, 1, bridgeCount)
+	require.Equal(t, 1, bridgeCount)
 
 	// Test getting records needing backfill
 	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
 	require.NoError(t, err)
-	assert.Len(t, bridgeRecords, 1)
-	assert.Equal(t, uint64(1), bridgeRecords[0].BlockNum)
-	assert.Equal(t, uint64(0), bridgeRecords[0].BlockPos)
+	require.Len(t, bridgeRecords, 1)
+	require.Equal(t, uint64(1), bridgeRecords[0].BlockNum)
+	require.Equal(t, uint64(0), bridgeRecords[0].BlockPos)
 }
 
 func TestNewBackfillTxnSender(t *testing.T) {
@@ -138,7 +137,7 @@ func TestNewBackfillTxnSender(t *testing.T) {
 		ctx := context.Background()
 		err = backfiller.BackfillAll(ctx)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to backfill bridge table")
+		require.Contains(t, err.Error(), "failed to backfill bridge table")
 
 		err = backfiller.Close()
 		require.NoError(t, err)
@@ -191,7 +190,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function behavior
+		// Mock the extractCallData function behavior (via extractRootCall)
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			// Simulate the call structure that would be returned
 			call, ok := args.Get(0).(*call)
@@ -226,7 +225,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 		ctx := context.Background()
 		err = backfiller.BackfillAll(ctx)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to backfill bridge table")
+		require.Contains(t, err.Error(), "failed to backfill bridge table")
 	})
 }
 
@@ -294,7 +293,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function behavior
+		// Mock the extractCallData function behavior (via extractRootCall)
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			call, ok := args.Get(0).(*call)
 			if !ok {
@@ -328,7 +327,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 		ctx := context.Background()
 		err = backfiller.backfillTable(ctx, "bridge")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to get count of records needing backfill")
+		require.Contains(t, err.Error(), "failed to get count of records needing backfill")
 	})
 
 	t.Run("get records error", func(t *testing.T) {
@@ -351,7 +350,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 		ctx := context.Background()
 		err = backfiller.backfillTable(ctx, "bridge")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to get count of records needing backfill")
+		require.Contains(t, err.Error(), "failed to get count of records needing backfill")
 	})
 }
 
@@ -402,7 +401,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 
 		count, err := backfiller.getRecordsNeedingBackfillCount(ctx, "bridge")
 		require.NoError(t, err)
-		assert.Equal(t, 1, count)
+		require.Equal(t, 1, count)
 	})
 
 	t.Run("database error", func(t *testing.T) {
@@ -425,8 +424,8 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 		ctx := context.Background()
 		count, err := backfiller.getRecordsNeedingBackfillCount(ctx, "bridge")
 		require.Error(t, err)
-		assert.Equal(t, 0, count)
-		assert.Contains(t, err.Error(), "failed to count records needing backfill")
+		require.Equal(t, 0, count)
+		require.Contains(t, err.Error(), "failed to count records needing backfill")
 	})
 }
 
@@ -478,9 +477,9 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
-		assert.Equal(t, uint64(1), records[0].BlockNum)
-		assert.Equal(t, uint64(0), records[0].BlockPos)
-		assert.Equal(t, "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", records[0].TxHash.Hex())
+		require.Equal(t, uint64(1), records[0].BlockNum)
+		require.Equal(t, uint64(0), records[0].BlockPos)
+		require.Equal(t, "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", records[0].TxHash.Hex())
 	})
 
 	t.Run("database error", func(t *testing.T) {
@@ -503,8 +502,8 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		ctx := context.Background()
 		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
 		require.Error(t, err)
-		assert.Nil(t, records)
-		assert.Contains(t, err.Error(), "failed to query records needing backfill")
+		require.Nil(t, records)
+		require.Contains(t, err.Error(), "failed to query records needing backfill")
 	})
 
 	t.Run("scan error", func(t *testing.T) {
@@ -527,8 +526,8 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		ctx := context.Background()
 		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
 		require.Error(t, err)
-		assert.Nil(t, records)
-		assert.Contains(t, err.Error(), "failed to query records needing backfill")
+		require.Nil(t, records)
+		require.Contains(t, err.Error(), "failed to query records needing backfill")
 	})
 }
 
@@ -547,7 +546,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function behavior
+		// Mock the extractCallData function behavior (via extractRootCall)
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			call, ok := args.Get(0).(*call)
 			if !ok {
@@ -583,7 +582,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function to return an error
+		// Mock the extractCallData function to return an error (via extractRootCall)
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(errors.New("transaction not found"))
 
 		ctx := context.Background()
@@ -612,7 +611,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function behavior
+		// Mock the extractCallData function behavior (via extractRootCall)
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			call, ok := args.Get(0).(*call)
 			if !ok {
@@ -625,7 +624,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		// Close the database to cause bulk update error
 		backfiller.db.Close()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		records := []RecordToBackfill{
 			{
 				BlockNum: 1,
@@ -653,7 +652,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function behavior
+		// Mock the extractCallData function behavior (via extractRootCall)
 		expectedSender := common.HexToAddress("0x1111111111111111111111111111111111111111")
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			call, ok := args.Get(0).(*call)
@@ -667,7 +666,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 		sender, err := backfiller.extractTxnSender(txHash)
 		require.NoError(t, err)
-		assert.Equal(t, expectedSender, sender)
+		require.Equal(t, expectedSender, sender)
 	})
 
 	t.Run("extraction error", func(t *testing.T) {
@@ -684,14 +683,14 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractRootCall function to return an error
+		// Mock the extractCallData function to return an error (via extractRootCall)
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(errors.New("transaction not found"))
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 		sender, err := backfiller.extractTxnSender(txHash)
 		require.Error(t, err)
-		assert.Equal(t, common.Address{}, sender)
-		assert.Contains(t, err.Error(), "failed to extract root call")
+		require.Equal(t, common.Address{}, sender)
+		require.Contains(t, err.Error(), "failed to extract root call")
 	})
 }
 
@@ -709,7 +708,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		require.NoError(t, err)
 		defer database.Close()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		tx, err := db.NewTx(ctx, database)
 		require.NoError(t, err)
 
@@ -830,7 +829,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", []RecordUpdate{})
 		require.NoError(t, err)
 	})
@@ -852,7 +851,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		// Close the database to cause an error
 		backfiller.db.Close()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		updates := []RecordUpdate{
 			{
 				BlockNum:  1,
@@ -863,7 +862,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to bulk update txn_sender")
+		require.Contains(t, err.Error(), "failed to bulk update txn_sender")
 	})
 }
 
@@ -907,7 +906,7 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 	defer database.Close()
 
 	// Create test data
-	ctx := context.Background()
+	ctx := t.Context()
 	tx, err := db.NewTx(ctx, database)
 	require.NoError(t, err)
 
@@ -935,7 +934,7 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create real client
-	client, err := aggkittypes.DialWithRetry(context.Background(), rpcURL, nil)
+	client, err := aggkittypes.DialWithRetry(t.Context(), rpcURL, nil)
 	require.NoError(t, err)
 
 	// Create backfill instance

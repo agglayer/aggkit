@@ -219,8 +219,8 @@ func (b *BackfillTxnSender) processBatch(
 
 // extractTxnSender extracts the transaction sender from a transaction hash
 func (b *BackfillTxnSender) extractTxnSender(txHash common.Hash) (common.Address, error) {
-	// Use the existing extractRootCall function to get the transaction sender
-	rootCall, err := extractRootCall(b.client, b.bridgeAddr, txHash)
+	// Use the new extractCallData function to get the transaction sender
+	_, rootCall, err := extractCallData(b.client, b.bridgeAddr, txHash, true, b.log)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("failed to extract root call: %w", err)
 	}
@@ -238,34 +238,36 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 		return nil
 	}
 
-	// Build a CASE WHEN statement for bulk update
-	//nolint:gosec
-	query := fmt.Sprintf("UPDATE %s SET txn_sender = CASE ", tableName)
-	args := make([]interface{}, 0, len(updates)*paramsPerUpdate)
-
-	for i, update := range updates {
-		query += fmt.Sprintf("WHEN block_num = $%d AND block_pos = $%d THEN $%d ",
-			i*paramsPerUpdate+blockNumOffset, i*paramsPerUpdate+blockPosOffset, i*paramsPerUpdate+txnSenderOffset)
-		args = append(args, update.BlockNum, update.BlockPos, update.TxnSender.Hex())
-	}
-
-	// Add WHERE clause to limit the update to our specific records
-	query += "ELSE txn_sender END WHERE ("
-	for i, update := range updates {
-		if i > 0 {
-			query += " OR "
-		}
-		query += fmt.Sprintf("(block_num = $%d AND block_pos = $%d)",
-			len(updates)*paramsPerUpdate+i*paramsPerWhere+blockNumOffset,
-			len(updates)*paramsPerUpdate+i*paramsPerWhere+blockPosOffset,
-		)
-		args = append(args, update.BlockNum, update.BlockPos)
-	}
-	query += ")"
-
-	_, err := b.db.ExecContext(ctx, query, args...)
+	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to bulk update txn_sender: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`
+		UPDATE %s
+		SET txn_sender = ?
+		WHERE block_num = ? AND block_pos = ?;
+	`, tableName))
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, update := range updates {
+		_, err := stmt.ExecContext(ctx, update.TxnSender.Hex(), update.BlockNum, update.BlockPos)
+		if err != nil {
+			return fmt.Errorf("failed to execute update for block %d pos %d: %w",
+				update.BlockNum, update.BlockPos, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
