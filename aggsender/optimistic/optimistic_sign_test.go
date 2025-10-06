@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"testing"
 
-	optimisticmocks "github.com/agglayer/aggkit/aggsender/optimistic/mocks"
-	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
+	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/go_signer/signer"
-	"github.com/agglayer/go_signer/signer/mocks"
+	signermocks "github.com/agglayer/go_signer/signer/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -39,13 +38,13 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		setupMock   func(m *optimisticmocks.FEPContractQuerier)
+		setupMock   func(m *mocks.FEPContractQuerier)
 		cfg         Config
 		expectedErr string
 	}{
 		{
 			name: "happy path with signer in list",
-			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
+			setupMock: func(m *mocks.FEPContractQuerier) {
 				m.EXPECT().
 					GetAggchainSigners(mock.Anything).
 					Return([]common.Address{signerAddr}, nil)
@@ -57,7 +56,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 		},
 		{
 			name: "aggchainFEPContract returns error and RequireKeyMatchTrustedSequencer = true",
-			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
+			setupMock: func(m *mocks.FEPContractQuerier) {
 				m.EXPECT().
 					GetAggchainSigners(mock.Anything).
 					Return(nil, errors.New("internal error"))
@@ -70,7 +69,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 		},
 		{
 			name: "aggchainFEPContract returns empty list and RequireKeyMatchTrustedSequencer = true",
-			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
+			setupMock: func(m *mocks.FEPContractQuerier) {
 				m.EXPECT().
 					GetAggchainSigners(mock.Anything).
 					Return([]common.Address{}, nil)
@@ -79,11 +78,11 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 				RequireKeyMatchTrustedSequencer: true,
 				TrustedSequencerKey:             signerKeyCfg,
 			},
-			expectedErr: "there should be at least one aggchain signer",
+			expectedErr: "should be at least one signer",
 		},
 		{
 			name: "signer differs from trusted sequencer address and RequireKeyMatchTrustedSequencer = false",
-			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
+			setupMock: func(m *mocks.FEPContractQuerier) {
 				m.EXPECT().
 					GetAggchainSigners(mock.Anything).
 					Return([]common.Address{common.HexToAddress("0xdeadbeef"), signerAddr}, nil)
@@ -99,7 +98,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFEP := optimisticmocks.NewFEPContractQuerier(t)
+			mockFEP := mocks.NewFEPContractQuerier(t)
 			tt.setupMock(mockFEP)
 
 			impl, err := NewOptimisticSignatureCalculatorImpl(
@@ -111,7 +110,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 			)
 
 			if tt.expectedErr != "" {
-				require.Contains(t, err.Error(), tt.expectedErr)
+				require.ErrorContains(t, err, tt.expectedErr)
 				require.Nil(t, impl)
 			} else {
 				require.NoError(t, err)
@@ -130,7 +129,7 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 			PreviousBlockHash: common.HexToHash("0xabc"),
 		},
 	}
-	aggProof := &optimistichash.AggregationProofPublicValues{
+	aggProof := &types.AggregationProofPublicValues{
 		L1Head:           common.HexToHash("0x123"),
 		L2PreRoot:        common.HexToHash("0x456"),
 		ClaimRoot:        common.HexToHash("0x789"),
@@ -147,7 +146,7 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 
 	testCases := []struct {
 		name                  string
-		mockQueryReturn       *optimistichash.AggregationProofPublicValues
+		mockQueryReturn       *types.AggregationProofPublicValues
 		mockQueryError        error
 		mockSignerReturn      []byte
 		mockSignerError       error
@@ -190,8 +189,8 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			realLogger := log.WithFields("module", "test_logger") // Replace mockLogger with a real logger
-			mockSigner := mocks.NewHashSigner(t)
-			mockQuery := optimisticmocks.NewOptimisticAggregationProofPublicValuesQuerier(t)
+			mockSigner := signermocks.NewHashSigner(t)
+			mockQuery := mocks.NewAggProofPublicValuesQuerier(t)
 			calculator := &OptimisticSignatureCalculatorImpl{
 				queryAggregationProofPublicValues: mockQuery,
 				signer:                            mockSigner,

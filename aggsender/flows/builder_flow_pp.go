@@ -11,10 +11,10 @@ import (
 	signertypes "github.com/agglayer/go_signer/signer/types"
 )
 
-var _ types.AggsenderFlow = (*PPFlow)(nil)
+var _ types.AggsenderBuilderFlow = (*PPBuilderFlow)(nil)
 
-// PPFlow is a struct that holds the logic for the regular pessimistic proof flow
-type PPFlow struct {
+// PPBuilderFlow is a struct that holds the logic for the regular pessimistic proof flow
+type PPBuilderFlow struct {
 	baseFlow              types.AggsenderFlowBaser
 	certificateSigner     signertypes.Signer
 	log                   types.Logger
@@ -24,22 +24,22 @@ type PPFlow struct {
 	maxL2BlockLimiter  types.MaxL2BlockNumberLimiterInterface
 }
 
-// NewPPFlow returns a new instance of the PPFlow
-func NewPPFlow(log types.Logger,
+// NewPPBuilderFlow returns a new instance of the PPBuilderFlow
+func NewPPBuilderFlow(log types.Logger,
 	baseFlow types.AggsenderFlowBaser,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer,
 	forceOneBridgeExit bool,
-	maxL2BlockNumber uint64) *PPFlow {
+	maxL2BlockNumber uint64) *PPBuilderFlow {
 	feature := NewMaxL2BlockNumberLimiter(
 		maxL2BlockNumber,
 		log,
 		true,
 		forceOneBridgeExit,
 	)
-	return &PPFlow{
+	return &PPBuilderFlow{
 		certificateSigner:     signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
@@ -51,11 +51,11 @@ func NewPPFlow(log types.Logger,
 
 // CheckInitialStatus checks that initial status is correct.
 // For PPFlow  there are no special checks to do, so it just returns nil
-func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
+func (p *PPBuilderFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
 }
 
-func (p *PPFlow) GenerateBuildParams(ctx context.Context,
+func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
 	if preParams == nil {
 		return nil, fmt.Errorf("ppFlow - preParams is nil")
@@ -73,7 +73,7 @@ func (p *PPFlow) GenerateBuildParams(ctx context.Context,
 
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
-func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (p *PPBuilderFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	buildParams, err := p.baseFlow.GetCertificateBuildParamsInternal(ctx, types.CertificateTypePP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
@@ -114,7 +114,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
-func (p *PPFlow) BuildCertificate(ctx context.Context,
+func (p *PPBuilderFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	certificate, err := p.baseFlow.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
 	if err != nil {
@@ -125,7 +125,7 @@ func (p *PPFlow) BuildCertificate(ctx context.Context,
 }
 
 // UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
-func (p *PPFlow) UpdateAggchainData(
+func (p *PPBuilderFlow) UpdateAggchainData(
 	cert *agglayertypes.Certificate,
 	multisig *agglayertypes.Multisig) error {
 	if multisig == nil {
@@ -142,6 +142,6 @@ func (p *PPFlow) UpdateAggchainData(
 }
 
 // Signer returns the signer used to sign the certificate
-func (p *PPFlow) Signer() signertypes.Signer {
+func (p *PPBuilderFlow) Signer() signertypes.Signer {
 	return p.certificateSigner
 }

@@ -197,6 +197,36 @@ func TestValidateCertificate(t *testing.T) {
 		})
 		require.ErrorContains(t, err, "certificate not equal to expected")
 	})
+
+	t.Run("fails VerifyCertificate in flow", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		certificate := &agglayertypes.Certificate{
+			Height:              0,
+			L1InfoTreeLeafCount: 10,
+			PrevLocalExitRoot:   types.EmptyLER,
+		}
+
+		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
+		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
+		testData.mockL1InfoTreeQuerier.EXPECT().
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
+		testData.mockFlow.EXPECT().
+			GenerateBuildParams(testData.ctx, mock.Anything).Return(&types.CertificateBuildParams{
+			L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
+		}, nil)
+		testData.mockFlow.EXPECT().
+			BuildCertificate(testData.ctx, mock.Anything).Return(certificate, nil)
+		testData.mockFlow.EXPECT().
+			VerifyCertificate(testData.ctx, certificate, uint64(10), uint64(0)).Return(errGenericForTesting)
+
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
+			Certificate:         certificate,
+			PreviousCertificate: nil,
+			LastL2BlockInCert:   10,
+		})
+		require.ErrorContains(t, err, "failed to verify certificate in flow")
+	})
 }
 
 func TestCheckContigousCertificates(t *testing.T) {
@@ -308,7 +338,7 @@ func TestCompareCertificates(t *testing.T) {
 type testDataCertificateValidator struct {
 	ctx                   context.Context
 	logger                *log.Logger
-	mockFlow              *mocks.AggsenderFlow
+	mockFlow              *mocks.AggsenderVerifierFlow
 	mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier
 	mockCertQuerier       *mocks.CertificateQuerier
 	mockLERQuerier        *mocks.LERQuerier
@@ -318,7 +348,7 @@ type testDataCertificateValidator struct {
 func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator {
 	t.Helper()
 	mockLogger := log.WithFields("test", "TestValidateCertificate")
-	mockFlow := mocks.NewAggsenderFlow(t)
+	mockFlow := mocks.NewAggsenderVerifierFlow(t)
 	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockCertQuerier := mocks.NewCertificateQuerier(t)
 	lerQuerier := mocks.NewLERQuerier(t)

@@ -291,6 +291,7 @@ RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 [Validator.FEPConfig]
 	SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 	RequireNoBlockGap = "{{AggSender.RequireNoFEPBlockGap}}"
+	OpNodeURL = "{{OpNodeURL}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]

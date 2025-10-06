@@ -177,7 +177,7 @@ func TestNewFlow(t *testing.T) {
 				tc.mockFn(mockCommitteeQuerier)
 			}
 
-			flow, err := NewFlow(
+			flow, err := NewBuilderFlow(
 				ctx,
 				tc.cfg,
 				mockLogger,
