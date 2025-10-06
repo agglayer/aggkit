@@ -353,7 +353,6 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get count of records needing backfill")
 	})
-
 }
 
 func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
@@ -615,7 +614,10 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		// Mock the extractRootCall function behavior
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			call := args.Get(0).(*call)
+			call, ok := args.Get(0).(*call)
+			if !ok {
+				return
+			}
 			call.From = common.HexToAddress("0x1111111111111111111111111111111111111111")
 			call.To = common.HexToAddress("0x1234")
 		})
@@ -654,7 +656,10 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		// Mock the extractRootCall function behavior
 		expectedSender := common.HexToAddress("0x1111111111111111111111111111111111111111")
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			call := args.Get(0).(*call)
+			call, ok := args.Get(0).(*call)
+			if !ok {
+				return
+			}
 			call.From = expectedSender
 			call.To = common.HexToAddress("0x1234")
 		})
