@@ -7,6 +7,7 @@
   "args": {
     "verbosity": "debug",
     "aggkit_image": "aggkit:local",
+    "consensus_contract_type": "pessimistic",
     "additional_services": [],
     "erigon_strict_mode": false,
     "enable_normalcy": true,
