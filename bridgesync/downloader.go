@@ -110,7 +110,7 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
-		// Extract both calldata and txn_sender in a single call
+		// Extract call data and root call for txn_sender
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, true, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
