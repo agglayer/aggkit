@@ -29,7 +29,8 @@ import (
 
 const (
 	globalIndexPartSize = 4
-	globalIndexBitIndex = 64
+	mainnetFlagPosition = 64
+	rollupIndexPosition = 32
 
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
@@ -448,7 +449,8 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
+	ctx context.Context, pageNumber, pageSize uint32,
+	depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
@@ -493,7 +495,7 @@ func (p *processor) GetBridgesPaged(
 }
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
-// based on the provided depositCount and networkIDs
+// based on the provided depositCount, networkIDs, fromAddress and globalIndex
 func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32, fromAddress string) string {
 	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
@@ -516,9 +518,10 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
+	ctx context.Context, pageNumber, pageSize uint32,
+	networkIDs []uint32, fromAddress string, globalIndex *big.Int,
 ) ([]*Claim, int, error) {
-	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
+	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress, globalIndex)
 	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -561,9 +564,9 @@ func (p *processor) GetClaimsPaged(
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
-// based on the provided networkIDs and fromAddress
-func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string) string {
-	const clauseCapacity = 2
+// based on the provided networkIDs, fromAddress and globalIndex
+func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string, globalIndex *big.Int) string {
+	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
 	if len(networkIDs) > 0 {
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
@@ -571,6 +574,12 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 
 	if fromAddress != "" && common.IsHexAddress(fromAddress) {
 		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+	}
+
+	if globalIndex != nil {
+		clauses = append(clauses,
+			fmt.Sprintf("global_index = '%s'", globalIndex.String()),
+		)
 	}
 
 	if len(clauses) > 0 {
@@ -954,7 +963,38 @@ func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
 }
 
-func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
+// GenerateGlobalIndexForNetworkID builds the "global index" used to identify bridges and claims.
+func GenerateGlobalIndexForNetworkID(networkID uint32, depositCount uint32) *big.Int {
+	rollupIndex := uint32(0)
+	mainnetFlag := networkID == 0
+	if !mainnetFlag {
+		rollupIndex = networkID - 1
+	}
+
+	return GenerateGlobalIndex(mainnetFlag, rollupIndex, depositCount)
+}
+
+// GenerateGlobalIndex encodes a unique "global index" used for identifying bridges and claims.
+// The index is constructed as a big integer from three components:
+// - mainnetFlag: indicates if the origin network is mainnet (true) or a rollup (false).
+//   - If true, the first 4-byte segment is set to `0x01` and the next 4 bytes are zero.
+//   - If false, the first 4-byte segment is the rollupIndex (networkID - 1).
+//
+// - rollupIndex: only used if mainnetFlag is false; represents (networkID - 1).
+// - depositCount: always appended as the final 4-byte segment.
+//
+// Encoding layout (big-endian concatenation of 4-byte chunks):
+//
+//	[ mainnetFlag ] [ rollupIndex ] [ depositCount ]
+//
+// Examples:
+//
+//	mainnetFlag=true,  depositCount=3  → 0x0100000000000003
+//	mainnetFlag=false, rollupIndex=1, depositCount=3 → 0x0000000100000003
+//
+// The result is returned as a *big.Int that can be used consistently across
+// mainnet and rollup networks.
+func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, depositCount uint32) *big.Int {
 	var (
 		globalIndexBytes []byte
 		buf              [globalIndexPartSize]byte
@@ -967,7 +1007,7 @@ func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootInde
 		ri := new(big.Int).SetUint64(uint64(rollupIndex)).FillBytes(buf[:])
 		globalIndexBytes = append(globalIndexBytes, ri...)
 	}
-	leri := new(big.Int).SetUint64(uint64(localExitRootIndex)).FillBytes(buf[:])
+	leri := new(big.Int).SetUint64(uint64(depositCount)).FillBytes(buf[:])
 	globalIndexBytes = append(globalIndexBytes, leri...)
 
 	result := new(big.Int).SetBytes(globalIndexBytes)
@@ -992,7 +1032,7 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 		return
 	}
 
-	bit := globalIndex.Bit(globalIndexBitIndex)
+	bit := globalIndex.Bit(mainnetFlagPosition)
 	if bit == 1 {
 		// true, rollupIndex, localExitRootIndex
 		mainnetFlag = true

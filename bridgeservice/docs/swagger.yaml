@@ -558,6 +558,10 @@ paths:
         in: query
         name: include_all_fields
         type: boolean
+      - description: Filter by global index
+        in: query
+        name: global_index
+        type: integer
       produces:
       - application/json
       responses:

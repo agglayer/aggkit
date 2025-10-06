@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -51,9 +52,11 @@ const (
 	originTokenAddrParam = "origin_token_address"
 	leafIndexParam       = "leaf_index"
 	includeAllFields     = "include_all_fields"
+	globalIndexParam     = "global_index"
 
-	binarySearchDivider = 2
+	// mainnetNetworkID is the network ID of L1 network
 	mainnetNetworkID    = 0
+	binarySearchDivider = 2
 
 	errNetworkID         = "unsupported network id: %v"
 	errSetupRequest      = "failed to setup request: %v"
@@ -318,6 +321,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		count   int
 	)
 
+	//nolint:dupl
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
@@ -352,7 +356,10 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	}
 
 	b.logger.Debugf("successfully retrieved %d bridges for network %d", count, networkID)
-	bridgeResponses := aggkitcommon.MapSlice(bridges, NewBridgeResponse)
+	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
+	for _, bridge := range bridges {
+		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID))
+	}
 
 	c.JSON(http.StatusOK,
 		types.BridgesResult{
@@ -372,14 +379,17 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Param network_ids query []uint32 false "Filter by one or more destination network IDs"
 // @Param from_address query string false "Filter by from address"
 // @Param include_all_fields query bool false "Whether to include full response fields (default false)"
+// @Param global_index query uint32 false "Filter by global index"
 // @Produce json
 // @Success 200 {object} types.ClaimsResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
-	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, include_all_fields=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(includeAllFields))
+	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, "+
+		"include_all_fields=%s, global_index=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam),
+		c.Query(includeAllFields), c.Query(globalIndexParam))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -408,6 +418,21 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		}
 	}
 
+	globalIndexRaw := c.Query(globalIndexParam)
+	var (
+		globalIndex *big.Int
+		ok          bool
+	)
+	if globalIndexRaw != "" {
+		globalIndex, ok = new(big.Int).SetString(globalIndexRaw, 0)
+		if !ok {
+			b.logger.Warnf("invalid %s parameter", globalIndexParam)
+			c.JSON(http.StatusBadRequest,
+				gin.H{"error": fmt.Sprintf("invalid %s parameter, it should be a numeric", globalIndexParam)})
+			return
+		}
+	}
+
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_claims")
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
@@ -417,14 +442,16 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	defer cancel()
 
 	b.logger.Debugf(
-		"fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s, include_all_fields=%t)",
-		networkID, pageNumber, pageSize, networkIDs, fromAddress, includeAllFieldsFlag)
+		"fetching claims (network id=%d, page=%d, size=%d, "+
+			"network_ids=%v, from_address=%s, include_all_fields=%t, global_index=%d)",
+		networkID, pageNumber, pageSize, networkIDs, fromAddress, includeAllFieldsFlag, globalIndex)
 
 	var (
 		claims []*bridgesync.Claim
 		count  int
 	)
 
+	//nolint:dupl
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
@@ -432,7 +459,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 				gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
-		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
 			c.JSON(http.StatusInternalServerError,
@@ -445,7 +472,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 				gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
-		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
 			c.JSON(http.StatusInternalServerError,

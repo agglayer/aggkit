@@ -77,7 +77,7 @@ genesisBlockNumber = 0
 # PathRWData = "/tmp/aggkit"
 # RequireStorageContentCompatibility = true
 # GenerateAggchainProofTimeout = "1h"
-# defaultDBQueryTimeout = "30s"
+# defaultDBQueryTimeout = "60s"
 # [L2RPC]
 # ------------------------------------------------------------------------------
 # Possible values for Mode - "basic", "op"
