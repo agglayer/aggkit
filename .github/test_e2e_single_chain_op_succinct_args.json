@@ -3,8 +3,6 @@
     "deploy_op_succinct": true
   },
   "args": {
-    "verbosity": "debug",
-    "aggkit_image": "aggkit:local",
     "consensus_contract_type": "fep",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
@@ -13,9 +11,9 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
-    "additional_services": [
-      "bridge_spammer"
-    ]
+    "aggkit_image": "aggkit:local",
+    "l1_seconds_per_slot": 2,
+    "aggkit_components": "aggoracle,aggsender,bridge"
   },
   "optimism_package": {
     "chains": [
