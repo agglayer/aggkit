@@ -337,7 +337,7 @@ func (s *L1InfoTreeSync) IsUpToDate(ctx context.Context, l1Client aggkittypes.Ba
 
 	finalizedBlock, err := l1Client.BlockByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
 	if err != nil {
-		return false, fmt.Errorf("failed to get finalized L1 block: %w", err)
+		return false, fmt.Errorf("failed to get the latest finalized L1 block: %w", err)
 	}
 
 	return lastProcessedBlock >= finalizedBlock.NumberU64(), nil
