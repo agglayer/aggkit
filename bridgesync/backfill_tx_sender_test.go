@@ -131,9 +131,17 @@ func TestNewBackfillTxnSender(t *testing.T) {
 		bridgeAddr := common.HexToAddress("0x1234")
 
 		backfiller, err := NewBackfillTxnSender(invalidPath, mockClient, bridgeAddr, logger)
+		require.NoError(t, err) // sql.Open doesn't validate paths
+		require.NotNil(t, backfiller)
+
+		// Try to use the database to trigger the error
+		ctx := context.Background()
+		err = backfiller.BackfillAll(ctx)
 		require.Error(t, err)
-		require.Nil(t, backfiller)
-		assert.Contains(t, err.Error(), "failed to initialize database")
+		assert.Contains(t, err.Error(), "failed to backfill bridge table")
+
+		err = backfiller.Close()
+		require.NoError(t, err)
 	})
 }
 
@@ -186,7 +194,10 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 		// Mock the extractRootCall function behavior
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			// Simulate the call structure that would be returned
-			call := args.Get(0).(*call)
+			call, ok := args.Get(0).(*call)
+			if !ok {
+				return
+			}
 			call.From = common.HexToAddress("0x1111111111111111111111111111111111111111")
 			call.To = common.HexToAddress("0x1234")
 		})
@@ -285,7 +296,10 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		// Mock the extractRootCall function behavior
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			call := args.Get(0).(*call)
+			call, ok := args.Get(0).(*call)
+			if !ok {
+				return
+			}
 			call.From = common.HexToAddress("0x1111111111111111111111111111111111111111")
 			call.To = common.HexToAddress("0x1234")
 		})
@@ -536,7 +550,10 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		// Mock the extractRootCall function behavior
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			call := args.Get(0).(*call)
+			call, ok := args.Get(0).(*call)
+			if !ok {
+				return
+			}
 			call.From = common.HexToAddress("0x1111111111111111111111111111111111111111")
 			call.To = common.HexToAddress("0x1234")
 		})

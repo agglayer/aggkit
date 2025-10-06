@@ -65,6 +65,8 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 }
 
 // backfillTable processes a specific table to backfill txn_sender field
+//
+//nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
 	b.log.Infof("Starting backfill for %s table", tableName)
 
