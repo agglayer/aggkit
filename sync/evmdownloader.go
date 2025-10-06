@@ -218,7 +218,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlocks, lastFinalizedBlock uint64) {
 	for _, block := range blocks {
 		d.log.Debugf("sending block %d to the driver (with events)", block.Num)
-		block.IsFinalizedBlock = d.finalizedBlockType.IsFinalized() && block.Num <= lastFinalizedBlock
+		block.IsFinalizedBlock = block.Num <= lastFinalizedBlock
 		downloadedCh <- *block
 	}
 }
@@ -233,7 +233,7 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 	}
 
 	downloadedCh <- EVMBlock{
-		IsFinalizedBlock: d.finalizedBlockType.IsFinalized() && header.Num <= lastFinalizedBlock,
+		IsFinalizedBlock: header.Num <= lastFinalizedBlock,
 		EVMBlockHeader:   header,
 	}
 }
