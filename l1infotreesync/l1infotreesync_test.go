@@ -260,7 +260,7 @@ func TestIsUpToDate(t *testing.T) {
 		ctx := context.Background()
 		result, err := s.IsUpToDate(ctx, mockL1Client)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to get finalized L1 block")
+		require.Contains(t, err.Error(), "failed to get the latest finalized L1 block")
 		require.False(t, result)
 	})
 
