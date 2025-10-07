@@ -49,8 +49,8 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 	b.log.Info("Starting txn_sender backfilling process")
 
 	// Process bridge table
-	if err := b.backfillTable(ctx, "bridge"); err != nil {
-		return fmt.Errorf("failed to backfill bridge table: %w", err)
+	if err := b.backfillTable(ctx, bridgeTableName); err != nil {
+		return fmt.Errorf("failed to backfill %s table: %w", bridgeTableName, err)
 	}
 
 	b.log.Infof("Backfilling completed")
@@ -213,7 +213,7 @@ func (b *BackfillTxnSender) processBatch(
 // extractTxnSender extracts the transaction sender from a transaction hash
 func (b *BackfillTxnSender) extractTxnSender(txHash common.Hash) (common.Address, error) {
 	// Use the new extractCallData function to get the transaction sender
-	_, rootCall, err := extractCallData(b.client, b.bridgeAddr, txHash, true, b.log)
+	_, rootCall, err := extractCallData(b.client, b.bridgeAddr, txHash, b.log)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("failed to extract root call: %w", err)
 	}
@@ -235,9 +235,15 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 	if err != nil {
 		return fmt.Errorf("failed to bulk update txn_sender: %w", err)
 	}
+
+	shouldRollback := true
+
 	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
+		if shouldRollback {
+			b.log.Errorf("transaction rollback due to an error")
+			if errRollback := tx.Rollback(); errRollback != nil {
+				b.log.Errorf("error while rolling back tx %v", errRollback)
+			}
 		}
 	}()
 
@@ -263,6 +269,7 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	shouldRollback = false // Commit was successful, no need to rollback
 	return nil
 }
 

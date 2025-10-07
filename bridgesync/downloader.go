@@ -111,7 +111,7 @@ func buildBridgeEventHandler(
 		}
 
 		// Extract call data and root call for txn_sender
-		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, true, logger)
+		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -160,7 +160,7 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, true, logger)
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -203,7 +203,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, true, logger)
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -236,7 +236,7 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 		}
 
 		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, false, logger)
+		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -270,7 +270,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 		}
 
 		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, false, logger)
+		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -302,7 +302,7 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 		}
 
 		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, false, logger)
+		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -412,42 +412,25 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 	return rootCall, nil
 }
 
-// extractCallData extracts both the found call and optionally the root call for a transaction.
-// This function combines extractRootCall and findCall into a single operation for better performance.
-// Parameters:
-// - client: RPC client for making debug_traceTransaction calls
-// - bridgeAddr: Target bridge contract address
-// - txHash: Transaction hash to trace
-// - needTxnSender: Whether the root call (for txn_sender) is needed
-// - logger: Logger instance for debug logging
-// Returns:
-// - foundCall: The specific call to the bridge contract (for calldata)
-// - rootCall: The root call (only if needTxnSender is true, otherwise nil)
-// - error: Any error that occurred during extraction
 func extractCallData(
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
-	needTxnSender bool,
 	logger *logger.Logger,
-) (*call, *call, error) {
+) (foundCall *call, rootCall *call, err error) {
 	// Extract root call first
-	rootCall, err := extractRootCall(client, bridgeAddr, txHash)
+	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Find the specific call to the bridge contract
-	foundCall, err := findCall(*rootCall, bridgeAddr, nil, logger)
+	foundCall, err = findCall(*rootCall, bridgeAddr, nil, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Return root call only if needed
-	if needTxnSender {
-		return foundCall, rootCall, nil
-	}
-	return foundCall, nil, nil
+	return foundCall, rootCall, nil
 }
 
 // setClaimCalldataFromRoot finds and decodes calldata for the given bridge address using an already traced root call.
