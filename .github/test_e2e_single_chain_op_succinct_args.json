@@ -5,10 +5,6 @@
   "args": {
     "consensus_contract_type": "fep",
     "aggkit_image": "aggkit:local",
-    "agglayer_contracts_image": "europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer-contracts:v11.0.0-rc.2-fork.12",
-    "aggkit_prover_image": "ghcr.io/agglayer/aggkit-prover:1.2.0",
-    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.5",
-    "op_succinct_proposer_image": "ghcr.io/agglayer/op-succinct/op-succinct:v2.3.3-agglayer",
     "op_geth_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101602.3",
     "op_node_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.7",
     "geth_image": "ethereum/client-go:v1.16.3",
