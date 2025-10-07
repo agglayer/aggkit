@@ -16,7 +16,7 @@
     "op_succinct_range_proof_interval": "60",
     "agglayer_prover_primary_prover": "mock-prover",
     "additional_services": [
-      "agglayer_dashboard", "blockscout"
+      
     ]
   },
   "optimism_package": {
