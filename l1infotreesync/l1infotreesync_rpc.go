@@ -91,7 +91,6 @@ func (b *L1InfoTreeSyncRPC) GetInfoByRoot(inputRoot *string) (interface{}, rpc.E
 		root := common.HexToHash(*inputRoot)
 		b.logger.Infof("RPC call: l1infotreesync_getInfoByRoot(%s)", root.Hex())
 		leaf, err = b.l1InfoTreeSyncer.GetInfoLeafByRoot(root)
-
 	}
 	if err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error getting leaf by root: %v", err))
