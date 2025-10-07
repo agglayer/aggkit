@@ -96,9 +96,12 @@ func start(cliCtx *cli.Context) error {
 
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
-
+	var rpcServices []jRPC.Service
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
-	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0, &backfillWg)
+	if l1InfoTreeSync != nil {
+		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
+	}
+	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
@@ -107,8 +110,6 @@ func start(cliCtx *cli.Context) error {
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
 		&cfg.AggSender.CommitteeOverride)
-
-	var rpcServices []jRPC.Service
 
 	// Check if any bridge-related component is present and start bridge service once
 	hasBridgeComponent := false
@@ -512,10 +513,10 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		cfg.L1InfoTreeSync,
-		aggkittypes.LatestBlock,
+		aggkittypes.FinalizedBlock,
 		l1Client,
 		l1infotreesync.FlagNone,
-		aggkittypes.LatestBlock,
+		aggkittypes.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
