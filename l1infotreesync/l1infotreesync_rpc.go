@@ -34,7 +34,7 @@ func NewL1InfoTreeSyncRPC(
 	}
 }
 
-// Status returns the status of the aggsender
+// Status returns the status of the L1InfoTreeSync component
 // curl -X POST http://localhost:5576/ "Content-Type: application/json" \
 // -d '{"method":"l1infotreesync_status", "params":[], "id":1}'
 func (b *L1InfoTreeSyncRPC) Status() (interface{}, rpc.Error) {
