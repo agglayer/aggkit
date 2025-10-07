@@ -187,6 +187,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
+		Mode:                     a.cfg.Mode,
 	}
 	return res
 }
