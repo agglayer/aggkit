@@ -615,9 +615,14 @@ const docTemplate = `{
                     "example": 42161
                 },
                 "from_address": {
-                    "description": "Address that initiated the bridge transaction",
+                    "description": "Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA",
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "global_index": {
+                    "description": "Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)",
+                    "type": "string",
+                    "example": "4294967296"
                 },
                 "leaf_type": {
                     "description": "Type of leaf (bridge event type) used in the tree structure",
@@ -643,6 +648,11 @@ const docTemplate = `{
                     "description": "Hash of the transaction that included the bridge event",
                     "type": "string",
                     "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "txn_sender": {
+                    "description": "Address of the transaction sender who initiated the bridge transaction",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 }
             }
         },

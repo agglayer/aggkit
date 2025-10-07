@@ -83,7 +83,7 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 		certificateValidator)
 
 	mockRollupDataQuerier.EXPECT().GetRollupData(mock.Anything).Return(
-		polygonrollupmanager.PolygonRollupManagerRollupDataReturn{}, nil)
+		polygonrollupmanager.PolygonRollupManagerRollupDataReturn{}, nil).Maybe()
 
 	_, err = dbValidator.ValidateDB("testData/aggsender.sqlite")
 	require.NoError(t, err, "DB validation should not return an error")
