@@ -213,7 +213,7 @@ RequireCommitteeMembershipCheck = false
 		[[AggSender.AgglayerClient.APIRateLimits]]
 			MethodName = "SendCertificate"
 			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
-				NumRequests = 1800 # 1 request every 2s
+				NumRequests = 1800 # up to 1800 requests per hour (avg ~1 request every 2s)
 				Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
