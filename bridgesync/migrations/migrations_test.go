@@ -495,7 +495,7 @@ func TestMigration0006(t *testing.T) {
 	}
 
 	// Run migrations up to 0005 (5 migrations)
-	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 4)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 5)
 	require.NoError(t, err)
 
 	ctx := context.Background()
