@@ -15,6 +15,7 @@ type StatusInfo struct {
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error)
+	GetInfoLeafByRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
 }
 
 // L1InfoTreeSyncRPC is the RPC interface for the L1InfoTreeSync
@@ -67,6 +68,30 @@ func (b *L1InfoTreeSyncRPC) GetInfoByGlobalExitRoot(inputGER *string) (interface
 		ger = common.HexToHash(*inputGER)
 		b.logger.Infof("RPC call: l1infotreesync_getInfoByGlobalExitRoot %s", ger.Hex())
 		leaf, err = b.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(ger)
+	}
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error getting leaf by root: %v", err))
+	}
+	if leaf == nil {
+		return nil, rpc.NewRPCError(rpc.NotFoundErrorCode, "leaf not found")
+	}
+
+	return leaf, nil
+}
+
+func (b *L1InfoTreeSyncRPC) GetInfoByRoot(inputRoot *string) (interface{}, rpc.Error) {
+	var (
+		leaf *L1InfoTreeLeaf
+		err  error
+	)
+	if inputRoot == nil {
+		b.logger.Infof("RPC call: l1infotreesync_getInfoByRoot(nil) getting last leaf")
+		leaf, err = b.l1InfoTreeSyncer.GetLatestL1InfoLeaf(context.Background())
+	} else {
+		root := common.HexToHash(*inputRoot)
+		b.logger.Infof("RPC call: l1infotreesync_getInfoByRoot(%s)", root.Hex())
+		leaf, err = b.l1InfoTreeSyncer.GetInfoLeafByRoot(root)
+
 	}
 	if err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error getting leaf by root: %v", err))
