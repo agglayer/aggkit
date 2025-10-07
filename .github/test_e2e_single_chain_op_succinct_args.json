@@ -5,9 +5,6 @@
   "args": {
     "consensus_contract_type": "fep",
     "aggkit_image": "aggkit:local",
-    "op_geth_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101602.3",
-    "op_node_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.7",
-    "geth_image": "ethereum/client-go:v1.16.3",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
     "op_succinct_agg_proof_mode": "compressed",
@@ -23,7 +20,7 @@
       {
         "participants": [
           {
-            "cl_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.7"
+            "cl_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.5"
           }
         ],
         "proposer_params": {
