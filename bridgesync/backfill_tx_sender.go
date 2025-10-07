@@ -76,12 +76,11 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 
 	b.log.Infof("Found %d records in %s table that need txn_sender backfilling", totalCount, tableName)
 
-	// Process records in batches
-	offset := 0
-	for offset < totalCount {
-		records, err := b.getRecordsNeedingBackfill(ctx, tableName, offset, batchSize)
+	for {
+		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize)
 		if err != nil {
-			return fmt.Errorf("failed to get records for backfilling: %w", err)
+			b.log.Errorf("failed to get records for backfilling: %w", err)
+			continue
 		}
 
 		if len(records) == 0 {
@@ -89,9 +88,6 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 		}
 
 		b.processBatch(ctx, tableName, records)
-
-		offset += len(records)
-		b.log.Infof("Processed %d/%d records in %s table", offset, totalCount, tableName)
 	}
 
 	b.log.Infof("Completed backfilling for %s table", tableName)
@@ -103,13 +99,6 @@ type RecordToBackfill struct {
 	BlockNum  uint64
 	BlockPos  uint64
 	TxHash    common.Hash
-	TxnSender common.Address
-}
-
-// RecordUpdate represents a record update with txn_sender data
-type RecordUpdate struct {
-	BlockNum  uint64
-	BlockPos  uint64
 	TxnSender common.Address
 }
 
@@ -131,11 +120,18 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	return count, nil
 }
 
+// RecordUpdate represents a record update with txn_sender data
+type RecordUpdate struct {
+	BlockNum  uint64
+	BlockPos  uint64
+	TxnSender common.Address
+}
+
 // getRecordsNeedingBackfill retrieves records that need txn_sender backfilling
 func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	ctx context.Context,
 	tableName string,
-	offset, limit int,
+	limit int,
 ) ([]RecordToBackfill, error) {
 	//nolint:gosec
 	query := fmt.Sprintf(`
@@ -143,10 +139,10 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 		FROM %s
 		WHERE txn_sender = '' OR txn_sender IS NULL
 		ORDER BY block_num, block_pos
-		LIMIT $1 OFFSET $2
+		LIMIT $1
 	`, tableName)
 
-	rows, err := b.db.QueryContext(ctx, query, limit, offset)
+	rows, err := b.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
@@ -212,7 +208,7 @@ func (b *BackfillTxnSender) processBatch(
 
 // extractTxnSender extracts the transaction sender from a transaction hash
 func (b *BackfillTxnSender) extractTxnSender(txHash common.Hash) (common.Address, error) {
-	// Use the new extractCallData function to get the transaction sender
+	// Use the extractCallData function to get the transaction sender
 	_, rootCall, err := extractCallData(b.client, b.bridgeAddr, txHash, b.log)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("failed to extract root call: %w", err)

@@ -91,7 +91,7 @@ func TestBackfillTxnSender(t *testing.T) {
 	require.Equal(t, 1, bridgeCount)
 
 	// Test getting records needing backfill
-	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 	require.NoError(t, err)
 	require.Len(t, bridgeRecords, 1)
 	require.Equal(t, uint64(1), bridgeRecords[0].BlockNum)
@@ -474,7 +474,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Equal(t, uint64(1), records[0].BlockNum)
@@ -500,7 +500,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 		require.Error(t, err)
 		require.Nil(t, records)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
@@ -524,7 +524,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 		require.Error(t, err)
 		require.Nil(t, records)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
