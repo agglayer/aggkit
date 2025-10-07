@@ -133,8 +133,8 @@ func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereu
 // In case commitment level keywords are the same, it compares the offsets.
 // finalized ≤ safe ≤ latest ≤ pending
 func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) bool {
-	if b == nil || other.IsEmpty() {
-		return false
+	if b == nil {
+		return true
 	}
 	if blockOrder[b.Block] > blockOrder[other.Block] {
 		return true
@@ -148,7 +148,7 @@ func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) bool {
 type BlockNumber int64
 
 var (
-	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4} //nolint:mnd
+	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 5} //nolint:mnd
 )
 
 const (

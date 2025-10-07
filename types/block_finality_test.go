@@ -63,11 +63,93 @@ func TestBlockNumberFinalityWithOffset(t *testing.T) {
 	}
 }
 
-func TestBlockNumberLessFinalThan(t *testing.T) {
-	require.True(t, SafeBlock.LessFinalThan(FinalizedBlock))
-	require.True(t, LatestBlock.LessFinalThan(FinalizedBlock))
-	require.True(t, LatestBlock.LessFinalThan(SafeBlock))
-	require.True(t, PendingBlock.LessFinalThan(LatestBlock))
+func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
+	tests := []struct {
+		name           string
+		firstFinality  BlockNumberFinality
+		secondFinality BlockNumberFinality
+		isLessFinal    bool
+	}{
+		{
+			name:           "empty finality less final than pending block type",
+			firstFinality:  BlockNumberFinality{}, // IsEmpty()
+			secondFinality: PendingBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "pending block type less final than latest block type",
+			firstFinality:  PendingBlock,
+			secondFinality: LatestBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "pending block type less final than safe block type",
+			firstFinality:  PendingBlock,
+			secondFinality: SafeBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "pending block type less final than fianlized block type",
+			firstFinality:  PendingBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "latest block type less final than pending block type",
+			firstFinality:  LatestBlock,
+			secondFinality: SafeBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "latest block type less final than finalzed block type",
+			firstFinality:  LatestBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "safe block type less final than finalized block type",
+			firstFinality:  SafeBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "safe block type less final than finalized block type",
+			firstFinality:  SafeBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name: "finalized block type less strict due to offset",
+			firstFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: 1,
+			},
+			secondFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: 5,
+			},
+			isLessFinal: false,
+		},
+		{
+			name: "finalized block type stricter due to offset",
+			firstFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: 1,
+			},
+			secondFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: -5,
+			},
+			isLessFinal: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.firstFinality.LessFinalThan(tt.secondFinality)
+			require.Equal(t, tt.isLessFinal, result)
+		})
+	}
 }
 
 func TestBlockNumber_ApplyOffset(t *testing.T) {
