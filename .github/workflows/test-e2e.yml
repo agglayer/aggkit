@@ -197,11 +197,11 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@d1cdbcaf504218600af56ab14efc37be1c11d959
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f22e7356b01648f407bf4d6877879f65f0c5e50f
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: d1cdbcaf504218600af56ab14efc37be1c11d959 # main <- feat/fix_e2e_multisig 
+      agglayer-e2e-ref: f22e7356b01648f407bf4d6877879f65f0c5e50f # main <- feat/fix_e2e_multisig 
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       test-name: "test-single-l2-network-op-succinct"
