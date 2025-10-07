@@ -4,6 +4,14 @@
   },
   "args": {
     "consensus_contract_type": "fep",
+    "aggkit_image": "aggkit:local",
+    "agglayer_contracts_image": "europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer-contracts:v11.0.0-rc.2-fork.12",
+    "aggkit_prover_image": "ghcr.io/agglayer/aggkit-prover:1.2.0",
+    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.5",
+    "op_succinct_proposer_image": "ghcr.io/agglayer/op-succinct/op-succinct:v2.3.3-agglayer",
+    "op_geth_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101602.3",
+    "op_node_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.7",
+    "geth_image": "ethereum/client-go:v1.16.3",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
     "op_succinct_agg_proof_mode": "compressed",
@@ -11,7 +19,6 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
-    "aggkit_image": "aggkit:local",
     "l1_seconds_per_slot": 2,
     "aggkit_components": "aggoracle,aggsender,bridge"
   },
@@ -20,7 +27,7 @@
       {
         "participants": [
           {
-            "cl_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.5"
+            "cl_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.7"
           }
         ],
         "proposer_params": {
