@@ -147,20 +147,20 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 	if rd.IsDisabled() {
 		return nil
 	}
-	// Get the latest finalized block
 
+	// Get the latest finalized block
 	blockNumber, err := rd.finalizedBlockType.BlockNumber(ctx, rd.client)
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
-	lastFinalisedBlock, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
+	lastFinalizedBlock, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
 	if err != nil {
 		return fmt.Errorf("failed to get the header %d. Err: %w", blockNumber, err)
 	}
 	var (
 		headersCacheLock sync.Mutex
 		headersCache     = map[uint64]*types.Header{
-			lastFinalisedBlock.Number.Uint64(): lastFinalisedBlock,
+			lastFinalizedBlock.Number.Uint64(): lastFinalizedBlock,
 		}
 		errGroup errgroup.Group
 	)
@@ -180,7 +180,7 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 			continue
 		}
 
-		rd.log.Debugf("Checking reorgs in tracked blocks up to block %d", lastFinalisedBlock.Number.Uint64())
+		rd.log.Debugf("Checking reorgs in tracked blocks up to block %d", lastFinalizedBlock.Number.Uint64())
 
 		errGroup.Go(func() error {
 			headers := hdrs.getSorted()
@@ -202,7 +202,7 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 				if hdr.Hash == currentHeader.Hash() {
 					// Delete block from the tracked blocks list if it is less than or equal to the last finalized block
 					// and hashes matches. If higher than finalized block, we assume a reorg still might happen.
-					if hdr.Num <= lastFinalisedBlock.Number.Uint64() {
+					if hdr.Num <= lastFinalizedBlock.Number.Uint64() {
 						hdrs.removeRange(hdr.Num, hdr.Num)
 
 						if err := rd.removeTrackedBlockRange(id, hdr.Num, hdr.Num); err != nil {

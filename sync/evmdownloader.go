@@ -67,25 +67,24 @@ func NewEVMDownloader(
 	rh *RetryHandler,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*EVMDownloader, error) {
+	if finality.IsEmpty() {
+		return nil, fmt.Errorf("block finality must be set")
+	}
+
 	logger := log.WithFields("syncer", syncerID)
-
-	fbtEthermanType := finalizedBlockType
-
-	if finalizedBlockType.GreaterThan(&finality) {
-		fbtEthermanType = finality
-		// if someone configured the syncer to query blocks by Safe or Finalized block
-		// finalized block type should be at least the same as the block finality
-		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
-			finalizedBlockType.String(), finality.String(), fbtEthermanType.String())
+	if finalizedBlockType.LessFinalThan(finality) {
+		finalizedBlockType = finality
+		logger.Warnf("finalized block type %s is less final than block finality %s, setting finalized block type to %s",
+			finalizedBlockType.String(), finality.String(), finalizedBlockType.String())
 	}
 
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
-		finality.String(), fbtEthermanType.String(), syncBlockChunkSize)
+		finality.String(), finalizedBlockType.String(), syncBlockChunkSize)
 
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
-		finalizedBlockType: &fbtEthermanType,
+		finalizedBlockType: &finalizedBlockType,
 		addressesToQuery:   addressesToQuery,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
@@ -202,7 +201,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlocks, lastFinalizedBlock uint64) {
 	for _, block := range blocks {
 		d.log.Debugf("sending block %d to the driver (with events)", block.Num)
-		block.IsFinalizedBlock = d.finalizedBlockType.IsFinalized() && block.Num <= lastFinalizedBlock
+		block.IsFinalizedBlock = block.Num <= lastFinalizedBlock
 		downloadedCh <- *block
 	}
 }
@@ -217,7 +216,7 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 	}
 
 	downloadedCh <- EVMBlock{
-		IsFinalizedBlock: d.finalizedBlockType.IsFinalized() && header.Num <= lastFinalizedBlock,
+		IsFinalizedBlock: header.Num <= lastFinalizedBlock,
 		EVMBlockHeader:   header,
 	}
 }
