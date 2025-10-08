@@ -6,7 +6,7 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
-OpNodeURL = "http://localhost:8080"
+OpNodeURL = "OpNodeURL_must_be_defined_in_config_file"
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
