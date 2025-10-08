@@ -396,69 +396,79 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 }
 
 func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
-	initialBatchSize := toBlock - fromBlock + 1
-	var (
-		results   []types.Log
-		batchSize = initialBatchSize
-	)
+	if fromBlock > toBlock {
+		d.log.Errorf("invalid block range: fromBlock=%d > toBlock=%d", fromBlock, toBlock)
+		return nil
+	}
+
+	var results []types.Log
+	batchSize := toBlock - fromBlock + 1
 
 	for start := fromBlock; start <= toBlock; {
-		end := start + batchSize - 1
-		if end > toBlock {
-			end = toBlock
+		end := min(start+batchSize-1, toBlock)
+
+		logs, ok := d.fetchLogsInRange(ctx, start, end, &batchSize)
+		if !ok {
+			// fetchLogsInRange logs and handles retries internally
+			return nil
 		}
 
-		query := ethereum.FilterQuery{
-			Addresses: d.addressesToQuery,
-			FromBlock: new(big.Int).SetUint64(start),
-			ToBlock:   new(big.Int).SetUint64(end),
-		}
-
-		var attempts int
-		for {
-			ctx, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
-			defer cancel()
-
-			logs, err := d.ethClient.FilterLogs(ctx, query)
-			if err == nil {
-				results = append(results, logs...)
-				break
-			}
-
-			if errors.Is(err, context.Canceled) {
-				// context is canceled, we don't want to fatal on max attempts in this case
-				d.log.Errorf("context is canceled getUnfilteredLogs, returning nil")
-				return nil
-			}
-
-			if strings.Contains(err.Error(), "Query returned more than") {
-				if batchSize == 1 {
-					d.log.Errorf("too many logs even in single block %d", start)
-					return nil
-				}
-
-				batchSize /= 2
-				d.log.Warnf("too many logs in range [%d,%d], reducing batch size to %d", start, end, batchSize)
-				end = start + batchSize - 1
-				if end > toBlock {
-					end = toBlock
-				}
-				// Update query with new range
-				query.ToBlock = new(big.Int).SetUint64(end)
-				continue
-			}
-
-			attempts++
-			d.log.Errorf("error calling FilterLogs to eth client: filter: %s err:%w ",
-				filterQueryToString(query),
-				err,
-			)
-			d.rh.Handle(ctx, "getUnfilteredLogs", attempts)
-		}
+		results = append(results, logs...)
 		start = end + 1
 	}
 
 	return results
+}
+
+// fetchLogsInRange tries to fetch logs in the given block range.
+// It handles retry, timeout, and dynamic batch size reduction.
+// Returns false if the process should abort entirely.
+func (d *EVMDownloaderImplementation) fetchLogsInRange(
+	ctx context.Context, start, end uint64, batchSize *uint64) ([]types.Log, bool) {
+	query := ethereum.FilterQuery{
+		Addresses: d.addressesToQuery,
+		FromBlock: new(big.Int).SetUint64(start),
+		ToBlock:   new(big.Int).SetUint64(end),
+	}
+
+	attempts := 0
+
+	for {
+		ctxAttempt, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
+		logs, err := d.ethClient.FilterLogs(ctxAttempt, query)
+		cancel()
+
+		if err == nil {
+			return logs, true
+		}
+
+		// If parent context was canceled, abort completely
+		if errors.Is(err, context.Canceled) {
+			d.log.Warn("context canceled in getUnfilteredLogs; aborting")
+			return nil, false
+		}
+
+		// Too many logs: reduce batch size and retry
+		if strings.Contains(err.Error(), "Query returned more than") {
+			if *batchSize == 1 {
+				d.log.Errorf("too many logs even in single block %d", start)
+				return nil, false
+			}
+
+			*batchSize /= 2
+			newEnd := start + *batchSize - 1
+			d.log.Warnf("too many logs in [%d,%d], reducing batch size to %d", start, end, *batchSize)
+
+			query.ToBlock = new(big.Int).SetUint64(newEnd)
+			end = newEnd
+			continue
+		}
+
+		// Any other error → retry (with backoff handler)
+		attempts++
+		d.log.Errorf("FilterLogs failed (attempt %d): %v, filter: %s", attempts, err, filterQueryToString(query))
+		d.rh.Handle(ctx, "getUnfilteredLogs", attempts)
+	}
 }
 
 func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []types.Log {
