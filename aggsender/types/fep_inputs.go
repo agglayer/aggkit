@@ -7,12 +7,30 @@ import (
 	"math/big"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/consensys/gnark/frontend"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // This file calculate the hash of AggregationProofPublicValues
+
+var _ frontend.Circuit = (*AggregationProofPublicValuesWitness)(nil)
+
+type AggregationProofPublicValuesWitness struct {
+	L1Head           frontend.Variable `gnark:"l1_head,public"`
+	L2PreRoot        frontend.Variable `gnark:"l2_pre_root,public"`
+	L2PostRoot       frontend.Variable `gnark:"l2_post_root,public"`
+	L2BlockNumber    frontend.Variable `gnark:"l2_block_number,public"`
+	RollupConfigHash frontend.Variable `gnark:"rollup_config_hash,public"`
+	MultiBlockVKey   frontend.Variable `gnark:"multi_block_vkey,public"`
+	ProverAddress    frontend.Variable `gnark:"prover_address,public"`
+}
+
+func (s *AggregationProofPublicValuesWitness) Define(api frontend.API) error {
+	// No constraints, this is just a container for public inputs
+	return nil
+}
 
 // AggregationProofPublicValues represents the public values used in the aggregation proof.
 type AggregationProofPublicValues struct {
@@ -24,6 +42,19 @@ type AggregationProofPublicValues struct {
 	MultiBlockVKey      common.Hash
 	TrustedSigner       common.Address
 	AggregationVKeyHash common.Hash
+}
+
+// ToWitness converts the AggregationProofPublicValues to its witness representation.
+func (s *AggregationProofPublicValues) ToWitness() *AggregationProofPublicValuesWitness {
+	return &AggregationProofPublicValuesWitness{
+		L1Head:           s.L1Head,
+		L2PreRoot:        s.L2PreRoot,
+		L2PostRoot:       s.ClaimRoot,
+		L2BlockNumber:    s.L2BlockNumber,
+		RollupConfigHash: s.RollupConfigHash,
+		MultiBlockVKey:   s.MultiBlockVKey,
+		ProverAddress:    s.TrustedSigner,
+	}
 }
 
 // String returns a string representation of the AggregationProofPublicValues.

@@ -1,15 +1,11 @@
 package flows
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/frontend"
 )
 
 var _ types.AggsenderVerifierFlow = (*AggchainProverVerifierFlow)(nil)
@@ -19,6 +15,7 @@ type AggchainProverVerifierFlow struct {
 	*AggchainProverBuilderFlow
 
 	fepInputsQuery types.FEPInputsQuerier
+	proofVerifier  ProofVerifier
 }
 
 // NewAggchainProverVerifierFlow creates a new AggchainProverVerifierFlow
@@ -29,6 +26,7 @@ func NewAggchainProverVerifierFlow(
 	return &AggchainProverVerifierFlow{
 		AggchainProverBuilderFlow: builderFlow,
 		fepInputsQuery:            fepInputsQuery,
+		proofVerifier:             NewSP1Verifier(),
 	}
 }
 
@@ -83,24 +81,13 @@ func (a *AggchainProverVerifierFlow) VerifyCertificate(
 
 	a.log.Infof("Aggchain params match successfully: %s", expectedAggchainParams.String())
 
+	publicInputs := expectedAggchainParams.AggregationProofPublicValues
+
 	// now we can verify the proof itself
-	vk := groth16.NewVerifyingKey(ecc.BN254)
-	if _, err := vk.ReadFrom(bytes.NewReader(aggchainDataProof.Vkey)); err != nil {
-		return fmt.Errorf("aggchainProverFlow - error reading vkey: %w", err)
-	}
-
-	proof := groth16.NewProof(ecc.BN254)
-	if _, err := proof.ReadFrom(bytes.NewReader(aggchainDataProof.Proof)); err != nil {
-		return fmt.Errorf("aggchainProverFlow - error reading proof: %w", err)
-	}
-
-	publicValuesForWitness := expectedAggchainProofPublicValues.ToWitness()
-	publicWitness, err := frontend.NewWitness(publicValuesForWitness, ecc.BN254.ScalarField(), frontend.PublicOnly())
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error creating public witness: %w", err)
-	}
-
-	if err := groth16.Verify(proof, vk, publicWitness); err != nil {
+	if err := a.proofVerifier.Verify(
+		publicInputs,
+		aggchainDataProof.Proof,
+		aggchainDataProof.Vkey); err != nil {
 		return fmt.Errorf("aggchainProverFlow - error verifying aggchain proof: %w", err)
 	}
 
