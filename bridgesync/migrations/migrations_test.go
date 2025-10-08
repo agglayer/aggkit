@@ -462,15 +462,15 @@ func TestMigration0004(t *testing.T) {
 	require.Nil(t, bridgeAfterRollback.IsNativeToken) // Should be NULL after rollback
 }
 
-func TestMigration0005(t *testing.T) {
-	dbPath := path.Join(t.TempDir(), "bridgesyncTest0005.sqlite")
+func TestMigration0006(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0006.sqlite")
 
-	// Create database and run migrations up to 0004 only
+	// Create database and run migrations up to 0005 only
 	database, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
 	defer database.Close()
 
-	// Define migrations up to 0004
+	// Define migrations up to 0005
 	migrations := []types.Migration{
 		{
 			ID:  "bridgesync0001",
@@ -488,17 +488,21 @@ func TestMigration0005(t *testing.T) {
 			ID:  "bridgesync0004",
 			SQL: mig0004,
 		},
+		{
+			ID:  "bridgesync0005",
+			SQL: mig0005,
+		},
 	}
 
-	// Run migrations up to 0004 (4 migrations)
-	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 4)
+	// Run migrations up to 0005 (5 migrations)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 5)
 	require.NoError(t, err)
 
 	ctx := context.Background()
 	tx, err := database.BeginTx(ctx, nil)
 	require.NoError(t, err)
 
-	// Insert test data without txn_sender column (before migration 0005)
+	// Insert test data without txn_sender column (before migration 0006)
 	_, err = tx.Exec(`
 		INSERT INTO block (num, hash) VALUES (1, '0xDEAD');
 
@@ -544,7 +548,7 @@ func TestMigration0005(t *testing.T) {
 	_, err = database.Exec(`SELECT txn_sender FROM bridge LIMIT 1;`)
 	require.Error(t, err) // Should fail because column doesn't exist
 
-	// Now test migration 0005 UP (ADD COLUMN) by manually executing the SQL
+	// Now test migration 0006 UP (ADD COLUMN) by manually executing the SQL
 	// This simulates what the migration system would do
 	_, err = database.Exec(`ALTER TABLE bridge ADD COLUMN txn_sender VARCHAR DEFAULT '';`)
 	require.NoError(t, err)
@@ -650,7 +654,7 @@ func TestMigration0005(t *testing.T) {
 	require.Equal(t, "0xAAAA", bridgeWithCustomTxnSender.TxnSender)
 	require.Equal(t, "0x7777", bridgeWithCustomTxnSender.OriginAddress)
 
-	// Test migration 0005 DOWN (DROP COLUMN) by manually executing the SQL
+	// Test migration 0006 DOWN (DROP COLUMN) by manually executing the SQL
 	_, err = database.Exec(`ALTER TABLE bridge DROP COLUMN txn_sender;`)
 	require.NoError(t, err)
 
