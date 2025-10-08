@@ -99,14 +99,14 @@ type BridgeResponse struct {
 	// Position of the bridge event within the block
 	BlockPos uint64 `json:"block_pos" example:"1"`
 
-	// Address that initiated the bridge transaction
+	// Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA
 	FromAddress Address `json:"from_address" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 
 	// Hash of the transaction that included the bridge event
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
 	// Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)
-	GlobalIndex *big.Int `json:"global_index" example:"4294967296"`
+	GlobalIndex *big.Int `json:"global_index" example:"4294967296" swaggertype:"string"`
 
 	// Raw calldata submitted in the transaction
 	Calldata string `json:"calldata" example:"deadbeef"`
@@ -140,6 +140,9 @@ type BridgeResponse struct {
 
 	// Unique hash representing the bridge event, often used as an identifier
 	BridgeHash Hash `json:"bridge_hash" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"`
+
+	// Address of the transaction sender who initiated the bridge transaction
+	TxnSender Address `json:"txn_sender" example:"0xabc1234567890abcdef1234567890abcdef12345"`
 }
 
 // ClaimsResult contains the list of claim records and the total count
