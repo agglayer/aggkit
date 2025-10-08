@@ -32,7 +32,7 @@ import (
 const (
 	rollupID              = uint32(1)
 	syncBlockChunkSize    = 10
-	defaultDBQueryTimeout = 30 * time.Second
+	defaultDBQueryTimeout = 60 * time.Second
 )
 
 type L2GERManagerContractType int

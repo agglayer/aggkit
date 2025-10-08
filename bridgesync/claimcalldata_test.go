@@ -1114,7 +1114,13 @@ func TestClaimCalldata(t *testing.T) {
 				Amount:             claimEvent.Amount,
 			}
 			logger := log.WithFields("module", "test")
-			err = actualClaim.setClaimCalldata(client, bridgeAddr, tc.log.TxHash, logger)
+
+			// Extract root call first using new function
+			_, rootCall, err := extractCallData(client, bridgeAddr, tc.log.TxHash, logger)
+			require.NoError(t, err)
+
+			// Use setClaimCalldataFromRoot instead of setClaimCalldata
+			err = actualClaim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 			require.Equal(t, tc.expectedClaim.FromAddress, actualClaim.FromAddress)

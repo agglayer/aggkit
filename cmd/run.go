@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"runtime"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
@@ -94,31 +95,47 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
 
+	// Create WaitGroup for backfill goroutines synchronization
+	var backfillWg sync.WaitGroup
+
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
-	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0)
+	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0, &backfillWg)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID)
+		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 	var rpcServices []jRPC.Service
+
+	// Check if any bridge-related component is present and start bridge service once
+	hasBridgeComponent := false
+	for _, component := range components {
+		if component == aggkitcommon.BRIDGE ||
+			component == aggkitcommon.L1BRIDGESYNC ||
+			component == aggkitcommon.L2BRIDGESYNC {
+			hasBridgeComponent = true
+			break
+		}
+	}
+
+	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
+		b := createBridgeService(
+			cfg.REST,
+			cfg.Common.NetworkID,
+			l1InfoTreeSync,
+			l2GERSync,
+			l1BridgeSync,
+			l2BridgeSync,
+		)
+		go b.Start(cliCtx.Context)
+		log.Info("Bridge service started")
+	}
+
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
 			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
-
-		case aggkitcommon.BRIDGE:
-			b := createBridgeService(
-				cfg.REST,
-				cfg.Common.NetworkID,
-				l1InfoTreeSync,
-				l2GERSync,
-				l1BridgeSync,
-				l2BridgeSync,
-			)
-
-			go b.Start(cliCtx.Context)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
 				cliCtx.Context,
@@ -184,7 +201,7 @@ func start(cliCtx *cli.Context) error {
 		go pprof.StartProfilingHTTPServer(cliCtx.Context, cfg.Profiling)
 	}
 
-	waitSignal(nil)
+	waitSignal(nil, &backfillWg)
 
 	return nil
 }
@@ -436,7 +453,7 @@ func logVersion() {
 	)
 }
 
-func waitSignal(cancelFuncs []context.CancelFunc) {
+func waitSignal(cancelFuncs []context.CancelFunc, wg *sync.WaitGroup) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 
@@ -449,6 +466,14 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 			for _, cancel := range cancelFuncs {
 				cancel()
 			}
+
+			// Wait for all backfill goroutines to complete
+			if wg != nil {
+				log.Info("waiting for backfill processes to complete...")
+				wg.Wait()
+				log.Info("all backfill processes completed")
+			}
+
 			os.Exit(exitStatus)
 		}
 	}
@@ -616,6 +641,7 @@ func runBridgeSyncL1IfNeeded(
 	cfg bridgesync.Config,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
+	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
@@ -632,6 +658,16 @@ func runBridgeSyncL1IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
 	}
+
+	// Run txn_sender backfilling in a separate goroutine
+	wg.Add(1)
+	go func() {
+		if err := runTxnSenderBackfill(ctx, cfg, l1Client, wg); err != nil {
+			log.Errorf("txn_sender backfilling failed: %v", err)
+			// Don't fail the entire process, just log the error and continue
+		}
+	}()
+
 	go bridgeSyncL1.Start(ctx)
 
 	return bridgeSyncL1
@@ -644,6 +680,7 @@ func runBridgeSyncL2IfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
+	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{
 		aggkitcommon.BRIDGE,
@@ -665,6 +702,16 @@ func runBridgeSyncL2IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
 	}
+
+	// Run txn_sender backfilling in a separate goroutine
+	wg.Add(1)
+	go func() {
+		if err := runTxnSenderBackfill(ctx, cfg, l2Client, wg); err != nil {
+			log.Errorf("txn_sender backfilling failed: %v", err)
+			// Don't fail the entire process, just log the error and continue
+		}
+	}()
+
 	go bridgeSyncL2.Start(ctx)
 
 	return bridgeSyncL2
@@ -756,4 +803,54 @@ func createRollupDataQuerier(ctx context.Context,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
 			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
 		})
+}
+
+// runTxnSenderBackfill runs the txn_sender backfilling process
+func runTxnSenderBackfill(
+	ctx context.Context,
+	cfg bridgesync.Config,
+	client aggkittypes.EthClienter,
+	wg *sync.WaitGroup,
+) error {
+	const backfillTimeoutMinutes = 10
+
+	// Only run backfilling if we have a database path configured
+	if cfg.DBPath == "" {
+		log.Debug("No database path configured, skipping txn_sender backfilling")
+		return nil
+	}
+
+	// Defer WaitGroup Done to ensure cleanup on exit
+	defer wg.Done()
+
+	log.Info("Starting txn_sender backfilling process")
+
+	// Create backfill instance
+	backfiller, err := bridgesync.NewBackfillTxnSender(
+		cfg.DBPath,
+		client,
+		cfg.BridgeAddr,
+		log.WithFields("module", "tx-sender-backfill"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create backfill instance: %w", err)
+	}
+	defer backfiller.Close()
+
+	// Create context with timeout for backfilling
+	backfillCtx, cancel := context.WithTimeout(ctx, backfillTimeoutMinutes*time.Minute)
+	defer cancel()
+
+	// Run backfilling
+	start := time.Now()
+	if err := backfiller.BackfillAll(backfillCtx); err != nil {
+		log.Errorf("txn_sender backfilling failed: %v", err)
+		// Don't fail the entire process, just log the error and continue
+		return err
+	}
+
+	duration := time.Since(start)
+	log.Infof("txn_sender backfilling completed in %v", duration)
+
+	return nil
 }

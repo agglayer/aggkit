@@ -80,7 +80,7 @@ func buildAppender(
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		bridgeContractV2, client, bridgeAddr, logger)
+		bridgeContractV2, bridgeAddr, client, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
 		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
@@ -99,9 +99,11 @@ func buildAppender(
 }
 
 // buildBridgeEventHandler creates a handler for the Bridge event log.
-func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+func buildBridgeEventHandler(
+	contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	bridgeAddr common.Address,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address, logger *logger.Logger,
+	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
@@ -109,9 +111,10 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
+		// Extract call data and root call for txn_sender
+		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
-			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
+			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
@@ -129,6 +132,7 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
+			TxnSender:          rootCall.From,
 		}})
 		return nil
 	}
@@ -156,8 +160,18 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 			Amount:             claimEvent.Amount,
 		}
 
+		// Extract root call for txn_sender and error checking
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		if err != nil {
+			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
+		}
+		// Check if the root call was successful
+		if rootCall.Err != nil {
+			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
+		}
+
 		if syncFullClaims {
-			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash, logger); err != nil {
+			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {
 				return err
 			}
 		}
@@ -189,8 +203,18 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 			Amount:             claimEvent.Amount,
 		}
 
+		// Extract root call for txn_sender and error checking
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		if err != nil {
+			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
+		}
+		// Check if the root call was successful
+		if rootCall.Err != nil {
+			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
+		}
+
 		if syncFullClaims {
-			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash, logger); err != nil {
+			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {
 				return err
 			}
 		}
@@ -212,7 +236,8 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
+		// Extract calldata in a single call (no need for txn_sender)
+		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -245,7 +270,8 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
+		// Extract calldata in a single call (no need for txn_sender)
+		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -276,7 +302,8 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
+		// Extract calldata in a single call (no need for txn_sender)
+		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -376,46 +403,51 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 	return nil, db.ErrNotFound
 }
 
-// extractCall tries to extract the call for the transaction identified by transaction hash.
-// It relies on debug_traceTransaction JSON RPC function.
-func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash, logger *logger.Logger,
-) (*call, error) {
-	c := &call{To: contractAddr}
-	err := client.Call(c, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+// extractRootCall extracts the root call for a transaction using debug_traceTransaction.
+func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
+	rootCall := &call{To: contractAddr}
+	err := client.Call(rootCall, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
-
-	return findCall(*c, contractAddr, nil, logger)
+	return rootCall, nil
 }
 
-// setClaimCalldata traces the transaction to find and decode calldata for the given bridge address.
-//
-// Parameters:
-// - client: RPC client to fetch the transaction trace.
-// - bridge: Target contract address.
-// - txHash: Transaction hash to trace.
-// - logger: Logger instance for debug logging.
-//
-// Returns an error if tracing fails or calldata isn't found.
-func (c *Claim) setClaimCalldata(
+func extractCallData(
 	client aggkittypes.RPCClienter,
-	bridge common.Address,
+	bridgeAddr common.Address,
 	txHash common.Hash,
 	logger *logger.Logger,
-) error {
-	callFrame := &call{}
-	err := client.Call(callFrame, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+) (foundCall *call, rootCall *call, err error) {
+	// Extract root call first
+	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	// Check if the root call was successful
-	if callFrame.Err != nil {
-		return fmt.Errorf("execution reverted in root call (block %d, tx %s): %s", c.BlockNum, txHash.Hex(), *callFrame.Err)
+	// Find the specific call to the bridge contract
+	foundCall, err = findCall(*rootCall, bridgeAddr, nil, logger)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	_, err = findCall(*callFrame, bridge,
+	return foundCall, rootCall, nil
+}
+
+// setClaimCalldataFromRoot finds and decodes calldata for the given bridge address using an already traced root call.
+//
+// Parameters:
+// - rootCall: Already traced root call.
+// - bridge: Target contract address.
+// - logger: Logger instance for debug logging.
+//
+// Returns an error if calldata isn't found.
+func (c *Claim) setClaimCalldataFromRoot(
+	rootCall *call,
+	bridge common.Address,
+	logger *logger.Logger,
+) error {
+	_, err := findCall(*rootCall, bridge,
 		func(call call) (bool, error) {
 			// Skip reverted calls
 			if call.Err != nil {
