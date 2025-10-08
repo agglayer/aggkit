@@ -65,7 +65,8 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n"+
-		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
+		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
+		"RequireLocalValidatorCheck: false\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -225,7 +226,9 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		l2OriginNetwork: 1,
 		aggLayerClient:  mockAggLayerClient,
 		epochNotifier:   mockEpochNotifier,
-		cfg:             config.Config{},
+		cfg: config.Config{
+			RequireLocalValidatorCheck: true,
+		},
 		validatorPoller: mockValidatorPoller,
 		localValidator:  mockLocalValidator,
 		flow: flows.NewPPBuilderFlow(logger,
@@ -480,6 +483,7 @@ func TestSendCertificate(t *testing.T) {
 				aggLayerClient: mockAgglayerClient,
 				cfg: config.Config{
 					MaxRetriesStoreCertificate: 1,
+					RequireLocalValidatorCheck: true,
 				},
 			}
 
