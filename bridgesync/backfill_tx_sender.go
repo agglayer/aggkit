@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -13,7 +14,8 @@ import (
 
 const (
 	// Batch size for processing records
-	batchSize = 100
+	batchSize = 25
+	dbTimeout = 2 * time.Minute
 )
 
 // BackfillTxnSender handles the backfilling of txn_sender field for bridge records
@@ -22,6 +24,7 @@ type BackfillTxnSender struct {
 	log        *log.Logger
 	client     types.EthClienter
 	bridgeAddr common.Address
+	dbTimeout  time.Duration
 }
 
 // NewBackfillTxnSender creates a new instance of BackfillTxnSender
@@ -41,6 +44,7 @@ func NewBackfillTxnSender(
 		log:        logger,
 		client:     client,
 		bridgeAddr: bridgeAddr,
+		dbTimeout:  dbTimeout,
 	}, nil
 }
 
@@ -128,7 +132,9 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	`, tableName)
 
 	var count int
-	err := b.db.QueryRowContext(ctx, query).Scan(&count)
+	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
+	defer cancel()
+	err := b.db.QueryRowContext(dbCtx, query).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count records needing backfill: %w", err)
 	}
@@ -151,7 +157,9 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 		LIMIT $1
 	`, tableName)
 
-	rows, err := b.db.QueryContext(ctx, query, limit)
+	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
+	defer cancel()
+	rows, err := b.db.QueryContext(dbCtx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
@@ -252,7 +260,9 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 		return nil
 	}
 
-	tx, err := b.db.BeginTx(ctx, nil)
+	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
+	defer cancel()
+	tx, err := b.db.BeginTx(dbCtx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to bulk update txn_sender: %w", err)
 	}
@@ -268,7 +278,7 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 		}
 	}()
 
-	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`
+	stmt, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
 		SET txn_sender = ?
 		WHERE block_num = ? AND block_pos = ?;
@@ -279,7 +289,7 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 	defer stmt.Close()
 
 	for _, update := range updates {
-		_, err := stmt.ExecContext(ctx, update.TxnSender.Hex(), update.BlockNum, update.BlockPos)
+		_, err := stmt.ExecContext(dbCtx, update.TxnSender.Hex(), update.BlockNum, update.BlockPos)
 		if err != nil {
 			return fmt.Errorf("failed to execute update for block %d pos %d: %w",
 				update.BlockNum, update.BlockPos, err)
