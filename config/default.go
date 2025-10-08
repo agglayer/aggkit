@@ -185,7 +185,6 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
-KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
 DryRun = false
@@ -245,6 +244,9 @@ RequireValidatorCall = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
+	[AggSender.StorageRetainCertificatesPolicy]
+		RetainCertificatesCount = 0 # 0 means keep all certificates
+		KeepCertificatesHistory = true
 
 [Prometheus]
 Enabled = true
