@@ -91,7 +91,7 @@ func TestBackfillTxnSender(t *testing.T) {
 	require.Equal(t, 1, bridgeCount)
 
 	// Test getting records needing backfill
-	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 	require.NoError(t, err)
 	require.Len(t, bridgeRecords, 1)
 	require.Equal(t, uint64(1), bridgeRecords[0].BlockNum)
@@ -474,7 +474,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Equal(t, uint64(1), records[0].BlockNum)
@@ -500,7 +500,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 		require.Error(t, err)
 		require.Nil(t, records)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
@@ -524,7 +524,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 0, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
 		require.Error(t, err)
 		require.Nil(t, records)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
@@ -664,7 +664,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		})
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(txHash)
+		sender, err := backfiller.extractTxnSender(t.Context(), txHash)
 		require.NoError(t, err)
 		require.Equal(t, expectedSender, sender)
 	})
@@ -687,7 +687,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		mockClient.On("Call", mock.Anything, "debug_traceTransaction", mock.Anything, mock.Anything).Return(errors.New("transaction not found"))
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(txHash)
+		sender, err := backfiller.extractTxnSender(t.Context(), txHash)
 		require.Error(t, err)
 		require.Equal(t, common.Address{}, sender)
 		require.Contains(t, err.Error(), "failed to extract root call")

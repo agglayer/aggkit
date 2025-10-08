@@ -77,11 +77,19 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 	b.log.Infof("Found %d records in %s table that need txn_sender backfilling", totalCount, tableName)
 
 	// Process records in batches
-	offset := 0
-	for offset < totalCount {
-		records, err := b.getRecordsNeedingBackfill(ctx, tableName, offset, batchSize)
+	for {
+		// Check if context is cancelled before processing next batch
+		select {
+		case <-ctx.Done():
+			b.log.Info("backfill process cancelled, stopping gracefully")
+			return ctx.Err()
+		default:
+		}
+
+		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize)
 		if err != nil {
-			return fmt.Errorf("failed to get records for backfilling: %w", err)
+			b.log.Errorf("failed to get records for backfilling: %w", err)
+			continue
 		}
 
 		if len(records) == 0 {
@@ -89,9 +97,6 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 		}
 
 		b.processBatch(ctx, tableName, records)
-
-		offset += len(records)
-		b.log.Infof("Processed %d/%d records in %s table", offset, totalCount, tableName)
 	}
 
 	b.log.Infof("Completed backfilling for %s table", tableName)
@@ -135,7 +140,7 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	ctx context.Context,
 	tableName string,
-	offset, limit int,
+	limit int,
 ) ([]RecordToBackfill, error) {
 	//nolint:gosec
 	query := fmt.Sprintf(`
@@ -143,10 +148,10 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 		FROM %s
 		WHERE txn_sender = '' OR txn_sender IS NULL
 		ORDER BY block_num, block_pos
-		LIMIT $1 OFFSET $2
+		LIMIT $1
 	`, tableName)
 
-	rows, err := b.db.QueryContext(ctx, query, limit, offset)
+	rows, err := b.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
@@ -177,14 +182,20 @@ func (b *BackfillTxnSender) processBatch(
 ) {
 	// First, extract all txn_sender data
 	updates := make([]RecordUpdate, 0, len(records))
-	var failedExtractions []string
 
 	for _, record := range records {
+		// Check if context is cancelled before processing each record
+		select {
+		case <-ctx.Done():
+			b.log.Info("backfill process cancelled during batch processing, stopping gracefully")
+			return
+		default:
+		}
+
 		// Extract txn_sender from transaction hash
-		txnSender, err := b.extractTxnSender(record.TxHash)
+		txnSender, err := b.extractTxnSender(ctx, record.TxHash)
 		if err != nil {
 			b.log.Errorf("Failed to extract txn_sender for tx %s: %v", record.TxHash.Hex(), err)
-			failedExtractions = append(failedExtractions, record.TxHash.Hex())
 			continue
 		}
 
@@ -195,6 +206,14 @@ func (b *BackfillTxnSender) processBatch(
 		})
 	}
 
+	// Check if context is cancelled before performing bulk update
+	select {
+	case <-ctx.Done():
+		b.log.Info("backfill process cancelled before bulk update, stopping gracefully")
+		return
+	default:
+	}
+
 	// Perform bulk update if we have any successful extractions
 	if len(updates) > 0 {
 		if err := b.bulkUpdateTxnSender(ctx, tableName, updates); err != nil {
@@ -203,15 +222,17 @@ func (b *BackfillTxnSender) processBatch(
 			b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
 		}
 	}
-
-	// Log failed extractions
-	if len(failedExtractions) > 0 {
-		b.log.Errorf("Failed to extract txn_sender for %d transactions: %v", len(failedExtractions), failedExtractions)
-	}
 }
 
 // extractTxnSender extracts the transaction sender from a transaction hash
-func (b *BackfillTxnSender) extractTxnSender(txHash common.Hash) (common.Address, error) {
+func (b *BackfillTxnSender) extractTxnSender(ctx context.Context, txHash common.Hash) (common.Address, error) {
+	// Check if context is cancelled before making network call
+	select {
+	case <-ctx.Done():
+		return common.Address{}, ctx.Err()
+	default:
+	}
+
 	// Use the new extractCallData function to get the transaction sender
 	_, rootCall, err := extractCallData(b.client, b.bridgeAddr, txHash, b.log)
 	if err != nil {
