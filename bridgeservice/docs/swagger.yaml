@@ -59,8 +59,14 @@ definitions:
         example: 42161
         type: integer
       from_address:
-        description: Address that initiated the bridge transaction
+        description: Address that initiated the transaction on bridge contract. It
+          can be intermediary contract or EOA
         example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      global_index:
+        description: Global index of the bridge event (consisted of mainnet flag,
+          rollup id and deposit count)
+        example: "4294967296"
         type: string
       leaf_type:
         description: Type of leaf (bridge event type) used in the tree structure
@@ -81,6 +87,10 @@ definitions:
       tx_hash:
         description: Hash of the transaction that included the bridge event
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+      txn_sender:
+        description: Address of the transaction sender who initiated the bridge transaction
+        example: 0xabc1234567890abcdef1234567890abcdef1234
         type: string
     type: object
   types.BridgesResult:
