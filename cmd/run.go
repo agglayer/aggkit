@@ -151,6 +151,7 @@ func start(cliCtx *cli.Context) error {
 				rollupDataQuerier,
 			)
 			if err != nil {
+				//nolint:gocritic
 				log.Fatal(err)
 			}
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
