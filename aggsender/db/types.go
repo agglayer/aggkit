@@ -4,14 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+const (
+	PrefixFilename = "@"
+)
+
+type CertificateKey struct {
+	Height     uint64 `meddler:"height"`
+	RetryCount int    `meddler:"retry_count"`
+}
+
+func (c CertificateKey) IsRetry() bool {
+	return c.RetryCount > 0
+}
+
+func (c CertificateKey) String() string {
+	return fmt.Sprintf("height: %d,retry: %d", c.Height, c.RetryCount)
+}
 
 // certificateInfo is a struct that holds the information of a certificate in the database
 // It is used to store the information of a certificate in the database
@@ -37,21 +52,51 @@ type certificateInfo struct {
 	ExtraData               string                          `meddler:"extra_data"`
 }
 
-// toCertificate converts the certificateInfo struct to a Certificate struct
-func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
-	signedCert := c.SignedCertificate
+// SetSignedCertificateFilename sets the SignedCertificate field to external file
+func (c *certificateInfo) SetSignedCertificateFilename(filename string) {
+	if c == nil {
+		return
+	}
+	c.SignedCertificate = nil
+	if filename != "" {
+		c.SignedCertificate = new(string)
+		*c.SignedCertificate = PrefixFilename + filename
+	}
+}
 
-	// If SignedCertificate contains a file path, read the content from the file
-	if signedCert != nil && *signedCert != "" && IsJSONFilePath(*signedCert) {
-		if content, err := os.ReadFile(*signedCert); err == nil {
-			contentStr := string(content)
-			signedCert = &contentStr
-		} else {
-			log.Errorf("Failed to read signed certificate file %s: %v", *signedCert, err)
-			return nil, err
+// SignedCertificateFilename returns the filename if SignedCertificate is a file reference
+func (c *certificateInfo) SignedCertificateFilename() *string {
+	if c == nil || c.SignedCertificate == nil {
+		return nil
+	}
+	if strings.HasPrefix(*c.SignedCertificate, PrefixFilename) {
+		filename := strings.TrimPrefix(*c.SignedCertificate, PrefixFilename)
+		return &filename
+	}
+	return nil
+}
+
+func (c *certificateInfo) SignedCertificateData() (*string, error) {
+	if c == nil || c.SignedCertificate == nil {
+		return nil, nil
+	}
+	filename := c.SignedCertificateFilename()
+	if filename != nil {
+		if content, err := os.ReadFile(*filename); err == nil {
+			s := string(content)
+			return &s, nil
 		}
 	}
 
+	return c.SignedCertificate, nil
+}
+
+// toCertificate converts the certificateInfo struct to a Certificate struct
+func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
+	signedCert, err := c.SignedCertificateData()
+	if err != nil {
+		return nil, err
+	}
 	return &types.Certificate{
 		Header: &types.CertificateHeader{
 			Height:                  c.Height,
@@ -109,12 +154,4 @@ func NewNonAcceptedCertificate(
 		CreatedAt:         createdAt,
 		Error:             certError,
 	}, nil
-}
-
-// IsJSONFilePath determines if the given string is likely a JSON file path
-// by checking if it contains path separators and has a file extension
-func IsJSONFilePath(s string) bool {
-	// Check if it contains path separators and has a file extension
-	return (strings.Contains(s, "/") || strings.Contains(s, "\\")) &&
-		filepath.Ext(s) == ".json"
 }

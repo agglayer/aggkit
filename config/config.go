@@ -223,6 +223,10 @@ var (
 			FieldNamePattern: "Aggsender.BlockFinality",
 			Reason:           "aggsender use as finality BridgeL2Sync.BlockFinality",
 		},
+		{
+			FieldNamePattern: "AggSender.KeepCertificatesHistory",
+			Reason:           "field moved to AggSender.StorageRetainCertificatesPolicy.KeepCertificatesHistory",
+		},
 	}
 )
 

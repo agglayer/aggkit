@@ -78,9 +78,9 @@ func getCertFromAggsenderDBForTest(t *testing.T) (*types.Certificate, *agglayert
 	dbPath := "testData/aggsender.sqlite"
 
 	cfg := db.AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		CertificatesDir:          filepath.Join(filepath.Dir(dbPath), "certificates"),
+		RetainCertificatesPolicy: *db.NewStorageRetainCertificatesPolicyDefault(),
 	}
 	logger := log.WithFields("test", "TestCertificateHash")
 	database, err := db.NewAggSenderSQLStorage(logger, cfg)
