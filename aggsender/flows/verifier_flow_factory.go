@@ -113,6 +113,9 @@ func NewLocalVerifier(
 
 		return NewPPVerifierFlow(ppBuilderFlow), nil
 	case types.AggchainProofMode:
+		if err := cfg.OptimisticModeConfig.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid optimistic mode config: %w", err)
+		}
 		builderFlow, ok := builderFlow.(*AggchainProverBuilderFlow)
 		if !ok {
 			return nil,

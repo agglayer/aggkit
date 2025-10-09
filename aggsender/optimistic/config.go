@@ -1,6 +1,8 @@
 package optimistic
 
 import (
+	"fmt"
+
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -17,4 +19,14 @@ type Config struct {
 	// the trusted sequencer address.
 	// This is useful to ensure that the signer is the trusted sequencer, and not a random signer.
 	RequireKeyMatchTrustedSequencer bool `mapstructure:"RequireKeyMatchTrustedSequencer"`
+}
+
+func (c Config) Validate() error {
+	if c.SovereignRollupAddr == (ethCommon.Address{}) {
+		return fmt.Errorf("SovereignRollupAddr must be defined and non zero")
+	}
+	if c.OpNodeURL == "" {
+		return fmt.Errorf("OpNodeURL must be defined in config file")
+	}
+	return nil
 }
