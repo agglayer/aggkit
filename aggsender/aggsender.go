@@ -355,7 +355,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
-		a.log.Errorf("error validating certificate locally: %w", err)
+		a.log.Warnf("error validating certificate locally: %w", err)
 	}
 
 	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
