@@ -72,6 +72,7 @@ const (
 	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 	reorgDetectorL1DeprecatedHint          = "ReorgDetectorL1 is deprecated, remove it from configuration"
+	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
 )
@@ -224,8 +225,8 @@ var (
 			Reason:           "aggsender use as finality BridgeL2Sync.BlockFinality",
 		},
 		{
-			FieldNamePattern: "AggSender.KeepCertificatesHistory",
-			Reason:           "field moved to AggSender.StorageRetainCertificatesPolicy.KeepCertificatesHistory",
+			FieldNamePattern: "Aggsender.RequireValidatorCall",
+			Reason:           requireValidatorCallDeprecatedHint,
 		},
 	}
 )

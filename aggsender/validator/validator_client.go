@@ -55,6 +55,7 @@ func (v *ValidatorClient) ValidateCertificate(
 	ctx context.Context,
 	previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 	certificate *agglayertypes.Certificate,
+	lastL2BlockInCert uint64,
 ) ([]byte, error) {
 	protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
 	if err != nil {
@@ -64,6 +65,7 @@ func (v *ValidatorClient) ValidateCertificate(
 	response, err := v.client.ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 		PreviousCertificateId: certIDToProtoNullable(previousCertificateID),
 		Certificate:           protoCert,
+		LastL2BlockInCert:     lastL2BlockInCert,
 	})
 
 	if err != nil {

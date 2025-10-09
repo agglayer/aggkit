@@ -300,7 +300,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						RollupIndex: 0,
 						LeafIndex:   2,
 					},
-					ClaimData: &agglayertypes.ClaimFromMainnnet{
+					ClaimData: &agglayertypes.ClaimFromMainnet{
 						L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0xbbb"),
@@ -379,6 +379,82 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConvertToImportedBridgeExitsWithoutClaimData_NoClaims(t *testing.T) {
+	t.Parallel()
+
+	exits, err := ConvertToImportedBridgeExitsWithoutClaimData([]bridgesync.Claim{})
+	require.NoError(t, err)
+	require.Equal(t, []*agglayertypes.ImportedBridgeExit{}, exits)
+}
+
+func TestConvertToImportedBridgeExitsWithoutClaimData_MultipleClaims(t *testing.T) {
+	t.Parallel()
+
+	claims := []bridgesync.Claim{
+		{
+			IsMessage:          false,
+			OriginNetwork:      1,
+			OriginAddress:      common.HexToAddress("0x123"),
+			DestinationAddress: common.HexToAddress("0x456"),
+			Amount:             big.NewInt(100),
+			GlobalIndex:        big.NewInt(1),
+			BlockNum:           100,
+			BlockPos:           1,
+		},
+		{
+			IsMessage:          true,
+			OriginNetwork:      3,
+			OriginAddress:      common.HexToAddress("0x789"),
+			DestinationAddress: common.HexToAddress("0xabc"),
+			Amount:             big.NewInt(200),
+			GlobalIndex:        big.NewInt(2),
+			BlockNum:           101,
+			BlockPos:           2,
+		},
+	}
+
+	expected := []*agglayertypes.ImportedBridgeExit{
+		{
+			BridgeExit: &agglayertypes.BridgeExit{
+				LeafType: agglayertypes.LeafTypeAsset,
+				TokenInfo: &agglayertypes.TokenInfo{
+					OriginNetwork:      1,
+					OriginTokenAddress: common.HexToAddress("0x123"),
+				},
+				DestinationAddress: common.HexToAddress("0x456"),
+				Amount:             big.NewInt(100),
+				Metadata:           crypto.Keccak256(nil),
+			},
+			GlobalIndex: &agglayertypes.GlobalIndex{
+				MainnetFlag: false,
+				RollupIndex: 0,
+				LeafIndex:   1,
+			},
+		},
+		{
+			BridgeExit: &agglayertypes.BridgeExit{
+				LeafType: agglayertypes.LeafTypeMessage,
+				TokenInfo: &agglayertypes.TokenInfo{
+					OriginNetwork:      3,
+					OriginTokenAddress: common.HexToAddress("0x789"),
+				},
+				DestinationAddress: common.HexToAddress("0xabc"),
+				Amount:             big.NewInt(200),
+				Metadata:           crypto.Keccak256(nil),
+			},
+			GlobalIndex: &agglayertypes.GlobalIndex{
+				MainnetFlag: false,
+				RollupIndex: 0,
+				LeafIndex:   2,
+			},
+		},
+	}
+
+	exits, err := ConvertToImportedBridgeExitsWithoutClaimData(claims)
+	require.NoError(t, err)
+	require.Equal(t, expected, exits)
 }
 
 func generateTestProof(t *testing.T) treetypes.Proof {

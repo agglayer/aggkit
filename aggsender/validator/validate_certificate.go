@@ -19,13 +19,6 @@ var (
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
-type FlowInterface interface {
-	GenerateBuildParams(ctx context.Context,
-		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
-	BuildCertificate(ctx context.Context,
-		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
-}
-
 type L1InfoTreeRootByLeafQuerier interface {
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
@@ -34,76 +27,129 @@ type L1InfoTreeRootByLeafQuerier interface {
 // CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
-	flowPP                FlowInterface
+	flow                  types.AggsenderVerifierFlow
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
+	certQuerier           types.CertificateQuerier
+	lerQuerier            types.LERQuerier
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
-	flowPP FlowInterface,
-	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier) *CertificateValidator {
+	flow types.AggsenderVerifierFlow,
+	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
+	certQuerier types.CertificateQuerier,
+	lerQuerier types.LERQuerier) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
-		flowPP:                flowPP,
+		flow:                  flow,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
+		certQuerier:           certQuerier,
+		lerQuerier:            lerQuerier,
 	}
 }
 
-type VerifyIncommingRequests = types.VerifyIncomingRequest
-
 // ValidateCertificate validates the incoming certificate against the previous one.
-func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error {
+func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params types.VerifyIncomingRequest) error {
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
-	// If metadata is not lastest version when is generated again is always differ
-	// metadata field
-	if err := a.checkMetadataCompatibility(params); err != nil {
-		return fmt.Errorf("failed CheckMetadataCompatibility: %w", err)
+	var (
+		previousCertificateToBlock uint64
+		err                        error
+	)
+
+	if params.PreviousCertificate != nil {
+		previousCertificateToBlock, err = a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
+		if err != nil {
+			return fmt.Errorf("failed to get last settled certificate block: %w", err)
+		}
 	}
-	// Between cert must be no gap because if there are could be a attack vector
+
+	// Validate last L2 block in certificate
+	if err := a.validateLastL2BlockInCert(ctx, params, previousCertificateToBlock); err != nil {
+		return fmt.Errorf("failed to validate last L2 block in new certificate: %w", err)
+	}
+
+	// Between cert must be no gap because if there are could be an attack vector
 	if err := a.checkContigousCertificates(params); err != nil {
 		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
 	}
 
-	if err := a.checkPreviousCertificate(params.PreviousCertificate); err != nil {
+	// Check if the previous certificate is settled
+	if err := a.checkIsPreviousCertificateSettled(params.PreviousCertificate); err != nil {
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
+
 	// Build corresponding certificate
-	preBuildParams, err := a.getCertificatePreBuildParams(ctx, params)
+	preBuildParams, err := a.getCertificatePreBuildParams(ctx, params, previousCertificateToBlock)
 	if err != nil {
 		return fmt.Errorf("failed to get certificate pre-build params: %w", err)
 	}
+
 	a.log.Debugf("aggsender-validator: preBuild: %s", preBuildParams.String())
-	buildParams, err := a.flowPP.GenerateBuildParams(ctx, preBuildParams)
+
+	// Generate build params
+	buildParams, err := a.flow.GenerateBuildParams(ctx, preBuildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.GenerateBuildParams: %w", err)
 	}
-	certificate, err := a.flowPP.BuildCertificate(ctx, buildParams)
+
+	// Build the certificate
+	certificate, err := a.flow.BuildCertificate(ctx, buildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
 	}
+
+	// Compare the incoming certificate with the one generated
 	err = a.compareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("certificate not equal to expected: %w", err)
 	}
+
+	// Verify claim proofs
+	if err := a.verifyClaimProofs(
+		params.Certificate.ImportedBridgeExits,
+		buildParams.L1InfoTreeRootFromWhichToProve); err != nil {
+		return fmt.Errorf("failed to verify claim proofs: %w", err)
+	}
+
+	// Verify AggchainData specific to each flow
+	if err := a.flow.VerifyCertificate(
+		ctx,
+		params.Certificate,
+		params.LastL2BlockInCert,
+		previousCertificateToBlock); err != nil {
+		return fmt.Errorf("failed to verify certificate in flow: %w", err)
+	}
+
 	return nil
 }
 
-func (a *CertificateValidator) checkPreviousCertificate(previousCertificate *agglayertypes.CertificateHeader) error {
-	if previousCertificate != nil {
-		if !previousCertificate.Status.IsSettled() {
-			return fmt.Errorf("previous certificate %s is not settled (status:%s)",
-				previousCertificate.ID(), previousCertificate.Status.String())
+func (a *CertificateValidator) verifyClaimProofs(
+	importedBridgeExits []*agglayertypes.ImportedBridgeExit,
+	rootFromWhichToProve common.Hash,
+) error {
+	for _, ibe := range importedBridgeExits {
+		if err := ibe.VerifyProofs(rootFromWhichToProve); err != nil {
+			return fmt.Errorf("failed to verify imported bridge exit proof: %s. Err: %w", ibe.String(), err)
 		}
 	}
+
+	return nil
+}
+
+// checkIsPreviousCertificateSettled checks if the previous certificate is settled
+func (a *CertificateValidator) checkIsPreviousCertificateSettled(
+	previousCertificate *agglayertypes.CertificateHeader) error {
+	if previousCertificate != nil && !previousCertificate.Status.IsSettled() {
+		return fmt.Errorf("previous certificate %s is not settled (status: %s)",
+			previousCertificate.ID(), previousCertificate.Status.String())
+	}
+
 	return nil
 }
 
 // checkContigousCertificates checks if the incoming certificate is contiguous with the previous one.
-func (a *CertificateValidator) checkContigousCertificates(params VerifyIncommingRequests) error {
-	if params.Certificate == nil {
-		return ErrNilCertificate
-	}
+func (a *CertificateValidator) checkContigousCertificates(params types.VerifyIncomingRequest) error {
 	if params.PreviousCertificate == nil {
 		return a.checkFirstCertificateBlocks(params)
 	}
@@ -111,47 +157,12 @@ func (a *CertificateValidator) checkContigousCertificates(params VerifyIncomming
 		return fmt.Errorf("certificate height not contigous, expected: %d, got: %d",
 			params.PreviousCertificate.Height+1, params.Certificate.Height)
 	}
-	// certificate != nil && previousCertificate != nil
-	currentBlockRange, err := getBlockRangeFromMetadata(params.Certificate.Metadata)
-	if err != nil {
-		return fmt.Errorf("failed to get block range from certificate metadata: %w", err)
+	if params.Certificate.PrevLocalExitRoot != params.PreviousCertificate.NewLocalExitRoot {
+		return fmt.Errorf("certificate PrevLocalExitRoot %s is not equal to previous certificate NewLocalExitRoot %s",
+			params.Certificate.PrevLocalExitRoot.String(),
+			params.PreviousCertificate.NewLocalExitRoot.String())
 	}
-	if currentBlockRange.IsEmpty() {
-		return fmt.Errorf("certificate block range %s have no block! , certificate: %s",
-			currentBlockRange.String(),
-			params.Certificate.ID())
-	}
-	previousBlockRange, err := getBlockRangeFromMetadata(params.PreviousCertificate.Metadata)
-	if err != nil {
-		return fmt.Errorf("failed to get block range from previous certificate metadata: %w", err)
-	}
-	if previousBlockRange.IsNextContigousBlock(currentBlockRange) {
-		// No more check required is just the next one
-		return nil
-	}
-	return fmt.Errorf("certificate block range %s is not contiguous with previous certificate block range %s, "+
-		"certificate: %s, previous certificate: %s",
-		currentBlockRange.String(),
-		previousBlockRange.String(),
-		params.Certificate.ID(),
-		params.PreviousCertificate.ID())
-}
 
-func (a *CertificateValidator) checkMetadataCompatibility(params VerifyIncommingRequests) error {
-	if params.Certificate == nil {
-		return nil
-	}
-	// Check if metadata is compatible with the current version
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling certificate metadata: %w. Err: %w", err, ErrMetadataNotCompatible)
-	}
-	if metadataUnmarshal.Version != types.LatestCertificateMetadataVersion {
-		return fmt.Errorf("certificate metadata version is not latest, expected: %d, got: %d."+
-			"Can't generate a certificate if metadata version is not latest because the field."+
-			" will differ. Err: %w",
-			types.LatestCertificateMetadataVersion, metadataUnmarshal.Version, ErrMetadataNotCompatible)
-	}
 	return nil
 }
 
@@ -167,39 +178,40 @@ func (a *CertificateValidator) compareCertificates(
 	diffStr := strings.Join(diffs, "\n")
 	// This is redudant, but just in case
 	if incomingCertificate.CertificateID() != localCertificate.CertificateID() {
-		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s.\n FullDiff: %s",
+		return fmt.Errorf("certificates ids mismatch, incoming: %s, local: %s.\n FullDiff: %s",
 			incomingCertificate.CertificateID().Hex(), localCertificate.CertificateID().Hex(), diffStr)
 	}
 	if len(diffs) > 0 {
-		return fmt.Errorf("certificates mismatch. FullDiff: %s",
-			diffStr)
+		return fmt.Errorf("certificates mismatch. FullDiff: %s", diffStr)
 	}
 	return nil
 }
 
 // checkFirstCertificateBlocks checks that the first certificate blocks are correct
-func (a *CertificateValidator) checkFirstCertificateBlocks(params VerifyIncommingRequests) error {
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
-	if err != nil {
-		return fmt.Errorf("error checking first certificate because can't unmarshal metadata. Err: %w", err)
-	}
-	if metadataUnmarshal.FromBlock != 1 {
-		// The first certificate must start from block 0
-		return fmt.Errorf("first certificate must start from block 1, but got: %d",
-			metadataUnmarshal.FromBlock)
-	}
+func (a *CertificateValidator) checkFirstCertificateBlocks(params types.VerifyIncomingRequest) error {
 	if params.Certificate.Height != 0 {
 		// The first certificate must have height 0
 		return fmt.Errorf("first certificate must have height 0, but got: %d",
 			params.Certificate.Height)
+	}
+	startLER, err := a.lerQuerier.GetLastLocalExitRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get start LER: %w", err)
+	}
+	if params.Certificate.PrevLocalExitRoot != startLER {
+		return fmt.Errorf("first certificate must have correct starting PrevLocalExitRoot: %s, but got: %s",
+			startLER.String(),
+			params.Certificate.PrevLocalExitRoot.String())
 	}
 	return nil
 }
 
 // getCertificatePreBuildParams prepares the parameters needed to build a certificate based
 // on incomming certificate
-func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
-	params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {
+func (a *CertificateValidator) getCertificatePreBuildParams(
+	ctx context.Context,
+	params types.VerifyIncomingRequest,
+	previousCertToBlock uint64) (*types.CertificatePreBuildParams, error) {
 	if params.Certificate == nil {
 		return nil, fmt.Errorf("preBuildParams. Err: %w", ErrNilCertificate)
 	}
@@ -207,14 +219,9 @@ func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("preBuildParams. failed to convert previous certificate to Aggsender format: %w", err)
 	}
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("preBuildParams. Error unmarshal cert.metadata. Err: %w", err)
-	}
-	blockRange, err := metadataUnmarshal.BlockRange()
-	if err != nil {
-		return nil, fmt.Errorf("preBuildParams. failed to get block range from certificate metadata: %w", err)
-	}
+
+	blockRange := types.NewBlockRange(previousCertToBlock+1, params.LastL2BlockInCert)
+	certType := a.certQuerier.CalculateCertificateType(params.Certificate, params.LastL2BlockInCert)
 
 	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafIndex(ctx, params.Certificate.L1InfoTreeLeafCount-1)
 	if err != nil {
@@ -224,39 +231,35 @@ func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
 
 	return &types.CertificatePreBuildParams{
 		BlockRange:          blockRange,
-		RetryCount:          0, // TODO: ???
-		CertificateType:     guessCertificateType(params.Certificate, metadataUnmarshal.CertificateType()),
+		CertificateType:     certType,
 		LastSentCertificate: lastSentCertificate,
 		L1InfoTreeToProve: &types.CertificateL1InfoTreeData{
 			L1InfoTreeRootToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:   params.Certificate.L1InfoTreeLeafCount,
 		},
-		CreatedAt: metadataUnmarshal.CreatedAt,
 	}, nil
 }
 
-// guessCertificateType tries to guess the certificate type based on the certificate and metadata.
-func guessCertificateType(certificate *agglayertypes.Certificate,
-	metadataCertType types.CertificateType) types.CertificateType {
-	if metadataCertType != types.CertificateTypeUnknown {
-		return metadataCertType
+// validateLastL2BlockInCert checks that the provided last L2 block in the certificate by the proposer
+// is greater or equal to the blocks we see in the new certificate
+func (a *CertificateValidator) validateLastL2BlockInCert(
+	ctx context.Context,
+	req types.VerifyIncomingRequest,
+	lastSettledBlock uint64) error {
+	if req.LastL2BlockInCert <= lastSettledBlock {
+		return fmt.Errorf("the last L2 block in the certificate (%d) must be greater than the last settled block (%d)",
+			req.LastL2BlockInCert, lastSettledBlock)
 	}
-	// Metadata doesn't have the cert type,  I will try to guess from the certificate
-	// TODO: Double check this logic... what about optimistic, PP have something in this field
-	if certificate.AggchainData != nil {
-		_, ok := certificate.AggchainData.(*agglayertypes.AggchainDataProof)
-		if ok {
-			return types.CertificateTypeFEP
-		}
-	}
-	return types.CertificateTypePP
-}
 
-func getBlockRangeFromMetadata(metadata common.Hash) (types.BlockRange, error) {
-	emptyBlockRange := types.BlockRange{}
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(metadata)
+	newCertToBlock, err := a.certQuerier.GetNewCertificateToBlock(ctx, req.Certificate)
 	if err != nil {
-		return emptyBlockRange, ErrMetadataNotCompatible
+		return fmt.Errorf("failed to get new certificate to block: %w", err)
 	}
-	return metadataUnmarshal.BlockRange()
+
+	if newCertToBlock > req.LastL2BlockInCert {
+		return fmt.Errorf("new certificate to block %d must be less than or equal to last L2 block "+
+			"provided by the proposer %d", newCertToBlock, req.LastL2BlockInCert)
+	}
+
+	return nil
 }

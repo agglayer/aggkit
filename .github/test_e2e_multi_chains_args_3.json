@@ -1,7 +1,0 @@
-{
-  "args": {
-    "deployment_suffix": "-003",
-    "zkevm_rollup_chain_id": 20203,
-    "zkevm_rollup_id": 3
-  }
-}

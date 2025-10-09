@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
@@ -14,10 +15,15 @@ func NewOptimistic(ctx context.Context,
 	l1Client aggkittypes.BaseEthereumClienter,
 	chainID uint64,
 	cfg Config) (*OptimisticSignatureCalculatorImpl, *OptimisticModeQuerierFromContract, error) {
+	aggchainFEP, err := aggchainfep.NewAggchainfepCaller(cfg.SovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating aggchainFEP contract caller: %w", err)
+	}
+
 	optimisticSigner, err := NewOptimisticSignatureCalculatorImpl(
 		ctx,
 		logger,
-		l1Client,
+		aggchainFEP,
 		chainID,
 		cfg)
 	if err != nil {

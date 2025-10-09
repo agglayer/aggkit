@@ -63,11 +63,153 @@ func TestBlockNumberFinalityWithOffset(t *testing.T) {
 	}
 }
 
-func TestBlockNumberFinalityCmp(t *testing.T) {
-	require.True(t, SafeBlock.GreaterThan(&FinalizedBlock))
-	require.True(t, LatestBlock.GreaterThan(&FinalizedBlock))
-	require.True(t, LatestBlock.GreaterThan(&SafeBlock))
-	require.True(t, PendingBlock.GreaterThan(&LatestBlock))
+func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
+	tests := []struct {
+		name           string
+		firstFinality  BlockNumberFinality
+		secondFinality BlockNumberFinality
+		isLessFinal    bool
+	}{
+		{
+			name:           "empty finality less final than pending block type",
+			firstFinality:  BlockNumberFinality{}, // IsEmpty()
+			secondFinality: PendingBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "pending block type less final than latest block type",
+			firstFinality:  PendingBlock,
+			secondFinality: LatestBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "pending block type less final than safe block type",
+			firstFinality:  PendingBlock,
+			secondFinality: SafeBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "pending block type less final than fianlized block type",
+			firstFinality:  PendingBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "latest block type less final than pending block type",
+			firstFinality:  LatestBlock,
+			secondFinality: SafeBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "latest block type less final than finalzed block type",
+			firstFinality:  LatestBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "safe block type less final than finalized block type",
+			firstFinality:  SafeBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name:           "safe block type less final than finalized block type",
+			firstFinality:  SafeBlock,
+			secondFinality: FinalizedBlock,
+			isLessFinal:    true,
+		},
+		{
+			name: "finalized block type less strict due to offset",
+			firstFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: 1,
+			},
+			secondFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: 5,
+			},
+			isLessFinal: false,
+		},
+		{
+			name: "finalized block type stricter due to offset",
+			firstFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: 1,
+			},
+			secondFinality: BlockNumberFinality{
+				Block:  Safe,
+				Offset: -5,
+			},
+			isLessFinal: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.firstFinality.LessFinalThan(tt.secondFinality)
+			require.Equal(t, tt.isLessFinal, result)
+		})
+	}
+}
+
+func TestBlockNumber_ApplyOffset(t *testing.T) {
+	tests := []struct {
+		name           string
+		blockType      BlockNumber
+		blockNumber    uint64
+		offset         int64
+		expectedResult uint64
+	}{
+		{
+			name:           "positive offset",
+			blockType:      0,
+			blockNumber:    100,
+			offset:         5,
+			expectedResult: 105,
+		},
+		{
+			name:           "negative offset within range",
+			blockType:      0,
+			blockNumber:    100,
+			offset:         -10,
+			expectedResult: 90,
+		},
+		{
+			name:           "negative offset, capped to zero",
+			blockType:      0,
+			blockNumber:    5,
+			offset:         -10,
+			expectedResult: 0,
+		},
+		{
+			name:           "negative offset below zero",
+			blockType:      0,
+			blockNumber:    50,
+			offset:         -100,
+			expectedResult: 0,
+		},
+		{
+			name:           "zero offset",
+			blockType:      0,
+			blockNumber:    123,
+			offset:         0,
+			expectedResult: 123,
+		},
+		{
+			name:           "latest block ignores positive offset",
+			blockType:      Latest,
+			blockNumber:    500,
+			offset:         10,
+			expectedResult: 500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.blockType.ApplyOffset(tt.blockNumber, tt.offset)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
 }
 
 func readConfigFile[T any](t *testing.T, configData string) (T, error) {

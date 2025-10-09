@@ -81,7 +81,6 @@ func TestNewLx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l1BridgeSync.OriginNetwork())
-	require.Equal(t, blockFinalityType, l1BridgeSync.BlockFinality())
 
 	bridgeSyncL2Cfg := Config{
 		DBPath:                             dbPath,
@@ -107,7 +106,6 @@ func TestNewLx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
-	require.Equal(t, blockFinalityType, l2BridgdeSync.BlockFinality())
 
 	// Fails the sanity check of the contract address
 	mockEthClient = mocksethclient.NewEthClienter(t)
@@ -210,9 +208,9 @@ func TestIsActive(t *testing.T) {
 	})
 }
 
-func TestGetBridgeRootByHash(t *testing.T) {
+func TestGetExitRootByHash(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, err := s.GetBridgeRootByHash(context.Background(), common.Hash{})
+	_, err := s.GetExitRootByHash(context.Background(), common.Hash{})
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
@@ -249,6 +247,12 @@ func TestGetExitRootByIndex(t *testing.T) {
 func TestGetClaims(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
 	_, err := s.GetClaims(context.Background(), 0, 0)
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+}
+
+func TestGetClaimsByGlobalIndex(t *testing.T) {
+	s := BridgeSync{processor: &processor{halted: true}}
+	_, err := s.GetClaimsByGlobalIndex(context.Background(), new(big.Int))
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 

@@ -3,20 +3,63 @@ package types
 import (
 	"database/sql/driver"
 	"fmt"
+	"strings"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const NilStr = "nil"
+var EmptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+
+const (
+	NilStr = "nil"
+	NAStr  = "N/A"
+)
 
 type AggsenderMode string
 
 const (
 	PessimisticProofMode AggsenderMode = "PessimisticProof"
 	AggchainProofMode    AggsenderMode = "AggchainProof"
+	AutoMode             AggsenderMode = "Auto"
 )
+
+// meddler support for store as string
+func (c *AggsenderMode) Scan(value interface{}) error {
+	str, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("AggsenderMode: expected string, got %T", value)
+	}
+	v, err := NewAggsenderMode(str)
+	if err != nil {
+		return fmt.Errorf("AggsenderMode.Scan(...): %w", err)
+	}
+	*c = v
+	return nil
+}
+
+func (c *AggsenderMode) Validate() error {
+	if c == nil {
+		return fmt.Errorf("AggsenderMode is nil")
+	}
+	_, err := NewAggsenderMode(c.String())
+	return err
+}
+
+func NewAggsenderMode(mode string) (AggsenderMode, error) {
+	modeUpper := strings.ToUpper(mode)
+	switch modeUpper {
+	case strings.ToUpper(PessimisticProofMode.String()):
+		return PessimisticProofMode, nil
+	case strings.ToUpper(AggchainProofMode.String()):
+		return AggchainProofMode, nil
+	case strings.ToUpper(AutoMode.String()):
+		return AutoMode, nil
+	default:
+		return "", fmt.Errorf("unknown AggsenderMode: %s", mode)
+	}
+}
 
 func (m AggsenderMode) String() string {
 	return string(m)
@@ -200,6 +243,16 @@ func (c *CertificateHeader) String() string {
 		finalizedL1InfoTreeRoot = c.FinalizedL1InfoTreeRoot.String()
 	}
 
+	createdAt := NAStr
+	if c.CreatedAt != 0 {
+		createdAt = time.Unix(int64(c.CreatedAt), 0).Format(time.RFC1123) // For a more human-readable format
+	}
+
+	updatedAt := NAStr
+	if c.UpdatedAt != 0 {
+		updatedAt = time.Unix(int64(c.UpdatedAt), 0).Format(time.RFC1123) // For a more human-readable format
+	}
+
 	return fmt.Sprintf("aggsender.CertificateHeader: \n"+
 		"Type: %s \n"+
 		"Height: %d \n"+
@@ -223,8 +276,8 @@ func (c *CertificateHeader) String() string {
 		c.Status.String(),
 		c.FromBlock,
 		c.ToBlock,
-		time.Unix(int64(c.CreatedAt), 0),
-		time.Unix(int64(c.UpdatedAt), 0),
+		createdAt,
+		updatedAt,
 		finalizedL1InfoTreeRoot,
 		c.CertSource.String(),
 	)
@@ -255,12 +308,29 @@ func (c *CertificateHeader) IsClosed() bool {
 	return c.Status.IsClosed()
 }
 
-// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created
+// ElapsedTimeSinceCreationString returns the time elapsed since the certificate was created as a string
+func (c *CertificateHeader) ElapsedTimeSinceCreationString() string {
+	t := c.ElapsedTimeSinceCreation()
+	if t == 0 {
+		return NAStr
+	}
+
+	return t.String()
+}
+
+// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created.
 func (c *CertificateHeader) ElapsedTimeSinceCreation() time.Duration {
-	if c == nil {
+	if c == nil || c.CreatedAt == 0 {
 		return 0
 	}
-	return time.Now().UTC().Sub(time.Unix(int64(c.CreatedAt), 0))
+	createdAt := time.Unix(int64(c.CreatedAt), 0).UTC()
+	elapsed := time.Since(createdAt)
+
+	if elapsed < 0 {
+		return 0
+	}
+
+	return elapsed
 }
 
 type Certificate struct {
@@ -269,28 +339,6 @@ type Certificate struct {
 	AggchainProof     *AggchainProof `meddler:"aggchain_proof,aggchainproof"`
 	// ExtraData is a no structured data used to debug or extra info for this certificate
 	ExtraData string `meddler:"extra_data"`
-}
-
-func (c *Certificate) DetermineCertType(startL2Block uint64) CertificateType {
-	if c == nil {
-		return CertificateTypeUnknown
-	}
-	if c.Header.CertType == CertificateTypeUnknown {
-		if c.AggchainProof != nil {
-			return CertificateTypeFEP
-		}
-		// If the certificate is not set, we can determine the type based on the FromBlock
-		if startL2Block == 0 {
-			return CertificateTypeUnknown
-		}
-		// If fromBlock it's before startL2Block it's a valid determination that it is a PP
-		if c.Header.FromBlock < startL2Block {
-			return CertificateTypePP
-		}
-		// If not then we assume it's a FEP
-		return CertificateTypeFEP
-	}
-	return c.Header.CertType
 }
 
 func (c *Certificate) String() string {

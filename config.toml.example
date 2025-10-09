@@ -126,9 +126,9 @@ EnableAggOracleCommittee = false
 #
 [AggSender]
 # ------------------------------------------------------------------------------
-# Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof"
+# Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof", "Auto"
 # ------------------------------------------------------------------------------
-Mode = "PessimisticProof"
+# Mode = "Auto"
 #
 # [Prometheus]
 # Enabled = true

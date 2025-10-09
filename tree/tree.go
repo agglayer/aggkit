@@ -272,3 +272,17 @@ func CalculateRoot(leafHash common.Hash, proof [types.DefaultHeight]common.Hash,
 
 	return node
 }
+
+// VerifyProof validates a Merkle proof for a given leaf index against an expected root.
+// It returns nil when the proof is valid or an error describing the mismatch.
+func VerifyProof(leaf common.Hash, proof types.Proof, index uint32, expectedRoot common.Hash) error {
+	calculated := CalculateRoot(leaf, proof, index)
+	if calculated == expectedRoot {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"invalid proof: calculated root %s does not match expected root %s",
+		calculated.Hex(), expectedRoot.Hex(),
+	)
+}

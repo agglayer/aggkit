@@ -56,7 +56,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata-1"),
 				},
-				ClaimData: &agglayertypes.ClaimFromMainnnet{
+				ClaimData: &agglayertypes.ClaimFromMainnet{
 					ProofLeafMER: &agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: [32]common.Hash{},
@@ -78,7 +78,6 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				},
 			},
 		},
-		Metadata:            common.HexToHash("0x3"),
 		CustomChainData:     []byte("custom-data"),
 		L1InfoTreeLeafCount: 100,
 		AggchainData: &agglayertypes.AggchainDataSignature{
@@ -164,7 +163,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				client: mockClient,
 			}
 
-			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate)
+			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate, 0)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
