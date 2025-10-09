@@ -294,7 +294,7 @@ func (s *L1InfoTreeSync) GetFirstInfo() (*L1InfoTreeLeaf, error) {
 	}
 	return s.processor.GetFirstInfo()
 }
-func (s *L1InfoTreeSync) GetInfoLeafByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
+func (s *L1InfoTreeSync) GetInfoByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}

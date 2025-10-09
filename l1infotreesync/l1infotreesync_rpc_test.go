@@ -70,7 +70,7 @@ func TestL1InfoTreeSyncRPC_GetInfoByRoot_NilParam_Success(t *testing.T) {
 
 func TestL1InfoTreeSyncRPC_GetInfoByRoot_Param_Success(t *testing.T) {
 	mockSyncer := NewL1InfoTreeSyncerMock(t)
-	mockSyncer.EXPECT().GetInfoLeafByRoot(mock.Anything).
+	mockSyncer.EXPECT().GetInfoByRoot(mock.Anything).
 		Return(&L1InfoTreeLeaf{Hash: testHash}, nil).
 		Once()
 	rpc := NewL1InfoTreeSyncRPC(log.WithFields("modules", "test"), mockSyncer)

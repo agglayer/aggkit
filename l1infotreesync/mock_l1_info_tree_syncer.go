@@ -81,12 +81,12 @@ func (_c *L1InfoTreeSyncerMock_GetInfoByGlobalExitRoot_Call) RunAndReturn(run fu
 	return _c
 }
 
-// GetInfoLeafByRoot provides a mock function with given fields: ger
-func (_m *L1InfoTreeSyncerMock) GetInfoLeafByRoot(ger common.Hash) (*L1InfoTreeLeaf, error) {
+// GetInfoByRoot provides a mock function with given fields: ger
+func (_m *L1InfoTreeSyncerMock) GetInfoByRoot(ger common.Hash) (*L1InfoTreeLeaf, error) {
 	ret := _m.Called(ger)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetInfoLeafByRoot")
+		panic("no return value specified for GetInfoByRoot")
 	}
 
 	var r0 *L1InfoTreeLeaf
@@ -111,30 +111,30 @@ func (_m *L1InfoTreeSyncerMock) GetInfoLeafByRoot(ger common.Hash) (*L1InfoTreeL
 	return r0, r1
 }
 
-// L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInfoLeafByRoot'
-type L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call struct {
+// L1InfoTreeSyncerMock_GetInfoByRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInfoByRoot'
+type L1InfoTreeSyncerMock_GetInfoByRoot_Call struct {
 	*mock.Call
 }
 
-// GetInfoLeafByRoot is a helper method to define mock.On call
+// GetInfoByRoot is a helper method to define mock.On call
 //   - ger common.Hash
-func (_e *L1InfoTreeSyncerMock_Expecter) GetInfoLeafByRoot(ger interface{}) *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call {
-	return &L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call{Call: _e.mock.On("GetInfoLeafByRoot", ger)}
+func (_e *L1InfoTreeSyncerMock_Expecter) GetInfoByRoot(ger interface{}) *L1InfoTreeSyncerMock_GetInfoByRoot_Call {
+	return &L1InfoTreeSyncerMock_GetInfoByRoot_Call{Call: _e.mock.On("GetInfoByRoot", ger)}
 }
 
-func (_c *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call) Run(run func(ger common.Hash)) *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call {
+func (_c *L1InfoTreeSyncerMock_GetInfoByRoot_Call) Run(run func(ger common.Hash)) *L1InfoTreeSyncerMock_GetInfoByRoot_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(common.Hash))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call) Return(_a0 *L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call {
+func (_c *L1InfoTreeSyncerMock_GetInfoByRoot_Call) Return(_a0 *L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncerMock_GetInfoByRoot_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call) RunAndReturn(run func(common.Hash) (*L1InfoTreeLeaf, error)) *L1InfoTreeSyncerMock_GetInfoLeafByRoot_Call {
+func (_c *L1InfoTreeSyncerMock_GetInfoByRoot_Call) RunAndReturn(run func(common.Hash) (*L1InfoTreeLeaf, error)) *L1InfoTreeSyncerMock_GetInfoByRoot_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -15,7 +15,7 @@ type StatusInfo struct {
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error)
-	GetInfoLeafByRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
+	GetInfoByRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
 }
 
 // L1InfoTreeSyncRPC is the RPC interface for the L1InfoTreeSync
@@ -79,6 +79,17 @@ func (b *L1InfoTreeSyncRPC) GetInfoByGlobalExitRoot(inputGER *string) (interface
 	return leaf, nil
 }
 
+// GetInfoByRoot returns a leaf for the given root
+// if param is `nil` it returns the last leaf
+// latest:
+//
+//	curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
+//	 -d '{"method":"l1infotreesync_getInfoByRoot", "params":[], "id":1}'
+//
+// specific height:
+//
+// curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
+// -d '{"method":"l1infotreesync_getInfoByRoot", "params":[$root], "id":1}'
 func (b *L1InfoTreeSyncRPC) GetInfoByRoot(inputRoot *string) (interface{}, rpc.Error) {
 	var (
 		leaf *L1InfoTreeLeaf
@@ -90,7 +101,7 @@ func (b *L1InfoTreeSyncRPC) GetInfoByRoot(inputRoot *string) (interface{}, rpc.E
 	} else {
 		root := common.HexToHash(*inputRoot)
 		b.logger.Infof("RPC call: l1infotreesync_getInfoByRoot(%s)", root.Hex())
-		leaf, err = b.l1InfoTreeSyncer.GetInfoLeafByRoot(root)
+		leaf, err = b.l1InfoTreeSyncer.GetInfoByRoot(root)
 	}
 	if err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error getting leaf by root: %v", err))
