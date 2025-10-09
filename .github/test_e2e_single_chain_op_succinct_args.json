@@ -14,8 +14,9 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
+    "agglayer_prover_primary_prover": "mock-prover",
     "additional_services": [
-      "bridge_spammer"
+      "bridge_spammer" 
     ]
   },
   "optimism_package": {

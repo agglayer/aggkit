@@ -233,7 +233,8 @@ func TestNewLocalVerifier(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-
+			tc.cfg.OptimisticModeConfig.SovereignRollupAddr = common.HexToAddress("0x1")
+			tc.cfg.OptimisticModeConfig.OpNodeURL = "http://localhost:8545"
 			verifierFlow, err := NewLocalVerifier(ctx, tc.cfg, nil, tc.builderFlow)
 
 			if tc.expectedErrorSubstr != "" {

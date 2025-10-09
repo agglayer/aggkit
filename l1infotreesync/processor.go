@@ -478,6 +478,14 @@ func (p *processor) GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, e
 	return info, db.ReturnErrNotFound(err)
 }
 
+func (p *processor) GetInfoByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
+	treeRoot, err := p.l1InfoTree.GetRootByHash(context.Background(), root)
+	if err != nil {
+		return nil, err
+	}
+	return p.GetInfoByIndex(context.Background(), treeRoot.Index)
+}
+
 func (p *processor) getDBQuerier(tx dbtypes.Txer) dbtypes.Querier {
 	if tx != nil {
 		return tx
