@@ -111,8 +111,7 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
-		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n" +
-		"RequireLocalValidatorCheck: " + fmt.Sprintf("%t", c.RequireLocalValidatorCheck) + "\n"
+		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
