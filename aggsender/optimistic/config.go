@@ -3,6 +3,7 @@ package optimistic
 import (
 	"fmt"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -22,7 +23,7 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
-	if c.SovereignRollupAddr == (ethCommon.Address{}) {
+	if c.SovereignRollupAddr == aggkitcommon.ZeroAddress {
 		return fmt.Errorf("SovereignRollupAddr must be defined and non zero")
 	}
 	if c.OpNodeURL == "" {
