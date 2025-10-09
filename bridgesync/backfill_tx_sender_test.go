@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// testAddress is a constant test address used throughout the tests
+const testAddress = "0x1111111111111111111111111111111111111111"
 
 func TestBackfillTxnSender(t *testing.T) {
 	// Create temporary database
@@ -199,7 +203,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -301,7 +305,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -554,7 +558,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -619,7 +623,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -655,7 +659,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		defer backfiller.Close()
 
 		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
-		expectedSender := common.HexToAddress("0x1111111111111111111111111111111111111111")
+		expectedSender := common.HexToAddress(testAddress)
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			tx, ok := args.Get(0).(*Transaction)
 			if !ok {
@@ -745,7 +749,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			{
 				BlockNum:  1,
 				BlockPos:  0,
-				TxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxnSender: common.HexToAddress(testAddress),
 			},
 		}
 
@@ -804,7 +808,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			{
 				BlockNum:  1,
 				BlockPos:  0,
-				TxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxnSender: common.HexToAddress(testAddress),
 			},
 			{
 				BlockNum:  1,
@@ -858,7 +862,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			{
 				BlockNum:  1,
 				BlockPos:  0,
-				TxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxnSender: common.HexToAddress(testAddress),
 			},
 		}
 
@@ -946,7 +950,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		}).Maybe() // Allow multiple calls
 
@@ -1026,16 +1030,16 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		defer backfiller.Close()
 
 		// Mock mixed results: first call succeeds, second fails
-		callCount := 0
+		var callCount int64
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			callCount++
-			if callCount == 1 {
+			count := atomic.AddInt64(&callCount, 1)
+			if count == 1 {
 				// First call succeeds
 				tx, ok := args.Get(0).(*Transaction)
 				if !ok {
 					return
 				}
-				tx.From = "0x1111111111111111111111111111111111111111"
+				tx.From = testAddress
 				tx.To = "0x1234"
 			}
 		}).Once()
@@ -1207,7 +1211,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -1323,7 +1327,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -1404,7 +1408,7 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 				if !ok {
 					return
 				}
-				tx.From = "0x1111111111111111111111111111111111111111"
+				tx.From = testAddress
 				tx.To = "0x1234"
 			})
 
@@ -1488,7 +1492,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		}).Maybe() // Allow multiple calls
 
@@ -1560,11 +1564,11 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 
 		// Mock calls with some delay
-		callCount := 0
+		var callCount int64
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			callCount++
+			count := atomic.AddInt64(&callCount, 1)
 			// Cancel after processing about 150 records (1.5 batches)
-			if callCount == 150 {
+			if count == 150 {
 				cancel()
 			}
 
@@ -1573,7 +1577,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = "0x1111111111111111111111111111111111111111"
+			tx.From = testAddress
 			tx.To = "0x1234"
 		}).Maybe() // Allow multiple calls
 
@@ -1588,11 +1592,6 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		require.Greater(t, processedCount, 0)
 		require.Less(t, processedCount, totalRecords)
 	})
-}
-
-// Helper function to create string pointer
-func stringPtr(s string) *string {
-	return &s
 }
 
 func TestBackfillTxnSenderIntegration(t *testing.T) {
