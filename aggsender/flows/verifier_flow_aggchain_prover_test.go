@@ -15,6 +15,7 @@ import (
 )
 
 func Test_AggchainProverFlow_VerifyCertificate(t *testing.T) {
+	t.Skip("aggchain params proof have been disabled temporalily as a workarround to issue #1099")
 	t.Parallel()
 
 	ctx := context.Background()
