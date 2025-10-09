@@ -353,12 +353,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	if err != nil {
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
-	if a.cfg.RequireLocalValidatorCheck {
-		a.log.Infof("sanity check: validating certificate locally before polling validators: %s", certificate.Brief())
-		if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
-			a.log.Errorf("error validating certificate locally: %w", err)
-		}
+
+	if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
+		a.log.Errorf("error validating certificate locally: %w", err)
 	}
+
 	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
 		Certificate:       certificate,
 		LastL2BlockInCert: certificateParams.ToBlock,

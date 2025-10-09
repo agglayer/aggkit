@@ -90,8 +90,6 @@ type Config struct {
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 	// It allow to change committee URL for testing purposes
 	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
-	// RequireLocalValidatorCheck indicates to sanity check verifying locally as an remote validator
-	RequireLocalValidatorCheck bool `mapstructure:"RequireLocalValidatorCheck"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
