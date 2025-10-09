@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -19,6 +20,8 @@ var errValidatorClientURLNotSet = fmt.Errorf("ValidatorClient URL must be set wh
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
+	// RetainCertificatesPolicy is the policy to retain certificates in the database
+	StorageRetainCertificatesPolicy db.StorageRetainCertificatesPolicy `mapstructure:"StorageRetainCertificatesPolicy"`
 	// CertificatesDir is the directory where certificate JSON files will be stored
 	CertificatesDir string `mapstructure:"CertificatesDir"`
 	// AgglayerClient is the Agglayer gRPC client configuration
@@ -38,8 +41,6 @@ type Config struct {
 	// DelayBetweenRetries is the delay between retries:
 	//  is used on store Certificate and also in initial check
 	DelayBetweenRetries types.Duration `mapstructure:"DelayBetweenRetries"`
-	// KeepCertificatesHistory is a flag to keep the certificates history on storage
-	KeepCertificatesHistory bool `mapstructure:"KeepCertificatesHistory"`
 	// MaxCertSize is the maximum size of the certificate (the emitted certificate cannot be bigger that this size)
 	// 0 is infinite
 	MaxCertSize uint `mapstructure:"MaxCertSize"`
@@ -110,7 +111,8 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
-		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"
+		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n" +
+		"StorageRetainCertificatesPolicy: " + c.StorageRetainCertificatesPolicy.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
@@ -136,6 +138,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.RetriesToBuildAndSendCertificate.Validate(); err != nil {
 		return fmt.Errorf("invalid RetriesToBuildAndSendCertificate config: %w", err)
+	}
+	if err := c.StorageRetainCertificatesPolicy.Validate(); err != nil {
+		return fmt.Errorf("invalid StorageRetainCertificatesPolicy config: %w", err)
 	}
 	return nil
 }
