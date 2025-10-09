@@ -100,7 +100,8 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockFEP := mocks.NewFEPContractQuerier(t)
 			tt.setupMock(mockFEP)
-
+			tt.cfg.SovereignRollupAddr = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+			tt.cfg.OpNodeURL = "http://localhost:8545"
 			impl, err := NewOptimisticSignatureCalculatorImpl(
 				ctx,
 				log.GetDefaultLogger(),
