@@ -3,7 +3,8 @@
 `AggSender` is responsible for building and packing the information required to prove a target chain's bridge state into a certificate. This certificate provides the inputs needed to build a proof that is eventually going to be settled on L1 via the agglayer.
 
 The `AggSender` consists of a multisig committee, where one participant acts as the proposer, and the remaining members act as validators.
-The proposer is responsible for building the certificate and propagating it to the validators for verification via gRPC. Each validator independently validates the proposed certificate and returns a signature if the validation is successful.
+The proposer is responsible for building and signing the certificate, and propagating it to the validators for verification via gRPC. Each validator independently validates the proposed certificate and returns a signature to the proposer if the validation is successful.
+Proposer will pack each signature (including its own) in the certificate, and send it to `agglayer` for settlement.
 
 The multisig committee is registered on the [rollup](https://github.com/agglayer/agglayer-contracts/blob/d1a1b7e33d03ad162b6019fbbb1b23110ed8fa95/contracts/lib/AggchainBase.sol#L73-L77) contract on L1. It contains a list of signers, each represented by an Ethereum address and a URL.
 It is important that when initializing the rollup contract:
