@@ -218,3 +218,8 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 		})
 	}
 }
+
+func TestOptimisticSignatureCalculatorImpl_ValidateConfig(t *testing.T) {
+	_, err := NewOptimisticSignatureCalculatorImpl(t.Context(), nil, nil, 0, Config{})
+	require.Error(t, err)
+}
