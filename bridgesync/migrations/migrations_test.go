@@ -173,7 +173,6 @@ func TestMigration0002(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		TxnSender          string   `meddler:"txn_sender"`
 	}
 
@@ -314,9 +313,8 @@ func TestMigration0004(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata,
 			is_native_token
-		) VALUES (1, 0, 0, 0, '0x1234', 0, '0x5678', 1000, NULL, 0, 1739270804, '0xabcd', '0x9abc', NULL, true);
+		) VALUES (1, 0, 0, 0, '0x1234', 0, '0x5678', 1000, NULL, 0, 1739270804, '0xabcd', '0x9abc', true);
 
 		INSERT INTO bridge (
 			block_num,
@@ -332,9 +330,8 @@ func TestMigration0004(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata,
 			is_native_token
-		) VALUES (1, 1, 0, 0, '0x2345', 0, '0x6789', 2000, NULL, 0, 1739270804, '0xbcde', '0xabcd', NULL, false);
+		) VALUES (1, 1, 0, 0, '0x2345', 0, '0x6789', 2000, NULL, 0, 1739270804, '0xbcde', '0xabcd', false);
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -355,7 +352,6 @@ func TestMigration0004(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		IsNativeToken      bool     `meddler:"is_native_token"`
 	}
 
@@ -382,7 +378,6 @@ func TestMigration0004(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		IsNativeToken      bool     `meddler:"is_native_token"`
 	}
 
@@ -413,7 +408,6 @@ func TestMigration0004(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		// Note: IsNativeToken field removed to test that column is gone
 	}
 
@@ -421,7 +415,7 @@ func TestMigration0004(t *testing.T) {
 	err = meddler.QueryRow(database, &bridgeAfterMigration,
 		`SELECT block_num, block_pos, leaf_type, origin_network, origin_address,
 		 destination_network, destination_address, amount, metadata, deposit_count,
-		 block_timestamp, tx_hash, from_address, calldata FROM bridge WHERE block_pos = 0`)
+		 block_timestamp, tx_hash, from_address FROM bridge WHERE block_pos = 0`)
 	require.NoError(t, err)
 	require.NotNil(t, bridgeAfterMigration)
 	require.Equal(t, "0x1234", bridgeAfterMigration.OriginAddress)
@@ -449,7 +443,6 @@ func TestMigration0004(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		IsNativeToken      *bool    `meddler:"is_native_token"` // Nullable since existing rows will have NULL
 	}
 
@@ -520,8 +513,7 @@ func TestMigration0006(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata
-		) VALUES (1, 0, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x3333', NULL);
+		) VALUES (1, 0, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', NULL);
 
 		INSERT INTO bridge (
 			block_num,
@@ -537,8 +529,7 @@ func TestMigration0006(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata
-		) VALUES (1, 1, 0, 0, '0x4444', 0, '0x5555', 2000, NULL, 0, 1739270804, '0xbcde', '0x6666', NULL);
+		) VALUES (1, 1, 0, 0, '0x4444', 0, '0x5555', 2000, NULL, 0, 1739270804, '0xbcde', NULL);
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -568,7 +559,6 @@ func TestMigration0006(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		TxnSender          string   `meddler:"txn_sender"`
 	}
 
@@ -595,7 +585,6 @@ func TestMigration0006(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		TxnSender          string   `meddler:"txn_sender"`
 	}
 
@@ -622,9 +611,8 @@ func TestMigration0006(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address,
-			calldata,
 			txn_sender
-		) VALUES (1, 2, 0, 0, '0x7777', 0, '0x8888', 3000, NULL, 0, 1739270804, '0xcdef', '0x9999', NULL, '0xAAAA');
+		) VALUES (1, 2, 0, 0, '0x7777', 0, '0x8888', 3000, NULL, 0, 1739270804, '0xcdef', '0x9999', '0xAAAA');
 	`)
 	require.NoError(t, err)
 
@@ -643,7 +631,6 @@ func TestMigration0006(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		TxnSender          string   `meddler:"txn_sender"`
 	}
 
@@ -677,7 +664,6 @@ func TestMigration0006(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
-		Calldata           []byte   `meddler:"calldata"`
 		// Note: TxnSender field removed to test that column is gone
 	}
 
@@ -685,7 +671,7 @@ func TestMigration0006(t *testing.T) {
 	err = meddler.QueryRow(database, &bridgeAfterRollback,
 		`SELECT block_num, block_pos, leaf_type, origin_network, origin_address,
 		 destination_network, destination_address, amount, metadata, deposit_count,
-		 block_timestamp, tx_hash, from_address, calldata FROM bridge WHERE block_pos = 0`)
+		 block_timestamp, tx_hash, from_address FROM bridge WHERE block_pos = 0`)
 	require.NoError(t, err)
 	require.NotNil(t, bridgeAfterRollback)
 	require.Equal(t, "0x1111", bridgeAfterRollback.OriginAddress)

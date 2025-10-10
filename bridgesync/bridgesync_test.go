@@ -676,11 +676,11 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		// Create some bridge events to process
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
-				BlockNum:           1,
-				BlockPos:           0,
-				FromAddress:        common.HexToAddress("0x1111111111111111111111111111111111111111"),
-				TxHash:             common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
-				Calldata:           []byte{0x01, 0x02, 0x03},
+				BlockNum:    1,
+				BlockPos:    0,
+				FromAddress: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxHash:      common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				// Calldata:           []byte{0x01, 0x02, 0x03},
 				BlockTimestamp:     1234567890,
 				LeafType:           1,
 				OriginNetwork:      1,
@@ -692,11 +692,11 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 				DepositCount:       0,
 			}},
 			Event{Bridge: &Bridge{
-				BlockNum:           1,
-				BlockPos:           1,
-				FromAddress:        common.HexToAddress("0x5555555555555555555555555555555555555555"),
-				TxHash:             common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
-				Calldata:           []byte{0x07, 0x08, 0x09},
+				BlockNum:    1,
+				BlockPos:    1,
+				FromAddress: common.HexToAddress("0x5555555555555555555555555555555555555555"),
+				TxHash:      common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				// Calldata:           []byte{0x07, 0x08, 0x09},
 				BlockTimestamp:     1234567890,
 				LeafType:           1,
 				OriginNetwork:      1,
@@ -740,11 +740,11 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		// Process another block with more bridge events
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
-				BlockNum:           2,
-				BlockPos:           0,
-				FromAddress:        common.HexToAddress("0x9999999999999999999999999999999999999999"),
-				TxHash:             common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-				Calldata:           []byte{0x0d, 0x0e, 0x0f},
+				BlockNum:    2,
+				BlockPos:    0,
+				FromAddress: common.HexToAddress("0x9999999999999999999999999999999999999999"),
+				TxHash:      common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+				// Calldata:           []byte{0x0d, 0x0e, 0x0f},
 				BlockTimestamp:     1234567891,
 				LeafType:           1,
 				OriginNetwork:      1,

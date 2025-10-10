@@ -2642,12 +2642,12 @@ func createTestProcessor(t *testing.T, dbName string) *processor {
 // createTestBridge creates a test Bridge event
 func createTestBridge(blockNum uint64, blockPos int) *Bridge {
 	return &Bridge{
-		BlockNum:           blockNum,
-		BlockPos:           uint64(blockPos),
-		BlockTimestamp:     1234567890,
-		TxHash:             common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		FromAddress:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		Calldata:           []byte{},
+		BlockNum:       blockNum,
+		BlockPos:       uint64(blockPos),
+		BlockTimestamp: 1234567890,
+		TxHash:         common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		FromAddress:    common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		// Calldata:           []byte{},
 		LeafType:           1,
 		OriginNetwork:      1,
 		OriginAddress:      common.HexToAddress("0x1234567890123456789012345678901234567890"),

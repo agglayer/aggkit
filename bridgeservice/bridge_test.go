@@ -533,7 +533,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
-				Calldata:           common.Hex2Bytes("efabcd"),
+				// Calldata:           common.Hex2Bytes("efabcd"),
 			},
 		}
 
@@ -614,7 +614,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       1,
 				Metadata:           []byte("metadata"),
-				Calldata:           []byte{},
+				// Calldata:           []byte{},
 			},
 		}
 

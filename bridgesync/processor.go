@@ -62,11 +62,11 @@ var (
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
-	BlockNum           uint64         `meddler:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos"`
-	FromAddress        common.Address `meddler:"from_address,address"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	Calldata           []byte         `meddler:"calldata"`
+	BlockNum    uint64         `meddler:"block_num"`
+	BlockPos    uint64         `meddler:"block_pos"`
+	FromAddress common.Address `meddler:"from_address,address"`
+	TxHash      common.Hash    `meddler:"tx_hash,hash"`
+	// Calldata           []byte         `meddler:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`

@@ -96,12 +96,12 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32) *bridgetypes
 	globalIndex := bridgesync.GenerateGlobalIndexForNetworkID(networkID, bridge.DepositCount)
 
 	return &bridgetypes.BridgeResponse{
-		BlockNum:           bridge.BlockNum,
-		BlockPos:           bridge.BlockPos,
-		FromAddress:        bridgetypes.Address(bridge.FromAddress.Hex()),
-		TxHash:             bridgetypes.Hash(bridge.TxHash.Hex()),
-		GlobalIndex:        globalIndex,
-		Calldata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Calldata)),
+		BlockNum:    bridge.BlockNum,
+		BlockPos:    bridge.BlockPos,
+		FromAddress: bridgetypes.Address(bridge.FromAddress.Hex()),
+		TxHash:      bridgetypes.Hash(bridge.TxHash.Hex()),
+		GlobalIndex: globalIndex,
+		// Calldata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Calldata)),
 		BlockTimestamp:     bridge.BlockTimestamp,
 		LeafType:           bridge.LeafType,
 		OriginNetwork:      bridge.OriginNetwork,

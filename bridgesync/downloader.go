@@ -117,11 +117,11 @@ func buildBridgeEventHandler(
 		}
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
-			BlockNum:           b.Num,
-			BlockPos:           uint64(l.Index),
-			FromAddress:        foundCall.From,
-			TxHash:             l.TxHash,
-			Calldata:           foundCall.Input,
+			BlockNum:    b.Num,
+			BlockPos:    uint64(l.Index),
+			FromAddress: foundCall.From,
+			TxHash:      l.TxHash,
+			// Calldata:           foundCall.Input,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
 			OriginNetwork:      bridgeEvent.OriginNetwork,
