@@ -15,9 +15,11 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/metrics"
+	"github.com/agglayer/aggkit/aggsender/query"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -40,15 +42,20 @@ type AggSender struct {
 	aggLayerClient               agglayer.AgglayerClientInterface
 	compatibilityStoragedChecker compatibility.CompatibilityChecker
 	certStatusChecker            types.CertificateStatusChecker
+	certQuerier                  types.CertificateQuerier
+	rollupDataQuerier            types.RollupDataQuerier
+	validatorPoller              types.ValidatorPoller
+	localValidator               types.CertificateValidateAndSigner
+
+	l1Client         aggkittypes.BaseEthereumClienter
+	l1InfoTreeSyncer types.L1InfoTreeSyncer
 
 	cfg config.Config
 
 	status *types.AggsenderStatus
-	flow   types.AggsenderFlow
+	flow   types.AggsenderBuilderFlow
 
 	l2OriginNetwork uint32
-
-	validator types.CertificateValidateAndSigner
 }
 
 // New returns a new AggSender instance
@@ -63,7 +70,18 @@ func New(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
+	committeeQuerier types.MultisigQuerier,
 ) (*AggSender, error) {
+	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	// Override configuration with the resolved mode
+	if cfg.Mode != mode {
+		log.Infof("aggsender mode from %s to %s", cfg.Mode, mode)
+		cfg.Mode = mode
+	}
+
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
 		CertificatesDir:          cfg.CertificatesDir,
@@ -74,7 +92,7 @@ func New(
 		return nil, err
 	}
 
-	flowManager, err := flows.NewFlow(
+	flowManager, err := flows.NewBuilderFlow(
 		ctx,
 		cfg,
 		logger,
@@ -84,12 +102,14 @@ func New(
 		l1InfoTreeSyncer,
 		l2Syncer,
 		rollupDataQuerier,
+		committeeQuerier,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
+
 	l2OriginNetwork := l2Syncer.OriginNetwork()
 
 	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
@@ -98,6 +118,40 @@ func New(
 			return db.RuntimeData{NetworkID: l2OriginNetwork}, nil
 		},
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
+	)
+
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, mode,
+		cfg.SovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPCaller,
+		aggLayerClient,
+	)
+
+	verifierFlow, err := flows.NewLocalVerifier(
+		ctx,
+		cfg,
+		l1Client,
+		flowManager,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating verifier flow: %w", err)
+	}
+
+	localValidator := validator.NewLocalValidator(
+		logger,
+		storage,
+		validator.NewAggsenderValidator(
+			logger,
+			verifierFlow,
+			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			certQuerier,
+			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+		),
 	)
 
 	return &AggSender{
@@ -110,26 +164,21 @@ func New(
 		flow:                         flowManager,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
-		certStatusChecker:            statuschecker.NewCertStatusChecker(logger, storage, aggLayerClient, l2OriginNetwork),
+		certQuerier:                  certQuerier,
+		rollupDataQuerier:            rollupDataQuerier,
+		localValidator:               localValidator,
+		validatorPoller: NewValidatorPoller(
+			logger,
+			storage,
+			flowManager.Signer(),
+			committeeQuerier,
+			cfg.ValidatorClient,
+		),
+		certStatusChecker: statuschecker.NewCertStatusChecker(
+			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
+		l1Client:         l1Client,
+		l1InfoTreeSyncer: l1InfoTreeSyncer,
 	}, nil
-}
-
-func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
-	if validator == nil {
-		a.log.Infof("AggSender validator attached: nil")
-		return
-	}
-
-	a.validator = validator
-	a.log.Infof("AggSender validator attached: %s", a.validator.String())
-}
-
-func (a *AggSender) GetStorage() db.AggSenderStorage {
-	return a.storage
-}
-
-func (a *AggSender) GetFlow() types.AggsenderFlow {
-	return a.flow
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -138,6 +187,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
+		Mode:                     a.cfg.Mode,
 	}
 	return res
 }
@@ -148,7 +198,7 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 		return []jRPC.Service{}
 	}
 
-	logger := log.WithFields("aggsender-rpc", aggkitcommon.BRIDGE)
+	logger := log.WithFields("module", "aggsender-rpc")
 	return []jRPC.Service{
 		{
 			Name:    "aggsender",
@@ -168,16 +218,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
-	if a.validator != nil {
-		status, err := a.validator.HealthCheck(ctx)
-		if err != nil {
-			a.log.Warnf("error checking validator health: %v", err)
-		}
-		if !status.IsHealthy() {
-			a.log.Warnf("validator status is not healthy: %s", status.String())
-		}
-		a.log.Infof("validator health check: %s", status.String())
-	}
+
 	a.sendCertificates(ctx, 0)
 }
 
@@ -313,11 +354,22 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	validatorSignature, err := a.callValidator(ctx, certificate)
-	if err != nil {
-		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
-		return nil, fmt.Errorf("certificate validation failed: %w", err)
+	if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
+		a.log.Warnf("error validating certificate locally: %w", err)
 	}
+
+	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
+		Certificate:       certificate,
+		LastL2BlockInCert: certificateParams.ToBlock,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error polling validator committee: %w", err)
+	}
+
+	if err := a.flow.UpdateAggchainData(certificate, multisig); err != nil {
+		return nil, fmt.Errorf("error updating agchain data with multisig: %w", err)
+	}
+
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
@@ -327,7 +379,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return certificate, nil
 	}
 
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, validatorSignature)
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
@@ -335,7 +387,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	metrics.CertificateSent()
-	a.log.Debugf("certificate send: Height: %d cert: %s", certificate.Height, certificate.Brief())
+	a.log.Infof("certificate send: Height: %d blockRange: [%d - %d] cert: %s", certificate.Height,
+		certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	raw, err := json.Marshal(certificate)
 	if err != nil {
@@ -376,25 +429,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certInfo.Header.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	return certificate, nil
-}
-
-// callValidator calls the validator to validate the certificate
-func (a *AggSender) callValidator(
-	ctx context.Context,
-	certificate *agglayertypes.Certificate) ([]byte, error) {
-	if a.validator == nil {
-		return nil, nil
-	}
-	a.log.Infof("delegating certificate validation: %s", certificate.Brief())
-	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
-	if err != nil {
-		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
-		return nil, fmt.Errorf("certificate validation failed: %w", err)
-	}
-
-	a.log.Infof("certificate validation passed: %s", certificate.Brief())
-
-	return validatorSignature, nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage

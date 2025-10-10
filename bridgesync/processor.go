@@ -49,6 +49,9 @@ var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
 
+	// errFailToConvertClaims indicates that the conversion from []*Claim to []Claim failed.
+	errFailToConvertClaims = errors.New("failed to convert from []*Claim to []Claim")
+
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
@@ -383,7 +386,6 @@ func newProcessor(
 	}, nil
 }
 
-//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -417,7 +419,6 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-//nolint:dupl
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
 	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
@@ -444,8 +445,33 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	claims, ok := claimsIface.([]Claim)
 	if !ok {
 		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
-		return nil, errors.New("failed to convert from []*Claim to []Claim")
+		return nil, errFailToConvertClaims
 	}
+	return claims, nil
+}
+
+func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
+	if globalIndex == nil {
+		return nil, fmt.Errorf("global index parameter cannot be nil")
+	}
+
+	var results []*Claim
+	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		WHERE global_index = $1
+		ORDER BY block_num ASC, block_pos ASC;
+	`, claimTableName), globalIndex.String()); err != nil {
+		return nil, fmt.Errorf("failed to query claims by global index: %s: %w", globalIndex.String(), err)
+	}
+
+	claimsSlice := db.SlicePtrsToSlice(results)
+	claims, ok := claimsSlice.([]Claim)
+	if !ok {
+		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for global index: %s", globalIndex.String())
+		return nil, errFailToConvertClaims
+	}
+
 	return claims, nil
 }
 
@@ -1011,9 +1037,7 @@ func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, depositCount uint
 	leri := new(big.Int).SetUint64(uint64(depositCount)).FillBytes(buf[:])
 	globalIndexBytes = append(globalIndexBytes, leri...)
 
-	result := new(big.Int).SetBytes(globalIndexBytes)
-
-	return result
+	return new(big.Int).SetBytes(globalIndexBytes)
 }
 
 // Decodes global index to its three parts:

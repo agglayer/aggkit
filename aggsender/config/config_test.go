@@ -23,49 +23,6 @@ func TestValidate(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "RequireValidatorCall not PP mode",
-			config: Config{
-				Mode:                 aggsendertypes.AggchainProofMode.String(),
-				RequireValidatorCall: true,
-				ValidatorClient: &grpc.ClientConfig{
-					URL:               "http://localhost:8080",
-					MinConnectTimeout: types.NewDuration(5 * time.Second),
-				},
-			},
-			expectedErr: "RequireValidatorCall can only be true in PessimisticProof mode",
-		},
-		{
-			name: "RequireValidatorCall is true with ValidatorClient URL set",
-			config: Config{
-				Mode:                 aggsendertypes.PessimisticProofMode.String(),
-				RequireValidatorCall: true,
-				ValidatorClient: &grpc.ClientConfig{
-					URL: "http://localhost:8080",
-				},
-				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
-					URL:               "http://localhost:9090",
-					MinConnectTimeout: types.NewDuration(5 * time.Second),
-				},
-				},
-			},
-		},
-		{
-			name: "RequireValidatorCall is true with ValidatorClient URL not set",
-			config: Config{
-				Mode:                 aggsendertypes.PessimisticProofMode.String(),
-				RequireValidatorCall: true,
-				ValidatorClient: &grpc.ClientConfig{
-					URL: "",
-				},
-				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
-					URL:               "http://localhost:9090",
-					MinConnectTimeout: types.NewDuration(5 * time.Second),
-				},
-				},
-			},
-			expectedErr: "ValidatorClient URL must be set when RequireValidatorCall is true",
-		},
-		{
 			name: "Invalid AgglayerClient configuration",
 			config: Config{
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
@@ -78,7 +35,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "AggchainProof mode with AggkitProverClient not set",
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
+				Mode: aggsendertypes.AggchainProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -93,7 +50,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "PessimisticProof mode with AggkitProverClient not set",
 			config: Config{
-				Mode: aggsendertypes.PessimisticProofMode.String(),
+				Mode: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -129,7 +86,7 @@ func TestConfigString(t *testing.T) {
 		EpochNotificationPercentage:    75,
 		DryRun:                         true,
 		EnableRPC:                      false,
-		Mode:                           aggsendertypes.PessimisticProofMode.String(),
+		Mode:                           aggsendertypes.PessimisticProofMode,
 		RetryCertAfterInError:          true,
 		RequireNoFEPBlockGap:           false,
 		CheckStatusCertificateInterval: types.NewDuration(5 * time.Minute),

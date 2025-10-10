@@ -130,12 +130,16 @@ func (l *L1InfoTreeLeaf) GetHash() common.Hash {
 
 // GlobalExitRoot returns the GER
 func (l *L1InfoTreeLeaf) GetGlobalExitRoot() common.Hash {
+	return CalculateGER(l.MainnetExitRoot, l.RollupExitRoot)
+}
+
+// CalculateGER calculates the Global Exit Root (GER) based on the mainnet and rollup exit roots
+func CalculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
 	var gerBytes [treeTypes.DefaultHeight]byte
 	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(l.MainnetExitRoot[:])
-	hasher.Write(l.RollupExitRoot[:])
+	hasher.Write(mainnetExitRoot[:])
+	hasher.Write(rollupExitRoot[:])
 	copy(gerBytes[:], hasher.Sum(nil))
-
 	return gerBytes
 }
 
@@ -472,6 +476,14 @@ func (p *processor) GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, e
 		LIMIT 1;
 	`, ger.String())
 	return info, db.ReturnErrNotFound(err)
+}
+
+func (p *processor) GetInfoByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
+	treeRoot, err := p.l1InfoTree.GetRootByHash(context.Background(), root)
+	if err != nil {
+		return nil, err
+	}
+	return p.GetInfoByIndex(context.Background(), treeRoot.Index)
 }
 
 func (p *processor) getDBQuerier(tx dbtypes.Txer) dbtypes.Querier {

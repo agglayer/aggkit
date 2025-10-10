@@ -59,7 +59,6 @@ type BridgeSync struct {
 
 	originNetwork    uint32
 	reorgDetector    ReorgDetector
-	blockFinality    aggkittypes.BlockNumberFinality
 	ethClient        aggkittypes.EthClienter
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
@@ -73,7 +72,7 @@ type noOpReorgDetectorWrapper struct {
 func NewL1(
 	ctx context.Context,
 	cfg Config,
-	blockFinalityType aggkittypes.BlockNumberFinality,
+	blockFinality aggkittypes.BlockNumberFinality,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
 	syncFullClaims bool,
@@ -81,7 +80,7 @@ func NewL1(
 	return newBridgeSync(
 		ctx,
 		cfg,
-		blockFinalityType,
+		blockFinality,
 		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()},
 		ethClient,
 		L1BridgeSyncer,
@@ -132,7 +131,7 @@ func NewL2(
 func newBridgeSync(
 	ctx context.Context,
 	cfg Config,
-	blockFinalityType aggkittypes.BlockNumberFinality,
+	blockFinality aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	syncerID BridgeSyncerType,
@@ -145,6 +144,8 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+
+	logger.Infof("Bridge sync %s, syncing full claims: %t", syncerID.String(), syncFullClaims)
 
 	err = sanityCheckContract(logger, cfg.BridgeAddr, bridgeContractV2)
 	if err != nil {
@@ -190,7 +191,7 @@ func newBridgeSync(
 		syncerID.String(),
 		ethClient,
 		cfg.SyncBlockChunkSize,
-		cfg.BlockFinality,
+		blockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
 		[]common.Address{cfg.BridgeAddr},
@@ -226,6 +227,7 @@ func newBridgeSync(
 		"%s created:\n"+
 			"  dbPath: %s\n"+
 			"  initialBlock: %d\n"+
+			"  blockFinality: %s\n"+
 			"  bridgeAddr: %s\n"+
 			"  syncFullClaims: %t\n"+
 			"  maxRetryAttemptsAfterError: %d\n"+
@@ -236,6 +238,7 @@ func newBridgeSync(
 		syncerID,
 		cfg.DBPath,
 		cfg.InitialBlockNum,
+		blockFinality.String(),
 		cfg.BridgeAddr.String(),
 		syncFullClaims,
 		cfg.MaxRetryAttemptsAfterError,
@@ -251,7 +254,6 @@ func newBridgeSync(
 		downloader:       downloader,
 		originNetwork:    networkID,
 		reorgDetector:    rd,
-		blockFinality:    blockFinalityType,
 		ethClient:        ethClient,
 		bridgeContractV2: bridgeContractV2,
 	}, nil
@@ -291,11 +293,18 @@ func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) 
 	return s.processor.GetLastProcessedBlock(ctx)
 }
 
-func (s *BridgeSync) GetBridgeRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
+func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.exitTree.GetRootByHash(ctx, root)
+}
+
+func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.GetClaimsByGlobalIndex(ctx, globalIndex)
 }
 
 func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
@@ -397,11 +406,6 @@ func (s *BridgeSync) GetExitRootByIndex(ctx context.Context, index uint32) (tree
 // OriginNetwork returns the network ID of the origin chain
 func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
-}
-
-// BlockFinality returns the block finality type
-func (s *BridgeSync) BlockFinality() aggkittypes.BlockNumberFinality {
-	return s.blockFinality
 }
 
 type LastReorg struct {

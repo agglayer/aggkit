@@ -9,8 +9,7 @@ packages:
   github.com/agglayer/aggkit/agglayer:
     config:
       inpackage: true
-      dir: "{{ .InterfaceDir }}"
-      outpkg: "{{ .PackageName }}"
+      dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       AgglayerClientInterface:
         config:
@@ -120,8 +119,16 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
-
   github.com/agglayer/aggkit/common/types:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true      
+  github.com/agglayer/aggkit/l1infotreesync:
+    config:
+      outpkg: "l1infotreesync"
+      inpackage: true
+      dir: "{{ .InterfaceDir }}"
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
+      mockname: "{{ .InterfaceName }}Mock"
+      all: true
+      

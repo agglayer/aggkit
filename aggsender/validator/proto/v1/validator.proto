@@ -21,7 +21,6 @@ message HealthCheckResponse {
   string version = 1; // Version of the validator
   string status = 2; // Status of the validator
   string reason = 3; // Reason of the validator status
-
 }
 
 // Request to validate a certificate
@@ -30,6 +29,8 @@ message ValidateCertificateRequest {
   agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
   // Certificate to be validated
   agglayer.node.types.v1.Certificate certificate = 2;
+  // Last L2 block number included in the certificate
+  uint64 last_l2_block_in_cert = 3;
 }
 
 // Type used as response to a certificate validation request.

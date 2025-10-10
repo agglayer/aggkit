@@ -276,7 +276,24 @@ function common_export_ports_from_kurtosis() {
     export l1_rpc_url="http://localhost:${l1_rpc_port}"
     export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
 }
-
+###############################################################################
+function common_aggsender_committee_override_urls(){
+    export aggsender_committee_override_urls=""
+    local _VALIDATOR
+    for _VALIDATOR in $(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep aggkit-001-aggsender-validator | sed -r "s/\ +/\ /g" | cut -f 2 -d ' '); do
+        
+        export_portnum_from_kurtosis_or_fail _LOCAL_PORT_VALIDATOR $_VALIDATOR validator-grpc
+        log_debug "Found validator: $_VALIDATOR port=$_LOCAL_PORT_VALIDATOR" 
+        aggsender_committee_override_urls="${aggsender_committee_override_urls} \"http://${_VALIDATOR}:5578\" = \"http://localhost:${_LOCAL_PORT_VALIDATOR}\","
+    done
+    if [ ! -z "$aggsender_committee_override_urls" ]; then
+        # Remove last ',' and add the {}
+        aggsender_committee_override_urls="{ ${aggsender_committee_override_urls::-1} }"
+    else 
+        aggsender_committee_override_urls="{}"
+    fi
+    log_debug "aggsender_committee_override_urls=${aggsender_committee_override_urls}"
+}
 ###############################################################################
 function check_generated_config_file() {
     grep "<no value>" $DEST_TEMPLATE_FILE >/dev/null
@@ -327,8 +344,10 @@ function main(){
     check_requirements
     create_dest_folder
 
+    common_aggsender_committee_override_urls
     download_kurtosis_artifacts
 
+  
     export_ports_from_kurtosis
     export_values_of_aggkit_config $DEST/config.toml
     export_forced_values

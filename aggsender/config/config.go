@@ -6,6 +6,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
+	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
@@ -13,8 +14,6 @@ import (
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
-
-var errValidatorClientURLNotSet = fmt.Errorf("ValidatorClient URL must be set when RequireValidatorCall is true")
 
 // Config is the configuration for the AggSender
 type Config struct {
@@ -52,7 +51,7 @@ type Config struct {
 	// AggkitProverClient is the config for the AggkitProver client
 	AggkitProverClient *grpc.ClientConfig `mapstructure:"AggkitProverClient"`
 	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
-	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
+	Mode aggsendertypes.AggsenderMode `jsonschema:"enum=PessimisticProof, enum=AggchainProof, enum=Auto" mapstructure:"Mode"` //nolint:lll
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
 	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
 	// RetryCertAfterInError when a cert pass to 'InError'
@@ -84,12 +83,14 @@ type Config struct {
 	// StopOnFinishedSendingAllCertificates is a flag to stop the AggSender when it finishes sending all certificates
 	// up to MaxL2BlockNumber
 	StopOnFinishedSendingAllCertificates bool `mapstructure:"StopOnFinishedSendingAllCertificates"`
-	// RequireValidatorCall indicates whether the validator call is mandatory.
-	RequireValidatorCall bool `mapstructure:"RequireValidatorCall"`
 	// ValidatorClient is the configuration for the ValidatorClient
 	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
 	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
 	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
+	// RequireCommitteeMembershipCheck indicates whether to check if the signer is part of the committee
+	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
+	// It allow to change committee URL for testing purposes
+	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -106,7 +107,7 @@ func (c Config) String() string {
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
 		"AggkitProverClient: " + c.AggkitProverClient.String() + "\n" +
-		"Mode: " + c.Mode + "\n" +
+		"Mode: " + c.Mode.String() + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
@@ -117,21 +118,11 @@ func (c Config) String() string {
 
 // Validate checks if the configuration is valid
 func (c Config) Validate() error {
-	if c.RequireValidatorCall {
-		if c.Mode != aggsendertypes.PessimisticProofMode.String() {
-			return fmt.Errorf("RequireValidatorCall can only be true in PessimisticProof mode, got %s", c.Mode)
-		}
-
-		if c.ValidatorClient == nil || c.ValidatorClient.URL == "" {
-			return errValidatorClientURLNotSet
-		}
-	}
-
 	if err := c.AgglayerClient.Validate(); err != nil {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
 	}
 
-	if c.Mode == aggsendertypes.AggchainProofMode.String() {
+	if c.Mode == aggsendertypes.AggchainProofMode {
 		if err := c.AggkitProverClient.Validate(); err != nil {
 			return fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}

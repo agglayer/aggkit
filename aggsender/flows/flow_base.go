@@ -12,15 +12,13 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
 	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
-
-	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
 // TimeNowUTC returns the current time in UTC as a uint32 timestamp.
@@ -41,6 +39,8 @@ type BaseFlowConfig struct {
 	// RequireNoFEPBlockGap indicates whether the flow requires no gap between the
 	// first FEP block and last settled certificate.
 	RequireNoFEPBlockGap bool
+	// FullClaimsNeeded indicates whether the flow requires full claims data
+	FullClaimsNeeded bool
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
@@ -49,15 +49,22 @@ func NewBaseFlowConfigDefault() BaseFlowConfig {
 		MaxCertSize:          0,     // 0 means no limit
 		StartL2Block:         0,     // 0 means start from the first block
 		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
+		FullClaimsNeeded:     true,  // default is true, can be set to false if full claims are not needed
 	}
 }
 
 // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
-func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64, requireNoFEPBlockGap bool) BaseFlowConfig {
+func NewBaseFlowConfig(
+	maxCertSize uint,
+	startL2Block uint64,
+	requireNoFEPBlockGap bool,
+	fullClaimsNeeded bool,
+) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:          maxCertSize,
 		StartL2Block:         startL2Block,
 		RequireNoFEPBlockGap: requireNoFEPBlockGap,
+		FullClaimsNeeded:     fullClaimsNeeded,
 	}
 }
 
@@ -282,13 +289,6 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("error getting new local exit root: %w", err)
 	}
 
-	meta := types.NewCertificateMetadata(
-		certParams.FromBlock,
-		uint32(certParams.ToBlock-certParams.FromBlock),
-		certParams.CreatedAt,
-		certParams.CertificateType.ToInt(),
-	)
-
 	return &agglayertypes.Certificate{
 		NetworkID:           f.l2BridgeQuerier.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
@@ -296,7 +296,6 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		BridgeExits:         bridgeExits,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
-		Metadata:            meta.ToHash(),
 		L1InfoTreeLeafCount: certParams.L1InfoTreeLeafCount,
 	}, nil
 }
@@ -337,29 +336,19 @@ func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	return converters.ConvertToImportedBridgeExits(
-		ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
-}
-
-// getStartLER returns the last local exit root (LER) based on the configuration
-func (f *baseFlow) getStartLER() (common.Hash, error) {
-	ler, err := f.lerQuerier.GetLastLocalExitRoot()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
+	if f.cfg.FullClaimsNeeded {
+		return converters.ConvertToImportedBridgeExits(
+			ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
 	}
 
-	if ler == aggkitcommon.ZeroHash {
-		return emptyLER, nil
-	}
-
-	return ler, nil
+	return converters.ConvertToImportedBridgeExitsWithoutClaimData(claims)
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		ler, err := f.getStartLER()
+		ler, err := f.lerQuerier.GetLastLocalExitRoot()
 		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
@@ -377,7 +366,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			ler, err := f.getStartLER()
+			ler, err := f.lerQuerier.GetLastLocalExitRoot()
 			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
@@ -404,7 +393,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 // verifyClaimGERs verifies the correctnes GERs of the claims
 func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 	for _, claim := range claims {
-		ger := calculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
+		ger := l1infotreesync.CalculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
 		if ger != claim.GlobalExitRoot {
 			return fmt.Errorf("claim[GlobalIndex: %s, BlockNum: %d]: GER mismatch. Expected: %s, got: %s",
 				claim.GlobalIndex.String(), claim.BlockNum, claim.GlobalExitRoot.String(), ger.String())
@@ -507,15 +496,4 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 		retryCount = lastSentCertificateInfo.RetryCount + 1
 	}
 	return lastSentBlock, retryCount
-}
-
-// calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root
-func calculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
-	var gerBytes [common.HashLength]byte
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(mainnetExitRoot.Bytes())
-	hasher.Write(rollupExitRoot.Bytes())
-	copy(gerBytes[:], hasher.Sum(nil))
-
-	return gerBytes
 }

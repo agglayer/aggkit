@@ -3,9 +3,10 @@
 package mocks
 
 import (
-	context "context"
-
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	common "github.com/ethereum/go-ethereum/common"
+
+	context "context"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -23,6 +24,53 @@ type CertificateValidateAndSigner_Expecter struct {
 
 func (_m *CertificateValidateAndSigner) EXPECT() *CertificateValidateAndSigner_Expecter {
 	return &CertificateValidateAndSigner_Expecter{mock: &_m.Mock}
+}
+
+// Address provides a mock function with no fields
+func (_m *CertificateValidateAndSigner) Address() common.Address {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Address")
+	}
+
+	var r0 common.Address
+	if rf, ok := ret.Get(0).(func() common.Address); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	return r0
+}
+
+// CertificateValidateAndSigner_Address_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Address'
+type CertificateValidateAndSigner_Address_Call struct {
+	*mock.Call
+}
+
+// Address is a helper method to define mock.On call
+func (_e *CertificateValidateAndSigner_Expecter) Address() *CertificateValidateAndSigner_Address_Call {
+	return &CertificateValidateAndSigner_Address_Call{Call: _e.mock.On("Address")}
+}
+
+func (_c *CertificateValidateAndSigner_Address_Call) Run(run func()) *CertificateValidateAndSigner_Address_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Address_Call) Return(_a0 common.Address) *CertificateValidateAndSigner_Address_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Address_Call) RunAndReturn(run func() common.Address) *CertificateValidateAndSigner_Address_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // HealthCheck provides a mock function with given fields: ctx
@@ -83,6 +131,51 @@ func (_c *CertificateValidateAndSigner_HealthCheck_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// Index provides a mock function with no fields
+func (_m *CertificateValidateAndSigner) Index() uint32 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Index")
+	}
+
+	var r0 uint32
+	if rf, ok := ret.Get(0).(func() uint32); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint32)
+	}
+
+	return r0
+}
+
+// CertificateValidateAndSigner_Index_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Index'
+type CertificateValidateAndSigner_Index_Call struct {
+	*mock.Call
+}
+
+// Index is a helper method to define mock.On call
+func (_e *CertificateValidateAndSigner_Expecter) Index() *CertificateValidateAndSigner_Index_Call {
+	return &CertificateValidateAndSigner_Index_Call{Call: _e.mock.On("Index")}
+}
+
+func (_c *CertificateValidateAndSigner_Index_Call) Run(run func()) *CertificateValidateAndSigner_Index_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Index_Call) Return(_a0 uint32) *CertificateValidateAndSigner_Index_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Index_Call) RunAndReturn(run func() uint32) *CertificateValidateAndSigner_Index_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // String provides a mock function with no fields
 func (_m *CertificateValidateAndSigner) String() string {
 	ret := _m.Called()
@@ -128,9 +221,54 @@ func (_c *CertificateValidateAndSigner_String_Call) RunAndReturn(run func() stri
 	return _c
 }
 
-// ValidateAndSignCertificate provides a mock function with given fields: ctx, certificate
-func (_m *CertificateValidateAndSigner) ValidateAndSignCertificate(ctx context.Context, certificate *agglayertypes.Certificate) ([]byte, error) {
-	ret := _m.Called(ctx, certificate)
+// URL provides a mock function with no fields
+func (_m *CertificateValidateAndSigner) URL() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for URL")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// CertificateValidateAndSigner_URL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'URL'
+type CertificateValidateAndSigner_URL_Call struct {
+	*mock.Call
+}
+
+// URL is a helper method to define mock.On call
+func (_e *CertificateValidateAndSigner_Expecter) URL() *CertificateValidateAndSigner_URL_Call {
+	return &CertificateValidateAndSigner_URL_Call{Call: _e.mock.On("URL")}
+}
+
+func (_c *CertificateValidateAndSigner_URL_Call) Run(run func()) *CertificateValidateAndSigner_URL_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_URL_Call) Return(_a0 string) *CertificateValidateAndSigner_URL_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_URL_Call) RunAndReturn(run func() string) *CertificateValidateAndSigner_URL_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateAndSignCertificate provides a mock function with given fields: ctx, certificate, lastL2BlockInCert
+func (_m *CertificateValidateAndSigner) ValidateAndSignCertificate(ctx context.Context, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64) ([]byte, error) {
+	ret := _m.Called(ctx, certificate, lastL2BlockInCert)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateAndSignCertificate")
@@ -138,19 +276,19 @@ func (_m *CertificateValidateAndSigner) ValidateAndSignCertificate(ctx context.C
 
 	var r0 []byte
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate) ([]byte, error)); ok {
-		return rf(ctx, certificate)
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint64) ([]byte, error)); ok {
+		return rf(ctx, certificate, lastL2BlockInCert)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate) []byte); ok {
-		r0 = rf(ctx, certificate)
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint64) []byte); ok {
+		r0 = rf(ctx, certificate, lastL2BlockInCert)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *agglayertypes.Certificate) error); ok {
-		r1 = rf(ctx, certificate)
+	if rf, ok := ret.Get(1).(func(context.Context, *agglayertypes.Certificate, uint64) error); ok {
+		r1 = rf(ctx, certificate, lastL2BlockInCert)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -166,13 +304,14 @@ type CertificateValidateAndSigner_ValidateAndSignCertificate_Call struct {
 // ValidateAndSignCertificate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - certificate *agglayertypes.Certificate
-func (_e *CertificateValidateAndSigner_Expecter) ValidateAndSignCertificate(ctx interface{}, certificate interface{}) *CertificateValidateAndSigner_ValidateAndSignCertificate_Call {
-	return &CertificateValidateAndSigner_ValidateAndSignCertificate_Call{Call: _e.mock.On("ValidateAndSignCertificate", ctx, certificate)}
+//   - lastL2BlockInCert uint64
+func (_e *CertificateValidateAndSigner_Expecter) ValidateAndSignCertificate(ctx interface{}, certificate interface{}, lastL2BlockInCert interface{}) *CertificateValidateAndSigner_ValidateAndSignCertificate_Call {
+	return &CertificateValidateAndSigner_ValidateAndSignCertificate_Call{Call: _e.mock.On("ValidateAndSignCertificate", ctx, certificate, lastL2BlockInCert)}
 }
 
-func (_c *CertificateValidateAndSigner_ValidateAndSignCertificate_Call) Run(run func(ctx context.Context, certificate *agglayertypes.Certificate)) *CertificateValidateAndSigner_ValidateAndSignCertificate_Call {
+func (_c *CertificateValidateAndSigner_ValidateAndSignCertificate_Call) Run(run func(ctx context.Context, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64)) *CertificateValidateAndSigner_ValidateAndSignCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate))
+		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate), args[2].(uint64))
 	})
 	return _c
 }
@@ -182,7 +321,7 @@ func (_c *CertificateValidateAndSigner_ValidateAndSignCertificate_Call) Return(_
 	return _c
 }
 
-func (_c *CertificateValidateAndSigner_ValidateAndSignCertificate_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate) ([]byte, error)) *CertificateValidateAndSigner_ValidateAndSignCertificate_Call {
+func (_c *CertificateValidateAndSigner_ValidateAndSignCertificate_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate, uint64) ([]byte, error)) *CertificateValidateAndSigner_ValidateAndSignCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

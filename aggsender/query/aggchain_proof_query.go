@@ -3,9 +3,11 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/converters"
+	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/grpc"
@@ -152,10 +154,18 @@ func (a *aggchainProofQuery) generateOptimisticAggchainProof(ctx context.Context
 	certBuildParams.ExtraData = extraData
 	a.log.Infof("generateOptimisticAggchainProof - signed aggchain proof request with new local exit root: %s",
 		request.String())
+
+	start := time.Now()
+	defer func() {
+		metrics.ProverTime(time.Since(start).Seconds())
+	}()
+
 	aggchainProof, err := a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
 	if err != nil {
+		metrics.ProverError()
 		return nil, fmt.Errorf("generateOptimisticAggchainProof - error request aggkit-prover optimistic: %w", err)
 	}
+
 	return aggchainProof, nil
 }
 

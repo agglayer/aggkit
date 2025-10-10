@@ -6,6 +6,7 @@ import (
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,6 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 	Height:              100,
 	PrevLocalExitRoot:   common.HexToHash("0x010201"),
 	NewLocalExitRoot:    common.HexToHash("0x010202"),
-	Metadata:            common.HexToHash("0x011201"),
 	CustomChainData:     []byte{0x1, 0x2, 0x3},
 	L1InfoTreeLeafCount: 11,
 	BridgeExits: []*agglayertypes.BridgeExit{
@@ -52,7 +52,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 				RollupIndex: 0,
 				LeafIndex:   1,
 			},
-			ClaimData: &agglayertypes.ClaimFromMainnnet{
+			ClaimData: &agglayertypes.ClaimFromMainnet{
 				ProofLeafMER: &agglayertypes.MerkleProof{
 					Root:  common.HexToHash("0x010203"),
 					Proof: tree.EmptyProof,
@@ -143,16 +143,6 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		require.ErrorContains(t, err, "Certificate has nil fields")
 	})
 
-	t.Run("nil Metadata", func(t *testing.T) {
-		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
-		require.NoError(t, err)
-		protoCert.Metadata = nil
-		result, err := ConvertProtoCertToAgglayer(protoCert)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-		require.ErrorContains(t, err, "Certificate has nil fields")
-	})
-
 	t.Run("nil L1InfoTreeLeafCount", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
@@ -164,14 +154,13 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		require.ErrorContains(t, err, "has nil L1InfoTreeLeafCount")
 	})
 
-	t.Run("nil AggchainData", func(t *testing.T) {
+	t.Run("undefined AggchainData", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
 		protoCert.AggchainData = nil
 		result, err := ConvertProtoCertToAgglayer(protoCert)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-		require.ErrorContains(t, err, "aggchain data is nil")
+		require.NoError(t, err)
+		require.Nil(t, result.AggchainData)
 	})
 
 	t.Run("successful conversion", func(t *testing.T) {
@@ -296,6 +285,116 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		require.Nil(t, result)
 		require.ErrorContains(t, err, "aggchain data has nil Signature")
 	})
+
+	t.Run("aggchain data multisig", func(t *testing.T) {
+		// multisig nil
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{},
+		}
+
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "multisig is nil")
+
+		// multisig not ecdsa
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{
+				Multisig: &v1types.Multisig{},
+			},
+		}
+
+		result, err = ConvertProtoCertToAgglayer(protoCert)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "expected Ecdsa multisig")
+
+		// mutlisig ecdsa nil
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{
+				Multisig: &v1types.Multisig{
+					Data: &v1types.Multisig_Ecdsa{},
+				},
+			},
+		}
+
+		result, err = ConvertProtoCertToAgglayer(protoCert)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "multisig Ecdsa is nil")
+
+		// ok conversion
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{
+				Multisig: &v1types.Multisig{
+					Data: &v1types.Multisig_Ecdsa{
+						Ecdsa: &v1types.ECDSAMultisig{
+							Signatures: []*v1types.ECDSAMultisig_ECDSAMultisigEntry{
+								{Index: 0, Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize)}},
+								{Index: 1, Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize)}},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		result, err = ConvertProtoCertToAgglayer(protoCert)
+		require.NoError(t, err)
+		require.NotNil(t, result.AggchainData)
+
+		multisig, ok := result.AggchainData.(*agglayertypes.AggchainDataMultisig)
+		require.True(t, ok)
+		require.NotNil(t, multisig)
+		require.Len(t, multisig.Multisig.Signatures, 2)
+	})
+
+	t.Run("aggchain data multisig and aggchain proof", func(t *testing.T) {
+		// multisig and aggchain proof nil
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_MultisigAndAggchainProof{},
+		}
+
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "aggchain data has nil MultisigAndAggchainProof")
+
+		// ok conversion
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_MultisigAndAggchainProof{
+				MultisigAndAggchainProof: &v1types.AggchainProofWithMultisig{
+					Multisig: &v1types.Multisig{
+						Data: &v1types.Multisig_Ecdsa{
+							Ecdsa: &v1types.ECDSAMultisig{
+								Signatures: []*v1types.ECDSAMultisig_ECDSAMultisigEntry{
+									{Index: 0, Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize)}},
+								},
+							},
+						},
+					},
+					AggchainProof: &v1types.AggchainProof{
+						Proof: &v1types.AggchainProof_Sp1Stark{
+							Sp1Stark: &v1types.SP1StarkProof{
+								Proof:   []byte{0x01, 0x02, 0x03},
+								Version: "1.0",
+								Vkey:    []byte{0x01, 0x02, 0x03},
+							},
+						},
+						AggchainParams: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x0102030405060708090a0b0c0d0e0f1011121314151617181920212223242526").Bytes(),
+						},
+						Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize)},
+					},
+				},
+			},
+		}
+
+		result, err = ConvertProtoCertToAgglayer(protoCert)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+	})
 }
 
 func TestGrpcBridgeExitToAgglayer(t *testing.T) {
@@ -416,146 +515,3 @@ func TestGrpcL1LeafToAgglayer(t *testing.T) {
 		require.ErrorIs(t, err, ErrNilCertificate)
 	})
 }
-
-/*
-func TestGrpcMerkleProofToAgglayer(t *testing.T) {
-	t.Run("nil proof", func(t *testing.T) {
-		result, err := grpcMerkleProofToAgglayer(nil)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-	})
-
-	t.Run("nil root", func(t *testing.T) {
-		siblings := make([]*v1nodetypes.Hash, treetypes.DefaultHeight)
-		for i := range siblings {
-			siblings[i] = &v1nodetypes.Hash{Value: make([]byte, 32)}
-		}
-
-		proof := &v1types.MerkleProof{
-			Root:     nil,
-			Siblings: siblings,
-		}
-
-		result, err := grpcMerkleProofToAgglayer(proof)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-	})
-
-	t.Run("invalid number of siblings", func(t *testing.T) {
-		proof := &v1types.MerkleProof{
-			Root:     &v1nodetypes.Hash{Value: make([]byte, 32)},
-			Siblings: []*v1nodetypes.Hash{{Value: make([]byte, 32)}}, // Wrong number
-		}
-
-		result, err := grpcMerkleProofToAgglayer(proof)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.Contains(t, err.Error(), "invalid number of siblings")
-	})
-
-	t.Run("successful conversion", func(t *testing.T) {
-		root := make([]byte, 32)
-		root[0] = 0x01
-
-		siblings := make([]*v1nodetypes.Hash, treetypes.DefaultHeight)
-		for i := range siblings {
-			sibling := make([]byte, 32)
-			sibling[0] = byte(i + 1)
-			siblings[i] = &v1nodetypes.Hash{Value: sibling}
-		}
-
-		proof := &v1types.MerkleProof{
-			Root:     &v1nodetypes.Hash{Value: root},
-			Siblings: siblings,
-		}
-
-		result, err := grpcMerkleProofToAgglayer(proof)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, common.BytesToHash(root), result.Root)
-		require.Len(t, result.Proof, treetypes.DefaultHeight)
-	})
-}
-
-
-
-func TestGrpcL1LeafToAgglayer(t *testing.T) {
-	t.Run("nil l1 leaf", func(t *testing.T) {
-		result, err := grpcL1LeafToAgglayer(nil)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-	})
-
-	t.Run("nil Rer", func(t *testing.T) {
-		l1Leaf := &v1types.L1InfoTreeLeafWithContext{
-			L1InfoTreeIndex: 1,
-			Rer:             nil,
-			Mer:             &v1nodetypes.Hash{Value: make([]byte, 32)},
-		}
-
-		result, err := grpcL1LeafToAgglayer(l1Leaf)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-	})
-
-	t.Run("successful conversion with inner", func(t *testing.T) {
-		rer := make([]byte, 32)
-		mer := make([]byte, 32)
-		globalExitRoot := make([]byte, 32)
-		blockHash := make([]byte, 32)
-
-		rer[0] = 0x01
-		mer[0] = 0x02
-		globalExitRoot[0] = 0x03
-		blockHash[0] = 0x04
-
-		l1Leaf := &v1types.L1InfoTreeLeafWithContext{
-			L1InfoTreeIndex: 1,
-			Rer:             &v1nodetypes.Hash{Value: rer},
-			Mer:             &v1nodetypes.Hash{Value: mer},
-			Inner: &v1types.L1InfoTreeLeafInner{
-				GlobalExitRoot: &v1nodetypes.Hash{Value: globalExitRoot},
-				BlockHash:      &v1nodetypes.Hash{Value: blockHash},
-				Timestamp:      1234567890,
-			},
-		}
-
-		result, err := grpcL1LeafToAgglayer(l1Leaf)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, uint32(1), result.L1InfoTreeIndex)
-		require.Equal(t, common.BytesToHash(rer), result.RollupExitRoot)
-		require.Equal(t, common.BytesToHash(mer), result.MainnetExitRoot)
-		require.NotNil(t, result.Inner)
-		require.Equal(t, common.BytesToHash(globalExitRoot), result.Inner.GlobalExitRoot)
-		require.Equal(t, common.BytesToHash(blockHash), result.Inner.BlockHash)
-		require.Equal(t, uint64(1234567890), result.Inner.Timestamp)
-	})
-
-	t.Run("successful conversion without inner", func(t *testing.T) {
-		rer := make([]byte, 32)
-		mer := make([]byte, 32)
-		rer[0] = 0x01
-		mer[0] = 0x02
-
-		l1Leaf := &v1types.L1InfoTreeLeafWithContext{
-			L1InfoTreeIndex: 1,
-			Rer:             &v1nodetypes.Hash{Value: rer},
-			Mer:             &v1nodetypes.Hash{Value: mer},
-			Inner:           nil,
-		}
-
-		result, err := grpcL1LeafToAgglayer(l1Leaf)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, uint32(1), result.L1InfoTreeIndex)
-		require.Equal(t, common.BytesToHash(rer), result.RollupExitRoot)
-		require.Equal(t, common.BytesToHash(mer), result.MainnetExitRoot)
-		require.Nil(t, result.Inner)
-	})
-}
-*/

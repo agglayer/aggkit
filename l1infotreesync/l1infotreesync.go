@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"math/big"
 
+	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
@@ -124,6 +126,17 @@ func New(
 		processor: processor,
 		driver:    driver,
 	}, nil
+}
+
+// GetRPCServices returns the list of services that the RPC provider exposes
+func (a *L1InfoTreeSync) GetRPCServices() []jRPC.Service {
+	logger := log.WithFields("module", "l1infotreesync-rpc")
+	return []jRPC.Service{
+		{
+			Name:    "l1infotreesync",
+			Service: NewL1InfoTreeSyncRPC(logger, a),
+		},
+	}
 }
 
 // Start starts the synchronization process
@@ -281,6 +294,12 @@ func (s *L1InfoTreeSync) GetFirstInfo() (*L1InfoTreeLeaf, error) {
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.GetFirstInfo()
+}
+func (s *L1InfoTreeSync) GetInfoByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.GetInfoByRoot(root)
 }
 
 func (s *L1InfoTreeSync) GetFirstInfoAfterBlock(blockNum uint64) (*L1InfoTreeLeaf, error) {

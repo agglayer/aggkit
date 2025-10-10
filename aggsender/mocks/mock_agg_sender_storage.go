@@ -31,7 +31,7 @@ func (_m *AggSenderStorage) EXPECT() *AggSenderStorage_Expecter {
 }
 
 // DeleteCertificate provides a mock function with given fields: tx, height, mustDelete
-func (_m *AggSenderStorage) DeleteCertificate(tx types.Querier, height uint64, mustDelete bool) error {
+func (_m *AggSenderStorage) DeleteCertificate(tx types.Querier, height uint64, mustDelete db.DeleteFlag) error {
 	ret := _m.Called(tx, height, mustDelete)
 
 	if len(ret) == 0 {
@@ -39,7 +39,7 @@ func (_m *AggSenderStorage) DeleteCertificate(tx types.Querier, height uint64, m
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.Querier, uint64, bool) error); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, uint64, db.DeleteFlag) error); ok {
 		r0 = rf(tx, height, mustDelete)
 	} else {
 		r0 = ret.Error(0)
@@ -56,14 +56,14 @@ type AggSenderStorage_DeleteCertificate_Call struct {
 // DeleteCertificate is a helper method to define mock.On call
 //   - tx types.Querier
 //   - height uint64
-//   - mustDelete bool
+//   - mustDelete db.DeleteFlag
 func (_e *AggSenderStorage_Expecter) DeleteCertificate(tx interface{}, height interface{}, mustDelete interface{}) *AggSenderStorage_DeleteCertificate_Call {
 	return &AggSenderStorage_DeleteCertificate_Call{Call: _e.mock.On("DeleteCertificate", tx, height, mustDelete)}
 }
 
-func (_c *AggSenderStorage_DeleteCertificate_Call) Run(run func(tx types.Querier, height uint64, mustDelete bool)) *AggSenderStorage_DeleteCertificate_Call {
+func (_c *AggSenderStorage_DeleteCertificate_Call) Run(run func(tx types.Querier, height uint64, mustDelete db.DeleteFlag)) *AggSenderStorage_DeleteCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.Querier), args[1].(uint64), args[2].(bool))
+		run(args[0].(types.Querier), args[1].(uint64), args[2].(db.DeleteFlag))
 	})
 	return _c
 }
@@ -73,7 +73,7 @@ func (_c *AggSenderStorage_DeleteCertificate_Call) Return(_a0 error) *AggSenderS
 	return _c
 }
 
-func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(types.Querier, uint64, bool) error) *AggSenderStorage_DeleteCertificate_Call {
+func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(types.Querier, uint64, db.DeleteFlag) error) *AggSenderStorage_DeleteCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

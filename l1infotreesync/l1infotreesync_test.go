@@ -202,6 +202,16 @@ func TestGetL1InfoTreeMerkleProofFromIndexToRoot(t *testing.T) {
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
 
+func TestGetRPCServices(t *testing.T) {
+	s := L1InfoTreeSync{
+		processor: &processor{
+			halted: true,
+		},
+	}
+	services := s.GetRPCServices()
+	require.Equal(t, 1, len(services))
+}
+
 func TestIsUpToDate(t *testing.T) {
 	t.Parallel()
 

@@ -41,7 +41,6 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -92,7 +91,7 @@ func start(cliCtx *cli.Context) error {
 
 	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create etherman client: %w", err)
+		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
 
 	// Create a cancellable context for graceful shutdown
@@ -101,15 +100,20 @@ func start(cliCtx *cli.Context) error {
 
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
-
+	var rpcServices []jRPC.Service
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, l1Client)
+	if l1InfoTreeSync != nil {
+		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
+	}
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, l1Client, 0, &backfillWg)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
-	var rpcServices []jRPC.Service
+
+	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
+		&cfg.AggSender.CommitteeOverride)
 
 	// Check if any bridge-related component is present and start bridge service once
 	hasBridgeComponent := false
@@ -149,6 +153,7 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l2Client,
 				rollupDataQuerier,
+				committeeQuerier,
 			)
 			if err != nil {
 				//nolint:gocritic
@@ -179,11 +184,11 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l1Client,
 				rollupDataQuerier,
+				committeeQuerier,
 			)
 			if err != nil {
 				log.Fatal(err)
 			}
-			rpcServices = append(rpcServices, aggsenderValidator.GetRPCServices()...)
 			go aggsenderValidator.Start(ctx)
 		}
 	}
@@ -242,64 +247,79 @@ func createAggSenderValidator(ctx context.Context,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
+	rollupDataQuerier *etherman.RollupDataQuerier,
+	committeeQuerier aggsendertypes.MultisigQuerier,
+) (*aggsender.AggsenderValidator, error) {
+	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	// Override configuration with the resolved mode
+	if cfg.Mode != mode {
+		log.Infof("aggsenderValidator mode from %s to %s", cfg.Mode, mode)
+		cfg.Mode = mode
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
+	}
+
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
-
-	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
-	if err != nil {
-		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
-	}
-	signer, err := signer.NewSigner(ctx, l2ChainID, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
-	}
-	if err := signer.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
-	}
-
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
-	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
-	lerQuerier, err := query.NewLERDataQuerier(
-		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
-	if err != nil {
-		return nil, fmt.Errorf("error creating LER data querier: %w", err)
-	}
 	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
-	flowPP := flows.NewPPFlow(
+
+	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
 		logger,
-		flows.NewBaseFlow(
-			logger,
-			l2BridgeQuerier,
-			nil, // storage
-			l1InfoTreeQuerier,
-			lerQuerier,
-			flows.BaseFlowConfig{
-				MaxCertSize:          cfg.MaxCertSize,
-				StartL2Block:         0,
-				RequireNoFEPBlockGap: false, //  for PP doesnt apply it
-			},
-		),
-		nil, // storage
-		l1InfoTreeQuerier,
-		l2BridgeQuerier,
-		signer, // we reuse the signer, but the PP signature is not use
-		cfg.RequireOneBridgeInPPCertificate,
-		cfg.MaxL2BlockNumber,
+		cfg.Mode,
+		cfg.FEPConfig.SovereignRollupAddr,
+		l1Client,
 	)
-	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient, signer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggchainFEPQuerier: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPQuerier,
+		agglayerClient,
+	)
+
+	flow, flowParams, err := flows.NewVerifierFlow(
+		ctx,
+		cfg,
+		logger,
+		l1Client,
+		l1InfoTreeSync,
+		l2Syncer,
+		rollupDataQuerier,
+		committeeQuerier,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
+	}
+
+	return aggsender.NewAggsenderValidator(
+		ctx, logger, cfg, flow,
+		flowParams.L1InfoTreeDataQuerier,
+		agglayerClient,
+		certQuerier,
+		aggchainFEPQuerier,
+		flowParams.LERQuerier,
+		flowParams.Signer,
+	)
 }
 
 func createAggSender(
 	ctx context.Context,
 	cfg aggsendercfg.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
-	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync,
+	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
+	l2Syncer aggsendertypes.L2BridgeSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
+	rollupDataQuerier aggsendertypes.RollupDataQuerier,
+	committeeQuerier aggsendertypes.MultisigQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.Validate(); err != nil {
@@ -337,33 +357,9 @@ func createAggSender(
 	go epochNotifier.Start(ctx)
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
-	}
-
-	if cfg.Mode == aggsendertypes.PessimisticProofMode.String() {
-		// validatorObj is only supported in PessimisticProof mode
-		var validatorObj aggsendertypes.CertificateValidateAndSigner
-		if cfg.RequireValidatorCall {
-			validatorObj, err = validator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
-			if err != nil {
-				return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
-			}
-		} else {
-			// this is only temporary, until we test it in local, then we will only use the remote validator
-			validatorObj = validator.NewLocalValidator(
-				logger,
-				aggsender.GetStorage(),
-				validator.NewAggsenderValidator(
-					logger,
-					aggsender.GetFlow(),
-					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
-				),
-			)
-		}
-
-		aggsender.AttachValidator(validatorObj)
 	}
 
 	return aggsender, nil
@@ -689,12 +685,17 @@ func runBridgeSyncL2IfNeeded(
 	rollupID uint32,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{
+	fullClaimsNeeded := isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.L2BRIDGESYNC}, components) {
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.AGGSENDERVALIDATOR}, components)
+
+	fullClaimsNotNeeded := isNeeded([]string{}, components)
+
+	if !fullClaimsNeeded && !fullClaimsNotNeeded {
+		// no bridge sync needed
 		return nil
 	}
 
@@ -704,7 +705,7 @@ func runBridgeSyncL2IfNeeded(
 		reorgDetectorL2,
 		l2Client,
 		rollupID,
-		true,
+		fullClaimsNeeded,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
@@ -722,6 +723,24 @@ func runBridgeSyncL2IfNeeded(
 	go bridgeSyncL2.Start(ctx)
 
 	return bridgeSyncL2
+}
+
+func runAggsenderMultisigCommitteeIfNeeded(
+	components []string,
+	rollupAddr common.Address,
+	l1Client aggkittypes.BaseEthereumClienter,
+	cfg *query.CommitteeOverride,
+) aggsendertypes.MultisigQuerier {
+	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR}, components) {
+		return nil
+	}
+
+	committeeQuerier, err := query.NewBaseMultisigCommitteeQuery(rollupAddr, l1Client, cfg)
+	if err != nil {
+		log.Fatalf("failed to create ECDSA multisig committee querier (SC address: %s): %s", rollupAddr, err)
+	}
+
+	return committeeQuerier
 }
 
 func createBridgeService(
