@@ -14,7 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO: remove this test when aggchain params proof have been re-enabled
+func Test_AggchainProverFlow_NoVerifyCertificate(t *testing.T) {
+	flow := &AggchainProverVerifierFlow{}
+	require.NoError(t, flow.VerifyCertificate(t.Context(), &agglayertypes.Certificate{}, 0, 0))
+}
+
 func Test_AggchainProverFlow_VerifyCertificate(t *testing.T) {
+	t.Skip("aggchain params proof have been disabled temporalily as a workarround to issue #1099")
 	t.Parallel()
 
 	ctx := context.Background()

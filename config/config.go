@@ -228,6 +228,10 @@ var (
 			FieldNamePattern: "Aggsender.RequireValidatorCall",
 			Reason:           requireValidatorCallDeprecatedHint,
 		},
+		{
+			FieldNamePattern: "AggSender.KeepCertificatesHistory",
+			Reason:           "field moved to AggSender.StorageRetainCertificatesPolicy.KeepCertificatesHistory",
+		},
 	}
 )
 

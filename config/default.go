@@ -6,7 +6,7 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
-OpNodeURL = "http://localhost:8080"
+OpNodeURL = ""
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
@@ -185,7 +185,6 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
-KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
 DryRun = false
@@ -213,7 +212,7 @@ RequireCommitteeMembershipCheck = false
 		[[AggSender.AgglayerClient.APIRateLimits]]
 			MethodName = "SendCertificate"
 			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
-				NumRequests = 20
+				NumRequests = 1800 # up to 1800 requests per hour (avg ~1 request every 2s)
 				Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
@@ -245,10 +244,14 @@ RequireCommitteeMembershipCheck = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
-# Overide a committee URL to point to a local service
-#  	[AggSender.CommitteeOverride]
-#		URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
-	
+	# Overide a committee URL to point to a local service
+	# [AggSender.CommitteeOverride]
+	#	URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
+
+	[AggSender.StorageRetainCertificatesPolicy]
+		RetainCertificatesCount = 0 # 0 means keep all certificates
+		KeepCertificatesHistory = true
+
 [Prometheus]
 Enabled = true
 Host = "localhost"

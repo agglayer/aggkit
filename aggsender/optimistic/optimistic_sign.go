@@ -30,6 +30,9 @@ func NewOptimisticSignatureCalculatorImpl(
 	chainID uint64,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("[OPTIMISTIC] invalid config: %w", err)
+	}
 	signer, err := signer.NewSigner(ctx, chainID, cfg.TrustedSequencerKey, "optimistic", logger)
 	if err != nil {
 		return nil, fmt.Errorf("[OPTIMISTIC] failed to instantiate signer. Err: %w", err)

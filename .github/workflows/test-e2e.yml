@@ -54,7 +54,8 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="4397fccbf333f65f1e0d6d689527179b42b74210"
+            # branch: feat/fix_e2e_fep_v2
+            COMMIT="ef69dcb659ff67fa8ecfd6773eb00c5ec385e28c"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
@@ -196,11 +197,11 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@25ece31a112cc6f48f2dada8fdaf69350eedb8dc
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@eb195bccd8bddbb5e2eba26b6274664f1417d44d
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 25ece31a112cc6f48f2dada8fdaf69350eedb8dc
+      agglayer-e2e-ref: eb195bccd8bddbb5e2eba26b6274664f1417d44d # main <- feat/fix_e2e_multisig
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       test-name: "test-single-l2-network-op-succinct"

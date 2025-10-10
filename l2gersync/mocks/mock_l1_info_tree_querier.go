@@ -3,9 +3,10 @@
 package mocks
 
 import (
-	context "context"
-
+	aggkittypes "github.com/agglayer/aggkit/types"
 	common "github.com/ethereum/go-ethereum/common"
+
+	context "context"
 
 	l1infotreesync "github.com/agglayer/aggkit/l1infotreesync"
 
@@ -196,6 +197,63 @@ func (_c *L1InfoTreeQuerier_GetLastL1InfoTreeRoot_Call) Return(_a0 types.Root, _
 }
 
 func (_c *L1InfoTreeQuerier_GetLastL1InfoTreeRoot_Call) RunAndReturn(run func(context.Context) (types.Root, error)) *L1InfoTreeQuerier_GetLastL1InfoTreeRoot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsUpToDate provides a mock function with given fields: ctx, l1Client
+func (_m *L1InfoTreeQuerier) IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error) {
+	ret := _m.Called(ctx, l1Client)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsUpToDate")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, aggkittypes.BaseEthereumClienter) (bool, error)); ok {
+		return rf(ctx, l1Client)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, aggkittypes.BaseEthereumClienter) bool); ok {
+		r0 = rf(ctx, l1Client)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, aggkittypes.BaseEthereumClienter) error); ok {
+		r1 = rf(ctx, l1Client)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeQuerier_IsUpToDate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsUpToDate'
+type L1InfoTreeQuerier_IsUpToDate_Call struct {
+	*mock.Call
+}
+
+// IsUpToDate is a helper method to define mock.On call
+//   - ctx context.Context
+//   - l1Client aggkittypes.BaseEthereumClienter
+func (_e *L1InfoTreeQuerier_Expecter) IsUpToDate(ctx interface{}, l1Client interface{}) *L1InfoTreeQuerier_IsUpToDate_Call {
+	return &L1InfoTreeQuerier_IsUpToDate_Call{Call: _e.mock.On("IsUpToDate", ctx, l1Client)}
+}
+
+func (_c *L1InfoTreeQuerier_IsUpToDate_Call) Run(run func(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter)) *L1InfoTreeQuerier_IsUpToDate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(aggkittypes.BaseEthereumClienter))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeQuerier_IsUpToDate_Call) Return(_a0 bool, _a1 error) *L1InfoTreeQuerier_IsUpToDate_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeQuerier_IsUpToDate_Call) RunAndReturn(run func(context.Context, aggkittypes.BaseEthereumClienter) (bool, error)) *L1InfoTreeQuerier_IsUpToDate_Call {
 	_c.Call.Return(run)
 	return _c
 }

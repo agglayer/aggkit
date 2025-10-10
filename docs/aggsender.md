@@ -1,6 +1,15 @@
 # AggSender Component
 
-`AggSender` is responsible for building and packing the information required to prove a target chain's bridge state into a certificate. This certificate provides the inputs needed to build a pessimistic proof.
+`AggSender` is responsible for building and packing the information required to prove a target chain's bridge state into a certificate. This certificate provides the inputs needed to build a proof that is eventually going to be settled on L1 via the agglayer.
+
+The `AggSender` consists of a multisig committee, where one participant acts as the proposer, and the remaining members act as validators.
+The proposer is responsible for building and signing the certificate, and propagating it to the validators for verification via gRPC. Each validator independently validates the proposed certificate and returns a signature to the proposer if the validation is successful.
+Proposer will pack each signature (including its own) in the certificate, and send it to `agglayer` for settlement.
+
+The multisig committee is registered on the [rollup](https://github.com/agglayer/agglayer-contracts/blob/d1a1b7e33d03ad162b6019fbbb1b23110ed8fa95/contracts/lib/AggchainBase.sol#L73-L77) contract on L1. It contains a list of signers, each represented by an Ethereum address and a URL.
+It is important that when initializing the rollup contract:
+- the first signer in the list corresponds to the `AggSender proposer`. For the proposer, the url parameter may be omitted (as it is not used for validation requests).
+- the remaining signers represent `AggSender validators`, and their url fields must be properly set, as these endpoints are used to send certificate validation requests via gRPC.
 
 ## Component Diagram
 
@@ -22,12 +31,19 @@ The image below depicts the `Aggsender` components (the editable link of the dia
 ```mermaid
 sequenceDiagram
     participant Agglayer
-    participant Aggsender
+    participant Aggsender Proposer
+    participant Aggsender Validator 1
+    participant Aggsender Validator N
 
-    Aggsender->>Agglayer: Read epoch configuration
-    Aggsender->>Agglayer: Read latest known certificate
-    Aggsender-->>Aggsender: Wait for an epoch
-    Aggsender->>Agglayer: Send certificate
+    Aggsender Proposer->>Agglayer: Read epoch configuration
+    Aggsender Proposer->>Agglayer: Read latest known certificate
+    Aggsender Proposer-->>Aggsender Proposer: Wait for an epoch
+    Aggsender Proposer-->>Aggsender Proposer: Build certificate
+    Aggsender Proposer->>Aggsender Validator 1: Validate certificate
+    Aggsender Proposer->>Aggsender Validator N: Validate certificate
+    Aggsender Validator 1-->>Aggsender Proposer: Return signature if valid
+    Aggsender Validator N-->>Aggsender Proposer: Return signature if valid
+    Aggsender Proposer->>Agglayer: Send certificate
 ```
 
 ### PessimisticProof Mode
@@ -160,7 +176,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | EpochNotificationPercentage       | uint                                                      | Indicates the percentage of the epoch on which the AggSender should send the certificate. 0 = begin, 50 = middle |
 | MaxRetriesStoreCertificate        | int                                                       | Number of retries if Aggsender fails to store certificates on DB. 0 = infinite retries                           |
 | DelayBetweenRetries              | Duration                                                   | Delay between retries for storing certificate and initial status check                                           |
-| KeepCertificatesHistory           | bool                                                      | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
 | MaxCertSize                       | uint                                                      | The maximum size of the certificate. 0 means infinite size                                                      |
 | DryRun                            | bool                                                      | If true, AggSender will not send certificates to Agglayer (for debugging)                                       |
 | EnableRPC                         | bool                                                      | Enable the Aggsender's RPC layer                                                                                |
@@ -177,6 +192,15 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | RequireOneBridgeInPPCertificate   | bool                                                      | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
 | MaxL2BlockNumber                  | uint64                    | Set the last block to be included in a certificate (0 = disabled)
 |StopOnFinishedSendingAllCertificates| bool                      | Stop when there are no more certificates to send due to MaxL2BlockNumber
+|StorageRetainCertificatesPolicy| [StorageRetainCertificatesPolicy](#storageretaincertificatespolicy) | Configure the certificate retain policy
+
+## StorageRetainCertificatesPolicy
+The `StorageRetainCertificatesPolicy` structure configures the certificate retain policy
+| Field Name                    | Type                | Description                                                                                                     |
+|-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| RetainCertificatesCount       | uint32 | If it is 0, all certificates are stored. If it is greater than 0, it is the number of certificates stored in the DB. The last certificate sent is always saved because it is necessary for proper operation.
+| KeepCertificatesHistory           | bool                                                      | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
+
 ## OptimisticConfig
 
 The `OptimisticConfig` structure configures the optimistic mode for the AggSender. This configuration is required when running in FEP (Fast Exit Protocol) mode.
@@ -212,9 +236,14 @@ This paragraph explains different use cases with outcomes:
 
 ## Debugging in Local with Bats E2E Tests
 
-1. Start kurtosis with pessimistic proof yml file (`kurtosis run --enclave aggkit --args-file .github/tests/fork12-pessimistic.yml .`). Change `gas_token_enabled` to true.
-2. After kurtosis is started, stop the `cdk-node-001` service (`kurtosis service stop aggkit cdk-node-001`).
-3. Open the repo in an IDE (like Visual Studio), and run `./scripts/local_config` from the main repo folder. This will generate a `./tmp` folder in which `Aggsender` storage will be saved, and other aggkit node data, and will print a `launch.json`:
+Preconditions: 
+- Make sure you have the up to date `aggkit:local` Docker image built. In order to build one, run `make build-docker-ci` command.
+- Run the `bridge_spammer` in background (namely make sure that the `additional_services` has `bridge_spammer` provided).
+1. Start kurtosis with pessimistic proof (OP stack):
+`./test/run-local-e2e.sh single-l2-network-op-pessimistic path_to_kurtosis_cdk_repo -`
+Note that the fourth argument corresponds to the e2e repo path. In case you would like to run the set of e2e tests immediately after the kurtosis environment is up and running, you should provide a real path.
+2. After kurtosis is started, stop the `aggkit-001` service (`kurtosis service stop aggkit aggkit-001`).
+3. Open the repo in an IDE (like Visual Studio), and run `./scripts/local_config_pp` from the main repo folder. This will generate a `./tmp` folder in which `Aggsender` storage will be saved, and other aggkit node data, and will print a `launch.json`:
 
 ```json
 {
@@ -236,11 +265,11 @@ This paragraph explains different use cases with outcomes:
    ]
 }
 ```
-
 4. Copy this to your `launch.json` and start debugging.
 5. This will start the `aggkit` with the `aggsender` running.
-6. Navigate to the `test/bats/pp` folder (`cd test/bats/pp`).
-7. Run a test in `bridge-e2e.bats` file: `bats -f "Native gas token deposit to WETH" bridge-e2e.bats`. This will build a new certificate after it is done, and you can debug the whole process.
+6. Wait for some time, until `bridge_spammer` deposits are indexed by the `aggsender`. As a result of bridge activity, there should be a certificate, and you can debug the whole process.
+7. Optionally you can run the E2E tests as well, by running the following command and providing the real e2e repo path:
+`./test/run-local-e2e.sh single-l2-network-op-pessimistic - path_to_e2e_repo`
 
 ## Prometheus Endpoint
 

@@ -65,7 +65,8 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n"+
-		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
+		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
+		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -782,9 +783,9 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	} else {
 		dbPath := path.Join(t.TempDir(), "newAggsenderTestData.sqlite")
 		storageConfig := db.AggSenderSQLStorageConfig{
-			DBPath:                  dbPath,
-			CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
-			KeepCertificatesHistory: true,
+			DBPath:                   dbPath,
+			CertificatesDir:          filepath.Join(filepath.Dir(dbPath), "certificates"),
+			RetainCertificatesPolicy: *db.NewStorageRetainCertificatesPolicyDefault(),
 		}
 		storage, err = db.NewAggSenderSQLStorage(logger, storageConfig)
 		require.NoError(t, err)

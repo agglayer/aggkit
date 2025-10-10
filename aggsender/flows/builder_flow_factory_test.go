@@ -176,7 +176,8 @@ func TestNewFlow(t *testing.T) {
 			if tc.mockFn != nil {
 				tc.mockFn(mockCommitteeQuerier)
 			}
-
+			tc.cfg.OptimisticModeConfig.SovereignRollupAddr = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+			tc.cfg.OptimisticModeConfig.OpNodeURL = "http://localhost:8545"
 			flow, err := NewBuilderFlow(
 				ctx,
 				tc.cfg,

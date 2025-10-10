@@ -27,6 +27,7 @@ type downloaderSovereign struct {
 	l2GERManager       *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	l2GERAddr          common.Address
 	l1InfoTreeSync     L1InfoTreeQuerier
+	l1Client           aggkittypes.BaseEthereumClienter
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
 }
@@ -35,6 +36,7 @@ func newDownloaderSovereign(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
+	l1Client aggkittypes.BaseEthereumClienter,
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -49,6 +51,7 @@ func newDownloaderSovereign(
 		l2GERManager:       l2GERManager,
 		l2GERAddr:          l2GERAddr,
 		l1InfoTreeSync:     l1InfoTreeSync,
+		l1Client:           l1Client,
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
 	}
@@ -133,8 +136,18 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
-			log.Fatalf("GER %s received from L2 is not present in L1InfoTreeSync: %v",
-				common.Hash(insertGEREvent.NewGlobalExitRoot).String(), err)
+			ctx := context.Background()
+			isUpToDate, err := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
+			if err != nil {
+				log.Warnf("Failed to check if L1InfoTreeSync is up to date: %v", err)
+			}
+			if isUpToDate {
+				log.Fatal("L1InfoTreeSync is to date, GER lookup for %s failed: %v",
+					common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
+			}
+
+			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 		}
 
 		b.Events = []any{

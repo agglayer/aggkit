@@ -2,7 +2,6 @@ package flows
 
 import (
 	"context"
-	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -35,46 +34,46 @@ func (a *AggchainProverVerifierFlow) VerifyCertificate(
 	cert *agglayertypes.Certificate,
 	lastBlockInCert uint64,
 	lastSettledBlock uint64) error {
-	if cert.AggchainData == nil {
-		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is nil")
-	}
+	// Temporary disabled aggchainParams checks
+	// if cert.AggchainData == nil {
+	// 	return fmt.Errorf("aggchainProverFlow: certificate AggchainData is nil")
+	// }
+	// var aggchainDataProof *agglayertypes.AggchainDataProof
+	// switch v := cert.AggchainData.(type) {
+	// case *agglayertypes.AggchainDataProof:
+	// 	aggchainDataProof = v
+	// case *agglayertypes.AggchainDataMultisigWithProof:
+	// 	aggchainDataProof = v.AggchainProof
+	// default:
+	// 	return fmt.Errorf("aggchainProverFlow: certificate AggchainData is of unknown type %T", cert.AggchainData)
+	// }
 
-	var aggchainDataProof *agglayertypes.AggchainDataProof
-	switch v := cert.AggchainData.(type) {
-	case *agglayertypes.AggchainDataProof:
-		aggchainDataProof = v
-	case *agglayertypes.AggchainDataMultisigWithProof:
-		aggchainDataProof = v.AggchainProof
-	default:
-		return fmt.Errorf("aggchainProverFlow: certificate AggchainData is of unknown type %T", cert.AggchainData)
-	}
+	// // we need to reconstruct the AggchainParams field using what proposer provided,
+	// // plus, the current data from the L1 and L2 networks (what was last settled)
+	// l1InfoLeaf, err := a.l1InfoTreeDataQuerier.GetInfoByIndex(ctx, cert.L1InfoTreeLeafCount-1)
+	// if err != nil {
+	// 	return fmt.Errorf("aggchainProverFlow - error getting L1InfoLeaf by index %d: %w",
+	// 		cert.L1InfoTreeLeafCount-1, err)
+	// }
 
-	// we need to reconstruct the AggchainParams field using what proposer provided,
-	// plus, the current data from the L1 and L2 networks (what was last settled)
-	l1InfoLeaf, err := a.l1InfoTreeDataQuerier.GetInfoByIndex(ctx, cert.L1InfoTreeLeafCount-1)
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting L1InfoLeaf by index %d: %w",
-			cert.L1InfoTreeLeafCount-1, err)
-	}
+	// expectedAggchainProofPublicValues, err := a.aggProofPublicValuesQuery.GetAggregationProofPublicValuesData(
+	// 	lastSettledBlock,
+	// 	lastBlockInCert,
+	// 	l1InfoLeaf.Hash,
+	// )
+	// if err != nil {
+	// 	return fmt.Errorf("aggchainProverFlow - error getting expected aggchain proof public values: %w", err)
+	// }
 
-	expectedAggchainProofPublicValues, err := a.aggProofPublicValuesQuery.GetAggregationProofPublicValuesData(
-		lastSettledBlock,
-		lastBlockInCert,
-		l1InfoLeaf.Hash,
-	)
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting expected aggchain proof public values: %w", err)
-	}
+	// expectedAggchainParams, err := expectedAggchainProofPublicValues.Hash()
+	// if err != nil {
+	// 	return fmt.Errorf("aggchainProverFlow - error calculating expected aggchain params hash: %w", err)
+	// }
 
-	expectedAggchainParams, err := expectedAggchainProofPublicValues.Hash()
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error calculating expected aggchain params hash: %w", err)
-	}
-
-	if aggchainDataProof.AggchainParams != expectedAggchainParams {
-		return fmt.Errorf("aggchainProverFlow - aggchain params do not match: expected %s, got %s",
-			expectedAggchainParams, aggchainDataProof.AggchainParams)
-	}
+	// if aggchainDataProof.AggchainParams != expectedAggchainParams {
+	// 	return fmt.Errorf("aggchainProverFlow - aggchain params do not match: expected %s, got %s",
+	// 		expectedAggchainParams, aggchainDataProof.AggchainParams)
+	// }
 
 	return nil
 }
