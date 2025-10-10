@@ -86,7 +86,7 @@ func ConvertToImportedBridgeExit(
 	}
 
 	if ibe.GlobalIndex.MainnetFlag {
-		ibe.ClaimData = &agglayertypes.ClaimFromMainnnet{
+		ibe.ClaimData = &agglayertypes.ClaimFromMainnet{
 			L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 				L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
 				RollupExitRoot:  claim.RollupExitRoot,
@@ -169,6 +169,41 @@ func ConvertToImportedBridgeExits(
 		ibe, err := ConvertToImportedBridgeExit(ctx, claim, rootFromWhichToProve, l1InfoTreeQuerier)
 		if err != nil {
 			return nil, fmt.Errorf("error converting claim to imported bridge exit: %w", err)
+		}
+
+		importedBridgeExits = append(importedBridgeExits, ibe)
+	}
+
+	return importedBridgeExits, nil
+}
+
+// ConvertToImportedBridgeExitsWithoutClaimData converts a slice of bridgesync.Claim
+// objects to a slice of agglayertypes.ImportedBridgeExit objects without claim data.
+// It returns an empty slice if no claims are provided, and returns an error if any
+// individual claim conversion fails.
+// This is useful when the claim data is not needed, such as when we don't want to
+// use the debug endpoint to retrieve the claim data.
+//
+// Parameters:
+//   - claims: A slice of bridgesync.Claim objects to be converted
+//
+// Returns:
+//   - A slice of *agglayertypes.ImportedBridgeExit objects on success
+//   - An error if any claim conversion fails
+func ConvertToImportedBridgeExitsWithoutClaimData(
+	claims []bridgesync.Claim,
+) ([]*agglayertypes.ImportedBridgeExit, error) {
+	if len(claims) == 0 {
+		// no claims to convert
+		return []*agglayertypes.ImportedBridgeExit{}, nil
+	}
+
+	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExit, 0, len(claims))
+
+	for _, claim := range claims {
+		ibe, err := ConvertToImportedBridgeExitWithoutClaimData(claim)
+		if err != nil {
+			return nil, fmt.Errorf("error converting claim to imported bridge exit without claim data: %w", err)
 		}
 
 		importedBridgeExits = append(importedBridgeExits, ibe)

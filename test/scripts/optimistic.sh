@@ -1,11 +1,12 @@
 #!/bin/bash
-KURTOSIS_ARTIFACT_AGGKIT_CONFIG=${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-"cdk-aggoracle-config-artifact"}
-KURTOSIS_ENCLAVE=${KURTOSIS_ENCLAVE:-aggkit}
-
+KURTOSIS_ARTIFACT_AGGKIT_CONFIG=${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-"aggkit-config-artifact"}
+KURTOSIS_ENCLAVE=${KURTOSIS_ENCLAVE:-op}
+# https://github.com/0xPolygon/kurtosis-cdk/blob/64c640ee0effea15c6ac76a9c5dd5869d79e0393/input_parser.star#L196
+PRIVATE_KEY=${PRIVATE_KEY:-"0x12d7de8621a77640c9241b2595ba78ce443d05e94090365ab3bb5e19df82c625"}
 function set_rollup_address_from_kurtosis(){
     local DEST=$(mktemp -d)
     kurtosis files download $KURTOSIS_ENCLAVE $KURTOSIS_ARTIFACT_AGGKIT_CONFIG $DEST
-    ROLLUP_ADDRESS=$(cat $DEST/config.toml | grep polygonZkEVMAddress | cut -f 2 -d '=' | tr -d '[:space:]'  | tr -d '"') 
+    ROLLUP_ADDRESS=$(cat $DEST/config.toml | grep polygonZkEVMAddress | tr -d '[:space:]' | cut -f 2 -d '=' | tr -d '"') 
 }
 
 
@@ -33,11 +34,11 @@ echo "Trusted sequencer address: $trustedSequencer"
 echo "optimisticMode           : $optimisticMode"
 case "$1" in
     enable)
-        cast send $ROLLUP_ADDRESS "enableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "0xa574853f4757bfdcbb59b03635324463750b27e16df897f3d00dc6bef2997ae0"
+        cast send $ROLLUP_ADDRESS "enableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "$PRIVATE_KEY"
         echo "Optimistic mode enabled."
         ;;
     disable)
-        cast send $ROLLUP_ADDRESS "disableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "0xa574853f4757bfdcbb59b03635324463750b27e16df897f3d00dc6bef2997ae0"
+        cast send $ROLLUP_ADDRESS "disableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "$PRIVATE_KEY"
         echo "Optimistic mode disabled."
         ;;
     help|*)

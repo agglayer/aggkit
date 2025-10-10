@@ -4,6 +4,7 @@
 - [Local Debug](./local_debug.md)
 - [AggOracle](./aggoracle.md)
 - [Aggsender](./aggsender.md)
+- [Aggsender Validator](./aggsender_validator.md)
 - [Bridge service](./bridge_service.md)
 - [EthTxManager](./ethtxmanager.md)
 - [Etherman](./etherman.md)

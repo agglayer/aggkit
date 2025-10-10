@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"

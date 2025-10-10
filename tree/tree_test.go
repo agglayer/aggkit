@@ -198,6 +198,49 @@ func TestMTGetProof(t *testing.T) {
 	}
 }
 
+func TestVerifyProof(t *testing.T) {
+	ctx := context.Background()
+	treeDB := createTreeDBForTest(t)
+	tre := NewAppendOnlyTree(treeDB, "")
+
+	numOfLeavesToAdd := 11
+
+	// add a few leaves
+	tx, err := db.NewTx(ctx, treeDB)
+	require.NoError(t, err)
+	for i := range numOfLeavesToAdd {
+		require.NoError(t, tre.AddLeaf(tx, uint64(i), 0, types.Leaf{
+			Index: uint32(i),
+			Hash:  common.HexToHash(fmt.Sprintf("%x", i)),
+		}))
+	}
+	require.NoError(t, tx.Commit())
+
+	root, err := tre.GetLastRoot(nil)
+	require.NoError(t, err)
+
+	for i := range numOfLeavesToAdd {
+		leaf := common.HexToHash(fmt.Sprintf("%x", i))
+		proof, err := tre.GetProof(ctx, uint32(i), root.Hash)
+		require.NoError(t, err)
+
+		// valid proof should return nil
+		require.NoError(t, VerifyProof(leaf, proof, uint32(i), root.Hash))
+
+		// corrupted root should produce an error
+		corruptedRoot := root.Hash
+		corruptedRoot[0] ^= 0xFF
+		require.Error(t, VerifyProof(leaf, proof, uint32(i), corruptedRoot))
+
+		// wrong leaf should produce an error
+		wrongLeaf := common.HexToHash("deadbeef")
+		require.Error(t, VerifyProof(wrongLeaf, proof, uint32(i), root.Hash))
+
+		// wrong index should produce an error
+		require.Error(t, VerifyProof(leaf, proof, uint32(i+1), root.Hash))
+	}
+}
+
 func createTreeDBForTest(t *testing.T) *sql.DB {
 	t.Helper()
 	dbPath := path.Join(t.TempDir(), "tree_createTreeDBForTest.sqlite")

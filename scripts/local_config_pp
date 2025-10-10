@@ -14,8 +14,9 @@ function export_values_of_aggkit_config() {
 ###############################################################################
 function export_ports_from_kurtosis() {
     common_export_ports_from_kurtosis
-    export_portnum_from_kurtosis_or_fail zkevm_rpc_http_port cdk-erigon-rpc-001 http-rpc rpc
-    export l2_rpc_url="http://localhost:${zkevm_rpc_http_port}"
+    export_portnum_from_kurtosis_or_fail op_el_rpc_port op-el-1-op-geth-op-node-001 rpc
+    export op_el_rpc_url="http://localhost:${op_el_rpc_port}"
+    export l2_rpc_url=$op_el_rpc_url
     export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
 }
 ###############################################################################

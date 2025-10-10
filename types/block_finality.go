@@ -13,6 +13,23 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+const (
+	SafeBlockName      = "SafeBlock"
+	FinalizedBlockName = "FinalizedBlock"
+	LatestBlockName    = "LatestBlock"
+	PendingBlockName   = "PendingBlock"
+	EmptyBlockName     = ""
+
+	blockNameAndOffsetSeparator = "/"
+)
+
+var (
+	FinalizedBlock = BlockNumberFinality{Block: Finalized}
+	LatestBlock    = BlockNumberFinality{Block: Latest}
+	SafeBlock      = BlockNumberFinality{Block: Safe}
+	PendingBlock   = BlockNumberFinality{Block: Pending}
+)
+
 // BlockNumberFinality represents a block finality with an optional offset
 type BlockNumberFinality struct {
 	Block  BlockNumber
@@ -45,32 +62,15 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	return result, nil
 }
 
-const (
-	SafeBlockName      = "SafeBlock"
-	FinalizedBlockName = "FinalizedBlock"
-	LatestBlockName    = "LatestBlock"
-	PendingBlockName   = "PendingBlock"
-	EmptyBlockName     = ""
-
-	blockNameAndOffsetSeparator = "/"
-)
-
-var (
-	FinalizedBlock = BlockNumberFinality{Block: Finalized}
-	LatestBlock    = BlockNumberFinality{Block: Latest}
-	SafeBlock      = BlockNumberFinality{Block: Safe}
-	PendingBlock   = BlockNumberFinality{Block: Pending}
-)
-
 // String returns the string representation of the BlockNumberFinality
 func (b *BlockNumberFinality) String() string {
 	if b == nil {
 		return "nil"
 	}
 	if b.Offset == 0 {
-		return b.Block.ToString()
+		return b.Block.String()
 	}
-	return fmt.Sprintf("%s%s%d", b.Block.ToString(), blockNameAndOffsetSeparator, b.Offset)
+	return fmt.Sprintf("%s%s%d", b.Block.String(), blockNameAndOffsetSeparator, b.Offset)
 }
 
 // UnmarshalText unmarshalls BlockNumberFinality from text.
@@ -99,19 +99,22 @@ func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
 	}
 }
 
-// IsEmpty returns true if v is empty
+// IsEmpty returns true if b is empty
 func (b BlockNumberFinality) IsEmpty() bool {
 	return b.Block == Empty
 }
 
-// IsLessThan returns true if v is less than other
+// IsFinalized returns true if b is finalized
 func (b BlockNumberFinality) IsFinalized() bool {
 	return b.Block == Finalized
 }
+
+// IsSafe returns true if b is safe
 func (b BlockNumberFinality) IsSafe() bool {
 	return b.Block == Safe
 }
 
+// IsLatest returns true if b is latest with non-negative offset
 func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
 }
@@ -126,11 +129,12 @@ func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereu
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }
 
-// IsGreaterThan returns true if v is greater than other
-// earliest ≤ finalized ≤ safe ≤ latest ≤ pending
-func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
-	if b == nil || other == nil {
-		return false
+// LessFinalThan returns true if b is less strict commitment level than other.
+// In case commitment level keywords are the same, it compares the offsets.
+// finalized ≤ safe ≤ latest ≤ pending
+func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) bool {
+	if b == nil {
+		return true
 	}
 	if blockOrder[b.Block] > blockOrder[other.Block] {
 		return true
@@ -144,7 +148,7 @@ func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
 type BlockNumber int64
 
 var (
-	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 0} //nolint:mnd
+	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 5} //nolint:mnd
 )
 
 const (
@@ -188,7 +192,7 @@ func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
 	return blockNumber
 }
 
-func (b BlockNumber) ToString() string {
+func (b BlockNumber) String() string {
 	switch b {
 	case Finalized:
 		return FinalizedBlockName

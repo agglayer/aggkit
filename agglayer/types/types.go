@@ -11,6 +11,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -33,6 +34,9 @@ const (
 	EstimatedAggchainSignatureSize  = 0.07 * aggkitcommon.KB
 	EstimatedBridgeExitSize         = 0.09 * aggkitcommon.KB
 	EstimatedImportedBridgeExitSize = 2.8 * aggkitcommon.KB
+
+	// GlobalIndexBytesSize denotes the size in bytes when global index gets encoded
+	GlobalIndexBytesSize = 9
 )
 
 var (
@@ -152,10 +156,14 @@ func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var ok bool
-	if _, ok = obj["proof"]; ok {
+	if _, ok = obj["aggchain_data_proof"]; ok {
 		a.obj = &AggchainDataProof{}
-	} else if _, ok = obj["signature"]; ok {
+	} else if _, ok = obj["aggchain_data_signature"]; ok {
 		a.obj = &AggchainDataSignature{}
+	} else if _, ok = obj["aggchain_data_multisig_with_proof"]; ok {
+		a.obj = &AggchainDataMultisigWithProof{}
+	} else if _, ok = obj["aggchain_data_multisig"]; ok {
+		a.obj = &AggchainDataMultisig{}
 	} else {
 		return errors.New("invalid aggchain_data type")
 	}
@@ -173,21 +181,30 @@ type AggchainDataSignature struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Signature string `json:"signature"`
+		AggchainDataSignature struct {
+			Signature string `json:"signature"`
+		} `json:"aggchain_data_signature"`
 	}{
-		Signature: common.Bytes2Hex(a.Signature),
+		AggchainDataSignature: struct {
+			Signature string `json:"signature"`
+		}{
+			Signature: common.Bytes2Hex(a.Signature),
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Signature string `json:"signature"`
+		AggchainDataSignature struct {
+			Signature string `json:"signature"`
+		} `json:"aggchain_data_signature"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	a.Signature = common.Hex2Bytes(aux.Signature)
+
+	a.Signature = common.Hex2Bytes(aux.AggchainDataSignature.Signature)
 	return nil
 }
 
@@ -205,44 +222,172 @@ type AggchainDataProof struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Proof          string            `json:"proof"`
-		AggchainParams string            `json:"aggchain_params"`
-		Context        map[string][]byte `json:"context"`
-		Version        string            `json:"version"`
-		VKey           string            `json:"vkey"`
-		Signature      string            `json:"signature"`
+		AggchainDataProof struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		} `json:"aggchain_data_proof"`
 	}{
-		Proof:          common.Bytes2Hex(a.Proof),
-		AggchainParams: a.AggchainParams.String(),
-		Context:        a.Context,
-		Version:        a.Version,
-		VKey:           common.Bytes2Hex(a.Vkey),
-		Signature:      common.Bytes2Hex(a.Signature),
+		AggchainDataProof: struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		}{
+			Proof:          common.Bytes2Hex(a.Proof),
+			AggchainParams: a.AggchainParams.String(),
+			Context:        a.Context,
+			Version:        a.Version,
+			VKey:           common.Bytes2Hex(a.Vkey),
+			Signature:      common.Bytes2Hex(a.Signature),
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Proof          string            `json:"proof"`
-		AggchainParams string            `json:"aggchain_params"`
-		Context        map[string][]byte `json:"context"`
-		Version        string            `json:"version"`
-		VKey           string            `json:"vkey"`
-		Signature      string            `json:"signature"`
+		AggchainDataProof struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		} `json:"aggchain_data_proof"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 
-	a.Proof = common.Hex2Bytes(aux.Proof)
-	a.AggchainParams = common.HexToHash(aux.AggchainParams)
-	a.Context = aux.Context
-	a.Version = aux.Version
-	a.Vkey = common.Hex2Bytes(aux.VKey)
-	a.Signature = common.Hex2Bytes(aux.Signature)
+	a.Proof = common.Hex2Bytes(aux.AggchainDataProof.Proof)
+	a.AggchainParams = common.HexToHash(aux.AggchainDataProof.AggchainParams)
+	a.Context = aux.AggchainDataProof.Context
+	a.Version = aux.AggchainDataProof.Version
+	a.Vkey = common.Hex2Bytes(aux.AggchainDataProof.VKey)
+	a.Signature = common.Hex2Bytes(aux.AggchainDataProof.Signature)
 
 	return nil
+}
+
+// AggchainDataMultisig is the data structure that will hold the multisig information
+// for PP networks
+type AggchainDataMultisig struct {
+	Multisig *Multisig `json:"multisig"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataMultisig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		AggchainDataMultisig struct {
+			Multisig *Multisig `json:"multisig"`
+		} `json:"aggchain_data_multisig"`
+	}{
+		AggchainDataMultisig: struct {
+			Multisig *Multisig `json:"multisig"`
+		}{
+			Multisig: a.Multisig,
+		},
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataMultisig) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		AggchainDataMultisig struct {
+			Multisig *Multisig `json:"multisig"`
+		} `json:"aggchain_data_multisig"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Multisig = aux.AggchainDataMultisig.Multisig
+	return nil
+}
+
+// AggchainDataMultisigWithProof is the data structure that will hold the
+// multisig and aggchain proof information for FEP networks
+type AggchainDataMultisigWithProof struct {
+	Multisig      *Multisig          `json:"multisig"`
+	AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataMultisigWithProof) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		AggchainDataMultisigWithProof struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		} `json:"aggchain_data_multisig_with_proof"`
+	}{
+		AggchainDataMultisigWithProof: struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		}{
+			Multisig:      a.Multisig,
+			AggchainProof: a.AggchainProof,
+		},
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataMultisigWithProof) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		AggchainDataMultisigWithProof struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		} `json:"aggchain_data_multisig_with_proof"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Multisig = aux.AggchainDataMultisigWithProof.Multisig
+	a.AggchainProof = aux.AggchainDataMultisigWithProof.AggchainProof
+	return nil
+}
+
+// ECDSAMultisigEntry is the data structure that will hold the information
+// about a single signature in the multisig
+type ECDSAMultisigEntry struct {
+	Index     uint32 `json:"index"`
+	Signature []byte `json:"signature"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (e *ECDSAMultisigEntry) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Index     uint32 `json:"index"`
+		Signature string `json:"signature"`
+	}{
+		Index:     e.Index,
+		Signature: common.Bytes2Hex(e.Signature),
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (e *ECDSAMultisigEntry) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Index     uint32 `json:"index"`
+		Signature string `json:"signature"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	e.Index = aux.Index
+	e.Signature = common.Hex2Bytes(aux.Signature)
+
+	return nil
+}
+
+// Multisig is the data structure that will hold the multisig information
+type Multisig struct {
+	Signatures []ECDSAMultisigEntry `json:"signatures"`
 }
 
 // Certificate is the data structure that will be sent to the agglayer
@@ -253,7 +398,6 @@ type Certificate struct {
 	NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
-	Metadata            common.Hash           `json:"metadata"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 	AggchainData        AggchainData          `json:"aggchain_data,omitempty"`
 	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
@@ -286,7 +430,6 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 		NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
 		BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 		ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
-		Metadata            common.Hash           `json:"metadata"`
 		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 		AggchainData        AggchainDataSelector  `json:"aggchain_data,omitempty"`
 		L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
@@ -301,7 +444,6 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 	c.NewLocalExitRoot = aux.NewLocalExitRoot
 	c.BridgeExits = aux.BridgeExits
 	c.ImportedBridgeExits = aux.ImportedBridgeExits
-	c.Metadata = aux.Metadata
 	c.CustomChainData = aux.CustomChainData
 	c.AggchainData = aux.AggchainData.GetObject()
 	c.L1InfoTreeLeafCount = aux.L1InfoTreeLeafCount
@@ -346,58 +488,30 @@ func (c *Certificate) CertificateID() common.Hash {
 	importedBridgeExitsPart := crypto.Keccak256(importedBridgeExitsHashes...)
 
 	return crypto.Keccak256Hash(
-		aggkitcommon.Uint32ToBytes(c.NetworkID),
+		aggkitcommon.Uint32ToBigEndianBytes(c.NetworkID),
 		aggkitcommon.Uint64ToBigEndianBytes(c.Height),
 		c.PrevLocalExitRoot.Bytes(),
 		c.NewLocalExitRoot.Bytes(),
 		bridgeExitsPart,
 		importedBridgeExitsPart,
-		c.Metadata.Bytes(),
+		aggkitcommon.ZeroHash.Bytes(), // zero hash is used instead of old Metadata field
 	)
 }
 
-// PPHashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer for the PP flow
-func (c *Certificate) PPHashToSign() common.Hash {
-	globalIndexHashes := make([][]byte, len(c.ImportedBridgeExits))
-	for i, importedBridgeExit := range c.ImportedBridgeExits {
-		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
+// ExtractAggchainParams extracts the aggchain params field from the certificate
+// with handling different types of aggchain data.
+func (c *Certificate) ExtractAggchainParams() []byte {
+	switch data := c.AggchainData.(type) {
+	case *AggchainDataProof:
+		return data.AggchainParams.Bytes()
+
+	case *AggchainDataMultisigWithProof:
+		if data.AggchainProof != nil {
+			return data.AggchainProof.AggchainParams.Bytes()
+		}
 	}
 
-	return crypto.Keccak256Hash(
-		c.NewLocalExitRoot.Bytes(),
-		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
-	)
-}
-
-// FEPHashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer for the FEP flow
-func (c *Certificate) FEPHashToSign() common.Hash {
-	chunks := make([][]byte, 0, len(c.ImportedBridgeExits))
-	for _, importedBridgeExit := range c.ImportedBridgeExits {
-		indexBytes := importedBridgeExit.GlobalIndexToLittleEndianBytes()
-		hashBytes := importedBridgeExit.BridgeExit.Hash().Bytes()
-
-		combined := make([]byte, 0, len(indexBytes)+len(hashBytes))
-		combined = append(combined, indexBytes...) // combine into one slice
-		combined = append(combined, hashBytes...)  // combine into one slice
-		chunks = append(chunks, combined)
-	}
-
-	importedBridgeExitsHash := crypto.Keccak256(chunks...)
-
-	aggchainParams := aggkitcommon.EmptyBytesHash
-	aggchainDataProof, ok := c.AggchainData.(*AggchainDataProof)
-	if ok {
-		aggchainParams = aggchainDataProof.AggchainParams.Bytes()
-	}
-
-	return crypto.Keccak256Hash(
-		c.NewLocalExitRoot.Bytes(),
-		importedBridgeExitsHash,
-		aggkitcommon.Uint64ToLittleEndianBytes(c.Height),
-		aggchainParams,
-	)
+	return aggkitcommon.ZeroHash.Bytes()
 }
 
 // SignedCertificate is the struct that contains the certificate and the signature of the signer
@@ -469,6 +583,11 @@ type GlobalIndex struct {
 	MainnetFlag bool   `json:"mainnet_flag"`
 	RollupIndex uint32 `json:"rollup_index"`
 	LeafIndex   uint32 `json:"leaf_index"`
+}
+
+// ToBigInt converts the GlobalIndex to a big.Int representation
+func (g *GlobalIndex) ToBigInt() *big.Int {
+	return bridgesync.GenerateGlobalIndex(g.MainnetFlag, g.RollupIndex, g.LeafIndex)
 }
 
 func (g *GlobalIndex) Validate() error {
@@ -570,9 +689,9 @@ func (b *BridgeExit) Hash() common.Hash {
 
 	return crypto.Keccak256Hash(
 		[]byte{b.LeafType.Uint8()},
-		aggkitcommon.Uint32ToBytes(b.TokenInfo.OriginNetwork),
+		aggkitcommon.Uint32ToBigEndianBytes(b.TokenInfo.OriginNetwork),
 		b.TokenInfo.OriginTokenAddress.Bytes(),
-		aggkitcommon.Uint32ToBytes(b.DestinationNetwork),
+		aggkitcommon.Uint32ToBigEndianBytes(b.DestinationNetwork),
 		b.DestinationAddress.Bytes(),
 		common.BigToHash(b.Amount).Bytes(),
 		metaDataHash,
@@ -777,20 +896,20 @@ type Claim interface {
 	Validate() error
 }
 
-// ClaimFromMainnnet represents a claim originating from the mainnet
-type ClaimFromMainnnet struct {
+// ClaimFromMainnet represents a claim originating from the mainnet
+type ClaimFromMainnet struct {
 	ProofLeafMER     *MerkleProof    `json:"proof_leaf_mer"`
 	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
 	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
 }
 
 // Type is the implementation of Claim interface
-func (c ClaimFromMainnnet) Type() string {
+func (c ClaimFromMainnet) Type() string {
 	return "Mainnet"
 }
 
 // MarshalJSON is the implementation of Claim interface
-func (c *ClaimFromMainnnet) MarshalJSON() ([]byte, error) {
+func (c *ClaimFromMainnet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Child map[string]interface{} `json:"Mainnet"`
 	}{
@@ -802,7 +921,7 @@ func (c *ClaimFromMainnnet) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
+func (c *ClaimFromMainnet) UnmarshalJSON(data []byte) error {
 	if string(data) == nullStr {
 		return nil
 	}
@@ -825,7 +944,7 @@ func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
 }
 
 // Hash is the implementation of Claim interface
-func (c *ClaimFromMainnnet) Hash() common.Hash {
+func (c *ClaimFromMainnet) Hash() common.Hash {
 	if c.Validate() != nil {
 		return common.Hash{}
 	}
@@ -836,12 +955,12 @@ func (c *ClaimFromMainnnet) Hash() common.Hash {
 	)
 }
 
-func (c *ClaimFromMainnnet) String() string {
+func (c *ClaimFromMainnet) String() string {
 	return fmt.Sprintf("ProofLeafMER: %s, ProofGERToL1Root: %s, L1Leaf: %s",
 		c.ProofLeafMER.String(), c.ProofGERToL1Root.String(), c.L1Leaf.String())
 }
 
-func (c *ClaimFromMainnnet) Validate() error {
+func (c *ClaimFromMainnet) Validate() error {
 	if c == nil {
 		return errors.New("ClaimFromMainnnet is nil")
 	}
@@ -851,6 +970,37 @@ func (c *ClaimFromMainnnet) Validate() error {
 	if err := c.L1Leaf.Validate(); err != nil {
 		return fmt.Errorf("ClaimFromMainnnet L1Leaf error: %w", err)
 	}
+	return nil
+}
+
+// VerifyProofs verifies the inclusion proofs for the given mainnet claim
+func (c *ClaimFromMainnet) VerifyProofs(l1RootFromWhichToProof, leafHash common.Hash, leafIndex uint32) error {
+	if c.ProofGERToL1Root.Root != l1RootFromWhichToProof {
+		return fmt.Errorf("ClaimFromMainnnet - Mismatch between the provided L1 root and the inclusion proof. "+
+			"GERToL1Root: %s != L1RootFromWhichToProof: %s",
+			c.ProofGERToL1Root.Root.String(), l1RootFromWhichToProof.String())
+	}
+
+	if c.ProofLeafMER.Root != c.L1Leaf.MainnetExitRoot {
+		return fmt.Errorf("ClaimFromMainnnet - Mismatch on the MER between the L1 leaf and the inclusion proof. "+
+			"ProofLeafMER: %s != L1Leaf.MainnetExitRoot: %s",
+			c.ProofLeafMER.Root.String(), c.L1Leaf.MainnetExitRoot.String())
+	}
+
+	if err := tree.VerifyProof(leafHash, c.ProofLeafMER.Proof,
+		leafIndex, c.ProofLeafMER.Root); err != nil {
+		return fmt.Errorf("ClaimFromMainnnet - Invalid merkle path from the leaf to the LER. "+
+			"ProofLeafMER: %s, leafHash: %s, leafIndex: %d, err: %w",
+			c.ProofLeafMER.String(), leafHash.String(), leafIndex, err)
+	}
+
+	if err := tree.VerifyProof(c.L1Leaf.Hash(), c.ProofGERToL1Root.Proof,
+		c.L1Leaf.L1InfoTreeIndex, c.ProofGERToL1Root.Root); err != nil {
+		return fmt.Errorf("ClaimFromMainnnet - Invalid merkle path from the GER to the L1 Info Root. "+
+			"ProofGERToL1Root: %s, L1Leaf: %s, leafIndex: %d, err: %w",
+			c.ProofGERToL1Root.String(), c.L1Leaf.String(), c.L1Leaf.L1InfoTreeIndex, err)
+	}
+
 	return nil
 }
 
@@ -937,6 +1087,43 @@ func (c *ClaimFromRollup) String() string {
 		c.ProofLeafLER.String(), c.ProofLERToRER.String(), c.ProofGERToL1Root.String(), c.L1Leaf.String())
 }
 
+func (c *ClaimFromRollup) VerifyProofs(
+	l1RootFromWhichToProof, leafHash common.Hash, rollupIndex, leafIndex uint32) error {
+	if c.ProofGERToL1Root.Root != l1RootFromWhichToProof {
+		return fmt.Errorf("ClaimFromRollup - Mismatch between the provided L1 root and the inclusion proof. "+
+			"ProofGERToL1Root: %s != L1RootFromWhichToProof: %s",
+			c.ProofGERToL1Root.Root.String(), l1RootFromWhichToProof.String())
+	}
+
+	if c.ProofLERToRER.Root != c.L1Leaf.RollupExitRoot {
+		return fmt.Errorf("ClaimFromRollup - Mismatch on the RER between the L1 leaf and the inclusion proof. "+
+			"ProofLERToRER: %s != L1Leaf.RollupExitRoot: %s",
+			c.ProofLERToRER.Root.String(), c.L1Leaf.RollupExitRoot.String())
+	}
+
+	if err := tree.VerifyProof(leafHash, c.ProofLeafLER.Proof,
+		leafIndex, c.ProofLeafLER.Root); err != nil {
+		return fmt.Errorf("ClaimFromRollup - Invalid merkle path from the leaf to the LER. "+
+			"ProofLeafLER: %s, leafHash: %s, leafIndex: %d, err: %w",
+			c.ProofLeafLER.String(), leafHash.String(), leafIndex, err)
+	}
+
+	if err := tree.VerifyProof(c.L1Leaf.Hash(), c.ProofGERToL1Root.Proof,
+		c.L1Leaf.L1InfoTreeIndex, c.ProofGERToL1Root.Root); err != nil {
+		return fmt.Errorf("ClaimFromRollup - Invalid merkle path from the GER to the L1 Info Root. "+
+			"ProofGERToL1Root: %s, L1Leaf: %s, leafIndex: %d, err: %w",
+			c.ProofGERToL1Root.String(), c.L1Leaf.String(), c.L1Leaf.L1InfoTreeIndex, err)
+	}
+
+	if err := tree.VerifyProof(c.ProofLeafLER.Root, c.ProofLERToRER.Proof, rollupIndex, c.ProofLERToRER.Root); err != nil {
+		return fmt.Errorf("ClaimFromRollup - Invalid merkle path from the LER to the RER. "+
+			"ProofLERToRER: %s, LER: %s, rollupIndex: %d, err: %w",
+			c.ProofLERToRER.String(), c.ProofLeafLER.String(), rollupIndex, err)
+	}
+
+	return nil
+}
+
 // ClaimSelector is a helper struct that allow to decice which type of claim to unmarshal
 type ClaimSelector struct {
 	obj Claim
@@ -956,7 +1143,7 @@ func (c *ClaimSelector) UnmarshalJSON(data []byte) error {
 	}
 	var ok bool
 	if _, ok = obj["Mainnet"]; ok {
-		c.obj = &ClaimFromMainnnet{}
+		c.obj = &ClaimFromMainnet{}
 	} else if _, ok = obj["Rollup"]; ok {
 		c.obj = &ClaimFromRollup{}
 	} else {
@@ -1027,13 +1214,37 @@ func (c *ImportedBridgeExit) Validate() error {
 	if err := c.BridgeExit.Validate(); err != nil {
 		return fmt.Errorf("ImportedBridgeExit.BridgeExit not valid: %w", err)
 	}
-	if err := c.ClaimData.Validate(); err != nil {
-		return fmt.Errorf("ImportedBridgeExit.ClaimData exit not valid: %w", err)
-	}
 	if err := c.GlobalIndex.Validate(); err != nil {
 		return fmt.Errorf("ImportedBridgeExit.GlobalIndex exit not valid: %w", err)
 	}
 	return nil
+}
+
+// VerifyProofs verifies the inclusion proofs for the imported bridge exit
+func (c *ImportedBridgeExit) VerifyProofs(l1RootFromWhichToProve common.Hash) error {
+	if c == nil {
+		return errors.New("ImportedBridgeExit is nil")
+	}
+
+	if c.ClaimData == nil {
+		return errors.New("ImportedBridgeExit.ClaimData is nil")
+	}
+
+	switch cl := c.ClaimData.(type) {
+	case *ClaimFromMainnet:
+		if err := cl.VerifyProofs(l1RootFromWhichToProve, c.BridgeExit.Hash(), c.GlobalIndex.LeafIndex); err != nil {
+			return fmt.Errorf("ImportedBridgeExit - ClaimFromMainnnet verification failed: %w", err)
+		}
+		return nil
+	case *ClaimFromRollup:
+		if err := cl.VerifyProofs(l1RootFromWhichToProve, c.BridgeExit.Hash(),
+			c.GlobalIndex.RollupIndex, c.GlobalIndex.LeafIndex); err != nil {
+			return fmt.Errorf("ImportedBridgeExit - ClaimFromRollup verification failed: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("ImportedBridgeExit - unknown claim type: %T", c.ClaimData)
+	}
 }
 
 // GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format
@@ -1235,4 +1446,40 @@ type ClockConfiguration struct {
 
 func (c ClockConfiguration) String() string {
 	return fmt.Sprintf("EpochDuration: %d, GenesisBlock: %d", c.EpochDuration, c.GenesisBlock)
+}
+
+// NetworkInfo represents the state of the network returned by the interop_getNetworkInfo RPC call
+type NetworkInfo struct {
+	// Status is the current status of the network (e.g., "active", "syncing", "error")
+	Status string `json:"network_status"`
+	// NetworkType is the aggchain type of network
+	NetworkType string `json:"network_type"`
+	// NetworkID is the unique identifier of the network
+	NetworkID uint32 `json:"network_id"`
+	// SettledHeight is the height of the latest settled certificate
+	SettledHeight *uint64 `json:"settled_height"`
+	// SettledCertificateID is the ID of the latest settled certificate
+	SettledCertificateID *common.Hash `json:"settled_certificate_id"`
+	// SettledPPRoot pessimistic proof root of the latest settled certificate
+	SettledPPRoot *common.Hash `json:"settled_pp_root"`
+	// SettledLER is the local exit root of the latest settled certificate
+	SettledLER *common.Hash `json:"settled_ler"`
+	// SettledLETLeafCount is the leaf count of the latest settled local exit tree
+	SettledLETLeafCount *uint64 `json:"settled_let_leaf_count"`
+	// SettledImportedBridgeExit is the information about the latest settled claim
+	SettledImportedBridgeExit *SettledImportedBridgeExit `json:"settled_claim,omitempty"`
+	// LatestPendingHeight is the height of the latest pending certificate
+	LatestPendingHeight *uint64 `json:"latest_pending_height"`
+	// LatestPendingCertificateID is the status of the latest pending certificate (e.g., "Proven", "Pending", "InError")
+	LatestPendingStatus *CertificateStatus `json:"latest_pending_status"`
+	// LatestPendingError is the error message of the latest pending certificate, if any
+	LatestPendingError string `json:"latest_pending_error"`
+	// LatestEpochWithSettlement is the epoch number of the latest settlement
+	LatestEpochWithSettlement *uint64 `json:"latest_epoch_with_settlement"`
+}
+
+// SettledImportedBridgeExit represents the information about a settled claim
+type SettledImportedBridgeExit struct {
+	GlobalIndex    *big.Int    `json:"global_index"`
+	BridgeExitHash common.Hash `json:"bridge_exit_hash"`
 }
