@@ -83,9 +83,9 @@ func New(
 	}
 
 	storageConfig := db.AggSenderSQLStorageConfig{
-		DBPath:                  cfg.StoragePath,
-		CertificatesDir:         cfg.CertificatesDir,
-		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
+		DBPath:                   cfg.StoragePath,
+		CertificatesDir:          cfg.CertificatesDir,
+		RetainCertificatesPolicy: cfg.StorageRetainCertificatesPolicy,
 	}
 	storage, err := db.NewAggSenderSQLStorage(logger, storageConfig)
 	if err != nil {

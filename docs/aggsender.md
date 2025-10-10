@@ -160,7 +160,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | EpochNotificationPercentage       | uint                                                      | Indicates the percentage of the epoch on which the AggSender should send the certificate. 0 = begin, 50 = middle |
 | MaxRetriesStoreCertificate        | int                                                       | Number of retries if Aggsender fails to store certificates on DB. 0 = infinite retries                           |
 | DelayBetweenRetries              | Duration                                                   | Delay between retries for storing certificate and initial status check                                           |
-| KeepCertificatesHistory           | bool                                                      | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
 | MaxCertSize                       | uint                                                      | The maximum size of the certificate. 0 means infinite size                                                      |
 | DryRun                            | bool                                                      | If true, AggSender will not send certificates to Agglayer (for debugging)                                       |
 | EnableRPC                         | bool                                                      | Enable the Aggsender's RPC layer                                                                                |
@@ -177,6 +176,15 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | RequireOneBridgeInPPCertificate   | bool                                                      | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
 | MaxL2BlockNumber                  | uint64                    | Set the last block to be included in a certificate (0 = disabled)
 |StopOnFinishedSendingAllCertificates| bool                      | Stop when there are no more certificates to send due to MaxL2BlockNumber
+|StorageRetainCertificatesPolicy| [StorageRetainCertificatesPolicy](#storageretaincertificatespolicy) | Configure the certificate retain policy
+
+## StorageRetainCertificatesPolicy
+The `StorageRetainCertificatesPolicy` structure configures the certificate retain policy
+| Field Name                    | Type                | Description                                                                                                     |
+|-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| RetainCertificatesCount       | uint32 | If it is 0, all certificates are stored. If it is greater than 0, it is the number of certificates stored in the DB. The last certificate sent is always saved because it is necessary for proper operation.
+| KeepCertificatesHistory           | bool                                                      | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
+
 ## OptimisticConfig
 
 The `OptimisticConfig` structure configures the optimistic mode for the AggSender. This configuration is required when running in FEP (Fast Exit Protocol) mode.

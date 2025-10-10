@@ -185,7 +185,6 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
-KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
 DryRun = false
@@ -245,10 +244,14 @@ RequireCommitteeMembershipCheck = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
-# Overide a committee URL to point to a local service
-#  	[AggSender.CommitteeOverride]
-#		URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
+	# Overide a committee URL to point to a local service
+	# [AggSender.CommitteeOverride]
+	#	URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
 	
+	[AggSender.StorageRetainCertificatesPolicy]
+		RetainCertificatesCount = 0 # 0 means keep all certificates
+		KeepCertificatesHistory = true
+
 [Prometheus]
 Enabled = true
 Host = "localhost"

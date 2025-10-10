@@ -105,7 +105,7 @@ func start(cliCtx *cli.Context) error {
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
-		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
+		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
@@ -611,6 +611,7 @@ func runL2GERSyncIfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l1Client aggkittypes.BaseEthereumClienter,
 ) *l2gersync.L2GERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC}, components) {
 		return nil
@@ -621,6 +622,7 @@ func runL2GERSyncIfNeeded(
 		reorgDetectorL2,
 		l2Client,
 		l1InfoTreeSync,
+		l1Client,
 	)
 	if err != nil {
 		log.Fatalf("error creating l2GERSync: %s", err)

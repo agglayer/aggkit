@@ -49,7 +49,8 @@ func TestL2GERSyncE2E(t *testing.T) {
 		DownloadBufferSize:                 10,
 		RequireStorageContentCompatibility: true,
 	}
-	syncer, err := l2gersync.New(ctx, l2SyncerCfg, l2Setup.ReorgDetector, l2Setup.SimBackend.Client(), l1Setup.InfoTreeSync)
+	syncer, err := l2gersync.New(ctx, l2SyncerCfg, l2Setup.ReorgDetector,
+		l2Setup.SimBackend.Client(), l1Setup.InfoTreeSync, l1Setup.SimBackend.Client())
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -83,7 +84,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 	}
 	syncer, err := l2gersync.New(ctx, l2SyncerCfg, l2Setup.ReorgDetector,
-		l2Setup.SimBackend.Client(), l1Setup.InfoTreeSync)
+		l2Setup.SimBackend.Client(), l1Setup.InfoTreeSync, l1Setup.SimBackend.Client())
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -150,6 +151,7 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 		l2Setup.ReorgDetector,
 		l2Setup.SimBackend.Client(),
 		l1Setup.InfoTreeSync,
+		l1Setup.SimBackend.Client(),
 	)
 	require.NoError(t, err)
 

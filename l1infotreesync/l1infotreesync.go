@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -340,4 +341,23 @@ func (s *L1InfoTreeSync) GetProcessedBlockUntil(ctx context.Context, blockNum ui
 		return 0, common.Hash{}, sync.ErrInconsistentState
 	}
 	return s.processor.GetProcessedBlockUntil(ctx, blockNum)
+}
+
+// IsUpToDate checks if the L1InfoTreeSync is up to date with the finalized L1 blocks
+func (s *L1InfoTreeSync) IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error) {
+	if s.processor.isHalted() {
+		return false, sync.ErrInconsistentState
+	}
+
+	lastProcessedBlock, err := s.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get last processed block: %w", err)
+	}
+
+	finalizedBlock, err := l1Client.BlockByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+	if err != nil {
+		return false, fmt.Errorf("failed to get the latest finalized L1 block: %w", err)
+	}
+
+	return lastProcessedBlock >= finalizedBlock.NumberU64(), nil
 }

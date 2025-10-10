@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -86,6 +87,7 @@ type L1InfoTreeSyncer interface {
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
+	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement

@@ -3,10 +3,15 @@ package l1infotreesync
 import (
 	"context"
 	"errors"
+	"math/big"
+	"path"
 	"testing"
 
 	"github.com/agglayer/aggkit/sync"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -205,4 +210,88 @@ func TestGetRPCServices(t *testing.T) {
 	}
 	services := s.GetRPCServices()
 	require.Equal(t, 1, len(services))
+}
+
+func TestIsUpToDate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("processor halted", func(t *testing.T) {
+		t.Parallel()
+
+		s := L1InfoTreeSync{
+			processor: &processor{
+				halted: true,
+			},
+		}
+
+		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		ctx := context.Background()
+		result, err := s.IsUpToDate(ctx, mockL1Client)
+
+		require.Error(t, err)
+		require.True(t, errors.Is(err, sync.ErrInconsistentState))
+		require.False(t, result)
+	})
+
+	t.Run("GetLastProcessedBlock fails", func(t *testing.T) {
+		t.Parallel()
+
+		path := path.Join(t.TempDir(), "l1infotreesyncProcessor.db")
+		processor, err := newProcessor(path)
+		require.NoError(t, err)
+		s := L1InfoTreeSync{
+			processor: processor,
+		}
+		processor.db.Close()
+
+		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		ctx := context.Background()
+		result, err := s.IsUpToDate(ctx, mockL1Client)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get last processed block")
+		require.False(t, result)
+	})
+
+	t.Run("BlockByNumber fails", func(t *testing.T) {
+		t.Parallel()
+
+		path := path.Join(t.TempDir(), "l1infotreesyncProcessor.db")
+		processor, err := newProcessor(path)
+		require.NoError(t, err)
+		defer processor.db.Close()
+		s := L1InfoTreeSync{
+			processor: processor,
+		}
+
+		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("RPC error"))
+
+		ctx := context.Background()
+		result, err := s.IsUpToDate(ctx, mockL1Client)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get the latest finalized L1 block")
+		require.False(t, result)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		path := path.Join(t.TempDir(), "l1infotreesyncProcessor.db")
+		processor, err := newProcessor(path)
+		require.NoError(t, err)
+		defer processor.db.Close()
+		s := L1InfoTreeSync{
+			processor: processor,
+		}
+
+		block := ethtypes.NewBlock(&ethtypes.Header{Number: big.NewInt(0)}, nil, nil, nil)
+		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(block, nil)
+
+		ctx := context.Background()
+		result, err := s.IsUpToDate(ctx, mockL1Client)
+		require.NoError(t, err)
+		require.True(t, result)
+	})
 }
