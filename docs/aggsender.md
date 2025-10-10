@@ -231,8 +231,9 @@ This paragraph explains different use cases with outcomes:
 Preconditions: 
 - Make sure you have the up to date `aggkit:local` Docker image built. In order to build one, run `make build-docker-ci` command.
 - Run the `bridge_spammer` in background (namely make sure that the `additional_services` has `bridge_spammer` provided).
-1. Start kurtosis with pessimistic proof (OP stack): 
-`./test/run-local-e2e.sh single-l2-network-op-pessimistic path_to_kurtosis_cdk_repo path_to_e2e_repo`
+1. Start kurtosis with pessimistic proof (OP stack):
+`./test/run-local-e2e.sh single-l2-network-op-pessimistic path_to_kurtosis_cdk_repo -`
+Note that the fourth argument corresponds to the e2e repo path. In case you would like to run the set of e2e tests immediately after the kurtosis environment is up and running, you should provide a real path.
 2. After kurtosis is started, stop the `aggkit-001` service (`kurtosis service stop aggkit aggkit-001`).
 3. Open the repo in an IDE (like Visual Studio), and run `./scripts/local_config_pp` from the main repo folder. This will generate a `./tmp` folder in which `Aggsender` storage will be saved, and other aggkit node data, and will print a `launch.json`:
 
@@ -259,6 +260,8 @@ Preconditions:
 4. Copy this to your `launch.json` and start debugging.
 5. This will start the `aggkit` with the `aggsender` running.
 6. Wait for some time, until `bridge_spammer` deposits are indexed by the `aggsender`. As a result of bridge activity, there should be a certificate, and you can debug the whole process.
+7. Optionally you can run the E2E tests as well, by running the following command and providing the real e2e repo path:
+`./test/run-local-e2e.sh single-l2-network-op-pessimistic - path_to_e2e_repo`
 
 ## Prometheus Endpoint
 
