@@ -90,7 +90,7 @@ definitions:
         type: string
       txn_sender:
         description: Address of the transaction sender who initiated the bridge transaction
-        example: 0xabc1234567890abcdef1234567890abcdef1234
+        example: 0xabc1234567890abcdef1234567890abcdef12345
         type: string
     type: object
   types.BridgesResult:
@@ -473,7 +473,7 @@ paths:
         name: from_address
         type: string
       - collectionFormat: csv
-        description: Filter by one or more destination network IDs
+        description: Filter by one or more destination network IDs (maximum 5 allowed)
         in: query
         items:
           type: integer
@@ -554,7 +554,7 @@ paths:
         name: page_size
         type: integer
       - collectionFormat: csv
-        description: Filter by one or more destination network IDs
+        description: Filter by one or more source network IDs (maximum 5 allowed)
         in: query
         items:
           type: integer
