@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/ecdsa"
 	"encoding/binary"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -126,12 +127,19 @@ func BigIntToLittleEndianBytes(n *big.Int) []byte {
 //
 // Returns:
 //   - An integer representing the estimated slice capacity. If fullSpan is 0, the
-//     function returns 0 to avoid division by zero.
+//     function returns 0 to avoid division by zero. If the calculation would result
+//     in integer overflow, it returns math.MaxInt to prevent overflow.
 func EstimateSliceCapacity(total int, span, fullSpan uint64) int {
 	if fullSpan == 0 {
 		return 0
 	}
-	return int((uint64(total) * span) / fullSpan)
+	result := (uint64(total) * span) / fullSpan
+	// Check if result would overflow when converting to int
+	if result > uint64(math.MaxInt) {
+		return math.MaxInt
+	}
+
+	return int(result)
 }
 
 // MapSlice transforms a slice of type T into a slice of type R using the provided mapping function f.

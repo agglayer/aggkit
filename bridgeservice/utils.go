@@ -18,6 +18,8 @@ const (
 	MaxPageSize = 200
 	// DefaultPage is the default page number to be used when fetching records
 	DefaultPage = uint32(1)
+	// MaxNetworkIDs is the maximum number of network IDs allowed in a single request
+	MaxNetworkIDs = 5
 )
 
 // validatePaginationParams validates the page number and page size
@@ -77,14 +79,21 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 	return result, nil
 }
 
-// parseUint32SliceParam parses a slice of uint32 parameters from the request context
-func parseUint32SliceParam(c *gin.Context, key string) ([]uint32, error) {
+// parseNetworkIDSliceParam parses a slice of uint32 parameters from the request context
+// and enforces a maximum limit on the number of network IDs to prevent DoS attacks
+func parseNetworkIDSliceParam(c *gin.Context, key string) ([]uint32, error) {
 	vals := c.QueryArray(key)
+
+	// Check if the number of network IDs exceeds the maximum allowed
+	if len(vals) > MaxNetworkIDs {
+		return nil, fmt.Errorf("too many network IDs provided: maximum %d allowed, got %d", MaxNetworkIDs, len(vals))
+	}
+
 	result := make([]uint32, 0, len(vals))
 	for _, v := range vals {
 		n, err := strconv.ParseUint(v, 10, 32)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid network ID '%s': %w", v, err)
 		}
 		result = append(result, uint32(n))
 	}
