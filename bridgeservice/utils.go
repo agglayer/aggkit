@@ -79,9 +79,9 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 	return result, nil
 }
 
-// parseUint32SliceParam parses a slice of uint32 parameters from the request context
+// parseNetworkIDSliceParam parses a slice of uint32 parameters from the request context
 // and enforces a maximum limit on the number of network IDs to prevent DoS attacks
-func parseUint32SliceParam(c *gin.Context, key string) ([]uint32, error) {
+func parseNetworkIDSliceParam(c *gin.Context, key string) ([]uint32, error) {
 	vals := c.QueryArray(key)
 
 	// Check if the number of network IDs exceeds the maximum allowed

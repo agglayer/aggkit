@@ -297,7 +297,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	fromAddress := c.Query(fromAddressParam)
 
-	networkIDs, err := parseUint32SliceParam(c, networkIDsParam)
+	networkIDs, err := parseNetworkIDSliceParam(c, networkIDsParam)
 	if err != nil {
 		b.logger.Warnf("invalid network IDs parameter: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid network_ids: %s", err)})
@@ -398,7 +398,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	networkIDs, err := parseUint32SliceParam(c, networkIDsParam)
+	networkIDs, err := parseNetworkIDSliceParam(c, networkIDsParam)
 	if err != nil {
 		b.logger.Warnf("invalid network IDs parameter: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
