@@ -536,7 +536,7 @@ func TestTxnSenderField(t *testing.T) {
 	blockNum := uint64(1)
 	expectedTxnSender := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	bridgeV2Abi, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -663,7 +663,7 @@ func TestTxnSenderField(t *testing.T) {
 				Return(nil).
 				Maybe()
 
-			bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+			bridgeContractV2, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
 			logger := logger.WithFields("module", "test")
