@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,6 +46,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					&agglayertypes.Certificate{
 						Height: 0,
 					},
+					mock.Anything,
 				).Return(nil, errors.New("client error"))
 			},
 			expectedError: "error validating certificate on aggsender validator service: client error",
@@ -62,6 +64,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					&agglayertypes.Certificate{
 						Height: 0,
 					},
+					mock.Anything,
 				).Return([]byte{1, 2, 3}, nil)
 			},
 			expectedSig: []byte{1, 2, 3},
@@ -84,6 +87,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					&agglayertypes.Certificate{
 						Height: 11,
 					},
+					mock.Anything,
 				).Return([]byte{4, 5, 6}, nil)
 			},
 			expectedSig: []byte{4, 5, 6},
@@ -106,7 +110,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 				storage: mockStorage,
 			}
 
-			signature, err := remoteValidator.ValidateAndSignCertificate(ctx, tc.certificate)
+			signature, err := remoteValidator.ValidateAndSignCertificate(ctx, tc.certificate, 0)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)

@@ -139,7 +139,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 						RollupIndex: 1,
 						LeafIndex:   1,
 					},
-					ClaimData: &agglayer.ClaimFromMainnnet{
+					ClaimData: &agglayer.ClaimFromMainnet{
 						ProofLeafMER: &agglayer.MerkleProof{
 							Root:  common.HexToHash("0x3"),
 							Proof: tree.EmptyProof,

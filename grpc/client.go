@@ -24,7 +24,7 @@ import (
 
 const (
 	defaultTimeout           = 5 * time.Second
-	defaultInitialBackoff    = 100 * time.Millisecond
+	defaultInitialBackoff    = 1 * time.Second
 	defaultMaxAttempts       = 3
 	defaultMaxBackoff        = 10 * time.Second
 	defaultBackoffMultiplier = 2.0
@@ -71,6 +71,14 @@ type ClientConfig struct {
 
 	// Retry represents the retry configuration
 	Retry *RetryConfig `mapstructure:"Retry"`
+}
+
+// WithURL returns a copy of the current ClientConfig with the URL field set to the given value.
+// This method does not modify the original ClientConfig.
+func (c ClientConfig) WithURL(url string) ClientConfig {
+	newCfg := c
+	newCfg.URL = url
+	return newCfg
 }
 
 // DefaultConfig returns a default configuration for the gRPC client

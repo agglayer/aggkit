@@ -30,6 +30,8 @@ func TestGetInfo(t *testing.T) {
 	require.Equal(t, db.ErrNotFound, err)
 	_, err = p.GetInfoByGlobalExitRoot(common.Hash{})
 	require.Equal(t, db.ErrNotFound, err)
+	_, err = p.GetInfoByRoot(common.Hash{})
+	require.Equal(t, db.ErrNotFound, err)
 
 	// First insert
 	info1 := &UpdateL1InfoTree{

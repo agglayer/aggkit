@@ -68,10 +68,9 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 func (r *RateLimitWrapper) SendCertificate(
 	ctx context.Context,
 	certificate *types.Certificate,
-	validatorSignature []byte,
 ) (ethCommon.Hash, error) {
 	r.applyRateLimit("SendCertificate")
-	return r.client.SendCertificate(ctx, certificate, validatorSignature)
+	return r.client.SendCertificate(ctx, certificate)
 }
 
 // GetCertificateHeader gets a certificate header with rate limiting
@@ -81,6 +80,15 @@ func (r *RateLimitWrapper) GetCertificateHeader(
 ) (*types.CertificateHeader, error) {
 	r.applyRateLimit("GetCertificateHeader")
 	return r.client.GetCertificateHeader(ctx, certificateHash)
+}
+
+// GetNetworkInfo gets a network info with rate limiting
+func (r *RateLimitWrapper) GetNetworkInfo(
+	ctx context.Context,
+	networkID uint32,
+) (types.NetworkInfo, error) {
+	r.applyRateLimit("GetNetworkInfo")
+	return r.client.GetNetworkInfo(ctx, networkID)
 }
 
 // GetEpochConfiguration gets epoch configuration with rate limiting

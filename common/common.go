@@ -19,11 +19,14 @@ var (
 	ZeroHash       = common.HexToHash("0x0")
 	EmptyBytesHash = crypto.Keccak256(nil)
 	ZeroAddress    = common.HexToAddress("0x0")
+	EmptySignature = make([]byte, SignatureSize)
 )
 
 const (
 	Uint32ByteSize = 4
 	Uint64ByteSize = 8
+
+	SignatureSize = 65
 )
 
 // Uint64ToBigEndianBytes converts a uint64 to a byte slice in big-endian order

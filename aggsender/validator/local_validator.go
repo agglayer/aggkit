@@ -9,7 +9,10 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/common"
 )
+
+const localValidatorIdentifier = "LocalValidator"
 
 var _ types.CertificateValidateAndSigner = (*LocalValidator)(nil)
 
@@ -38,7 +41,23 @@ func NewLocalValidator(
 
 // String returns a string representation of the LocalValidator.
 func (a *LocalValidator) String() string {
-	return "LocalValidator"
+	return localValidatorIdentifier
+}
+
+// URL returns an URL for the LocalValidator
+func (a *LocalValidator) URL() string {
+	return "N/A"
+}
+
+// Address returns the Ethereum address of the LocalValidator
+func (a *LocalValidator) Address() common.Address {
+	return common.Address{}
+}
+
+// Index returns the index of the validator in the signers list
+// For local validator it is always 0
+func (a *LocalValidator) Index() uint32 {
+	return 0
 }
 
 func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
@@ -53,11 +72,13 @@ func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckRes
 func (a *LocalValidator) ValidateAndSignCertificate(
 	ctx context.Context,
 	certificate *agglayertypes.Certificate,
+	lastL2BlockInCert uint64,
 ) ([]byte, error) {
 	a.log.Infof("certificate validation: %s ....", certificate.Brief())
 	verifyParams := types.VerifyIncomingRequest{
 		Certificate:         certificate,
 		PreviousCertificate: nil,
+		LastL2BlockInCert:   lastL2BlockInCert,
 	}
 	if certificate.Height != 0 {
 		previousSettledCertificate, err := getPreviousCertificate(a.storage, certificate.Height, certificate.NetworkID)
@@ -75,7 +96,7 @@ func (a *LocalValidator) ValidateAndSignCertificate(
 	a.log.Infof("certificate validation passed: %s", certificate.Brief())
 
 	// local validator does not sign the certificate, it just validates it
-	return nil, nil
+	return aggkitcommon.EmptySignature, nil
 }
 
 // getPreviousCertificate retrieves the previous certificate based on the new certificate's height.

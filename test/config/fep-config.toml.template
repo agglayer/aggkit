@@ -170,9 +170,9 @@ AggSenderPrivateKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Pass
 # LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
 # Default value is "LatestBlock"
 # ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
+#BlockFinality = "LatestBlock"
 
-Mode = "AggchainProof"
+Mode = "Auto"
 CheckStatusCertificateInterval = "1s"
 
 [AggSender.OptimisticModeConfig]
@@ -180,7 +180,8 @@ SovereignRollupAddr = "{{.sovereign_rollup_addr}}"
 TrustedSequencerKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Password = "{{.zkevm_l2_keystore_password}}"}
 OpNodeURL = "{{.op_cl_rpc_url}}"
 RequireKeyMatchTrustedSequencer = true
-
+[AggSender.CommitteeOverride]
+    URLMapping = {{.aggsender_committee_override_urls}}
 
 
 

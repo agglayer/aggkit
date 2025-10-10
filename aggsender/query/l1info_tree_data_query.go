@@ -177,3 +177,16 @@ func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Con
 		"Expected hash: %s, got: %s", lastProcessedBlockNum,
 		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
 }
+
+// GetInfoByIndex returns the L1 Info tree leaf for the given index
+func (l *L1InfoTreeDataQuerier) GetInfoByIndex(
+	ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	info, err := l.l1InfoTreeSyncer.GetInfoByIndex(ctx, index)
+	if err != nil {
+		return nil, fmt.Errorf("error getting L1 Info tree leaf by index %d: %w", index, err)
+	}
+	if info == nil {
+		return nil, fmt.Errorf("no L1 Info tree leaf found for index %d", index)
+	}
+	return info, nil
+}
