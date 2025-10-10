@@ -285,7 +285,7 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	signedCertContent string) (string, error) {
 	// Use the configured certificate directory
 	certDir := a.cfg.CertificatesDir
-	if err := os.MkdirAll(certDir, 0755); err != nil { //nolint:mnd
+	if err := os.MkdirAll(certDir, 0750); err != nil { //nolint:mnd
 		return "", fmt.Errorf("failed to create certificates directory %s: %w", certDir, err)
 	}
 
