@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -135,7 +136,13 @@ func (c *CertificateBuildParams) NumberOfBlocks() int {
 	if c == nil {
 		return 0
 	}
-	return int(c.ToBlock - c.FromBlock + 1)
+	numBlocks := c.ToBlock - c.FromBlock + 1
+	// Check if result would overflow when converting to int
+	if numBlocks > uint64(math.MaxInt) {
+		return math.MaxInt
+	}
+
+	return int(numBlocks)
 }
 
 // EstimatedSize returns the estimated size of the certificate
