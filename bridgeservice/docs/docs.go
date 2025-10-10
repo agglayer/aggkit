@@ -96,7 +96,7 @@ const docTemplate = `{
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more destination network IDs",
+                        "description": "Filter by one or more destination network IDs (maximum 5 allowed)",
                         "name": "network_ids",
                         "in": "query"
                     }
@@ -214,7 +214,7 @@ const docTemplate = `{
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more destination network IDs",
+                        "description": "Filter by one or more source network IDs (maximum 5 allowed)",
                         "name": "network_ids",
                         "in": "query"
                     },
@@ -652,7 +652,7 @@ const docTemplate = `{
                 "txn_sender": {
                     "description": "Address of the transaction sender who initiated the bridge transaction",
                     "type": "string",
-                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                    "example": "0xabc1234567890abcdef1234567890abcdef12345"
                 }
             }
         },

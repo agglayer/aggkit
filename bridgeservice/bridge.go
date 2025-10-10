@@ -266,7 +266,7 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param deposit_count query uint64 false "Filter by deposit count"
 // @Param from_address query string false "Filter by from address"
-// @Param network_ids query []uint32 false "Filter by one or more destination network IDs"
+// @Param network_ids query []uint32 false "Filter by one or more destination network IDs (maximum 5 allowed)"
 // @Produce json
 // @Success 200 {object} types.BridgesResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -376,7 +376,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Param network_id query uint32 true "Origin network ID"
 // @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
-// @Param network_ids query []uint32 false "Filter by one or more destination network IDs"
+// @Param network_ids query []uint32 false "Filter by one or more source network IDs (maximum 5 allowed)"
 // @Param from_address query string false "Filter by from address"
 // @Param include_all_fields query bool false "Whether to include full response fields (default false)"
 // @Param global_index query uint32 false "Filter by global index"
