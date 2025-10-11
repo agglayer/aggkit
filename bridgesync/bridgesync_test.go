@@ -73,6 +73,7 @@ func TestNewLx(t *testing.T) {
 		ctx,
 		bridgeSyncL1Cfg,
 		blockFinalityType,
+		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
 		false,

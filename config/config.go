@@ -71,7 +71,6 @@ const (
 	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
 	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
-	reorgDetectorL1DeprecatedHint          = "ReorgDetectorL1 is deprecated, remove it from configuration"
 	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
@@ -213,10 +212,6 @@ var (
 			Reason:           l1NetworkConfigURLDeprecatedHint,
 		},
 		{
-			FieldNamePattern: "ReorgDetectorL1",
-			Reason:           reorgDetectorL1DeprecatedHint,
-		},
-		{
 			FieldNamePattern: "AggSender.MaxSubmitCertificateRate",
 			Reason:           maxSubmitCertificateRateDeprecatedHint,
 		},
@@ -256,6 +251,9 @@ type Config struct {
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config
+
+	// Configuration of the reorg detector service to be used for the L1
+	ReorgDetectorL1 reorgdetector.Config
 
 	// Configuration of the reorg detector service to be used for the L2
 	ReorgDetectorL2 reorgdetector.Config

@@ -276,9 +276,54 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 	return processedBlockNum, hash, nil
 }
 
-// Reorg is intentionally left as a no-op. This method is retained for compatibility
-// with the processor interface and to allow for potential future implementation.
+// Reorg triggers a purge and reset process on the processor to leaf it on a state
+// as if the last block processed was firstReorgedBlock-1
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
+	p.log.Infof("reorging to block %d", firstReorgedBlock)
+
+	tx, err := db.NewTx(ctx, p.db)
+	if err != nil {
+		return err
+	}
+
+	shouldRollback := true
+	defer func() {
+		if shouldRollback {
+			if errRllbck := tx.Rollback(); errRllbck != nil {
+				p.log.Errorf("error while rolling back tx %v", errRllbck)
+			}
+		}
+	}()
+
+	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	if err != nil {
+		return err
+	}
+
+	if err = p.l1InfoTree.Reorg(tx, firstReorgedBlock); err != nil {
+		return err
+	}
+
+	if err = p.rollupExitTree.Reorg(tx, firstReorgedBlock); err != nil {
+		return err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
+
+	shouldRollback = false
+
+	if rowsAffected > 0 {
+		p.unhalt()
+	}
 	return nil
 }
 
@@ -512,4 +557,19 @@ func (p *processor) halt(reason string) {
 	p.halted = true
 	p.haltedReason = reason
 	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
+}
+
+// unhalt sets the processor to an unhalted state
+// It should be called when the processor is ready to process blocks again
+func (p *processor) unhalt() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if !p.halted {
+		return
+	}
+
+	p.halted = false
+	p.haltedReason = ""
+	p.log.Info("processor is unhalted")
 }
