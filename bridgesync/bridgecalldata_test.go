@@ -129,7 +129,7 @@ func TestBridgeCallData(t *testing.T) {
 		RequireStorageContentCompatibility: false,
 		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
 	}
-	bridgeSync, err := NewL1(ctx, bridgeSyncCfg, aggkittypes.FinalizedBlock, reorgDetector, client, originNetwork, false)
+	bridgeSync, err := NewL1(ctx, bridgeSyncCfg, reorgDetector, client, originNetwork, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
 

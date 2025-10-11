@@ -158,9 +158,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[L1InfoTreeSync]
 	BlockFinality = "LatestBlock"
 
-	[BridgeL1Sync]
-	BlockFinality = "LatestBlock"
-
 	[Etherman]
 	URL = "{{L1URL}}"
 	[Etherman.EthermanConfig]
@@ -202,7 +199,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, delayBetweenRetriesHint)
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
-	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)

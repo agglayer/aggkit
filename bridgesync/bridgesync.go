@@ -67,7 +67,6 @@ type BridgeSync struct {
 func NewL1(
 	ctx context.Context,
 	cfg Config,
-	blockFinality aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
@@ -76,7 +75,7 @@ func NewL1(
 	return newBridgeSync(
 		ctx,
 		cfg,
-		blockFinality,
+		cfg.BlockFinality,
 		rd,
 		ethClient,
 		L1BridgeSyncer,

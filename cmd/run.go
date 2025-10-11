@@ -689,7 +689,6 @@ func runBridgeSyncL1IfNeeded(
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
 		cfg,
-		aggkittypes.FinalizedBlock,
 		reorgDetectorL1,
 		l1Client,
 		rollupID,
