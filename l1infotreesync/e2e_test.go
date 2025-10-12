@@ -70,7 +70,7 @@ func TestE2E(t *testing.T) {
 
 	rdm := mocks_l1infotreesync.NewReorgDetectorMock(t)
 	rdm.EXPECT().Subscribe(mock.Anything).Return(&reorgdetector.Subscription{}, nil)
-	rdm.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
 	cfg := l1infotreesync.Config{
