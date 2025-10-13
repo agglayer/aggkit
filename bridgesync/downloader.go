@@ -121,7 +121,6 @@ func buildBridgeEventHandler(
 			BlockPos:           uint64(l.Index),
 			FromAddress:        foundCall.From,
 			TxHash:             l.TxHash,
-			Calldata:           foundCall.Input,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
 			OriginNetwork:      bridgeEvent.OriginNetwork,
@@ -235,12 +234,6 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
-		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
-		if err != nil {
-			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
-		}
-
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
@@ -250,7 +243,6 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 			OriginTokenAddress:  tokenMappingEvent.OriginTokenAddress,
 			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
 			Metadata:            tokenMappingEvent.Metadata,
-			Calldata:            foundCall.Input,
 			Type:                bridgetypes.WrappedToken,
 		}})
 		return nil
@@ -269,12 +261,6 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
 		}
 
-		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
-		if err != nil {
-			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
-		}
-
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
@@ -284,7 +270,6 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			OriginTokenAddress:  event.OriginTokenAddress,
 			WrappedTokenAddress: event.SovereignTokenAddress,
 			IsNotMintable:       event.IsNotMintable,
-			Calldata:            foundCall.Input,
 			Type:                bridgetypes.SovereignToken,
 		}})
 		return nil
@@ -301,12 +286,6 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
 		}
 
-		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
-		if err != nil {
-			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
-		}
-
 		b.Events = append(b.Events, Event{LegacyTokenMigration: &LegacyTokenMigration{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
@@ -316,7 +295,6 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 			LegacyTokenAddress:  event.LegacyTokenAddress,
 			UpdatedTokenAddress: event.UpdatedTokenAddress,
 			Amount:              event.Amount,
-			Calldata:            foundCall.Input,
 		}})
 		return nil
 	}

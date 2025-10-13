@@ -52,7 +52,7 @@ func TestBackfillTxnSender(t *testing.T) {
 		INSERT INTO bridge (
 			block_num, block_pos, leaf_type, origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, calldata, txn_sender
+			tx_hash, block_timestamp, from_address, txn_sender
 		) VALUES (
 			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -176,7 +176,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -280,7 +280,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -386,7 +386,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -461,7 +461,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -726,7 +726,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -782,7 +782,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -918,7 +918,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1007,7 +1007,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1100,7 +1100,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1178,7 +1178,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1295,7 +1295,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 				INSERT INTO bridge (
 					block_num, block_pos, leaf_type, origin_network, origin_address,
 					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, calldata, txn_sender
+					tx_hash, block_timestamp, from_address, txn_sender
 				) VALUES (
 					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1382,7 +1382,7 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 					INSERT INTO bridge (
 						block_num, block_pos, leaf_type, origin_network, origin_address,
 						destination_network, destination_address, amount, metadata, deposit_count,
-						tx_hash, block_timestamp, from_address, calldata, txn_sender
+						tx_hash, block_timestamp, from_address, txn_sender
 					) VALUES (
 						1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 						2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1464,7 +1464,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 				INSERT INTO bridge (
 					block_num, block_pos, leaf_type, origin_network, origin_address,
 					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, calldata, txn_sender
+					tx_hash, block_timestamp, from_address, txn_sender
 				) VALUES (
 					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1540,7 +1540,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 				INSERT INTO bridge (
 					block_num, block_pos, leaf_type, origin_network, origin_address,
 					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, calldata, txn_sender
+					tx_hash, block_timestamp, from_address, txn_sender
 				) VALUES (
 					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
@@ -1629,7 +1629,7 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 		INSERT INTO bridge (
 			block_num, block_pos, leaf_type, origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, calldata, txn_sender
+			tx_hash, block_timestamp, from_address, txn_sender
 		) VALUES (
 			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',

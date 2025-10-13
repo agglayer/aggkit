@@ -182,7 +182,6 @@ func TestBridgeCallData(t *testing.T) {
 
 		if len(bridgeResponse) > 0 {
 			require.Equal(t, 1, totalCount)
-			require.Equal(t, signedBridgeAssetTx.Data(), bridgeResponse[0].Calldata)
 			break
 		}
 
