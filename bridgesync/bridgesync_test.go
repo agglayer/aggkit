@@ -72,7 +72,7 @@ func TestNewLx(t *testing.T) {
 	l1BridgeSync, err := NewL1(
 		ctx,
 		bridgeSyncL1Cfg,
-		blockFinalityType,
+		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
 		false,

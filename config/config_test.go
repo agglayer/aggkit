@@ -10,6 +10,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
 )
@@ -35,6 +36,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, AggsenderrollupAddr, cfg.AggSender.RollupManagerAddr.String())
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)
@@ -156,13 +158,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[L1InfoTreeSync]
 	BlockFinality = "LatestBlock"
 
-	[BridgeL1Sync]
-	BlockFinality = "LatestBlock"
-
-	[ReorgDetectorL1]
-	DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
-	FinalizedBlock = "FinalizedBlock"
-
 	[Etherman]
 	URL = "{{L1URL}}"
 	[Etherman.EthermanConfig]
@@ -204,11 +199,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, delayBetweenRetriesHint)
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
-	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
-	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
 	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 }

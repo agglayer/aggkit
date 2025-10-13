@@ -79,6 +79,10 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 
+[ReorgDetectorL1]
+DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
+FinalizedBlock = "FinalizedBlock"
+
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
 FinalizedBlock = "LatestBlock"
@@ -145,6 +149,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
+BlockFinality = "FinalizedBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100
@@ -247,7 +252,7 @@ RequireCommitteeMembershipCheck = false
 	# Overide a committee URL to point to a local service
 	# [AggSender.CommitteeOverride]
 	#	URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
-	
+
 	[AggSender.StorageRetainCertificatesPolicy]
 		RetainCertificatesCount = 0 # 0 means keep all certificates
 		KeepCertificatesHistory = true

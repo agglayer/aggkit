@@ -117,6 +117,16 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	// Simulated L1
 	l1Client, authL1, gerL1Addr, gerL1Contract, bridgeL1Addr, bridgeL1Contract := newSimulatedL1(t)
 
+	// Reorg detector
+	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
+	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
+		DBPath:              dbPathReorgDetectorL1,
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		FinalizedBlock:      aggkittypes.FinalizedBlock,
+	}, reorgdetector.L1)
+	require.NoError(t, err)
+	go rdL1.Start(ctx) //nolint:errcheck
+
 	// L1 info tree sync
 	dbPathL1InfoTreeSync := path.Join(t.TempDir(), "L1InfoTreeSync.sqlite")
 
@@ -163,6 +173,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	bridgeSyncCfg := bridgesync.Config{
 		DBPath:                             dbPathBridgeSyncL1,
 		BridgeAddr:                         bridgeL1Addr,
+		BlockFinality:                      aggkittypes.LatestBlock,
 		SyncBlockChunkSize:                 syncBlockChunkSize,
 		InitialBlockNum:                    initialBlock,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
@@ -171,7 +182,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, aggkittypes.LatestBlock, testClient, originNetwork, false)
+	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork, false)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -183,7 +194,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			BridgeContract: bridgeL1Contract,
 			BridgeAddr:     bridgeL1Addr,
 			Auth:           authL1,
-			ReorgDetector:  nil, // No reorg detector for L1 since we're moving to FinalizedBlock
+			ReorgDetector:  rdL1,
 			BridgeSync:     bridgeL1Sync,
 		},
 		GERContract:  gerL1Contract,

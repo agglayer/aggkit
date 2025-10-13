@@ -81,6 +81,12 @@ func start(cliCtx *cli.Context) error {
 	}
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
+	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
+	go func() {
+		if err := <-errChanL1; err != nil {
+			log.Fatal("Error from ReorgDetectorL1: ", err)
+		}
+	}()
 
 	reorgDetectorL2, errChanL2 := runReorgDetectorL2IfNeeded(cliCtx.Context, components, l2Client, &cfg.ReorgDetectorL2)
 	go func() {
@@ -105,7 +111,8 @@ func start(cliCtx *cli.Context) error {
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
-	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, l1Client, 0, &backfillWg)
+	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
+		l1Client, 0, &backfillWg)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
@@ -511,8 +518,8 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC, aggkitcommon.L2GERSYNC,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
@@ -580,6 +587,30 @@ func runL2ClientIfNeeded(ctx context.Context,
 	return l2Client
 }
 
+func runReorgDetectorL1IfNeeded(
+	ctx context.Context,
+	components []string,
+	l1Client aggkittypes.BaseEthereumClienter,
+	cfg *reorgdetector.Config,
+) (*reorgdetector.ReorgDetector, chan error) {
+	if !isNeeded([]string{
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC},
+		components) {
+		return nil, nil
+	}
+	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
+
+	errChan := make(chan error)
+	go func() {
+		if err := rd.Start(ctx); err != nil {
+			errChan <- err
+		}
+		close(errChan)
+	}()
+
+	return rd, errChan
+}
+
 func runReorgDetectorL2IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -642,6 +673,7 @@ func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
 	cfg bridgesync.Config,
+	reorgDetectorL1 *reorgdetector.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
 	wg *sync.WaitGroup,
@@ -653,7 +685,7 @@ func runBridgeSyncL1IfNeeded(
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
 		cfg,
-		aggkittypes.FinalizedBlock,
+		reorgDetectorL1,
 		l1Client,
 		rollupID,
 		true,
