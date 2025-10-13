@@ -94,18 +94,22 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
 
+	// Create a cancellable context for graceful shutdown
+	ctx, cancel := context.WithCancel(cliCtx.Context)
+	defer cancel()
+
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 	var rpcServices []jRPC.Service
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, l1Client)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
-	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0, &backfillWg)
-	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
+	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, l1Client, 0, &backfillWg)
+	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
-		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
+		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
@@ -131,7 +135,7 @@ func start(cliCtx *cli.Context) error {
 			l1BridgeSync,
 			l2BridgeSync,
 		)
-		go b.Start(cliCtx.Context)
+		go b.Start(ctx)
 		log.Info("Bridge service started")
 	}
 
@@ -139,10 +143,10 @@ func start(cliCtx *cli.Context) error {
 		switch component {
 		case aggkitcommon.AGGORACLE:
 			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
-			go aggOracle.Start(cliCtx.Context)
+			go aggOracle.Start(ctx)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
-				cliCtx.Context,
+				ctx,
 				cfg.AggSender,
 				l1Client,
 				l1InfoTreeSync,
@@ -152,14 +156,15 @@ func start(cliCtx *cli.Context) error {
 				committeeQuerier,
 			)
 			if err != nil {
+				//nolint:gocritic
 				log.Fatal(err)
 			}
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
-			go aggsender.Start(cliCtx.Context)
+			go aggsender.Start(ctx)
 		case aggkitcommon.AGGCHAINPROOFGEN:
 			aggchainProofGen, err := createAggchainProofGen(
-				cliCtx.Context,
+				ctx,
 				cfg.AggchainProofGen,
 				l1Client,
 				l2Client,
@@ -173,7 +178,7 @@ func start(cliCtx *cli.Context) error {
 			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
-				cliCtx.Context,
+				ctx,
 				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
@@ -184,7 +189,7 @@ func start(cliCtx *cli.Context) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			go aggsenderValidator.Start(cliCtx.Context)
+			go aggsenderValidator.Start(ctx)
 		}
 	}
 	if len(rpcServices) > 0 {
@@ -203,10 +208,10 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	if cfg.Profiling.ProfilingEnabled {
-		go pprof.StartProfilingHTTPServer(cliCtx.Context, cfg.Profiling)
+		go pprof.StartProfilingHTTPServer(ctx, cfg.Profiling)
 	}
 
-	waitSignal(nil, &backfillWg)
+	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
 
 	return nil
 }
@@ -833,8 +838,6 @@ func runTxnSenderBackfill(
 	client aggkittypes.EthClienter,
 	wg *sync.WaitGroup,
 ) error {
-	const backfillTimeoutMinutes = 10
-
 	// Only run backfilling if we have a database path configured
 	if cfg.DBPath == "" {
 		log.Debug("No database path configured, skipping txn_sender backfilling")
@@ -858,13 +861,14 @@ func runTxnSenderBackfill(
 	}
 	defer backfiller.Close()
 
-	// Create context with timeout for backfilling
-	backfillCtx, cancel := context.WithTimeout(ctx, backfillTimeoutMinutes*time.Minute)
-	defer cancel()
-
-	// Run backfilling
+	// Run backfilling with the original context to respect parent cancellation
 	start := time.Now()
-	if err := backfiller.BackfillAll(backfillCtx); err != nil {
+	if err := backfiller.BackfillAll(ctx); err != nil {
+		// Check if the error is due to context cancellation
+		if ctx.Err() != nil {
+			log.Infof("txn_sender backfilling cancelled: %v", ctx.Err())
+			return nil // Don't treat cancellation as an error
+		}
 		log.Errorf("txn_sender backfilling failed: %v", err)
 		// Don't fail the entire process, just log the error and continue
 		return err
