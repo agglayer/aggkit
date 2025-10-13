@@ -81,7 +81,7 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
-FinalizedBlock = "FinalizedBlock"
+FinalizedBlock = "LatestBlock"
 
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
@@ -149,7 +149,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
-BlockFinality = "FinalizedBlock"
+BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100
