@@ -86,11 +86,11 @@ func buildAppender(
 		bridgeContractV1, client,
 		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
-		bridgeContractV2, client, bridgeAddr, logger)
+		bridgeContractV2, bridgeAddr, logger)
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
-		bridgeSovereignChain, client, bridgeAddr, logger)
+		bridgeSovereignChain, bridgeAddr, logger)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
-		bridgeSovereignChain, client, bridgeAddr, logger)
+		bridgeSovereignChain, bridgeAddr, logger)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
 		bridgeSovereignChain)
 
@@ -223,10 +223,8 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 }
 
 // buildTokenMappingHandler creates a handler for the NewWrappedToken event log.
-//
-//nolint:dupl
 func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
+	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		tokenMappingEvent, err := contract.ParseNewWrappedToken(l)
@@ -250,10 +248,8 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 }
 
 // buildSetSovereignTokenHandler creates a handler for the SetSovereignTokenAddress event log.
-//
-//nolint:dupl
 func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
+	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseSetSovereignTokenAddress(l)
@@ -278,7 +274,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 
 // buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
 func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
+	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseMigrateLegacyToken(l)
