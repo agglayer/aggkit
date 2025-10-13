@@ -107,13 +107,13 @@ func start(cliCtx *cli.Context) error {
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 	var rpcServices []jRPC.Service
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, l1Client)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
-	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
+	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0, &backfillWg)
-	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
+	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
@@ -515,7 +515,6 @@ func runL1InfoTreeSyncerIfNeeded(
 	components []string,
 	cfg config.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
-	reorgDetector *reorgdetector.ReorgDetector,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
@@ -527,7 +526,6 @@ func runL1InfoTreeSyncerIfNeeded(
 		ctx,
 		cfg.L1InfoTreeSync,
 		aggkittypes.FinalizedBlock,
-		reorgDetector,
 		l1Client,
 		l1infotreesync.FlagNone,
 		aggkittypes.FinalizedBlock,
@@ -597,8 +595,7 @@ func runReorgDetectorL1IfNeeded(
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC, aggkitcommon.L2GERSYNC,
-		aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.L1BRIDGESYNC},
+		aggkitcommon.BRIDGE, aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.L1BRIDGESYNC},
 		components) {
 		return nil, nil
 	}

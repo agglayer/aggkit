@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -58,7 +59,6 @@ func New(
 	ctx context.Context,
 	cfg Config,
 	blockFinalityType aggkittypes.BlockNumberFinality,
-	rd sync.ReorgDetector,
 	l1Client aggkittypes.BaseEthereumClienter,
 	flags CreationFlags,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
@@ -116,7 +116,7 @@ func New(
 		downloader.RuntimeData,
 		processor)
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
+	driver, err := sync.NewEVMDriver(reorgdetector.NewNoOpReorgDetector(), processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err

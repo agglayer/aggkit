@@ -150,7 +150,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		ctx,
 		l1InfoTreeSyncCfg,
 		aggkittypes.LatestBlock,
-		rdL1, l1Client.Client(),
+		l1Client.Client(),
 		l1infotreesync.FlagAllowWrongContractsAddrs,
 		aggkittypes.SafeBlock,
 	)
