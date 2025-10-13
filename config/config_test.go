@@ -36,7 +36,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	require.Equal(t, aggkittypes.LatestBlock, cfg.ReorgDetectorL1.FinalizedBlock)
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, AggsenderrollupAddr, cfg.AggSender.RollupManagerAddr.String())
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)
