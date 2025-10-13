@@ -594,8 +594,7 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.L1BRIDGESYNC},
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC},
 		components) {
 		return nil, nil
 	}
