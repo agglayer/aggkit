@@ -55,7 +55,7 @@ jobs:
           else
             # For push/workflow_dispatch, use the fixed commit
             # branch: feat/fix_e2e_fep_v2
-            COMMIT="ef69dcb659ff67fa8ecfd6773eb00c5ec385e28c"
+            COMMIT="94b3f2e7b2085a37d134424440d39e4d9e4d543d"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
