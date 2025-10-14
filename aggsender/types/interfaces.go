@@ -346,3 +346,10 @@ type AggProofPublicValuesQuerier interface {
 	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
 		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
 }
+
+// FEPInputsQuerier defines an interface for querying FEP inputs required for aggchain proof.
+type FEPInputsQuerier interface {
+	GetAggchainParams(
+		lastProvenBlock, requestedEndBlock uint64,
+		l1InfoTreeLeafHash common.Hash) (*AggchainParams, error)
+}

@@ -9,7 +9,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -68,13 +67,13 @@ func NewVerifierFlow(
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
 		}
 
-		aggProofPublicValuesQuery, err := newAggProofPublicValuesQuery(
+		fepInputsQuery, err := newFEPInputsQuerier(
 			cfg.FEPConfig.SovereignRollupAddr,
 			l1Client,
 			cfg.FEPConfig.OpNodeURL,
 		)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create AggProofPublicValuesQuery: %w", err)
+			return nil, nil, fmt.Errorf("failed to create FEPInputsQuery: %w", err)
 		}
 
 		builderFlow := NewAggchainProverBuilderFlow(
@@ -90,7 +89,7 @@ func NewVerifierFlow(
 			nil, // we don't query the prover in validator mode
 		)
 
-		return NewAggchainProverVerifierFlow(builderFlow, aggProofPublicValuesQuery), commonFlowComponents, nil
+		return NewAggchainProverVerifierFlow(builderFlow, fepInputsQuery), commonFlowComponents, nil
 	default:
 		return nil, nil, fmt.Errorf("unsupported Aggsender Validator mode: %s", cfg.Mode)
 	}
@@ -122,39 +121,38 @@ func NewLocalVerifier(
 				fmt.Errorf("expected AggchainProverBuilderFlow for AggchainProofMode mode, got %T", builderFlow)
 		}
 
-		aggProofPublicValuesQuery, err := newAggProofPublicValuesQuery(
+		fepInputsQuery, err := newFEPInputsQuerier(
 			cfg.SovereignRollupAddr,
 			l1Client,
 			cfg.OptimisticModeConfig.OpNodeURL,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create AggProofPublicValuesQuery: %w", err)
+			return nil, fmt.Errorf("failed to create FEPInputsQuery: %w", err)
 		}
 
-		return NewAggchainProverVerifierFlow(builderFlow, aggProofPublicValuesQuery), nil
+		return NewAggchainProverVerifierFlow(builderFlow, fepInputsQuery), nil
 	default:
 		return nil, fmt.Errorf("unsupported Aggsender Validator mode: %s", cfg.Mode)
 	}
 }
 
-// newAggProofPublicValuesQuery creates a new instance of AggProofPublicValuesQuery
-func newAggProofPublicValuesQuery(
+// newFEPInputsQuerier creates a new instance of FEPInputsQuery
+func newFEPInputsQuerier(
 	aggchainFEPContractAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
 	opNodeURL string,
-) (*query.AggProofPublicValuesQuery, error) {
+) (types.FEPInputsQuerier, error) {
 	aggChainFEPContract, err := aggchainfep.NewAggchainfepCaller(aggchainFEPContractAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating AggchainFEP rollup caller (%s): %w",
 			aggchainFEPContractAddr.String(), err)
 	}
 
-	aggProofPublicValuesQuerier := query.NewAggProofPublicValuesQuery(
+	fepInputsQuery := query.NewFEPInputsQuery(
 		aggChainFEPContract,
 		aggchainFEPContractAddr,
 		opnode.NewOpNodeClient(opNodeURL),
-		aggkitcommon.ZeroAddress, // prover address will be gotten from the contract in validator mode
 	)
 
-	return aggProofPublicValuesQuerier, nil
+	return fepInputsQuery, nil
 }
