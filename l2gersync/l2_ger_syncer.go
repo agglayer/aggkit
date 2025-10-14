@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -116,7 +116,7 @@ func New(
 func resolveSyncMode(ctx context.Context, address common.Address, backend bind.ContractBackend) (SyncMode, error) {
 	// Try sovereign chain ger manager
 	sovereignGERManager, err :=
-		globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(address, backend)
+		agglayergerl2.NewAgglayergerl2(address, backend)
 	if err == nil {
 		updater, err := sovereignGERManager.GlobalExitRootUpdater(&bind.CallOpts{Context: ctx})
 		if err == nil {
@@ -130,7 +130,7 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 	}
 
 	// Try with legacy ger manager
-	legacyGERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(address, backend)
+	legacyGERManager, err := agglayerger.NewAgglayerger(address, backend)
 	if err == nil {
 		bridgeAddr, err := legacyGERManager.BridgeAddress(&bind.CallOpts{Context: ctx})
 		if err == nil {

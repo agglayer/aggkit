@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -24,7 +24,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 			name: "rollup manager contract returns error",
 			mockFn: func(rdq *mocks.RollupDataQuerier) {
 				rdq.EXPECT().GetRollupData(mock.Anything).
-					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{}, errors.New("some error"))
+					Return(agglayermanager.AgglayerManagerRollupDataReturn{}, errors.New("some error"))
 			},
 			expectedLER:   aggkitcommon.ZeroHash,
 			expectedError: "failed to get rollup data: some error",
@@ -33,7 +33,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 			name: "GetLastLocalExitRoot returns zero hash - should return EmptyLER",
 			mockFn: func(rdq *mocks.RollupDataQuerier) {
 				rdq.EXPECT().GetRollupData(mock.Anything).
-					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{
+					Return(agglayermanager.AgglayerManagerRollupDataReturn{
 						LastLocalExitRoot: aggkitcommon.ZeroHash,
 					}, nil)
 			},
@@ -43,7 +43,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 			name: "rollup manager contract returns valid data",
 			mockFn: func(rdq *mocks.RollupDataQuerier) {
 				rdq.EXPECT().GetRollupData(mock.Anything).
-					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{
+					Return(agglayermanager.AgglayerManagerRollupDataReturn{
 						LastLocalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 					}, nil)
 			},

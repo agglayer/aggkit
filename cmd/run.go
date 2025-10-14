@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
@@ -413,7 +413,7 @@ func createAggoracle(
 		)
 		go ethTxManager.Start()
 
-		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+		l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 			l2GERManagerAddr, l2Client)
 		if err != nil {
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
@@ -859,7 +859,7 @@ func createRollupDataQuerier(ctx context.Context,
 	return etherman.NewRollupDataQuerier(cfg, ethClient,
 		func(rollupAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
-			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+			return agglayermanager.NewAgglayermanager(rollupAddr, client)
 		})
 }
 
