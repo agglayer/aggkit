@@ -199,9 +199,9 @@ func (d *EVMDriver) handleNewBlock(ctx context.Context, b EVMBlock) error {
 }
 
 func (d *EVMDriver) trackNonFinalizedBlock(ctx context.Context, b EVMBlock) error {
-	if b.IsFinalizedBlock {
-		return nil
-	}
+	// if b.IsFinalizedBlock {
+	// 	return nil
+	// }
 
 	return d.withRetry(ctx, "trackBlock", func() error {
 		return d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)

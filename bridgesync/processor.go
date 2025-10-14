@@ -827,8 +827,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
-		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
+	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = EXCLUDED.hash`, block.Num, block.Hash.String()); err != nil {
+		p.log.Errorf("failed to upsert block %d: %v", block.Num, err)
 		return err
 	}
 

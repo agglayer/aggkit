@@ -118,6 +118,7 @@ func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 
 func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
 	lastBlock := d.WaitForNewBlocks(ctx, 0)
+	fmt.Printf("--------- Download lastBlock: %d\n", lastBlock)
 	toBlock := fromBlock + d.syncBlockChunkSize
 	iteration := 0
 	reachTop := false
@@ -298,6 +299,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			return latestSyncedBlock
 		case <-ticker.C:
 			blockNumber, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
+			// fmt.Printf("--------- WaitForNewBlocks blockNumber: %d\n", blockNumber)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -308,9 +310,11 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
+			fmt.Printf("--------- WaitForNewBlocks blockNumber: %d latestSyncedBlock: %d\n", blockNumber, latestSyncedBlock)
 			if blockNumber > latestSyncedBlock {
 				return blockNumber
 			}
+			// return blockNumber
 		}
 	}
 }

@@ -58,6 +58,7 @@ func (rd *ReorgDetector) saveTrackedBlock(id string, b header) error {
 	} else {
 		hdrs.add(b)
 	}
+	rd.trackedBlocks[id] = hdrs
 
 	rd.log.Debugf("Tracking block %d for subscriber %s, hdrs: %v", b.Num, id, hdrs.headers)
 
