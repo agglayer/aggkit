@@ -116,9 +116,9 @@ func (rd *ReorgDetector) GetFinalizedBlockType() aggkittypes.BlockNumberFinality
 
 // AddBlockToTrack adds a block to the tracked list for a subscriber
 func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uint64, hash common.Hash) error {
-	if rd.IsDisabled() {
-		return nil
-	}
+	// if rd.IsDisabled() {
+	// 	return nil
+	// }
 	// Skip if the given block has already been stored
 	rd.trackedBlocksLock.RLock()
 	trackedBlocks, ok := rd.trackedBlocks[id]
@@ -144,19 +144,22 @@ func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uin
 // detectReorgInTrackedList detects reorgs in the tracked blocks.
 // Notifies subscribers if reorg has happened
 func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
-	if rd.IsDisabled() {
-		return nil
-	}
+	// if rd.IsDisabled() {
+	// 	return nil
+	// }
 
 	// Get the latest finalized block
 	blockNumber, err := rd.finalizedBlockType.BlockNumber(ctx, rd.client)
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
+	blockNumber = blockNumber - 5
+	fmt.Printf("--------- detectReorgInTrackedList blockNumber: %d\n", blockNumber)
 	lastFinalizedBlock, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
 	if err != nil {
 		return fmt.Errorf("failed to get the header %d. Err: %w", blockNumber, err)
 	}
+	fmt.Printf("--------- detectReorgInTrackedList lastFinalizedBlock: %d\n", lastFinalizedBlock.Number.Uint64())
 	var (
 		headersCacheLock sync.Mutex
 		headersCache     = map[uint64]*types.Header{
@@ -184,6 +187,8 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 
 		errGroup.Go(func() error {
 			headers := hdrs.getSorted()
+			fmt.Printf("--------- detectReorgInTrackedList headers: %d %v \n", len(headers), headers)
+			fmt.Printf("-------- detectReorgInTrackedList headersCache: %v\n", headersCache)
 			for _, hdr := range headers {
 				// Get the actual header from the network or from the cache
 				var err error
@@ -194,7 +199,9 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 						headersCacheLock.Unlock()
 						return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
 					}
+					// fmt.Printf("--------- detectReorgInTrackedList currentHeader: %d %v\n", hdr.Num, currentHeader)
 					headersCache[hdr.Num] = currentHeader
+					fmt.Printf("--------- detectReorgInTrackedList headersCache: %d %v\n", hdr.Num, headersCache)
 				}
 				headersCacheLock.Unlock()
 

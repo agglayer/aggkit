@@ -59,7 +59,7 @@ func (rd *ReorgDetector) saveTrackedBlock(id string, b header) error {
 		hdrs.add(b)
 	}
 
-	rd.log.Debugf("Tracking block %d for subscriber %s", b.Num, id)
+	rd.log.Debugf("Tracking block %d for subscriber %s, hdrs: %v", b.Num, id, hdrs.headers)
 
 	rd.trackedBlocksLock.Unlock()
 	return meddler.Insert(rd.db, "tracked_block", &headerWithSubscriberID{
@@ -71,6 +71,7 @@ func (rd *ReorgDetector) saveTrackedBlock(id string, b header) error {
 
 // updateTrackedBlocksDB updates the tracked blocks for a subscriber in db
 func (rd *ReorgDetector) removeTrackedBlockRange(id string, fromBlock, toBlock uint64) error {
+	rd.log.Debugf("Removing tracked blocks for subscriber %s between blocks %d and %d", id, fromBlock, toBlock)
 	_, err := rd.db.Exec(
 		"DELETE FROM tracked_block WHERE num >= $1 AND num <= $2 AND subscriber_id = $3;",
 		fromBlock, toBlock, id,
