@@ -251,7 +251,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("  GER root after second bridge: %s", common.Hash(gerRootAfterSecondBridge).Hex())
 
-	//print curr block number
+	// print current block number
 	currBlockNum, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  Before fork Current block number: %d", currBlockNum)
@@ -346,7 +346,7 @@ func newSimulatedL1ForBridgeTest(t *testing.T) (
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(chainID))
 	require.NoError(t, err)
 
-	balance, _ := new(big.Int).SetString("10000000000000000000000", 10) //nolint:mnd
+	balance, _ := new(big.Int).SetString("10000000000000000000000", 10)
 	address := auth.From
 	genesisAlloc := map[common.Address]types.Account{
 		address: {
@@ -354,7 +354,7 @@ func newSimulatedL1ForBridgeTest(t *testing.T) (
 		},
 	}
 
-	blockGasLimit := uint64(999999999999999999) //nolint:mnd
+	blockGasLimit := uint64(999999999999999999)
 	client := simulated.NewBackend(
 		genesisAlloc,
 		simulated.WithBlockGasLimit(blockGasLimit),
