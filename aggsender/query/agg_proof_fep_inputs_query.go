@@ -13,7 +13,6 @@ var _ types.FEPInputsQuerier = (*FEPInputsQuery)(nil)
 type FEPInputsQuery struct {
 	publicValuesQuery types.AggProofPublicValuesQuerier
 
-	opNodeClient        types.OpNodeClienter
 	aggchainFEPContract types.FEPContractQuerier
 }
 
@@ -30,7 +29,6 @@ func NewFEPInputsQuery(
 			opNodeClient,
 			aggkitcommon.ZeroAddress, // prover address is not needed for this query, we get it from the contract
 		),
-		opNodeClient:        opNodeClient,
 		aggchainFEPContract: aggchainFEPContract,
 	}
 }
@@ -45,6 +43,7 @@ func (f *FEPInputsQuery) GetPublicInputs(
 		l1InfoTreeLeafHash)
 }
 
+// GetAggchainParams generates the aggchain parameters required for the verification of aggchain proof
 func (f *FEPInputsQuery) GetAggchainParams(
 	lastProvenBlock, requestedEndBlock uint64,
 	l1InfoTreeLeafHash common.Hash) (*types.AggchainParams, error) {
