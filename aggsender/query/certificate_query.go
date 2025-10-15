@@ -63,6 +63,9 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 		err                         error
 	)
 
+	// even if previous certificate is nil (when this is the beginning of the network)
+	// we need to return a valid last settled block number
+	// because FEP networks can start from a non-zero block
 	if cert != nil {
 		if cert.Status != agglayertypes.Settled {
 			return 0, fmt.Errorf("certificate %s is not settled", cert.String())
