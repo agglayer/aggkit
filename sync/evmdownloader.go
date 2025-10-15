@@ -54,6 +54,8 @@ type EVMDownloader struct {
 	finalizedBlockType         *aggkittypes.BlockNumberFinality
 	stopDownloaderOnIterationN int
 	addressesToQuery           []common.Address
+	reorgDetector              ReorgDetector
+	reorgDetectorID            string
 }
 
 func NewEVMDownloader(
@@ -66,6 +68,8 @@ func NewEVMDownloader(
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
+	reorgDetector ReorgDetector,
+	reorgDetectorID string,
 ) (*EVMDownloader, error) {
 	if finality.IsEmpty() {
 		return nil, fmt.Errorf("block finality must be set")
@@ -86,6 +90,8 @@ func NewEVMDownloader(
 		log:                logger,
 		finalizedBlockType: &finalizedBlockType,
 		addressesToQuery:   addressesToQuery,
+		reorgDetector:      reorgDetector,
+		reorgDetectorID:    reorgDetectorID,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
 			ethClient,
@@ -95,6 +101,8 @@ func NewEVMDownloader(
 			addressesToQuery,
 			rh,
 			&finalizedBlockType,
+			reorgDetector,
+			reorgDetectorID,
 		),
 	}, nil
 }
@@ -232,6 +240,8 @@ type EVMDownloaderImplementation struct {
 	rh                     *RetryHandler
 	log                    *log.Logger
 	finalizedBlockType     *aggkittypes.BlockNumberFinality
+	reorgDetector          ReorgDetector
+	reorgDetectorID        string
 }
 
 // NewEVMDownloaderImplementation creates a new EVMDownloaderImplementation
@@ -245,6 +255,8 @@ func NewEVMDownloaderImplementation(
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
 	finalizedBlockType *aggkittypes.BlockNumberFinality,
+	reorgDetector ReorgDetector,
+	reorgDetectorID string,
 ) *EVMDownloaderImplementation {
 	logger := log.WithFields("syncer", syncerID)
 	var topics []common.Hash
@@ -262,6 +274,8 @@ func NewEVMDownloaderImplementation(
 		rh:                     rh,
 		log:                    logger,
 		finalizedBlockType:     finalizedBlockType,
+		reorgDetector:          reorgDetector,
+		reorgDetectorID:        reorgDetectorID,
 	}
 }
 
@@ -299,7 +313,6 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			return latestSyncedBlock
 		case <-ticker.C:
 			blockNumber, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
-			// fmt.Printf("--------- WaitForNewBlocks blockNumber: %d\n", blockNumber)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -310,11 +323,32 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
-			fmt.Printf("--------- WaitForNewBlocks blockNumber: %d latestSyncedBlock: %d\n", blockNumber, latestSyncedBlock)
 			if blockNumber > latestSyncedBlock {
 				return blockNumber
 			}
-			// return blockNumber
+			// If blockNumber < latestSyncedBlock, a reorg may have occurred
+			// Get the block header to verify the hash and notify the reorg detector
+			if blockNumber <= latestSyncedBlock {
+				// TODO - @temaniarpit27. Find a way to check header hash
+				header, canceled := d.GetBlockHeader(ctx, blockNumber)
+				if canceled {
+					d.log.Warn("context canceled while getting block header for reorg detection")
+					return latestSyncedBlock
+				}
+
+				d.log.Warnf("Reorg detected: current block number %d (hash: %s) is less than latest synced block %d",
+					blockNumber, header.Hash.Hex(), latestSyncedBlock)
+
+				// Notify the reorg detector about the potential reorg
+				if d.reorgDetector != nil {
+					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
+						d.log.Errorf("Failed to notify reorg detector: %v", err)
+					}
+				}
+
+				return blockNumber
+			}
+			// If blockNumber == latestSyncedBlock, continue waiting for new blocks
 		}
 	}
 }

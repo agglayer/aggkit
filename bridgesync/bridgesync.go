@@ -192,6 +192,8 @@ func newBridgeSync(
 		[]common.Address{cfg.BridgeAddr},
 		rh,
 		rd.GetFinalizedBlockType(),
+		rd,                // reorgDetector
+		syncerID.String(), // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err

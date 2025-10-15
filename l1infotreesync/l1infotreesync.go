@@ -107,6 +107,8 @@ func New(
 		[]common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr},
 		rh,
 		finalizedBlockType,
+		reorgdetector.NewNoOpReorgDetector(), // reorgDetector
+		"l1infotreesync",                     // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err

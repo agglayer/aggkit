@@ -385,6 +385,24 @@ func TestWaitForNewBlocks(t *testing.T) {
 	assert.Equal(t, expectedBlock, actualBlock)
 }
 
+func TestWaitForNewBlocksReorgScenario(t *testing.T) {
+	ctx := context.Background()
+	d, clientMock := NewTestDownloader(t, time.Millisecond*100)
+
+	// Test scenario where current block number is less than latest synced block
+	// This indicates a potential reorg, but the actual reorg detection is handled by ReorgDetector
+	latestSyncedBlock := uint64(10)
+	reorgedBlock := uint64(7) // Block number decreased due to reorg
+
+	// Mock the block number call - allow multiple calls since the function loops
+	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+		Number: big.NewInt(int64(reorgedBlock)),
+	}, nil)
+
+	actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
+	assert.Equal(t, reorgedBlock, actualBlock, "Should return the current block number when it's less than latest synced block")
+}
+
 func TestGetBlockHeader(t *testing.T) {
 	ctx := context.Background()
 	d, clientMock := NewTestDownloader(t, time.Millisecond)
@@ -544,6 +562,8 @@ func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader,
 		clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
 		buildAppender(), []common.Address{contractAddr}, rh,
 		aggkittypes.FinalizedBlock,
+		nil,                      // reorgDetector - nil for tests
+		"test-reorg-detector-id", // reorgDetectorID
 	)
 	require.NoError(t, err)
 	return d, clientMock

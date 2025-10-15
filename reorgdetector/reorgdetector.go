@@ -24,47 +24,6 @@ const (
 	L2 Network = "l2"
 )
 
-var headersCache = map[uint64]*types.Header{}
-
-// GetHeadersCache returns a copy of the headers cache for testing purposes
-func GetHeadersCache() map[uint64]*types.Header {
-	cacheCopy := make(map[uint64]*types.Header)
-	for k, v := range headersCache {
-		cacheCopy[k] = v
-	}
-	return cacheCopy
-}
-
-// GetTrackedBlocksForTesting returns a copy of tracked blocks for testing purposes
-func (rd *ReorgDetector) GetTrackedBlocksForTesting() map[string]*headersList {
-	rd.trackedBlocksLock.RLock()
-	defer rd.trackedBlocksLock.RUnlock()
-
-	trackedBlocksCopy := make(map[string]*headersList)
-	for id, headersList := range rd.trackedBlocks {
-		trackedBlocksCopy[id] = headersList.copy()
-	}
-	return trackedBlocksCopy
-}
-
-// GetTrackedBlocksInfo returns information about tracked blocks for testing
-func (rd *ReorgDetector) GetTrackedBlocksInfo() map[string]map[uint64]common.Hash {
-	rd.trackedBlocksLock.RLock()
-	defer rd.trackedBlocksLock.RUnlock()
-
-	result := make(map[string]map[uint64]common.Hash)
-	for id, headersList := range rd.trackedBlocks {
-		headersList.RLock()
-		headers := make(map[uint64]common.Hash)
-		for blockNum, header := range headersList.headers {
-			headers[blockNum] = header.Hash
-		}
-		headersList.RUnlock()
-		result[id] = headers
-	}
-	return result
-}
-
 func (n Network) String() string {
 	return string(n)
 }
@@ -81,6 +40,7 @@ type ReorgDetector struct {
 
 	subscriptionsLock sync.RWMutex
 	subscriptions     map[string]*Subscription
+	headersCache      map[uint64]*types.Header
 
 	log *log.Logger
 }
@@ -157,9 +117,6 @@ func (rd *ReorgDetector) GetFinalizedBlockType() aggkittypes.BlockNumberFinality
 
 // AddBlockToTrack adds a block to the tracked list for a subscriber
 func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uint64, hash common.Hash) error {
-	// if rd.IsDisabled() {
-	// 	return nil
-	// }
 	// Skip if the given block has already been stored
 	rd.trackedBlocksLock.RLock()
 	trackedBlocks, ok := rd.trackedBlocks[id]
@@ -169,11 +126,8 @@ func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uin
 	}
 	rd.trackedBlocksLock.RUnlock()
 	if existingHeader, err := trackedBlocks.get(num); err == nil && existingHeader.Hash == hash {
-		fmt.Printf("--------- same hash num: %d, hash: %s\n", num, hash.Hex())
 		return nil
 	}
-
-	fmt.Printf("--------- different hash num: %d, hash: %s\n", num, hash.Hex())
 
 	// Store the given header to the tracked list
 	hdr := newHeader(num, hash)
@@ -187,23 +141,17 @@ func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uin
 // detectReorgInTrackedList detects reorgs in the tracked blocks.
 // Notifies subscribers if reorg has happened
 func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
-	// return nil
-	// if rd.IsDisabled() {
-	// 	return nil
-	// }
-
 	// Get the latest finalized block
 	blockNumber, err := rd.finalizedBlockType.BlockNumber(ctx, rd.client)
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
+	// TODO - @temaniarpit27. Figure out a way to not do this.
 	blockNumber = blockNumber - 5
-	// fmt.Printf("--------- detectReorgInTrackedList blockNumber: %d\n", blockNumber)
 	lastFinalizedBlock, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
 	if err != nil {
 		return fmt.Errorf("failed to get the header %d. Err: %w", blockNumber, err)
 	}
-	// fmt.Printf("--------- detectReorgInTrackedList lastFinalizedBlock: %d\n", lastFinalizedBlock.Number.Uint64())
 	var (
 		headersCacheLock sync.Mutex
 		errGroup         errgroup.Group
@@ -228,20 +176,17 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 
 		errGroup.Go(func() error {
 			headers := hdrs.getSorted()
-			fmt.Printf("--------- detectReorgInTrackedList headers: %d %v \n", len(headers), headers)
-			// fmt.Printf("-------- detectReorgInTrackedList headersCache before insertion: %v\n", headersCache)
 			for _, hdr := range headers {
 				// Get the actual header from the network or from the cache
 				var err error
 				headersCacheLock.Lock()
-				currentHeader, ok := headersCache[hdr.Num]
+				currentHeader, ok := rd.headersCache[hdr.Num]
 				if !ok || currentHeader == nil {
 					if currentHeader, err = rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(hdr.Num)); err != nil {
 						headersCacheLock.Unlock()
 						return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
 					}
-					// fmt.Printf("--------- detectReorgInTrackedList currentHeader: %d %v\n", hdr.Num, currentHeader)
-					headersCache[hdr.Num] = currentHeader
+					rd.headersCache[hdr.Num] = currentHeader
 				}
 				headersCacheLock.Unlock()
 
