@@ -212,22 +212,13 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Logf("  Fork point: block %d, hash %s", forkFromBlock, forkBlockHash.Hex())
 
 	// Commit additional blocks
-	helpers.CommitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 2, blocktime)
 	blockNum3, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  Block number after first fork bridge: %d", blockNum3)
 	blockhash3, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(blockNum3)))
 	require.NoError(t, err)
 	t.Logf("  Block hash after first fork bridge: %s", blockhash3.Hash().Hex())
-
-	// Commit additional blocks
-	helpers.CommitBlocks(t, client, 1, blocktime)
-	blockNum3, err = client.Client().BlockNumber(ctx)
-	require.NoError(t, err)
-	t.Logf("  Block number after first fork bridge 2nd block: %d", blockNum3)
-	blockhash3, err = client.Client().HeaderByNumber(ctx, big.NewInt(int64(blockNum3)))
-	require.NoError(t, err)
-	t.Logf("  Block hash after first fork bridge 2nd block: %s", blockhash3.Hash().Hex())
 
 	// Step 5: Bridge asset with different params and commit blocks, check count
 	t.Log("Step 5: Bridge asset #2 with different params and commit blocks")

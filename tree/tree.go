@@ -248,7 +248,7 @@ func (t *Tree) GetLeaf(tx dbtypes.Querier, index uint32, root common.Hash) (comm
 	return currentNodeHash, nil
 }
 
-// Reorg deletes all the data relevant from firstReorgedBlock (includded) and onwards
+// Reorg deletes all the data relevant from firstReorgedBlock (included) and onwards
 func (t *Tree) Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error {
 	_, err := tx.Exec(
 		fmt.Sprintf(`DELETE FROM %s WHERE block_num >= $1`, t.rootTable),
