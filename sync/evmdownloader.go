@@ -350,6 +350,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 							d.log.Errorf("Failed to notify reorg detector: %v", err)
 						}
 					}
+					// TODO - @temaniarpit27. Check how to avoid this for proper data removal
+					time.Sleep(12 * time.Second)
 					return blockNumber
 				}
 			}

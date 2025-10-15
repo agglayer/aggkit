@@ -69,6 +69,7 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 		trackedBlocks:      make(map[string]*headersList),
 		subscriptions:      make(map[string]*Subscription),
 		log:                log,
+		headersCache:       make(map[uint64]*types.Header),
 	}, nil
 }
 

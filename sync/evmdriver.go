@@ -181,9 +181,7 @@ reset:
 		<-blockProcessingDone
 		return
 	case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
-		d.log.Warnf("Reorg detected from block %d, stopping block processing...", firstReorgedBlock)
-		cancel()
-		<-blockProcessingDone // wait for block processing to exit cleanly
+		d.log.Warnf("Reorg detected from block %d", firstReorgedBlock)
 		if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
 			d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
 		}

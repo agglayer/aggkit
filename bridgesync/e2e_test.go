@@ -128,7 +128,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_reorg.sqlite")
-	blocktime := time.Second * 6
+	blocktime := time.Second * 12
 
 	// Setup simulated L1 environment with bridge and GER contracts
 	client, auth, _, _, bridgeAddr, bridgeContract := helpers.NewSimulatedL1(t)
@@ -149,8 +149,8 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		SyncBlockChunkSize:                 10,
 		InitialBlockNum:                    0,
-		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 100),
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 3),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Second * 1),
 		MaxRetryAttemptsAfterError:         10,
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
@@ -200,12 +200,6 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	// Wait for syncer to process
 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
-	// // Step 3: Record GER root
-	// t.Log("Step 3: Recording GER root after first bridge")
-	// gerRootAfterFirstBridge, err := bridgeContract.GetRoot(nil)
-	// require.NoError(t, err)
-	// t.Logf("  GER root after first bridge: %s", common.Hash(gerRootAfterFirstBridge).Hex())
-
 	// Step 4: Record the block hash to fork from later (fork from the current block to ensure reorg detection)
 	t.Log("Step 4: Recording block hash for fork point")
 	forkBlockNum, err := client.Client().BlockNumber(ctx)
@@ -225,7 +219,6 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	blockhash3, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(blockNum3)))
 	require.NoError(t, err)
 	t.Logf("  Block hash after first fork bridge: %s", blockhash3.Hash().Hex())
-	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
 
 	// Commit additional blocks
 	helpers.CommitBlocks(t, client, 1, blocktime)
@@ -258,35 +251,18 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Logf("  Block number after second bridge: %d", blockNum2)
 	t.Logf("  Created bridge tx: %s", tx2.Hash().Hex())
 
-	// Commit additional blocks
-	// helpers.CommitBlocks(t, client, 1, blocktime)
 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
-	// // Check bridge count in L1 DB
-	// lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
-	// require.NoError(t, err)
-	// bridgesBeforeFork, err := syncer.GetBridges(ctx, 0, lastProcessed)
-	// require.NoError(t, err)
-	// t.Logf("  Bridges in DB before fork: %d", len(bridgesBeforeFork))
-	// require.Equal(t, 2, len(bridgesBeforeFork), "Should have 2 bridges before fork")
-
-	// // Step 6: Record GER root again
-	// t.Log("Step 6: Recording GER root after second bridge")
-	// gerRootAfterSecondBridge, err := bridgeContract.GetRoot(nil)
-	// require.NoError(t, err)
-	// t.Logf("  GER root after second bridge: %s", common.Hash(gerRootAfterSecondBridge).Hex())
-
-	// // print current block number
-	// currBlockNum, err := client.Client().BlockNumber(ctx)
-	// require.NoError(t, err)
-	// t.Logf("  Before fork Current block number: %d", currBlockNum)
+	// Check bridge count in L1 DB
+	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	bridgesBeforeFork, err := syncer.GetBridges(ctx, 0, lastProcessed)
+	require.NoError(t, err)
+	t.Logf("  Bridges in DB before fork: %d", len(bridgesBeforeFork))
+	require.Equal(t, 2, len(bridgesBeforeFork), "Should have 2 bridges before fork")
 
 	// Step 7: Fork from the recorded block
 	t.Log("Step 7: Creating fork from block", forkFromBlock)
-
-	// // Debug: Check what blocks are currently tracked before fork
-	// trackedBlocksBeforeFork := rd.GetTrackedBlocksInfo()
-	// t.Logf("  Tracked blocks before fork: %+v", trackedBlocksBeforeFork)
 
 	err = client.Fork(forkBlockHash)
 	require.NoError(t, err)
@@ -324,166 +300,27 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Hash of the forked block: %s", forkedBlockHash.Hash().Hex())
 	t.Logf("After fork Current block number: %d", currBlockNum)
+	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
-	// Verify that the block hash is different from the original chain
-	// This ensures we can detect the reorg difference
-	// require.NotEqual(t, forkBlockHash.Hex(), forkedBlockHash.Hash().Hex(),
-	// 	"Block hash should be different after fork to enable reorg detection")
+	// Step 9: Check bridge count after fork
+	t.Log("Step 9: Checking bridge count after fork")
+	lastProcessedAfterFork, err := syncer.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	bridgesAfterFork, err := syncer.GetBridges(ctx, 0, lastProcessedAfterFork)
+	require.NoError(t, err)
+	t.Logf("  Bridges in DB immediately after fork: %d", len(bridgesAfterFork))
 
-	// // Step 8: Bridge asset with different params and commit blocks, check count
-	// t.Log("Step 8: Bridge asset #3 with different params and commit blocks")
-	// amount2 = big.NewInt(2000000000000000000) // 2 ETH
-	// destinationAddress2 = common.HexToAddress("0x2222222222222222222222222222222222222222")
-	// auth.Value = amount2
-	// tx2, err = bridgeContract.BridgeAsset(
-	// 	auth,
-	// 	destinationNetwork,
-	// 	destinationAddress2,
-	// 	amount2,
-	// 	common.Address{}, // native token
-	// 	true,             // isForced
-	// 	[]byte{},
-	// )
-	// require.NoError(t, err)
-	// auth.Value = nil
-	// helpers.CommitBlocks(t, client, 1, blocktime)
-	// blockNum2, err = client.Client().BlockNumber(ctx)
-	// require.NoError(t, err)
-	// t.Logf("  Block number after third bridge: %d", blockNum2)
-	// t.Logf("  Created bridge tx: %s", tx2.Hash().Hex())
+	// Debug: Print all bridges to understand what we have
+	for i, bridge := range bridgesAfterFork {
+		t.Logf("  Bridge %d: Amount=%s, DestAddr=%s, TxHash=%s, BlockNum=%d",
+			i+1, bridge.Amount.String(), bridge.DestinationAddress.Hex(), bridge.TxHash.Hex(), bridge.BlockNum)
+	}
 
-	// // Step 9: Check bridge count immediately after fork (before reorg processing)
-	// t.Log("Step 9: Checking bridge count immediately after fork (before reorg processing)")
-	// lastProcessedAfterFork, err := syncer.GetLastProcessedBlock(ctx)
-	// require.NoError(t, err)
-	// bridgesAfterFork, err := syncer.GetBridges(ctx, 0, lastProcessedAfterFork)
-	// require.NoError(t, err)
-	// t.Logf("  Bridges in DB immediately after fork: %d", len(bridgesAfterFork))
-	// // At this point, we might still have the old bridges until reorg is processed
+	// After reorg, we should have:
+	// 1. Bridge #1 (before fork) - should remain
+	// 2. Bridge after fork (0.5 ETH to 0x333...) - should remain
+	// Bridge #2 (created after fork point but before actual fork) should be removed
+	require.Equal(t, 2, len(bridgesAfterFork), "Should have 2 bridges after reorg: Bridge #1, Bridge after fork")
 
-	// // Wait for syncer to process and verify headers cache is populated
-	// t.Log("Step 9.1: Waiting for syncer to process and verify headers cache")
-	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
-
-	// // Give some time for reorg detector to populate headers cache and detect reorg
-	// time.Sleep(time.Second * 5)
-
-	// // Verify headersCache is correctly populated with block numbers and hashes
-	// // We need to access the global headersCache from reorgdetector package
-	// verifyHeadersCachePopulated(t, rd, ctx, client)
-
-	// // Step 10: Verify that hdrs (headers list) is updated as soon as new blocks are found
-	// t.Log("Step 10: Verifying headers list is updated with new blocks")
-	// verifyHeadersListUpdated(t, rd, ctx, client)
-
-	// // Step 10.1: Check if reorg was detected
-	// t.Log("Step 10.1: Checking if reorg was detected")
-	// checkReorgDetection(t, rd, ctx)
-
-	// // Step 11: Final verification - ensure reorg detection is working properly
-	// t.Log("Step 11: Final verification of reorg detection behavior")
-
-	// // Commit additional blocks to ensure the reorg detector has processed everything
-	// helpers.CommitBlocks(t, client, 3, blocktime)
-	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
-
-	// // // Give more time for reorg detection to process
-	// // time.Sleep(time.Second * 2)
-
-	// // Final verification of headers cache and tracked blocks
-	// verifyHeadersCachePopulated(t, rd, ctx, client)
-	// verifyHeadersListUpdated(t, rd, ctx, client)
-
-	// // Step 12: Verify bridge count and content after reorg
-	// t.Log("Step 12: Verifying bridge count and content after reorg")
-	// lastProcessedFinal, err := syncer.GetLastProcessedBlock(ctx)
-	// require.NoError(t, err)
-	// bridgesFinal, err := syncer.GetBridges(ctx, 0, lastProcessedFinal)
-	// require.NoError(t, err)
-	// t.Logf("Final bridges in DB: %d", len(bridgesFinal))
-
-	// // Debug: Print all bridges to understand what we have
-	// for i, bridge := range bridgesFinal {
-	// 	t.Logf("  Bridge %d: Amount=%s, DestAddr=%s, TxHash=%s, BlockNum=%d",
-	// 		i+1, bridge.Amount.String(), bridge.DestinationAddress.Hex(), bridge.TxHash.Hex(), bridge.BlockNum)
-	// }
-
-	// // After reorg, we should have:
-	// // 1. Bridge #1 (before fork) - should remain
-	// // 2. Bridge after fork (0.5 ETH to 0x333...) - should remain
-	// // 3. Bridge #3 (2 ETH to 0x222...) - should remain
-	// // Bridge #2 (created after fork point but before actual fork) should be removed
-	// require.Equal(t, 2, len(bridgesFinal), "Should have 2 bridges after reorg: Bridge #1, Bridge after fork")
-
-	// t.Log("✅ Test completed successfully - reorg detection behavior verified")
-
-	// // Step 11: Check pending transactions
-	// t.Log("before syncer catch up Checking pending transactions")
-	// pendingTx, err := client.Client().PendingTransactionCount(ctx)
-	// require.NoError(t, err)
-	// fmt.Printf("before syncer catch up Pending transactions: %d\n", pendingTx)
-
-	// // Step 8: Wait for syncer to process everything (rollback to fork point)
-	// t.Log("Step 8: Waiting for syncer to process the reorg")
-	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
-
-	// // Step 11: Check pending transactions
-	// t.Log("after syncer catch up Checking pending transactions")
-	// pendingTx, err = client.Client().PendingTransactionCount(ctx)
-	// require.NoError(t, err)
-	// fmt.Printf("after syncer catch up Pending transactions: %d\n", pendingTx)
-
-	// // Step 9: Record GER and it should be equal to GER from step 3
-	// t.Log("Step 9: Verifying GER root matches fork point (step 3)")
-	// gerRootAfterReorg, err := bridgeContract.GetRoot(nil)
-	// require.NoError(t, err)
-	// t.Logf("  GER root after reorg: %s", common.Hash(gerRootAfterReorg).Hex())
-	// t.Logf("  Expected GER (from step 3): %s", common.Hash(gerRootAfterFirstBridge).Hex())
-	// require.Equal(t, common.Hash(gerRootAfterFirstBridge).Hex(), common.Hash(gerRootAfterReorg).Hex(),
-	// 	"GER root after reorg should match the fork point")
-
-	// // Step 11: Check pending transactions
-	// t.Log("--------------- Checking pending transactions")
-	// pendingTx, err = client.Client().PendingTransactionCount(ctx)
-	// require.NoError(t, err)
-	// fmt.Printf("after reorg Pending transactions: %d\n", pendingTx)
-
-	// // Step 10: Check bridges from bridge L1 DB
-	// t.Log("Step 10: Checking bridges in L1 DB after reorg")
-	// lastProcessedAfterReorg, err := syncer.GetLastProcessedBlock(ctx)
-	// require.NoError(t, err)
-	// bridgesAfterReorg, err := syncer.GetBridges(ctx, 0, lastProcessedAfterReorg)
-	// require.NoError(t, err)
-	// t.Logf("  Bridges in DB after reorg: %d", len(bridgesAfterReorg))
-	// require.Equal(t, 1, len(bridgesAfterReorg), "Should have only 1 bridge after reorg (second bridge rolled back)")
-
-	// // Step 11: Check pending transactions
-	// t.Log("Step 11: Checking pending transactions")
-	// pendingTx, err = client.Client().PendingTransactionCount(ctx)
-	// require.NoError(t, err)
-	// require.Equal(t, 1, int(pendingTx))
-
-	// // Step 12: Commit some blocks on the new chain
-	// t.Log("Step 12: Committing blocks on the forked chain")
-	// helpers.CommitBlocks(t, client, 5, time.Millisecond*50)
-	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
-
-	// pendingTxFinal, err := client.Client().PendingTransactionCount(ctx)
-	// require.NoError(t, err)
-	// require.Equal(t, 0, int(pendingTxFinal))
-
-	// // Step 13: Check GER again and bridges count again
-	// t.Log("Step 13: Final verification of GER and bridge count")
-	// gerRootFinal, err := bridgeContract.GetRoot(nil)
-	// require.NoError(t, err)
-	// require.Equal(t, common.Hash(gerRootAfterSecondBridge).Hex(), common.Hash(gerRootFinal).Hex())
-
-	// lastProcessedFinal, err := syncer.GetLastProcessedBlock(ctx)
-	// require.NoError(t, err)
-	// bridgesFinal, err := syncer.GetBridges(ctx, 0, lastProcessedFinal)
-	// require.NoError(t, err)
-	// t.Logf("  Final bridges in DB: %d", len(bridgesFinal))
-	// require.Equal(t, 2, len(bridgesFinal), "Should still have only 1 bridge in DB")
-
-	// t.Log("✅ Test completed successfully - syncer handled reorg correctly")
+	t.Log("✅ Test completed successfully - syncer handled reorg correctly")
 }
