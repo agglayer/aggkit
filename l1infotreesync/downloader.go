@@ -3,8 +3,8 @@ package l1infotreesync
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonrollupmanager"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -25,8 +25,8 @@ var (
 )
 
 func checkSMCIsRollupManager(rollupManagerAddr common.Address,
-	rollupManagerContract *polygonrollupmanager.Polygonrollupmanager) error {
-	bridgeAddr, err := rollupManagerContract.BridgeAddress(nil)
+	agglayerManager *agglayermanager.Agglayermanager) error {
+	bridgeAddr, err := agglayerManager.BridgeAddress(nil)
 	if err != nil {
 		return fmt.Errorf("failed sanity check for RollupManager(%s) SC. Err: %w", rollupManagerAddr.String(), err)
 	}
@@ -35,7 +35,7 @@ func checkSMCIsRollupManager(rollupManagerAddr common.Address,
 }
 
 func checkSMCIsGlobalExitRoot(globalExitRootAddr common.Address,
-	gerContract *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2) error {
+	gerContract *agglayerger.Agglayerger) error {
 	depositCount, err := gerContract.DepositCount(nil)
 	if err != nil {
 		return fmt.Errorf("failed sanity check for GlobalExitRoot(%s) SC. Err: %w", globalExitRootAddr.String(), err)
@@ -45,8 +45,8 @@ func checkSMCIsGlobalExitRoot(globalExitRootAddr common.Address,
 }
 
 func sanityCheckContracts(globalExitRoot, rollupManager common.Address,
-	gerContract *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
-	rollupManagerContract *polygonrollupmanager.Polygonrollupmanager) error {
+	gerContract *agglayerger.Agglayerger,
+	rollupManagerContract *agglayermanager.Agglayermanager) error {
 	errGER := checkSMCIsGlobalExitRoot(globalExitRoot, gerContract)
 	errRollup := checkSMCIsRollupManager(rollupManager, rollupManagerContract)
 	if errGER != nil || errRollup != nil {
@@ -58,15 +58,15 @@ func sanityCheckContracts(globalExitRoot, rollupManager common.Address,
 }
 
 func createContracts(client aggkittypes.BaseEthereumClienter, globalExitRoot, rollupManager common.Address) (
-	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
-	*polygonrollupmanager.Polygonrollupmanager,
+	*agglayerger.Agglayerger,
+	*agglayermanager.Agglayermanager,
 	error) {
-	gerContract, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(globalExitRoot, client)
+	gerContract, err := agglayerger.NewAgglayerger(globalExitRoot, client)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rollupManagerContract, err := polygonrollupmanager.NewPolygonrollupmanager(rollupManager, client)
+	rollupManagerContract, err := agglayermanager.NewAgglayermanager(rollupManager, client)
 	if err != nil {
 		return nil, nil, err
 	}

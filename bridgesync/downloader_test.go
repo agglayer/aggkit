@@ -6,9 +6,9 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonzkevmbridge"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/types/mocks"
@@ -22,10 +22,10 @@ func TestBuildAppender(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
 
-	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	bridgeAbi, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
-	bridgeSovereignChainABI, err := bridgel2sovereignchain.Bridgel2sovereignchainMetaData.GetAbi()
+	bridgeL2Abi, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -39,7 +39,7 @@ func TestBuildAppender(t *testing.T) {
 			eventSignature: bridgeEventSignature,
 			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
+				event, err := bridgeAbi.EventByID(bridgeEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -104,7 +104,7 @@ func TestBuildAppender(t *testing.T) {
 			eventSignature: claimEventSignature,
 			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeV2Abi.EventByID(claimEventSignature)
+				event, err := bridgeAbi.EventByID(claimEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -133,7 +133,7 @@ func TestBuildAppender(t *testing.T) {
 			eventSignature: tokenMappingEventSignature,
 			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeV2Abi.EventByID(tokenMappingEventSignature)
+				event, err := bridgeAbi.EventByID(tokenMappingEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -161,7 +161,7 @@ func TestBuildAppender(t *testing.T) {
 			eventSignature: setSovereignTokenEventSignature,
 			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeSovereignChainABI.EventByID(setSovereignTokenEventSignature)
+				event, err := bridgeL2Abi.EventByID(setSovereignTokenEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -189,7 +189,7 @@ func TestBuildAppender(t *testing.T) {
 			eventSignature: migrateLegacyTokenEventSignature,
 			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeSovereignChainABI.EventByID(migrateLegacyTokenEventSignature)
+				event, err := bridgeL2Abi.EventByID(migrateLegacyTokenEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -217,7 +217,7 @@ func TestBuildAppender(t *testing.T) {
 			eventSignature: removeLegacySovereignTokenEventSignature,
 			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeSovereignChainABI.EventByID(removeLegacySovereignTokenEventSignature)
+				event, err := bridgeL2Abi.EventByID(removeLegacySovereignTokenEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -264,11 +264,11 @@ func TestBuildAppender(t *testing.T) {
 				Return(nil).
 				Maybe()
 
-			bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+			agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
 			logger := logger.WithFields("module", "test")
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, logger)
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, agglayerBridge, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -536,7 +536,7 @@ func TestTxnSenderField(t *testing.T) {
 	blockNum := uint64(1)
 	expectedTxnSender := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	bridgeV2Abi, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -663,7 +663,7 @@ func TestTxnSenderField(t *testing.T) {
 				Return(nil).
 				Maybe()
 
-			bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+			bridgeContractV2, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
 			logger := logger.WithFields("module", "test")

@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -71,14 +71,14 @@ type SimulatedBackendSetup struct {
 	UserAuth            *bind.TransactOpts
 	DeployerAuth        *bind.TransactOpts
 	BridgeProxyAddr     common.Address
-	BridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	BridgeProxyContract *agglayerbridge.Agglayerbridge
 }
 
 // DeployBridge deploys the bridge contract
 func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	gerAddr common.Address, networkID uint32) error {
 	// Deploy zkevm bridge contract
-	bridgeAddr, _, _, err := polygonzkevmbridgev2.DeployPolygonzkevmbridgev2(s.DeployerAuth, client.Client())
+	bridgeAddr, _, _, err := agglayerbridge.DeployAgglayerbridge(s.DeployerAuth, client.Client())
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	// Create proxy contract for the bridge
 	var (
 		bridgeProxyAddr     common.Address
-		bridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
+		bridgeProxyContract *agglayerbridge.Agglayerbridge
 	)
 
 	bridgeProxyAddr, _, _, err = proxy.DeployProxy(
@@ -102,7 +102,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	}
 	client.Commit()
 
-	bridgeProxyContract, err = polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeProxyAddr, client.Client())
+	bridgeProxyContract, err = agglayerbridge.NewAgglayerbridge(bridgeProxyAddr, client.Client())
 	if err != nil {
 		return err
 	}

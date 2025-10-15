@@ -5,7 +5,8 @@ package mocks
 import (
 	big "math/big"
 
-	polygonrollupmanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	agglayermanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -78,22 +79,22 @@ func (_c *RollupDataQuerier_GetRollupChainID_Call) RunAndReturn(run func() (uint
 }
 
 // GetRollupData provides a mock function with given fields: blockNumber
-func (_m *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error) {
+func (_m *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (agglayermanager.AgglayerManagerRollupDataReturn, error) {
 	ret := _m.Called(blockNumber)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRollupData")
 	}
 
-	var r0 polygonrollupmanager.PolygonRollupManagerRollupDataReturn
+	var r0 agglayermanager.AgglayerManagerRollupDataReturn
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)); ok {
+	if rf, ok := ret.Get(0).(func(*big.Int) (agglayermanager.AgglayerManagerRollupDataReturn, error)); ok {
 		return rf(blockNumber)
 	}
-	if rf, ok := ret.Get(0).(func(*big.Int) polygonrollupmanager.PolygonRollupManagerRollupDataReturn); ok {
+	if rf, ok := ret.Get(0).(func(*big.Int) agglayermanager.AgglayerManagerRollupDataReturn); ok {
 		r0 = rf(blockNumber)
 	} else {
-		r0 = ret.Get(0).(polygonrollupmanager.PolygonRollupManagerRollupDataReturn)
+		r0 = ret.Get(0).(agglayermanager.AgglayerManagerRollupDataReturn)
 	}
 
 	if rf, ok := ret.Get(1).(func(*big.Int) error); ok {
@@ -123,12 +124,12 @@ func (_c *RollupDataQuerier_GetRollupData_Call) Run(run func(blockNumber *big.In
 	return _c
 }
 
-func (_c *RollupDataQuerier_GetRollupData_Call) Return(_a0 polygonrollupmanager.PolygonRollupManagerRollupDataReturn, _a1 error) *RollupDataQuerier_GetRollupData_Call {
+func (_c *RollupDataQuerier_GetRollupData_Call) Return(_a0 agglayermanager.AgglayerManagerRollupDataReturn, _a1 error) *RollupDataQuerier_GetRollupData_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *RollupDataQuerier_GetRollupData_Call) RunAndReturn(run func(*big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)) *RollupDataQuerier_GetRollupData_Call {
+func (_c *RollupDataQuerier_GetRollupData_Call) RunAndReturn(run func(*big.Int) (agglayermanager.AgglayerManagerRollupDataReturn, error)) *RollupDataQuerier_GetRollupData_Call {
 	_c.Call.Return(run)
 	return _c
 }

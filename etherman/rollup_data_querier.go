@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -21,7 +21,7 @@ var (
 // RollupManagerContract is an abstraction for RollupManager smart contract
 type RollupManagerContract interface {
 	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
-		polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+		agglayermanager.AgglayerManagerRollupDataReturn, error)
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
 }
 
@@ -106,7 +106,7 @@ func (r *RollupDataQuerier) GetRollupChainID() (uint64, error) {
 
 // GetRollupData returns rollup data based on the provided rollup id
 func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
-	polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error) {
+	agglayermanager.AgglayerManagerRollupDataReturn, error) {
 	rollupData, err := r.rollupManagerSC.RollupIDToRollupData(
 		&bind.CallOpts{
 			Pending:     false,
@@ -114,7 +114,7 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 		}, r.RollupID)
 	if err != nil {
 		log.Debug("error from rollupManager: ", err)
-		return polygonrollupmanager.PolygonRollupManagerRollupDataReturn{},
+		return agglayermanager.AgglayerManagerRollupDataReturn{},
 			fmt.Errorf("failed to retrieve rollup data for rollup id %d: %w", r.RollupID, err)
 	}
 

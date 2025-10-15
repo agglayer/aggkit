@@ -5,8 +5,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -183,7 +183,7 @@ type CertificateStatusChecker interface {
 
 // RollupDataQuerier is an interface that abstracts interaction with the rollup manager contract
 type RollupDataQuerier interface {
-	GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+	GetRollupData(blockNumber *big.Int) (agglayermanager.AgglayerManagerRollupDataReturn, error)
 	GetRollupChainID() (uint64, error)
 }
 
