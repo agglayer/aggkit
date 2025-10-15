@@ -1,6 +1,7 @@
 package etherman
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -23,6 +24,7 @@ type RollupManagerContract interface {
 	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
 		agglayermanager.AgglayerManagerRollupDataReturn, error)
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
+	FilterInitialized(opts *bind.FilterOpts) (*agglayermanager.AgglayermanagerInitializedIterator, error)
 }
 
 // mockery:ignore
@@ -32,31 +34,39 @@ type RollupManagerFactoryFunc func(rollupAddress common.Address,
 
 // RollupDataQuerier is a simple implementation of Etherman.
 type RollupDataQuerier struct {
-	rollupManagerSC RollupManagerContract
-	RollupID        uint32
+	rollupManagerSC          RollupManagerContract
+	rollupManagerUpgradedMap map[uint8]uint64
+	RollupID                 uint32
 }
 
 // NewRollupDataQuerier creates a new rollup data querier instance
 func NewRollupDataQuerier(
+	ctx context.Context,
 	l1Config config.L1NetworkConfig,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rollupManagerFactory RollupManagerFactoryFunc,
 ) (*RollupDataQuerier, error) {
-	rmContract, err := bindRollupManagerContract(l1Config.RollupManagerAddr, ethClient, rollupManagerFactory)
+	rollupManagerSC, err := bindRollupManagerContract(l1Config.RollupManagerAddr, ethClient, rollupManagerFactory)
 	if err != nil {
 		return nil, err
 	}
 
-	rollupID, err := fetchRollupID(rmContract, l1Config.RollupAddr)
+	rollupID, err := fetchRollupID(rollupManagerSC, l1Config.RollupAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
+	rollupManagerUpgradedMap, err := populateAgglayerManagerInitializedMap(rollupManagerSC, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to populate agglayer manager initialized map: %w", err)
+	}
+
 	return &RollupDataQuerier{
-		rollupManagerSC: rmContract,
-		RollupID:        rollupID,
+		rollupManagerSC:          rollupManagerSC,
+		rollupManagerUpgradedMap: rollupManagerUpgradedMap,
+		RollupID:                 rollupID,
 	}, nil
 }
 
@@ -89,6 +99,27 @@ func fetchRollupID(rm RollupManagerContract, rollupAddr common.Address) (uint32,
 	return rollupID, nil
 }
 
+// populateAgglayerManagerInitializedMap populates a map of agglayer manager initialized events
+// with version as key and block number as value
+func populateAgglayerManagerInitializedMap(
+	rollupManager RollupManagerContract, ctx context.Context) (map[uint8]uint64, error) {
+	it, err := rollupManager.FilterInitialized(&bind.FilterOpts{Start: 1, Context: ctx})
+	if err != nil {
+		return nil, fmt.Errorf("failed to filter the agglayer manager initialized event: %w", err)
+	}
+
+	res := make(map[uint8]uint64)
+	for it.Next() {
+		res[it.Event.Version] = it.Event.Raw.BlockNumber
+	}
+
+	if err := it.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close the iterator: %w", err)
+	}
+
+	return res, nil
+}
+
 // GetRollupChainID returns rollup chain id (L2 network)
 func (r *RollupDataQuerier) GetRollupChainID() (uint64, error) {
 	rollupData, err := r.GetRollupData(nil)
@@ -119,4 +150,11 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 	}
 
 	return rollupData, nil
+}
+
+// GetAgglayerManagerUpgradeBlock returns the rollup manager upgrade block for the given version ID.
+// If the version ID is not found, it returns false.
+func (r *RollupDataQuerier) GetUpgradeBlock(ctx context.Context, versionID uint8) (uint64, bool) {
+	blockNum, isFound := r.rollupManagerUpgradedMap[versionID]
+	return blockNum, isFound
 }
