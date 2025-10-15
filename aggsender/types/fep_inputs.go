@@ -23,7 +23,7 @@ type AggregationProofPublicValues struct {
 	RollupConfigHash    common.Hash
 	MultiBlockVKey      common.Hash
 	TrustedSigner       common.Address
-	AggregationVKeyHash common.Hash // not used in the hash calculation
+	AggregationVKeyHash common.Hash
 }
 
 // String returns a string representation of the AggregationProofPublicValues.
