@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -102,14 +103,14 @@ func (a *AggchainParams) String() string {
 			" range_v_key_commitment: %s"+
 			" aggregation_v_key_hash: %s"+
 			"}",
-		a.AggregationProofPublicValues.L2PreRoot.String(),
-		a.AggregationProofPublicValues.ClaimRoot.String(),
-		a.AggregationProofPublicValues.L2BlockNumber,
-		a.AggregationProofPublicValues.RollupConfigHash.String(),
+		a.L2PreRoot.String(),
+		a.ClaimRoot.String(),
+		a.L2BlockNumber,
+		a.RollupConfigHash.String(),
 		a.OptimisticMode,
-		a.AggregationProofPublicValues.TrustedSigner.String(),
-		a.AggregationProofPublicValues.MultiBlockVKey.String(),
-		a.AggregationProofPublicValues.AggregationVKeyHash.String(),
+		a.TrustedSigner.String(),
+		a.MultiBlockVKey.String(),
+		a.AggregationVKeyHash.String(),
 	)
 }
 
@@ -123,7 +124,7 @@ func (a *AggchainParams) Hash() (common.Hash, error) {
 	buf.Write(a.ClaimRoot[:])
 
 	// uint256 (big endian 32 bytes)
-	uintBuf := common.LeftPadBytes(new(big.Int).SetUint64(a.L2BlockNumber).Bytes(), 32)
+	uintBuf := common.LeftPadBytes(new(big.Int).SetUint64(a.L2BlockNumber).Bytes(), aggkitcommon.HashSize)
 	buf.Write(uintBuf)
 
 	buf.Write(a.RollupConfigHash[:])
