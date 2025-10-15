@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -41,7 +41,7 @@ func newEvent(gerInfo *GlobalExitRootInfo, eventType GEREventType) *Event {
 
 type downloaderLegacy struct {
 	*sync.EVMDownloaderImplementation
-	l2GERManager   *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
+	l2GERManager   *agglayergerl2.Agglayergerl2
 	l2GERAddr      common.Address
 	l1InfoTreeSync L1InfoTreeQuerier
 	processor      *processor
@@ -57,7 +57,7 @@ func newDownloaderLegacy(
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 ) (*downloaderLegacy, error) {
-	l2GERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(
+	l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 		l2GERAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)

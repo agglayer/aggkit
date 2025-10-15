@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -102,7 +102,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockSetup: func(m *mocks.RollupManagerContract) {
 				m.EXPECT().
 					RollupIDToRollupData(mock.Anything, mock.Anything).
-					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 999}, nil)
+					Return(agglayermanager.AgglayerManagerRollupDataReturn{ChainID: 999}, nil)
 			},
 			expectedID:  999,
 			expectedErr: "",
@@ -113,7 +113,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockSetup: func(m *mocks.RollupManagerContract) {
 				m.EXPECT().
 					RollupIDToRollupData(mock.Anything, mock.Anything).
-					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 999}, errors.New("call failed"))
+					Return(agglayermanager.AgglayerManagerRollupDataReturn{ChainID: 999}, errors.New("call failed"))
 			},
 			expectedID:  0,
 			expectedErr: "failed to retrieve rollup data for rollup id 2: call failed",
@@ -124,7 +124,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockSetup: func(m *mocks.RollupManagerContract) {
 				m.EXPECT().
 					RollupIDToRollupData(mock.Anything, mock.Anything).
-					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 0}, nil)
+					Return(agglayermanager.AgglayerManagerRollupDataReturn{ChainID: 0}, nil)
 			},
 			expectedID:  0,
 			expectedErr: ErrInvalidChainID.Error(),

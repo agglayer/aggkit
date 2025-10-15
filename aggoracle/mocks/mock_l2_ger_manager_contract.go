@@ -5,10 +5,11 @@ package mocks
 import (
 	big "math/big"
 
-	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
-	common "github.com/ethereum/go-ethereum/common"
+	agglayergerl2 "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 
-	globalexitrootmanagerl2sovereignchain "github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
+
+	common "github.com/ethereum/go-ethereum/common"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -85,23 +86,23 @@ func (_c *L2GERManagerContract_BridgeAddress_Call) RunAndReturn(run func(*bind.C
 }
 
 // FilterUpdateHashChainValue provides a mock function with given fields: opts, newGlobalExitRoot, newHashChainValue
-func (_m *L2GERManagerContract) FilterUpdateHashChainValue(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error) {
+func (_m *L2GERManagerContract) FilterUpdateHashChainValue(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (*agglayergerl2.Agglayergerl2UpdateHashChainValueIterator, error) {
 	ret := _m.Called(opts, newGlobalExitRoot, newHashChainValue)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FilterUpdateHashChainValue")
 	}
 
-	var r0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator
+	var r0 *agglayergerl2.Agglayergerl2UpdateHashChainValueIterator
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*agglayergerl2.Agglayergerl2UpdateHashChainValueIterator, error)); ok {
 		return rf(opts, newGlobalExitRoot, newHashChainValue)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator); ok {
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *agglayergerl2.Agglayergerl2UpdateHashChainValueIterator); ok {
 		r0 = rf(opts, newGlobalExitRoot, newHashChainValue)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator)
+			r0 = ret.Get(0).(*agglayergerl2.Agglayergerl2UpdateHashChainValueIterator)
 		}
 	}
 
@@ -134,34 +135,34 @@ func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) Run(run func(opt
 	return _c
 }
 
-func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) Return(_a0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, _a1 error) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
+func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) Return(_a0 *agglayergerl2.Agglayergerl2UpdateHashChainValueIterator, _a1 error) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error)) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
+func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*agglayergerl2.Agglayergerl2UpdateHashChainValueIterator, error)) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // FilterUpdateRemovalHashChainValue provides a mock function with given fields: opts, removedGlobalExitRoot, newRemovalHashChainValue
-func (_m *L2GERManagerContract) FilterUpdateRemovalHashChainValue(opts *bind.FilterOpts, removedGlobalExitRoot [][32]byte, newRemovalHashChainValue [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, error) {
+func (_m *L2GERManagerContract) FilterUpdateRemovalHashChainValue(opts *bind.FilterOpts, removedGlobalExitRoot [][32]byte, newRemovalHashChainValue [][32]byte) (*agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator, error) {
 	ret := _m.Called(opts, removedGlobalExitRoot, newRemovalHashChainValue)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FilterUpdateRemovalHashChainValue")
 	}
 
-	var r0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator
+	var r0 *agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator, error)); ok {
 		return rf(opts, removedGlobalExitRoot, newRemovalHashChainValue)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator); ok {
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator); ok {
 		r0 = rf(opts, removedGlobalExitRoot, newRemovalHashChainValue)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator)
+			r0 = ret.Get(0).(*agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator)
 		}
 	}
 
@@ -194,12 +195,12 @@ func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) Run(run f
 	return _c
 }
 
-func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) Return(_a0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, _a1 error) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
+func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) Return(_a0 *agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator, _a1 error) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, error)) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
+func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator, error)) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
 	_c.Call.Return(run)
 	return _c
 }

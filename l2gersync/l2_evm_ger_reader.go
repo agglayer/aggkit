@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -24,7 +24,7 @@ func NewL2EVMGERReader(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync L1InfoTreeQuerier,
 ) (*L2EVMGERReader, error) {
-	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+	l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 		l2GERManagerAddr, l2Client)
 	if err != nil {
 		return nil, err
