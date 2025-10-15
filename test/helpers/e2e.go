@@ -601,3 +601,18 @@ func newSimulatedEVML2LegacyChain(t *testing.T) (
 
 	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract
 }
+
+func WaitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer Processorer, client *simulated.Backend) {
+	t.Helper()
+	for {
+		lastBlockNum, err := client.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+		RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
+		time.Sleep(time.Second / 2)
+		lastBlockNum2, err := client.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+		if lastBlockNum == lastBlockNum2 {
+			return
+		}
+	}
+}

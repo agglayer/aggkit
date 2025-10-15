@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/log"
@@ -205,19 +204,4 @@ func ExtractRPCErrorData(err error) error {
 	}
 
 	return err
-}
-
-func WaitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer Processorer, client *simulated.Backend) {
-	t.Helper()
-	for {
-		lastBlockNum, err := client.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
-		time.Sleep(time.Second / 2)
-		lastBlockNum2, err := client.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		if lastBlockNum == lastBlockNum2 {
-			return
-		}
-	}
 }
