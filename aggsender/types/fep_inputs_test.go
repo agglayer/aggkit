@@ -33,6 +33,17 @@ func TestAggregationProofPublicValues_String(t *testing.T) {
 func TestAggchainParams_Hash(t *testing.T) {
 	// this expected hash value was calculated in a kurtois-cdk setup on aggkit-prover
 	// using real data provided in the aggchainParams variable below
+	// [aggkit-prover-001] {"timestamp":"2025-10-14T12:27:14.246560Z","level":"INFO","fields":{"message":"Aggchain-params unrolled values: AggchainParamsValues
+	// { l2_pre_root: 0x28f97583aa1d73ecd3838c2c1007e26f81aa522ab49d1b3731b48a4ba2ed918a,
+	// claim_root: 0xc6bc97efacff37a2a05adbe03c8a6f0fb0e322538744c4b7f53d784fff4abc3c,
+	// claim_block_num: 61, rollup_config_hash: 0xc6e1bc6dad7ad983e435b14924dd450024119cda78eebca10429019d1cb55fd3,
+	// optimistic_mode: false,
+	// trusted_sequencer: 0x5b06837a43bdc3dd9f114558daf4b26ed49842ed,
+	// range_vkey_commitment: 0x416d710344b6b6fa2a0b1a1445f3d6ba4fdd5ab43f0e863b1c522db20f28ad9b,
+	// aggregation_vkey_hash: 0x00afb45d8064ae10aa6a1793b8f39a24c27268efae2917b5c02950b2377fbf00 };
+	// Aggchain-params keccak-hashed: 0xba25eb4d0a1e9f9637b3c43568a72d1ecfc084609ba85127697f5440730e5d2e"},
+	// "target":"aggchain_proof_builder","span":{"name":"generate_aggchain_proof"},"spans":[{"name":"generate_aggchain_proof"}]}]
+
 	aggchainParams := &AggchainParams{
 		AggregationProofPublicValues: AggregationProofPublicValues{
 			L2PreRoot:           common.HexToHash("0x28f97583aa1d73ecd3838c2c1007e26f81aa522ab49d1b3731b48a4ba2ed918a"),
