@@ -8,20 +8,20 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-type header struct {
+type Header struct {
 	Num  uint64      `meddler:"num"`
 	Hash common.Hash `meddler:"hash,hash"`
 }
 
-type headerWithSubscriberID struct {
+type HeaderWithSubscriberID struct {
 	SubscriberID string      `meddler:"subscriber_id"`
 	Num          uint64      `meddler:"num"`
 	Hash         common.Hash `meddler:"hash,hash"`
 }
 
 // newHeader returns a new instance of header
-func newHeader(num uint64, hash common.Hash) header {
-	return header{
+func newHeader(num uint64, hash common.Hash) Header {
+	return Header{
 		Num:  num,
 		Hash: hash,
 	}
@@ -29,12 +29,12 @@ func newHeader(num uint64, hash common.Hash) header {
 
 type headersList struct {
 	sync.RWMutex
-	headers map[uint64]header
+	headers map[uint64]Header
 }
 
 // newHeadersList returns a new instance of headersList
-func newHeadersList(headers ...header) *headersList {
-	headersMap := make(map[uint64]header, len(headers))
+func newHeadersList(headers ...Header) *headersList {
+	headersMap := make(map[uint64]Header, len(headers))
 
 	for _, b := range headers {
 		headersMap[b.Num] = b
@@ -59,7 +59,7 @@ func (hl *headersList) isEmpty() bool {
 }
 
 // add adds a header to the headers list
-func (hl *headersList) add(h header) {
+func (hl *headersList) add(h Header) {
 	hl.Lock()
 	hl.headers[h.Num] = h
 	hl.Unlock()
@@ -70,7 +70,7 @@ func (hl *headersList) copy() *headersList {
 	hl.RLock()
 	defer hl.RUnlock()
 
-	headersMap := make(map[uint64]header, len(hl.headers))
+	headersMap := make(map[uint64]Header, len(hl.headers))
 	for k, v := range hl.headers {
 		headersMap[k] = v
 	}
@@ -81,7 +81,7 @@ func (hl *headersList) copy() *headersList {
 }
 
 // get returns a header by block number
-func (hl *headersList) get(num uint64) (*header, error) {
+func (hl *headersList) get(num uint64) (*Header, error) {
 	hl.RLock()
 	defer hl.RUnlock()
 
@@ -93,9 +93,9 @@ func (hl *headersList) get(num uint64) (*header, error) {
 }
 
 // getSorted returns headers in sorted order
-func (hl *headersList) getSorted() []header {
+func (hl *headersList) getSorted() []Header {
 	hl.RLock()
-	sortedBlocks := make([]header, 0, len(hl.headers))
+	sortedBlocks := make([]Header, 0, len(hl.headers))
 
 	for _, b := range hl.headers {
 		sortedBlocks = append(sortedBlocks, b)

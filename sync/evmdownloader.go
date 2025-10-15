@@ -335,17 +335,23 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 					return latestSyncedBlock
 				}
 
-				d.log.Warnf("Reorg detected: current block number %d (hash: %s) is less than latest synced block %d",
-					blockNumber, header.Hash.Hex(), latestSyncedBlock)
-
-				// Notify the reorg detector about the potential reorg
-				if d.reorgDetector != nil {
-					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
-						d.log.Errorf("Failed to notify reorg detector: %v", err)
-					}
+				trackedBlock, err := d.reorgDetector.GetTrackedBlockByBlockNumber(d.reorgDetectorID, blockNumber)
+				if err != nil {
+					d.log.Errorf("Failed to get tracked block: %v", err)
+					return latestSyncedBlock
 				}
 
-				return blockNumber
+				if trackedBlock.Hash != header.Hash {
+					d.log.Warnf("Reorg detected: current block number %d (hash: %s) is less than latest synced block %d",
+						blockNumber, header.Hash.Hex(), latestSyncedBlock)
+					// Notify the reorg detector about the potential reorg
+					if d.reorgDetector != nil {
+						if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
+							d.log.Errorf("Failed to notify reorg detector: %v", err)
+						}
+					}
+					return blockNumber
+				}
 			}
 		}
 	}

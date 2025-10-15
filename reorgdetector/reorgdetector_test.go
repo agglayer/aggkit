@@ -122,15 +122,15 @@ func TestGetTrackedBlocks(t *testing.T) {
 	})
 
 	t.Run("Tracked blocks for subscriber Foo", func(t *testing.T) {
-		headerFoo2 := header{Num: 2, Hash: common.HexToHash("foofoo")}
+		headerFoo2 := Header{Num: 2, Hash: common.HexToHash("foofoo")}
 		err := reorgDetector.saveTrackedBlock("Foo", headerFoo2)
 		require.NoError(t, err)
 
-		headerFoo3 := header{Num: 3, Hash: common.HexToHash("foofoofoo")}
+		headerFoo3 := Header{Num: 3, Hash: common.HexToHash("foofoofoo")}
 		err = reorgDetector.saveTrackedBlock("Foo", headerFoo3)
 		require.NoError(t, err)
 
-		expectedHeadersFoo := map[uint64]header{
+		expectedHeadersFoo := map[uint64]Header{
 			2: headerFoo2,
 			3: headerFoo3,
 		}
@@ -144,18 +144,18 @@ func TestGetTrackedBlocks(t *testing.T) {
 	})
 
 	t.Run("Tracked blocks for subscribers Foo and Bar", func(t *testing.T) {
-		headerBar2 := header{Num: 2, Hash: common.HexToHash("barbar")}
+		headerBar2 := Header{Num: 2, Hash: common.HexToHash("barbar")}
 		err := reorgDetector.saveTrackedBlock("Bar", headerBar2)
 		require.NoError(t, err)
 
 		expectedList := map[string]*headersList{
 			"Bar": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: headerBar2,
 				},
 			},
 			"Foo": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: {Num: 2, Hash: common.HexToHash("foofoo")},
 					3: {Num: 3, Hash: common.HexToHash("foofoofoo")},
 				},
@@ -168,24 +168,24 @@ func TestGetTrackedBlocks(t *testing.T) {
 	})
 
 	t.Run("Tracked blocks for subscribers Foo, Bar and Zzz", func(t *testing.T) {
-		headerZzz6 := header{Num: 6, Hash: common.HexToHash("zzzzzz")}
+		headerZzz6 := Header{Num: 6, Hash: common.HexToHash("zzzzzz")}
 		err := reorgDetector.saveTrackedBlock("Zzz", headerZzz6)
 		require.NoError(t, err)
 
 		expectedList := map[string]*headersList{
 			"Bar": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: {Num: 2, Hash: common.HexToHash("barbar")},
 				},
 			},
 			"Foo": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: {Num: 2, Hash: common.HexToHash("foofoo")},
 					3: {Num: 3, Hash: common.HexToHash("foofoofoo")},
 				},
 			},
 			"Zzz": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					6: headerZzz6,
 				},
 			},
@@ -334,7 +334,7 @@ func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := range numSaves {
-			header := header{
+			header := Header{
 				Num:  uint64(i),
 				Hash: common.BigToHash(big.NewInt(int64(i))),
 			}

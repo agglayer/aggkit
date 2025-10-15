@@ -31,7 +31,7 @@ func (rd *ReorgDetector) Subscribe(id string) (*Subscription, error) {
 }
 
 // notifySubscriber notifies the subscriber with the block of the reorg
-func (rd *ReorgDetector) notifySubscriber(id string, startingBlock header) {
+func (rd *ReorgDetector) notifySubscriber(id string, startingBlock Header) {
 	// Notify subscriber about this particular reorg
 	rd.subscriptionsLock.RLock()
 	sub, ok := rd.subscriptions[id]
