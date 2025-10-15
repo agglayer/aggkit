@@ -329,6 +329,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			// Get the block header to verify the hash and notify the reorg detector
 			if blockNumber <= latestSyncedBlock {
 				// TODO - @temaniarpit27. Find a way to check header hash
+				// we can call when ticker starts
 				header, canceled := d.GetBlockHeader(ctx, blockNumber)
 				if canceled {
 					d.log.Warn("context canceled while getting block header for reorg detection")
@@ -340,18 +341,22 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 					d.log.Errorf("Failed to get tracked block: %v", err)
 					return latestSyncedBlock
 				}
+				if trackedBlock == nil {
+					d.log.Errorf("Tracked block not found for block number %d", blockNumber)
+					continue
+				}
 
 				if trackedBlock.Hash != header.Hash {
 					d.log.Warnf("Reorg detected: current block number %d (hash: %s) is less than latest synced block %d",
 						blockNumber, header.Hash.Hex(), latestSyncedBlock)
 					// Notify the reorg detector about the potential reorg
-					if d.reorgDetector != nil {
-						if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
-							d.log.Errorf("Failed to notify reorg detector: %v", err)
-						}
-					}
+					// if d.reorgDetector != nil {
+					// 	if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
+					// 		d.log.Errorf("Failed to notify reorg detector: %v", err)
+					// 	}
+					// }
 					// TODO - @temaniarpit27. Check how to avoid this for proper data removal
-					time.Sleep(12 * time.Second)
+					// time.Sleep(12 * time.Second)
 					return blockNumber
 				}
 			}

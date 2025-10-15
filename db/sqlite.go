@@ -21,10 +21,18 @@ var (
 
 // NewSQLiteDB creates a new SQLite DB
 func NewSQLiteDB(dbPath string) (*sql.DB, error) {
-	return sql.Open("sqlite3", fmt.Sprintf(
+	db, err := sql.Open("sqlite3", fmt.Sprintf(
 		"file:%s?_txlock=immediate&_foreign_keys=on&_journal_mode=WAL&_busy_timeout=30000",
 		dbPath,
 	))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+	return db, nil
 }
 
 func ReturnErrNotFound(err error) error {
