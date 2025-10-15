@@ -63,24 +63,29 @@ func (c *OpNodeClient) OutputAtBlockRoot(number uint64) (common.Hash, error) {
 	NumberHex := fmt.Sprintf("0x%x", number)
 	response, err := jSONRPCCall(c.url, "optimism_outputAtBlock", NumberHex)
 	if err != nil {
-		return aggkitcommon.ZeroHash, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock jSONRPCCall. Err:%w", err)
+		return aggkitcommon.ZeroHash,
+			fmt.Errorf("opNodeClient error calling optimism_outputAtBlock jSONRPCCall. Err:%w", err)
 	}
 	if response.Error != nil {
-		return aggkitcommon.ZeroHash, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock, server returns error: %v %v",
-			response.Error.Code, response.Error.Message)
+		return aggkitcommon.ZeroHash,
+			fmt.Errorf("opNodeClient error calling optimism_outputAtBlock, server returns error: %v %v",
+				response.Error.Code, response.Error.Message)
 	}
 	var data map[string]interface{}
 	err = json.Unmarshal(response.Result, &data)
 	if err != nil {
-		return aggkitcommon.ZeroHash, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock. Unmarshal json fails. Err:%w", err)
+		return aggkitcommon.ZeroHash,
+			fmt.Errorf("opNodeClient error calling optimism_outputAtBlock. Unmarshal json fails. Err:%w", err)
 	}
 	if outputRoot, ok := data["outputRoot"]; ok {
 		str, ok := outputRoot.(string)
 		if !ok {
-			return aggkitcommon.ZeroHash, fmt.Errorf("opNodeClient.OutputAtBlockRoot: outputRoot is not a string")
+			return aggkitcommon.ZeroHash,
+				fmt.Errorf("opNodeClient.OutputAtBlockRoot: outputRoot is not a string")
 		}
 		return common.HexToHash(str), nil
 	} else {
-		return aggkitcommon.ZeroHash, fmt.Errorf("opNodeClient.OutputAtBlockRoot: outputRoot not found in RPC response")
+		return aggkitcommon.ZeroHash,
+			fmt.Errorf("opNodeClient.OutputAtBlockRoot: outputRoot not found in RPC response")
 	}
 }

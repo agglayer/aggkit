@@ -71,10 +71,13 @@ func (a *AggchainProverVerifierFlow) VerifyCertificate(
 	}
 
 	if aggchainDataProof.AggchainParams != expectedAggchainParamsHash {
-		a.log.Infof("Aggchain-params unrolled values: %s. Last proven block: %d", expectedAggchainParams.String(), lastSettledBlock)
+		a.log.Infof("Aggchain-params unrolled values: %s. Last proven block: %d",
+			expectedAggchainParams.String(), lastSettledBlock)
 		return fmt.Errorf("aggchainProverFlow - aggchain params do not match: expected %s, got %s",
 			expectedAggchainParamsHash, aggchainDataProof.AggchainParams)
 	}
+
+	a.log.Infof("Aggchain params match successfully: %s", expectedAggchainParams.String())
 
 	return nil
 }
