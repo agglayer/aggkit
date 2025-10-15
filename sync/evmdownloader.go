@@ -126,7 +126,6 @@ func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 
 func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
 	lastBlock := d.WaitForNewBlocks(ctx, 0)
-	fmt.Printf("--------- Download lastBlock: %d\n", lastBlock)
 	toBlock := fromBlock + d.syncBlockChunkSize
 	iteration := 0
 	reachTop := false
@@ -326,7 +325,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			if blockNumber > latestSyncedBlock {
 				return blockNumber
 			}
-			// If blockNumber < latestSyncedBlock, a reorg may have occurred
+			// If blockNumber <= latestSyncedBlock, a reorg may have occurred
 			// Get the block header to verify the hash and notify the reorg detector
 			if blockNumber <= latestSyncedBlock {
 				// TODO - @temaniarpit27. Find a way to check header hash
@@ -348,7 +347,6 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 
 				return blockNumber
 			}
-			// If blockNumber == latestSyncedBlock, continue waiting for new blocks
 		}
 	}
 }

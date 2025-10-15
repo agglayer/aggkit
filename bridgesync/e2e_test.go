@@ -8,20 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/test/contracts/proxy"
 	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	rpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
@@ -136,8 +131,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	blocktime := time.Second * 6
 
 	// Setup simulated L1 environment with bridge and GER contracts
-	// client, _, _, _, bridgeAddr, _ := newSimulatedL1ForBridgeTest(t)
-	client, auth, _, _, bridgeAddr, bridgeContract := newSimulatedL1ForBridgeTest(t)
+	client, auth, _, _, bridgeAddr, bridgeContract := helpers.NewSimulatedL1(t)
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
@@ -175,7 +169,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 	// Step 1: Commit some blocks
 	t.Log("Step 1: Committing initial blocks")
-	commitBlocks(t, client, 10, blocktime)
+	helpers.CommitBlocks(t, client, 10, blocktime)
 
 	// Step 2: Bridge asset and commit block
 	t.Log("Step 2: Bridge asset #1 and commit block")
@@ -194,7 +188,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	)
 	require.NoError(t, err)
 	auth.Value = nil
-	commitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 1, blocktime)
 	t.Logf("  Created bridge tx: %s", tx1.Hash().Hex())
 	blockNum1, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
@@ -204,7 +198,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Logf("  Block hash after first bridge: %s", blockhash1.Hash().Hex())
 
 	// Wait for syncer to process
-	waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
+	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
 	// // Step 3: Record GER root
 	// t.Log("Step 3: Recording GER root after first bridge")
@@ -224,7 +218,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Logf("  Fork point: block %d, hash %s", forkFromBlock, forkBlockHash.Hex())
 
 	// Commit additional blocks
-	commitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 1, blocktime)
 	blockNum3, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  Block number after first fork bridge: %d", blockNum3)
@@ -234,7 +228,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
 
 	// Commit additional blocks
-	commitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 1, blocktime)
 	blockNum3, err = client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  Block number after first fork bridge 2nd block: %d", blockNum3)
@@ -258,15 +252,15 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	)
 	require.NoError(t, err)
 	auth.Value = nil
-	commitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 1, blocktime)
 	blockNum2, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  Block number after second bridge: %d", blockNum2)
 	t.Logf("  Created bridge tx: %s", tx2.Hash().Hex())
 
 	// Commit additional blocks
-	// commitBlocks(t, client, 1, blocktime)
-	waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
+	// helpers.CommitBlocks(t, client, 1, blocktime)
+	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
 	// // Check bridge count in L1 DB
 	// lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
@@ -297,7 +291,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	err = client.Fork(forkBlockHash)
 	require.NoError(t, err)
 	t.Log("  Fork created successfully")
-	commitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 1, blocktime)
 	currBlockNum, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  After fork Current block number: %d", currBlockNum)
@@ -320,7 +314,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	)
 	require.NoError(t, err)
 	auth.Value = nil
-	commitBlocks(t, client, 1, blocktime)
+	helpers.CommitBlocks(t, client, 1, blocktime)
 	t.Logf("  Created different bridge tx after fork: %s", txAfterFork.Hash().Hex())
 
 	// Verify that block hash changes after fork to detect reorg differences
@@ -352,7 +346,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	// )
 	// require.NoError(t, err)
 	// auth.Value = nil
-	// commitBlocks(t, client, 1, blocktime)
+	// helpers.CommitBlocks(t, client, 1, blocktime)
 	// blockNum2, err = client.Client().BlockNumber(ctx)
 	// require.NoError(t, err)
 	// t.Logf("  Block number after third bridge: %d", blockNum2)
@@ -390,7 +384,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	// t.Log("Step 11: Final verification of reorg detection behavior")
 
 	// // Commit additional blocks to ensure the reorg detector has processed everything
-	// commitBlocks(t, client, 3, blocktime)
+	// helpers.CommitBlocks(t, client, 3, blocktime)
 	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
 
 	// // // Give more time for reorg detection to process
@@ -471,7 +465,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 	// // Step 12: Commit some blocks on the new chain
 	// t.Log("Step 12: Committing blocks on the forked chain")
-	// commitBlocks(t, client, 5, time.Millisecond*50)
+	// helpers.CommitBlocks(t, client, 5, time.Millisecond*50)
 	// waitForBridgeSyncerToCatchUp(ctx, t, syncer, client)
 
 	// pendingTxFinal, err := client.Client().PendingTransactionCount(ctx)
@@ -492,112 +486,4 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	// require.Equal(t, 2, len(bridgesFinal), "Should still have only 1 bridge in DB")
 
 	// t.Log("✅ Test completed successfully - syncer handled reorg correctly")
-}
-
-// newSimulatedL1ForBridgeTest creates a new simulated L1 backend with bridge and GER contracts deployed
-func newSimulatedL1ForBridgeTest(t *testing.T) (
-	*simulated.Backend,
-	*bind.TransactOpts,
-	common.Address,
-	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
-	common.Address,
-	*polygonzkevmbridgev2.Polygonzkevmbridgev2,
-) {
-	t.Helper()
-
-	const chainID = 1337
-	privateKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(chainID))
-	require.NoError(t, err)
-
-	balance, _ := new(big.Int).SetString("10000000000000000000000", 10)
-	address := auth.From
-	genesisAlloc := map[common.Address]types.Account{
-		address: {
-			Balance: balance,
-		},
-	}
-
-	blockGasLimit := uint64(999999999999999999)
-	client := simulated.NewBackend(
-		genesisAlloc,
-		simulated.WithBlockGasLimit(blockGasLimit),
-	)
-
-	ctx := context.Background()
-
-	// Calculate address for future contracts
-	nonce, err := client.Client().PendingNonceAt(ctx, auth.From)
-	require.NoError(t, err)
-
-	// Bridge contract deployment will use 2 transactions (implementation + proxy)
-	// Nonce+0: Bridge implementation
-	// Nonce+1: Bridge proxy
-	// Nonce+2: GER contract
-	calculatedBridgeAddr := crypto.CreateAddress(auth.From, nonce+1)
-	calculatedGERAddr := crypto.CreateAddress(auth.From, nonce+2)
-
-	// Deploy bridge implementation
-	bridgeImplAddr, _, _, err := polygonzkevmbridgev2.DeployPolygonzkevmbridgev2(auth, client.Client())
-	require.NoError(t, err)
-	client.Commit()
-
-	// Deploy bridge proxy with empty initialization data
-	bridgeProxyAddr, _, _, err := proxy.DeployProxy(auth, client.Client(), bridgeImplAddr, auth.From, []byte{})
-	require.NoError(t, err)
-	require.Equal(t, calculatedBridgeAddr, bridgeProxyAddr)
-	client.Commit()
-
-	// Deploy GER contract
-	gerAddr, _, gerContract, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(
-		auth, client.Client(), auth.From, bridgeProxyAddr)
-	require.NoError(t, err)
-	require.Equal(t, calculatedGERAddr, gerAddr)
-	client.Commit()
-
-	bridgeContract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeProxyAddr, client.Client())
-	require.NoError(t, err)
-
-	_, err = bridgeContract.Initialize0(
-		auth,
-		uint32(0),        // networkID
-		common.Address{}, // gasTokenAddressMainnet
-		uint32(0),        // gasTokenNetworkMainnet
-		gerAddr,          // global exit root manager
-		common.Address{}, // rollup manager
-		[]byte{},         // gasTokenMetadata
-	)
-	require.NoError(t, err)
-	client.Commit()
-
-	return client, auth, gerAddr, gerContract, bridgeProxyAddr, bridgeContract
-}
-
-// waitForBridgeSyncerToCatchUp waits for the bridge syncer to process all available blocks
-func waitForBridgeSyncerToCatchUp(ctx context.Context, t *testing.T, syncer *bridgesync.BridgeSync, client *simulated.Backend) {
-	t.Helper()
-	for {
-		lastBlockNum, err := client.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
-		require.NoError(t, err)
-
-		if lastProcessed >= lastBlockNum {
-			return
-		}
-		time.Sleep(time.Millisecond * 100)
-	}
-}
-
-// commitBlocks commits multiple empty blocks
-func commitBlocks(t *testing.T, client *simulated.Backend, count int, delay time.Duration) {
-	t.Helper()
-	for i := 0; i < count; i++ {
-		client.Commit()
-		if delay > 0 {
-			time.Sleep(delay)
-		}
-	}
 }

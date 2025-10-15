@@ -115,7 +115,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	ctx := context.Background()
 
 	// Simulated L1
-	l1Client, authL1, gerL1Addr, gerL1Contract, bridgeL1Addr, bridgeL1Contract := newSimulatedL1(t)
+	l1Client, authL1, gerL1Addr, gerL1Contract, bridgeL1Addr, bridgeL1Contract := NewSimulatedL1(t)
 
 	// Reorg detector
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
@@ -346,7 +346,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	return l2Setup
 }
 
-func newSimulatedL1(t *testing.T) (
+func NewSimulatedL1(t *testing.T) (
 	*simulated.Backend,
 	*bind.TransactOpts,
 	common.Address,
