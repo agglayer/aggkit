@@ -40,7 +40,7 @@ type L1NetworkConfig struct {
 	POLTokenAddr gethcommon.Address `json:"polTokenAddress"`
 	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
 	GlobalExitRootManagerAddr gethcommon.Address `json:"polygonZkEVMGlobalExitRootAddress"`
-	// BlocksChunkSize defines the number of blocks to be queried in each chunk when
+	// BlocksChunkSize defines the number of blocks to be queried in each chunk when filtering events
 	BlocksChunkSize uint64 `json:"blocksChunkSize"`
 	// RollupManagerCreationBlock is the block number when the RollupManager contract was deployed
 	RollupManagerCreationBlock uint64 `json:"rollupManagerCreationBlock"`
