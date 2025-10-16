@@ -617,7 +617,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				LeafType:           1,
 				OriginNetwork:      10,
 				OriginAddress:      common.HexToAddress("0x2"),
-				DestinationNetwork: 20,
+				DestinationNetwork: 1,
 				DestinationAddress: common.HexToAddress("0x3"),
 				Amount:             common.Big0,
 				DepositCount:       1,
