@@ -158,8 +158,6 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
-	// TODO - Figure out a way to not do this.
-	// blockNumber = blockNumber - 5
 	lastFinalizedBlock, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
 	if err != nil {
 		return fmt.Errorf("failed to get the header %d. Err: %w", blockNumber, err)

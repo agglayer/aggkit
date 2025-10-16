@@ -137,7 +137,10 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Second * 1),
-		FinalizedBlock:      aggkittypes.FinalizedBlock,
+		FinalizedBlock: aggkittypes.BlockNumberFinality{
+			Block:  aggkittypes.Finalized,
+			Offset: -5,
+		},
 	}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
