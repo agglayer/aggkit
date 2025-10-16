@@ -73,6 +73,7 @@ POLTokenAddr = "{{L1Config.polTokenAddress}}"
 RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+RollupManagerCreationBlock = {{L1Config.RollupManagerCreationBlock}}
 BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"

@@ -15,6 +15,7 @@ var (
 	ErrMissingPOLTokenAddress              = errors.New("missing POL token address")
 	ErrMissingGlobalExitRootManagerAddress = errors.New("missing global exit root manager address")
 	ErrInvalidBlocksChunkSize              = errors.New("blocks chunk size must be greater than 0")
+	ErrInvalidRollupManagerCreationBlock   = errors.New("rollup manager creation block must be greater than 0")
 )
 
 // Config holds the common configuration for the Aggkit services
@@ -64,6 +65,9 @@ func (c *L1NetworkConfig) Validate() error {
 	}
 	if c.BlocksChunkSize == 0 {
 		return ErrInvalidBlocksChunkSize
+	}
+	if c.RollupManagerCreationBlock == 0 {
+		return ErrInvalidRollupManagerCreationBlock
 	}
 	return nil
 }
