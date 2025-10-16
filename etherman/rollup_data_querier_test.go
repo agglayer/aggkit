@@ -8,6 +8,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
+	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -230,6 +231,54 @@ func TestFetchRollupID(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedID, id)
+			}
+		})
+	}
+}
+
+func TestRollupDataQuerier_GetUpgradeBlock(t *testing.T) {
+	const (
+		latestAgglayerManagerVersion = uint8(5)
+		startBlock                   = uint64(0)
+		blocksChunkSize              = 10
+	)
+	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
+
+	upgradedMap, err := populateAgglayerManagerInitializedMap(t.Context(),
+		l1Setup.AgglayerManagerContract, l1Setup.SimBackend.Client(), startBlock, blocksChunkSize)
+	require.NoError(t, err)
+	require.Len(t, upgradedMap, 1)
+	require.Contains(t, upgradedMap, latestAgglayerManagerVersion)
+
+	rollupDataQuerier := &RollupDataQuerier{
+		rollupManagerUpgradedMap: upgradedMap,
+	}
+
+	cases := []struct {
+		name                   string
+		agglayerManagerVersion uint8
+		shouldFind             bool
+	}{
+		{
+			name:                   "existing version",
+			agglayerManagerVersion: latestAgglayerManagerVersion,
+			shouldFind:             true,
+		},
+		{
+			name:                   "non-existing version",
+			agglayerManagerVersion: latestAgglayerManagerVersion + 1,
+			shouldFind:             false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			upgradeBlock, isFound := rollupDataQuerier.GetUpgradeBlock(t.Context(), tc.agglayerManagerVersion)
+			require.Equal(t, tc.shouldFind, isFound)
+			if tc.shouldFind {
+				require.NotZero(t, upgradeBlock)
+			} else {
+				require.Zero(t, upgradeBlock)
 			}
 		})
 	}
