@@ -548,6 +548,11 @@ func TestGetBridgesHandler(t *testing.T) {
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
 
+		bridgeMocks.upgradeQuerier.EXPECT().
+			GetUpgradeBlock(mock.Anything, mock.Anything).
+			Return(uint64(0), false).
+			Once()
+
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
 		queryParams.Set(pageNumberParam, "1")
@@ -601,6 +606,7 @@ func TestGetBridgesHandler(t *testing.T) {
 	})
 
 	t.Run("GetBridges for L2 network", func(t *testing.T) {
+		const etrogBlockUpgrade = uint64(100)
 		page := uint32(1)
 		pageSize := uint32(10)
 
@@ -622,13 +628,18 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
 		for _, bridge := range expectedBridges {
-			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, l2NetworkID, 0))
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, l2NetworkID, etrogBlockUpgrade))
 		}
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
+
+		bridgeMocks.upgradeQuerier.EXPECT().
+			GetUpgradeBlock(mock.Anything, mock.Anything).
+			Return(etrogBlockUpgrade, true).
+			Once()
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
