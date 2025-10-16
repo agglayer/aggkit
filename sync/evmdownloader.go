@@ -328,8 +328,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			// If blockNumber <= latestSyncedBlock, a reorg may have occurred
 			// Get the block header to verify the hash and notify the reorg detector
 			if blockNumber <= latestSyncedBlock {
-				// TODO - @temaniarpit27. Find a way to check header hash
-				// we can call when ticker starts
+				// TODO - Find a way to fin header hash when ticker starts. will avoid this call
 				header, canceled := d.GetBlockHeader(ctx, blockNumber)
 				if canceled {
 					d.log.Warn("context canceled while getting block header for reorg detection")
@@ -355,8 +354,6 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 							d.log.Errorf("Failed to notify reorg detector: %v", err)
 						}
 					}
-					// TODO - @temaniarpit27. Check how to avoid this for proper data removal
-					time.Sleep(12 * time.Second)
 					return blockNumber
 				}
 			}

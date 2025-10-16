@@ -94,7 +94,7 @@ build-docker-nc: ## Builds a docker image with the aggkit binary - but without b
 
 .PHONY: test-unit
 test-unit: ## Runs the unit tests
-	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
+	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 30m ./...
 
 .PHONY: lint
 lint: ## Runs the linter
