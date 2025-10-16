@@ -10,6 +10,7 @@
     "l1_seconds_per_slot": 2,
     "verbosity": "debug",
     "aggkit_image": "aggkit:local",
+    "agglayer_image": "ghcr.io/agglayer/agglayer:0.4.0-rc.18",
     "additional_services": [],
     "binary_name": "aggkit",
     "aggkit_components": "aggsender,aggoracle",
