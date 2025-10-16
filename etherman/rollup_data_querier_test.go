@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewClient(t *testing.T) {
+func TestNewRollupDataQuerier(t *testing.T) {
 	mockAddr := common.HexToAddress("0x123")
 
 	tests := []struct {
@@ -96,7 +96,7 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
-func TestClient_GetL2ChainID(t *testing.T) {
+func TestRollupDataQuerier_GetRollupChainID(t *testing.T) {
 	tests := []struct {
 		name        string
 		rollupID    uint32
