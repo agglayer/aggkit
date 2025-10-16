@@ -110,10 +110,6 @@ func populateAgglayerManagerInitializedMap(
 	client aggkittypes.BaseEthereumClienter,
 	startBlock, blocksChunkSize uint64,
 ) (map[uint8]uint64, error) {
-	if startBlock == 0 {
-		return nil, fmt.Errorf("start block must be greater than 0")
-	}
-
 	// Get the latest block number to define chunk boundaries
 	latestBlock, err := client.BlockNumber(ctx)
 	if err != nil {
