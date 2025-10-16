@@ -52,14 +52,14 @@ func (f *FEPInputsQuery) GetAggchainParams(
 		return nil, fmt.Errorf("failed to get FEP public inputs: %w", err)
 	}
 
-	isOptimisticModeOn, err := f.aggchainFEPContract.OptimisticMode(nil)
+	isOptimisticModeEnabled, err := f.aggchainFEPContract.OptimisticMode(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if optimistic mode is turned on: %w", err)
 	}
 
 	aggchainParams := &types.AggchainParams{
 		AggregationProofPublicValues: *publicValues,
-		OptimisticMode:               isOptimisticModeOn,
+		OptimisticMode:               isOptimisticModeEnabled,
 	}
 
 	return aggchainParams, nil
