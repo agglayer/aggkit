@@ -60,7 +60,8 @@ func NewRollupDataQuerier(
 
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
-	rollupManagerUpgradedMap, err := populateAgglayerManagerInitializedMapFn(rollupManagerSC, ctx)
+	rollupManagerUpgradedMap, err := populateAgglayerManagerInitializedMapFn(
+		ctx, rollupManagerSC, ethClient, l1Config.RollupManagerCreationBlock, l1Config.BlocksChunkSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to populate agglayer manager initialized map: %w", err)
 	}
@@ -104,19 +105,50 @@ func fetchRollupID(rm RollupManagerContract, rollupAddr common.Address) (uint32,
 // populateAgglayerManagerInitializedMap populates a map of agglayer manager initialized events
 // with version as key and block number as value
 func populateAgglayerManagerInitializedMap(
-	rollupManager RollupManagerContract, ctx context.Context) (map[uint8]uint64, error) {
-	it, err := rollupManager.FilterInitialized(&bind.FilterOpts{Start: 1, Context: ctx})
+	ctx context.Context,
+	rollupManager RollupManagerContract,
+	client aggkittypes.BaseEthereumClienter,
+	startBlock, blocksChunkSize uint64,
+) (map[uint8]uint64, error) {
+	if startBlock == 0 {
+		return nil, fmt.Errorf("start block must be greater than 0")
+	}
+
+	// Get the latest block number to define chunk boundaries
+	latestBlock, err := client.BlockNumber(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to filter the agglayer manager initialized event: %w", err)
+		return nil, fmt.Errorf("failed to get latest block header: %w", err)
 	}
 
 	res := make(map[uint8]uint64)
-	for it.Next() {
-		res[it.Event.Version] = it.Event.Raw.BlockNumber
+
+	for startBlock <= latestBlock {
+		end := min(startBlock+blocksChunkSize-1, latestBlock)
+
+		filterOpts := &bind.FilterOpts{
+			Start:   startBlock,
+			End:     &end,
+			Context: ctx,
+		}
+
+		it, err := rollupManager.FilterInitialized(filterOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to filter Initialized events (chunk %d-%d): %w", startBlock, end, err)
+		}
+
+		for it.Next() {
+			res[it.Event.Version] = it.Event.Raw.BlockNumber
+		}
+
+		if err := it.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close iterator (chunk %d-%d): %w", startBlock, end, err)
+		}
+
+		startBlock = end + 1
 	}
 
-	if err := it.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close the iterator: %w", err)
+	if len(res) == 0 {
+		return nil, errors.New("no Initialized events found")
 	}
 
 	return res, nil

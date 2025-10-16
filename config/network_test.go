@@ -96,6 +96,18 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 			wantErr: ErrMissingGlobalExitRootManagerAddress,
 		},
 		{
+			name: "invalid BlocksChunkSize",
+			cfg: L1NetworkConfig{
+				RPC:                       RPCClientConfig{URL: "http://localhost:8545"},
+				RollupAddr:                validAddr,
+				RollupManagerAddr:         validAddr,
+				POLTokenAddr:              validAddr,
+				GlobalExitRootManagerAddr: validAddr,
+				BlocksChunkSize:           0,
+			},
+			wantErr: ErrInvalidBlocksChunkSize,
+		},
+		{
 			name: "valid config",
 			cfg: L1NetworkConfig{
 				RPC:                       RPCClientConfig{URL: "http://localhost:8545"},
@@ -103,6 +115,7 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 				RollupManagerAddr:         validAddr,
 				POLTokenAddr:              validAddr,
 				GlobalExitRootManagerAddr: validAddr,
+				BlocksChunkSize:           100,
 			},
 			wantErr: nil,
 		},

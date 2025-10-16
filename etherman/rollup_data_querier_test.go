@@ -23,9 +23,13 @@ func TestNewRollupDataQuerier(t *testing.T) {
 		cfg                     config.L1NetworkConfig
 		ethClient               aggkittypes.BaseEthereumClienter
 		rollupManagerBuilder    RollupManagerFactoryFunc
-		populateUpgradeBlocksFn func(rollupManager RollupManagerContract, ctx context.Context) (map[uint8]uint64, error)
-		expectedErr             string
-		expectedRollup          uint32
+		populateUpgradeBlocksFn func(
+			ctx context.Context,
+			rollupManager RollupManagerContract,
+			client aggkittypes.BaseEthereumClienter,
+			startBlock, blocksChunkSize uint64) (map[uint8]uint64, error)
+		expectedErr    string
+		expectedRollup uint32
 	}{
 		{
 			name: "success",
@@ -42,7 +46,11 @@ func TestNewRollupDataQuerier(t *testing.T) {
 				rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(42), nil)
 				return rm, nil
 			},
-			populateUpgradeBlocksFn: func(rollupManager RollupManagerContract, ctx context.Context) (map[uint8]uint64, error) {
+			populateUpgradeBlocksFn: func(
+				ctx context.Context,
+				rollupManager RollupManagerContract,
+				client aggkittypes.BaseEthereumClienter,
+				startBlock, blocksChunkSize uint64) (map[uint8]uint64, error) {
 				return nil, nil
 			},
 			expectedRollup: 42,
