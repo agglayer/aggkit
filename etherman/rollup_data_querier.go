@@ -17,6 +17,8 @@ import (
 var (
 	ErrInvalidRollupID = errors.New("invalid rollup id (0)")
 	ErrInvalidChainID  = errors.New("invalid chain id (0)")
+
+	populateAgglayerManagerInitializedMapFn = populateAgglayerManagerInitializedMap
 )
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
@@ -58,7 +60,7 @@ func NewRollupDataQuerier(
 
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
-	rollupManagerUpgradedMap, err := populateAgglayerManagerInitializedMap(rollupManagerSC, ctx)
+	rollupManagerUpgradedMap, err := populateAgglayerManagerInitializedMapFn(rollupManagerSC, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to populate agglayer manager initialized map: %w", err)
 	}

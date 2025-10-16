@@ -1,6 +1,7 @@
 package etherman
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -18,12 +19,13 @@ func TestNewClient(t *testing.T) {
 	mockAddr := common.HexToAddress("0x123")
 
 	tests := []struct {
-		name           string
-		cfg            config.L1NetworkConfig
-		ethClient      aggkittypes.BaseEthereumClienter
-		mockFactory    RollupManagerFactoryFunc
-		expectedErr    string
-		expectedRollup uint32
+		name                    string
+		cfg                     config.L1NetworkConfig
+		ethClient               aggkittypes.BaseEthereumClienter
+		rollupManagerBuilder    RollupManagerFactoryFunc
+		populateUpgradeBlocksFn func(rollupManager RollupManagerContract, ctx context.Context) (map[uint8]uint64, error)
+		expectedErr             string
+		expectedRollup          uint32
 	}{
 		{
 			name: "success",
@@ -35,49 +37,54 @@ func TestNewClient(t *testing.T) {
 				RollupManagerAddr: common.HexToAddress("0xabc"),
 			},
 			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
-			mockFactory: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
+			rollupManagerBuilder: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
 				rm := mocks.NewRollupManagerContract(t)
 				rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(42), nil)
-				rm.EXPECT().FilterInitialized(mock.Anything).Return(&agglayermanager.AgglayermanagerInitializedIterator{}, nil)
 				return rm, nil
+			},
+			populateUpgradeBlocksFn: func(rollupManager RollupManagerContract, ctx context.Context) (map[uint8]uint64, error) {
+				return nil, nil
 			},
 			expectedRollup: 42,
 		},
-		// {
-		// 	name: "rollup manager creation fails",
-		// 	cfg: config.L1NetworkConfig{
-		// 		RPC: config.RPCClientConfig{
-		// 			URL: "ok",
-		// 		},
-		// 		RollupManagerAddr: mockAddr,
-		// 	},
-		// 	ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
-		// 	mockFactory: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
-		// 		return nil, errors.New("factory error")
-		// 	},
-		// 	expectedErr: "factory error",
-		// },
-		// {
-		// 	name: "invalid rollup ID",
-		// 	cfg: config.L1NetworkConfig{
-		// 		RPC: config.RPCClientConfig{
-		// 			URL: "ok",
-		// 		},
-		// 		RollupAddr: mockAddr,
-		// 	},
-		// 	ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
-		// 	mockFactory: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
-		// 		rm := mocks.NewRollupManagerContract(t)
-		// 		rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(0), nil)
-		// 		return rm, nil
-		// 	},
-		// 	expectedErr: ErrInvalidRollupID.Error(),
-		// },
+		{
+			name: "rollup manager creation fails",
+			cfg: config.L1NetworkConfig{
+				RPC: config.RPCClientConfig{
+					URL: "ok",
+				},
+				RollupManagerAddr: mockAddr,
+			},
+			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
+			rollupManagerBuilder: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
+				return nil, errors.New("factory error")
+			},
+			expectedErr: "factory error",
+		},
+		{
+			name: "invalid rollup ID",
+			cfg: config.L1NetworkConfig{
+				RPC: config.RPCClientConfig{
+					URL: "ok",
+				},
+				RollupAddr: mockAddr,
+			},
+			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
+			rollupManagerBuilder: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
+				rm := mocks.NewRollupManagerContract(t)
+				rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(0), nil)
+				return rm, nil
+			},
+			expectedErr: ErrInvalidRollupID.Error(),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewRollupDataQuerier(t.Context(), tt.cfg, tt.ethClient, tt.mockFactory)
+			if tt.populateUpgradeBlocksFn != nil {
+				populateAgglayerManagerInitializedMapFn = tt.populateUpgradeBlocksFn
+			}
+			client, err := NewRollupDataQuerier(t.Context(), tt.cfg, tt.ethClient, tt.rollupManagerBuilder)
 			if tt.expectedErr != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErr)
