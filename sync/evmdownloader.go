@@ -297,7 +297,8 @@ func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context)
 	if blockFinality == nil {
 		blockFinality = &d.blockFinality
 	}
-	return blockFinality.BlockNumber(ctx, d.ethClient)
+	blockNumber, _, err := blockFinality.BlockNumber(ctx, d.ethClient)
+	return blockNumber, err
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(
@@ -311,7 +312,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockNumber, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
+			blockNumber, blockHeader, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
+			headerHash := blockHeader.Hash()
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -328,13 +330,6 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			// If blockNumber <= latestSyncedBlock, a reorg may have occurred
 			// Get the block header to verify the hash and notify the reorg detector
 			if blockNumber <= latestSyncedBlock {
-				// TODO - Find a way to fin header hash when ticker starts. will avoid this call
-				header, canceled := d.GetBlockHeader(ctx, blockNumber)
-				if canceled {
-					d.log.Warn("context canceled while getting block header for reorg detection")
-					return latestSyncedBlock
-				}
-
 				trackedBlock, err := d.reorgDetector.GetTrackedBlockByBlockNumber(d.reorgDetectorID, blockNumber)
 				if err != nil {
 					d.log.Errorf("Failed to get tracked block: %v", err)
@@ -345,13 +340,13 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 					continue
 				}
 
-				if trackedBlock.Hash != header.Hash {
+				if trackedBlock.Hash != headerHash {
 					d.log.Warnf("Reorg detected: current block number %d (hash: %s) is less than latest synced block %d",
-						blockNumber, header.Hash.Hex(), latestSyncedBlock)
+						blockNumber, headerHash.Hex(), latestSyncedBlock)
 					// Notify the reorg detector about the potential reorg
 					// TODO - Check if this is needed. if not, remove it.
 					if d.reorgDetector != nil {
-						if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
+						if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, headerHash); err != nil {
 							d.log.Errorf("Failed to notify reorg detector: %v", err)
 						}
 					}
