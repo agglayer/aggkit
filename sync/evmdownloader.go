@@ -350,13 +350,13 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 					d.log.Warnf("Reorg detected: current block number %d (hash: %s) is less than latest synced block %d",
 						blockNumber, header.Hash.Hex(), latestSyncedBlock)
 					// Notify the reorg detector about the potential reorg
-					// if d.reorgDetector != nil {
-					// 	if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
-					// 		d.log.Errorf("Failed to notify reorg detector: %v", err)
-					// 	}
-					// }
+					if d.reorgDetector != nil {
+						if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, header.Hash); err != nil {
+							d.log.Errorf("Failed to notify reorg detector: %v", err)
+						}
+					}
 					// TODO - @temaniarpit27. Check how to avoid this for proper data removal
-					// time.Sleep(12 * time.Second)
+					time.Sleep(12 * time.Second)
 					return blockNumber
 				}
 			}
