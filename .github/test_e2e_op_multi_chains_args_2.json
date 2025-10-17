@@ -10,7 +10,7 @@
   },
   "optimism_package": {
     "chains": {
-      "002": {
+      "001": {
         "proposer_params": {
           "enabled": false
         },
