@@ -24,6 +24,64 @@ func (_m *RollupManagerContract) EXPECT() *RollupManagerContract_Expecter {
 	return &RollupManagerContract_Expecter{mock: &_m.Mock}
 }
 
+// FilterInitialized provides a mock function with given fields: opts
+func (_m *RollupManagerContract) FilterInitialized(opts *bind.FilterOpts) (*agglayermanager.AgglayermanagerInitializedIterator, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FilterInitialized")
+	}
+
+	var r0 *agglayermanager.AgglayermanagerInitializedIterator
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts) (*agglayermanager.AgglayermanagerInitializedIterator, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts) *agglayermanager.AgglayermanagerInitializedIterator); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*agglayermanager.AgglayermanagerInitializedIterator)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.FilterOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// RollupManagerContract_FilterInitialized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterInitialized'
+type RollupManagerContract_FilterInitialized_Call struct {
+	*mock.Call
+}
+
+// FilterInitialized is a helper method to define mock.On call
+//   - opts *bind.FilterOpts
+func (_e *RollupManagerContract_Expecter) FilterInitialized(opts interface{}) *RollupManagerContract_FilterInitialized_Call {
+	return &RollupManagerContract_FilterInitialized_Call{Call: _e.mock.On("FilterInitialized", opts)}
+}
+
+func (_c *RollupManagerContract_FilterInitialized_Call) Run(run func(opts *bind.FilterOpts)) *RollupManagerContract_FilterInitialized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.FilterOpts))
+	})
+	return _c
+}
+
+func (_c *RollupManagerContract_FilterInitialized_Call) Return(_a0 *agglayermanager.AgglayermanagerInitializedIterator, _a1 error) *RollupManagerContract_FilterInitialized_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *RollupManagerContract_FilterInitialized_Call) RunAndReturn(run func(*bind.FilterOpts) (*agglayermanager.AgglayermanagerInitializedIterator, error)) *RollupManagerContract_FilterInitialized_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RollupAddressToID provides a mock function with given fields: opts, rollupAddress
 func (_m *RollupManagerContract) RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error) {
 	ret := _m.Called(opts, rollupAddress)

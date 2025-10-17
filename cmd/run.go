@@ -137,6 +137,7 @@ func start(cliCtx *cli.Context) error {
 		b := createBridgeService(
 			cfg.REST,
 			cfg.Common.NetworkID,
+			rollupDataQuerier,
 			l1InfoTreeSync,
 			l2GERSync,
 			l1BridgeSync,
@@ -778,6 +779,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
+	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
 	l1InfoTree bridgeservice.L1InfoTreeSyncer,
 	injectedGERs bridgeservice.L2GERSyncer,
 	bridgeL1 bridgeservice.Bridger,
@@ -795,6 +797,7 @@ func createBridgeService(
 
 	return bridgeservice.New(
 		bridgeCfg,
+		upgradeQuery,
 		l1InfoTree,
 		injectedGERs,
 		bridgeL1,
@@ -856,10 +859,10 @@ func createRollupDataQuerier(ctx context.Context,
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}
 
-	return etherman.NewRollupDataQuerier(cfg, ethClient,
-		func(rollupAddr common.Address,
+	return etherman.NewRollupDataQuerier(ctx, cfg, ethClient,
+		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
-			return agglayermanager.NewAgglayermanager(rollupAddr, client)
+			return agglayermanager.NewAgglayermanager(rollupManagerAddr, client)
 		})
 }
 

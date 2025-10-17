@@ -3,6 +3,7 @@ package bridgeservice
 import (
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -20,6 +21,8 @@ const (
 	DefaultPage = uint32(1)
 	// MaxNetworkIDs is the maximum number of network IDs allowed in a single request
 	MaxNetworkIDs = 5
+	// zkEVMRollupID is the network ID of Polygon zkEVM rollup
+	zkEVMRollupID = 1
 )
 
 // validatePaginationParams validates the page number and page size
@@ -101,8 +104,14 @@ func parseNetworkIDSliceParam(c *gin.Context, key string) ([]uint32, error) {
 }
 
 // NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
-func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32) *bridgetypes.BridgeResponse {
-	globalIndex := bridgesync.GenerateGlobalIndexForNetworkID(networkID, bridge.DepositCount)
+func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32,
+	etrogL1UpgradeBlock uint64) *bridgetypes.BridgeResponse {
+	var globalIndex *big.Int
+	if isPreEtrogBridge(bridge, etrogL1UpgradeBlock) {
+		globalIndex = new(big.Int).SetUint64(uint64(bridge.DepositCount))
+	} else {
+		globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(networkID, bridge.DepositCount)
+	}
 
 	return &bridgetypes.BridgeResponse{
 		BlockNum:           bridge.BlockNum,
@@ -123,6 +132,12 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32) *bridgetypes
 		BridgeHash:         bridgetypes.Hash(bridge.Hash().Hex()),
 		TxnSender:          bridgetypes.Address(bridge.TxnSender.Hex()),
 	}
+}
+
+// isPreEtrogBridge checks if the bridge was created before the Etrog fork upgrade.
+// It is applicable only for the zkEVM rollup (rollupID = 1)
+func isPreEtrogBridge(bridge *bridgesync.Bridge, l1EtrogUpdateBlock uint64) bool {
+	return bridge.DestinationNetwork == zkEVMRollupID && bridge.BlockNum <= l1EtrogUpdateBlock
 }
 
 // NewClaimResponse creates ClaimResponse instance out of the provided Claim

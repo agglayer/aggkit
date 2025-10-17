@@ -61,11 +61,20 @@ const (
 	errNetworkID         = "unsupported network id: %v"
 	errSetupRequest      = "failed to setup request: %v"
 	errDepositCountParam = "invalid deposit count parameter: %v"
+
+	// etrogVersionID is the version ID of AgglayerManager after Etrog upgrade
+	etrogVersionID = 2
 )
 
 var (
 	ErrNotOnL1Info = errors.New("this bridge has not been included on the L1 Info Tree yet")
 )
+
+// AgglayerManagerUpgradeQuerier abstracts AgglayerManager upgrade block
+// retrieval based on the rollup initializer version
+type AgglayerManagerUpgradeQuerier interface {
+	GetUpgradeBlock(ctx context.Context, versionID uint8) uint64
+}
 
 type Config struct {
 	Logger       *log.Logger
@@ -77,16 +86,17 @@ type Config struct {
 
 // BridgeService contains implementations for the bridge service endpoints
 type BridgeService struct {
-	logger       *log.Logger
-	address      string
-	meter        metric.Meter
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	networkID    uint32
-	l1InfoTree   L1InfoTreeSyncer
-	injectedGERs L2GERSyncer
-	bridgeL1     Bridger
-	bridgeL2     Bridger
+	logger                      *log.Logger
+	address                     string
+	meter                       metric.Meter
+	readTimeout                 time.Duration
+	writeTimeout                time.Duration
+	networkID                   uint32
+	agglayerManagerUpgradeQuery AgglayerManagerUpgradeQuerier
+	l1InfoTree                  L1InfoTreeSyncer
+	injectedGERs                L2GERSyncer
+	bridgeL1                    Bridger
+	bridgeL2                    Bridger
 
 	router *gin.Engine
 }
@@ -94,6 +104,7 @@ type BridgeService struct {
 // New returns instance of BridgeService
 func New(
 	cfg *Config,
+	upgradeQuerier AgglayerManagerUpgradeQuerier,
 	l1InfoTree L1InfoTreeSyncer,
 	injectedGERs L2GERSyncer,
 	bridgeL1 Bridger,
@@ -120,17 +131,18 @@ func New(
 	router.Use(LoggerHandler(cfg.Logger))
 
 	b := &BridgeService{
-		logger:       cfg.Logger,
-		address:      cfg.Address,
-		meter:        meter,
-		readTimeout:  cfg.ReadTimeout,
-		writeTimeout: cfg.WriteTimeout,
-		networkID:    cfg.NetworkID,
-		l1InfoTree:   l1InfoTree,
-		injectedGERs: injectedGERs,
-		bridgeL1:     bridgeL1,
-		bridgeL2:     bridgeL2,
-		router:       router,
+		logger:                      cfg.Logger,
+		address:                     cfg.Address,
+		meter:                       meter,
+		readTimeout:                 cfg.ReadTimeout,
+		writeTimeout:                cfg.WriteTimeout,
+		networkID:                   cfg.NetworkID,
+		agglayerManagerUpgradeQuery: upgradeQuerier,
+		l1InfoTree:                  l1InfoTree,
+		injectedGERs:                injectedGERs,
+		bridgeL1:                    bridgeL1,
+		bridgeL2:                    bridgeL2,
+		router:                      router,
 	}
 
 	b.registerRoutes()
@@ -355,10 +367,12 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
+	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
+
 	b.logger.Debugf("successfully retrieved %d bridges for network %d", count, networkID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
 	for _, bridge := range bridges {
-		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID))
+		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
 	}
 
 	c.JSON(http.StatusOK,

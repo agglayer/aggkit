@@ -11,6 +11,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
@@ -62,8 +63,9 @@ type CommonEnvironment struct {
 // L1Environment contains simulated setup for L1 network.
 type L1Environment struct {
 	CommonEnvironment
-	GERContract  *agglayerger.Agglayerger
-	InfoTreeSync *l1infotreesync.L1InfoTreeSync
+	GERContract             *agglayerger.Agglayerger
+	AgglayerManagerContract *agglayermanager.Agglayermanager
+	InfoTreeSync            *l1infotreesync.L1InfoTreeSync
 }
 
 // L2Environment contains simulated setup for L2 network.
@@ -115,7 +117,10 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	ctx := context.Background()
 
 	// Simulated L1
-	l1Client, authL1, gerL1Addr, gerL1Contract, bridgeL1Addr, bridgeL1Contract := newSimulatedL1(t)
+	l1Client, authL1,
+		gerL1Addr, gerL1Contract,
+		bridgeL1Addr, bridgeL1Contract,
+		agglayerManagerContract := newSimulatedL1(t)
 
 	// Reorg detector
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
@@ -197,8 +202,9 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			ReorgDetector:  rdL1,
 			BridgeSync:     bridgeL1Sync,
 		},
-		GERContract:  gerL1Contract,
-		InfoTreeSync: l1InfoTreeSync,
+		GERContract:             gerL1Contract,
+		AgglayerManagerContract: agglayerManagerContract,
+		InfoTreeSync:            l1InfoTreeSync,
 	}
 }
 
@@ -353,6 +359,7 @@ func newSimulatedL1(t *testing.T) (
 	*agglayerger.Agglayerger,
 	common.Address,
 	*agglayerbridge.Agglayerbridge,
+	*agglayermanager.Agglayermanager,
 ) {
 	t.Helper()
 
@@ -377,9 +384,15 @@ func newSimulatedL1(t *testing.T) (
 	require.NoError(t, err)
 	client.Commit()
 
+	_, agglayerManagerSC, err := setup.DeployAgglayerManager(
+		client, calculatedGERAddr, calculatedGERAddr, setup.BridgeProxyAddr)
+	require.NoError(t, err)
+	client.Commit()
+
 	require.Equal(t, calculatedGERAddr, gerAddr)
 
-	return client, setup.UserAuth, gerAddr, gerContract, setup.BridgeProxyAddr, setup.BridgeProxyContract
+	return client, setup.UserAuth, gerAddr, gerContract,
+		setup.BridgeProxyAddr, setup.BridgeProxyContract, agglayerManagerSC
 }
 
 func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig AggoraclecommitteeConfig) (
