@@ -52,16 +52,10 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
-	var (
-		previousCertificateToBlock uint64
-		err                        error
-	)
 
-	if params.PreviousCertificate != nil {
-		previousCertificateToBlock, err = a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
-		if err != nil {
-			return fmt.Errorf("failed to get last settled certificate block: %w", err)
-		}
+	previousCertificateToBlock, err := a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
+	if err != nil {
+		return fmt.Errorf("failed to get last settled certificate block: %w", err)
 	}
 
 	// Validate last L2 block in certificate

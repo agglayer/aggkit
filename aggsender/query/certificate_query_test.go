@@ -167,6 +167,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
 				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedBlock: 0,
 		},
