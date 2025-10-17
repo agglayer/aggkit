@@ -17,10 +17,18 @@
     "agglayer_prover_primary_prover": "mock-prover",
     "l1_seconds_per_slot": 2,
     "additional_services": [
-      "bridge_spammer" 
+      "bridge_spammer"
     ]
   },
   "optimism_package": {
+    "predeployed_contracts": true,
+    "chains": {
+      "001": {
+        "proposer_params": {
+          "enabled": false
+        }
+      }
+    },
     "observability": {
       "enabled": false
     }
