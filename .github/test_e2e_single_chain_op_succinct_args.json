@@ -22,20 +22,15 @@
     "zkevm_rollup_chain_id": 20201
   },
   "optimism_package": {
-    "predeployed_contracts": true,
     "chains": {
       "001": {
         "proposer_params": {
           "enabled": false
         },
         "network_params":{
-          "network_id": "20201",
-          "seconds_per_slot": 1
+          "network_id": "20201"
         }
       }
-    },
-    "observability": {
-      "enabled": false
     }
   }
 }
