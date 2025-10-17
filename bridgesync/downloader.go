@@ -86,11 +86,11 @@ func buildAppender(
 		legacyBridge, client,
 		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
-		agglayerBridge, bridgeAddr, logger)
+		agglayerBridge)
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
-		bridgeSovereignChain, bridgeAddr, logger)
+		bridgeSovereignChain)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
-		bridgeSovereignChain, bridgeAddr, logger)
+		bridgeSovereignChain)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
 		bridgeSovereignChain)
 
@@ -223,10 +223,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 }
 
 // buildTokenMappingHandler creates a handler for the NewWrappedToken event log.
-//
-//nolint:dupl
 func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
-	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		tokenMappingEvent, err := contract.ParseNewWrappedToken(l)
@@ -252,10 +249,7 @@ func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
 }
 
 // buildSetSovereignTokenHandler creates a handler for the SetSovereignTokenAddress event log.
-//
-//nolint:dupl
 func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
-	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseSetSovereignTokenAddress(l)
@@ -282,7 +276,6 @@ func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 
 // buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
 func buildMigrateLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
-	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseMigrateLegacyToken(l)
