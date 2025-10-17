@@ -16,7 +16,7 @@ func TestSignatureOptimisticData_Hash(t *testing.T) {
 		L2BlockNumber:    126697,
 		RollupConfigHash: common.HexToHash("0xfd94d7ab6f4376bbb317864bd08cd240bff6f99dbec0755db1aa8e5ef0705a4a"),
 		MultiBlockVKey:   common.HexToHash("0x35882a76205af8c12eaeea7551ff8dbc392dc2a95b0f7f31660a5468237d4434"),
-		ProverAddress:    common.HexToAddress("0x4ce23a785114db45ac6351e02f0de440845351af"),
+		TrustedSigner:    common.HexToAddress("0x4ce23a785114db45ac6351e02f0de440845351af"),
 	}
 	aHash, err := aggregationProofPublicValues.Hash()
 	require.NoError(t, err, "Hashing should not return an error")

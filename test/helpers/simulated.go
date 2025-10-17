@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -77,7 +78,7 @@ type SimulatedBackendSetup struct {
 // DeployBridge deploys the bridge contract
 func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	gerAddr common.Address, networkID uint32) error {
-	// Deploy zkevm bridge contract
+	// Deploy agglayer bridge contract
 	bridgeAddr, _, _, err := agglayerbridge.DeployAgglayerbridge(s.DeployerAuth, client.Client())
 	if err != nil {
 		return err
@@ -142,6 +143,48 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	log.Debugf("Bridge@%s, balance=%d\n", bridgeProxyAddr, bridgeBalance)
 
 	return nil
+}
+
+func (s *SimulatedBackendSetup) DeployAgglayerManager(
+	client *simulated.Backend, gerAddr, polAddr, bridgeAddr common.Address) (common.Address, *agglayermanager.Agglayermanager, error) {
+	// Deploy agglayer manager contract
+	agglayerManagerAddr, _, _, err := agglayermanager.DeployAgglayermanager(
+		s.DeployerAuth, client.Client(), gerAddr, polAddr, bridgeAddr, s.UserAuth.From)
+	if err != nil {
+		return common.Address{}, nil, err
+	}
+	client.Commit()
+
+	// Create proxy contract for the agglayer manager
+	var (
+		agglayerManagerProxyAddr     common.Address
+		agglayerManagerProxyContract *agglayermanager.Agglayermanager
+	)
+
+	agglayerManagerProxyAddr, _, _, err = proxy.DeployProxy(
+		s.DeployerAuth,
+		client.Client(),
+		agglayerManagerAddr,
+		s.DeployerAuth.From,
+		[]byte{},
+	)
+	if err != nil {
+		return common.Address{}, nil, err
+	}
+	client.Commit()
+
+	agglayerManagerProxyContract, err = agglayermanager.NewAgglayermanager(agglayerManagerProxyAddr, client.Client())
+	if err != nil {
+		return common.Address{}, nil, err
+	}
+
+	_, err = agglayerManagerProxyContract.Initialize(s.UserAuth)
+	if err != nil {
+		return common.Address{}, nil, err
+	}
+	client.Commit()
+
+	return agglayerManagerProxyAddr, agglayerManagerProxyContract, nil
 }
 
 // NewSimulatedBackend creates a simulated backend with two accounts: user and deployer.
