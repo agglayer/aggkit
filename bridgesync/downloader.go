@@ -231,8 +231,6 @@ func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
-		// Note: calldata extraction removed as Calldata field no longer exists
-
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
@@ -257,8 +255,6 @@ func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
 		}
 
-		// Note: calldata extraction removed as Calldata field no longer exists
-
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
@@ -282,8 +278,6 @@ func buildMigrateLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 		if err != nil {
 			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
 		}
-
-		// Note: calldata extraction removed as Calldata field no longer exists
 
 		b.Events = append(b.Events, Event{LegacyTokenMigration: &LegacyTokenMigration{
 			BlockNum:            b.Num,
