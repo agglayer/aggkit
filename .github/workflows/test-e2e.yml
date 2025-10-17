@@ -120,12 +120,12 @@ jobs:
 
           # single l2 network (fork 12, op-succinct)
           put_args op_succinct_args "$BASE_OP" \
-            ./github/test_e2e_op_succinct_args_base.json \
+            ./.github/test_e2e_op_succinct_args_base.json \
             ./.github/test_e2e_single_chain_op_succinct_args.json
 
           # single l2 network (fork 12, op-succinct with aggoracle committee)
           put_args op_succinct_aggoracle_committee_args "$BASE_OP" \
-            ./github/test_e2e_op_succinct_args_base.json \
+            ./.github/test_e2e_op_succinct_args_base.json \
             ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
 
           # single l2 network (op, pessimistic)
