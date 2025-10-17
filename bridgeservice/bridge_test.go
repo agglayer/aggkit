@@ -533,7 +533,6 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
-				Calldata:           common.Hex2Bytes("efabcd"),
 			},
 		}
 
@@ -614,7 +613,6 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       1,
 				Metadata:           []byte("metadata"),
-				Calldata:           []byte{},
 			},
 		}
 
@@ -1119,7 +1117,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            common.Hex2Bytes("abcd"),
-				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
@@ -1158,7 +1155,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            []byte("metadata"),
-				Calldata:            []byte{},
 				Type:                bridgetypes.SovereignToken,
 				IsNotMintable:       true,
 			},
@@ -1250,7 +1246,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress(originTokenAddr),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            common.Hex2Bytes("abcd"),
-				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
@@ -1292,7 +1287,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress(originTokenAddr),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            []byte("metadata"),
-				Calldata:            []byte{},
 				Type:                bridgetypes.SovereignToken,
 				IsNotMintable:       true,
 			},
@@ -1376,7 +1370,6 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 				LegacyTokenAddress:  common.HexToAddress("0x3"),
 				UpdatedTokenAddress: common.HexToAddress("0x4"),
 				Amount:              big.NewInt(100),
-				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 		tokenMigrationsResp := aggkitcommon.MapSlice(tokenMigrations, NewTokenMigrationResponse)
