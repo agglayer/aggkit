@@ -14,9 +14,6 @@
         "proposer_params": {
           "enabled": false
         },
-        "challenger_params": {
-          "enabled": false
-        },
         "network_params": {
           "network_id": "20202",
           "seconds_per_slot": 1
