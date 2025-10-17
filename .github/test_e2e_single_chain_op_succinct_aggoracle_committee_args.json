@@ -4,8 +4,6 @@
     "deploy_cdk_bridge_infra": false
   },
   "args": {
-    "verbosity": "debug",
-    "aggkit_image": "aggkit:local",
     "consensus_contract_type": "fep",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
@@ -14,16 +12,15 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
-    "additional_services": [
-      "bridge_spammer"
-    ],
     "use_agg_oracle_committee": true,
     "agg_oracle_committee_quorum": 2,
     "agg_oracle_committee_total_members": 3,
-    "zkevm_rollup_chain_id": 20201
+    "zkevm_rollup_chain_id": 20201,
+    "additional_services": [
+      "bridge_spammer"
+    ]
   },
   "optimism_package": {
-    "predeployed_contracts": true,
     "chains": {
       "001": {
         "proposer_params": {
