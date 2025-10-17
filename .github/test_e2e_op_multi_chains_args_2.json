@@ -9,8 +9,8 @@
     "zkevm_rollup_id": 2
   },
   "optimism_package": {
-    "chains": [
-      {
+    "chains": {
+      "002": {
         "proposer_params": {
           "enabled": false
         },
@@ -18,11 +18,10 @@
           "enabled": false
         },
         "network_params": {
-          "name": "002",
           "network_id": "20202",
           "seconds_per_slot": 1
         }
       }
-    ]
+    }
   }
 }
