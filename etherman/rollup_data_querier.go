@@ -19,6 +19,9 @@ var (
 	ErrInvalidChainID  = errors.New("invalid chain id (0)")
 
 	populateAgglayerManagerInitializedMapFn = populateAgglayerManagerInitializedMap
+
+	// preEtrogDeployedRollups contains set of rollup ids that were created prior to Etrog hard fork
+	preEtrogDeployedRollups = map[uint32]struct{}{1: {}}
 )
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
@@ -60,10 +63,13 @@ func NewRollupDataQuerier(
 
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
-	rollupManagerUpgradedMap, err := populateAgglayerManagerInitializedMapFn(
-		ctx, rollupManagerSC, ethClient, l1Config.RollupManagerCreationBlock, l1Config.BlocksChunkSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to populate agglayer manager initialized map: %w", err)
+	var rollupManagerUpgradedMap map[uint8]uint64
+	if _, exists := preEtrogDeployedRollups[rollupID]; exists {
+		rollupManagerUpgradedMap, err = populateAgglayerManagerInitializedMapFn(
+			ctx, rollupManagerSC, ethClient, l1Config.RollupManagerCreationBlock, l1Config.BlocksChunkSize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to populate agglayer manager initialized map: %w", err)
+		}
 	}
 
 	return &RollupDataQuerier{
