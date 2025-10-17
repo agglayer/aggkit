@@ -22,7 +22,7 @@ func (_m *AgglayerManagerUpgradeQuerier) EXPECT() *AgglayerManagerUpgradeQuerier
 }
 
 // GetUpgradeBlock provides a mock function with given fields: ctx, versionID
-func (_m *AgglayerManagerUpgradeQuerier) GetUpgradeBlock(ctx context.Context, versionID uint8) (uint64, bool) {
+func (_m *AgglayerManagerUpgradeQuerier) GetUpgradeBlock(ctx context.Context, versionID uint8) uint64 {
 	ret := _m.Called(ctx, versionID)
 
 	if len(ret) == 0 {
@@ -30,23 +30,13 @@ func (_m *AgglayerManagerUpgradeQuerier) GetUpgradeBlock(ctx context.Context, ve
 	}
 
 	var r0 uint64
-	var r1 bool
-	if rf, ok := ret.Get(0).(func(context.Context, uint8) (uint64, bool)); ok {
-		return rf(ctx, versionID)
-	}
 	if rf, ok := ret.Get(0).(func(context.Context, uint8) uint64); ok {
 		r0 = rf(ctx, versionID)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint8) bool); ok {
-		r1 = rf(ctx, versionID)
-	} else {
-		r1 = ret.Get(1).(bool)
-	}
-
-	return r0, r1
+	return r0
 }
 
 // AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUpgradeBlock'
@@ -68,12 +58,12 @@ func (_c *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call) Return(_a0 uint64, _a1 bool) *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call {
-	_c.Call.Return(_a0, _a1)
+func (_c *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call) Return(_a0 uint64) *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call) RunAndReturn(run func(context.Context, uint8) (uint64, bool)) *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call {
+func (_c *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call) RunAndReturn(run func(context.Context, uint8) uint64) *AgglayerManagerUpgradeQuerier_GetUpgradeBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }

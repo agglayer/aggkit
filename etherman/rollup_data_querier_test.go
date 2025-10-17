@@ -273,8 +273,7 @@ func TestRollupDataQuerier_GetUpgradeBlock(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			upgradeBlock, isFound := rollupDataQuerier.GetUpgradeBlock(t.Context(), tc.agglayerManagerVersion)
-			require.Equal(t, tc.shouldFind, isFound)
+			upgradeBlock := rollupDataQuerier.GetUpgradeBlock(t.Context(), tc.agglayerManagerVersion)
 			if tc.shouldFind {
 				require.NotZero(t, upgradeBlock)
 			} else {

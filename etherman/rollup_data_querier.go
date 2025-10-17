@@ -190,7 +190,6 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 
 // GetAgglayerManagerUpgradeBlock returns the rollup manager upgrade block for the given version ID.
 // If the version ID is not found, it returns false.
-func (r *RollupDataQuerier) GetUpgradeBlock(ctx context.Context, versionID uint8) (uint64, bool) {
-	blockNum, isFound := r.rollupManagerUpgradedMap[versionID]
-	return blockNum, isFound
+func (r *RollupDataQuerier) GetUpgradeBlock(ctx context.Context, versionID uint8) uint64 {
+	return r.rollupManagerUpgradedMap[versionID]
 }

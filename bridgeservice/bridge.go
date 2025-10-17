@@ -70,8 +70,10 @@ var (
 	ErrNotOnL1Info = errors.New("this bridge has not been included on the L1 Info Tree yet")
 )
 
+// AgglayerManagerUpgradeQuerier abstracts AgglayerManager upgrade block
+// retrieval based on the rollup initializer version
 type AgglayerManagerUpgradeQuerier interface {
-	GetUpgradeBlock(ctx context.Context, versionID uint8) (uint64, bool)
+	GetUpgradeBlock(ctx context.Context, versionID uint8) uint64
 }
 
 type Config struct {
@@ -365,11 +367,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	etrogUpgradeL1Block, isFound := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
-	if !isFound {
-		b.logger.Debugf("failed to get Etrog (initializer version id=%d) L1 upgrade block, "+
-			"assuming the agglayer manager was already deployed on the Etrog", etrogVersionID)
-	}
+	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
 
 	b.logger.Debugf("successfully retrieved %d bridges for network %d", count, networkID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))

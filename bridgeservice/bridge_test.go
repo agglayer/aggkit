@@ -550,7 +550,7 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeMocks.upgradeQuerier.EXPECT().
 			GetUpgradeBlock(mock.Anything, mock.Anything).
-			Return(uint64(0), false).
+			Return(uint64(0)).
 			Once()
 
 		queryParams := url.Values{}
@@ -638,7 +638,7 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeMocks.upgradeQuerier.EXPECT().
 			GetUpgradeBlock(mock.Anything, mock.Anything).
-			Return(etrogBlockUpgrade, true).
+			Return(etrogBlockUpgrade).
 			Once()
 
 		queryParams := url.Values{}
