@@ -3,8 +3,7 @@ package query
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
-	"github.com/agglayer/aggkit/aggsender/optimistic"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainfep"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
@@ -32,6 +31,12 @@ func (n *noOpAggchainFEPRollupQuerier) IsFEP() bool {
 	return false
 }
 
+func (n *noOpAggchainFEPRollupQuerier) GetAggregationProofPublicValuesData(
+	lastProvenBlock, requestedEndBlock uint64,
+	l1InfoTreeLeafHash common.Hash) (*types.AggregationProofPublicValues, error) {
+	return &types.AggregationProofPublicValues{}, nil
+}
+
 var _ types.AggchainFEPRollupQuerier = (*aggchainFEPRollupQuerier)(nil)
 
 // aggchainFEPRollupQuerier encapsulates the necessary information and interfaces required to query
@@ -39,7 +44,7 @@ var _ types.AggchainFEPRollupQuerier = (*aggchainFEPRollupQuerier)(nil)
 type aggchainFEPRollupQuerier struct {
 	startL2BlockNum   uint64
 	aggchainFEPAddr   common.Address
-	aggchainFEPCaller optimistic.FEPContractQuerier
+	aggchainFEPCaller types.FEPContractQuerier
 }
 
 // NewAggchainFEPQuerier creates a new AggchainFEP querier instance for interacting with the AggchainFEP contract.
@@ -83,7 +88,8 @@ func NewAggchainFEPQuerier(
 func newAggchainFEPQuerier(
 	logger *log.Logger,
 	aggchainFEPAddr common.Address,
-	aggchainFEPCaller optimistic.FEPContractQuerier) (types.AggchainFEPRollupQuerier, error) {
+	aggchainFEPCaller types.FEPContractQuerier,
+) (types.AggchainFEPRollupQuerier, error) {
 	startL2Block, err := aggchainFEPCaller.StartingBlockNumber(nil)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error AggChainFEPContract.StartingBlockNumber (%s): %w",

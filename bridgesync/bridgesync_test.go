@@ -72,7 +72,7 @@ func TestNewLx(t *testing.T) {
 	l1BridgeSync, err := NewL1(
 		ctx,
 		bridgeSyncL1Cfg,
-		blockFinalityType,
+		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
 		false,
@@ -81,7 +81,6 @@ func TestNewLx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l1BridgeSync.OriginNetwork())
-	require.Equal(t, blockFinalityType, l1BridgeSync.BlockFinality())
 
 	bridgeSyncL2Cfg := Config{
 		DBPath:                             dbPath,
@@ -107,7 +106,6 @@ func TestNewLx(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
-	require.Equal(t, blockFinalityType, l2BridgdeSync.BlockFinality())
 
 	mockEthClient = mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
@@ -121,7 +119,6 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 	)
-	t.Log(err)
 	require.Error(t, err)
 	require.Nil(t, l2BridgeSyncer)
 }
@@ -133,6 +130,81 @@ func TestGetLastProcessedBlock(t *testing.T) {
 	}}
 	_, err := s.GetLastProcessedBlock(context.Background())
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
+}
+
+func TestGetLatestNetworkBlock(t *testing.T) {
+	ctx := context.Background()
+	mockEthClient := mocksethclient.NewEthClienter(t)
+
+	t.Run("successful block number retrieval", func(t *testing.T) {
+		expectedBlockNumber := uint64(12345678)
+		mockEthClient.EXPECT().BlockNumber(mock.Anything).Return(expectedBlockNumber, nil).Once()
+
+		s := BridgeSync{
+			processor: &processor{
+				halted: false,
+				log:    log.WithFields("module", "L2BridgeSyncer"),
+			},
+			ethClient: mockEthClient,
+		}
+
+		blockNumber, err := s.GetLatestNetworkBlock(ctx)
+		require.NoError(t, err)
+		require.Equal(t, expectedBlockNumber, blockNumber)
+	})
+
+	t.Run("error from eth client", func(t *testing.T) {
+		expectedError := errors.New("network error")
+		mockEthClient.EXPECT().BlockNumber(mock.Anything).Return(uint64(0), expectedError).Once()
+
+		s := BridgeSync{
+			processor: &processor{
+				halted: false,
+				log:    log.WithFields("module", "L2BridgeSyncer"),
+			},
+			ethClient: mockEthClient,
+		}
+
+		blockNumber, err := s.GetLatestNetworkBlock(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get latest block number")
+		require.Equal(t, uint64(0), blockNumber)
+	})
+
+	t.Run("processor halted", func(t *testing.T) {
+		s := BridgeSync{processor: &processor{
+			halted: true,
+			log:    log.WithFields("module", "L2BridgeSyncer"),
+		}}
+
+		blockNumber, err := s.GetLatestNetworkBlock(ctx)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		require.Equal(t, uint64(0), blockNumber)
+	})
+}
+
+func TestIsActive(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("active syncer", func(t *testing.T) {
+		s := BridgeSync{processor: &processor{
+			halted: false,
+			log:    log.WithFields("module", "L2BridgeSyncer"),
+		}}
+
+		isActive := s.IsActive(ctx)
+		require.True(t, isActive)
+	})
+
+	t.Run("inactive syncer", func(t *testing.T) {
+		s := BridgeSync{processor: &processor{
+			halted: true,
+			log:    log.WithFields("module", "L2BridgeSyncer"),
+		}}
+
+		isActive := s.IsActive(ctx)
+		require.False(t, isActive)
+	})
 }
 
 func TestGetExitRootByHash(t *testing.T) {
@@ -494,7 +566,7 @@ func TestGetClaimPaged(t *testing.T) {
 		halted: true,
 		log:    log.WithFields("module", "L2BridgeSyncer"),
 	}}
-	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "")
+	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "", nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 

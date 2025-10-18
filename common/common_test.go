@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 
@@ -126,6 +127,21 @@ func TestEstimateSliceCapacity(t *testing.T) {
 			span:     198,
 			fullSpan: 213,
 			expected: 52,
+		},
+		// Integer overflow test cases
+		{
+			name:     "Overflow - result exceeds MaxInt",
+			total:    math.MaxInt,
+			span:     2,
+			fullSpan: 1,
+			expected: math.MaxInt,
+		},
+		{
+			name:     "Overflow - large span causes overflow",
+			total:    1000,
+			span:     math.MaxUint64,
+			fullSpan: 1,
+			expected: math.MaxInt,
 		},
 	}
 

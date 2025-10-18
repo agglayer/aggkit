@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"math/big"
 
+	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -123,6 +126,17 @@ func New(
 		processor: processor,
 		driver:    driver,
 	}, nil
+}
+
+// GetRPCServices returns the list of services that the RPC provider exposes
+func (a *L1InfoTreeSync) GetRPCServices() []jRPC.Service {
+	logger := log.WithFields("module", "l1infotreesync-rpc")
+	return []jRPC.Service{
+		{
+			Name:    "l1infotreesync",
+			Service: NewL1InfoTreeSyncRPC(logger, a),
+		},
+	}
 }
 
 // Start starts the synchronization process
@@ -281,6 +295,12 @@ func (s *L1InfoTreeSync) GetFirstInfo() (*L1InfoTreeLeaf, error) {
 	}
 	return s.processor.GetFirstInfo()
 }
+func (s *L1InfoTreeSync) GetInfoByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.GetInfoByRoot(root)
+}
 
 func (s *L1InfoTreeSync) GetFirstInfoAfterBlock(blockNum uint64) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
@@ -321,4 +341,23 @@ func (s *L1InfoTreeSync) GetProcessedBlockUntil(ctx context.Context, blockNum ui
 		return 0, common.Hash{}, sync.ErrInconsistentState
 	}
 	return s.processor.GetProcessedBlockUntil(ctx, blockNum)
+}
+
+// IsUpToDate checks if the L1InfoTreeSync is up to date with the finalized L1 blocks
+func (s *L1InfoTreeSync) IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error) {
+	if s.processor.isHalted() {
+		return false, sync.ErrInconsistentState
+	}
+
+	lastProcessedBlock, err := s.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get last processed block: %w", err)
+	}
+
+	finalizedBlock, err := l1Client.BlockByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+	if err != nil {
+		return false, fmt.Errorf("failed to get the latest finalized L1 block: %w", err)
+	}
+
+	return lastProcessedBlock >= finalizedBlock.NumberU64(), nil
 }

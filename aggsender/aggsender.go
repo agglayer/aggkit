@@ -53,7 +53,7 @@ type AggSender struct {
 	cfg config.Config
 
 	status *types.AggsenderStatus
-	flow   types.AggsenderFlow
+	flow   types.AggsenderBuilderFlow
 
 	l2OriginNetwork uint32
 }
@@ -83,16 +83,16 @@ func New(
 	}
 
 	storageConfig := db.AggSenderSQLStorageConfig{
-		DBPath:                  cfg.StoragePath,
-		CertificatesDir:         cfg.CertificatesDir,
-		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
+		DBPath:                   cfg.StoragePath,
+		CertificatesDir:          cfg.CertificatesDir,
+		RetainCertificatesPolicy: cfg.StorageRetainCertificatesPolicy,
 	}
 	storage, err := db.NewAggSenderSQLStorage(logger, storageConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	flowManager, err := flows.NewFlow(
+	flowManager, err := flows.NewBuilderFlow(
 		ctx,
 		cfg,
 		logger,
@@ -132,12 +132,22 @@ func New(
 		aggLayerClient,
 	)
 
+	verifierFlow, err := flows.NewLocalVerifier(
+		ctx,
+		cfg,
+		l1Client,
+		flowManager,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating verifier flow: %w", err)
+	}
+
 	localValidator := validator.NewLocalValidator(
 		logger,
 		storage,
 		validator.NewAggsenderValidator(
 			logger,
-			flowManager,
+			verifierFlow,
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			certQuerier,
 			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
@@ -177,6 +187,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
+		Mode:                     a.cfg.Mode,
 	}
 	return res
 }
@@ -344,7 +355,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
-		a.log.Errorf("error validating certificate locally: %w", err)
+		a.log.Warnf("error validating certificate locally: %w", err)
 	}
 
 	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
@@ -376,7 +387,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	metrics.CertificateSent()
-	a.log.Debugf("certificate send: Height: %d cert: %s", certificate.Height, certificate.Brief())
+	a.log.Infof("certificate send: Height: %d blockRange: [%d - %d] cert: %s", certificate.Height,
+		certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	raw, err := json.Marshal(certificate)
 	if err != nil {

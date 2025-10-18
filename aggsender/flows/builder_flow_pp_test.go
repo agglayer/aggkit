@@ -465,7 +465,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			baseFlow := NewBaseFlow(logger, mockL2BridgeQuerier,
 				mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, NewBaseFlowConfigDefault())
 			baseFlow.timeNowFunc = timeNowUTCForTest
-			ppFlow := NewPPFlow(
+			ppFlow := NewPPBuilderFlow(
 				logger,
 				baseFlow,
 				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0)
@@ -557,7 +557,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 }
 
 func Test_PPFlow_CheckInitialStatus(t *testing.T) {
-	sut := &PPFlow{}
+	sut := &PPBuilderFlow{}
 	require.Nil(t, sut.CheckInitialStatus(context.TODO()))
 }
 
@@ -600,7 +600,7 @@ func Test_PPFlow_UpdateAggchainData(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			sut := &PPFlow{}
+			sut := &PPBuilderFlow{}
 
 			err := sut.UpdateAggchainData(tc.certificate, tc.multisig)
 			require.NoError(t, err)

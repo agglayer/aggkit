@@ -38,20 +38,22 @@ const (
 )
 
 type bridgeWithMocks struct {
-	bridge       *BridgeService
-	l1InfoTree   *mocks.L1InfoTreeSyncer
-	injectedGERs *mocks.L2GERSyncer
-	bridgeL1     *mocks.Bridger
-	bridgeL2     *mocks.Bridger
+	bridge         *BridgeService
+	upgradeQuerier *mocks.AgglayerManagerUpgradeQuerier
+	l1InfoTree     *mocks.L1InfoTreeSyncer
+	injectedGERs   *mocks.L2GERSyncer
+	bridgeL1       *mocks.Bridger
+	bridgeL2       *mocks.Bridger
 }
 
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
-		l1InfoTree:   mocks.NewL1InfoTreeSyncer(t),
-		injectedGERs: mocks.NewL2GERSyncer(t),
-		bridgeL1:     mocks.NewBridger(t),
-		bridgeL2:     mocks.NewBridger(t),
+		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
+		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs:   mocks.NewL2GERSyncer(t),
+		bridgeL1:       mocks.NewBridger(t),
+		bridgeL2:       mocks.NewBridger(t),
 	}
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
@@ -61,7 +63,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	b.bridge = New(cfg, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
 	return b
 }
 
@@ -254,6 +256,15 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 			depositCount:  69,
 			expectedIndex: 69,
 			expectedErr:   nil,
+		},
+		{
+			description: "nil L1 syncer",
+			setupMocks: func() {
+				b.bridge.bridgeL1 = nil
+			},
+			depositCount:  100,
+			expectedIndex: 0,
+			expectedErr:   errors.New("L1 bridge syncer is not available"),
 		},
 	}
 
@@ -485,6 +496,15 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			expectedIndex: 69,
 			expectedErr:   nil,
 		},
+		{
+			description: "nil L2 syncer",
+			setupMocks: func() {
+				b.bridge.bridgeL2 = nil
+			},
+			depositCount:  100,
+			expectedIndex: 0,
+			expectedErr:   errors.New("L2 bridge syncer is not available"),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -518,11 +538,20 @@ func TestGetBridgesHandler(t *testing.T) {
 				Calldata:           common.Hex2Bytes("efabcd"),
 			},
 		}
-		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
+
+		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
+		for _, bridge := range expectedBridges {
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, mainnetNetworkID, 0))
+		}
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
+
+		bridgeMocks.upgradeQuerier.EXPECT().
+			GetUpgradeBlock(mock.Anything, mock.Anything).
+			Return(uint64(0)).
+			Once()
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
@@ -537,13 +566,14 @@ func TestGetBridgesHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
-		require.Equal(t, bridgesResp, response.Bridges)
+		require.Equal(t, bridgeResponses, response.Bridges)
 		require.Equal(t, len(expectedBridges), response.Count)
 	})
 
 	t.Run("GetBridges for L1 network error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL1.EXPECT().
+			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, fmt.Errorf("L1 network error"))
 
 		queryParams := url.Values{}
@@ -560,7 +590,8 @@ func TestGetBridgesHandler(t *testing.T) {
 	t.Run("GetBridges for L2 network error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL2.EXPECT().
+			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, fmt.Errorf("L2 network error"))
 
 		queryParams := url.Values{}
@@ -575,6 +606,7 @@ func TestGetBridgesHandler(t *testing.T) {
 	})
 
 	t.Run("GetBridges for L2 network", func(t *testing.T) {
+		const etrogBlockUpgrade = uint64(100)
 		page := uint32(1)
 		pageSize := uint32(10)
 
@@ -585,21 +617,29 @@ func TestGetBridgesHandler(t *testing.T) {
 				LeafType:           1,
 				OriginNetwork:      10,
 				OriginAddress:      common.HexToAddress("0x2"),
-				DestinationNetwork: 20,
+				DestinationNetwork: 1,
 				DestinationAddress: common.HexToAddress("0x3"),
 				Amount:             common.Big0,
-				DepositCount:       0,
+				DepositCount:       1,
 				Metadata:           []byte("metadata"),
 				Calldata:           []byte{},
 			},
 		}
-		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
+
+		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
+		for _, bridge := range expectedBridges {
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, l2NetworkID, etrogBlockUpgrade))
+		}
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
 		bridgeMocks.bridgeL2.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
+
+		bridgeMocks.upgradeQuerier.EXPECT().
+			GetUpgradeBlock(mock.Anything, mock.Anything).
+			Return(etrogBlockUpgrade).
+			Once()
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
@@ -614,7 +654,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
-		require.Equal(t, bridgesResp, response.Bridges)
+		require.Equal(t, bridgeResponses, response.Bridges)
 		require.Equal(t, len(expectedBridges), response.Count)
 	})
 
@@ -636,6 +676,44 @@ func TestGetBridgesHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetBridges for L1 network with nil L1 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L1 bridge syncer is not available", response["error"])
+	})
+
+	t.Run("GetBridges for L2 network with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
 	})
 }
 
@@ -663,7 +741,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		})
 
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
@@ -706,7 +784,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks.bridge.networkID = 10
 		bridgeMocks.bridgeL2.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		query := url.Values{}
@@ -739,7 +817,7 @@ func TestGetClaimsHandler(t *testing.T) {
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
 		query := url.Values{}
@@ -755,7 +833,7 @@ func TestGetClaimsHandler(t *testing.T) {
 	t.Run("GetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
 		query := url.Values{}
@@ -817,7 +895,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		})
 
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
@@ -890,7 +968,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks.bridge.networkID = 10
 		bridgeMocks.bridgeL2.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		query := url.Values{}
@@ -961,7 +1039,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		})
 
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
@@ -997,6 +1075,44 @@ func TestGetClaimsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid include_all_fields parameter")
+	})
+
+	t.Run("GetClaims for L1 network with nil L1 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L1 bridge syncer is not available", response["error"])
+	})
+
+	t.Run("GetClaims for L2 network with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
 	})
 }
 
@@ -1216,6 +1332,44 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 
 		bridgeMocks.bridgeL2.AssertExpectations(t)
 	})
+
+	t.Run("GetTokenMappings for L1 network with nil L1 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L1 bridge syncer is not available", response["error"])
+	})
+
+	t.Run("GetTokenMappings for L2 network with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
+	})
 }
 
 func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
@@ -1357,6 +1511,44 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetLegacyTokenMigrations for L1 network with nil L1 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", "0")
+		queryParams.Set("page_number", "1")
+		queryParams.Set("page_size", "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L1 bridge syncer is not available", response["error"])
+	})
+
+	t.Run("GetLegacyTokenMigrations for L2 network with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set("page_number", "1")
+		queryParams.Set("page_size", "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
 	})
 }
 
@@ -1920,6 +2112,54 @@ func TestClaimProofHandler(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
 	})
+
+	t.Run("ClaimProof for L1 network with nil L1 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+
+		var result gin.H
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, "L1 bridge syncer is not available", result["error"])
+	})
+
+	t.Run("ClaimProof for L2 network with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLocalExitRoot(mock.Anything, l2NetworkID, l1InfoTreeLeaf.RollupExitRoot).
+			Return(common.HexToHash("0x789"), nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+
+		var result gin.H
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", result["error"])
+	})
 }
 
 func TestGetLastReorgEventHandler(t *testing.T) {
@@ -2015,6 +2255,40 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		require.Contains(t, response.Body.String(),
 			fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
+
+	t.Run("GetLastReorgEvent for L1 network with nil L1 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/last-reorg-event?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+
+		var result gin.H
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, "L1 bridge syncer is not available", result["error"])
+	})
+
+	t.Run("GetLastReorgEvent for L2 network with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/last-reorg-event?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+
+		var result gin.H
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", result["error"])
+	})
 }
 
 // performRequest is a helper function to perform HTTP requests in tests.
@@ -2052,8 +2326,6 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string, body 
 }
 
 func TestGetSyncStatusHandler(t *testing.T) {
-	b := newBridgeWithMocks(t, l2NetworkID)
-
 	// Deduplicated test cases for sync status
 	testCases := []struct {
 		description     string
@@ -2098,18 +2370,48 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			// L1 syncer status check and data retrieval
+			b.bridgeL1.EXPECT().IsActive(mock.Anything).
+				Return(true).
+				Once()
 			b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 				Return(tc.l1ContractCount, nil).
 				Once()
-			b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			b.bridgeL1.EXPECT().
+				GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 				Return(nil, int(tc.l1BridgeCount), nil).
+				Once()
+
+			// L2 syncer status check and data retrieval
+			b.bridgeL2.EXPECT().IsActive(mock.Anything).
+				Return(true).
 				Once()
 			b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 				Return(tc.l2ContractCount, nil).
 				Once()
-			b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			b.bridgeL2.EXPECT().
+				GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 				Return(nil, int(tc.l2BridgeCount), nil).
 				Once()
+
+			// Add expectations for block information when not synced
+			if !tc.l1IsSynced {
+				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(1234), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
+					Return(uint64(2555), nil).
+					Once()
+			}
+			if !tc.l2IsSynced {
+				b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(1234), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).
+					Return(uint64(2555), nil).
+					Once()
+			}
 
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
@@ -2121,69 +2423,109 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			var response bridgetypes.SyncStatus
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			require.NoError(t, err)
-			require.Equal(t, tc.l1BridgeCount, response.L1Info.BridgeDepositCount)
+
+			// Check L1 info
+			require.NotNil(t, response.L1Info)
+			require.Equal(t, tc.l1BridgeCount, response.L1Info.SynchronizedDepositCount)
 			require.Equal(t, tc.l1ContractCount, response.L1Info.ContractDepositCount)
 			require.Equal(t, tc.l1IsSynced, response.L1Info.IsSynced)
-			require.Equal(t, tc.l2BridgeCount, response.L2Info.BridgeDepositCount)
+			require.True(t, response.L1Info.IsActive) // L1 syncer is always active in tests
+			if !tc.l1IsSynced {
+				require.Equal(t, uint64(1234), response.L1Info.LastProcessedBlock)
+				require.Equal(t, uint64(2555), response.L1Info.NetworkBlock)
+			}
+
+			// Check L2 info
+			require.NotNil(t, response.L2Info)
+			require.Equal(t, tc.l2BridgeCount, response.L2Info.SynchronizedDepositCount)
 			require.Equal(t, tc.l2ContractCount, response.L2Info.ContractDepositCount)
 			require.Equal(t, tc.l2IsSynced, response.L2Info.IsSynced)
+			require.True(t, response.L2Info.IsActive) // L2 syncer is always active in tests
+			if !tc.l2IsSynced {
+				require.Equal(t, uint64(1234), response.L2Info.LastProcessedBlock)
+				require.Equal(t, uint64(2555), response.L2Info.NetworkBlock)
+			}
 		})
 	}
 
 	// Error test cases
 	errorTestCases := []struct {
 		description        string
-		setupMocks         func()
+		setupMocks         func() bridgeWithMocks
 		expectedStatusCode int
 		expectedError      string
 	}{
 		{
 			description: "error getting L1 contract deposit count",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), errors.New("L1 contract error")).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L1 bridge contract: L1 contract error",
 		},
 		{
 			description: "error getting L1 bridges from database",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 0, errors.New("L1 database error")).
-					Once()
+					Return(nil, 0, errors.New("L1 database error"))
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get bridges from L1 database: L1 database error",
 		},
 		{
 			description: "error getting L2 contract deposit count",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 100, nil).
 					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), errors.New("L2 contract error")).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L2 bridge contract: L2 contract error",
 		},
 		{
 			description: "error getting L2 bridges from database",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
 					Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(200), nil).
@@ -2191,41 +2533,112 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 0, errors.New("L2 database error")).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get bridges from L2 database: L2 database error",
 		},
 		{
 			description: "error getting L1 contract deposit count with context timeout",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), context.DeadlineExceeded).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L1 bridge contract: context deadline exceeded",
 		},
 		{
 			description: "error getting L2 contract deposit count with context timeout",
-			setupMocks: func() {
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 100, nil).
 					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), context.DeadlineExceeded).
 					Once()
+				return b
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L2 bridge contract: context deadline exceeded",
+		},
+		{
+			description: "L1 syncer inactive - only isActive field populated",
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(200), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 200, nil).
+					Once()
+				return b
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedError:      "",
+		},
+		{
+			description: "L2 syncer inactive - only isActive field populated",
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+				return b
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedError:      "",
+		},
+		{
+			description: "Both syncers inactive - only isActive fields populated",
+			setupMocks: func() bridgeWithMocks {
+				b := newBridgeWithMocks(t, l2NetworkID)
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+				return b
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedError:      "",
 		},
 	}
 
 	for _, tc := range errorTestCases {
 		t.Run(tc.description, func(t *testing.T) {
-			tc.setupMocks()
+			b := tc.setupMocks()
 
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
@@ -2233,10 +2646,67 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			b.bridge.GetSyncStatusHandler(c)
 
 			require.Equal(t, tc.expectedStatusCode, w.Code)
-			var response gin.H
-			err := json.Unmarshal(w.Body.Bytes(), &response)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedError, response["error"])
+
+			if tc.expectedStatusCode == http.StatusOK {
+				// For successful responses, check the sync status structure
+				var response bridgetypes.SyncStatus
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+
+				// For inactive syncer test cases, verify only isActive field is populated
+				switch tc.description {
+				case "L1 syncer inactive - only isActive field populated":
+					require.NotNil(t, response.L1Info)
+					require.False(t, response.L1Info.IsActive)
+					require.Equal(t, uint32(0), response.L1Info.SynchronizedDepositCount)
+					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
+					require.False(t, response.L1Info.IsSynced)
+					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L1Info.NetworkBlock)
+
+					require.NotNil(t, response.L2Info)
+					require.True(t, response.L2Info.IsActive)
+					require.Equal(t, uint32(200), response.L2Info.SynchronizedDepositCount)
+					require.Equal(t, uint32(200), response.L2Info.ContractDepositCount)
+					require.True(t, response.L2Info.IsSynced)
+				case "L2 syncer inactive - only isActive field populated":
+					require.NotNil(t, response.L1Info)
+					require.True(t, response.L1Info.IsActive)
+					require.Equal(t, uint32(100), response.L1Info.SynchronizedDepositCount)
+					require.Equal(t, uint32(100), response.L1Info.ContractDepositCount)
+					require.True(t, response.L1Info.IsSynced)
+
+					require.NotNil(t, response.L2Info)
+					require.False(t, response.L2Info.IsActive)
+					require.Equal(t, uint32(0), response.L2Info.SynchronizedDepositCount)
+					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
+					require.False(t, response.L2Info.IsSynced)
+					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
+				case "Both syncers inactive - only isActive fields populated":
+					require.NotNil(t, response.L1Info)
+					require.False(t, response.L1Info.IsActive)
+					require.Equal(t, uint32(0), response.L1Info.SynchronizedDepositCount)
+					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
+					require.False(t, response.L1Info.IsSynced)
+					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L1Info.NetworkBlock)
+
+					require.NotNil(t, response.L2Info)
+					require.False(t, response.L2Info.IsActive)
+					require.Equal(t, uint32(0), response.L2Info.SynchronizedDepositCount)
+					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
+					require.False(t, response.L2Info.IsSynced)
+					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
+				}
+			} else {
+				// For error responses, check the error message
+				var response gin.H
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedError, response["error"])
+			}
 		})
 	}
 }
@@ -2253,6 +2723,147 @@ func TestHealthCheckHandler(t *testing.T) {
 	require.Equal(t, "ok", response.Status)
 	require.NotEmpty(t, response.Time)
 	require.NotEmpty(t, response.Version)
+}
+
+func TestPopulateNetworkSyncInfo(t *testing.T) {
+	b := newBridgeWithMocks(t, l2NetworkID)
+
+	testCases := []struct {
+		description        string
+		contractCount      uint32
+		bridgeCount        uint32
+		lastProcessedBlock uint64
+		networkBlock       uint64
+		expectedIsSynced   bool
+		shouldHaveBlocks   bool
+	}{
+		{
+			description:        "synced state - no block info needed",
+			contractCount:      100,
+			bridgeCount:        100,
+			lastProcessedBlock: 1234,
+			networkBlock:       2555,
+			expectedIsSynced:   true,
+			shouldHaveBlocks:   false,
+		},
+		{
+			description:        "not synced - block info should be populated",
+			contractCount:      100,
+			bridgeCount:        90,
+			lastProcessedBlock: 1234,
+			networkBlock:       2555,
+			expectedIsSynced:   false,
+			shouldHaveBlocks:   true,
+		},
+		{
+			description:        "zero counts - synced",
+			contractCount:      0,
+			bridgeCount:        0,
+			lastProcessedBlock: 0,
+			networkBlock:       0,
+			expectedIsSynced:   true,
+			shouldHaveBlocks:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+				Return(tc.contractCount, nil).
+				Once()
+			b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+				Return(nil, int(tc.bridgeCount), nil).
+				Once()
+
+			if !tc.expectedIsSynced {
+				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(tc.lastProcessedBlock, nil).
+					Once()
+				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
+					Return(tc.networkBlock, nil).
+					Once()
+			}
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			ctx := context.Background()
+			networkInfo := &bridgetypes.NetworkSyncInfo{
+				IsActive: true,
+			}
+
+			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
+
+			require.True(t, result)
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Equal(t, tc.contractCount, networkInfo.ContractDepositCount)
+			require.Equal(t, tc.bridgeCount, networkInfo.SynchronizedDepositCount)
+			require.Equal(t, tc.expectedIsSynced, networkInfo.IsSynced)
+
+			if tc.shouldHaveBlocks {
+				require.Equal(t, tc.lastProcessedBlock, networkInfo.LastProcessedBlock)
+				require.Equal(t, tc.networkBlock, networkInfo.NetworkBlock)
+			} else {
+				require.Equal(t, uint64(0), networkInfo.LastProcessedBlock)
+				require.Equal(t, uint64(0), networkInfo.NetworkBlock)
+			}
+		})
+	}
+
+	// Test error cases
+	errorTestCases := []struct {
+		description        string
+		setupMocks         func()
+		expectedStatusCode int
+		expectedError      string
+	}{
+		{
+			description: "error getting contract deposit count",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(0), errors.New("contract error")).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get deposit count from L1 bridge contract: contract error",
+		},
+		{
+			description: "error getting bridges from database",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 0, errors.New("database error")).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get bridges from L1 database: database error",
+		},
+	}
+
+	for _, tc := range errorTestCases {
+		t.Run(tc.description, func(t *testing.T) {
+			tc.setupMocks()
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			ctx := context.Background()
+
+			networkInfo := &bridgetypes.NetworkSyncInfo{
+				IsActive: true,
+			}
+
+			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
+
+			require.False(t, result)
+			require.Equal(t, tc.expectedStatusCode, w.Code)
+
+			var response gin.H
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedError, response["error"])
+		})
+	}
 }
 
 func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {

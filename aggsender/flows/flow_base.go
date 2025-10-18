@@ -366,7 +366,7 @@ func (f *baseFlow) getImportedBridgeExits(
 		return converters.ConvertToImportedBridgeExits(
 			ctx, filteredClaims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
 	}
-	return nil, nil
+	return converters.ConvertToImportedBridgeExitsWithoutClaimData(claims)
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate

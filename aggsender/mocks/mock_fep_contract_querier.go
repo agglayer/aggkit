@@ -140,6 +140,91 @@ func (_c *FEPContractQuerier_LatestBlockNumber_Call) RunAndReturn(run func(*bind
 	return _c
 }
 
+// OpSuccinctConfigs provides a mock function with given fields: opts, arg0
+func (_m *FEPContractQuerier) OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
+	AggregationVkey     [32]byte
+	RangeVkeyCommitment [32]byte
+	RollupConfigHash    [32]byte
+}, error) {
+	ret := _m.Called(opts, arg0)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OpSuccinctConfigs")
+	}
+
+	var r0 struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts, [32]byte) (struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}, error)); ok {
+		return rf(opts, arg0)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts, [32]byte) struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}); ok {
+		r0 = rf(opts, arg0)
+	} else {
+		r0 = ret.Get(0).(struct {
+			AggregationVkey     [32]byte
+			RangeVkeyCommitment [32]byte
+			RollupConfigHash    [32]byte
+		})
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts, [32]byte) error); ok {
+		r1 = rf(opts, arg0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// FEPContractQuerier_OpSuccinctConfigs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpSuccinctConfigs'
+type FEPContractQuerier_OpSuccinctConfigs_Call struct {
+	*mock.Call
+}
+
+// OpSuccinctConfigs is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+//   - arg0 [32]byte
+func (_e *FEPContractQuerier_Expecter) OpSuccinctConfigs(opts interface{}, arg0 interface{}) *FEPContractQuerier_OpSuccinctConfigs_Call {
+	return &FEPContractQuerier_OpSuccinctConfigs_Call{Call: _e.mock.On("OpSuccinctConfigs", opts, arg0)}
+}
+
+func (_c *FEPContractQuerier_OpSuccinctConfigs_Call) Run(run func(opts *bind.CallOpts, arg0 [32]byte)) *FEPContractQuerier_OpSuccinctConfigs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts), args[1].([32]byte))
+	})
+	return _c
+}
+
+func (_c *FEPContractQuerier_OpSuccinctConfigs_Call) Return(_a0 struct {
+	AggregationVkey     [32]byte
+	RangeVkeyCommitment [32]byte
+	RollupConfigHash    [32]byte
+}, _a1 error) *FEPContractQuerier_OpSuccinctConfigs_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *FEPContractQuerier_OpSuccinctConfigs_Call) RunAndReturn(run func(*bind.CallOpts, [32]byte) (struct {
+	AggregationVkey     [32]byte
+	RangeVkeyCommitment [32]byte
+	RollupConfigHash    [32]byte
+}, error)) *FEPContractQuerier_OpSuccinctConfigs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // OptimisticMode provides a mock function with given fields: opts
 func (_m *FEPContractQuerier) OptimisticMode(opts *bind.CallOpts) (bool, error) {
 	ret := _m.Called(opts)
@@ -196,12 +281,12 @@ func (_c *FEPContractQuerier_OptimisticMode_Call) RunAndReturn(run func(*bind.Ca
 	return _c
 }
 
-// RangeVkeyCommitment provides a mock function with given fields: opts
-func (_m *FEPContractQuerier) RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error) {
+// SelectedOpSuccinctConfigName provides a mock function with given fields: opts
+func (_m *FEPContractQuerier) SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error) {
 	ret := _m.Called(opts)
 
 	if len(ret) == 0 {
-		panic("no return value specified for RangeVkeyCommitment")
+		panic("no return value specified for SelectedOpSuccinctConfigName")
 	}
 
 	var r0 [32]byte
@@ -226,88 +311,30 @@ func (_m *FEPContractQuerier) RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte
 	return r0, r1
 }
 
-// FEPContractQuerier_RangeVkeyCommitment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RangeVkeyCommitment'
-type FEPContractQuerier_RangeVkeyCommitment_Call struct {
+// FEPContractQuerier_SelectedOpSuccinctConfigName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SelectedOpSuccinctConfigName'
+type FEPContractQuerier_SelectedOpSuccinctConfigName_Call struct {
 	*mock.Call
 }
 
-// RangeVkeyCommitment is a helper method to define mock.On call
+// SelectedOpSuccinctConfigName is a helper method to define mock.On call
 //   - opts *bind.CallOpts
-func (_e *FEPContractQuerier_Expecter) RangeVkeyCommitment(opts interface{}) *FEPContractQuerier_RangeVkeyCommitment_Call {
-	return &FEPContractQuerier_RangeVkeyCommitment_Call{Call: _e.mock.On("RangeVkeyCommitment", opts)}
+func (_e *FEPContractQuerier_Expecter) SelectedOpSuccinctConfigName(opts interface{}) *FEPContractQuerier_SelectedOpSuccinctConfigName_Call {
+	return &FEPContractQuerier_SelectedOpSuccinctConfigName_Call{Call: _e.mock.On("SelectedOpSuccinctConfigName", opts)}
 }
 
-func (_c *FEPContractQuerier_RangeVkeyCommitment_Call) Run(run func(opts *bind.CallOpts)) *FEPContractQuerier_RangeVkeyCommitment_Call {
+func (_c *FEPContractQuerier_SelectedOpSuccinctConfigName_Call) Run(run func(opts *bind.CallOpts)) *FEPContractQuerier_SelectedOpSuccinctConfigName_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(*bind.CallOpts))
 	})
 	return _c
 }
 
-func (_c *FEPContractQuerier_RangeVkeyCommitment_Call) Return(_a0 [32]byte, _a1 error) *FEPContractQuerier_RangeVkeyCommitment_Call {
+func (_c *FEPContractQuerier_SelectedOpSuccinctConfigName_Call) Return(_a0 [32]byte, _a1 error) *FEPContractQuerier_SelectedOpSuccinctConfigName_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *FEPContractQuerier_RangeVkeyCommitment_Call) RunAndReturn(run func(*bind.CallOpts) ([32]byte, error)) *FEPContractQuerier_RangeVkeyCommitment_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// RollupConfigHash provides a mock function with given fields: opts
-func (_m *FEPContractQuerier) RollupConfigHash(opts *bind.CallOpts) ([32]byte, error) {
-	ret := _m.Called(opts)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RollupConfigHash")
-	}
-
-	var r0 [32]byte
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([32]byte, error)); ok {
-		return rf(opts)
-	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) [32]byte); ok {
-		r0 = rf(opts)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([32]byte)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
-		r1 = rf(opts)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// FEPContractQuerier_RollupConfigHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RollupConfigHash'
-type FEPContractQuerier_RollupConfigHash_Call struct {
-	*mock.Call
-}
-
-// RollupConfigHash is a helper method to define mock.On call
-//   - opts *bind.CallOpts
-func (_e *FEPContractQuerier_Expecter) RollupConfigHash(opts interface{}) *FEPContractQuerier_RollupConfigHash_Call {
-	return &FEPContractQuerier_RollupConfigHash_Call{Call: _e.mock.On("RollupConfigHash", opts)}
-}
-
-func (_c *FEPContractQuerier_RollupConfigHash_Call) Run(run func(opts *bind.CallOpts)) *FEPContractQuerier_RollupConfigHash_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*bind.CallOpts))
-	})
-	return _c
-}
-
-func (_c *FEPContractQuerier_RollupConfigHash_Call) Return(_a0 [32]byte, _a1 error) *FEPContractQuerier_RollupConfigHash_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *FEPContractQuerier_RollupConfigHash_Call) RunAndReturn(run func(*bind.CallOpts) ([32]byte, error)) *FEPContractQuerier_RollupConfigHash_Call {
+func (_c *FEPContractQuerier_SelectedOpSuccinctConfigName_Call) RunAndReturn(run func(*bind.CallOpts) ([32]byte, error)) *FEPContractQuerier_SelectedOpSuccinctConfigName_Call {
 	_c.Call.Return(run)
 	return _c
 }

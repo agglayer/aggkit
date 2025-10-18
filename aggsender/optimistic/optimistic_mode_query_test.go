@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/agglayer/aggkit/aggsender/optimistic/mocks"
+	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

@@ -31,9 +31,9 @@ func Test_StorageExploratory(t *testing.T) {
 		t.Fatalf("environment variable DB_AGGSENDER_0_2 is not set")
 	}
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  path,
-		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   path,
+		CertificatesDir:          filepath.Join(filepath.Dir(path), "certificates"),
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -52,9 +52,9 @@ func Test_Storage(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTest_Storage.sqlite")
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  path,
-		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   path,
+		CertificatesDir:          filepath.Join(filepath.Dir(path), "certificates"),
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -128,7 +128,7 @@ func Test_Storage(t *testing.T) {
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		require.NoError(t, storage.DeleteCertificate(ctx, certificate.Header.CertificateID))
+		require.NoError(t, storage.DeleteCertificate(nil, certificate.Header.Height, MustDelete))
 
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.ErrorIs(t, err, db.ErrNotFound)
@@ -252,7 +252,7 @@ func Test_Storage(t *testing.T) {
 					UpdatedAt:               updateTime,
 					PreviousLocalExitRoot:   &prevLER,
 					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
-					RetryCount:              1,
+					RetryCount:              0,
 					L1InfoTreeLeafCount:     10,
 				},
 			},
@@ -269,7 +269,7 @@ func Test_Storage(t *testing.T) {
 					PreviousLocalExitRoot:   &prevLER,
 					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
 					L1InfoTreeLeafCount:     15,
-					RetryCount:              2,
+					RetryCount:              0,
 				},
 				SignedCertificate: &signedCert,
 				AggchainProof: &types.AggchainProof{
@@ -330,7 +330,7 @@ func Test_Storage(t *testing.T) {
 		certificate := types.Certificate{
 			Header: &types.CertificateHeader{
 				Height:           13,
-				RetryCount:       1234,
+				RetryCount:       0,
 				CertificateID:    common.HexToHash("0xD"),
 				NewLocalExitRoot: common.HexToHash("0xE"),
 				FromBlock:        13,
@@ -364,9 +364,9 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTest_SaveLastSentCertificate.sqlite")
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  path,
-		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
-		KeepCertificatesHistory: true,
+		DBPath:                   path,
+		CertificatesDir:          filepath.Join(filepath.Dir(path), "certificates"),
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -410,7 +410,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		// Update the certificate with the same height
+		// Update the certificate with a new retry for the same height
 		updatedCertificate := types.Certificate{
 			Header: &types.CertificateHeader{
 				Height:           2,
@@ -419,6 +419,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 				FromBlock:        3,
 				ToBlock:          6,
 				Status:           agglayertypes.Pending,
+				RetryCount:       1,
 			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, updatedCertificate))
@@ -527,8 +528,8 @@ func Test_StoragePreviousLER(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_StoragePreviousLER.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -572,8 +573,8 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_StorageFinalizedL1InfoRoot.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -619,8 +620,8 @@ func Test_StorageAggchainProof(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_StorageAggchainProof.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -680,8 +681,8 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 	ctx := context.TODO()
 	dbPath := path.Join(t.TempDir(), "Test_GetLastSentCertificateHeaderWithProofIfInError.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -1089,8 +1090,8 @@ func Test_GetLastSettledCertificate(t *testing.T) {
 	ctx := context.Background()
 	dbPath := path.Join(t.TempDir(), "Test_GetLastSettledCertificate.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+		DBPath:                   dbPath,
+		RetainCertificatesPolicy: *NewStorageRetainCertificatesPolicyDefault(),
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
@@ -1317,11 +1318,11 @@ func Test_deleteCertificate(t *testing.T) {
 	// Helper function to test certificate deletion with file
 	testCertificateDeleteWithFile := func(t *testing.T, testName string, certData *string, shouldFileBeDeleted bool) {
 		t.Helper()
-		storage, testCertID, certInfo := setupCertificate(t, testName, certData)
+		storage, _, certInfo := setupCertificate(t, testName, certData)
 		require.NotNil(t, certInfo.SignedCertificate)
 
 		// Verify the generated file exists
-		generatedFilePath := *certInfo.SignedCertificate
+		generatedFilePath := *certInfo.SignedCertificateFilename()
 		_, err := os.Stat(generatedFilePath)
 		require.NoError(t, err)
 
@@ -1337,7 +1338,7 @@ func Test_deleteCertificate(t *testing.T) {
 			}
 		}()
 
-		err = deleteCertificate(logger, tx, testCertID)
+		err = storage.DeleteCertificate(tx, certInfo.Height, MustDelete)
 		require.NoError(t, err)
 
 		require.NoError(t, tx.Commit())
@@ -1357,7 +1358,7 @@ func Test_deleteCertificate(t *testing.T) {
 	}
 
 	t.Run("successful deletion without file", func(t *testing.T) {
-		storage, testCertID, _ := setupCertificate(t, "test_delete_no_file", nil)
+		storage, _, _ := setupCertificate(t, "test_delete_no_file", nil)
 
 		// Create transaction and test deleteCertificate
 		tx, err := db.NewTx(ctx, storage.db)
@@ -1370,15 +1371,15 @@ func Test_deleteCertificate(t *testing.T) {
 				}
 			}
 		}()
-
-		err = deleteCertificate(logger, tx, testCertID)
+		height := uint64(1)
+		err = storage.DeleteCertificate(tx, height, MustDelete)
 		require.NoError(t, err)
 
 		require.NoError(t, tx.Commit())
 		shouldRollback = false
 
 		// Verify certificate is deleted
-		_, err = storage.GetCertificateByHeight(1)
+		_, err = storage.GetCertificateByHeight(height)
 		require.ErrorIs(t, err, db.ErrNotFound)
 	})
 
@@ -1387,7 +1388,7 @@ func Test_deleteCertificate(t *testing.T) {
 		testCertificateDeleteWithFile(t, "test_delete_with_file", &signedCertData, true)
 	})
 
-	t.Run("deletion with JSON file path containing non-path data", func(t *testing.T) {
+	t.Run("deletion with file path containing non-path data", func(t *testing.T) {
 		rawCertData := "raw certificate data, not a file path"
 		testCertificateDeleteWithFile(t, "test_delete_non_json", &rawCertData, true)
 	})
@@ -1396,8 +1397,7 @@ func Test_deleteCertificate(t *testing.T) {
 		storage, _, _ := setupCertificate(t, "test_delete_nonexistent", nil)
 
 		// Try to delete a certificate that doesn't exist
-		testCertID := common.HexToHash("0x9999")
-
+		testNonExistingHeight := uint64(9999)
 		// Create transaction and test deleteCertificate
 		tx, err := db.NewTx(ctx, storage.db)
 		require.NoError(t, err)
@@ -1410,19 +1410,19 @@ func Test_deleteCertificate(t *testing.T) {
 			}
 		}()
 
-		err = deleteCertificate(logger, tx, testCertID)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "error loading certificate info")
+		err = storage.DeleteCertificate(tx, testNonExistingHeight, MustDelete)
+		require.ErrorIs(t, err, ErrNoCertDeleted)
 	})
 
 	t.Run("file deletion error should not fail the function", func(t *testing.T) {
 		signedCertData := `{"test": "certificate data"}`
-		storage, testCertID, certInfo := setupCertificate(t, "test_delete_file_error", &signedCertData)
+		storage, _, certInfo := setupCertificate(t, "test_delete_file_error", &signedCertData)
 		require.NotNil(t, certInfo.SignedCertificate)
 
 		// Delete the file manually to simulate a file deletion error scenario
-		generatedFilePath := *certInfo.SignedCertificate
-		err := os.Remove(generatedFilePath)
+		generatedFilePath := certInfo.SignedCertificateFilename()
+		require.NotNil(t, generatedFilePath)
+		err := os.Remove(*generatedFilePath)
 		require.NoError(t, err)
 
 		// Create transaction and test deleteCertificate
@@ -1438,7 +1438,7 @@ func Test_deleteCertificate(t *testing.T) {
 		}()
 
 		// This should succeed despite the file being already deleted
-		err = deleteCertificate(logger, tx, testCertID)
+		err = storage.DeleteCertificate(tx, certInfo.Height, MustDelete)
 		require.NoError(t, err)
 
 		require.NoError(t, tx.Commit())

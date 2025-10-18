@@ -135,7 +135,7 @@ func (c *certStatusChecker) CheckPendingCertificatesStatus(ctx context.Context) 
 		}
 
 		if !certificateLocal.IsClosed() {
-			c.log.Infof("certificate %s is still pending, elapsed time:%s ",
+			c.log.Debugf("certificate %s is still pending, elapsed time:%s ",
 				certificateHeader.ID(), certificateLocal.ElapsedTimeSinceCreationString())
 			thereArePendingCerts = true
 		}

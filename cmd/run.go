@@ -9,10 +9,11 @@ import (
 	"os/signal"
 	"runtime"
 	"slices"
+	"sync"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
@@ -23,7 +24,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/flows"
-	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
@@ -81,6 +81,12 @@ func start(cliCtx *cli.Context) error {
 	}
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
+	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
+	go func() {
+		if err := <-errChanL1; err != nil {
+			log.Fatal("Error from ReorgDetectorL1: ", err)
+		}
+	}()
 
 	reorgDetectorL2, errChanL2 := runReorgDetectorL2IfNeeded(cliCtx.Context, components, l2Client, &cfg.ReorgDetectorL2)
 	go func() {
@@ -94,38 +100,61 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
 
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
-	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0)
-	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID)
+	// Create a cancellable context for graceful shutdown
+	ctx, cancel := context.WithCancel(cliCtx.Context)
+	defer cancel()
+
+	// Create WaitGroup for backfill goroutines synchronization
+	var backfillWg sync.WaitGroup
+	var rpcServices []jRPC.Service
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, l1Client)
+	if l1InfoTreeSync != nil {
+		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
+	}
+	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
+		l1Client, 0, &backfillWg)
+	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
+		l2Client, rollupDataQuerier.RollupID, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
-		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
+		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
 		&cfg.AggSender.CommitteeOverride)
 
-	var rpcServices []jRPC.Service
+	// Check if any bridge-related component is present and start bridge service once
+	hasBridgeComponent := false
+	for _, component := range components {
+		if component == aggkitcommon.BRIDGE ||
+			component == aggkitcommon.L1BRIDGESYNC ||
+			component == aggkitcommon.L2BRIDGESYNC {
+			hasBridgeComponent = true
+			break
+		}
+	}
+
+	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
+		b := createBridgeService(
+			cfg.REST,
+			cfg.Common.NetworkID,
+			rollupDataQuerier,
+			l1InfoTreeSync,
+			l2GERSync,
+			l1BridgeSync,
+			l2BridgeSync,
+		)
+		go b.Start(ctx)
+		log.Info("Bridge service started")
+	}
+
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
 			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
-			go aggOracle.Start(cliCtx.Context)
-
-		case aggkitcommon.BRIDGE:
-			b := createBridgeService(
-				cfg.REST,
-				cfg.Common.NetworkID,
-				l1InfoTreeSync,
-				l2GERSync,
-				l1BridgeSync,
-				l2BridgeSync,
-			)
-
-			go b.Start(cliCtx.Context)
+			go aggOracle.Start(ctx)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
-				cliCtx.Context,
+				ctx,
 				cfg.AggSender,
 				l1Client,
 				l1InfoTreeSync,
@@ -135,14 +164,15 @@ func start(cliCtx *cli.Context) error {
 				committeeQuerier,
 			)
 			if err != nil {
+				//nolint:gocritic
 				log.Fatal(err)
 			}
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
-			go aggsender.Start(cliCtx.Context)
+			go aggsender.Start(ctx)
 		case aggkitcommon.AGGCHAINPROOFGEN:
 			aggchainProofGen, err := createAggchainProofGen(
-				cliCtx.Context,
+				ctx,
 				cfg.AggchainProofGen,
 				l1Client,
 				l2Client,
@@ -156,7 +186,7 @@ func start(cliCtx *cli.Context) error {
 			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
-				cliCtx.Context,
+				ctx,
 				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
@@ -168,7 +198,7 @@ func start(cliCtx *cli.Context) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			go aggsenderValidator.Start(cliCtx.Context)
+			go aggsenderValidator.Start(ctx)
 		}
 	}
 	if len(rpcServices) > 0 {
@@ -187,10 +217,10 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	if cfg.Profiling.ProfilingEnabled {
-		go pprof.StartProfilingHTTPServer(cliCtx.Context, cfg.Profiling)
+		go pprof.StartProfilingHTTPServer(ctx, cfg.Profiling)
 	}
 
-	waitSignal(nil)
+	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
 
 	return nil
 }
@@ -226,7 +256,6 @@ func createAggSenderValidator(ctx context.Context,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
@@ -250,74 +279,6 @@ func createAggSenderValidator(ctx context.Context,
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
 
-	var (
-		flow                 validator.FlowInterface
-		commonFlowComponents *flows.CommonFlowComponents
-	)
-
-	switch cfg.Mode {
-	case aggsendertypes.PessimisticProofMode:
-		commonFlowComponents, err = flows.CreateCommonFlowComponents(
-			ctx, logger,
-			nil, // storage is not used in validator,
-			cfg.BridgeQuerier.BridgeL2SovereignAddr,
-			l1Client, l2Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
-			true, // full claims are (eventually) needed in validator mode
-			cfg.RequireCommitteeMembershipCheck,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create common flow components: %w", err)
-		}
-
-		flow = flows.NewPPFlow(
-			logger,
-			commonFlowComponents.BaseFlow,
-			nil, // storage is not used in validator
-			commonFlowComponents.L1InfoTreeDataQuerier,
-			commonFlowComponents.L2BridgeQuerier,
-			commonFlowComponents.Signer,
-			cfg.PPConfig.RequireOneBridgeInPPCertificate,
-			cfg.MaxL2BlockNumber,
-		)
-	case aggsendertypes.AggchainProofMode:
-		commonFlowComponents, err = flows.CreateCommonFlowComponents(
-			ctx, logger,
-			nil, // storage is not used in validator,
-			cfg.BridgeQuerier.BridgeL2SovereignAddr,
-			l1Client, l2Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier,
-			0, cfg.FEPConfig.RequireNoBlockGap,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
-			cfg.DelayBetweenRetries.Duration, cfg.Signer,
-			true, // full claims are (eventually) needed in validator mode
-			cfg.RequireCommitteeMembershipCheck,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create common flow components: %w", err)
-		}
-
-		optimisticModeQuerier, err := optimistic.NewOptimisticModeQuerierFromContract(
-			cfg.FEPConfig.SovereignRollupAddr, l1Client)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create optimistic mode querier: %w", err)
-		}
-
-		flow = flows.NewAggchainProverFlow(
-			logger,
-			flows.NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
-			commonFlowComponents.BaseFlow,
-			nil, // storage is not used in validator
-			commonFlowComponents.L1InfoTreeDataQuerier,
-			commonFlowComponents.L2BridgeQuerier,
-			l1Client,
-			commonFlowComponents.Signer,
-			optimisticModeQuerier,
-			nil, // we don't query the prover in validator mode
-		)
-	default:
-		return nil, fmt.Errorf("unsupported mode %s", cfg.Mode)
-	}
-
 	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
 		logger,
 		cfg.Mode,
@@ -334,13 +295,28 @@ func createAggSenderValidator(ctx context.Context,
 		agglayerClient,
 	)
 
+	flow, flowParams, err := flows.NewVerifierFlow(
+		ctx,
+		cfg,
+		logger,
+		l1Client,
+		l1InfoTreeSync,
+		l2Syncer,
+		rollupDataQuerier,
+		committeeQuerier,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
+	}
+
 	return aggsender.NewAggsenderValidator(
 		ctx, logger, cfg, flow,
-		commonFlowComponents.L1InfoTreeDataQuerier,
+		flowParams.L1InfoTreeDataQuerier,
 		agglayerClient,
 		certQuerier,
-		commonFlowComponents.LERQuerier,
-		commonFlowComponents.Signer,
+		aggchainFEPQuerier,
+		flowParams.LERQuerier,
+		flowParams.Signer,
 	)
 }
 
@@ -439,7 +415,7 @@ func createAggoracle(
 		)
 		go ethTxManager.Start()
 
-		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+		l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 			l2GERManagerAddr, l2Client)
 		if err != nil {
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
@@ -487,7 +463,7 @@ func logVersion() {
 	)
 }
 
-func waitSignal(cancelFuncs []context.CancelFunc) {
+func waitSignal(cancelFuncs []context.CancelFunc, wg *sync.WaitGroup) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 
@@ -500,6 +476,14 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 			for _, cancel := range cancelFuncs {
 				cancel()
 			}
+
+			// Wait for all backfill goroutines to complete
+			if wg != nil {
+				log.Info("waiting for backfill processes to complete...")
+				wg.Wait()
+				log.Info("all backfill processes completed")
+			}
+
 			os.Exit(exitStatus)
 		}
 	}
@@ -536,8 +520,8 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC, aggkitcommon.L2GERSYNC,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
@@ -605,6 +589,30 @@ func runL2ClientIfNeeded(ctx context.Context,
 	return l2Client
 }
 
+func runReorgDetectorL1IfNeeded(
+	ctx context.Context,
+	components []string,
+	l1Client aggkittypes.BaseEthereumClienter,
+	cfg *reorgdetector.Config,
+) (*reorgdetector.ReorgDetector, chan error) {
+	if !isNeeded([]string{
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC},
+		components) {
+		return nil, nil
+	}
+	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
+
+	errChan := make(chan error)
+	go func() {
+		if err := rd.Start(ctx); err != nil {
+			errChan <- err
+		}
+		close(errChan)
+	}()
+
+	return rd, errChan
+}
+
 func runReorgDetectorL2IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -641,6 +649,7 @@ func runL2GERSyncIfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l1Client aggkittypes.BaseEthereumClienter,
 ) *l2gersync.L2GERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC}, components) {
 		return nil
@@ -651,6 +660,7 @@ func runL2GERSyncIfNeeded(
 		reorgDetectorL2,
 		l2Client,
 		l1InfoTreeSync,
+		l1Client,
 	)
 	if err != nil {
 		log.Fatalf("error creating l2GERSync: %s", err)
@@ -665,8 +675,10 @@ func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
 	cfg bridgesync.Config,
+	reorgDetectorL1 *reorgdetector.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
+	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
@@ -675,7 +687,7 @@ func runBridgeSyncL1IfNeeded(
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
 		cfg,
-		aggkittypes.FinalizedBlock,
+		reorgDetectorL1,
 		l1Client,
 		rollupID,
 		true,
@@ -683,6 +695,16 @@ func runBridgeSyncL1IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
 	}
+
+	// Run txn_sender backfilling in a separate goroutine
+	wg.Add(1)
+	go func() {
+		if err := runTxnSenderBackfill(ctx, cfg, l1Client, wg); err != nil {
+			log.Errorf("txn_sender backfilling failed: %v", err)
+			// Don't fail the entire process, just log the error and continue
+		}
+	}()
+
 	go bridgeSyncL1.Start(ctx)
 
 	return bridgeSyncL1
@@ -695,6 +717,7 @@ func runBridgeSyncL2IfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
+	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	fullClaimsNeeded := isNeeded([]string{
 		aggkitcommon.BRIDGE,
@@ -721,6 +744,16 @@ func runBridgeSyncL2IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
 	}
+
+	// Run txn_sender backfilling in a separate goroutine
+	wg.Add(1)
+	go func() {
+		if err := runTxnSenderBackfill(ctx, cfg, l2Client, wg); err != nil {
+			log.Errorf("txn_sender backfilling failed: %v", err)
+			// Don't fail the entire process, just log the error and continue
+		}
+	}()
+
 	go bridgeSyncL2.Start(ctx)
 
 	return bridgeSyncL2
@@ -747,6 +780,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
+	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
 	l1InfoTree bridgeservice.L1InfoTreeSyncer,
 	injectedGERs bridgeservice.L2GERSyncer,
 	bridgeL1 bridgeservice.Bridger,
@@ -764,6 +798,7 @@ func createBridgeService(
 
 	return bridgeservice.New(
 		bridgeCfg,
+		upgradeQuery,
 		l1InfoTree,
 		injectedGERs,
 		bridgeL1,
@@ -825,9 +860,58 @@ func createRollupDataQuerier(ctx context.Context,
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}
 
-	return etherman.NewRollupDataQuerier(cfg, ethClient,
-		func(rollupAddr common.Address,
+	return etherman.NewRollupDataQuerier(ctx, cfg, ethClient,
+		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
-			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+			return agglayermanager.NewAgglayermanager(rollupManagerAddr, client)
 		})
+}
+
+// runTxnSenderBackfill runs the txn_sender backfilling process
+func runTxnSenderBackfill(
+	ctx context.Context,
+	cfg bridgesync.Config,
+	client aggkittypes.EthClienter,
+	wg *sync.WaitGroup,
+) error {
+	// Only run backfilling if we have a database path configured
+	if cfg.DBPath == "" {
+		log.Debug("No database path configured, skipping txn_sender backfilling")
+		return nil
+	}
+
+	// Defer WaitGroup Done to ensure cleanup on exit
+	defer wg.Done()
+
+	log.Info("Starting txn_sender backfilling process")
+
+	// Create backfill instance
+	backfiller, err := bridgesync.NewBackfillTxnSender(
+		cfg.DBPath,
+		client,
+		cfg.BridgeAddr,
+		log.WithFields("module", "tx-sender-backfill"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create backfill instance: %w", err)
+	}
+	defer backfiller.Close()
+
+	// Run backfilling with the original context to respect parent cancellation
+	start := time.Now()
+	if err := backfiller.BackfillAll(ctx); err != nil {
+		// Check if the error is due to context cancellation
+		if ctx.Err() != nil {
+			log.Infof("txn_sender backfilling cancelled: %v", ctx.Err())
+			return nil // Don't treat cancellation as an error
+		}
+		log.Errorf("txn_sender backfilling failed: %v", err)
+		// Don't fail the entire process, just log the error and continue
+		return err
+	}
+
+	duration := time.Since(start)
+	log.Infof("txn_sender backfilling completed in %v", duration)
+
+	return nil
 }

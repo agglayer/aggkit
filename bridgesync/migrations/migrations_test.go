@@ -174,6 +174,7 @@ func TestMigration0002(t *testing.T) {
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
 		Calldata           []byte   `meddler:"calldata"`
+		TxnSender          string   `meddler:"txn_sender"`
 	}
 
 	err = meddler.QueryRow(db, &bridge,
@@ -459,4 +460,233 @@ func TestMigration0004(t *testing.T) {
 	require.NotNil(t, bridgeAfterRollback)
 	require.Equal(t, "0x1234", bridgeAfterRollback.OriginAddress)
 	require.Nil(t, bridgeAfterRollback.IsNativeToken) // Should be NULL after rollback
+}
+
+func TestMigration0006(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0006.sqlite")
+
+	// Create database and run migrations up to 0005 only
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+
+	// Define migrations up to 0005
+	migrations := []types.Migration{
+		{
+			ID:  "bridgesync0001",
+			SQL: mig0001,
+		},
+		{
+			ID:  "bridgesync0002",
+			SQL: mig0002,
+		},
+		{
+			ID:  "bridgesync0003",
+			SQL: mig0003,
+		},
+		{
+			ID:  "bridgesync0004",
+			SQL: mig0004,
+		},
+		{
+			ID:  "bridgesync0005",
+			SQL: mig0005,
+		},
+	}
+
+	// Run migrations up to 0005 (5 migrations)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 5)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	tx, err := database.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Insert test data without txn_sender column (before migration 0006)
+	_, err = tx.Exec(`
+		INSERT INTO block (num, hash) VALUES (1, '0xDEAD');
+
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address,
+			calldata
+		) VALUES (1, 0, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x3333', NULL);
+
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address,
+			calldata
+		) VALUES (1, 1, 0, 0, '0x4444', 0, '0x5555', 2000, NULL, 0, 1739270804, '0xbcde', '0x6666', NULL);
+	`)
+	require.NoError(t, err)
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	// Verify that txn_sender column doesn't exist before migration
+	_, err = database.Exec(`SELECT txn_sender FROM bridge LIMIT 1;`)
+	require.Error(t, err) // Should fail because column doesn't exist
+
+	// Now test migration 0006 UP (ADD COLUMN) by manually executing the SQL
+	// This simulates what the migration system would do
+	_, err = database.Exec(`ALTER TABLE bridge ADD COLUMN txn_sender VARCHAR DEFAULT '';`)
+	require.NoError(t, err)
+
+	// Verify that txn_sender column exists and has default value
+	var bridgeWithTxnSender struct {
+		BlockNum           uint64   `meddler:"block_num"`
+		BlockPos           uint64   `meddler:"block_pos"`
+		LeafType           uint8    `meddler:"leaf_type"`
+		OriginNetwork      uint32   `meddler:"origin_network"`
+		OriginAddress      string   `meddler:"origin_address"`
+		DestinationNetwork uint32   `meddler:"destination_network"`
+		DestinationAddress string   `meddler:"destination_address"`
+		Amount             *big.Int `meddler:"amount,bigint"`
+		Metadata           []byte   `meddler:"metadata"`
+		DepositCount       uint32   `meddler:"deposit_count"`
+		BlockTimestamp     uint64   `meddler:"block_timestamp"`
+		TxHash             string   `meddler:"tx_hash"`
+		FromAddress        string   `meddler:"from_address"`
+		Calldata           []byte   `meddler:"calldata"`
+		TxnSender          string   `meddler:"txn_sender"`
+	}
+
+	// Test that we can query the txn_sender column after migration
+	err = meddler.QueryRow(database, &bridgeWithTxnSender,
+		`SELECT * FROM bridge WHERE block_pos = 0`)
+	require.NoError(t, err)
+	require.NotNil(t, bridgeWithTxnSender)
+	require.Equal(t, "", bridgeWithTxnSender.TxnSender) // Should have default empty string value
+	require.Equal(t, "0x1111", bridgeWithTxnSender.OriginAddress)
+
+	// Test the second record
+	var bridgeWithTxnSender2 struct {
+		BlockNum           uint64   `meddler:"block_num"`
+		BlockPos           uint64   `meddler:"block_pos"`
+		LeafType           uint8    `meddler:"leaf_type"`
+		OriginNetwork      uint32   `meddler:"origin_network"`
+		OriginAddress      string   `meddler:"origin_address"`
+		DestinationNetwork uint32   `meddler:"destination_network"`
+		DestinationAddress string   `meddler:"destination_address"`
+		Amount             *big.Int `meddler:"amount,bigint"`
+		Metadata           []byte   `meddler:"metadata"`
+		DepositCount       uint32   `meddler:"deposit_count"`
+		BlockTimestamp     uint64   `meddler:"block_timestamp"`
+		TxHash             string   `meddler:"tx_hash"`
+		FromAddress        string   `meddler:"from_address"`
+		Calldata           []byte   `meddler:"calldata"`
+		TxnSender          string   `meddler:"txn_sender"`
+	}
+
+	err = meddler.QueryRow(database, &bridgeWithTxnSender2,
+		`SELECT * FROM bridge WHERE block_pos = 1`)
+	require.NoError(t, err)
+	require.NotNil(t, bridgeWithTxnSender2)
+	require.Equal(t, "", bridgeWithTxnSender2.TxnSender) // Should have default empty string value
+	require.Equal(t, "0x4444", bridgeWithTxnSender2.OriginAddress)
+
+	// Test that we can insert new records with txn_sender values
+	_, err = database.Exec(`
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address,
+			calldata,
+			txn_sender
+		) VALUES (1, 2, 0, 0, '0x7777', 0, '0x8888', 3000, NULL, 0, 1739270804, '0xcdef', '0x9999', NULL, '0xAAAA');
+	`)
+	require.NoError(t, err)
+
+	// Verify the new record with txn_sender value
+	var bridgeWithCustomTxnSender struct {
+		BlockNum           uint64   `meddler:"block_num"`
+		BlockPos           uint64   `meddler:"block_pos"`
+		LeafType           uint8    `meddler:"leaf_type"`
+		OriginNetwork      uint32   `meddler:"origin_network"`
+		OriginAddress      string   `meddler:"origin_address"`
+		DestinationNetwork uint32   `meddler:"destination_network"`
+		DestinationAddress string   `meddler:"destination_address"`
+		Amount             *big.Int `meddler:"amount,bigint"`
+		Metadata           []byte   `meddler:"metadata"`
+		DepositCount       uint32   `meddler:"deposit_count"`
+		BlockTimestamp     uint64   `meddler:"block_timestamp"`
+		TxHash             string   `meddler:"tx_hash"`
+		FromAddress        string   `meddler:"from_address"`
+		Calldata           []byte   `meddler:"calldata"`
+		TxnSender          string   `meddler:"txn_sender"`
+	}
+
+	err = meddler.QueryRow(database, &bridgeWithCustomTxnSender,
+		`SELECT * FROM bridge WHERE block_pos = 2`)
+	require.NoError(t, err)
+	require.NotNil(t, bridgeWithCustomTxnSender)
+	require.Equal(t, "0xAAAA", bridgeWithCustomTxnSender.TxnSender)
+	require.Equal(t, "0x7777", bridgeWithCustomTxnSender.OriginAddress)
+
+	// Test migration 0006 DOWN (DROP COLUMN) by manually executing the SQL
+	_, err = database.Exec(`ALTER TABLE bridge DROP COLUMN txn_sender;`)
+	require.NoError(t, err)
+
+	// Verify that txn_sender column no longer exists
+	_, err = database.Exec(`SELECT txn_sender FROM bridge LIMIT 1;`)
+	require.Error(t, err) // Should fail because column doesn't exist
+
+	// Test that we can still query other columns
+	var bridgeAfterRollback struct {
+		BlockNum           uint64   `meddler:"block_num"`
+		BlockPos           uint64   `meddler:"block_pos"`
+		LeafType           uint8    `meddler:"leaf_type"`
+		OriginNetwork      uint32   `meddler:"origin_network"`
+		OriginAddress      string   `meddler:"origin_address"`
+		DestinationNetwork uint32   `meddler:"destination_network"`
+		DestinationAddress string   `meddler:"destination_address"`
+		Amount             *big.Int `meddler:"amount,bigint"`
+		Metadata           []byte   `meddler:"metadata"`
+		DepositCount       uint32   `meddler:"deposit_count"`
+		BlockTimestamp     uint64   `meddler:"block_timestamp"`
+		TxHash             string   `meddler:"tx_hash"`
+		FromAddress        string   `meddler:"from_address"`
+		Calldata           []byte   `meddler:"calldata"`
+		// Note: TxnSender field removed to test that column is gone
+	}
+
+	// This should succeed because we're not selecting the txn_sender column
+	err = meddler.QueryRow(database, &bridgeAfterRollback,
+		`SELECT block_num, block_pos, leaf_type, origin_network, origin_address,
+		 destination_network, destination_address, amount, metadata, deposit_count,
+		 block_timestamp, tx_hash, from_address, calldata FROM bridge WHERE block_pos = 0`)
+	require.NoError(t, err)
+	require.NotNil(t, bridgeAfterRollback)
+	require.Equal(t, "0x1111", bridgeAfterRollback.OriginAddress)
 }

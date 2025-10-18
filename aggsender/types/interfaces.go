@@ -5,8 +5,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
@@ -19,9 +19,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
+// AggsenderBuilderFlow is an interface that defines the methods to manage the flow of the AggSender
 // based on the different prover types
-type AggsenderFlow interface {
+type AggsenderBuilderFlow interface {
 	// CheckInitialStatus checks the initial status for the flow it's ok
 	CheckInitialStatus(ctx context.Context) error
 	// GetCertificateBuildParams returns the parameters to build a certificate
@@ -36,6 +36,22 @@ type AggsenderFlow interface {
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
 	// Signer is the signer used to sign the certificate
 	Signer() signertypes.Signer
+}
+
+// AggsenderVerifierFlow is an interface that defines the methods to verify the certificate
+type AggsenderVerifierFlow interface {
+	// BuildCertificate builds a certificate based on the buildParams
+	BuildCertificate(ctx context.Context,
+		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
+	// GenerateBuildParams generates the build parameters based on the preParams
+	GenerateBuildParams(ctx context.Context,
+		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
+	// VerifyCertificate verifies the certificate field for the given certificate
+	VerifyCertificate(
+		ctx context.Context,
+		cert *agglayertypes.Certificate,
+		lastBlockInCert uint64,
+		lastSettledBlock uint64) error
 }
 
 type AggsenderFlowBaser interface {
@@ -72,6 +88,7 @@ type L1InfoTreeSyncer interface {
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
+	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
@@ -81,7 +98,6 @@ type L2BridgeSyncer interface {
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
-	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
@@ -140,6 +156,9 @@ type L1InfoTreeDataQuerier interface {
 
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
+
+	// GetInfoByIndex returns the L1 Info tree leaf for the given index
+	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement
@@ -177,7 +196,7 @@ type CertificateStatusChecker interface {
 
 // RollupDataQuerier is an interface that abstracts interaction with the rollup manager contract
 type RollupDataQuerier interface {
-	GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+	GetRollupData(blockNumber *big.Int) (agglayermanager.AgglayerManagerRollupDataReturn, error)
 	GetRollupChainID() (uint64, error)
 }
 
@@ -313,4 +332,37 @@ type CertificateQuerier interface {
 		cert *agglayertypes.Certificate) (uint64, error)
 	CalculateCertificateType(cert *agglayertypes.Certificate, certToBlock uint64) CertificateType
 	CalculateCertificateTypeFromToBlock(certToBlock uint64) CertificateType
+}
+
+// FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
+type FEPContractQuerier interface {
+	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
+	OptimisticMode(opts *bind.CallOpts) (bool, error)
+	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error)
+	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
+		AggregationVkey     [32]byte
+		RangeVkeyCommitment [32]byte
+		RollupConfigHash    [32]byte
+	}, error)
+}
+
+// OpNodeClienter is an interface that defines the methods for interacting with the OpNode client.
+type OpNodeClienter interface {
+	OutputAtBlockRoot(blockNum uint64) (common.Hash, error)
+}
+
+// AggProofPublicValuesQuerier defines an interface for
+// querying aggregation proof public values.
+type AggProofPublicValuesQuerier interface {
+	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
+		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
+}
+
+// FEPInputsQuerier defines an interface for querying FEP inputs required for aggchain proof.
+type FEPInputsQuerier interface {
+	GetAggchainParams(
+		lastProvenBlock, requestedEndBlock uint64,
+		l1InfoTreeLeafHash common.Hash) (*AggchainParams, error)
 }

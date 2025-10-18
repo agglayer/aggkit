@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/query"
@@ -354,7 +354,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockLERQuerier,
 				NewBaseFlowConfigDefault())
 			flowBase.timeNowFunc = timeNowUTCForTest
-			aggchainFlow := NewAggchainProverFlow(
+			aggchainFlow := NewAggchainProverBuilderFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
 				flowBase,
@@ -473,7 +473,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // lerQuerier
 				NewBaseFlowConfig(0, tc.startL2Block, false, true),
 			)
-			flow := NewAggchainProverFlow(
+			flow := NewAggchainProverBuilderFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
 				flowBase,
@@ -591,7 +591,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockLERQuerier,
 				NewBaseFlowConfigDefault(),
 			)
-			aggchainFlow := NewAggchainProverFlow(
+			aggchainFlow := NewAggchainProverBuilderFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
 				flowBase,
@@ -767,7 +767,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			mockL2BridgeSyncer := mocks.NewBridgeQuerier(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
 
-			flow := &AggchainProverFlow{
+			flow := &AggchainProverBuilderFlow{
 				log:             logger,
 				storage:         mockStorage,
 				baseFlow:        mockBaseFlow,
@@ -861,7 +861,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 				tc.mockFn(mockBaseFlow)
 			}
 
-			flow := &AggchainProverFlow{
+			flow := &AggchainProverBuilderFlow{
 				log:      logger,
 				baseFlow: mockBaseFlow,
 			}
@@ -971,7 +971,7 @@ func Test_AggchainProverFlow_UpdateAggchainData(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_UpdateAggchainData")
-			flow := &AggchainProverFlow{
+			flow := &AggchainProverBuilderFlow{
 				log: logger,
 			}
 

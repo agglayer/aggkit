@@ -19,13 +19,6 @@ var (
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
-type FlowInterface interface {
-	GenerateBuildParams(ctx context.Context,
-		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
-	BuildCertificate(ctx context.Context,
-		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
-}
-
 type L1InfoTreeRootByLeafQuerier interface {
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
@@ -34,14 +27,14 @@ type L1InfoTreeRootByLeafQuerier interface {
 // CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
-	flow                  FlowInterface
+	flow                  types.AggsenderVerifierFlow
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
 	certQuerier           types.CertificateQuerier
 	lerQuerier            types.LERQuerier
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
-	flow FlowInterface,
+	flow types.AggsenderVerifierFlow,
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
 	certQuerier types.CertificateQuerier,
 	lerQuerier types.LERQuerier) *CertificateValidator {
@@ -59,16 +52,10 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
-	var (
-		previousCertificateToBlock uint64
-		err                        error
-	)
 
-	if params.PreviousCertificate != nil {
-		previousCertificateToBlock, err = a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
-		if err != nil {
-			return fmt.Errorf("failed to get last settled certificate block: %w", err)
-		}
+	previousCertificateToBlock, err := a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
+	if err != nil {
+		return fmt.Errorf("failed to get last settled certificate block: %w", err)
 	}
 
 	// Validate last L2 block in certificate
@@ -117,6 +104,15 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		params.Certificate.ImportedBridgeExits,
 		buildParams.L1InfoTreeRootFromWhichToProve); err != nil {
 		return fmt.Errorf("failed to verify claim proofs: %w", err)
+	}
+
+	// Verify AggchainData specific to each flow
+	if err := a.flow.VerifyCertificate(
+		ctx,
+		params.Certificate,
+		params.LastL2BlockInCert,
+		previousCertificateToBlock); err != nil {
+		return fmt.Errorf("failed to verify certificate in flow: %w", err)
 	}
 
 	return nil

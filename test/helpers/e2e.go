@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggoraclecommittee"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -32,7 +33,7 @@ import (
 const (
 	rollupID              = uint32(1)
 	syncBlockChunkSize    = 10
-	defaultDBQueryTimeout = 30 * time.Second
+	defaultDBQueryTimeout = 60 * time.Second
 )
 
 type L2GERManagerContractType int
@@ -52,7 +53,7 @@ type CommonEnvironment struct {
 	SimBackend             *simulated.Backend
 	GERAddr                common.Address
 	AggOracleCommitteeAddr common.Address
-	BridgeContract         *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	BridgeContract         *agglayerbridge.Agglayerbridge
 	BridgeAddr             common.Address
 	Auth                   *bind.TransactOpts
 	ReorgDetector          *reorgdetector.ReorgDetector
@@ -62,15 +63,16 @@ type CommonEnvironment struct {
 // L1Environment contains simulated setup for L1 network.
 type L1Environment struct {
 	CommonEnvironment
-	GERContract  *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
-	InfoTreeSync *l1infotreesync.L1InfoTreeSync
+	GERContract             *agglayerger.Agglayerger
+	AgglayerManagerContract *agglayermanager.Agglayermanager
+	InfoTreeSync            *l1infotreesync.L1InfoTreeSync
 }
 
 // L2Environment contains simulated setup for L2 network.
 type L2Environment struct {
 	CommonEnvironment
-	GERManagerSovereignSC      *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
-	GERManagerLegacySC         *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
+	GERManagerSovereignSC      *agglayergerl2.Agglayergerl2
+	GERManagerLegacySC         *agglayerger.Agglayerger
 	AggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
 	AggoracleSender            aggoracle.ChainSender
 	EthTxManagerMock           *EthTxManager
@@ -115,7 +117,20 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	ctx := context.Background()
 
 	// Simulated L1
-	l1Client, authL1, gerL1Addr, gerL1Contract, bridgeL1Addr, bridgeL1Contract := newSimulatedL1(t)
+	l1Client, authL1,
+		gerL1Addr, gerL1Contract,
+		bridgeL1Addr, bridgeL1Contract,
+		agglayerManagerContract := newSimulatedL1(t)
+
+	// Reorg detector
+	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
+	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
+		DBPath:              dbPathReorgDetectorL1,
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		FinalizedBlock:      aggkittypes.FinalizedBlock,
+	}, reorgdetector.L1)
+	require.NoError(t, err)
+	go rdL1.Start(ctx) //nolint:errcheck
 
 	// L1 info tree sync
 	dbPathL1InfoTreeSync := path.Join(t.TempDir(), "L1InfoTreeSync.sqlite")
@@ -163,6 +178,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	bridgeSyncCfg := bridgesync.Config{
 		DBPath:                             dbPathBridgeSyncL1,
 		BridgeAddr:                         bridgeL1Addr,
+		BlockFinality:                      aggkittypes.LatestBlock,
 		SyncBlockChunkSize:                 syncBlockChunkSize,
 		InitialBlockNum:                    initialBlock,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
@@ -171,7 +187,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, aggkittypes.LatestBlock, testClient, originNetwork, false)
+	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork, false)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -183,11 +199,12 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			BridgeContract: bridgeL1Contract,
 			BridgeAddr:     bridgeL1Addr,
 			Auth:           authL1,
-			ReorgDetector:  nil, // No reorg detector for L1 since we're moving to FinalizedBlock
+			ReorgDetector:  rdL1,
 			BridgeSync:     bridgeL1Sync,
 		},
-		GERContract:  gerL1Contract,
-		InfoTreeSync: l1InfoTreeSync,
+		GERContract:             gerL1Contract,
+		AgglayerManagerContract: agglayerManagerContract,
+		InfoTreeSync:            l1InfoTreeSync,
 	}
 }
 
@@ -201,10 +218,10 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		l2Client                   *simulated.Backend
 		authL2                     *bind.TransactOpts
 		gerL2Addr                  common.Address
-		l2GERLegacySC              *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
-		l2GERSovereignChainSC      *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+		l2GERLegacySC              *agglayerger.Agglayerger
+		l2GERSovereignChainSC      *agglayergerl2.Agglayergerl2
 		bridgeL2Addr               common.Address
-		bridgeL2Contract           *polygonzkevmbridgev2.Polygonzkevmbridgev2
+		bridgeL2Contract           *agglayerbridge.Agglayerbridge
 		aggOracleCommitteeAddr     common.Address
 		aggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
 	)
@@ -245,7 +262,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			AggOracleCommitteeAddr: aggOracleCommitteeAddr,
 			WaitPeriodMonitorTx:    cfgtypes.NewDuration(gerCheckFrequency),
 		}
-		l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+		l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 			gerL2Addr, l2Client.Client())
 		if err != nil {
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", gerL2Addr, err)
@@ -339,9 +356,10 @@ func newSimulatedL1(t *testing.T) (
 	*simulated.Backend,
 	*bind.TransactOpts,
 	common.Address,
-	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
+	*agglayerger.Agglayerger,
 	common.Address,
-	*polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	*agglayerbridge.Agglayerbridge,
+	*agglayermanager.Agglayermanager,
 ) {
 	t.Helper()
 
@@ -360,24 +378,30 @@ func newSimulatedL1(t *testing.T) (
 	err = setup.DeployBridge(client, calculatedGERAddr, 0)
 	require.NoError(t, err)
 
-	gerAddr, _, gerContract, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(
+	gerAddr, _, gerContract, err := agglayerger.DeployAgglayerger(
 		setup.DeployerAuth, client.Client(),
 		setup.UserAuth.From, setup.BridgeProxyAddr)
 	require.NoError(t, err)
 	client.Commit()
 
+	_, agglayerManagerSC, err := setup.DeployAgglayerManager(
+		client, calculatedGERAddr, calculatedGERAddr, setup.BridgeProxyAddr)
+	require.NoError(t, err)
+	client.Commit()
+
 	require.Equal(t, calculatedGERAddr, gerAddr)
 
-	return client, setup.UserAuth, gerAddr, gerContract, setup.BridgeProxyAddr, setup.BridgeProxyContract
+	return client, setup.UserAuth, gerAddr, gerContract,
+		setup.BridgeProxyAddr, setup.BridgeProxyContract, agglayerManagerSC
 }
 
 func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig AggoraclecommitteeConfig) (
 	*simulated.Backend,
 	*bind.TransactOpts,
 	common.Address,
-	*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain,
+	*agglayergerl2.Agglayergerl2,
 	common.Address,
-	*polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	*agglayerbridge.Agglayerbridge,
 	common.Address,
 	*aggoraclecommittee.Aggoraclecommittee,
 ) {
@@ -417,13 +441,13 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	)
 
 	// Deploy L2 GER manager contract
-	gerL2Addr, _, _, err := globalexitrootmanagerl2sovereignchain.DeployGlobalexitrootmanagerl2sovereignchain(
+	gerL2Addr, _, _, err := agglayergerl2.DeployAgglayergerl2(
 		setup.DeployerAuth, client.Client(), setup.BridgeProxyAddr)
 	require.NoError(t, err)
 	client.Commit()
 
 	// Prepare initialize data that are going to be called by the L2 GER proxy contract
-	gerL2Abi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
+	gerL2Abi, err := agglayergerl2.Agglayergerl2MetaData.GetAbi()
 	require.NoError(t, err)
 	require.NotNil(t, gerL2Abi)
 
@@ -453,7 +477,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	client.Commit()
 
 	// Create L2 GER manager contract binding
-	gerL2Contract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+	gerL2Contract, err := agglayergerl2.NewAgglayergerl2(
 		gerProxyAddr, client.Client())
 	require.NoError(t, err)
 
@@ -530,9 +554,9 @@ func newSimulatedEVML2LegacyChain(t *testing.T) (
 	*simulated.Backend,
 	*bind.TransactOpts,
 	common.Address,
-	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
+	*agglayerger.Agglayerger,
 	common.Address,
-	*polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	*agglayerbridge.Agglayerbridge,
 ) {
 	t.Helper()
 
@@ -551,13 +575,13 @@ func newSimulatedEVML2LegacyChain(t *testing.T) (
 	client, setup := NewSimulatedBackend(t, genesisAllocMap, deployerAuth)
 
 	// Deploy L2 GER manager contract
-	gerL2Addr, _, _, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(
+	gerL2Addr, _, _, err := agglayerger.DeployAgglayerger(
 		setup.DeployerAuth, client.Client(), setup.UserAuth.From, setup.BridgeProxyAddr)
 	require.NoError(t, err)
 	client.Commit()
 
 	// Prepare initialize data that are going to be called by the L2 GER proxy contract
-	gerL2Abi, err := polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2MetaData.GetAbi()
+	gerL2Abi, err := agglayerger.AgglayergerMetaData.GetAbi()
 	require.NoError(t, err)
 	require.NotNil(t, gerL2Abi)
 
@@ -576,7 +600,7 @@ func newSimulatedEVML2LegacyChain(t *testing.T) (
 	client.Commit()
 
 	// Create L2 GER manager contract binding
-	gerL2Contract, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(
+	gerL2Contract, err := agglayerger.NewAgglayerger(
 		gerProxyAddr, client.Client())
 	require.NoError(t, err)
 

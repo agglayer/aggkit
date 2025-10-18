@@ -7,8 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -58,23 +57,17 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork    uint32
-	reorgDetector    ReorgDetector
-	blockFinality    aggkittypes.BlockNumberFinality
-	ethClient        aggkittypes.EthClienter
-	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
-}
-
-// noOpReorgDetectorWrapper wraps NoOpReorgDetector to implement bridgesync.ReorgDetector interface
-type noOpReorgDetectorWrapper struct {
-	reorgdetector.NoOpReorgDetector
+	originNetwork  uint32
+	reorgDetector  ReorgDetector
+	ethClient      aggkittypes.EthClienter
+	agglayerBridge *agglayerbridge.Agglayerbridge
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
 func NewL1(
 	ctx context.Context,
 	cfg Config,
-	blockFinalityType aggkittypes.BlockNumberFinality,
+	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
 	syncFullClaims bool,
@@ -82,8 +75,8 @@ func NewL1(
 	return newBridgeSync(
 		ctx,
 		cfg,
-		blockFinalityType,
-		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()},
+		cfg.BlockFinality,
+		rd,
 		ethClient,
 		L1BridgeSyncer,
 		originNetwork,
@@ -133,28 +126,23 @@ func NewL2(
 func newBridgeSync(
 	ctx context.Context,
 	cfg Config,
-	blockFinalityType aggkittypes.BlockNumberFinality,
+	blockFinality aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	syncerID BridgeSyncerType,
-	originNetwork uint32,
+	networkID uint32,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
-	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(cfg.BridgeAddr, ethClient)
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, err
 	}
 
-	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(cfg.BridgeAddr, ethClient)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
-			cfg.BridgeAddr.String(), err)
-	}
-
 	logger.Infof("Bridge sync %s, syncing full claims: %t", syncerID.String(), syncFullClaims)
-	err = sanityCheckContract(logger, cfg.BridgeAddr, bridgeContractV2)
+
+	err = sanityCheckContract(logger, cfg.BridgeAddr, agglayerBridge)
 	if err != nil {
 		logger.Errorf("sanityCheckContract(bridge: %s) fails sanity check. Err: %w",
 			cfg.BridgeAddr.String(), err)
@@ -190,8 +178,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 	}
 
-	appender, err := buildAppender(
-		ethClient, cfg.BridgeAddr, syncFullClaims, bridgeContractV2, bridgeSovereignChain, logger)
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, agglayerBridge, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +186,7 @@ func newBridgeSync(
 		syncerID.String(),
 		ethClient,
 		cfg.SyncBlockChunkSize,
-		cfg.BlockFinality,
+		blockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
 		[]common.Address{cfg.BridgeAddr},
@@ -235,6 +222,7 @@ func newBridgeSync(
 		"%s created:\n"+
 			"  dbPath: %s\n"+
 			"  initialBlock: %d\n"+
+			"  blockFinality: %s\n"+
 			"  bridgeAddr: %s\n"+
 			"  syncFullClaims: %t\n"+
 			"  maxRetryAttemptsAfterError: %d\n"+
@@ -245,6 +233,7 @@ func newBridgeSync(
 		syncerID,
 		cfg.DBPath,
 		cfg.InitialBlockNum,
+		blockFinality.String(),
 		cfg.BridgeAddr.String(),
 		syncFullClaims,
 		cfg.MaxRetryAttemptsAfterError,
@@ -255,25 +244,14 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:        processor,
-		driver:           driver,
-		downloader:       downloader,
-		originNetwork:    originNetwork,
-		reorgDetector:    rd,
-		blockFinality:    blockFinalityType,
-		ethClient:        ethClient,
-		bridgeContractV2: bridgeContractV2,
+		processor:      processor,
+		driver:         driver,
+		downloader:     downloader,
+		originNetwork:  networkID,
+		reorgDetector:  rd,
+		ethClient:      ethClient,
+		agglayerBridge: agglayerBridge,
 	}, nil
-}
-
-func (s *BridgeSync) GetClaimsPaged(
-	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*Claim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress)
 }
 
 // Start starts the synchronization process
@@ -290,6 +268,16 @@ func (s *BridgeSync) GetBridgesPaged(
 		return nil, 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount, networkIDs, fromAddress)
+}
+
+func (s *BridgeSync) GetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*Claim, int, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get claims")
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
@@ -415,11 +403,6 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
 }
 
-// BlockFinality returns the block finality type
-func (s *BridgeSync) BlockFinality() aggkittypes.BlockNumberFinality {
-	return s.blockFinality
-}
-
 type LastReorg struct {
 	DetectedAt int64  `json:"detected_at"`
 	FromBlock  uint64 `json:"from_block"`
@@ -441,8 +424,8 @@ func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) 
 }
 
 func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
-	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) error {
-	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
+	agglayerBridge *agglayerbridge.Agglayerbridge) error {
+	lastUpdatedDespositCount, err := agglayerBridge.LastUpdatedDepositCount(nil)
 	if err != nil {
 		logger.Errorf("failed to get last updated deposit count: %s", err)
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
@@ -459,10 +442,29 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 		return 0, sync.ErrInconsistentState
 	}
 
-	depositCount, err := s.bridgeContractV2.DepositCount(nil)
+	depositCount, err := s.agglayerBridge.DepositCount(nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get deposit count: %w", err)
 	}
 
 	return uint32(depositCount.Int64()), nil
+}
+
+// GetLatestNetworkBlock returns the latest block number from the network
+func (s *BridgeSync) GetLatestNetworkBlock(ctx context.Context) (uint64, error) {
+	if s.processor.isHalted() {
+		return 0, sync.ErrInconsistentState
+	}
+
+	blockNumber, err := s.ethClient.BlockNumber(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get latest block number: %w", err)
+	}
+
+	return blockNumber, nil
+}
+
+// IsActive returns true if the syncer is active (not halted)
+func (s *BridgeSync) IsActive(ctx context.Context) bool {
+	return !s.processor.isHalted()
 }

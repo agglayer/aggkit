@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -34,6 +34,7 @@ type L1InfoTreeQuerier interface {
 	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
+	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
 }
 
 // L2GERSync is responsible for managing GER synchronization.
@@ -49,6 +50,7 @@ func New(
 	rdL2 sync.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync L1InfoTreeQuerier,
+	l1Client aggkittypes.BaseEthereumClienter,
 ) (*L2GERSync, error) {
 	if cfg.SyncBlockChunkSize == 0 {
 		return nil, fmt.Errorf("syncBlockChunkSize must be greater than 0")
@@ -82,7 +84,7 @@ func New(
 	case SovereignChain:
 		downloader, err = newDownloaderSovereign(
 			l2Client, cfg.GlobalExitRootL2Addr,
-			l1InfoTreeSync,
+			l1InfoTreeSync, l1Client,
 			rh, cfg.BlockFinality, cfg.WaitForNewBlocksPeriod.Duration,
 			cfg.SyncBlockChunkSize,
 		)
@@ -114,7 +116,7 @@ func New(
 func resolveSyncMode(ctx context.Context, address common.Address, backend bind.ContractBackend) (SyncMode, error) {
 	// Try sovereign chain ger manager
 	sovereignGERManager, err :=
-		globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(address, backend)
+		agglayergerl2.NewAgglayergerl2(address, backend)
 	if err == nil {
 		updater, err := sovereignGERManager.GlobalExitRootUpdater(&bind.CallOpts{Context: ctx})
 		if err == nil {
@@ -128,7 +130,7 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 	}
 
 	// Try with legacy ger manager
-	legacyGERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(address, backend)
+	legacyGERManager, err := agglayerger.NewAgglayerger(address, backend)
 	if err == nil {
 		bridgeAddr, err := legacyGERManager.BridgeAddress(&bind.CallOpts{Context: ctx})
 		if err == nil {

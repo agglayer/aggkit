@@ -59,8 +59,14 @@ definitions:
         example: 42161
         type: integer
       from_address:
-        description: Address that initiated the bridge transaction
+        description: Address that initiated the transaction on bridge contract. It
+          can be intermediary contract or EOA
         example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      global_index:
+        description: Global index of the bridge event (consisted of mainnet flag,
+          rollup id and deposit count)
+        example: "4294967296"
         type: string
       leaf_type:
         description: Type of leaf (bridge event type) used in the tree structure
@@ -81,6 +87,10 @@ definitions:
       tx_hash:
         description: Hash of the transaction that included the bridge event
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+      txn_sender:
+        description: Address of the transaction sender who initiated the bridge transaction
+        example: 0xabc1234567890abcdef1234567890abcdef12345
         type: string
     type: object
   types.BridgesResult:
@@ -314,17 +324,31 @@ definitions:
         type: array
     type: object
   types.NetworkSyncInfo:
-    description: Contains network-specific synchronization information
+    description: Network-specific bridge sync status with deposit counts and block
+      information
     properties:
-      bridge_deposit_count:
-        type: integer
       contract_deposit_count:
+        example: 676797
         type: integer
-      is_synced:
+      is_active:
+        example: true
         type: boolean
+      is_synced:
+        example: true
+        type: boolean
+      last_processed_block:
+        example: 12345678
+        type: integer
+      network_block:
+        example: 12350000
+        type: integer
+      synchronized_deposit_count:
+        example: 676797
+        type: integer
     type: object
   types.SyncStatus:
-    description: Contains synchronization information for both L1 and L2 networks
+    description: Bridge sync status comparing on-chain deposit counts with local database
+      counts
     properties:
       l1_info:
         $ref: '#/definitions/types.NetworkSyncInfo'
@@ -449,7 +473,7 @@ paths:
         name: from_address
         type: string
       - collectionFormat: csv
-        description: Filter by one or more destination network IDs
+        description: Filter by one or more destination network IDs (maximum 5 allowed)
         in: query
         items:
           type: integer
@@ -530,7 +554,7 @@ paths:
         name: page_size
         type: integer
       - collectionFormat: csv
-        description: Filter by one or more destination network IDs
+        description: Filter by one or more source network IDs (maximum 5 allowed)
         in: query
         items:
           type: integer
@@ -544,6 +568,10 @@ paths:
         in: query
         name: include_all_fields
         type: boolean
+      - description: Filter by global index
+        in: query
+        name: global_index
+        type: integer
       produces:
       - application/json
       responses:
@@ -695,20 +723,20 @@ paths:
   /sync-status:
     get:
       description: |-
-        Returns the sync status by comparing the deposit count
-        from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+        Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
+        Shows if bridge syncers are active and whether they're keeping up with on-chain events.
       produces:
       - application/json
       responses:
         "200":
-          description: Bridge sync status for both L1 and L2 networks
+          description: Bridge synchronization status for L1 and L2 networks
           schema:
             $ref: '#/definitions/types.SyncStatus'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
-      summary: Get bridge sync status
+      summary: Get bridge synchronization status
       tags:
       - sync
   /token-mappings:

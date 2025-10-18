@@ -6,7 +6,7 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
-OpNodeURL = "http://localhost:8080"
+OpNodeURL = ""
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
@@ -28,6 +28,8 @@ genesisBlockNumber = 0
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+	BlocksChunkSize = 1000
+	RollupManagerCreationBlock = {{rollupManagerCreationBlockNumber}}
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
@@ -43,7 +45,7 @@ PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = false
 GenerateAggchainProofTimeout = "1h"
 # Default database query timeout
-defaultDBQueryTimeout = "30s"
+defaultDBQueryTimeout = "60s"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
@@ -73,6 +75,8 @@ POLTokenAddr = "{{L1Config.polTokenAddress}}"
 RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+RollupManagerCreationBlock = {{L1Config.RollupManagerCreationBlock}}
+BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"
 		RetryMode = "backoff"
@@ -80,6 +84,10 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 		InitialBackoff = "2s"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
+
+[ReorgDetectorL1]
+DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
+FinalizedBlock = "FinalizedBlock"
 
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
@@ -147,6 +155,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
+BlockFinality = "FinalizedBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100
@@ -187,7 +196,6 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
-KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
 DryRun = false
@@ -216,8 +224,8 @@ RequireCommitteeMembershipCheck = false
 		[[AggSender.AgglayerClient.APIRateLimits]]
 			MethodName = "SendCertificate"
 			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
-				NumRequests = 20
-				Interval = "1h"
+				NumRequests = 15 # up to 15 requests per minute (avg ~1 request every 4s)
+				Interval = "1m"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
 			Capacity = 100
@@ -248,10 +256,14 @@ RequireCommitteeMembershipCheck = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
-# Overide a committee URL to point to a local service
-#  	[AggSender.CommitteeOverride]
-#		URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
-	
+	# Overide a committee URL to point to a local service
+	# [AggSender.CommitteeOverride]
+	#	URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
+
+	[AggSender.StorageRetainCertificatesPolicy]
+		RetainCertificatesCount = 0 # 0 means keep all certificates
+		KeepCertificatesHistory = true
+
 [Prometheus]
 Enabled = true
 Host = "localhost"
@@ -297,6 +309,7 @@ RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 [Validator.FEPConfig]
 	SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 	RequireNoBlockGap = "{{AggSender.RequireNoFEPBlockGap}}"
+	OpNodeURL = "{{OpNodeURL}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]

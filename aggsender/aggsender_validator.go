@@ -28,10 +28,11 @@ type AggsenderValidator struct {
 func NewAggsenderValidator(ctx context.Context,
 	logger aggkitcommon.Logger,
 	cfg validator.Config,
-	flow validator.FlowInterface,
+	flow types.AggsenderVerifierFlow,
 	l1InfoTreeDataQuerier validator.L1InfoTreeRootByLeafQuerier,
 	aggLayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	certQuerier types.CertificateQuerier,
+	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 	lerQuerier types.LERQuerier,
 	signer signertypes.Signer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(

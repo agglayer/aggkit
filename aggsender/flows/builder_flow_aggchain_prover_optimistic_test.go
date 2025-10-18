@@ -115,7 +115,7 @@ type AggchainProverFlowTestData struct {
 
 	ctx context.Context
 
-	sut *AggchainProverFlow
+	sut *AggchainProverBuilderFlow
 }
 
 func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *AggchainProverFlowTestData {
@@ -135,7 +135,7 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 	// Simulate the access to baseFlow variables
 	res.mockFlowBase.EXPECT().StartL2Block().Return(cfgBase.StartL2Block).Maybe()
 
-	res.sut = NewAggchainProverFlow(
+	res.sut = NewAggchainProverBuilderFlow(
 		log.WithFields("flowManager", "AggchainProverFlowTestData"),
 		NewAggchainProverFlowConfigDefault(),
 		res.mockFlowBase,

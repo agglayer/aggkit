@@ -3,7 +3,10 @@
 package mocks
 
 import (
+	big "math/big"
+
 	bridgesync "github.com/agglayer/aggkit/bridgesync"
+
 	common "github.com/ethereum/go-ethereum/common"
 
 	context "context"
@@ -96,9 +99,9 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 	return _c
 }
 
-// GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, networkIDs, fromAddress
-func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error) {
-	ret := _m.Called(ctx, page, pageSize, networkIDs, fromAddress)
+// GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, networkIDs, fromAddress, globalIndex
+func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*bridgesync.Claim, int, error) {
+	ret := _m.Called(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClaimsPaged")
@@ -107,25 +110,25 @@ func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uin
 	var r0 []*bridgesync.Claim
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, string) ([]*bridgesync.Claim, int, error)); ok {
-		return rf(ctx, page, pageSize, networkIDs, fromAddress)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) ([]*bridgesync.Claim, int, error)); ok {
+		return rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, string) []*bridgesync.Claim); ok {
-		r0 = rf(ctx, page, pageSize, networkIDs, fromAddress)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) []*bridgesync.Claim); ok {
+		r0 = rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*bridgesync.Claim)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32, string) int); ok {
-		r1 = rf(ctx, page, pageSize, networkIDs, fromAddress)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) int); ok {
+		r1 = rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32, string) error); ok {
-		r2 = rf(ctx, page, pageSize, networkIDs, fromAddress)
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) error); ok {
+		r2 = rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -144,13 +147,14 @@ type Bridger_GetClaimsPaged_Call struct {
 //   - pageSize uint32
 //   - networkIDs []uint32
 //   - fromAddress string
-func (_e *Bridger_Expecter) GetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, networkIDs interface{}, fromAddress interface{}) *Bridger_GetClaimsPaged_Call {
-	return &Bridger_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, page, pageSize, networkIDs, fromAddress)}
+//   - globalIndex *big.Int
+func (_e *Bridger_Expecter) GetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, networkIDs interface{}, fromAddress interface{}, globalIndex interface{}) *Bridger_GetClaimsPaged_Call {
+	return &Bridger_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, page, pageSize, networkIDs, fromAddress, globalIndex)}
 }
 
-func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string)) *Bridger_GetClaimsPaged_Call {
+func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int)) *Bridger_GetClaimsPaged_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].([]uint32), args[4].(string))
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].([]uint32), args[4].(string), args[5].(*big.Int))
 	})
 	return _c
 }
@@ -160,7 +164,7 @@ func (_c *Bridger_GetClaimsPaged_Call) Return(_a0 []*bridgesync.Claim, _a1 int, 
 	return _c
 }
 
-func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, []uint32, string) ([]*bridgesync.Claim, int, error)) *Bridger_GetClaimsPaged_Call {
+func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, []uint32, string, *big.Int) ([]*bridgesync.Claim, int, error)) *Bridger_GetClaimsPaged_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -217,6 +221,62 @@ func (_c *Bridger_GetContractDepositCount_Call) Return(_a0 uint32, _a1 error) *B
 }
 
 func (_c *Bridger_GetContractDepositCount_Call) RunAndReturn(run func(context.Context) (uint32, error)) *Bridger_GetContractDepositCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLastProcessedBlock provides a mock function with given fields: ctx
+func (_m *Bridger) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastProcessedBlock")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridger_GetLastProcessedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastProcessedBlock'
+type Bridger_GetLastProcessedBlock_Call struct {
+	*mock.Call
+}
+
+// GetLastProcessedBlock is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Bridger_Expecter) GetLastProcessedBlock(ctx interface{}) *Bridger_GetLastProcessedBlock_Call {
+	return &Bridger_GetLastProcessedBlock_Call{Call: _e.mock.On("GetLastProcessedBlock", ctx)}
+}
+
+func (_c *Bridger_GetLastProcessedBlock_Call) Run(run func(ctx context.Context)) *Bridger_GetLastProcessedBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetLastProcessedBlock_Call) Return(_a0 uint64, _a1 error) *Bridger_GetLastProcessedBlock_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridger_GetLastProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, error)) *Bridger_GetLastProcessedBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -333,6 +393,62 @@ func (_c *Bridger_GetLastRoot_Call) Return(_a0 *types.Root, _a1 error) *Bridger_
 }
 
 func (_c *Bridger_GetLastRoot_Call) RunAndReturn(run func(context.Context) (*types.Root, error)) *Bridger_GetLastRoot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLatestNetworkBlock provides a mock function with given fields: ctx
+func (_m *Bridger) GetLatestNetworkBlock(ctx context.Context) (uint64, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLatestNetworkBlock")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridger_GetLatestNetworkBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestNetworkBlock'
+type Bridger_GetLatestNetworkBlock_Call struct {
+	*mock.Call
+}
+
+// GetLatestNetworkBlock is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Bridger_Expecter) GetLatestNetworkBlock(ctx interface{}) *Bridger_GetLatestNetworkBlock_Call {
+	return &Bridger_GetLatestNetworkBlock_Call{Call: _e.mock.On("GetLatestNetworkBlock", ctx)}
+}
+
+func (_c *Bridger_GetLatestNetworkBlock_Call) Run(run func(ctx context.Context)) *Bridger_GetLatestNetworkBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetLatestNetworkBlock_Call) Return(_a0 uint64, _a1 error) *Bridger_GetLatestNetworkBlock_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridger_GetLatestNetworkBlock_Call) RunAndReturn(run func(context.Context) (uint64, error)) *Bridger_GetLatestNetworkBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -587,6 +703,52 @@ func (_c *Bridger_GetTokenMappings_Call) Return(_a0 []*bridgesync.TokenMapping, 
 }
 
 func (_c *Bridger_GetTokenMappings_Call) RunAndReturn(run func(context.Context, uint32, uint32, string) ([]*bridgesync.TokenMapping, int, error)) *Bridger_GetTokenMappings_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsActive provides a mock function with given fields: ctx
+func (_m *Bridger) IsActive(ctx context.Context) bool {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsActive")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(context.Context) bool); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// Bridger_IsActive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsActive'
+type Bridger_IsActive_Call struct {
+	*mock.Call
+}
+
+// IsActive is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Bridger_Expecter) IsActive(ctx interface{}) *Bridger_IsActive_Call {
+	return &Bridger_IsActive_Call{Call: _e.mock.On("IsActive", ctx)}
+}
+
+func (_c *Bridger_IsActive_Call) Run(run func(ctx context.Context)) *Bridger_IsActive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Bridger_IsActive_Call) Return(_a0 bool) *Bridger_IsActive_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Bridger_IsActive_Call) RunAndReturn(run func(context.Context) bool) *Bridger_IsActive_Call {
 	_c.Call.Return(run)
 	return _c
 }

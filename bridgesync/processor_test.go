@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
@@ -724,6 +724,71 @@ func TestHashBridge(t *testing.T) {
 	}
 }
 
+func TestGenerateGlobalIndexForNetworkID(t *testing.T) {
+	tests := []struct {
+		name                string
+		sourceNetworkID     uint32
+		depositCount        uint32
+		expectedGlobalIndex *big.Int
+	}{
+		{
+			name:                "mainnet, deposit 0",
+			sourceNetworkID:     0,
+			depositCount:        0,
+			expectedGlobalIndex: new(big.Int).Lsh(big.NewInt(1), mainnetFlagPosition),
+		},
+		{
+			name:            "mainnet, deposit 3",
+			sourceNetworkID: 0,
+			depositCount:    3,
+			expectedGlobalIndex: new(big.Int).Add(
+				new(big.Int).Lsh(big.NewInt(1), mainnetFlagPosition),
+				big.NewInt(3),
+			),
+		},
+		{
+			name:                "rollup 1, deposit 3",
+			sourceNetworkID:     1,
+			depositCount:        3,
+			expectedGlobalIndex: big.NewInt(3), // (1-1)<<32 + 3 = 3
+		},
+		{
+			name:                "rollup 2, deposit 0",
+			sourceNetworkID:     2,
+			depositCount:        0,
+			expectedGlobalIndex: new(big.Int).Lsh(big.NewInt(1), rollupIndexPosition), // (2-1)<<32
+		},
+		{
+			name:            "rollup 3, deposit 42",
+			sourceNetworkID: 3,
+			depositCount:    42,
+			expectedGlobalIndex: new(big.Int).Add(
+				new(big.Int).Lsh(big.NewInt(2), rollupIndexPosition),
+				big.NewInt(42),
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expectedIsMainnet := tt.sourceNetworkID == 0
+			globalIndex := GenerateGlobalIndexForNetworkID(tt.sourceNetworkID, tt.depositCount)
+			require.Equal(t, tt.expectedGlobalIndex, globalIndex)
+
+			isMainnet, rollupIndex, localExitRootIndex, err := DecodeGlobalIndex(globalIndex)
+			require.Equal(t, expectedIsMainnet, isMainnet)
+
+			expectedRollupIndex := uint32(0)
+			if !expectedIsMainnet {
+				expectedRollupIndex = tt.sourceNetworkID - 1
+			}
+			require.Equal(t, expectedRollupIndex, rollupIndex)
+			require.Equal(t, tt.depositCount, localExitRootIndex)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestDecodeGlobalIndex(t *testing.T) {
 	t.Parallel()
 	bigInt, ok := new(big.Int).SetString("3402823669209384634652192818391391666177", 10)
@@ -796,8 +861,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -830,7 +893,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	testClaim := &Claim{
 		BlockNum:            1,
 		BlockPos:            0,
-		GlobalIndex:         GenerateGlobalIndex(true, 0, 1093),
+		GlobalIndex:         GenerateGlobalIndexForNetworkID(0, 1093),
 		OriginNetwork:       11,
 		OriginAddress:       common.HexToAddress("0x11"),
 		DestinationAddress:  common.HexToAddress("0x11"),
@@ -1001,15 +1064,13 @@ func TestGetBridgesPaged(t *testing.T) {
 		expectedError   string
 	}{
 		{
-			name:          "t1",
-			pageSize:      1,
-			page:          1,
-			depositCount:  nil,
-			expectedCount: len(bridges),
-			expectedBridges: []*Bridge{
-				bridges[6],
-			},
-			expectedError: "",
+			name:            "t1",
+			pageSize:        1,
+			page:            1,
+			depositCount:    nil,
+			expectedCount:   len(bridges),
+			expectedBridges: []*Bridge{bridges[6]},
+			expectedError:   "",
 		},
 		{
 			name:          "t2",
@@ -1042,15 +1103,13 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:          "t4",
-			pageSize:      1,
-			page:          1,
-			depositCount:  depositCountPtr(1),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[1],
-			},
-			expectedError: "",
+			name:            "t4",
+			pageSize:        1,
+			page:            1,
+			depositCount:    depositCountPtr(1),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[1]},
+			expectedError:   "",
 		},
 		{
 			name:            "t5",
@@ -1071,15 +1130,13 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError:   "invalid page number for given page size and total number of bridges",
 		},
 		{
-			name:          "t7",
-			pageSize:      1,
-			page:          1,
-			depositCount:  depositCountPtr(0),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[0],
-			},
-			expectedError: "",
+			name:            "t7",
+			pageSize:        1,
+			page:            1,
+			depositCount:    depositCountPtr(0),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[0]},
+			expectedError:   "",
 		},
 		{
 			name:         "t8",
@@ -1115,28 +1172,24 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError:   "",
 		},
 		{
-			name:          "t10",
-			pageSize:      1,
-			page:          1,
-			fromAddress:   "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:  depositCountPtr(0),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[0],
-			},
-			expectedError: "",
+			name:            "t10",
+			pageSize:        1,
+			page:            1,
+			fromAddress:     "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    depositCountPtr(0),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[0]},
+			expectedError:   "",
 		},
 		{
-			name:          "t11",
-			pageSize:      1,
-			page:          1,
-			fromAddress:   "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:  depositCountPtr(0),
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[0],
-			},
-			expectedError: "",
+			name:            "t11",
+			pageSize:        1,
+			page:            1,
+			fromAddress:     "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    depositCountPtr(0),
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[0]},
+			expectedError:   "",
 		},
 		{
 			name:            "t12",
@@ -1149,22 +1202,18 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError:   "",
 		},
 		{
-			name:          "t13",
-			pageSize:      10,
-			page:          1,
-			fromAddress:   "0xD34AAF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:  nil,
-			expectedCount: 1,
-			expectedBridges: []*Bridge{
-				bridges[6],
-			},
-			expectedError: "",
+			name:            "t13",
+			pageSize:        10,
+			page:            1,
+			fromAddress:     "0xD34AAF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    nil,
+			expectedCount:   1,
+			expectedBridges: []*Bridge{bridges[6]},
+			expectedError:   "",
 		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1230,6 +1279,7 @@ func TestGetClaimsPaged(t *testing.T) {
 		page           uint32
 		networkIDs     []uint32
 		fromAddress    string
+		globalIndex    *big.Int
 		expectedCount  int
 		expectedClaims []*Claim
 		expectedError  string
@@ -1304,16 +1354,34 @@ func TestGetClaimsPaged(t *testing.T) {
 			expectedClaims: []*Claim{},
 			expectedError:  "",
 		},
+		{
+			name:           "filter by global index",
+			pageSize:       3,
+			page:           1,
+			globalIndex:    big.NewInt(5),
+			expectedCount:  1,
+			expectedClaims: []*Claim{claims[4]},
+			expectedError:  "",
+		},
+		{
+			name:           "filter by network ids and global index",
+			pageSize:       3,
+			page:           1,
+			networkIDs:     []uint32{2, 3, 4},
+			globalIndex:    uint64Max,
+			expectedCount:  1,
+			expectedClaims: []*Claim{claims[2]},
+			expectedError:  "",
+		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, tc.networkIDs, tc.fromAddress)
+			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize,
+				tc.networkIDs, tc.fromAddress, tc.globalIndex)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -2421,12 +2489,12 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
 
 		// Test invalid page number (page 10 with only 1 record and page size 5)
-		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, "")
+		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, "", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid page number")
 
 		// Test successful case with valid page
-		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, "")
+		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, "", nil)
 		require.NoError(t, err)
 		require.Len(t, claims, 1)
 		require.Equal(t, 1, count)

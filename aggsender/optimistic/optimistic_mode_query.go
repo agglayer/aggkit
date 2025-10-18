@@ -3,13 +3,14 @@ package optimistic
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainfep"
+	"github.com/agglayer/aggkit/aggsender/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type OptimisticModeQuerierFromContract struct {
-	aggchainFEPContract FEPContractQuerier
+	aggchainFEPContract types.FEPContractQuerier
 	aggchainFEPAddr     common.Address
 }
 

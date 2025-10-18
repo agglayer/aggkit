@@ -60,6 +60,8 @@ type FEPConfig struct {
 	// RequireNoBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
 	RequireNoBlockGap bool `mapstructure:"RequireNoBlockGap"`
+	// OpNodeURL is the URL of the OP Node to query for op related data
+	OpNodeURL string `mapstructure:"OpNodeURL"`
 }
 
 type LerQuerierConfig struct {

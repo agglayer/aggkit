@@ -67,11 +67,9 @@ const (
 		"use AggSender.DelayBetweenRetries instead"
 	aggOracleBlockFinalityDeprecated       = "AggOracle.BlockFinality is deprecated, remove it from configuration"
 	l1InfoTreeSyncBlockFinalityDeprecated  = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
-	bridgeL1SyncBlockFinalityDeprecated    = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
 	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
 	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
-	reorgDetectorL1DeprecatedHint          = "ReorgDetectorL1 is deprecated, remove it from configuration"
 	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
@@ -197,10 +195,6 @@ var (
 			Reason:           l1InfoTreeSyncBlockFinalityDeprecated,
 		},
 		{
-			FieldNamePattern: "BridgeL1Sync.BlockFinality",
-			Reason:           bridgeL1SyncBlockFinalityDeprecated,
-		},
-		{
 			FieldNamePattern: "LastGERSync.SyncMode",
 			Reason:           lastGERSyncSyncModeDeprecatedHint,
 		},
@@ -213,10 +207,6 @@ var (
 			Reason:           l1NetworkConfigURLDeprecatedHint,
 		},
 		{
-			FieldNamePattern: "ReorgDetectorL1",
-			Reason:           reorgDetectorL1DeprecatedHint,
-		},
-		{
 			FieldNamePattern: "AggSender.MaxSubmitCertificateRate",
 			Reason:           maxSubmitCertificateRateDeprecatedHint,
 		},
@@ -227,6 +217,10 @@ var (
 		{
 			FieldNamePattern: "Aggsender.RequireValidatorCall",
 			Reason:           requireValidatorCallDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggSender.KeepCertificatesHistory",
+			Reason:           "field moved to AggSender.StorageRetainCertificatesPolicy.KeepCertificatesHistory",
 		},
 	}
 )
@@ -252,6 +246,9 @@ type Config struct {
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config
+
+	// Configuration of the reorg detector service to be used for the L1
+	ReorgDetectorL1 reorgdetector.Config
 
 	// Configuration of the reorg detector service to be used for the L2
 	ReorgDetectorL2 reorgdetector.Config

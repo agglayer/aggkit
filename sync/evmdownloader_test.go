@@ -461,8 +461,8 @@ func TestGetLogs(t *testing.T) {
 			},
 		}
 		ctx := context.TODO()
-		// First call times out (after 40 seconds, which is longer than the 30-second timeout)
-		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("network error %w", context.DeadlineExceeded)).After(time.Second * 40).Once()
+		// First call times out
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("network error %w", context.DeadlineExceeded)).After(10 * time.Millisecond).Once()
 		// Second call succeeds after retry
 		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil).Once()
 		logs := sut.GetLogs(ctx, 0, 1)

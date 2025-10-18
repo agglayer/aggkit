@@ -12,25 +12,21 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (
 	// l2GERReaderFactory is a factory function to create L2 GER reader
 	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
-
-	// bridgeL2SovereignReaderFactory is a factory function to read unset bridge exits from L2
-	bridgeL2SovereignReaderFactory = bridgesync.NewBridgeL2SovereignReader
 )
 
-func NewFlow(
+// NewBuilderFlow creates a new AggsenderBuilderFlow based on the provided configuration.
+func NewBuilderFlow(
 	ctx context.Context,
 	cfg config.Config,
 	logger *log.Logger,
@@ -41,11 +37,11 @@ func NewFlow(
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
-) (types.AggsenderFlow, error) {
+) (types.AggsenderBuilderFlow, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, cfg.BridgeL2SovereignAddr, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
@@ -57,7 +53,7 @@ func NewFlow(
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
 		}
 
-		return NewPPFlow(
+		return NewPPBuilderFlow(
 			logger,
 			commonFlowComponents.BaseFlow,
 			storage,
@@ -91,7 +87,7 @@ func NewFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, cfg.BridgeL2SovereignAddr, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
@@ -115,10 +111,9 @@ func NewFlow(
 			optimisticSigner,
 			commonFlowComponents.BaseFlow,
 			query.NewGERDataQuerier(commonFlowComponents.L1InfoTreeDataQuerier, l2GERReader),
-			commonFlowComponents.L2BridgeQuerier,
 		)
 
-		return NewAggchainProverFlow(
+		return NewAggchainProverBuilderFlow(
 			logger,
 			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			commonFlowComponents.BaseFlow,
@@ -148,9 +143,7 @@ func CreateCommonFlowComponents(
 	ctx context.Context,
 	logger *log.Logger,
 	storage db.AggSenderStorage,
-	bridgeAddr ethCommon.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -175,11 +168,7 @@ func CreateCommonFlowComponents(
 		return nil, err
 	}
 
-	bridgeL2SovereignReader, err := bridgeL2SovereignReaderFactory(bridgeAddr, l2Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
-	}
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, delayBetweenRetries, bridgeL2SovereignReader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, delayBetweenRetries)
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 	lerQuerier := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
 
