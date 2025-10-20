@@ -191,7 +191,6 @@ func start(cliCtx *cli.Context) error {
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l1Client,
-				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
 			)

@@ -90,7 +90,7 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
-	bridgeL2SovereignReader, err := bridgesync.NewBridgeL2SovereignReader(cfg.BridgeL2SovereignAddr, l2Client)
+	bridgeL2SovereignReader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.BridgeL2SovereignAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}

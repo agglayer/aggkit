@@ -69,10 +69,9 @@ func buildAppender(
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
 
-	bridgeSovereignChain, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, client)
+	agglayerBridgeL2, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
-			bridgeAddr, err)
+		return nil, fmt.Errorf("failed to create Agglayerbridgel2 SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
 
 	appender := make(sync.LogAppenderMap)
@@ -88,11 +87,11 @@ func buildAppender(
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
 		agglayerBridge, client, bridgeAddr, logger)
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
-		bridgeSovereignChainContract, client, bridgeAddr, logger)
+		agglayerBridgeL2, client, bridgeAddr, logger)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
-		bridgeSovereignChainContract, client, bridgeAddr, logger)
+		agglayerBridgeL2, client, bridgeAddr, logger)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
-		bridgeSovereignChainContract)
+		agglayerBridgeL2)
 
 	return appender, nil
 }

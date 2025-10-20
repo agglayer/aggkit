@@ -125,8 +125,8 @@ type ChainGERReader interface {
 		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
 }
 
-// BridgeL2SovereignReader is an interface defining functions that an BridgeL2SovereignReader should implement
-type BridgeL2SovereignReader interface {
+// AgglayerBridgeL2Reader is an interface defining functions that an AgglayerBridgeL2Reader should implement
+type AgglayerBridgeL2Reader interface {
 	GetUnsetClaimsForBlockRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]*bridgesynctypes.Unclaim, error)
 }

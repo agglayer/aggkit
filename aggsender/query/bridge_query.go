@@ -16,10 +16,10 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
 type bridgeDataQuerier struct {
-	log                     types.Logger
-	bridgeSyncer            types.L2BridgeSyncer
-	delayBetweenRetries     time.Duration
-	bridgeL2SovereignReader types.BridgeL2SovereignReader
+	log                    types.Logger
+	bridgeSyncer           types.L2BridgeSyncer
+	delayBetweenRetries    time.Duration
+	agglayerBridgeL2Reader types.AgglayerBridgeL2Reader
 
 	originNetwork uint32
 }
@@ -29,14 +29,18 @@ func NewBridgeDataQuerier(
 	log types.Logger,
 	bridgeSyncer types.L2BridgeSyncer,
 	delayBetweenRetries time.Duration,
-	bridgeL2SovereignReader types.BridgeL2SovereignReader,
+	readers ...types.AgglayerBridgeL2Reader,
 ) *bridgeDataQuerier {
+	var reader types.AgglayerBridgeL2Reader
+	if len(readers) > 0 {
+		reader = readers[0]
+	}
 	return &bridgeDataQuerier{
-		log:                     log,
-		bridgeSyncer:            bridgeSyncer,
-		delayBetweenRetries:     delayBetweenRetries,
-		originNetwork:           bridgeSyncer.OriginNetwork(),
-		bridgeL2SovereignReader: bridgeL2SovereignReader,
+		log:                    log,
+		bridgeSyncer:           bridgeSyncer,
+		delayBetweenRetries:    delayBetweenRetries,
+		originNetwork:          bridgeSyncer.OriginNetwork(),
+		agglayerBridgeL2Reader: reader,
 	}
 }
 
@@ -142,7 +146,10 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
-	unclaims, err := b.bridgeL2SovereignReader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
+	if b.agglayerBridgeL2Reader == nil {
+		return nil, fmt.Errorf("agglayer bridge l2 reader is not initialized")
+	}
+	unclaims, err := b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unclaim block range: %w", err)
 	}

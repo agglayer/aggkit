@@ -40,7 +40,7 @@ func TestNewBridgeL2SovereignReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reader, err := NewBridgeL2SovereignReader(tt.bridgeAddr, tt.l2Client)
+			reader, err := NewAgglayerBridgeL2Reader(tt.bridgeAddr, tt.l2Client)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -51,7 +51,7 @@ func TestNewBridgeL2SovereignReader(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, reader)
-				require.NotNil(t, reader.bridgeSovereignChain)
+				require.NotNil(t, reader.agglayerBridgeL2)
 			}
 		})
 	}
@@ -62,12 +62,12 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Constructor(t *test
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
 
 	// Test successful creation
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 
 	// Test that the reader has the expected structure
-	require.NotNil(t, reader.bridgeSovereignChain)
+	require.NotNil(t, reader.agglayerBridgeL2)
 }
 
 func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithMockedClient(t *testing.T) {
@@ -78,7 +78,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithMockedClient(t 
 	// Mock the FilterLogs method that will be called by the contract
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	t.Run("successful call with mocked client", func(t *testing.T) {
@@ -116,7 +116,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ErrorHandling(t *te
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	t.Run("context cancellation", func(t *testing.T) {
@@ -251,7 +251,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_InputValidation(t *
 	// Mock the FilterLogs method
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	t.Run("fromBlock greater than toBlock", func(t *testing.T) {
@@ -288,7 +288,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ReturnTypeValidatio
 	// Mock the FilterLogs method
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	// Test that the function signature is correct
@@ -318,7 +318,7 @@ func TestNewBridgeL2SovereignReader_ErrorHandling(t *testing.T) {
 		// Note: FilterLogs is not called during NewBridgeL2SovereignReader, only during GetUnsetClaimsForBlockRange
 		// So we don't need to mock FilterLogs here
 
-		reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 		// The contract creation should succeed with a valid mock client
 		require.NoError(t, err)
 		require.NotNil(t, reader)
@@ -331,7 +331,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_FilterErrorHandling
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	t.Run("filter error", func(t *testing.T) {
@@ -370,7 +370,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithEvents(t *testi
 	// Mock FilterLogs to return test events
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return(testEvents, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 100, 200)
@@ -408,7 +408,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ContractInteraction
 	// Mock FilterLogs to return the test log
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{testLog}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 100, 200)
@@ -429,7 +429,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_IteratorCloseError(
 	// Mock FilterLogs to return empty results
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	// Test normal operation - iterator close error is logged but doesn't affect return
@@ -453,7 +453,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_SimulatedBackend(t 
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, client)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, client)
 	require.NoError(t, err)
 
 	// Test with the simulated backend - need to mine some blocks first
@@ -478,7 +478,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithRealEvents(t *t
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, client)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, client)
 	require.NoError(t, err)
 
 	// Mine some blocks to create a valid range
@@ -506,7 +506,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_IteratorBehavior(t 
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, client)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, client)
 	require.NoError(t, err)
 
 	// Mine some blocks to create a valid range
@@ -539,7 +539,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_BlockRanges(t *test
 	// Mock FilterLogs to return empty results for all calls
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	testCases := []struct {
@@ -574,7 +574,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ContextHandling(t *
 	// Mock FilterLogs to return empty results
 	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
 
-	reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
 	require.NoError(t, err)
 
 	t.Run("cancelled context", func(t *testing.T) {

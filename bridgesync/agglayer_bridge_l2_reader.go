@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -12,24 +12,24 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-type BridgeL2SovereignReader struct {
-	bridgeSovereignChain *agglayerbridge.Agglayerbridge
+type AgglayerBridgeL2Reader struct {
+	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
 }
 
-func NewBridgeL2SovereignReader(
+func NewAgglayerBridgeL2Reader(
 	bridgeAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
-) (*BridgeL2SovereignReader, error) {
-	bridgeSovereignChainContract, err := agglayerbridge.NewBridgel2sovereignchain(bridgeAddr, l2Client)
+) (*AgglayerBridgeL2Reader, error) {
+	agglayerBridgeL2Contract, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, l2Client)
 	if err != nil {
 		return nil, err
 	}
-	return &BridgeL2SovereignReader{bridgeSovereignChain: bridgeSovereignChainContract}, nil
+	return &AgglayerBridgeL2Reader{agglayerBridgeL2: agglayerBridgeL2Contract}, nil
 }
 
-func (r *BridgeL2SovereignReader) GetUnsetClaimsForBlockRange(ctx context.Context,
+func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
-	unclaimIterator, err := r.bridgeSovereignChain.FilterUpdatedUnsetGlobalIndexHashChain(
+	unclaimIterator, err := r.agglayerBridgeL2.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Context: ctx, Start: fromBlock, End: &toBlock})
 	if err != nil {
 		return nil, err

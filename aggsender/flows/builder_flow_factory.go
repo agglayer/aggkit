@@ -111,6 +111,7 @@ func NewBuilderFlow(
 			optimisticSigner,
 			commonFlowComponents.BaseFlow,
 			query.NewGERDataQuerier(commonFlowComponents.L1InfoTreeDataQuerier, l2GERReader),
+			commonFlowComponents.L2BridgeQuerier,
 		)
 
 		return NewAggchainProverBuilderFlow(
