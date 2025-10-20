@@ -42,7 +42,7 @@ genesisBlockNumber = 0
 // TODO: Remove this once we have a way to check the storage content compatibility
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
-RequireStorageContentCompatibility = false
+RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
 # Default database query timeout
 defaultDBQueryTimeout = "60s"

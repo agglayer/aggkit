@@ -581,8 +581,8 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 
 				// Sort both slices by BlockNumber for consistent comparison
 				// since map iteration order is not guaranteed
-				sortUnclaimsByBlockNumber(unclaims)
-				sortUnclaimsByBlockNumber(tc.expectedUnclaims)
+				sortUnclaimsByBlockNumber(t, unclaims)
+				sortUnclaimsByBlockNumber(t, tc.expectedUnclaims)
 
 				for i, expected := range tc.expectedUnclaims {
 					require.Equal(t, expected.GlobalIndex.MainnetFlag, unclaims[i].GlobalIndex.MainnetFlag)
@@ -597,7 +597,9 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 }
 
 // Helper function to sort unclaims by BlockNumber for consistent comparison
-func sortUnclaimsByBlockNumber(unclaims []*agglayertypes.Unclaim) {
+func sortUnclaimsByBlockNumber(t *testing.T, unclaims []*agglayertypes.Unclaim) {
+	t.Helper()
+
 	for i := 0; i < len(unclaims); i++ {
 		for j := i + 1; j < len(unclaims); j++ {
 			if unclaims[i].BlockNumber > unclaims[j].BlockNumber {

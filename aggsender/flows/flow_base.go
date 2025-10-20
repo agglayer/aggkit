@@ -350,14 +350,8 @@ func (f *baseFlow) getImportedBridgeExits(
 	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
 
 	for _, claim := range claims {
-		shouldInclude := true
-
 		// Check if this claim's global index exists in the unclaims map
-		if _, exists := unclaimsMap[claim.GlobalIndex]; exists {
-			shouldInclude = false
-		}
-
-		if shouldInclude {
+		if _, exists := unclaimsMap[claim.GlobalIndex]; !exists {
 			filteredClaims = append(filteredClaims, claim)
 		}
 	}

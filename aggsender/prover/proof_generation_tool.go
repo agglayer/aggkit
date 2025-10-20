@@ -90,13 +90,13 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
-	bridgeL2SovereignReader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.BridgeL2SovereignAddr, l2Client)
+	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.BridgeL2SovereignAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, bridgeL2SovereignReader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader)
 
 	baseFlow := flows.NewBaseFlow(
 		logger,
@@ -113,7 +113,7 @@ func NewAggchainProofGenerationTool(
 		nil, // optimistic signer is not used in the tool, so we pass nil
 		baseFlow,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
-		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, bridgeL2SovereignReader),
+		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader),
 	)
 
 	return &AggchainProofGenerationTool{

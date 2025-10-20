@@ -3,10 +3,8 @@ package bridgesync
 import (
 	"context"
 	"errors"
-	"math/big"
 	"testing"
 
-	"github.com/agglayer/aggkit/bridgesync/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewBridgeL2SovereignReader(t *testing.T) {
+func TestNewAgglayerBridgeL2Reader(t *testing.T) {
 	tests := []struct {
 		name        string
 		bridgeAddr  common.Address
@@ -57,20 +55,7 @@ func TestNewBridgeL2SovereignReader(t *testing.T) {
 	}
 }
 
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Constructor(t *testing.T) {
-	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	mockClient := mocksethclient.NewBaseEthereumClienter(t)
-
-	// Test successful creation
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
-	require.NoError(t, err)
-	require.NotNil(t, reader)
-
-	// Test that the reader has the expected structure
-	require.NotNil(t, reader.agglayerBridgeL2)
-}
-
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithMockedClient(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithMockedClient(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -112,7 +97,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithMockedClient(t 
 	mockClient.AssertExpectations(t)
 }
 
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ErrorHandling(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ErrorHandling(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
 
@@ -143,107 +128,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ErrorHandling(t *te
 	mockClient.AssertExpectations(t)
 }
 
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_UnclaimStructure(t *testing.T) {
-	// Test the Unclaim type structure
-	unclaim := &types.Unclaim{
-		GlobalIndex: big.NewInt(12345),
-		BlockNumber: 100,
-		BlockIndex:  5,
-	}
-
-	require.NotNil(t, unclaim)
-	require.Equal(t, big.NewInt(12345), unclaim.GlobalIndex)
-	require.Equal(t, uint64(100), unclaim.BlockNumber)
-	require.Equal(t, uint(5), unclaim.BlockIndex)
-}
-
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_GlobalIndexConversion(t *testing.T) {
-	// Test global index conversion logic
-	tests := []struct {
-		name           string
-		globalIndex    [32]byte
-		expectedBigInt *big.Int
-	}{
-		{
-			name:           "zero global index",
-			globalIndex:    [32]byte{},
-			expectedBigInt: new(big.Int),
-		},
-		{
-			name:           "small global index",
-			globalIndex:    [32]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-			expectedBigInt: big.NewInt(1),
-		},
-		{
-			name:           "medium global index",
-			globalIndex:    [32]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42},
-			expectedBigInt: big.NewInt(42),
-		},
-		{
-			name:           "large global index",
-			globalIndex:    [32]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255},
-			expectedBigInt: big.NewInt(255),
-		},
-		{
-			name:           "very large global index",
-			globalIndex:    [32]byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			expectedBigInt: new(big.Int).Lsh(big.NewInt(1), 248), // 2^248
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Test the conversion logic that would be used in the actual function
-			result := new(big.Int).SetBytes(tt.globalIndex[:])
-			require.Equal(t, 0, result.Cmp(tt.expectedBigInt))
-		})
-	}
-}
-
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_BlockNumberAndIndex(t *testing.T) {
-	// Test block number and index handling
-	tests := []struct {
-		name        string
-		blockNumber uint64
-		blockIndex  uint
-	}{
-		{
-			name:        "zero values",
-			blockNumber: 0,
-			blockIndex:  0,
-		},
-		{
-			name:        "small values",
-			blockNumber: 1,
-			blockIndex:  1,
-		},
-		{
-			name:        "medium values",
-			blockNumber: 1000,
-			blockIndex:  100,
-		},
-		{
-			name:        "large values",
-			blockNumber: ^uint64(0),
-			blockIndex:  ^uint(0),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			unclaim := &types.Unclaim{
-				GlobalIndex: big.NewInt(12345),
-				BlockNumber: tt.blockNumber,
-				BlockIndex:  tt.blockIndex,
-			}
-
-			require.Equal(t, tt.blockNumber, unclaim.BlockNumber)
-			require.Equal(t, tt.blockIndex, unclaim.BlockIndex)
-		})
-	}
-}
-
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_InputValidation(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_InputValidation(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -279,43 +164,17 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_InputValidation(t *
 	mockClient.AssertExpectations(t)
 }
 
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ReturnTypeValidation(t *testing.T) {
-	// Test that the function returns the correct type structure
-	ctx := context.Background()
-	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	mockClient := mocksethclient.NewBaseEthereumClienter(t)
-
-	// Mock the FilterLogs method
-	mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil)
-
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
-	require.NoError(t, err)
-
-	// Test that the function signature is correct
-	unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 100, 200)
-
-	// Should succeed with mocked client
-	require.NoError(t, err)
-	require.NotNil(t, unclaims)
-
-	// Verify the expected return type structure
-	var expectedType []*types.Unclaim
-	require.IsType(t, expectedType, unclaims)
-
-	mockClient.AssertExpectations(t)
-}
-
-// Test error handling in NewBridgeL2SovereignReader
-func TestNewBridgeL2SovereignReader_ErrorHandling(t *testing.T) {
+// Test error handling in NewAgglayerBridgeL2Reader
+func TestNewAgglayerBridgeL2Reader_ErrorHandling(t *testing.T) {
 	t.Run("contract creation error", func(t *testing.T) {
 		// This test is difficult to achieve with the current structure since
-		// NewBridgel2sovereignchain is called directly. We'll test the error path
+		// NewAgglayerBridgeL2chain is called directly. We'll test the error path
 		// by using a nil client which should cause an error
 		bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
 		// Create a mock client that will cause contract creation to fail
 		mockClient := mocksethclient.NewBaseEthereumClienter(t)
-		// Note: FilterLogs is not called during NewBridgeL2SovereignReader, only during GetUnsetClaimsForBlockRange
+		// Note: FilterLogs is not called during NewAgglayerBridgeL2Reader, only during GetUnsetClaimsForBlockRange
 		// So we don't need to mock FilterLogs here
 
 		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
@@ -326,7 +185,7 @@ func TestNewBridgeL2SovereignReader_ErrorHandling(t *testing.T) {
 }
 
 // Test error handling in GetUnsetClaimsForBlockRange
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_FilterErrorHandling(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_FilterErrorHandling(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -348,7 +207,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_FilterErrorHandling
 }
 
 // Test iterator behavior with actual events
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithEvents(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithEvents(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -382,7 +241,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithEvents(t *testi
 }
 
 // Test the actual contract interaction and iterator behavior
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ContractInteraction(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ContractInteraction(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -421,7 +280,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ContractInteraction
 }
 
 // Test iterator close error handling
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_IteratorCloseError(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_IteratorCloseError(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -442,7 +301,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_IteratorCloseError(
 }
 
 // Test with simulated backend to get real contract behavior
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_SimulatedBackend(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_SimulatedBackend(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
@@ -467,7 +326,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_SimulatedBackend(t 
 }
 
 // Test with real contract events to test iterator behavior
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithRealEvents(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithRealEvents(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
@@ -495,7 +354,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_WithRealEvents(t *t
 }
 
 // Test the actual iterator behavior by creating a test that exercises the iterator loop
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_IteratorBehavior(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_IteratorBehavior(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
@@ -531,7 +390,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_IteratorBehavior(t 
 }
 
 // Test with different block ranges
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_BlockRanges(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_BlockRanges(t *testing.T) {
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
@@ -567,7 +426,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_BlockRanges(t *test
 }
 
 // Test context handling
-func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ContextHandling(t *testing.T) {
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ContextHandling(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	mockClient := mocksethclient.NewBaseEthereumClienter(t)
 

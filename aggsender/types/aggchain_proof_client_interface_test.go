@@ -10,7 +10,9 @@ import (
 )
 
 // createTestImportedBridgeExitWithBlockNumber creates a test ImportedBridgeExitWithBlockNumber for testing
-func createTestImportedBridgeExitWithBlockNumber() []*agglayer.ImportedBridgeExitWithBlockNumber {
+func createTestImportedBridgeExitWithBlockNumber(t *testing.T) []*agglayer.ImportedBridgeExitWithBlockNumber {
+	t.Helper()
+
 	return []*agglayer.ImportedBridgeExitWithBlockNumber{
 		{
 			BlockNumber: 170,
@@ -141,7 +143,7 @@ func TestNewAggchainProofRequest(t *testing.T) {
 					BlockIndex: 2,
 				},
 			},
-			importedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(),
+			importedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(t),
 			removedGers: []*agglayer.RemovedGER{
 				{
 					GlobalExitRoot: common.HexToHash("0x9090909090909090"),
@@ -200,7 +202,7 @@ func TestNewAggchainProofRequest(t *testing.T) {
 					BlockIndex: 2,
 				},
 			},
-			expectedImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(),
+			expectedImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(t),
 			expectedRemovedGers: []*agglayer.RemovedGER{
 				{
 					GlobalExitRoot: common.HexToHash("0x9090909090909090"),
@@ -333,7 +335,7 @@ func TestAggchainProofRequest_String(t *testing.T) {
 						BlockIndex: 2,
 					},
 				},
-				ImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(),
+				ImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(t),
 				RemovedGers: []*agglayer.RemovedGER{
 					{
 						GlobalExitRoot: common.HexToHash("0x9090909090909090"),

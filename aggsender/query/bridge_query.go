@@ -143,6 +143,7 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 	}
 }
 
+// GetUnsetClaimsForBlockRange gets unset claims from agglayer bridge L2 and converts to unclaim map
 func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
@@ -155,7 +156,7 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	}
 
 	// convert unclaims to map of global index to unclaim
-	unclaimsMap := make(map[*big.Int]*bridgesynctypes.Unclaim)
+	unclaimsMap := make(map[*big.Int]*bridgesynctypes.Unclaim, len(unclaims))
 	for _, unclaim := range unclaims {
 		unclaimsMap[unclaim.GlobalIndex] = unclaim
 	}
