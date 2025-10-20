@@ -12,10 +12,22 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// AgglayerBridgeL2Reader provides functionality to read and interact with the AggLayer Bridge L2 contract.
+// It encapsulates the contract instance and provides methods to query bridge-related data from the L2 chain.
 type AgglayerBridgeL2Reader struct {
 	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
 }
 
+// NewAgglayerBridgeL2Reader creates a new instance of AgglayerBridgeL2Reader.
+// It initializes the contract instance using the provided bridge address and L2 client.
+//
+// Parameters:
+//   - bridgeAddr: The Ethereum address of the AggLayer Bridge L2 contract
+//   - l2Client: The Ethereum client for interacting with the L2 chain
+//
+// Returns:
+//   - *AgglayerBridgeL2Reader: A new reader instance
+//   - error: Any error that occurred during contract initialization
 func NewAgglayerBridgeL2Reader(
 	bridgeAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
@@ -27,6 +39,18 @@ func NewAgglayerBridgeL2Reader(
 	return &AgglayerBridgeL2Reader{agglayerBridgeL2: agglayerBridgeL2Contract}, nil
 }
 
+// GetUnsetClaimsForBlockRange retrieves all unset claims (unclaims) within a specified block range.
+// It filters the UpdatedUnsetGlobalIndexHashChain events from the bridge contract and converts them
+// into Unclaim objects for further processing.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - fromBlock: The starting block number for the search range (inclusive)
+//   - toBlock: The ending block number for the search range (inclusive)
+//
+// Returns:
+//   - []*types.Unclaim: A slice of Unclaim objects containing global index, block number, and block index
+//   - error: Any error that occurred during the event filtering or iteration
 func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
 	unclaimIterator, err := r.agglayerBridgeL2.FilterUpdatedUnsetGlobalIndexHashChain(

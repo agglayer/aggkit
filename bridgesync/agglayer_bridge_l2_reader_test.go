@@ -34,6 +34,12 @@ func TestNewAgglayerBridgeL2Reader(t *testing.T) {
 			l2Client:    mocksethclient.NewBaseEthereumClienter(t),
 			expectError: false, // Zero address is valid, contract creation might still work
 		},
+		{
+			name:        "contract creation with valid mock client",
+			bridgeAddr:  common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+			l2Client:    mocksethclient.NewBaseEthereumClienter(t),
+			expectError: false, // The contract creation should succeed with a valid mock client
+		},
 	}
 
 	for _, tt := range tests {
@@ -162,26 +168,6 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_InputValidation(t *t
 	})
 
 	mockClient.AssertExpectations(t)
-}
-
-// Test error handling in NewAgglayerBridgeL2Reader
-func TestNewAgglayerBridgeL2Reader_ErrorHandling(t *testing.T) {
-	t.Run("contract creation error", func(t *testing.T) {
-		// This test is difficult to achieve with the current structure since
-		// NewAgglayerBridgeL2chain is called directly. We'll test the error path
-		// by using a nil client which should cause an error
-		bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-
-		// Create a mock client that will cause contract creation to fail
-		mockClient := mocksethclient.NewBaseEthereumClienter(t)
-		// Note: FilterLogs is not called during NewAgglayerBridgeL2Reader, only during GetUnsetClaimsForBlockRange
-		// So we don't need to mock FilterLogs here
-
-		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
-		// The contract creation should succeed with a valid mock client
-		require.NoError(t, err)
-		require.NotNil(t, reader)
-	})
 }
 
 // Test error handling in GetUnsetClaimsForBlockRange

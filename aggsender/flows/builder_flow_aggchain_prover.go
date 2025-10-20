@@ -306,8 +306,6 @@ func (a *AggchainProverBuilderFlow) verifyBuildParamsAndGenerateProof(
 	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims.Hash
 	buildParams.AggchainProof = aggchainProof
 	buildParams.L1InfoTreeLeafCount = rootFromWhichToProveClaims.Index + 1
-	// remove the unclaims from the build params
-	buildParams.Unclaims = nil
 
 	return adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
 }
