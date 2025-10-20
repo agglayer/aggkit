@@ -89,21 +89,33 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     log_info "Starting Kurtosis enclave"
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_args.json" > /tmp/single_op_succinct_args.json
+        jq -s '.[0] * .[1] * .[2]' \
+            "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
+            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json" \
+            "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_args.json" > /tmp/single_op_succinct_args.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "/tmp/single_op_succinct_args.json" .
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" > /tmp/single_aggoracle_committee_op_succinct.json
+        jq -s '.[0] * .[1] * .[2]' \
+            "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
+            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json"
+            "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" > /tmp/single_aggoracle_committee_op_succinct.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "/tmp/single_aggoracle_committee_op_succinct.json" .
         ;;
     single-l2-network-op-pessimistic)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" .
+        jq -s '.[0] * .[1]' \
+        "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
+        "$PROJECT_ROOT/.github/test_e2e_op_args_chain_1.json" > /tmp/single_op_pessimistic_args.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/single_op_pessimistic_args.json .
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
         jq -s '.[0] * .[1]' \
             "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
-            "$PROJECT_ROOT/.github/test_e2e_op_multi_chains_args_2.json" > /tmp/merged_args_2.json
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" .
+            "$PROJECT_ROOT/.github/test_e2e_op_multi_chains_args_1.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' \
+            "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
+            "$PROJECT_ROOT/.github/test_e2e_op_args_chain_2.json" > /tmp/merged_args_2.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         ;;
     multi-l2-networks-3-chains-cdk-erigon-pessimistic)
