@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -13,14 +13,14 @@ import (
 )
 
 type BridgeL2SovereignReader struct {
-	bridgeSovereignChain *bridgel2sovereignchain.Bridgel2sovereignchain
+	bridgeSovereignChain *agglayerbridge.Agglayerbridge
 }
 
 func NewBridgeL2SovereignReader(
 	bridgeAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
 ) (*BridgeL2SovereignReader, error) {
-	bridgeSovereignChainContract, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, l2Client)
+	bridgeSovereignChainContract, err := agglayerbridge.NewBridgel2sovereignchain(bridgeAddr, l2Client)
 	if err != nil {
 		return nil, err
 	}
