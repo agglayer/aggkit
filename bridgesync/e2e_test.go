@@ -131,7 +131,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	blocktime := time.Second * 6
 
 	// Setup simulated L1 environment with bridge and GER contracts
-	client, auth, _, _, bridgeAddr, bridgeContract := helpers.NewSimulatedL1(t)
+	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
 	// TODO - Find a way for correct settings of finalized block for test to run
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
