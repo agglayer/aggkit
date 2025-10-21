@@ -165,8 +165,6 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 		sizeClaims += float64(len(claim.Metadata))
 	}
 
-	// TODO - we need to remove the unclaims from the size calculation
-
 	sizeAggchainData := float64(0)
 	switch c.CertificateType {
 	case CertificateTypeFEP:

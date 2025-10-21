@@ -29,18 +29,14 @@ func NewBridgeDataQuerier(
 	log types.Logger,
 	bridgeSyncer types.L2BridgeSyncer,
 	delayBetweenRetries time.Duration,
-	readers ...types.AgglayerBridgeL2Reader,
+	agglayerBridgeL2Reader types.AgglayerBridgeL2Reader,
 ) *bridgeDataQuerier {
-	var reader types.AgglayerBridgeL2Reader
-	if len(readers) > 0 {
-		reader = readers[0]
-	}
 	return &bridgeDataQuerier{
 		log:                    log,
 		bridgeSyncer:           bridgeSyncer,
 		delayBetweenRetries:    delayBetweenRetries,
 		originNetwork:          bridgeSyncer.OriginNetwork(),
-		agglayerBridgeL2Reader: reader,
+		agglayerBridgeL2Reader: agglayerBridgeL2Reader,
 	}
 }
 

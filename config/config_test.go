@@ -46,7 +46,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "")
 	require.Equal(t, cfg.AggSender.RetriesToBuildAndSendCertificate.String(),
 		"RetryPolicyConfig{Mode: delays, Config: RetryDelaysConfig{Delays: [1m0s 1m0s 2m0s 5m0s 5m0s 8m0s], MaxRetries: 6}}")
-	// TODO: Remove this once we have a way to check the storage content compatibility
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 	require.Equal(t, L2RPCClientConfig{
 		RPCClientConfig: RPCClientConfig{
