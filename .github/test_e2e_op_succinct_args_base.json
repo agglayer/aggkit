@@ -1,7 +1,6 @@
 {
   "deployment_stages": {
-    "deploy_op_succinct": true,
-    "deploy_cdk_bridge_infra": false
+    "deploy_op_succinct": true
   },
   "args": {
     "op_succinct_mock": true,
