@@ -187,7 +187,7 @@ jobs:
       event-name: ${{ github.event_name }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
-  check-single-l2-network-fork12-pessimistic-tests-result:
+  check-single-l2-network-op-pessimistic-tests-result:
     name: Check results for single l2 network (OP, pessimistic)
     needs:
       - test-single-l2-network-op-pessimistic

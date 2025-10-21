@@ -7,22 +7,5 @@
     "deployment_suffix": "-003",
     "zkevm_rollup_chain_id": 20203,
     "zkevm_rollup_id": 3
-  },
-  "optimism_package": {
-    "chains": [
-      {
-        "proposer_params": {
-          "enabled": false
-        },
-        "challenger_params": {
-          "enabled": false
-        },
-        "network_params": {
-          "name": "003",
-          "network_id": "20203",
-          "seconds_per_slot": 1
-        }
-      }
-    ]
   }
 }
