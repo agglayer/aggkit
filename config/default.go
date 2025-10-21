@@ -206,7 +206,7 @@ CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
-BridgeL2SovereignAddr = "{{L2Config.BridgeAddr}}"
+AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
 RequireOneBridgeInPPCertificate = false
@@ -272,7 +272,7 @@ Port = 9091
 [AggchainProofGen]
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-BridgeL2SovereignAddr = "{{L2Config.BridgeAddr}}"
+AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
@@ -303,7 +303,7 @@ RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
 	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
 [Validator.BridgeQuerierConfig]
-	BridgeL2SovereignAddr = "{{L2Config.BridgeAddr}}"
+	AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.FEPConfig]

@@ -21,6 +21,7 @@ func NewVerifierFlow(
 	cfg validator.Config,
 	logger *log.Logger,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -31,11 +32,11 @@ func NewVerifierFlow(
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, nil, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
+			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
-			common.Address{},
+			cfg.BridgeQuerier.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -57,13 +58,13 @@ func NewVerifierFlow(
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, nil, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier,
+			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier,
 			0, cfg.FEPConfig.RequireNoBlockGap,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
-			common.Address{},
+			cfg.BridgeQuerier.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)

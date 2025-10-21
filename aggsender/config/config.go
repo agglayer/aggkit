@@ -62,8 +62,8 @@ type Config struct {
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
-	// BridgeL2SovereignAddr is the address of the bridge contract on L2 sovereign chain
-	BridgeL2SovereignAddr ethCommon.Address `mapstructure:"BridgeL2SovereignAddr"`
+	// AgglayerBridgeL2Addr is the address of the bridge contract on L2 sovereign chain
+	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`

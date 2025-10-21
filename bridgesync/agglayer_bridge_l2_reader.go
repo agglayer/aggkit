@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -53,6 +54,9 @@ func NewAgglayerBridgeL2Reader(
 //   - error: Any error that occurred during the event filtering or iteration
 func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
+	if r.agglayerBridgeL2 == nil {
+		return nil, fmt.Errorf("agglayer bridge L2 contract is not initialized")
+	}
 	unclaimIterator, err := r.agglayerBridgeL2.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Context: ctx, Start: fromBlock, End: &toBlock})
 	if err != nil {

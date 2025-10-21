@@ -45,8 +45,8 @@ type Config struct {
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
 
-	// BridgeL2SovereignAddr is the address of the bridge L2 sovereign contract on L2 sovereign chain
-	BridgeL2SovereignAddr common.Address `mapstructure:"BridgeL2SovereignAddr"`
+	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	AgglayerBridgeL2Addr common.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -90,7 +90,7 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.BridgeL2SovereignAddr, l2Client)
+	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.AgglayerBridgeL2Addr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}

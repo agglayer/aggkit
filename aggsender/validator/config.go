@@ -72,8 +72,8 @@ type LerQuerierConfig struct {
 }
 
 type BridgeQuerierConfig struct {
-	// BridgeL2SovereignAddr is the address of the bridge L2 sovereign contract on L2 sovereign chain
-	BridgeL2SovereignAddr ethCommon.Address `mapstructure:"BridgeL2SovereignAddr"`
+	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 // Validate checks if the configuration is valid

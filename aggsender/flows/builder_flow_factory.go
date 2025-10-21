@@ -50,7 +50,7 @@ func NewBuilderFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
-			cfg.BridgeL2SovereignAddr,
+			cfg.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -97,7 +97,7 @@ func NewBuilderFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
-			cfg.BridgeL2SovereignAddr,
+			cfg.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
