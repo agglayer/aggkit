@@ -54,7 +54,7 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="f0939ab2a9644395b870fc2f594a4a232bc5eac7"
+            COMMIT="65db663f5874b57145ec834bafd058395417b59d"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
@@ -176,11 +176,11 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f343fb33222f5786cfc98a587f6d3db867ccc404
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c4cde292900773e4aa673a20640d06895971c086
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: f343fb33222f5786cfc98a587f6d3db867ccc404
+      agglayer-e2e-ref: c4cde292900773e4aa673a20640d06895971c086
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
@@ -203,11 +203,11 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f343fb33222f5786cfc98a587f6d3db867ccc404
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c4cde292900773e4aa673a20640d06895971c086
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: f343fb33222f5786cfc98a587f6d3db867ccc404 # main
+      agglayer-e2e-ref: c4cde292900773e4aa673a20640d06895971c086 # main
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
@@ -230,11 +230,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f343fb33222f5786cfc98a587f6d3db867ccc404
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c4cde292900773e4aa673a20640d06895971c086
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: f343fb33222f5786cfc98a587f6d3db867ccc404
+      agglayer-e2e-ref: c4cde292900773e4aa673a20640d06895971c086
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
       test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
@@ -245,6 +246,7 @@ jobs:
     name: Check results for single l2 network (op-succinct with aggoracle committee)
     needs:
       - test-single-l2-network-op-succinct-aggoracle-committee
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -257,11 +259,11 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@f343fb33222f5786cfc98a587f6d3db867ccc404
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@c4cde292900773e4aa673a20640d06895971c086
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: f343fb33222f5786cfc98a587f6d3db867ccc404
+      agglayer-e2e-ref: c4cde292900773e4aa673a20640d06895971c086
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -283,11 +285,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@f343fb33222f5786cfc98a587f6d3db867ccc404
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@c4cde292900773e4aa673a20640d06895971c086
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: f343fb33222f5786cfc98a587f6d3db867ccc404
+      agglayer-e2e-ref: c4cde292900773e4aa673a20640d06895971c086
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
@@ -299,6 +302,7 @@ jobs:
     name: Check results for multi l2 networks (CDK Erigon, pessimisstic, 3 chains)
     needs:
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
