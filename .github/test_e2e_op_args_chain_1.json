@@ -1,17 +1,15 @@
 {
   "args": {
-    "consensus_contract_type": "fep",
-    "additional_services": [
-      "bridge_spammer"
-    ]
+    "zkevm_rollup_chain_id": 20201
   },
   "optimism_package": {
+    "predeployed_contracts": true,
     "chains": {
       "001": {
         "proposer_params": {
           "enabled": false
         },
-        "network_params":{
+        "network_params": {
           "network_id": "20201"
         }
       }

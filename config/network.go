@@ -14,6 +14,8 @@ var (
 	ErrMissingRollupManagerAddress         = errors.New("missing rollup manager address")
 	ErrMissingPOLTokenAddress              = errors.New("missing POL token address")
 	ErrMissingGlobalExitRootManagerAddress = errors.New("missing global exit root manager address")
+	ErrInvalidBlocksChunkSize              = errors.New("blocks chunk size must be greater than 0")
+	ErrInvalidRollupManagerCreationBlock   = errors.New("rollup manager creation block must be greater than 0")
 )
 
 // Config holds the common configuration for the Aggkit services
@@ -38,6 +40,10 @@ type L1NetworkConfig struct {
 	POLTokenAddr gethcommon.Address `json:"polTokenAddress"`
 	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
 	GlobalExitRootManagerAddr gethcommon.Address `json:"polygonZkEVMGlobalExitRootAddress"`
+	// BlocksChunkSize defines the number of blocks to be queried in each chunk when filtering events
+	BlocksChunkSize uint64 `json:"blocksChunkSize"`
+	// RollupManagerCreationBlock is the block number when the RollupManager contract was deployed
+	RollupManagerCreationBlock uint64 `json:"rollupManagerCreationBlock"`
 }
 
 // Validate checks if the L1NetworkConfig is valid
@@ -56,6 +62,12 @@ func (c *L1NetworkConfig) Validate() error {
 	}
 	if c.GlobalExitRootManagerAddr == (gethcommon.Address{}) {
 		return ErrMissingGlobalExitRootManagerAddress
+	}
+	if c.BlocksChunkSize == 0 {
+		return ErrInvalidBlocksChunkSize
+	}
+	if c.RollupManagerCreationBlock == 0 {
+		return ErrInvalidRollupManagerCreationBlock
 	}
 	return nil
 }

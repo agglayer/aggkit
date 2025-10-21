@@ -38,20 +38,22 @@ const (
 )
 
 type bridgeWithMocks struct {
-	bridge       *BridgeService
-	l1InfoTree   *mocks.L1InfoTreeSyncer
-	injectedGERs *mocks.L2GERSyncer
-	bridgeL1     *mocks.Bridger
-	bridgeL2     *mocks.Bridger
+	bridge         *BridgeService
+	upgradeQuerier *mocks.AgglayerManagerUpgradeQuerier
+	l1InfoTree     *mocks.L1InfoTreeSyncer
+	injectedGERs   *mocks.L2GERSyncer
+	bridgeL1       *mocks.Bridger
+	bridgeL2       *mocks.Bridger
 }
 
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
-		l1InfoTree:   mocks.NewL1InfoTreeSyncer(t),
-		injectedGERs: mocks.NewL2GERSyncer(t),
-		bridgeL1:     mocks.NewBridger(t),
-		bridgeL2:     mocks.NewBridger(t),
+		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
+		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs:   mocks.NewL2GERSyncer(t),
+		bridgeL1:       mocks.NewBridger(t),
+		bridgeL2:       mocks.NewBridger(t),
 	}
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
@@ -61,7 +63,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	b.bridge = New(cfg, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
 	return b
 }
 
@@ -539,12 +541,17 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
 		for _, bridge := range expectedBridges {
-			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, mainnetNetworkID))
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, mainnetNetworkID, 0))
 		}
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
+
+		bridgeMocks.upgradeQuerier.EXPECT().
+			GetUpgradeBlock(mock.Anything, mock.Anything).
+			Return(uint64(0)).
+			Once()
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
@@ -599,6 +606,7 @@ func TestGetBridgesHandler(t *testing.T) {
 	})
 
 	t.Run("GetBridges for L2 network", func(t *testing.T) {
+		const etrogBlockUpgrade = uint64(100)
 		page := uint32(1)
 		pageSize := uint32(10)
 
@@ -609,7 +617,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				LeafType:           1,
 				OriginNetwork:      10,
 				OriginAddress:      common.HexToAddress("0x2"),
-				DestinationNetwork: 20,
+				DestinationNetwork: 1,
 				DestinationAddress: common.HexToAddress("0x3"),
 				Amount:             common.Big0,
 				DepositCount:       1,
@@ -620,13 +628,18 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeResponses := make([]*bridgetypes.BridgeResponse, 0, len(expectedBridges))
 		for _, bridge := range expectedBridges {
-			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, l2NetworkID))
+			bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, l2NetworkID, etrogBlockUpgrade))
 		}
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
+
+		bridgeMocks.upgradeQuerier.EXPECT().
+			GetUpgradeBlock(mock.Anything, mock.Anything).
+			Return(etrogBlockUpgrade).
+			Once()
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))

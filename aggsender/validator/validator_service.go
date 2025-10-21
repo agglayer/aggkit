@@ -114,6 +114,9 @@ func (s *ValidatorService) ValidateCertificate(
 			Message: "Error signing certificate: " + err.Error(),
 		}
 	}
+
+	s.log.Infof("Certificate validated and signed successfully: %s", cert.Brief())
+
 	return &v1.ValidateCertificateResponse{
 		Signature: &v1types.FixedBytes65{
 			Value: signature,

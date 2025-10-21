@@ -44,7 +44,7 @@ func NewAggProofPublicValuesQuery(
 }
 
 // GetAggregationProofPublicValuesData retrieves the AggregationProofPublicValue required for
-// the optimistic aggregation proof
+// the aggchain proof
 func (a *AggProofPublicValuesQuery) GetAggregationProofPublicValuesData(
 	lastProvenBlock, requestedEndBlock uint64,
 	l1InfoTreeLeafHash common.Hash) (*types.AggregationProofPublicValues, error) {
@@ -80,13 +80,14 @@ func (a *AggProofPublicValuesQuery) GetAggregationProofPublicValuesData(
 	}
 
 	return &types.AggregationProofPublicValues{
-		L1Head:           l1InfoTreeLeafHash,
-		L2PreRoot:        l2PreRoot,
-		ClaimRoot:        claimRoot,
-		L2BlockNumber:    requestedEndBlock,
-		RollupConfigHash: opConfig.RollupConfigHash,
-		MultiBlockVKey:   opConfig.RangeVkeyCommitment,
-		ProverAddress:    trustedSignerAddr,
+		L1Head:              l1InfoTreeLeafHash,
+		L2PreRoot:           l2PreRoot,
+		ClaimRoot:           claimRoot,
+		L2BlockNumber:       requestedEndBlock,
+		RollupConfigHash:    opConfig.RollupConfigHash,
+		MultiBlockVKey:      opConfig.RangeVkeyCommitment,
+		TrustedSigner:       trustedSignerAddr,
+		AggregationVKeyHash: opConfig.AggregationVkey,
 	}, nil
 }
 

@@ -50,7 +50,7 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 	assert.Equal(t, requestedEndBlock, result.L2BlockNumber)
 	assert.Equal(t, expectedRollupConfigHash[:], result.RollupConfigHash.Bytes())
 	assert.Equal(t, expectedMultiBlockVKey[:], result.MultiBlockVKey.Bytes())
-	assert.Equal(t, proverAddress, result.ProverAddress)
+	assert.Equal(t, proverAddress, result.TrustedSigner)
 }
 
 func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
@@ -162,5 +162,5 @@ func TestGetAggregationProofPublicValuesData_GetTrustedSequencerFromContract(t *
 	assert.Equal(t, requestedEndBlock, result.L2BlockNumber)
 	assert.Equal(t, expectedRollupConfigHash[:], result.RollupConfigHash.Bytes())
 	assert.Equal(t, expectedMultiBlockVKey[:], result.MultiBlockVKey.Bytes())
-	assert.Equal(t, expectedTrustedSequencer, result.ProverAddress)
+	assert.Equal(t, expectedTrustedSequencer, result.TrustedSigner)
 }

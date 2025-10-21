@@ -56,10 +56,6 @@ func NewCertificateQuerier(
 func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 	ctx context.Context,
 	cert *agglayertypes.CertificateHeader) (uint64, error) {
-	if cert.Status != agglayertypes.Settled {
-		return 0, fmt.Errorf("certificate %s is not settled", cert.String())
-	}
-
 	var (
 		lastBridgeExitBlock         uint64
 		lastImportedBridgeExitBlock uint64
@@ -67,35 +63,44 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 		err                         error
 	)
 
-	// 1. Get the latest settled bridge exit block number
-	// if NewLER is not the first empty LER, it means that the certificate
-	// or certificate before it had bridge exits, so we can use it to
-	// to determine the last bridge exit block
-	lastBridgeExitBlock, err = c.getBlockNumFromLER(ctx, cert.NewLocalExitRoot)
-	if err != nil {
-		return 0, fmt.Errorf("failed to resolve the bridge exit block number for NewLocalExitRoot %s: %w",
-			cert.NewLocalExitRoot.String(), err)
-	}
+	// even if previous certificate is nil (when this is the beginning of the network)
+	// we need to return a valid last settled block number
+	// because FEP networks can start from a non-zero block
+	if cert != nil {
+		if cert.Status != agglayertypes.Settled {
+			return 0, fmt.Errorf("certificate %s is not settled", cert.String())
+		}
 
-	// 2. Get the latest settled imported bridge exit block number
-	networkState, err := c.agglayerClient.GetNetworkInfo(ctx, cert.NetworkID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
-	}
-
-	settledIBE := networkState.SettledImportedBridgeExit
-	if settledIBE != nil {
-		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx,
-			settledIBE.GlobalIndex, settledIBE.BridgeExitHash)
+		// 1. Get the latest settled bridge exit block number
+		// if NewLER is not the first empty LER, it means that the certificate
+		// or certificate before it had bridge exits, so we can use it to
+		// to determine the last bridge exit block
+		lastBridgeExitBlock, err = c.getBlockNumFromLER(ctx, cert.NewLocalExitRoot)
 		if err != nil {
-			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
-				settledIBE.GlobalIndex.String(), err)
+			return 0, fmt.Errorf("failed to resolve the bridge exit block number for NewLocalExitRoot %s: %w",
+				cert.NewLocalExitRoot.String(), err)
+		}
+
+		// 2. Get the latest settled imported bridge exit block number
+		networkState, err := c.agglayerClient.GetNetworkInfo(ctx, cert.NetworkID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
+		}
+
+		settledIBE := networkState.SettledImportedBridgeExit
+		if settledIBE != nil {
+			lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx,
+				settledIBE.GlobalIndex, settledIBE.BridgeExitHash)
+			if err != nil {
+				return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
+					settledIBE.GlobalIndex.String(), err)
+			}
 		}
 	}
 
 	// 3. Get the last settled L2 block number from aggchain FEP contract
 	// if network is PP, this will return a 0
-	lastSettledL2BlockNum, err = c.aggchainFEPQuerier.GetLastSettledL2Block()
+	lastSettledL2BlockNum, err = c.getLastSettledFEPBlock()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get last settled L2 block: %w", err)
 	}
@@ -213,4 +218,20 @@ func (c *certificateQuerier) getBlockNumFromGlobalIndex(
 
 	// If no claim matches the bridge exit hash, return an error
 	return 0, fmt.Errorf("no claim found for bridge exit hash %s", bridgeExitHash.String())
+}
+
+// getLastSettledFEPBlock retrieves the last settled L2 block number from the aggchain FEP contract.
+func (c *certificateQuerier) getLastSettledFEPBlock() (uint64, error) {
+	lastSettledL2BlockNum, err := c.aggchainFEPQuerier.GetLastSettledL2Block()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last settled L2 block: %w", err)
+	}
+
+	if lastSettledL2BlockNum == 0 {
+		// if the last settled L2 block is zero, it means we do not have any settled blocks
+		// on the FEP contract, so we return the starting block of the FEP
+		return c.aggchainFEPQuerier.StartL2Block(), nil
+	}
+
+	return lastSettledL2BlockNum, nil
 }

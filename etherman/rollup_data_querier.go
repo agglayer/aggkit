@@ -1,6 +1,7 @@
 package etherman
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -16,6 +17,11 @@ import (
 var (
 	ErrInvalidRollupID = errors.New("invalid rollup id (0)")
 	ErrInvalidChainID  = errors.New("invalid chain id (0)")
+
+	populateAgglayerManagerInitializedMapFn = populateAgglayerManagerInitializedMap
+
+	// preEtrogDeployedRollups contains set of rollup ids that were created prior to Etrog hard fork
+	preEtrogDeployedRollups = map[uint32]struct{}{1: {}}
 )
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
@@ -23,6 +29,7 @@ type RollupManagerContract interface {
 	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
 		agglayermanager.AgglayerManagerRollupDataReturn, error)
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
+	FilterInitialized(opts *bind.FilterOpts) (*agglayermanager.AgglayermanagerInitializedIterator, error)
 }
 
 // mockery:ignore
@@ -32,31 +39,43 @@ type RollupManagerFactoryFunc func(rollupAddress common.Address,
 
 // RollupDataQuerier is a simple implementation of Etherman.
 type RollupDataQuerier struct {
-	rollupManagerSC RollupManagerContract
-	RollupID        uint32
+	rollupManagerSC          RollupManagerContract
+	rollupManagerUpgradedMap map[uint8]uint64
+	RollupID                 uint32
 }
 
 // NewRollupDataQuerier creates a new rollup data querier instance
 func NewRollupDataQuerier(
+	ctx context.Context,
 	l1Config config.L1NetworkConfig,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rollupManagerFactory RollupManagerFactoryFunc,
 ) (*RollupDataQuerier, error) {
-	rmContract, err := bindRollupManagerContract(l1Config.RollupManagerAddr, ethClient, rollupManagerFactory)
+	rollupManagerSC, err := bindRollupManagerContract(l1Config.RollupManagerAddr, ethClient, rollupManagerFactory)
 	if err != nil {
 		return nil, err
 	}
 
-	rollupID, err := fetchRollupID(rmContract, l1Config.RollupAddr)
+	rollupID, err := fetchRollupID(rollupManagerSC, l1Config.RollupAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
+	var rollupManagerUpgradedMap map[uint8]uint64
+	if _, exists := preEtrogDeployedRollups[rollupID]; exists {
+		rollupManagerUpgradedMap, err = populateAgglayerManagerInitializedMapFn(
+			ctx, rollupManagerSC, ethClient, l1Config.RollupManagerCreationBlock, l1Config.BlocksChunkSize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to populate agglayer manager initialized map: %w", err)
+		}
+	}
+
 	return &RollupDataQuerier{
-		rollupManagerSC: rmContract,
-		RollupID:        rollupID,
+		rollupManagerSC:          rollupManagerSC,
+		rollupManagerUpgradedMap: rollupManagerUpgradedMap,
+		RollupID:                 rollupID,
 	}, nil
 }
 
@@ -89,6 +108,54 @@ func fetchRollupID(rm RollupManagerContract, rollupAddr common.Address) (uint32,
 	return rollupID, nil
 }
 
+// populateAgglayerManagerInitializedMap populates a map of agglayer manager initialized events
+// with version as key and block number as value
+func populateAgglayerManagerInitializedMap(
+	ctx context.Context,
+	rollupManager RollupManagerContract,
+	client aggkittypes.BaseEthereumClienter,
+	startBlock, blocksChunkSize uint64,
+) (map[uint8]uint64, error) {
+	// Get the latest block number to define chunk boundaries
+	latestBlock, err := client.BlockNumber(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest block header: %w", err)
+	}
+
+	res := make(map[uint8]uint64)
+
+	for startBlock <= latestBlock {
+		end := min(startBlock+blocksChunkSize-1, latestBlock)
+
+		filterOpts := &bind.FilterOpts{
+			Start:   startBlock,
+			End:     &end,
+			Context: ctx,
+		}
+
+		it, err := rollupManager.FilterInitialized(filterOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to filter Initialized events (chunk %d-%d): %w", startBlock, end, err)
+		}
+
+		for it.Next() {
+			res[it.Event.Version] = it.Event.Raw.BlockNumber
+		}
+
+		if err := it.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close iterator (chunk %d-%d): %w", startBlock, end, err)
+		}
+
+		startBlock = end + 1
+	}
+
+	if len(res) == 0 {
+		return nil, errors.New("no Initialized events found")
+	}
+
+	return res, nil
+}
+
 // GetRollupChainID returns rollup chain id (L2 network)
 func (r *RollupDataQuerier) GetRollupChainID() (uint64, error) {
 	rollupData, err := r.GetRollupData(nil)
@@ -119,4 +186,10 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 	}
 
 	return rollupData, nil
+}
+
+// GetAgglayerManagerUpgradeBlock returns the rollup manager upgrade block for the given version ID.
+// If the version ID is not found, it returns false.
+func (r *RollupDataQuerier) GetUpgradeBlock(ctx context.Context, versionID uint8) uint64 {
+	return r.rollupManagerUpgradedMap[versionID]
 }
