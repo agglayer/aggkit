@@ -166,7 +166,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					MainnetExitRoot: common.HexToHash("0x2"),
 					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
-				Unclaims:                       nil,
+				Unclaims:                       map[*big.Int]*bridgesynctypes.Unclaim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -265,7 +265,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					MainnetExitRoot: common.HexToHash("0x2"),
 					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
-				Unclaims:                       nil,
+				Unclaims:                       map[*big.Int]*bridgesynctypes.Unclaim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
