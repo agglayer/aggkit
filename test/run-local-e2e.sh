@@ -173,28 +173,31 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats --jobs 5 ./tests/aggkit/bridge-e2e.bats || exit 1
-        bats  ./tests/op/optimistic-mode.bats || exit 1
-        bats  ./tests/aggkit/e2e-pp.bats || exit 1
-        bats  ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
-
+        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/op/optimistic-mode.bats || exit 1
+        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        bats ./tests/aggkit/internal-claims.bats || exit 1
+        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
-        bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
+        bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats || exit 1
         ;;
     single-l2-network-op-pessimistic)
-        bats ./tests/aggkit/bridge-e2e.bats \
-             ./tests/aggkit/e2e-pp.bats \
-             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-             ./tests/aggkit/bridge-e2e-nightly.bats \
-             ./tests/aggkit/internal-claims.bats \
-             ./tests/aggkit/claim-reetrancy.bats
+        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/op/optimistic-mode.bats || exit 1
+        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        bats ./tests/aggkit/internal-claims.bats || exit 1
+        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
-        bats ./tests/aggkit/bridge-e2e-2-chains.bats
+        bats ./tests/aggkit/bridge-e2e-2-chains.bats || exit 1
         ;;
     multi-l2-networks-3-chains-cdk-erigon-pessimistic)
-        bats ./tests/aggkit/bridge-e2e-3-chains.bats
+        bats ./tests/aggkit/bridge-e2e-3-chains.bats || exit 1
         ;;
     esac
     rm -f aggsender_find_imported_bridge combined.json rollup_params.json
