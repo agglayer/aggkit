@@ -1075,6 +1075,66 @@ func (_c *BaseEthereumClienter_SubscribeNewHead_Call) RunAndReturn(run func(cont
 	return _c
 }
 
+// SubscribeTransactionReceipts provides a mock function with given fields: ctx, q, ch
+func (_m *BaseEthereumClienter) SubscribeTransactionReceipts(ctx context.Context, q *ethereum.TransactionReceiptsQuery, ch chan<- []*coretypes.Receipt) (ethereum.Subscription, error) {
+	ret := _m.Called(ctx, q, ch)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubscribeTransactionReceipts")
+	}
+
+	var r0 ethereum.Subscription
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ethereum.TransactionReceiptsQuery, chan<- []*coretypes.Receipt) (ethereum.Subscription, error)); ok {
+		return rf(ctx, q, ch)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *ethereum.TransactionReceiptsQuery, chan<- []*coretypes.Receipt) ethereum.Subscription); ok {
+		r0 = rf(ctx, q, ch)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(ethereum.Subscription)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *ethereum.TransactionReceiptsQuery, chan<- []*coretypes.Receipt) error); ok {
+		r1 = rf(ctx, q, ch)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// BaseEthereumClienter_SubscribeTransactionReceipts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubscribeTransactionReceipts'
+type BaseEthereumClienter_SubscribeTransactionReceipts_Call struct {
+	*mock.Call
+}
+
+// SubscribeTransactionReceipts is a helper method to define mock.On call
+//   - ctx context.Context
+//   - q *ethereum.TransactionReceiptsQuery
+//   - ch chan<- []*coretypes.Receipt
+func (_e *BaseEthereumClienter_Expecter) SubscribeTransactionReceipts(ctx interface{}, q interface{}, ch interface{}) *BaseEthereumClienter_SubscribeTransactionReceipts_Call {
+	return &BaseEthereumClienter_SubscribeTransactionReceipts_Call{Call: _e.mock.On("SubscribeTransactionReceipts", ctx, q, ch)}
+}
+
+func (_c *BaseEthereumClienter_SubscribeTransactionReceipts_Call) Run(run func(ctx context.Context, q *ethereum.TransactionReceiptsQuery, ch chan<- []*coretypes.Receipt)) *BaseEthereumClienter_SubscribeTransactionReceipts_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*ethereum.TransactionReceiptsQuery), args[2].(chan<- []*coretypes.Receipt))
+	})
+	return _c
+}
+
+func (_c *BaseEthereumClienter_SubscribeTransactionReceipts_Call) Return(_a0 ethereum.Subscription, _a1 error) *BaseEthereumClienter_SubscribeTransactionReceipts_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *BaseEthereumClienter_SubscribeTransactionReceipts_Call) RunAndReturn(run func(context.Context, *ethereum.TransactionReceiptsQuery, chan<- []*coretypes.Receipt) (ethereum.Subscription, error)) *BaseEthereumClienter_SubscribeTransactionReceipts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SuggestGasPrice provides a mock function with given fields: ctx
 func (_m *BaseEthereumClienter) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	ret := _m.Called(ctx)
