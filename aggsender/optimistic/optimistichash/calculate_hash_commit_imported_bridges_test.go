@@ -86,7 +86,7 @@ func TestSetBridgeExitHash(t *testing.T) {
 
 	require.NotNil(t, data.bridgeExitHash, "BridgeExitHash should not be nil")
 
-	expectedBridgeExit := converters.ConvertBridgeExitFromClaim(claim)
+	expectedBridgeExit := converters.ConvertBridgeExitFromClaim(*claim)
 
 	expectedHash := expectedBridgeExit.Hash()
 	require.Equal(t, expectedHash, data.bridgeExitHash, "BridgeExitHash should match the expected hash")

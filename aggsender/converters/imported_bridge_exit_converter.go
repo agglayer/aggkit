@@ -19,23 +19,7 @@ import (
 // ImportedBridgeExit or an error if the global index cannot be decoded.
 func ConvertToImportedBridgeExitWithoutClaimData(
 	claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
-	leafType := agglayertypes.LeafTypeAsset
-	if claim.IsMessage {
-		leafType = agglayertypes.LeafTypeMessage
-	}
-	metaData := convertBridgeMetadata(claim.Metadata)
-
-	bridgeExit := &agglayertypes.BridgeExit{
-		LeafType: leafType,
-		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      claim.OriginNetwork,
-			OriginTokenAddress: claim.OriginAddress,
-		},
-		DestinationNetwork: claim.DestinationNetwork,
-		DestinationAddress: claim.DestinationAddress,
-		Amount:             claim.Amount,
-		Metadata:           metaData,
-	}
+	bridgeExit := ConvertBridgeExitFromClaim(claim)
 
 	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
 	if err != nil {
@@ -64,7 +48,7 @@ func ConvertToImportedBridgeExitWithoutClaimData(
 //
 // Returns:
 //   - *agglayertypes.BridgeExit: The constructed bridge exit object with core claim data.
-func ConvertBridgeExitFromClaim(claim *bridgesync.Claim) *agglayertypes.BridgeExit {
+func ConvertBridgeExitFromClaim(claim bridgesync.Claim) *agglayertypes.BridgeExit {
 	leafType := agglayertypes.LeafTypeAsset
 	if claim.IsMessage {
 		leafType = agglayertypes.LeafTypeMessage

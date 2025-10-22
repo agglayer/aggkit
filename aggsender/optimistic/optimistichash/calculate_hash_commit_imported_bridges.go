@@ -51,6 +51,6 @@ func (o *optimisticCommitImportedBrigesData) hash() common.Hash {
 }
 
 func (o *optimisticCommitImportedBrigeData) setBridgeExitHash(claim *bridgesync.Claim) {
-	be := converters.ConvertBridgeExitFromClaim(claim)
+	be := converters.ConvertBridgeExitFromClaim(*claim)
 	o.bridgeExitHash = be.Hash()
 }
