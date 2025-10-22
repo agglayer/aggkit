@@ -119,7 +119,6 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32,
 		FromAddress:        bridgetypes.Address(bridge.FromAddress.Hex()),
 		TxHash:             bridgetypes.Hash(bridge.TxHash.Hex()),
 		GlobalIndex:        globalIndex,
-		Calldata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Calldata)),
 		BlockTimestamp:     bridge.BlockTimestamp,
 		LeafType:           bridge.LeafType,
 		OriginNetwork:      bridge.OriginNetwork,
@@ -182,7 +181,6 @@ func NewTokenMappingResponse(tokenMapping *bridgesync.TokenMapping) *bridgetypes
 		WrappedTokenAddress: bridgetypes.Address(tokenMapping.WrappedTokenAddress.Hex()),
 		Metadata:            fmt.Sprintf("0x%s", hex.EncodeToString(tokenMapping.Metadata)),
 		IsNotMintable:       tokenMapping.IsNotMintable,
-		Calldata:            fmt.Sprintf("0x%s", hex.EncodeToString(tokenMapping.Calldata)),
 		Type:                tokenMapping.Type,
 	}
 }
@@ -199,7 +197,6 @@ func NewTokenMigrationResponse(
 		LegacyTokenAddress:  bridgetypes.Address(tokenMigration.LegacyTokenAddress.Hex()),
 		UpdatedTokenAddress: bridgetypes.Address(tokenMigration.UpdatedTokenAddress.Hex()),
 		Amount:              bridgetypes.BigIntString(tokenMigration.Amount.String()),
-		Calldata:            fmt.Sprintf("0x%s", hex.EncodeToString(tokenMigration.Calldata)),
 	}
 }
 

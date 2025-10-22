@@ -86,11 +86,11 @@ func buildAppender(
 		legacyBridge, client,
 		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
-		agglayerBridge, client, bridgeAddr, logger)
+		agglayerBridge)
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
-		bridgeSovereignChain, client, bridgeAddr, logger)
+		bridgeSovereignChain)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
-		bridgeSovereignChain, client, bridgeAddr, logger)
+		bridgeSovereignChain)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
 		bridgeSovereignChain)
 
@@ -121,7 +121,6 @@ func buildBridgeEventHandler(
 			BlockPos:           uint64(l.Index),
 			FromAddress:        foundCall.From,
 			TxHash:             l.TxHash,
-			Calldata:           foundCall.Input,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
 			OriginNetwork:      bridgeEvent.OriginNetwork,
@@ -224,21 +223,12 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 }
 
 // buildTokenMappingHandler creates a handler for the NewWrappedToken event log.
-//
-//nolint:dupl
 func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		tokenMappingEvent, err := contract.ParseNewWrappedToken(l)
 		if err != nil {
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
-		}
-
-		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
-		if err != nil {
-			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
@@ -250,7 +240,6 @@ func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
 			OriginTokenAddress:  tokenMappingEvent.OriginTokenAddress,
 			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
 			Metadata:            tokenMappingEvent.Metadata,
-			Calldata:            foundCall.Input,
 			Type:                bridgetypes.WrappedToken,
 		}})
 		return nil
@@ -258,21 +247,12 @@ func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
 }
 
 // buildSetSovereignTokenHandler creates a handler for the SetSovereignTokenAddress event log.
-//
-//nolint:dupl
 func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseSetSovereignTokenAddress(l)
 		if err != nil {
 			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
-		}
-
-		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
-		if err != nil {
-			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
@@ -284,7 +264,6 @@ func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			OriginTokenAddress:  event.OriginTokenAddress,
 			WrappedTokenAddress: event.SovereignTokenAddress,
 			IsNotMintable:       event.IsNotMintable,
-			Calldata:            foundCall.Input,
 			Type:                bridgetypes.SovereignToken,
 		}})
 		return nil
@@ -293,18 +272,11 @@ func buildSetSovereignTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 
 // buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
 func buildMigrateLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseMigrateLegacyToken(l)
 		if err != nil {
 			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
-		}
-
-		// Extract calldata in a single call (no need for txn_sender)
-		foundCall, _, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
-		if err != nil {
-			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
 		b.Events = append(b.Events, Event{LegacyTokenMigration: &LegacyTokenMigration{
@@ -316,7 +288,6 @@ func buildMigrateLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			LegacyTokenAddress:  event.LegacyTokenAddress,
 			UpdatedTokenAddress: event.UpdatedTokenAddress,
 			Amount:              event.Amount,
-			Calldata:            foundCall.Input,
 		}})
 		return nil
 	}
