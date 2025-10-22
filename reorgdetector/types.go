@@ -92,7 +92,7 @@ func (hl *headersList) get(num uint64) (*Header, error) {
 	return nil, db.ErrNotFound
 }
 
-// getSorted returns headers in sorted order
+// getSorted returns headers in ascending order of block number
 func (hl *headersList) getSorted() []Header {
 	hl.RLock()
 	sortedBlocks := make([]Header, 0, len(hl.headers))

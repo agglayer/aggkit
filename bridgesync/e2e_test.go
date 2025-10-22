@@ -133,13 +133,11 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	// Setup simulated L1 environment with bridge and GER contracts
 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
-	// TODO - Find a way for correct settings of finalized block for test to run
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Second * 1),
 		FinalizedBlock: aggkittypes.BlockNumberFinality{
-			Block:  aggkittypes.Finalized,
-			Offset: -5,
+			Block: aggkittypes.Finalized,
 		},
 	}, reorgdetector.L1)
 	require.NoError(t, err)

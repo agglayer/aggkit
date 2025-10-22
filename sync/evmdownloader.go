@@ -325,11 +325,17 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				continue
 			}
 			if blockNumber > latestSyncedBlock {
+				if d.reorgDetector != nil {
+					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, headerHash); err != nil {
+						d.log.Errorf("Failed to notify reorg detector: %v", err)
+					}
+				}
 				return blockNumber
 			}
 			// If blockNumber <= latestSyncedBlock, a reorg may have occurred
 			// Get the block header to verify the hash and notify the reorg detector
 			if blockNumber <= latestSyncedBlock {
+				d.log.Debugf("Getting tracked block for block number %d and latest synced block %d", blockNumber, latestSyncedBlock)
 				trackedBlock, err := d.reorgDetector.GetTrackedBlockByBlockNumber(d.reorgDetectorID, blockNumber)
 				if err != nil {
 					d.log.Errorf("Failed to get tracked block: %v", err)
