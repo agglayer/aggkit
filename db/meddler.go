@@ -16,6 +16,7 @@ import (
 // init registers tags to be used to read/write from SQL DBs using meddler
 func init() {
 	meddler.Default = meddler.SQLite
+	meddler.Debug = false
 	meddler.Register("bigint", BigIntMeddler{})
 	meddler.Register("merkleproof", MerkleProofMeddler{})
 	meddler.Register("hash", HashMeddler{})
