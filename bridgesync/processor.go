@@ -66,7 +66,6 @@ type Bridge struct {
 	BlockPos           uint64         `meddler:"block_pos"`
 	FromAddress        common.Address `meddler:"from_address,address"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	Calldata           []byte         `meddler:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`
@@ -273,7 +272,6 @@ type TokenMapping struct {
 	WrappedTokenAddress common.Address               `meddler:"wrapped_token_address,address"`
 	Metadata            []byte                       `meddler:"metadata"`
 	IsNotMintable       bool                         `meddler:"is_not_mintable"`
-	Calldata            []byte                       `meddler:"calldata"`
 	Type                bridgetypes.TokenMappingType `meddler:"token_type"`
 }
 
@@ -288,7 +286,6 @@ type LegacyTokenMigration struct {
 	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address"`
 	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address"`
 	Amount              *big.Int       `meddler:"amount,bigint"`
-	Calldata            []byte         `meddler:"calldata"`
 }
 
 // RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
