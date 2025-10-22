@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -68,6 +68,7 @@ func TestNewCommitImportedBrigesData(t *testing.T) {
 		require.NotNil(t, data.bridges[i].bridgeExitHash, "BridgeExitHash should not be nil")
 	}
 }
+
 func TestSetBridgeExitHash(t *testing.T) {
 	claim := &bridgesync.Claim{
 		GlobalIndex:        big.NewInt(12345),
@@ -85,22 +86,7 @@ func TestSetBridgeExitHash(t *testing.T) {
 
 	require.NotNil(t, data.bridgeExitHash, "BridgeExitHash should not be nil")
 
-	leafType := agglayertypes.LeafTypeAsset
-	if claim.IsMessage {
-		leafType = agglayertypes.LeafTypeMessage
-	}
-
-	expectedBridgeExit := agglayertypes.BridgeExit{
-		LeafType: leafType,
-		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      claim.OriginNetwork,
-			OriginTokenAddress: claim.OriginAddress,
-		},
-		DestinationNetwork: claim.DestinationNetwork,
-		DestinationAddress: claim.DestinationAddress,
-		Amount:             claim.Amount,
-		Metadata:           claim.Metadata,
-	}
+	expectedBridgeExit := converters.ConvertBridgeExitFromClaim(claim)
 
 	expectedHash := expectedBridgeExit.Hash()
 	require.Equal(t, expectedHash, data.bridgeExitHash, "BridgeExitHash should match the expected hash")

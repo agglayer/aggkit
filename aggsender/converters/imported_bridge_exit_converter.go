@@ -52,6 +52,38 @@ func ConvertToImportedBridgeExitWithoutClaimData(
 	}, nil
 }
 
+// ConvertBridgeExitFromClaim converts a bridgesync.Claim into an agglayertypes.BridgeExit.
+// It extracts the core bridge exit information from the claim, including the leaf type
+// (asset or message), token information, destination network and address, transfer amount,
+// and metadata. This is a simplified conversion that does not include global index data
+// or claim-specific proofs, making it suitable for scenarios where only the bridge exit
+// data is needed without the full imported bridge exit context.
+//
+// Parameters:
+//   - claim: bridgesync.Claim containing the claim data to convert.
+//
+// Returns:
+//   - *agglayertypes.BridgeExit: The constructed bridge exit object with core claim data.
+func ConvertBridgeExitFromClaim(claim *bridgesync.Claim) *agglayertypes.BridgeExit {
+	leafType := agglayertypes.LeafTypeAsset
+	if claim.IsMessage {
+		leafType = agglayertypes.LeafTypeMessage
+	}
+	metaData := convertBridgeMetadata(claim.Metadata)
+
+	return &agglayertypes.BridgeExit{
+		LeafType: leafType,
+		TokenInfo: &agglayertypes.TokenInfo{
+			OriginNetwork:      claim.OriginNetwork,
+			OriginTokenAddress: claim.OriginAddress,
+		},
+		DestinationNetwork: claim.DestinationNetwork,
+		DestinationAddress: claim.DestinationAddress,
+		Amount:             claim.Amount,
+		Metadata:           metaData,
+	}
+}
+
 // ConvertToImportedBridgeExit converts a bridgesync.Claim into an agglayertypes.ImportedBridgeExit.
 // It determines the leaf type based on the claim, constructs the bridge exit data, decodes the global index,
 // and retrieves the necessary Merkle proofs for the claim. Depending on whether the claim is from mainnet or rollup,

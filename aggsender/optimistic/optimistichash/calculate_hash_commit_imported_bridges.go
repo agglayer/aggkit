@@ -3,7 +3,7 @@ package optimistichash
 import (
 	"math/big"
 
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
@@ -51,21 +51,6 @@ func (o *optimisticCommitImportedBrigesData) hash() common.Hash {
 }
 
 func (o *optimisticCommitImportedBrigeData) setBridgeExitHash(claim *bridgesync.Claim) {
-	leafType := agglayertypes.LeafTypeAsset
-	if claim.IsMessage {
-		leafType = agglayertypes.LeafTypeMessage
-	}
-
-	be := agglayertypes.BridgeExit{
-		LeafType: leafType,
-		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      claim.OriginNetwork,
-			OriginTokenAddress: claim.OriginAddress,
-		},
-		DestinationNetwork: claim.DestinationNetwork,
-		DestinationAddress: claim.DestinationAddress,
-		Amount:             claim.Amount,
-		Metadata:           claim.Metadata,
-	}
+	be := converters.ConvertBridgeExitFromClaim(claim)
 	o.bridgeExitHash = be.Hash()
 }
