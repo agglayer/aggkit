@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var _ types.CertificateValidateAndSigner = (*RemoteValidator)(nil)
@@ -76,6 +77,14 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
 ) ([]byte, error) {
+
+	certificateHash, err := HashCertificateToSign(certificate)
+	if err != nil {
+		return nil, fmt.Errorf("internal error getting certificate hash: %w", err)
+	}
+
+	// Request remote signature
+
 	previousCertificate, err := getPreviousCertificate(v.storage, certificate.Height, certificate.NetworkID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", certificate.Height-1, err)
@@ -94,6 +103,23 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error validating certificate on aggsender validator service: %w", err)
+	}
+
+	// Validate received signature
+
+	if signature[crypto.RecoveryIDOffset] == 27 || signature[crypto.RecoveryIDOffset] == 28 {
+		// Signature could 27, 28 instead 0,1 for legacy reasons, normalize
+		signature[crypto.RecoveryIDOffset] -= 27
+	}
+
+	recoveredPublicKey, err := crypto.SigToPub(certificateHash[:], signature)
+	if err != nil {
+		return nil, fmt.Errorf("error validating remote validator signature (1): %w", err)
+	}
+
+	recoveredAddress := crypto.PubkeyToAddress(*recoveredPublicKey)
+	if v.address != recoveredAddress {
+		return nil, fmt.Errorf("error validating remote validator signature (2): %w", err)
 	}
 
 	return signature, nil
