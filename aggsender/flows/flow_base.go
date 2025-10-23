@@ -115,7 +115,7 @@ func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
 	if previousToBlock >= lastL2BlockSynced {
-		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
+		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
 		return types.BlockRangeZero, 0, errNoNewBlocks
 	}
