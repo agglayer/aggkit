@@ -19,23 +19,7 @@ import (
 // ImportedBridgeExit or an error if the global index cannot be decoded.
 func ConvertToImportedBridgeExitWithoutClaimData(
 	claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
-	leafType := agglayertypes.LeafTypeAsset
-	if claim.IsMessage {
-		leafType = agglayertypes.LeafTypeMessage
-	}
-	metaData := convertBridgeMetadata(claim.Metadata)
-
-	bridgeExit := &agglayertypes.BridgeExit{
-		LeafType: leafType,
-		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      claim.OriginNetwork,
-			OriginTokenAddress: claim.OriginAddress,
-		},
-		DestinationNetwork: claim.DestinationNetwork,
-		DestinationAddress: claim.DestinationAddress,
-		Amount:             claim.Amount,
-		Metadata:           metaData,
-	}
+	bridgeExit := ConvertBridgeExitFromClaim(claim)
 
 	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
 	if err != nil {
@@ -50,6 +34,38 @@ func ConvertToImportedBridgeExitWithoutClaimData(
 			LeafIndex:   leafIndex,
 		},
 	}, nil
+}
+
+// ConvertBridgeExitFromClaim converts a bridgesync.Claim into an agglayertypes.BridgeExit.
+// It extracts the core bridge exit information from the claim, including the leaf type
+// (asset or message), token information, destination network and address, transfer amount,
+// and metadata. This is a simplified conversion that does not include global index data
+// or claim-specific proofs, making it suitable for scenarios where only the bridge exit
+// data is needed without the full imported bridge exit context.
+//
+// Parameters:
+//   - claim: bridgesync.Claim containing the claim data to convert.
+//
+// Returns:
+//   - *agglayertypes.BridgeExit: The constructed bridge exit object with core claim data.
+func ConvertBridgeExitFromClaim(claim bridgesync.Claim) *agglayertypes.BridgeExit {
+	leafType := agglayertypes.LeafTypeAsset
+	if claim.IsMessage {
+		leafType = agglayertypes.LeafTypeMessage
+	}
+	metaData := convertBridgeMetadata(claim.Metadata)
+
+	return &agglayertypes.BridgeExit{
+		LeafType: leafType,
+		TokenInfo: &agglayertypes.TokenInfo{
+			OriginNetwork:      claim.OriginNetwork,
+			OriginTokenAddress: claim.OriginAddress,
+		},
+		DestinationNetwork: claim.DestinationNetwork,
+		DestinationAddress: claim.DestinationAddress,
+		Amount:             claim.Amount,
+		Metadata:           metaData,
+	}
 }
 
 // ConvertToImportedBridgeExit converts a bridgesync.Claim into an agglayertypes.ImportedBridgeExit.
