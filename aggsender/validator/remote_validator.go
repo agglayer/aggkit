@@ -77,6 +77,7 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
 ) ([]byte, error) {
+	// Get the hash of the certificate, fail fast if something is wrong in it
 
 	certificateHash, err := HashCertificateToSign(certificate)
 	if err != nil {
@@ -106,20 +107,17 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	}
 
 	// Validate received signature
-
-	if signature[crypto.RecoveryIDOffset] == 27 || signature[crypto.RecoveryIDOffset] == 28 {
-		// Signature could 27, 28 instead 0,1 for legacy reasons, normalize
-		signature[crypto.RecoveryIDOffset] -= 27
-	}
+	// We do not support ethereum legacy v+27 signatures
 
 	recoveredPublicKey, err := crypto.SigToPub(certificateHash[:], signature)
 	if err != nil {
-		return nil, fmt.Errorf("error validating remote validator signature (1): %w", err)
+		return nil, fmt.Errorf("error validating remote validator signature: %w", err)
 	}
 
 	recoveredAddress := crypto.PubkeyToAddress(*recoveredPublicKey)
 	if v.address != recoveredAddress {
-		return nil, fmt.Errorf("error validating remote validator signature (2): %w", err)
+		return nil, fmt.Errorf("error validating remote validator signature, mismatch expected:%v current:%v",
+			v.address, recoveredAddress)
 	}
 
 	return signature, nil
