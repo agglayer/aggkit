@@ -84,7 +84,6 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 		return nil, fmt.Errorf("internal error getting certificate hash: %w", err)
 	}
 
-	// Request remote signature
 
 	previousCertificate, err := getPreviousCertificate(v.storage, certificate.Height, certificate.NetworkID)
 	if err != nil {
