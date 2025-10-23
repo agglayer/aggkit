@@ -374,14 +374,14 @@ func createAggSender(
 }
 
 func createAggoracle(
-	ethermanClient *etherman.RollupDataQuerier,
+	rollupDataQuerier *etherman.RollupDataQuerier,
 	cfg config.Config,
-	l1Client,
+	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer aggoracle.L1InfoTreeSyncer,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	l2ChainID, err := ethermanClient.GetRollupChainID()
+	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
 		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
 	}
@@ -526,10 +526,10 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		cfg.L1InfoTreeSync,
-		aggkittypes.FinalizedBlock,
+		aggkittypes.SafeBlock,
 		l1Client,
 		l1infotreesync.FlagNone,
-		aggkittypes.FinalizedBlock,
+		aggkittypes.SafeBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
