@@ -223,8 +223,6 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 }
 
 // buildTokenMappingHandler creates a handler for the NewWrappedToken event log.
-//
-//nolint:dupl
 func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
@@ -249,8 +247,6 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 }
 
 // buildSetSovereignTokenHandler creates a handler for the SetSovereignTokenAddress event log.
-//
-//nolint:dupl
 func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
