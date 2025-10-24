@@ -131,6 +131,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	blocktime := time.Second * 6
 
 	// Setup simulated L1 environment with bridge and GER contracts
+	//nolint:dogsled
 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
@@ -304,6 +305,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 // 	blocktime := time.Second * 3
 
 // 	// Setup simulated L1 environment
+//  //nolint:dogsled
 // 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
 // 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
@@ -496,6 +498,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 // 	blocktime := time.Second * 2
 
 // 	// Setup simulated L1 environment
+//  //nolint:dogsled
 // 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
 // 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
@@ -647,6 +650,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 // 	blocktime := time.Millisecond * 100 // Very fast block time for stress testing
 
 // 	// Setup simulated L1 environment
+//  //nolint:dogsled
 // 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
 // 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
@@ -791,6 +795,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 // 	blocktime := time.Second * 2
 
 // 	// Setup simulated L1 environment
+//  //nolint:dogsled
 // 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
 // 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
