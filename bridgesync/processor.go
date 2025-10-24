@@ -824,7 +824,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	// TODO - need to make sure this change is correct and does not affect the existing code
 	query := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
 	if _, err := tx.Exec(query, block.Num, block.Hash.String()); err != nil {
 		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
