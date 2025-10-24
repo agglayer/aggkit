@@ -192,7 +192,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
         bats ./tests/aggkit/internal-claims.bats || exit 1
         bats ./tests/aggkit/claim-reetrancy.bats || exit 1
-        bats ./tests/aggkit/aggsender-committee-updates.bat || exit 1
+        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e-2-chains.bats
