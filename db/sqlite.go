@@ -28,11 +28,6 @@ func NewSQLiteDB(dbPath string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO - check if this is needed
-	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
 	return db, nil
 }
 
