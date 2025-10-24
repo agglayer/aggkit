@@ -21,7 +21,7 @@ env:
 
 jobs:
   build:
-    runs-on: amd-runner-2204
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'arm-runner-2204' || 'amd-runner-2204' }}
     strategy:
       fail-fast: false
       matrix:
@@ -91,9 +91,6 @@ jobs:
         run: |
           IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}-dev", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
