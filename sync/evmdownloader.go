@@ -342,7 +342,6 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 					return latestSyncedBlock
 				}
 				if trackedBlock == nil {
-					d.log.Debugf("Tracked block not found for block number %d", blockNumber)
 					continue
 				}
 
