@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"context"
+	"database/sql"
 	"path"
 	"testing"
 
@@ -10,13 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigration0001(t *testing.T) {
-	dbPath := path.Join(t.TempDir(), "reorgdetectorTest0001.sqlite")
+// setupTestDB creates a test database and returns the database connection
+func setupTestDB(t *testing.T, dbName string) *sql.DB {
+	t.Helper()
+
+	dbPath := path.Join(t.TempDir(), dbName)
 
 	err := RunMigrations(dbPath)
 	require.NoError(t, err)
 	database, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
+
+	return database
+}
+
+func TestMigration0001(t *testing.T) {
+	database := setupTestDB(t, "reorgdetectorTest0001.sqlite")
 	defer database.Close()
 
 	ctx := context.Background()
@@ -45,12 +55,7 @@ func TestMigration0001(t *testing.T) {
 }
 
 func TestMigration0002(t *testing.T) {
-	dbPath := path.Join(t.TempDir(), "reorgdetectorTest0002.sqlite")
-
-	err := RunMigrations(dbPath)
-	require.NoError(t, err)
-	database, err := db.NewSQLiteDB(dbPath)
-	require.NoError(t, err)
+	database := setupTestDB(t, "reorgdetectorTest0002.sqlite")
 	defer database.Close()
 
 	ctx := context.Background()

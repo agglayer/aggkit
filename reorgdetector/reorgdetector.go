@@ -117,6 +117,11 @@ func (rd *ReorgDetector) GetFinalizedBlockType() aggkittypes.BlockNumberFinality
 	return rd.finalizedBlockType
 }
 
+// GetDB returns the database connection for testing purposes
+func (rd *ReorgDetector) GetDB() *sql.DB {
+	return rd.db
+}
+
 // AddBlockToTrack adds a block to the tracked list for a subscriber
 func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uint64, hash common.Hash) error {
 	// Skip if the given block has already been stored

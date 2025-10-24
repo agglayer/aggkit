@@ -621,7 +621,7 @@ func WaitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer Processore
 		lastBlockNum, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)
 		RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
-		time.Sleep(time.Second / 2)
+		time.Sleep(time.Millisecond * 500)
 		lastBlockNum2, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)
 		if lastBlockNum == lastBlockNum2 {

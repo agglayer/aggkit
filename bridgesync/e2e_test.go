@@ -136,9 +136,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Second * 1),
-		FinalizedBlock: aggkittypes.BlockNumberFinality{
-			Block: aggkittypes.Finalized,
-		},
+		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
@@ -297,3 +295,642 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 	t.Log("✅ Test completed successfully - syncer handled reorg correctly")
 }
+
+// // TestMultipleConsecutiveReorgs tests multiple consecutive reorgs and validates reorg count
+// func TestMultipleConsecutiveReorgs(t *testing.T) {
+// 	ctx := context.Background()
+// 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestMultipleReorgs_sync.sqlite")
+// 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestMultipleReorgs_reorg.sqlite")
+// 	blocktime := time.Second * 3
+
+// 	// Setup simulated L1 environment
+// 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+
+// 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+// 		DBPath:              dbPathReorg,
+// 		CheckReorgsInterval: cfgtypes.NewDuration(time.Second * 1),
+// 		FinalizedBlock:      aggkittypes.FinalizedBlock,
+// 	}, reorgdetector.L1)
+// 	require.NoError(t, err)
+// 	require.NoError(t, rd.Start(ctx))
+
+// 	// Create bridge syncer with reorg detector
+// 	const originNetwork = uint32(1)
+// 	bridgeSyncCfg := bridgesync.Config{
+// 		DBPath:                             dbPathSyncer,
+// 		BridgeAddr:                         bridgeAddr,
+// 		BlockFinality:                      aggkittypes.LatestBlock,
+// 		SyncBlockChunkSize:                 10,
+// 		InitialBlockNum:                    0,
+// 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 2),
+// 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Second * 1),
+// 		MaxRetryAttemptsAfterError:         10,
+// 		RequireStorageContentCompatibility: true,
+// 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
+// 	}
+
+// 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+// 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, syncer)
+
+// 	// Start the syncer
+// 	go syncer.Start(ctx)
+
+// 	// Helper function to get reorg count from database
+// 	getReorgCount := func() int {
+// 		var count int
+// 		err := rd.GetDB().QueryRow("SELECT COUNT(*) FROM reorg_event").Scan(&count)
+// 		require.NoError(t, err)
+// 		return count
+// 	}
+
+// 	// Helper function to create bridge transaction
+// 	createBridgeTx := func(amount *big.Int, destAddr common.Address, txName string) common.Hash {
+// 		auth.Value = amount
+// 		tx, err := bridgeContract.BridgeAsset(
+// 			auth,
+// 			uint32(2), // destination network
+// 			destAddr,
+// 			amount,
+// 			common.Address{}, // native token
+// 			true,             // isForced
+// 			[]byte{},
+// 		)
+// 		require.NoError(t, err)
+// 		auth.Value = nil
+// 		helpers.CommitBlocks(t, client, 1, blocktime)
+// 		t.Logf("  Created %s: %s", txName, tx.Hash().Hex())
+// 		return tx.Hash()
+// 	}
+
+// 	// Helper function to create fork and validate reorg count
+// 	createForkAndValidate := func(forkBlockNum uint64, expectedReorgCount int, description string) {
+// 		t.Logf("Creating fork at block %d - %s", forkBlockNum, description)
+
+// 		// Get block hash to fork from
+// 		forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlockNum)))
+// 		require.NoError(t, err)
+// 		forkBlockHash := forkBlockHeader.Hash()
+
+// 		// Create fork
+// 		err = client.Fork(forkBlockHash)
+// 		require.NoError(t, err)
+// 		helpers.CommitBlocks(t, client, 2, blocktime)
+
+// 		// Validate reorg count
+// 		actualReorgCount := getReorgCount()
+// 		t.Logf("  Expected reorg count: %d, Actual: %d", expectedReorgCount, actualReorgCount)
+// 		require.Equal(t, expectedReorgCount, actualReorgCount, "Reorg count mismatch for %s", description)
+// 	}
+
+// 	// Step 1: Initial setup and first bridge
+// 	t.Log("Step 1: Initial setup and first bridge")
+// 	helpers.CommitBlocks(t, client, 3, blocktime)
+// 	_ = createBridgeTx(big.NewInt(1000000000000000000), common.HexToAddress("0x1111111111111111111111111111111111111111"), "Bridge #1")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Record fork point for first reorg
+// 	forkBlock1, err := client.Client().BlockNumber(ctx)
+// 	require.NoError(t, err)
+
+// 	// Step 2: Second bridge
+// 	t.Log("Step 2: Second bridge")
+// 	_ = createBridgeTx(big.NewInt(2000000000000000000), common.HexToAddress("0x2222222222222222222222222222222222222222"), "Bridge #2")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Step 3: Third bridge
+// 	t.Log("Step 3: Third bridge")
+// 	_ = createBridgeTx(big.NewInt(3000000000000000000), common.HexToAddress("0x3333333333333333333333333333333333333333"), "Bridge #3")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// len of bridges should be 3
+// 	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+// 	require.NoError(t, err)
+// 	bridges, err := syncer.GetBridges(ctx, 0, lastProcessed)
+// 	require.NoError(t, err)
+// 	require.Equal(t, 3, len(bridges))
+
+// 	// Step 4: First reorg - fork from block after first bridge
+// 	t.Log("Step 4: First reorg")
+// 	createForkAndValidate(forkBlock1, 1, "First reorg - should have 1 reorg")
+
+// 	// Create different transaction after first fork and let it settle
+// 	_ = createBridgeTx(big.NewInt(1500000000000000000), common.HexToAddress("0x4444444444444444444444444444444444444444"), "Bridge #1 Fork")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Let some blocks pass to establish the new chain
+// 	helpers.CommitBlocks(t, client, 3, blocktime)
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// len of bridges should be 4
+// 	lastProcessed, err = syncer.GetLastProcessedBlock(ctx)
+// 	require.NoError(t, err)
+// 	bridges, err = syncer.GetBridges(ctx, 0, lastProcessed)
+// 	require.NoError(t, err)
+// 	require.Equal(t, 4, len(bridges))
+
+// 	// // Get the new fork point for second reorg
+// 	// forkBlock2New, err := client.Client().BlockNumber(ctx)
+// 	// require.NoError(t, err)
+// 	// forkBlock2New = forkBlock2New - 1 // Fork from previous block
+
+// 	// // Step 5: Second reorg - fork from the new chain
+// 	// t.Log("Step 5: Second reorg")
+// 	// createForkAndValidate(forkBlock2New, 2, "Second reorg - should have 2 reorgs")
+
+// 	// // Create different transaction after second fork and let it settle
+// 	// _ = createBridgeTx(big.NewInt(2500000000000000000), common.HexToAddress("0x5555555555555555555555555555555555555555"), "Bridge #2 Fork")
+// 	// helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// // Let some blocks pass to establish the new chain
+// 	// helpers.CommitBlocks(t, client, 3, time.Second*2)
+// 	// helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// // Get the new fork point for third reorg
+// 	// forkBlock3New, err := client.Client().BlockNumber(ctx)
+// 	// require.NoError(t, err)
+// 	// forkBlock3New = forkBlock3New - 1 // Fork from previous block
+
+// 	// // Step 6: Third reorg - fork from the new chain
+// 	// t.Log("Step 6: Third reorg")
+// 	// createForkAndValidate(forkBlock3New, 3, "Third reorg - should have 3 reorgs")
+
+// 	// // Create different transaction after third fork and let it settle
+// 	// _ = createBridgeTx(big.NewInt(3500000000000000000), common.HexToAddress("0x6666666666666666666666666666666666666666"), "Bridge #3 Fork")
+// 	// helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// // Let some blocks pass to establish the new chain
+// 	// helpers.CommitBlocks(t, client, 3, time.Second*2)
+// 	// helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// // Get the new fork point for fourth reorg
+// 	// forkBlock4New, err := client.Client().BlockNumber(ctx)
+// 	// require.NoError(t, err)
+// 	// forkBlock4New = forkBlock4New - 1 // Fork from previous block
+
+// 	// // Step 7: Fourth reorg - fork from the new chain
+// 	// t.Log("Step 7: Fourth reorg")
+// 	// createForkAndValidate(forkBlock4New, 4, "Fourth reorg - should have 4 reorgs")
+
+// 	// // Final validation
+// 	// finalReorgCount := getReorgCount()
+// 	// t.Logf("Final reorg count: %d", finalReorgCount)
+// 	// require.Equal(t, 4, finalReorgCount, "Should have exactly 4 reorgs recorded")
+
+// 	// // Verify bridges are correctly handled
+// 	// lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+// 	// require.NoError(t, err)
+// 	// bridges, err := syncer.GetBridges(ctx, 0, lastProcessed)
+// 	// require.NoError(t, err)
+// 	// t.Logf("Final bridge count: %d", len(bridges))
+
+// 	// t.Log("✅ Multiple consecutive reorgs test completed successfully")
+// }
+
+// // TestReorgWithSameHashEdgeCase tests reorg detection when blocks have same hash
+// func TestReorgWithSameHashEdgeCase(t *testing.T) {
+// 	ctx := context.Background()
+// 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_sync.sqlite")
+// 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_reorg.sqlite")
+// 	blocktime := time.Second * 2
+
+// 	// Setup simulated L1 environment
+// 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+
+// 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+// 		DBPath:              dbPathReorg,
+// 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
+// 		FinalizedBlock:      aggkittypes.FinalizedBlock,
+// 	}, reorgdetector.L1)
+// 	require.NoError(t, err)
+// 	require.NoError(t, rd.Start(ctx))
+
+// 	// Create bridge syncer with reorg detector
+// 	const originNetwork = uint32(1)
+// 	bridgeSyncCfg := bridgesync.Config{
+// 		DBPath:                             dbPathSyncer,
+// 		BridgeAddr:                         bridgeAddr,
+// 		BlockFinality:                      aggkittypes.LatestBlock,
+// 		SyncBlockChunkSize:                 10,
+// 		InitialBlockNum:                    0,
+// 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 1),
+// 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 500),
+// 		MaxRetryAttemptsAfterError:         10,
+// 		RequireStorageContentCompatibility: true,
+// 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
+// 	}
+
+// 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+// 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, syncer)
+
+// 	// Start the syncer
+// 	go syncer.Start(ctx)
+
+// 	// Helper function to get reorg count
+// 	getReorgCount := func() int {
+// 		var count int
+// 		err := rd.GetDB().QueryRow("SELECT COUNT(*) FROM reorg_event").Scan(&count)
+// 		require.NoError(t, err)
+// 		return count
+// 	}
+
+// 	// Helper function to create identical transactions (same parameters)
+// 	createIdenticalBridgeTx := func(amount *big.Int, destAddr common.Address, txName string) common.Hash {
+// 		auth.Value = amount
+// 		tx, err := bridgeContract.BridgeAsset(
+// 			auth,
+// 			uint32(2), // destination network
+// 			destAddr,
+// 			amount,
+// 			common.Address{}, // native token
+// 			true,             // isForced
+// 			[]byte{},
+// 		)
+// 		require.NoError(t, err)
+// 		auth.Value = nil
+// 		helpers.CommitBlocks(t, client, 1, blocktime)
+// 		t.Logf("  Created %s: %s", txName, tx.Hash().Hex())
+// 		return tx.Hash()
+// 	}
+
+// 	// Step 1: Create initial blocks and bridge
+// 	t.Log("Step 1: Initial setup")
+// 	helpers.CommitBlocks(t, client, 5, blocktime)
+
+// 	// Create first bridge with specific parameters
+// 	amount := big.NewInt(1000000000000000000)
+// 	destAddr := common.HexToAddress("0x1111111111111111111111111111111111111111")
+// 	_ = createIdenticalBridgeTx(amount, destAddr, "Bridge #1")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Record the block hash and number for potential same-hash scenario
+// 	blockNum1, err := client.Client().BlockNumber(ctx)
+// 	require.NoError(t, err)
+// 	blockHeader1, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(blockNum1)))
+// 	require.NoError(t, err)
+// 	originalHash := blockHeader1.Hash()
+// 	t.Logf("  Original block %d hash: %s", blockNum1, originalHash.Hex())
+
+// 	// Step 2: Create fork point
+// 	t.Log("Step 2: Creating fork point")
+// 	forkBlockNum := blockNum1
+// 	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlockNum)))
+// 	require.NoError(t, err)
+// 	forkBlockHash := forkBlockHeader.Hash()
+
+// 	// Step 3: Create fork and try to create identical transaction
+// 	t.Log("Step 3: Creating fork and identical transaction")
+// 	err = client.Fork(forkBlockHash)
+// 	require.NoError(t, err)
+
+// 	// Create identical bridge transaction (same parameters as before)
+// 	_ = createIdenticalBridgeTx(amount, destAddr, "Bridge #2 (Identical)")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Check if we have a reorg event (even with same transaction parameters)
+// 	time.Sleep(time.Second * 3) // Allow time for reorg detection
+// 	reorgCount := getReorgCount()
+// 	t.Logf("  Reorg count after identical transaction: %d", reorgCount)
+
+// 	// Step 4: Create another fork with different transaction to ensure hash change
+// 	t.Log("Step 4: Creating fork with different transaction to ensure hash change")
+// 	currentBlock, err := client.Client().BlockNumber(ctx)
+// 	require.NoError(t, err)
+// 	currentBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(currentBlock)))
+// 	require.NoError(t, err)
+
+// 	err = client.Fork(currentBlockHeader.Hash())
+// 	require.NoError(t, err)
+
+// 	// Create different transaction to ensure block hash changes
+// 	auth.Value = big.NewInt(2000000000000000000) // Different amount
+// 	_, err = bridgeContract.BridgeAsset(
+// 		auth,
+// 		uint32(2),
+// 		common.HexToAddress("0x2222222222222222222222222222222222222222"), // Different address
+// 		big.NewInt(2000000000000000000),
+// 		common.Address{},
+// 		true,
+// 		[]byte{},
+// 	)
+// 	require.NoError(t, err)
+// 	auth.Value = nil
+// 	helpers.CommitBlocks(t, client, 1, blocktime)
+// 	t.Logf("  Created different bridge tx")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Final validation
+// 	finalReorgCount := getReorgCount()
+// 	t.Logf("Final reorg count: %d", finalReorgCount)
+
+// 	// We expect exactly 1 reorg (the second fork with different transaction)
+// 	require.Equal(t, 1, finalReorgCount, "Should have exactly 1 reorg recorded")
+
+// 	// Verify bridges are correctly handled
+// 	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+// 	require.NoError(t, err)
+// 	bridges, err := syncer.GetBridges(ctx, 0, lastProcessed)
+// 	require.NoError(t, err)
+// 	t.Logf("Final bridge count: %d", len(bridges))
+
+// 	t.Log("✅ Same hash reorg edge case test completed successfully")
+// }
+
+// // TestStressReorgs tests rapid reorgs with high transaction volume
+// func TestStressReorgs(t *testing.T) {
+// 	ctx := context.Background()
+// 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestStressReorgs_sync.sqlite")
+// 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestStressReorgs_reorg.sqlite")
+// 	blocktime := time.Millisecond * 100 // Very fast block time for stress testing
+
+// 	// Setup simulated L1 environment
+// 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+
+// 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+// 		DBPath:              dbPathReorg,
+// 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100), // Very frequent checks
+// 		FinalizedBlock:      aggkittypes.FinalizedBlock,
+// 	}, reorgdetector.L1)
+// 	require.NoError(t, err)
+// 	require.NoError(t, rd.Start(ctx))
+
+// 	// Create bridge syncer with reorg detector
+// 	const originNetwork = uint32(1)
+// 	bridgeSyncCfg := bridgesync.Config{
+// 		DBPath:                             dbPathSyncer,
+// 		BridgeAddr:                         bridgeAddr,
+// 		BlockFinality:                      aggkittypes.LatestBlock,
+// 		SyncBlockChunkSize:                 5, // Smaller chunk size for faster processing
+// 		InitialBlockNum:                    0,
+// 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 200),
+// 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
+// 		MaxRetryAttemptsAfterError:         20, // More retries for stress test
+// 		RequireStorageContentCompatibility: true,
+// 		DBQueryTimeout:                     cfgtypes.NewDuration(10 * time.Second),
+// 	}
+
+// 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+// 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, syncer)
+
+// 	// Start the syncer
+// 	go syncer.Start(ctx)
+
+// 	// Helper function to get reorg count
+// 	getReorgCount := func() int {
+// 		var count int
+// 		err := rd.GetDB().QueryRow("SELECT COUNT(*) FROM reorg_event").Scan(&count)
+// 		require.NoError(t, err)
+// 		return count
+// 	}
+
+// 	// Helper function to create rapid bridge transactions
+// 	createRapidBridgeTx := func(amount *big.Int, destAddr common.Address, txName string) common.Hash {
+// 		auth.Value = amount
+// 		tx, err := bridgeContract.BridgeAsset(
+// 			auth,
+// 			uint32(2),
+// 			destAddr,
+// 			amount,
+// 			common.Address{},
+// 			true,
+// 			[]byte{},
+// 		)
+// 		require.NoError(t, err)
+// 		auth.Value = nil
+// 		helpers.CommitBlocks(t, client, 1, blocktime)
+// 		return tx.Hash()
+// 	}
+
+// 	// Step 1: Create initial blocks
+// 	t.Log("Step 1: Creating initial blocks")
+// 	helpers.CommitBlocks(t, client, 3, blocktime)
+
+// 	// Step 2: Create multiple bridges rapidly
+// 	t.Log("Step 2: Creating multiple bridges rapidly")
+// 	var forkPoints []uint64
+// 	for i := 0; i < 10; i++ {
+// 		amount := big.NewInt(int64((i + 1) * 1000000000000000000))
+// 		destAddr := common.HexToAddress(fmt.Sprintf("0x%040d", i+1))
+// 		tx := createRapidBridgeTx(amount, destAddr, fmt.Sprintf("Bridge #%d", i+1))
+// 		t.Logf("  Created Bridge #%d: %s", i+1, tx.Hex())
+
+// 		// Record fork points every 2 transactions
+// 		if i%2 == 1 {
+// 			blockNum, err := client.Client().BlockNumber(ctx)
+// 			require.NoError(t, err)
+// 			forkPoints = append(forkPoints, blockNum)
+// 		}
+
+// 		// Small delay to allow processing
+// 		time.Sleep(time.Millisecond * 50)
+// 	}
+
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
+// 	// Step 3: Create rapid reorgs
+// 	t.Log("Step 3: Creating rapid reorgs")
+// 	expectedReorgCount := 0
+
+// 	for i, forkPoint := range forkPoints {
+// 		t.Logf("  Creating reorg #%d from block %d", i+1, forkPoint)
+
+// 		// Get block hash to fork from
+// 		forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkPoint)))
+// 		require.NoError(t, err)
+// 		forkBlockHash := forkBlockHeader.Hash()
+
+// 		// Create fork
+// 		err = client.Fork(forkBlockHash)
+// 		require.NoError(t, err)
+// 		helpers.CommitBlocks(t, client, 1, blocktime)
+
+// 		// Create different transaction after fork
+// 		amount := big.NewInt(int64((i + 1) * 500000000000000000))
+// 		destAddr := common.HexToAddress(fmt.Sprintf("0x%040d", (i+1)*100))
+// 		tx := createRapidBridgeTx(amount, destAddr, fmt.Sprintf("Fork Bridge #%d", i+1))
+// 		t.Logf("    Created Fork Bridge #%d: %s", i+1, tx.Hex())
+
+// 		expectedReorgCount++
+
+// 		// Small delay between reorgs
+// 		time.Sleep(time.Millisecond * 100)
+// 	}
+
+// 	// Step 4: Wait for all reorgs to be detected
+// 	t.Log("Step 4: Waiting for reorg detection")
+// 	time.Sleep(time.Second * 3)
+
+// 	// Step 5: Validate reorg count
+// 	finalReorgCount := getReorgCount()
+// 	t.Logf("Expected reorg count: %d, Actual: %d", expectedReorgCount, finalReorgCount)
+// 	require.Equal(t, expectedReorgCount, finalReorgCount, "Reorg count should match expected")
+
+// 	// Step 6: Verify final state
+// 	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+// 	require.NoError(t, err)
+// 	bridges, err := syncer.GetBridges(ctx, 0, lastProcessed)
+// 	require.NoError(t, err)
+// 	t.Logf("Final bridge count: %d", len(bridges))
+
+// 	// Verify we have bridges from both original chain and fork chains
+// 	require.Greater(t, len(bridges), 0, "Should have bridges after stress test")
+
+// 	t.Log("✅ Stress reorg test completed successfully")
+// }
+
+// // TestDeepReorgChain tests a deep reorg chain with multiple levels
+// func TestDeepReorgChain(t *testing.T) {
+// 	ctx := context.Background()
+// 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestDeepReorg_sync.sqlite")
+// 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestDeepReorg_reorg.sqlite")
+// 	blocktime := time.Second * 2
+
+// 	// Setup simulated L1 environment
+// 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+
+// 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+// 		DBPath:              dbPathReorg,
+// 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
+// 		FinalizedBlock:      aggkittypes.FinalizedBlock,
+// 	}, reorgdetector.L1)
+// 	require.NoError(t, err)
+// 	require.NoError(t, rd.Start(ctx))
+
+// 	// Create bridge syncer with reorg detector
+// 	const originNetwork = uint32(1)
+// 	bridgeSyncCfg := bridgesync.Config{
+// 		DBPath:                             dbPathSyncer,
+// 		BridgeAddr:                         bridgeAddr,
+// 		BlockFinality:                      aggkittypes.LatestBlock,
+// 		SyncBlockChunkSize:                 10,
+// 		InitialBlockNum:                    0,
+// 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 1),
+// 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 500),
+// 		MaxRetryAttemptsAfterError:         10,
+// 		RequireStorageContentCompatibility: true,
+// 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
+// 	}
+
+// 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+// 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+// 	require.NoError(t, err)
+// 	require.NotNil(t, syncer)
+
+// 	// Start the syncer
+// 	go syncer.Start(ctx)
+
+// 	// Helper function to get reorg count
+// 	getReorgCount := func() int {
+// 		var count int
+// 		err := rd.GetDB().QueryRow("SELECT COUNT(*) FROM reorg_event").Scan(&count)
+// 		require.NoError(t, err)
+// 		return count
+// 	}
+
+// 	// Helper function to create bridge transaction
+// 	createBridgeTx := func(amount *big.Int, destAddr common.Address, txName string) common.Hash {
+// 		auth.Value = amount
+// 		tx, err := bridgeContract.BridgeAsset(
+// 			auth,
+// 			uint32(2),
+// 			destAddr,
+// 			amount,
+// 			common.Address{},
+// 			true,
+// 			[]byte{},
+// 		)
+// 		require.NoError(t, err)
+// 		auth.Value = nil
+// 		helpers.CommitBlocks(t, client, 1, blocktime)
+// 		t.Logf("  Created %s: %s", txName, tx.Hash().Hex())
+// 		return tx.Hash()
+// 	}
+
+// 	// Step 1: Create initial chain with multiple bridges
+// 	t.Log("Step 1: Creating initial chain")
+// 	helpers.CommitBlocks(t, client, 3, blocktime)
+
+// 	// Create initial bridges
+// 	var forkPoints []uint64
+// 	for i := 0; i < 5; i++ {
+// 		amount := big.NewInt(int64((i + 1) * 1000000000000000000))
+// 		destAddr := common.HexToAddress(fmt.Sprintf("0x%040d", i+1))
+// 		tx := createBridgeTx(amount, destAddr, fmt.Sprintf("Initial Bridge #%d", i+1))
+// 		t.Logf("  Created Initial Bridge #%d: %s", i+1, tx.Hex())
+
+// 		// Record fork points
+// 		blockNum, err := client.Client().BlockNumber(ctx)
+// 		require.NoError(t, err)
+// 		forkPoints = append(forkPoints, blockNum)
+
+// 		helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+// 	}
+
+// 	// Step 2: Create deep reorg chain
+// 	t.Log("Step 2: Creating deep reorg chain")
+// 	expectedReorgCount := 0
+
+// 	// First level reorg
+// 	t.Log("  Creating first level reorg")
+// 	forkBlock1 := forkPoints[1]
+// 	forkBlockHeader1, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlock1)))
+// 	require.NoError(t, err)
+// 	err = client.Fork(forkBlockHeader1.Hash())
+// 	require.NoError(t, err)
+
+// 	// Create different transaction after first fork
+// 	_ = createBridgeTx(big.NewInt(1500000000000000000), common.HexToAddress("0x1111111111111111111111111111111111111111"), "First Fork Bridge")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+// 	expectedReorgCount++
+
+// 	// Second level reorg (fork from the fork)
+// 	t.Log("  Creating second level reorg")
+// 	forkBlock2, err := client.Client().BlockNumber(ctx)
+// 	require.NoError(t, err)
+// 	forkBlockHeader2, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlock2)))
+// 	require.NoError(t, err)
+// 	err = client.Fork(forkBlockHeader2.Hash())
+// 	require.NoError(t, err)
+
+// 	// Create different transaction after second fork
+// 	_ = createBridgeTx(big.NewInt(2500000000000000000), common.HexToAddress("0x2222222222222222222222222222222222222222"), "Second Fork Bridge")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+// 	expectedReorgCount++
+
+// 	// Third level reorg (fork from the second fork)
+// 	t.Log("  Creating third level reorg")
+// 	forkBlock3, err := client.Client().BlockNumber(ctx)
+// 	require.NoError(t, err)
+// 	forkBlockHeader3, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlock3)))
+// 	require.NoError(t, err)
+// 	err = client.Fork(forkBlockHeader3.Hash())
+// 	require.NoError(t, err)
+
+// 	// Create different transaction after third fork
+// 	_ = createBridgeTx(big.NewInt(3500000000000000000), common.HexToAddress("0x3333333333333333333333333333333333333333"), "Third Fork Bridge")
+// 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+// 	expectedReorgCount++
+
+// 	// Step 3: Validate reorg count
+// 	time.Sleep(time.Second * 3) // Allow more time for reorg detection
+// 	finalReorgCount := getReorgCount()
+// 	t.Logf("Expected reorg count: %d, Actual: %d", expectedReorgCount, finalReorgCount)
+// 	require.Equal(t, expectedReorgCount, finalReorgCount, "Deep reorg chain should have correct reorg count")
+
+// 	// Step 4: Verify final state
+// 	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+// 	require.NoError(t, err)
+// 	bridges, err := syncer.GetBridges(ctx, 0, lastProcessed)
+// 	require.NoError(t, err)
+// 	t.Logf("Final bridge count: %d", len(bridges))
+
+// 	// Verify we have bridges from the final fork chain
+// 	require.Greater(t, len(bridges), 0, "Should have bridges after deep reorg chain")
+
+// 	t.Log("✅ Deep reorg chain test completed successfully")
+// }

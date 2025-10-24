@@ -121,7 +121,10 @@ func (b BlockNumberFinality) IsLatest() bool {
 }
 
 // BlockNumber gets the safe block number and block header from RPC
-func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereum.ChainReader) (uint64, *types.Header, error) {
+func (b *BlockNumberFinality) BlockNumber(
+	ctx context.Context,
+	requester ethereum.ChainReader,
+) (uint64, *types.Header, error) {
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
 		log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", b.String(), err.Error())
