@@ -38,7 +38,6 @@ func (rd *ReorgDetector) notifySubscriber(id string, startingBlock Header) {
 	rd.subscriptionsLock.RUnlock()
 
 	if ok {
-		rd.log.Infof("Reorg detected for subscriber %s at block %d", id, startingBlock.Num)
 		sub.ReorgedBlock <- startingBlock.Num
 		<-sub.ReorgProcessed
 	}

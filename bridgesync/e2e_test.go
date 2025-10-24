@@ -171,7 +171,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 	// Step 1: Commit some blocks
 	t.Log("Step 1: Committing initial blocks")
-	helpers.CommitBlocks(t, client, 10, blocktime)
+	helpers.CommitBlocks(t, client, 5, blocktime)
 
 	// Step 2: Bridge asset and commit block
 	t.Log("Step 2: Bridge asset #1 and commit block")

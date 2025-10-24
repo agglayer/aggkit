@@ -41,6 +41,7 @@ type ReorgDetector struct {
 	subscriptionsLock sync.RWMutex
 	subscriptions     map[string]*Subscription
 	headersCache      map[uint64]*types.Header
+	headersCacheLock  sync.Mutex
 
 	log *log.Logger
 }
@@ -163,8 +164,7 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 		return fmt.Errorf("failed to get the header %d. Err: %w", blockNumber, err)
 	}
 	var (
-		headersCacheLock sync.Mutex
-		errGroup         errgroup.Group
+		errGroup errgroup.Group
 	)
 
 	subscriberIDs := rd.getSubscriberIDs()
@@ -189,16 +189,16 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 			for _, hdr := range headers {
 				// Get the actual header from the network or from the cache
 				var err error
-				headersCacheLock.Lock()
+				rd.headersCacheLock.Lock()
 				currentHeader, ok := rd.headersCache[hdr.Num]
 				if !ok || currentHeader == nil {
 					if currentHeader, err = rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(hdr.Num)); err != nil {
-						headersCacheLock.Unlock()
+						rd.headersCacheLock.Unlock()
 						return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
 					}
 					rd.headersCache[hdr.Num] = currentHeader
 				}
-				headersCacheLock.Unlock()
+				rd.headersCacheLock.Unlock()
 
 				// Check if the block hash matches with the actual block hash
 				if hdr.Hash == currentHeader.Hash() {
@@ -237,6 +237,13 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 				}
 				// Remove the reorged block and all the following blocks from memory
 				hdrs.removeRange(event.FromBlock, event.ToBlock)
+
+				// clean the headers cache
+				rd.headersCacheLock.Lock()
+				for i := event.FromBlock; i <= event.ToBlock; i++ {
+					delete(rd.headersCache, i)
+				}
+				rd.headersCacheLock.Unlock()
 
 				break
 			}
