@@ -184,8 +184,6 @@ func Test_processor_GetL1InfoTreeMerkleProof(t *testing.T) {
 	}
 
 	for _, tt := range testTable {
-		tt := tt
-
 		t.Run(tt.name, func(t *testing.T) {
 			p := tt.getProcessor(t)
 			proof, root, err := p.GetL1InfoTreeMerkleProof(context.Background(), tt.idx)

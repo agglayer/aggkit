@@ -226,6 +226,31 @@ func (p *processor) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum 
 	return info, nil
 }
 
+// GetLatestL1InfoGER returns the most recent Global Exit Root (GER) from the L1 Info tree leaves
+func (p *processor) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error) {
+	query := `SELECT global_exit_root FROM l1info_leaf ORDER BY block_num DESC, block_pos DESC LIMIT 1;`
+
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return common.Hash{}, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			p.log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+
+	var ger common.Hash
+	if err := meddler.QueryRow(tx, &ger, query); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return common.Hash{}, db.ErrNotFound
+		}
+		return common.Hash{}, err
+	}
+
+	return ger, nil
+}
+
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree
 func (p *processor) GetInfoByIndex(ctx context.Context, index uint32) (*L1InfoTreeLeaf, error) {
 	return p.getInfoByIndexWithTx(p.db, index)

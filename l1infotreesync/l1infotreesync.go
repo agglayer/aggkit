@@ -192,7 +192,7 @@ func (s *L1InfoTreeSync) GetLatestL1InfoLeafUntilBlock(ctx context.Context, bloc
 }
 
 // GetLatestL1InfoLeaf returns the most recent L1InfoTreeLeaf that has been indexed
-// It can return next errors:
+// It can return the following errors:
 // - ErrInconsistentState
 // - ErrNotFound
 func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error) {
@@ -201,6 +201,18 @@ func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLe
 	}
 	leaf, err := s.processor.GetLatestL1InfoLeafUntilBlock(ctx, nil)
 	return leaf, translateError(err)
+}
+
+// GetLatestL1InfoGER returns the most recent Global Exit Root that has been indexed
+// It can return following errors:
+// - ErrInconsistentState
+// - ErrNotFound
+func (s *L1InfoTreeSync) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error) {
+	if s.processor.isHalted() {
+		return common.Hash{}, sync.ErrInconsistentState
+	}
+	ger, err := s.processor.GetLatestL1InfoGER(ctx)
+	return ger, translateError(err)
 }
 
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree

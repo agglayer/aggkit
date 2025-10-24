@@ -13,7 +13,7 @@ import (
 
 // L1InfoTreeSyncer is an interface that defines the methods required to interact with the L1 info tree syncer
 type L1InfoTreeSyncer interface {
-	GetLatestL1InfoLeaf(ctx context.Context) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetLatestL1InfoGER(ctx context.Context) (common.Hash, error)
 }
 
 // ChainSender is an interface that defines the methods required to send Global Exit Roots (GERs) to the chain
@@ -71,14 +71,12 @@ func (a *AggOracle) Start(ctx context.Context) {
 func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	a.logger.Debugf("checking for new GERs...")
 	// Fetch the latest GER
-	latestL1InfoLeaf, err := a.l1Info.GetLatestL1InfoLeaf(ctx)
+	latestGER, err := a.l1Info.GetLatestL1InfoGER(ctx)
 	if err != nil {
 		return err
 	}
 
-	a.logger.Debugf("latest l1 info leaf retrieved: %s", latestL1InfoLeaf.String())
-
-	latestGER := latestL1InfoLeaf.GlobalExitRoot
+	a.logger.Debugf("latest l1 info leaf retrieved: %s", latestGER.String())
 
 	go func() {
 		err := a.chainSender.ProcessGER(ctx, latestGER)
