@@ -84,7 +84,6 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 		return nil, fmt.Errorf("internal error getting certificate hash: %w", err)
 	}
 
-
 	previousCertificate, err := getPreviousCertificate(v.storage, certificate.Height, certificate.NetworkID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", certificate.Height-1, err)
