@@ -271,15 +271,24 @@ Note that the fourth argument corresponds to the e2e repo path. In case you woul
 7. Optionally you can run the E2E tests as well, by running the following command and providing the real e2e repo path:
 `./test/run-local-e2e.sh single-l2-network-op-pessimistic - path_to_e2e_repo`
 
-## Prometheus Endpoint
+## Prometheus Metrics
 
 If enabled in the configuration, Aggsender exposes the following Prometheus metrics:
 
-- Total number of certificates sent
-- Number of sending errors
-- Number of successful sends
-- Certificate build time
-- Prover execution time
+| **Metric Name**                               | **Type**                                   | **Description**                                           |
+| --------------------------------------------- | ------------------------------------------ | --------------------------------------------------------- |
+| `aggsender_number_of_certificates_sent`       | Gauge                                      | Number of certificates sent                               |
+| `aggsender_number_of_certificates_in_error`   | Gauge                                      | Number of certificates in error                           |
+| `aggsender_number_of_sending_retries`         | Gauge                                      | Number of sending retries                                 |
+| `aggsender_number_of_sending_settled`         | Gauge                                      | Number of certificates settled                            |
+| `aggsender_number_of_prover_errors`           | Gauge                                      | Number of prover errors                                   |
+| `aggsender_multisig_threshold_not_reached`    | Gauge                                      | Number of times multisig threshold was not reached        |
+| `aggsender_validator_errors_total`            | Counter (labeled by `aggsender_validator`) | Total number of errors returned by a validator over time  |
+| `aggsender_validator_invalid_signature_total` | Counter (labeled by `aggsender_validator`) | Number of times a validator returned an invalid signature |
+| `aggsender_validate_time`                     | Histogram                                  | Time taken to validate a certificate (seconds)            |
+| `aggsender_prover_time`                       | Histogram                                  | Time taken by the prover (seconds)                        |
+| `aggsender_certificate_settlement_time`       | Histogram                                  | Time taken to settle a certificate (seconds)              |
+| `aggsender_certificate_build_time`            | Histogram                                  | Time taken to build a certificate (seconds)               |
 
 ### Configuration Example
 
