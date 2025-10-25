@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/agglayer/aggkit/aggoracle/metrics"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
@@ -52,6 +53,8 @@ func New(
 
 // Start starts the AggOracle process that checks for new GERs and injects them if not already injected
 func (a *AggOracle) Start(ctx context.Context) {
+	// Register metrics
+	metrics.Register()
 	for {
 		if err := a.processLatestGER(ctx); err != nil {
 			a.handleGERProcessingError(err)
