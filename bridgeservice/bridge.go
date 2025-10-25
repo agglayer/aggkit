@@ -206,7 +206,6 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/swagger", func(ctx *gin.Context) {
 			ctx.Redirect(http.StatusFound, BridgeV1Prefix+"/swagger/index.html")
 		})
-
 	}
 }
 
