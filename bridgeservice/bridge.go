@@ -25,6 +25,7 @@ import (
 
 	"github.com/agglayer/aggkit"
 	_ "github.com/agglayer/aggkit/bridgeservice/docs"
+	"github.com/agglayer/aggkit/bridgeservice/metrics"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -34,14 +35,11 @@ import (
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
 	ginswagger "github.com/swaggo/gin-swagger"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
 )
 
 const (
 	// BridgeV1Prefix is the url prefix for the bridge service
 	BridgeV1Prefix = "/bridge/v1"
-	meterName      = "github.com/agglayer/aggkit/bridgeservice"
 
 	networkIDParam       = "network_id"
 	networkIDsParam      = "network_ids"
@@ -88,7 +86,6 @@ type Config struct {
 type BridgeService struct {
 	logger                      *log.Logger
 	address                     string
-	meter                       metric.Meter
 	readTimeout                 time.Duration
 	writeTimeout                time.Duration
 	networkID                   uint32
@@ -110,7 +107,6 @@ func New(
 	bridgeL1 Bridger,
 	bridgeL2 Bridger,
 ) *BridgeService {
-	meter := otel.Meter(meterName)
 	cfg.Logger.Infof("starting bridge service (network id=%d, address=%s)", cfg.NetworkID, cfg.Address)
 
 	// The GIN_MODE environment variable controls the mode of the Gin framework.
@@ -133,7 +129,6 @@ func New(
 	b := &BridgeService{
 		logger:                      cfg.Logger,
 		address:                     cfg.Address,
-		meter:                       meter,
 		readTimeout:                 cfg.ReadTimeout,
 		writeTimeout:                cfg.WriteTimeout,
 		networkID:                   cfg.NetworkID,
@@ -216,6 +211,9 @@ func (b *BridgeService) registerRoutes() {
 
 // Start starts the HTTP bridge service
 func (b *BridgeService) Start(ctx context.Context) {
+	// Register metrics
+	metrics.Register()
+
 	srv := &http.Server{
 		Addr:         b.address,
 		Handler:      b.router,
@@ -316,7 +314,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_bridges")
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.BridgesReqs)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -447,7 +445,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		}
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_claims")
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.ClaimsReqs)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -538,7 +536,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	originTokenAddress := c.Query(originTokenAddrParam)
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_token_mappings")
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.TokenMappingsReqs)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -610,7 +608,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_legacy_token_migrations")
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.LegacyTokenMigrationReqs)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -691,11 +689,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("l1_info_tree_index_for_bridge")
-	if merr != nil {
-		b.logger.Warnf("failed to create l1_info_tree_index_for_bridge counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+	metrics.IncL1InfoTreeIndexReqs()
 
 	var l1InfoTreeIndex uint32
 
@@ -758,11 +752,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("injected_info_after_index")
-	if merr != nil {
-		b.logger.Warnf("failed to create injected_info_after_index counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+	metrics.IncInjectedInfoAfterIndexReqs()
 
 	var l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
 
@@ -825,11 +815,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("claim_proof")
-	if merr != nil {
-		b.logger.Warnf("failed to create claim_proof counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+	metrics.IncClaimProofReqs()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -940,11 +926,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("last_reorg_event")
-	if merr != nil {
-		b.logger.Warnf("Failed to create last_reorg_event counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+	metrics.IncLastReorgEventsReqs()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -1054,11 +1036,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("get_sync_status")
-	if merr != nil {
-		b.logger.Warnf("failed to create get_sync_status counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+	metrics.IncSyncStatusReqs()
 
 	var syncStatus types.SyncStatus
 
@@ -1261,11 +1239,7 @@ func (b *BridgeService) setupRequest(
 	}
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
-	counter, merr := b.meter.Int64Counter(counterName)
-	if merr != nil {
-		b.logger.Warnf("failed to create %s counter: %s", counterName, merr)
-	}
-	counter.Add(ctx, 1)
+	metrics.IncrementCounter(counterName)
 
 	return ctx, cancel, pageNumber, pageSize, nil
 }
