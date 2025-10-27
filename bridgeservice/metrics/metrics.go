@@ -5,6 +5,23 @@ import (
 	prometheusclient "github.com/prometheus/client_golang/prometheus"
 )
 
+type PrometheusClienter interface {
+	CounterInc(name string)
+	RegisterCounters(opts ...prometheusclient.CounterOpts)
+}
+
+var promClient PrometheusClienter = prometheusWrapper{}
+
+type prometheusWrapper struct{}
+
+func (p prometheusWrapper) CounterInc(name string) {
+	prometheus.CounterInc(name)
+}
+
+func (p prometheusWrapper) RegisterCounters(opts ...prometheusclient.CounterOpts) {
+	prometheus.RegisterCounters(opts...)
+}
+
 const (
 	prefix                     = "bridge_"
 	L1InfoTreeIndexReqs        = prefix + "l1_info_tree_index_for_bridge"
@@ -71,7 +88,7 @@ func Register() {
 			Help: "[BRIDGE] number of get legacy token migrations requests",
 		},
 	}
-	prometheus.RegisterCounters(counters...)
+	promClient.RegisterCounters(counters...)
 }
 
 func IncrementCounter(counterName string) {
@@ -81,37 +98,37 @@ func IncrementCounter(counterName string) {
 }
 
 func IncL1InfoTreeIndexReqs() {
-	prometheus.CounterInc(L1InfoTreeIndexReqs)
+	promClient.CounterInc(L1InfoTreeIndexReqs)
 }
 
 func IncInjectedInfoAfterIndexReqs() {
-	prometheus.CounterInc(InjectedInfoAfterIndexReqs)
+	promClient.CounterInc(InjectedInfoAfterIndexReqs)
 }
 
 func IncClaimProofReqs() {
-	prometheus.CounterInc(ClaimProofReqs)
+	promClient.CounterInc(ClaimProofReqs)
 }
 
 func IncLastReorgEventsReqs() {
-	prometheus.CounterInc(LastReorgEventReqs)
+	promClient.CounterInc(LastReorgEventReqs)
 }
 
 func IncSyncStatusReqs() {
-	prometheus.CounterInc(SyncStatusReqs)
+	promClient.CounterInc(SyncStatusReqs)
 }
 
 func IncBridgesReqs() {
-	prometheus.CounterInc(BridgesReqs)
+	promClient.CounterInc(BridgesReqs)
 }
 
 func IncClaimsReqs() {
-	prometheus.CounterInc(ClaimsReqs)
+	promClient.CounterInc(ClaimsReqs)
 }
 
 func IncTokenMappingReqs() {
-	prometheus.CounterInc(TokenMappingsReqs)
+	promClient.CounterInc(TokenMappingsReqs)
 }
 
 func IncLegacyTokenMigrationReqs() {
-	prometheus.CounterInc(LegacyTokenMigrationReqs)
+	promClient.CounterInc(LegacyTokenMigrationReqs)
 }
