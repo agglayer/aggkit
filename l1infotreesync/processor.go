@@ -234,21 +234,23 @@ func (p *processor) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error)
 	if err != nil {
 		return common.Hash{}, err
 	}
+	// ensure tx rolled back (no commit since read-only)
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			p.log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
 
-	var ger common.Hash
-	if err := meddler.QueryRow(tx, &ger, query); err != nil {
+	var gerHex string
+	row := tx.QueryRowContext(ctx, query)
+	if err := row.Scan(&gerHex); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return common.Hash{}, db.ErrNotFound
 		}
-		return common.Hash{}, err
+		return common.Hash{}, fmt.Errorf("querying latest GER: %w", err)
 	}
 
-	return ger, nil
+	return common.HexToHash(gerHex), nil
 }
 
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree
