@@ -854,7 +854,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Bridge != nil {
-			fmt.Printf("adding leaf to the exit tree: %d, block num: %d, block pos: %d\n", event.Bridge.DepositCount, block.Num, event.Bridge.BlockPos)
 			if err = p.exitTree.AddLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
 				Index: event.Bridge.DepositCount,
 				Hash:  event.Bridge.Hash(),

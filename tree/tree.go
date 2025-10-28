@@ -254,7 +254,6 @@ func (t *Tree) Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error {
 		fmt.Sprintf(`DELETE FROM %s WHERE block_num >= $1`, t.rootTable),
 		firstReorgedBlock,
 	)
-	// TODO - Delete from rht table
 	return err
 }
 

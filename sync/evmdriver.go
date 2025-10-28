@@ -182,10 +182,11 @@ reset:
 		return
 	case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
 		d.log.Warnf("Reorg detected from block %d", firstReorgedBlock)
+		cancel()
+		<-blockProcessingDone // wait for block processing to exit cleanly
 		if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
 			d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
 		}
-		cancel()
 		goto reset
 	}
 }
@@ -224,7 +225,7 @@ func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) e
 		d.reorgSub.ReorgProcessed <- true
 	}()
 
-	return d.withRetry(ctx, "reorg", func() error {
+	return d.withRetry(ctx, "handleReorg", func() error {
 		return d.processor.Reorg(ctx, firstReorgedBlock)
 	})
 }
