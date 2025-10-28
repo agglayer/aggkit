@@ -11,7 +11,9 @@
     "agg_sender_validator_total_number": 3,
     "verbosity": "debug",
     "agglayer_image": "ghcr.io/agglayer/agglayer:0.4.0-rc.18",
-    "additional_services": [],
+    "additional_services": [
+      "bridge_spammer"
+    ],
     "binary_name": "aggkit",
     "aggkit_components": "aggsender,aggoracle",
     "zkevm_rollup_chain_id": 20201,

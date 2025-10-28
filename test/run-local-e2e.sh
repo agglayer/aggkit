@@ -177,21 +177,22 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
         bats --jobs 5 ./tests/aggkit/bridge-e2e.bats || exit 1 
-        bats  ./tests/op/optimistic-mode.bats || exit 1
-        bats  ./tests/aggkit/e2e-pp.bats || exit 1
-        bats  ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
-
+        bats ./tests/op/optimistic-mode.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
         ;;
     single-l2-network-op-pessimistic)
-        bats ./tests/aggkit/bridge-e2e.bats \
-             ./tests/aggkit/e2e-pp.bats \
-             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-             ./tests/aggkit/bridge-e2e-nightly.bats \
-             ./tests/aggkit/internal-claims.bats \
-             ./tests/aggkit/claim-reetrancy.bats
+        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        bats ./tests/aggkit/internal-claims.bats || exit 1
+        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
+        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e-2-chains.bats
