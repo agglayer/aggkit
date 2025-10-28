@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 
@@ -329,6 +330,7 @@ type tracerCfg struct {
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
 func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error), logger *logger.Logger,
 ) (*call, error) {
+
 	callStack := stack.New()
 	callStack.Push(rootCall)
 
@@ -434,6 +436,7 @@ func (c *Claim) setClaimCalldataFromRoot(
 // If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
 // Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
 func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte, logger *logger.Logger) (bool, error) {
+	fmt.Println("*ADRIA0* tryDecodeClaimCalldata ", hex.EncodeToString(input))
 	if len(input) < methodIDLength {
 		return false, fmt.Errorf("input too short: %d bytes", len(input))
 	}
