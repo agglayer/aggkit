@@ -113,89 +113,80 @@ func NewEVMDriver(
 }
 
 func (d *EVMDriver) Sync(ctx context.Context) {
+reset:
+	var (
+		lastProcessedBlock uint64
+		attempts           int
+		err                error
+	)
 	for {
-		var (
-			lastProcessedBlock uint64
-			attempts           int
-			err                error
-		)
-
-		for {
-			if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
-				attempts++
-				d.log.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
-				d.rh.Handle(ctx, "CompatibilityChecker", attempts)
-				continue
-			}
-			break
-		}
-
-		for {
-			lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
-			if err != nil {
-				attempts++
-				d.log.Error("error getting last processed block: ", err)
-				d.rh.Handle(ctx, "Sync", attempts)
-				continue
-			}
-			break
-		}
-
-		// setup context to cancel downloader and/or block processor
-		cancellableCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)
-		// start downloading
-		downloadCh := make(chan EVMBlock, d.downloadBufferSize)
-		go d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
-
-		// Block processing goroutine
-		blockProcessingDone := make(chan struct{})
-		go func() {
-			defer close(blockProcessingDone)
-
-			for {
-				select {
-				case <-cancellableCtx.Done():
-					d.log.Info("cancellableCtx done, exiting block handler goroutine")
-					return
-				case b, ok := <-downloadCh:
-					if !ok {
-						d.log.Info("downloadCh closed, stopping block processing")
-						return
-					}
-
-					d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
-					if err := d.handleNewBlock(cancellableCtx, b); err != nil {
-						cancel()
-					}
-				}
-			}
-		}()
-
-		// Wait for reorg and then interrupt
-		select {
-		case <-ctx.Done():
-			d.log.Info("sync stopped due to context done")
-			cancel()
-			<-blockProcessingDone
-			return
-		case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
-			d.log.Warnf("Reorg detected from block %d", firstReorgedBlock)
-			if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
-				d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
-			}
-
-			// Cancel the current sync and wait for goroutines to finish
-			d.log.Info("Cancelling current sync due to reorg")
-			cancel()
-			<-blockProcessingDone
-			d.log.Info("Previous sync goroutines terminated, restarting sync")
-
-			// Continue to the next iteration of the outer loop to restart sync
+		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
+			attempts++
+			d.log.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
+			d.rh.Handle(ctx, "CompatibilityChecker", attempts)
 			continue
 		}
+		break
+	}
+
+	for {
+		lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
+		if err != nil {
+			attempts++
+			d.log.Error("error getting last processed block: ", err)
+			d.rh.Handle(ctx, "Sync", attempts)
+			continue
+		}
+		break
+	}
+
+	// setup context to cancel downloader and/or block processor
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)
+	// start downloading
+	downloadCh := make(chan EVMBlock, d.downloadBufferSize)
+	go d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
+
+	// Block processing goroutine
+	blockProcessingDone := make(chan struct{})
+	go func() {
+		defer close(blockProcessingDone)
+
+		for {
+			select {
+			case <-cancellableCtx.Done():
+				d.log.Info("cancellableCtx done, exiting block handler goroutine")
+				return
+			case b, ok := <-downloadCh:
+				if !ok {
+					d.log.Info("downloadCh closed, stopping block processing")
+					return
+				}
+
+				d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
+				if err := d.handleNewBlock(cancellableCtx, b); err != nil {
+					cancel()
+				}
+			}
+		}
+	}()
+
+	// Wait for reorg and then interrupt
+	select {
+	case <-ctx.Done():
+		d.log.Info("sync stopped due to context done")
+		cancel()
+		<-blockProcessingDone
+		return
+	case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
+		d.log.Warnf("Reorg detected from block %d", firstReorgedBlock)
+		if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
+			d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
+		}
+		cancel()
+		goto reset
 	}
 }
 
