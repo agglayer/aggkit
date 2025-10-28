@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -330,6 +331,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 						d.log.Errorf("Failed to notify reorg detector: %v", err)
 					}
 				}
+
+				d.log.Infof("returning block number in new block: %d, pid: %d", blockNumber, os.Getpid())
 				return blockNumber
 			}
 			// If blockNumber <= latestSyncedBlock, a reorg may have occurred
@@ -339,6 +342,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				trackedBlock, err := d.reorgDetector.GetTrackedBlockByBlockNumber(d.reorgDetectorID, blockNumber)
 				if err != nil {
 					d.log.Errorf("Failed to get tracked block: %v, block number: %d", err, blockNumber)
+					d.log.Infof("returning latest synced block: %d", latestSyncedBlock)
 					return latestSyncedBlock
 				}
 
@@ -349,6 +353,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, headerHash); err != nil {
 						d.log.Errorf("Failed to notify reorg detector: %v", err)
 					}
+					d.log.Infof("returning block number in hash mismatch: %d", blockNumber)
 					return blockNumber
 				}
 			}

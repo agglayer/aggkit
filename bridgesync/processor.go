@@ -769,12 +769,12 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
-	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {
 		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
 	}
-	rowsAffected, err := res.RowsAffected()
+	rowsAffected, err := blocksRes.RowsAffected()
 	if err != nil {
 		p.log.Errorf("failed to get rows affected during reorg: %v", err)
 		return err
@@ -784,7 +784,23 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
 		return err
 	}
+
 	if err = tx.Commit(); err != nil {
+		p.log.Errorf("failed to commit reorg transaction: %v", err)
+		return err
+	}
+
+	newTx, err := db.NewTx(dbCtx, p.db)
+	if err != nil {
+		p.log.Errorf("failed to start transaction for reorg: %v", err)
+		return err
+	}
+	err = p.exitTree.InitCache(newTx)
+	if err != nil {
+		p.log.Errorf("failed to initialize exit tree cache: %v", err)
+		return err
+	}
+	if err = newTx.Commit(); err != nil {
 		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
 	}
@@ -838,6 +854,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Bridge != nil {
+			fmt.Printf("adding leaf to the exit tree: %d, block num: %d, block pos: %d\n", event.Bridge.DepositCount, block.Num, event.Bridge.BlockPos)
 			if err = p.exitTree.AddLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
 				Index: event.Bridge.DepositCount,
 				Hash:  event.Bridge.Hash(),
