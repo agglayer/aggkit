@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -176,7 +175,7 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		return nil, fmt.Errorf("generateBuildParams fails getting bridges and claims. Err: %w", err)
 	}
 
-	unclaimsMap, err := f.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
+	unclaims, err := f.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
 		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error getting unset claims for block range: %w", err)
@@ -193,7 +192,7 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		CertificateType:                preParams.CertificateType,
 		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeToProve.L1InfoTreeRootToProve,
 		L1InfoTreeLeafCount:            preParams.L1InfoTreeToProve.L1InfoTreeLeafCount,
-		Unclaims:                       unclaimsMap,
+		Unclaims:                       unclaims,
 	}
 	return buildParams, nil
 }
@@ -343,24 +342,57 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
-	ctx context.Context, claims []bridgesync.Claim, unclaimsMap map[*big.Int]*bridgesynctypes.Unclaim,
+	ctx context.Context,
+	claims []bridgesync.Claim,
+	unclaims []bridgesynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	// filter claims which are in unset claims map
-	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
 
-	for _, claim := range claims {
-		// Check if this claim's global index exists in the unclaims map
-		if _, exists := unclaimsMap[claim.GlobalIndex]; !exists {
-			filteredClaims = append(filteredClaims, claim)
+	// Build unclaim counts by GlobalIndex
+	unclaimCnt := make(map[string]int)
+	for _, u := range unclaims {
+		// Adjust accessor as needed:
+		//   - if GlobalIndex is uint64: key := strconv.FormatUint(u.GlobalIndex, 10)
+		//   - if it's *big.Int:         key := u.GlobalIndex.String()
+		//   - if it's a struct method:   key := u.GlobalIndex().String()
+		key := u.GlobalIndex.String()
+		unclaimCnt[key]++
+	}
+
+	// Build claim counts by GlobalIndex
+	claimCnt := make(map[string]int)
+	for _, c := range claims {
+		key := c.GlobalIndex.String()
+		claimCnt[key]++
+	}
+
+	// Compute how many claims should remain per index after cancelling unclaims
+	remaining := make(map[string]int, len(claimCnt))
+	for k, c := range claimCnt {
+		u := unclaimCnt[k]
+		if c > u {
+			remaining[k] = c - u
+		} else {
+			remaining[k] = 0
+		}
+	}
+
+	// Filter claims: keep in original order, but only as many as remaining[idx]
+	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
+	for _, c := range claims {
+		key := c.GlobalIndex.String()
+		if remaining[key] > 0 {
+			filteredClaims = append(filteredClaims, c)
+			remaining[key]--
 		}
 	}
 
 	if f.cfg.FullClaimsNeeded {
 		return converters.ConvertToImportedBridgeExits(
-			ctx, filteredClaims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
+			ctx, filteredClaims, rootFromWhichToProve, f.l1InfoTreeDataQuerier,
+		)
 	}
-	return converters.ConvertToImportedBridgeExitsWithoutClaimData(claims)
+	return converters.ConvertToImportedBridgeExitsWithoutClaimData(filteredClaims)
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate

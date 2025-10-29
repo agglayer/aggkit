@@ -3,8 +3,6 @@
 package mocks
 
 import (
-	big "math/big"
-
 	bridgesync "github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 
@@ -213,23 +211,23 @@ func (_c *BridgeQuerier_GetLastProcessedBlock_Call) RunAndReturn(run func(contex
 }
 
 // GetUnsetClaimsForBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *BridgeQuerier) GetUnsetClaimsForBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error) {
+func (_m *BridgeQuerier) GetUnsetClaimsForBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesynctypes.Unclaim, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetUnsetClaimsForBlockRange")
 	}
 
-	var r0 map[*big.Int]*bridgesynctypes.Unclaim
+	var r0 []bridgesynctypes.Unclaim
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]bridgesynctypes.Unclaim, error)); ok {
 		return rf(ctx, fromBlock, toBlock)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) map[*big.Int]*bridgesynctypes.Unclaim); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []bridgesynctypes.Unclaim); ok {
 		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[*big.Int]*bridgesynctypes.Unclaim)
+			r0 = ret.Get(0).([]bridgesynctypes.Unclaim)
 		}
 	}
 
@@ -262,12 +260,12 @@ func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Return(_a0 map[*big.Int]*bridgesynctypes.Unclaim, _a1 error) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Return(_a0 []bridgesynctypes.Unclaim, _a1 error) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error)) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesynctypes.Unclaim, error)) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

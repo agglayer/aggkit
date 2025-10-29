@@ -411,24 +411,24 @@ func TestGenerateAggchainProof(t *testing.T) {
 	}
 }
 
-func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
+func TestConvertUnclaimsToUnclaims(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		name             string
-		unclaims         map[*big.Int]*bridgesynctypes.Unclaim
+		unclaims         []bridgesynctypes.Unclaim
 		expectedUnclaims []*agglayertypes.Unclaim
 		expectedError    string
 	}{
 		{
 			name:             "empty map",
-			unclaims:         map[*big.Int]*bridgesynctypes.Unclaim{},
+			unclaims:         []bridgesynctypes.Unclaim{},
 			expectedUnclaims: []*agglayertypes.Unclaim{},
 		},
 		{
 			name: "single unclaim with mainnet flag true",
-			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
-				big.NewInt(1): {
+			unclaims: []bridgesynctypes.Unclaim{
+				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 5),
 					BlockNumber: 100,
 					LogIndex:    2,
@@ -448,8 +448,8 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 		},
 		{
 			name: "single unclaim with mainnet flag false and rollup index",
-			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
-				big.NewInt(1): {
+			unclaims: []bridgesynctypes.Unclaim{
+				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 3, 7),
 					BlockNumber: 200,
 					LogIndex:    1,
@@ -469,18 +469,18 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 		},
 		{
 			name: "multiple unclaims with different configurations",
-			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
-				big.NewInt(1): {
+			unclaims: []bridgesynctypes.Unclaim{
+				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
 					BlockNumber: 100,
 					LogIndex:    0,
 				},
-				big.NewInt(2): {
+				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 5, 10),
 					BlockNumber: 150,
 					LogIndex:    3,
 				},
-				big.NewInt(3): {
+				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 0, 0),
 					BlockNumber: 200,
 					LogIndex:    1,
@@ -518,8 +518,8 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 		},
 		{
 			name: "unclaim with zero global index",
-			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
-				big.NewInt(1): {
+			unclaims: []bridgesynctypes.Unclaim{
+				{
 					GlobalIndex: big.NewInt(0),
 					BlockNumber: 100,
 					LogIndex:    0,
@@ -539,8 +539,8 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 		},
 		{
 			name: "unclaim with large values",
-			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
-				big.NewInt(1): {
+			unclaims: []bridgesynctypes.Unclaim{
+				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 4294967295, 4294967295), // max uint32 values
 					BlockNumber: 999999,
 					LogIndex:    65535,
@@ -566,12 +566,12 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			log := log.WithFields("aggchain_proof_query", "TestConvertUnclaimsMapToUnclaims")
+			log := log.WithFields("aggchain_proof_query", "TestConvertUnclaimsToUnclaims")
 			query := &aggchainProofQuery{
 				log: log,
 			}
 
-			unclaims, err := query.convertUnclaimsMapToUnclaims(tc.unclaims)
+			unclaims, err := query.convertUnclaimsToUnclaims(tc.unclaims)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 				require.Nil(t, unclaims)

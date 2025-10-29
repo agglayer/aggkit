@@ -199,7 +199,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 		}
 
-		unclaimsMap, err := a.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
+		unclaims, err := a.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
 			fromBlock, toBlock)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting unset claims for block range: %w", err)
@@ -214,7 +214,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 			LastSentCertificate: lastSentCert,
 			CreatedAt:           lastSentCert.CreatedAt,
 			CertificateType:     typeCert,
-			Unclaims:            unclaimsMap,
+			Unclaims:            unclaims,
 		}
 		if a.featureMaxL2Block != nil {
 			// If the feature is enabled, we need to adapt the build params

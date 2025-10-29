@@ -3,7 +3,6 @@ package types
 import (
 	"fmt"
 	"math"
-	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -54,7 +53,7 @@ type CertificateBuildParams struct {
 	ToBlock                        uint64
 	Bridges                        []bridgesync.Bridge
 	Claims                         []bridgesync.Claim
-	Unclaims                       map[*big.Int]*bridgesynctypes.Unclaim
+	Unclaims                       []bridgesynctypes.Unclaim
 	CreatedAt                      uint32
 	RetryCount                     int
 	LastSentCertificate            *CertificateHeader

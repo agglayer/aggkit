@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -141,20 +140,10 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 
 // GetUnsetClaimsForBlockRange gets unset claims from agglayer bridge L2 and converts to unclaim map
 func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error) {
+	fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
 	if b.agglayerBridgeL2Reader == nil {
 		b.log.Fatalf("agglayer bridge l2 reader is not initialized")
 	}
-	unclaims, err := b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get unclaim block range: %w", err)
-	}
-
-	// convert unclaims to map of global index to unclaim
-	unclaimsMap := make(map[*big.Int]*bridgesynctypes.Unclaim, len(unclaims))
-	for _, unclaim := range unclaims {
-		unclaimsMap[unclaim.GlobalIndex] = unclaim
-	}
-	return unclaimsMap, nil
+	return b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 }

@@ -53,7 +53,7 @@ func NewAgglayerBridgeL2Reader(
 //   - []*types.Unclaim: A slice of Unclaim objects containing global index, block number, and block index
 //   - error: Any error that occurred during the event filtering or iteration
 func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
+	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
 	if fromBlock > toBlock {
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
@@ -69,12 +69,12 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 		}
 	}()
 
-	unclaims := make([]*types.Unclaim, 0)
+	unclaims := make([]types.Unclaim, 0)
 	for unclaimIterator.Next() {
 		globalIndex := unclaimIterator.Event.UnsetGlobalIndex
 		log.Infof("unset claim: %s at block %d, index %d", new(big.Int).SetBytes(globalIndex[:]),
 			unclaimIterator.Event.Raw.BlockNumber, unclaimIterator.Event.Raw.Index)
-		unclaims = append(unclaims, &types.Unclaim{
+		unclaims = append(unclaims, types.Unclaim{
 			GlobalIndex: new(big.Int).SetBytes(globalIndex[:]),
 			BlockNumber: unclaimIterator.Event.Raw.BlockNumber,
 			LogIndex:    uint64(unclaimIterator.Event.Raw.Index),

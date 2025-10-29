@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -104,13 +103,13 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 
 	removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
 	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
+		return nil, nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
 	}
 
 	// convert unclaims map to unclaims
-	unclaims, err := a.convertUnclaimsMapToUnclaims(certBuildParams.Unclaims)
+	unclaims, err := a.convertUnclaimsToUnclaims(certBuildParams.Unclaims)
 	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error converting unclaims map to unclaims: %w", err)
+		return nil, nil, fmt.Errorf("error converting unclaims to unclaims: %w", err)
 	}
 
 	var aggchainProof *types.AggchainProof
@@ -214,8 +213,8 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 }
 
 // convert unclaims map to imported bridge exits
-func (a *aggchainProofQuery) convertUnclaimsMapToUnclaims(
-	unclaims map[*big.Int]*bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
+func (a *aggchainProofQuery) convertUnclaimsToUnclaims(
+	unclaims []bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
 	unclaimsConverted := make([]*agglayertypes.Unclaim, 0, len(unclaims))
 
 	for _, unclaim := range unclaims {

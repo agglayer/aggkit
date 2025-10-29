@@ -23,23 +23,23 @@ func (_m *AgglayerBridgeL2Reader) EXPECT() *AgglayerBridgeL2Reader_Expecter {
 }
 
 // GetUnsetClaimsForBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*types.Unclaim, error) {
+func (_m *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]types.Unclaim, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetUnsetClaimsForBlockRange")
 	}
 
-	var r0 []*types.Unclaim
+	var r0 []types.Unclaim
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]*types.Unclaim, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]types.Unclaim, error)); ok {
 		return rf(ctx, fromBlock, toBlock)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []*types.Unclaim); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []types.Unclaim); ok {
 		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*types.Unclaim)
+			r0 = ret.Get(0).([]types.Unclaim)
 		}
 	}
 
@@ -72,12 +72,12 @@ func (_c *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call) Run(run func(
 	return _c
 }
 
-func (_c *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call) Return(_a0 []*types.Unclaim, _a1 error) *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call {
+func (_c *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call) Return(_a0 []types.Unclaim, _a1 error) *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*types.Unclaim, error)) *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call {
+func (_c *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]types.Unclaim, error)) *AgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

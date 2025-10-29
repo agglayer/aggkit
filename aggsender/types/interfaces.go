@@ -114,7 +114,7 @@ type BridgeQuerier interface {
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 	GetUnsetClaimsForBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error)
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
@@ -128,7 +128,7 @@ type ChainGERReader interface {
 // AgglayerBridgeL2Reader is an interface defining functions that an AgglayerBridgeL2Reader should implement
 type AgglayerBridgeL2Reader interface {
 	GetUnsetClaimsForBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]*bridgesynctypes.Unclaim, error)
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
