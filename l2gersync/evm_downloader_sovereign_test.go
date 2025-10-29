@@ -62,7 +62,12 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	}
 
 	mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
+	// First call to get latest block header (with nil)
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+		Number: big.NewInt(int64(latestBlock)),
+	}, nil).Maybe()
+	// Second call to get the offset block header (with latestBlock since offset is 0)
+	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(latestBlock))).Return(&ethtypes.Header{
 		Number: big.NewInt(int64(latestBlock)),
 	}, nil).Maybe()
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
@@ -268,7 +273,12 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 
 			// Set up mock expectations
 			mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
+			// First call to get latest block header (with nil)
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+				Number: big.NewInt(int64(latestBlock)),
+			}, nil).Maybe()
+			// Second call to get the offset block header (with latestBlock since offset is 0)
+			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(latestBlock))).Return(&ethtypes.Header{
 				Number: big.NewInt(int64(latestBlock)),
 			}, nil).Maybe()
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
