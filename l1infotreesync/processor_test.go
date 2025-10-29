@@ -281,11 +281,11 @@ func TestGetProcessedBlockUntil(t *testing.T) {
 	require.Equal(t, common.Hash{}, blockHash)
 }
 
-func TestGetLatestL1InfoGER(t *testing.T) {
+func TestProcessorGetLatestL1InfoGER(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
-	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestL1InfoGER.sqlite")
+	dbPath := path.Join(t.TempDir(), "TestGetLatestL1InfoGER.sqlite")
 	p, err := newProcessor(dbPath)
 	require.NoError(t, err)
 

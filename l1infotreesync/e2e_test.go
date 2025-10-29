@@ -84,7 +84,7 @@ func TestE2E(t *testing.T) {
 	go syncer.Start(ctx)
 
 	// Update GER 3 times
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		tx, err := gerSc.UpdateExitRoot(auth, common.HexToHash(strconv.Itoa(i)))
 		require.NoError(t, err)
 		client.Commit()
@@ -109,6 +109,10 @@ func TestE2E(t *testing.T) {
 		actualRoot, err := syncer.GetL1InfoTreeRootByIndex(ctx, uint32(i))
 		require.NoError(t, err)
 		require.Equal(t, common.Hash(expectedRoot), actualRoot.Hash)
+
+		latestGER, err := syncer.GetLatestL1InfoGER(ctx)
+		require.NoError(t, err)
+		require.Equal(t, common.Hash(expectedGER), latestGER)
 	}
 }
 

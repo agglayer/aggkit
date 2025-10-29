@@ -59,6 +59,17 @@ func TestGetInfoByIndex(t *testing.T) {
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
 
+func TestL1InfoTreeSync_GetLatestL1InfoGER(t *testing.T) {
+	s := L1InfoTreeSync{
+		processor: &processor{
+			halted: true,
+		},
+	}
+	_, err := s.GetLatestL1InfoGER(context.Background())
+	require.Error(t, err)
+	require.True(t, errors.Is(err, sync.ErrInconsistentState))
+}
+
 func TestGetL1InfoTreeRootByIndex(t *testing.T) {
 	s := L1InfoTreeSync{
 		processor: &processor{
