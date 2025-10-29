@@ -144,7 +144,7 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
 	if b.agglayerBridgeL2Reader == nil {
-		return nil, fmt.Errorf("agglayer bridge l2 reader is not initialized")
+		b.log.Fatalf("agglayer bridge l2 reader is not initialized")
 	}
 	unclaims, err := b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 	if err != nil {

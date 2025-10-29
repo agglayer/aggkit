@@ -54,8 +54,8 @@ func NewAgglayerBridgeL2Reader(
 //   - error: Any error that occurred during the event filtering or iteration
 func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
-	if r.agglayerBridgeL2 == nil {
-		return nil, fmt.Errorf("agglayer bridge L2 contract is not initialized")
+	if fromBlock > toBlock {
+		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 	unclaimIterator, err := r.agglayerBridgeL2.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Context: ctx, Start: fromBlock, End: &toBlock})

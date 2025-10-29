@@ -125,7 +125,7 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		},
 		GERLeavesWithBlockNumber:           injectedGERsProofs,
 		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
-		RemovedGers:                        removedGERs,
+		RemovedGERs:                        removedGERs,
 		Unclaims:                           unclaims,
 	}
 	// It decide if must generate optimistic proof using CertType

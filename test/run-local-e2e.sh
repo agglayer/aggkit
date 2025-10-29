@@ -157,7 +157,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     fi
     cp "$aggsender_find_imported_bridge_bin" "$E2E_REPO_PATH/aggsender_find_imported_bridge"
 
-    log_info "Using provided Agglayer E2E repo at: $E2E_REPO_PATH"
+    log_info "Using provided E2E repo at: $E2E_REPO_PATH"
     pushd "$E2E_REPO_PATH" >/dev/null
 
     log_info "Setting up e2e environment..."

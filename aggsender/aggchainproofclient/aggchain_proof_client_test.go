@@ -60,7 +60,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		},
 		GERLeavesWithBlockNumber:           nil,
 		ImportedBridgeExitsWithBlockNumber: nil,
-		RemovedGers: []*agglayer.RemovedGER{
+		RemovedGERs: []*agglayer.RemovedGER{
 			{
 				GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 				BlockNumber:    150,
@@ -239,7 +239,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 				},
 			},
 		},
-		RemovedGers: []*agglayer.RemovedGER{
+		RemovedGERs: []*agglayer.RemovedGER{
 			{
 				GlobalExitRoot: common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
 				BlockNumber:    350,

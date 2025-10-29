@@ -180,8 +180,8 @@ func convertAggchainProofRequestToGrpcRequest(
 		}
 	}
 
-	convertedRemovedGers := make([]*aggkitProverV1Proto.RemovedGER, len(req.RemovedGers))
-	for i, removedGER := range req.RemovedGers {
+	convertedRemovedGers := make([]*aggkitProverV1Proto.RemovedGER, len(req.RemovedGERs))
+	for i, removedGER := range req.RemovedGERs {
 		convertedRemovedGers[i] = &aggkitProverV1Proto.RemovedGER{
 			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: removedGER.GlobalExitRoot[:],

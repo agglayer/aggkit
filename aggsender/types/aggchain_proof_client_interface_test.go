@@ -275,7 +275,7 @@ func TestNewAggchainProofRequest(t *testing.T) {
 			require.Equal(t, tt.expectedL1InfoTreeMerkleProof, req.L1InfoTreeMerkleProof)
 			require.Equal(t, tt.expectedGERLeavesWithBlockNumber, req.GERLeavesWithBlockNumber)
 			require.Equal(t, tt.expectedImportedBridgeExitsWithBlockNumber, req.ImportedBridgeExitsWithBlockNumber)
-			require.Equal(t, tt.expectedRemovedGers, req.RemovedGers)
+			require.Equal(t, tt.expectedRemovedGers, req.RemovedGERs)
 			require.Equal(t, tt.expectedUnclaims, req.Unclaims)
 		})
 	}
@@ -336,7 +336,7 @@ func TestAggchainProofRequest_String(t *testing.T) {
 					},
 				},
 				ImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(t),
-				RemovedGers: []*agglayer.RemovedGER{
+				RemovedGERs: []*agglayer.RemovedGER{
 					{
 						GlobalExitRoot: common.HexToHash("0x9090909090909090"),
 						BlockNumber:    180,
@@ -409,7 +409,7 @@ func TestAggchainProofRequest_String_EdgeCases(t *testing.T) {
 			L1InfoTreeMerkleProof:              agglayer.MerkleProof{},
 			GERLeavesWithBlockNumber:           make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber),
 			ImportedBridgeExitsWithBlockNumber: make([]*agglayer.ImportedBridgeExitWithBlockNumber, 0),
-			RemovedGers:                        make([]*agglayer.RemovedGER, 0),
+			RemovedGERs:                        make([]*agglayer.RemovedGER, 0),
 			Unclaims:                           make([]*agglayer.Unclaim, 0),
 		}
 
@@ -430,7 +430,7 @@ func TestAggchainProofRequest_String_EdgeCases(t *testing.T) {
 			L1InfoTreeMerkleProof:              agglayer.MerkleProof{},
 			GERLeavesWithBlockNumber:           nil,
 			ImportedBridgeExitsWithBlockNumber: nil,
-			RemovedGers:                        nil,
+			RemovedGERs:                        nil,
 			Unclaims:                           nil,
 		}
 
