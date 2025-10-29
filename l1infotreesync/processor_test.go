@@ -9,6 +9,7 @@ import (
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
@@ -278,4 +279,75 @@ func TestGetProcessedBlockUntil(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), blockNum)
 	require.Equal(t, common.Hash{}, blockHash)
+}
+
+func TestGetLatestL1InfoGER(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestL1InfoGER.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	addBlock := func(num, pos uint64, mainnetRoot, rollupRoot, parentHash string, ts uint64) {
+		err := p.ProcessBlock(ctx, aggkitsync.Block{
+			Num: num,
+			Events: []any{
+				Event{
+					UpdateL1InfoTree: &UpdateL1InfoTree{
+						BlockPosition:   pos,
+						MainnetExitRoot: common.HexToHash(mainnetRoot),
+						RollupExitRoot:  common.HexToHash(rollupRoot),
+						ParentHash:      common.HexToHash(parentHash),
+						Timestamp:       ts,
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	// Insert blocks
+	addBlock(1, 1, "beef", "5ca1e", "1010101", 420)
+	addBlock(2, 1, "aabb", "ccdd", "10101010", 421)
+
+	// Check latest GER
+	gotGER, err := p.GetLatestL1InfoGER(ctx)
+	require.NoError(t, err)
+
+	wantGER := crypto.Keccak256Hash(
+		common.HexToHash("aabb").Bytes(),
+		common.HexToHash("ccdd").Bytes(),
+	)
+
+	require.Equal(t, wantGER, gotGER, "latest GER should match last processed block")
+}
+
+func TestCalculateGER(t *testing.T) {
+	cases := []struct {
+		testName        string
+		mainnetExitRoot common.Hash
+		rollupExitRoot  common.Hash
+		expectedGER     common.Hash
+	}{
+		{
+			testName:        "both MER and RER non-zero",
+			mainnetExitRoot: common.HexToHash("0xdde590a282827306734e608dac3f46fbd0c7d2ad9a2f2fa231619bf717074ebc"),
+			rollupExitRoot:  common.HexToHash("0xfa61f6390bc150b7daa1f876b3b750e1a5e3ae1582dbd014887aff8657c1e947"),
+			expectedGER:     common.HexToHash("0x7fe6169049e0e70ed4f6f5c15f00ccf1f312da1ebff927e8fa65fff0dbab1e0e"),
+		},
+		{
+			testName:        "MER non-zero, RER zero",
+			mainnetExitRoot: common.HexToHash("0x3f586b16c4b88ef284961e9fdd12b414e8e8227311c968f94454dc46680a9701"),
+			rollupExitRoot:  common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+			expectedGER:     common.HexToHash("0x8e4eda1ee01e9df0f792b4b84fdbcdbe1393f73dc03d81381557140445b28e76"),
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.testName, func(t *testing.T) {
+			calculatedGER := CalculateGER(c.mainnetExitRoot, c.rollupExitRoot)
+			require.Equal(t, c.expectedGER, calculatedGER)
+		})
+	}
 }
