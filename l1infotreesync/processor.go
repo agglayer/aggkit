@@ -19,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -133,14 +132,9 @@ func (l *L1InfoTreeLeaf) GetGlobalExitRoot() common.Hash {
 	return CalculateGER(l.MainnetExitRoot, l.RollupExitRoot)
 }
 
-// CalculateGER calculates the Global Exit Root (GER) based on the mainnet and rollup exit roots
+// CalculateGER calculates the Global Exit Root (GER) based on the keccak 256 of mainnet and rollup exit roots
 func CalculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
-	var gerBytes [treeTypes.DefaultHeight]byte
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(mainnetExitRoot[:])
-	hasher.Write(rollupExitRoot[:])
-	copy(gerBytes[:], hasher.Sum(nil))
-	return gerBytes
+	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 }
 
 func newProcessor(dbPath string) (*processor, error) {

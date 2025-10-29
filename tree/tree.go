@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -28,11 +27,7 @@ type Tree struct {
 }
 
 func newTreeNode(left, right common.Hash) types.TreeNode {
-	var hash common.Hash
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(left[:])
-	hasher.Write(right[:])
-	copy(hash[:], hasher.Sum(nil))
+	hash := crypto.Keccak256Hash(left.Bytes(), right.Bytes())
 	return types.TreeNode{
 		Hash:  hash,
 		Left:  left,
@@ -145,12 +140,8 @@ func generateZeroHashes(height uint8) []common.Hash {
 	// equivalent to the ascending levels, we set the hashes of the nodes.
 	// So all nodes from level i=5 will have the same value and same children nodes.
 	for i := 1; i <= int(height); i++ {
-		hasher := sha3.NewLegacyKeccak256()
-		hasher.Write(zeroHashes[i-1][:])
-		hasher.Write(zeroHashes[i-1][:])
-		thisHeightHash := common.Hash{}
-		copy(thisHeightHash[:], hasher.Sum(nil))
-		zeroHashes = append(zeroHashes, thisHeightHash)
+		currentHeightHash := crypto.Keccak256Hash(zeroHashes[i-1][:], zeroHashes[i-1][:])
+		zeroHashes = append(zeroHashes, currentHeightHash)
 	}
 	return zeroHashes
 }
