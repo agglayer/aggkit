@@ -447,6 +447,14 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	// Start the syncer
 	go syncer.Start(ctx)
 
+	// Helper function to get reorg count from database
+	getReorgCount := func() int {
+		var count int
+		err := rd.GetDB().QueryRow("SELECT COUNT(*) FROM reorg_event").Scan(&count)
+		require.NoError(t, err)
+		return count
+	}
+
 	// Step 1: Commit some blocks
 	t.Log("Step 1: Committing initial blocks")
 	helpers.CommitBlocks(t, client, 3, blocktime)
@@ -534,6 +542,10 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	helpers.CommitBlocks(t, client, 2, blocktime)
 	t.Logf("  Created third bridge tx after fork: %s", txAfterFork.Hash().Hex())
 
+	// Check reorg event count
+	reorgCount := getReorgCount()
+	require.Equal(t, 1, reorgCount)
+
 	// Step 9: Check bridge count after fork
 	t.Log("Step 9: Checking bridge count after fork")
 	lastProcessedAfterFork, err := syncer.GetLastProcessedBlock(ctx)
@@ -581,6 +593,10 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	t.Log("  Fork created successfully after fourth bridge")
 	helpers.CommitBlocks(t, client, 2, blocktime)
 
+	// Check if we have a reorg event
+	reorgCount = getReorgCount()
+	require.Equal(t, 2, reorgCount)
+
 	// Check bridge count in L1 DB
 	lastProcessed, err = syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
@@ -612,6 +628,10 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("  Bridges in DB after fifth bridge: %d", len(bridgesAfterFifthBridge))
 	require.Equal(t, 5, len(bridgesAfterFifthBridge), "Should have 5 bridges")
+
+	// Check if we have a reorg event
+	reorgCount = getReorgCount()
+	require.Equal(t, 2, reorgCount)
 
 	t.Log("✅ Test completed successfully - syncer handled multiple reorgs correctly")
 }
