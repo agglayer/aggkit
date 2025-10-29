@@ -69,6 +69,7 @@ func New(
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
+	agglayerBridgeL2Addr common.Address,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (*AggSender, error) {
@@ -101,6 +102,7 @@ func New(
 		l2Client,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		agglayerBridgeL2Addr,
 		rollupDataQuerier,
 		committeeQuerier,
 	)

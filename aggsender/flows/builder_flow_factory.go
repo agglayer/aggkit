@@ -37,6 +37,7 @@ func NewBuilderFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	agglayerBridgeL2Addr common.Address,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (types.AggsenderBuilderFlow, error) {
@@ -50,7 +51,7 @@ func NewBuilderFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
-			cfg.AgglayerBridgeL2Addr,
+			agglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -97,7 +98,7 @@ func NewBuilderFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
-			cfg.AgglayerBridgeL2Addr,
+			agglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
