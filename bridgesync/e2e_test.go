@@ -128,7 +128,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_reorg.sqlite")
-	blocktime := time.Second * 6
+	blocktime := time.Millisecond * 100
 
 	// Setup simulated L1 environment with bridge and GER contracts
 	//nolint:dogsled
@@ -136,7 +136,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Second * 1),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 10),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
@@ -150,8 +150,8 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		SyncBlockChunkSize:                 10,
 		InitialBlockNum:                    0,
-		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 3),
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Second * 1),
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 30),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 10),
 		MaxRetryAttemptsAfterError:         10,
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
@@ -302,7 +302,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_reorg.sqlite")
-	blocktime := time.Second * 2
+	blocktime := time.Millisecond * 100
 
 	// Setup simulated L1 environment
 	//nolint:dogsled
@@ -310,7 +310,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 10),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
@@ -324,8 +324,8 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		SyncBlockChunkSize:                 10,
 		InitialBlockNum:                    0,
-		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 1),
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 500),
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 30),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 10),
 		MaxRetryAttemptsAfterError:         10,
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
@@ -373,7 +373,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 
 	// commit 3 blocks
 	helpers.CommitBlocks(t, client, 3, blocktime)
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Millisecond * 30)
 
 	// Create fork point
 	t.Log("Creating fork point")
@@ -386,7 +386,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 
 	// new commit 5 extra blocks
 	helpers.CommitBlocks(t, client, 5, blocktime)
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Millisecond * 50)
 
 	// fork it from the fork block hash
 	t.Log("Creating fork")
@@ -394,7 +394,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check if we have a reorg event
-	time.Sleep(time.Second * 10) // Allow time for reorg detection
+	time.Sleep(time.Millisecond * 100) // Allow time for reorg detection
 	reorgCount := getReorgCount()
 	require.Equal(t, 0, reorgCount)
 	t.Logf("  Reorg count after identical transaction: %d", reorgCount)
@@ -407,7 +407,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_reorg.sqlite")
-	blocktime := time.Second * 6
+	blocktime := time.Millisecond * 100
 
 	// Setup simulated L1 environment with bridge and GER contracts
 	//nolint:dogsled
@@ -415,7 +415,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Second * 1),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 10),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
@@ -429,8 +429,8 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		SyncBlockChunkSize:                 10,
 		InitialBlockNum:                    0,
-		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Second * 3),
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Second * 1),
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 30),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 10),
 		MaxRetryAttemptsAfterError:         10,
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),

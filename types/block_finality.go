@@ -120,7 +120,7 @@ func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
 }
 
-// BlockNumber gets the safe block number RPC
+// BlockNumber gets the block number from RPC with offset taken into account
 func (b *BlockNumberFinality) BlockNumber(
 	ctx context.Context,
 	requester ethereum.ChainReader,
@@ -133,7 +133,7 @@ func (b *BlockNumberFinality) BlockNumber(
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }
 
-// Header gets the block header from RPC
+// BlockHeader gets the block header from RPC with offset taken into account
 func (b *BlockNumberFinality) BlockHeader(
 	ctx context.Context,
 	requester ethereum.ChainReader,
