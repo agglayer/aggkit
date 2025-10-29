@@ -297,7 +297,7 @@ func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context)
 	if blockFinality == nil {
 		blockFinality = &d.blockFinality
 	}
-	blockNumber, _, err := blockFinality.BlockNumber(ctx, d.ethClient)
+	blockNumber, err := blockFinality.BlockNumber(ctx, d.ethClient)
 	return blockNumber, err
 }
 
@@ -312,7 +312,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockNumber, blockHeader, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
+			blockHeader, err := d.blockFinality.Header(ctx, d.ethClient)
+			blockNumber := blockHeader.Number.Uint64()
 			headerHash := blockHeader.Hash()
 			if err != nil {
 				if ctx.Err() == nil {

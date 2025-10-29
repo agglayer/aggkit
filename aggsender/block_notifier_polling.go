@@ -131,7 +131,7 @@ func (b *BlockNotifierPolling) getGlobalStatus() *blockNotifierPollingInternalSt
 func (b *BlockNotifierPolling) step(ctx context.Context,
 	previousState *blockNotifierPollingInternalStatus) (time.Duration,
 	*blockNotifierPollingInternalStatus, *types.EventNewBlock) {
-	currentBlock, _, err := b.blockFinality.BlockNumber(ctx, b.ethClient)
+	currentBlock, err := b.blockFinality.BlockNumber(ctx, b.ethClient)
 	if err != nil {
 		b.logger.Errorf("Failed to get block number %s: %v", b.blockFinality.String(), err)
 		newState := previousState.clear()
