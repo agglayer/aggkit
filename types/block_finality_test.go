@@ -2,9 +2,14 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"math/big"
 	"testing"
 
+	"github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -281,4 +286,52 @@ func TestBlockNumberFinalityJSONSchema(t *testing.T) {
 	schema := BlockNumberFinality{}.JSONSchema()
 	require.Equal(t, "string", schema.Type)
 	require.Equal(t, "BlockNumberFinality", schema.Title)
+}
+
+func TestBlockNumberFinality_BlockHeader(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success with offset", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		blockFinality := BlockNumberFinality{Block: Finalized, Offset: -5}
+
+		finalizedHeader := &types.Header{Number: big.NewInt(100)}
+		offsetHeader := &types.Header{Number: big.NewInt(95)}
+
+		mockClient.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Once()
+		mockClient.On("HeaderByNumber", ctx, big.NewInt(95)).Return(offsetHeader, nil).Once()
+
+		result, err := blockFinality.BlockHeader(ctx, mockClient)
+		require.NoError(t, err)
+		require.Equal(t, offsetHeader, result)
+	})
+
+	t.Run("Error on first call", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		blockFinality := BlockNumberFinality{Block: Latest, Offset: 0}
+
+		testErr := fmt.Errorf("first call error")
+		mockClient.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(nil, testErr).Once()
+
+		result, err := blockFinality.BlockHeader(ctx, mockClient)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Equal(t, testErr, err)
+	})
+
+	t.Run("Error on second call", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		blockFinality := BlockNumberFinality{Block: Latest, Offset: 10}
+
+		latestHeader := &types.Header{Number: big.NewInt(100)}
+		testErr := fmt.Errorf("second call error")
+
+		mockClient.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		mockClient.On("HeaderByNumber", ctx, big.NewInt(100)).Return(nil, testErr).Once()
+
+		result, err := blockFinality.BlockHeader(ctx, mockClient)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Equal(t, testErr, err)
+	})
 }
