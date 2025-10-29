@@ -76,7 +76,7 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 		return err
 	}
 
-	a.logger.Debugf("latest l1 info leaf retrieved: %s", latestGER.String())
+	a.logger.Debugf("latest GER retrieved: %s", latestGER.String())
 
 	go func() {
 		err := a.chainSender.ProcessGER(ctx, latestGER)
