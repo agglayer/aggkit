@@ -1,10 +1,10 @@
 # ================================
 # STAGE 1: Build binary
 # ================================
-FROM --platform=${BUILDPLATFORM} golang:1.25.0-alpine AS builder
+FROM golang:1.25.0-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache gcc musl-dev make sqlite-dev
+RUN apk add --no-cache gcc musl-dev make sqlite-dev git
 
 WORKDIR /app
 

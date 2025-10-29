@@ -108,9 +108,6 @@ type BridgeResponse struct {
 	// Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)
 	GlobalIndex *big.Int `json:"global_index" example:"4294967296" swaggertype:"string"`
 
-	// Raw calldata submitted in the transaction
-	Calldata string `json:"calldata" example:"deadbeef"`
-
 	// Timestamp of the block containing the bridge event
 	BlockTimestamp uint64 `json:"block_timestamp" example:"1684500000"`
 
@@ -247,9 +244,6 @@ type TokenMappingResponse struct {
 	// Indicates whether the wrapped token is not mintable (true = not mintable)
 	IsNotMintable bool `json:"is_not_mintable" example:"false"`
 
-	// Raw calldata submitted during the mapping
-	Calldata string `json:"calldata" example:"0xfeedface"`
-
 	// Type of the token mapping: 0 = WrappedToken, 1 = SovereignToken
 	Type TokenMappingType `json:"token_type" example:"0"`
 }
@@ -290,9 +284,6 @@ type LegacyTokenMigrationResponse struct {
 
 	// Amount of tokens migrated
 	Amount BigIntString `json:"amount" example:"1000000000000000000"`
-
-	// Raw calldata included in the migration transaction
-	Calldata string `json:"calldata" example:"0xdeadbeef"`
 }
 
 // L1InfoTreeLeafResponse represents a leaf node in the L1 info tree used for bridge state verification.

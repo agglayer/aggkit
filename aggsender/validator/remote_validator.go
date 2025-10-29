@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var _ types.CertificateValidateAndSigner = (*RemoteValidator)(nil)
@@ -76,6 +77,13 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
 ) ([]byte, error) {
+	// Get the hash of the certificate, fail fast if something is wrong in it
+
+	certificateHash, err := HashCertificateToSign(certificate)
+	if err != nil {
+		return nil, fmt.Errorf("internal error getting certificate hash: %w", err)
+	}
+
 	previousCertificate, err := getPreviousCertificate(v.storage, certificate.Height, certificate.NetworkID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", certificate.Height-1, err)
@@ -94,6 +102,20 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error validating certificate on aggsender validator service: %w", err)
+	}
+
+	// Validate received signature
+	// We do not support ethereum legacy v+27 signatures
+
+	recoveredPublicKey, err := crypto.SigToPub(certificateHash[:], signature)
+	if err != nil {
+		return nil, fmt.Errorf("error validating remote validator signature: %w", err)
+	}
+
+	recoveredAddress := crypto.PubkeyToAddress(*recoveredPublicKey)
+	if v.address != recoveredAddress {
+		return nil, fmt.Errorf("error validating remote validator signature, mismatch expected:%v current:%v",
+			v.address, recoveredAddress)
 	}
 
 	return signature, nil

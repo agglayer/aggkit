@@ -221,6 +221,28 @@ sequenceDiagram
     Note right of User: Bridge process completed successfully
 ```
 
+## Prometheus Metrics
+
+The bridge service exposes several Prometheus counters to track the number of requests handled by different API endpoints.
+Each counter represents how many times a specific bridge-related operation was requested through the service.
+
+| **Metric Name** | **Description** |
+|------------------|-----------------|
+| `bridge_get_bridges` | Number of requests to **list or retrieve bridge information**. |
+| `bridge_l1_info_tree_index_for_bridge` | Number of requests to fetch the **L1 info tree index for a specific bridge**. |
+| `bridge_injected_info_after_index` | Number of requests for **retrieving injected info after a given index**. |
+| `bridge_get_claims` | Number of **claim data** retrieval requests. |
+| `bridge_claim_proof` | Number of **claim proof** generation or retrieval requests. |
+| `bridge_get_token_mappings` | Number of requests to **fetch token mapping information**. |
+| `bridge_get_legacy_token_migrations` | Number of **legacy token migration** information requests. |
+| `bridge_last_reorg_event` | Number of **last reorganization event** queries. |
+| `bridge_get_sync_status` | Number of **sync status** retrieval requests, used to check synchronization between chains. |
+
+### Usage Notes
+
+All metrics are counters, meaning they only increase over time.
+Each metric helps monitor usage and performance of its corresponding API endpoint.
+
 ## API Documentation
 
 <iframe src="assets/swagger/bridge_service/index.html" 

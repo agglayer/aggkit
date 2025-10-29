@@ -52,12 +52,12 @@ func TestBackfillTxnSender(t *testing.T) {
 		INSERT INTO bridge (
 			block_num, block_pos, leaf_type, origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, calldata, txn_sender
+			tx_hash, block_timestamp, from_address, txn_sender
 		) VALUES (
 			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''
+			1234567890, '0x1111111111111111111111111111111111111111', ''
 		)
 	`)
 	require.NoError(t, err)
@@ -72,7 +72,8 @@ func TestBackfillTxnSender(t *testing.T) {
 		) VALUES (
 			1, 1, '1', 1, '0x1234567890123456789012345678901234567890',
 			'0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', '', '', '', '', 2, '', false, 1234567890,
+			'', '', '', '', '', 2,
+			'', false, 1234567890,
 			'0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
 			'0x2222222222222222222222222222222222222222'
 		)
@@ -176,12 +177,12 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', ''
+				1234567890, '0x1111111111111111111111111111111111111111', ''
 			)
 		`)
 		require.NoError(t, err)
@@ -280,12 +281,12 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', ''
+				1234567890, '0x1111111111111111111111111111111111111111', ''
 			)
 		`)
 		require.NoError(t, err)
@@ -386,12 +387,12 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', ''
+				1234567890, '0x1111111111111111111111111111111111111111', ''
 			)
 		`)
 		require.NoError(t, err)
@@ -461,12 +462,12 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', ''
+				1234567890, '0x1111111111111111111111111111111111111111', ''
 			)
 		`)
 		require.NoError(t, err)
@@ -726,12 +727,12 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES (
 				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', ''
+				1234567890, '0x1111111111111111111111111111111111111111', ''
 			)
 		`)
 		require.NoError(t, err)
@@ -782,16 +783,16 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''),
+			1234567890, '0x1111111111111111111111111111111111111111', ''),
 			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', '')
+			1234567890, '0x1111111111111111111111111111111111111111', '')
 		`)
 		require.NoError(t, err)
 
@@ -918,20 +919,20 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''),
+			1234567890, '0x1111111111111111111111111111111111111111', ''),
 			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''),
+			1234567890, '0x1111111111111111111111111111111111111111', ''),
 			(1, 2, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892',
-			1234567890, '0x1111111111111111111111111111111111111111', '', '')
+			1234567890, '0x1111111111111111111111111111111111111111', '')
 		`)
 		require.NoError(t, err)
 
@@ -1007,16 +1008,16 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''),
+			1234567890, '0x1111111111111111111111111111111111111111', ''),
 			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '', '')
+			1234567890, '0x1111111111111111111111111111111111111111', '')
 		`)
 		require.NoError(t, err)
 
@@ -1100,16 +1101,16 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''),
+			1234567890, '0x1111111111111111111111111111111111111111', ''),
 			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '', '')
+			1234567890, '0x1111111111111111111111111111111111111111', '')
 		`)
 		require.NoError(t, err)
 
@@ -1178,16 +1179,16 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			INSERT INTO bridge (
 				block_num, block_pos, leaf_type, origin_network, origin_address,
 				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, calldata, txn_sender
+				tx_hash, block_timestamp, from_address, txn_sender
 			) VALUES
 			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''),
+			1234567890, '0x1111111111111111111111111111111111111111', ''),
 			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '', '')
+			1234567890, '0x1111111111111111111111111111111111111111', '')
 		`)
 		require.NoError(t, err)
 
@@ -1295,12 +1296,12 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 				INSERT INTO bridge (
 					block_num, block_pos, leaf_type, origin_network, origin_address,
 					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, calldata, txn_sender
+					tx_hash, block_timestamp, from_address, txn_sender
 				) VALUES (
 					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 					'', 1, '0x%064x',
-					1234567890, '0x1111111111111111111111111111111111111111', '', ''
+					1234567890, '0x1111111111111111111111111111111111111111', ''
 				)
 			`, i, i))
 			require.NoError(t, err)
@@ -1382,12 +1383,12 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 					INSERT INTO bridge (
 						block_num, block_pos, leaf_type, origin_network, origin_address,
 						destination_network, destination_address, amount, metadata, deposit_count,
-						tx_hash, block_timestamp, from_address, calldata, txn_sender
+						tx_hash, block_timestamp, from_address, txn_sender
 					) VALUES (
 						1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 						2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 						'', 1, '0x%064x',
-						1234567890, '0x1111111111111111111111111111111111111111', '', ''
+						1234567890, '0x1111111111111111111111111111111111111111', ''
 					)
 				`, i, i))
 				require.NoError(t, err)
@@ -1464,12 +1465,12 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 				INSERT INTO bridge (
 					block_num, block_pos, leaf_type, origin_network, origin_address,
 					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, calldata, txn_sender
+					tx_hash, block_timestamp, from_address, txn_sender
 				) VALUES (
 					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 					'', 1, '0x%064x',
-					1234567890, '0x1111111111111111111111111111111111111111', '', ''
+					1234567890, '0x1111111111111111111111111111111111111111', ''
 				)
 			`, i, i))
 			require.NoError(t, err)
@@ -1540,12 +1541,12 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 				INSERT INTO bridge (
 					block_num, block_pos, leaf_type, origin_network, origin_address,
 					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, calldata, txn_sender
+					tx_hash, block_timestamp, from_address, txn_sender
 				) VALUES (
 					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
 					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 					'', 1, '0x%064x',
-					1234567890, '0x1111111111111111111111111111111111111111', '', ''
+					1234567890, '0x1111111111111111111111111111111111111111', ''
 				)
 			`, i, i))
 			require.NoError(t, err)
@@ -1629,12 +1630,12 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 		INSERT INTO bridge (
 			block_num, block_pos, leaf_type, origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, calldata, txn_sender
+			tx_hash, block_timestamp, from_address, txn_sender
 		) VALUES (
 			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0x0000000000000000000000000000000000000000000000000000000000000000',
-			1234567890, '0x1111111111111111111111111111111111111111', '', ''
+			1234567890, '0x1111111111111111111111111111111111111111', ''
 		)
 	`)
 	require.NoError(t, err)
