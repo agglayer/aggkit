@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/db"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	common "github.com/ethereum/go-ethereum/common"
@@ -362,4 +363,60 @@ func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 	tracked, ok := reorgDetector.trackedBlocks["sub"]
 	require.True(t, ok)
 	require.GreaterOrEqual(t, len(tracked.getSorted()), 1)
+}
+
+func TestGetTrackedBlockByBlockNumber(t *testing.T) {
+	ctx := context.Background()
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetTrackedBlockByBlockNumber.sqlite")
+
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}, L1)
+	require.NoError(t, err)
+
+	syncerID := "test-syncer"
+	_, err = reorgDetector.Subscribe(syncerID)
+	require.NoError(t, err)
+
+	// Test subscriber not found
+	header, err := reorgDetector.GetTrackedBlockByBlockNumber("non-existent-syncer", 1)
+	require.Error(t, err)
+	require.Nil(t, header)
+	require.Equal(t, db.ErrNotFound, err)
+
+	// Test block number not found for existing subscriber
+	testHeader := Header{Num: 5, Hash: common.BigToHash(big.NewInt(5))}
+	err = reorgDetector.AddBlockToTrack(ctx, syncerID, testHeader.Num, testHeader.Hash)
+	require.NoError(t, err)
+
+	header, err = reorgDetector.GetTrackedBlockByBlockNumber(syncerID, 10)
+	require.Error(t, err)
+	require.Nil(t, header)
+	require.Equal(t, db.ErrNotFound, err)
+
+	// Test successful retrieval
+	header, err = reorgDetector.GetTrackedBlockByBlockNumber(syncerID, 5)
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, testHeader.Num, header.Num)
+	require.Equal(t, testHeader.Hash, header.Hash)
+}
+
+func TestGetDB(t *testing.T) {
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetDB.sqlite")
+
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}, L1)
+	require.NoError(t, err)
+
+	db := reorgDetector.GetDB()
+	require.NotNil(t, db)
+
+	err = db.Ping()
+	require.NoError(t, err)
 }
