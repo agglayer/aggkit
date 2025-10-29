@@ -94,6 +94,8 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 			aggkitcommon.EstimateSliceCapacity(len(c.Bridges), span, fullSpan)),
 		Claims: make([]bridgesync.Claim, 0,
 			aggkitcommon.EstimateSliceCapacity(len(c.Claims), span, fullSpan)),
+		Unclaims: make([]bridgesynctypes.Unclaim, 0,
+			aggkitcommon.EstimateSliceCapacity(len(c.Unclaims), span, fullSpan)),
 		CreatedAt:                      c.CreatedAt,
 		RetryCount:                     c.RetryCount,
 		LastSentCertificate:            c.LastSentCertificate,
@@ -112,6 +114,12 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 	for _, claim := range c.Claims {
 		if claim.BlockNum >= fromBlock && claim.BlockNum <= toBlock {
 			newCert.Claims = append(newCert.Claims, claim)
+		}
+	}
+
+	for _, unclaim := range c.Unclaims {
+		if unclaim.BlockNumber >= fromBlock && unclaim.BlockNumber <= toBlock {
+			newCert.Unclaims = append(newCert.Unclaims, unclaim)
 		}
 	}
 	return newCert, nil
