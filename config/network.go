@@ -20,8 +20,6 @@ var (
 
 // Config holds the common configuration for the Aggkit services
 type CommonConfig struct {
-	// NetworkID is the networkID of the Aggkit being run
-	NetworkID uint32 `mapstructure:"NetworkID"`
 	// L2URL is the URL of the L2 node
 	L2RPC L2RPCClientConfig `mapstructure:"L2RPC"`
 }
