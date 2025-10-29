@@ -360,25 +360,46 @@ func TestWaitForNewBlocks(t *testing.T) {
 	// at first attempt
 	currentBlock := uint64(5)
 	expectedBlock := uint64(6)
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil)
+	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+		Number: big.NewInt(6),
+	}, nil).Once()
+	// Second call to get the offset block header (with 6 since offset is 0)
+	clientMock.On("HeaderByNumber", ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock := d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
 	// 2 iterations
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil)
+	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(5),
 	}, nil).Once()
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// Second call to get the offset block header (with 5 since offset is 0)
+	clientMock.On("HeaderByNumber", ctx, big.NewInt(5)).Return(&types.Header{
+		Number: big.NewInt(5),
+	}, nil).Once()
+	// First call to get latest block header (with nil) - second iteration
+	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+		Number: big.NewInt(6),
+	}, nil).Once()
+	// Second call to get the offset block header (with 6 since offset is 0) - second iteration
+	clientMock.On("HeaderByNumber", ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
 	// after error from client
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(nil, errors.New("foo")).Once()
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil) - returns error
+	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(nil, errors.New("foo")).Once()
+	// First call to get latest block header (with nil) - retry after error
+	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+		Number: big.NewInt(6),
+	}, nil).Once()
+	// Second call to get the offset block header (with 6 since offset is 0)
+	clientMock.On("HeaderByNumber", ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
