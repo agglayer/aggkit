@@ -133,8 +133,8 @@ func (b *BlockNumberFinality) BlockNumber(
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }
 
-// Header gets the block header with offset from RPC
-func (b *BlockNumberFinality) BlockHeaderWithOffset(
+// Header gets the block header from RPC
+func (b *BlockNumberFinality) BlockHeader(
 	ctx context.Context,
 	requester ethereum.ChainReader,
 ) (*types.Header, error) {
