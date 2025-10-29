@@ -206,7 +206,7 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 		importedBridgeExits = append(importedBridgeExits, &agglayertypes.ImportedBridgeExitWithBlockNumber{
 			ImportedBridgeExit: ibe,
 			BlockNumber:        claim.BlockNum,
-			LogIndex:           uint64(claim.BlockPos),
+			LogIndex:           claim.BlockPos,
 		})
 	}
 
