@@ -77,7 +77,7 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 		unclaims = append(unclaims, &types.Unclaim{
 			GlobalIndex: new(big.Int).SetBytes(globalIndex[:]),
 			BlockNumber: unclaimIterator.Event.Raw.BlockNumber,
-			BlockIndex:  unclaimIterator.Event.Raw.Index,
+			LogIndex:    uint64(unclaimIterator.Event.Raw.Index),
 		})
 	}
 
