@@ -74,10 +74,6 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 	}, nil
 }
 
-func (rd *ReorgDetector) IsDisabled() bool {
-	return rd.finalizedBlockType.IsLatest()
-}
-
 // Start starts the reorg detector
 func (rd *ReorgDetector) Start(ctx context.Context) (err error) {
 	// Load tracked blocks from the DB

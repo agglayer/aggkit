@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -702,4 +703,49 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 	expected = append(expected, secondBatchLogs...)
 	expected = append(expected, thirdBatchLogs...)
 	assert.Equal(t, expected, result)
+}
+
+func TestGetLastFinalizedBlock(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("With finalizedBlockType set", func(t *testing.T) {
+		mockClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		finalizedBlockType := aggkittypes.FinalizedBlock
+		blockFinality := aggkittypes.LatestBlock
+
+		sut := EVMDownloaderImplementation{
+			ethClient:          mockClient,
+			finalizedBlockType: &finalizedBlockType,
+			blockFinality:      blockFinality,
+			log:                log.WithFields("test", "EVMDownloaderImplementation"),
+		}
+
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(&types.Header{
+			Number: big.NewInt(100),
+		}, nil).Once()
+
+		blockNumber, err := sut.GetLastFinalizedBlock(ctx)
+		require.NoError(t, err)
+		require.Equal(t, uint64(100), blockNumber)
+	})
+
+	t.Run("With finalizedBlockType nil - uses blockFinality", func(t *testing.T) {
+		mockClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		blockFinality := aggkittypes.LatestBlock
+
+		sut := EVMDownloaderImplementation{
+			ethClient:          mockClient,
+			finalizedBlockType: nil,
+			blockFinality:      blockFinality,
+			log:                log.WithFields("test", "EVMDownloaderImplementation"),
+		}
+
+		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
+			Number: big.NewInt(200),
+		}, nil).Once()
+
+		blockNumber, err := sut.GetLastFinalizedBlock(ctx)
+		require.NoError(t, err)
+		require.Equal(t, uint64(200), blockNumber)
+	})
 }
