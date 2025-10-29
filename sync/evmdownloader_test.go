@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
@@ -405,6 +406,85 @@ func TestWaitForNewBlocks(t *testing.T) {
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
+}
+
+func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("reorg detected - different hash", func(t *testing.T) {
+		rh := &RetryHandler{
+			MaxRetryAttemptsAfterError: 5,
+			RetryAfterErrorPeriod:      time.Millisecond,
+		}
+		clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+		reorgDetectorMock := NewReorgDetectorMock(t)
+
+		d, err := NewEVMDownloader("test",
+			clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
+			buildAppender(), []common.Address{contractAddr}, rh,
+			aggkittypes.FinalizedBlock,
+			reorgDetectorMock, "test-reorg-detector-id",
+		)
+		require.NoError(t, err)
+
+		latestSyncedBlock := uint64(5)
+		currentBlockNumber := uint64(4)
+
+		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
+		header := &types.Header{
+			Number:     big.NewInt(int64(currentBlockNumber)),
+			ParentHash: common.HexToHash("0x123"),
+		}
+		headerHash := header.Hash()
+		trackedBlock := &reorgdetector.Header{Hash: common.HexToHash("0x456")}
+
+		clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		clientMock.On("HeaderByNumber", ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
+		reorgDetectorMock.On("GetTrackedBlockByBlockNumber", "test-reorg-detector-id", currentBlockNumber).Return(trackedBlock, nil).Once()
+		reorgDetectorMock.On("AddBlockToTrack", ctx, "test-reorg-detector-id", currentBlockNumber, headerHash).Return(nil).Once()
+
+		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
+		assert.Equal(t, uint64(4), actualBlock)
+
+		reorgDetectorMock.AssertExpectations(t)
+		clientMock.AssertExpectations(t)
+	})
+
+	t.Run("reorg detector error", func(t *testing.T) {
+		rh := &RetryHandler{
+			MaxRetryAttemptsAfterError: 5,
+			RetryAfterErrorPeriod:      time.Millisecond,
+		}
+		clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+		reorgDetectorMock := NewReorgDetectorMock(t)
+
+		d, err := NewEVMDownloader("test",
+			clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
+			buildAppender(), []common.Address{contractAddr}, rh,
+			aggkittypes.FinalizedBlock,
+			reorgDetectorMock, "test-reorg-detector-id",
+		)
+		require.NoError(t, err)
+
+		latestSyncedBlock := uint64(5)
+		currentBlockNumber := uint64(4)
+
+		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
+		header := &types.Header{
+			Number:     big.NewInt(int64(currentBlockNumber)),
+			ParentHash: common.HexToHash("0x123"),
+		}
+
+		clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		clientMock.On("HeaderByNumber", ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
+		reorgDetectorMock.On("GetTrackedBlockByBlockNumber", "test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
+
+		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
+		assert.Equal(t, latestSyncedBlock, actualBlock)
+
+		reorgDetectorMock.AssertExpectations(t)
+		clientMock.AssertExpectations(t)
+	})
 }
 
 func TestGetBlockHeader(t *testing.T) {
