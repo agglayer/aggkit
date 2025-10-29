@@ -204,7 +204,7 @@ func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLe
 }
 
 // GetLatestL1InfoGER returns the most recent Global Exit Root that has been indexed
-// It can return following errors:
+// It can return the following errors:
 // - ErrInconsistentState
 // - ErrNotFound
 func (s *L1InfoTreeSync) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error) {
