@@ -370,7 +370,8 @@ func createAggSender(
 	go epochNotifier.Start(ctx)
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, agglayerBridgeL2Addr, rollupDataQuerier, committeeQuerier)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client,
+		agglayerBridgeL2Addr, rollupDataQuerier, committeeQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
