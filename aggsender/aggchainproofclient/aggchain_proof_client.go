@@ -134,7 +134,7 @@ func convertAggchainProofRequestToGrpcRequest(
 		}
 		convertedGerLeaves[k.String()] = &aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: v.BlockNumber,
-			BlockIndex:  uint64(v.BlockIndex),
+			LogIndex:    v.LogIndex,
 			ProvenInsertedGer: &aggkitProverV1Proto.ProvenInsertedGER{
 				ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
 					Root:     &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Root[:]},
@@ -167,6 +167,7 @@ func convertAggchainProofRequestToGrpcRequest(
 	for i, importedBridgeExitWithBlockNumber := range req.ImportedBridgeExitsWithBlockNumber {
 		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
 			BlockNumber: importedBridgeExitWithBlockNumber.BlockNumber,
+			LogIndex:    importedBridgeExitWithBlockNumber.LogIndex,
 			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.MainnetFlag,
@@ -187,7 +188,7 @@ func convertAggchainProofRequestToGrpcRequest(
 				Value: removedGER.GlobalExitRoot[:],
 			},
 			BlockNumber: removedGER.BlockNumber,
-			BlockIndex:  uint64(removedGER.BlockIndex),
+			LogIndex:    removedGER.LogIndex,
 		}
 	}
 
@@ -202,7 +203,7 @@ func convertAggchainProofRequestToGrpcRequest(
 				)).Bytes(),
 			},
 			BlockNumber: unclaim.BlockNumber,
-			BlockIndex:  uint64(unclaim.BlockIndex),
+			LogIndex:    unclaim.LogIndex,
 		}
 	}
 

@@ -144,7 +144,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 					{
 						GlobalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"),
 						BlockNumber:    5,
-						BlockIndex:     2,
+						LogIndex:       2,
 					},
 				}, nil)
 			},
@@ -152,7 +152,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 				{
 					GlobalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"),
 					BlockNumber:    5,
-					BlockIndex:     2,
+					LogIndex:       2,
 				},
 			},
 		},
@@ -163,17 +163,17 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 					{
 						GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 						BlockNumber:    3,
-						BlockIndex:     0,
+						LogIndex:       0,
 					},
 					{
 						GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
 						BlockNumber:    7,
-						BlockIndex:     1,
+						LogIndex:       1,
 					},
 					{
 						GlobalExitRoot: common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
 						BlockNumber:    9,
-						BlockIndex:     3,
+						LogIndex:       3,
 					},
 				}, nil)
 			},
@@ -181,17 +181,17 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 				{
 					GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 					BlockNumber:    3,
-					BlockIndex:     0,
+					LogIndex:       0,
 				},
 				{
 					GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
 					BlockNumber:    7,
-					BlockIndex:     1,
+					LogIndex:       1,
 				},
 				{
 					GlobalExitRoot: common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
 					BlockNumber:    9,
-					BlockIndex:     3,
+					LogIndex:       3,
 				},
 			},
 		},

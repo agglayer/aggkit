@@ -206,6 +206,7 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 		importedBridgeExits = append(importedBridgeExits, &agglayertypes.ImportedBridgeExitWithBlockNumber{
 			ImportedBridgeExit: ibe,
 			BlockNumber:        claim.BlockNum,
+			LogIndex:           uint64(claim.BlockPos),
 		})
 	}
 
@@ -231,7 +232,7 @@ func (a *aggchainProofQuery) convertUnclaimsMapToUnclaims(
 				LeafIndex:   leafIndex,
 			},
 			BlockNumber: unclaim.BlockNumber,
-			BlockIndex:  unclaim.BlockIndex,
+			LogIndex:    unclaim.LogIndex,
 		})
 	}
 

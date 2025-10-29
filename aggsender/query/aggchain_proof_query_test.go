@@ -431,7 +431,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 				big.NewInt(1): {
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 5),
 					BlockNumber: 100,
-					BlockIndex:  2,
+					LogIndex:    2,
 				},
 			},
 			expectedUnclaims: []*agglayertypes.Unclaim{
@@ -442,7 +442,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   5,
 					},
 					BlockNumber: 100,
-					BlockIndex:  2,
+					LogIndex:    2,
 				},
 			},
 		},
@@ -452,7 +452,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 				big.NewInt(1): {
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 3, 7),
 					BlockNumber: 200,
-					BlockIndex:  1,
+					LogIndex:    1,
 				},
 			},
 			expectedUnclaims: []*agglayertypes.Unclaim{
@@ -463,7 +463,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   7,
 					},
 					BlockNumber: 200,
-					BlockIndex:  1,
+					LogIndex:    1,
 				},
 			},
 		},
@@ -473,17 +473,17 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 				big.NewInt(1): {
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
 					BlockNumber: 100,
-					BlockIndex:  0,
+					LogIndex:    0,
 				},
 				big.NewInt(2): {
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 5, 10),
 					BlockNumber: 150,
-					BlockIndex:  3,
+					LogIndex:    3,
 				},
 				big.NewInt(3): {
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 0, 0),
 					BlockNumber: 200,
-					BlockIndex:  1,
+					LogIndex:    1,
 				},
 			},
 			expectedUnclaims: []*agglayertypes.Unclaim{
@@ -494,7 +494,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   1,
 					},
 					BlockNumber: 100,
-					BlockIndex:  0,
+					LogIndex:    0,
 				},
 				{
 					GlobalIndex: &agglayertypes.GlobalIndex{
@@ -503,7 +503,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   10,
 					},
 					BlockNumber: 150,
-					BlockIndex:  3,
+					LogIndex:    3,
 				},
 				{
 					GlobalIndex: &agglayertypes.GlobalIndex{
@@ -512,7 +512,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   0,
 					},
 					BlockNumber: 200,
-					BlockIndex:  1,
+					LogIndex:    1,
 				},
 			},
 		},
@@ -522,7 +522,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 				big.NewInt(1): {
 					GlobalIndex: big.NewInt(0),
 					BlockNumber: 100,
-					BlockIndex:  0,
+					LogIndex:    0,
 				},
 			},
 			expectedUnclaims: []*agglayertypes.Unclaim{
@@ -533,7 +533,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   0,
 					},
 					BlockNumber: 100,
-					BlockIndex:  0,
+					LogIndex:    0,
 				},
 			},
 		},
@@ -543,7 +543,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 				big.NewInt(1): {
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 4294967295, 4294967295), // max uint32 values
 					BlockNumber: 999999,
-					BlockIndex:  65535,
+					LogIndex:    65535,
 				},
 			},
 			expectedUnclaims: []*agglayertypes.Unclaim{
@@ -554,7 +554,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 						LeafIndex:   4294967295,
 					},
 					BlockNumber: 999999,
-					BlockIndex:  65535,
+					LogIndex:    65535,
 				},
 			},
 		},
@@ -589,7 +589,7 @@ func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
 					require.Equal(t, expected.GlobalIndex.RollupIndex, unclaims[i].GlobalIndex.RollupIndex)
 					require.Equal(t, expected.GlobalIndex.LeafIndex, unclaims[i].GlobalIndex.LeafIndex)
 					require.Equal(t, expected.BlockNumber, unclaims[i].BlockNumber)
-					require.Equal(t, expected.BlockIndex, unclaims[i].BlockIndex)
+					require.Equal(t, expected.LogIndex, unclaims[i].LogIndex)
 				}
 			}
 		})

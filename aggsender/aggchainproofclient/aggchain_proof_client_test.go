@@ -64,12 +64,12 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 			{
 				GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 				BlockNumber:    150,
-				BlockIndex:     1,
+				LogIndex:       1,
 			},
 			{
 				GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
 				BlockNumber:    175,
-				BlockIndex:     2,
+				LogIndex:       2,
 			},
 		},
 		Unclaims: []*agglayer.Unclaim{
@@ -80,7 +80,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 					LeafIndex:   1,
 				},
 				BlockNumber: 160,
-				BlockIndex:  3,
+				LogIndex:    3,
 			},
 			{
 				GlobalIndex: &agglayer.GlobalIndex{
@@ -89,7 +89,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 					LeafIndex:   2,
 				},
 				BlockNumber: 185,
-				BlockIndex:  4,
+				LogIndex:    4,
 			},
 		},
 	}
@@ -243,12 +243,12 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 			{
 				GlobalExitRoot: common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
 				BlockNumber:    350,
-				BlockIndex:     5,
+				LogIndex:       5,
 			},
 			{
 				GlobalExitRoot: common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
 				BlockNumber:    375,
-				BlockIndex:     6,
+				LogIndex:       6,
 			},
 		},
 		Unclaims: []*agglayer.Unclaim{
@@ -259,7 +259,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 					LeafIndex:   3,
 				},
 				BlockNumber: 360,
-				BlockIndex:  7,
+				LogIndex:    7,
 			},
 			{
 				GlobalIndex: &agglayer.GlobalIndex{
@@ -268,7 +268,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 					LeafIndex:   4,
 				},
 				BlockNumber: 385,
-				BlockIndex:  8,
+				LogIndex:    8,
 			},
 		},
 	}

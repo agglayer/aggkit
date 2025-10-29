@@ -201,7 +201,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		removedGER := removedGERs[0]
 		require.Equal(t, gerToRemove, removedGER.GlobalExitRoot)
 		require.Equal(t, removalReceipt.BlockNumber.Uint64(), removedGER.BlockNumber)
-		require.Equal(t, uint(0), removedGER.BlockIndex) // First event in the block
+		require.Equal(t, uint64(0), removedGER.LogIndex) // First event in the block
 	})
 
 	t.Run("success with multiple removed GERs", func(t *testing.T) {
