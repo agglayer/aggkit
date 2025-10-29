@@ -81,5 +81,9 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 		})
 	}
 
+	if unclaimIterator.Error() != nil {
+		return nil, unclaimIterator.Error()
+	}
+
 	return unclaims, nil
 }
