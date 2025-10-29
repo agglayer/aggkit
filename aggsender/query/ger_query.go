@@ -51,7 +51,7 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {
 	injectedGERs, err := g.chainGERReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
+		return nil, fmt.Errorf("error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 
@@ -60,11 +60,11 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 	for ger, injectedGER := range injectedGERs {
 		info, proof, err := g.l1InfoTreeQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRoot.Hash)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", ger.String(), err)
+			return nil, fmt.Errorf("error getting proof for GER: %s: %w", ger.String(), err)
 		}
 
 		if injectedGER.BlockPosition == nil {
-			return nil, fmt.Errorf("aggchainProverFlow - block position for GER %s is undefined", ger.String())
+			return nil, fmt.Errorf("block position for GER %s is undefined", ger.String())
 		}
 
 		proofs[ger] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
@@ -94,7 +94,7 @@ func (g *gerDataQuerier) GetRemovedGERsBlockDetails(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	removedGERs, err := g.chainGERReader.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs for range %d : %d: %w",
+		return nil, fmt.Errorf("error getting removed GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 	return removedGERs, nil
