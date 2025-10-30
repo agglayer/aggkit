@@ -73,9 +73,11 @@ func (a *AggOracle) Start(ctx context.Context) {
 // processLatestGER fetches the latest finalized GER, checks if it is already injected and injects it if not
 func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	a.logger.Debugf("checking for new GERs...")
+	metrics.IncGERProcessCount()
 	// Fetch the latest GER
 	latestL1InfoLeaf, err := a.l1Info.GetLatestL1InfoLeaf(ctx)
 	if err != nil {
+		metrics.IncGERProcessErrCount()
 		return err
 	}
 
@@ -84,8 +86,11 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	latestGER := latestL1InfoLeaf.GlobalExitRoot
 
 	go func() {
+		start := time.Now()
 		err := a.chainSender.ProcessGER(ctx, latestGER)
+		metrics.ObserveGERProcessDuration(time.Since(start))
 		if err != nil {
+			metrics.IncGERProcessErrCount()
 			a.logger.Error(err)
 		}
 	}()
