@@ -230,7 +230,6 @@ func TestDetectReorgs(t *testing.T) {
 		lastFinalizedBlock := &types.Header{Number: big.NewInt(8)}
 		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
-		client.On("HeaderByNumber", ctx, lastFinalizedBlock.Number).Return(lastFinalizedBlock, nil)
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(trackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
@@ -258,7 +257,7 @@ func TestDetectReorgs(t *testing.T) {
 		lastFinalizedBlock := trackedBlock
 		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
-		client.On("HeaderByNumber", ctx, lastFinalizedBlock.Number).Return(lastFinalizedBlock, nil)
+		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(trackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
 		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
@@ -283,8 +282,6 @@ func TestDetectReorgs(t *testing.T) {
 
 		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
-		client.On("HeaderByNumber", ctx, lastFinalizedBlock.Number).Return(lastFinalizedBlock, nil)
-
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(reorgedTrackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")

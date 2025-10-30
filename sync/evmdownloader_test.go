@@ -366,10 +366,6 @@ func TestWaitForNewBlocks(t *testing.T) {
 	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
-	// Second call to get the offset block header (with 6 since offset is 0)
-	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(6)).Return(&types.Header{
-		Number: big.NewInt(6),
-	}, nil).Once()
 	actualBlock := d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
@@ -378,16 +374,8 @@ func TestWaitForNewBlocks(t *testing.T) {
 	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(5),
 	}, nil).Once()
-	// Second call to get the offset block header (with 5 since offset is 0)
-	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(5)).Return(&types.Header{
-		Number: big.NewInt(5),
-	}, nil).Once()
 	// First call to get latest block header (with nil) - second iteration
 	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-		Number: big.NewInt(6),
-	}, nil).Once()
-	// Second call to get the offset block header (with 6 since offset is 0) - second iteration
-	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
@@ -398,10 +386,6 @@ func TestWaitForNewBlocks(t *testing.T) {
 	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, errors.New("foo")).Once()
 	// First call to get latest block header (with nil) - retry after error
 	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-		Number: big.NewInt(6),
-	}, nil).Once()
-	// Second call to get the offset block header (with 6 since offset is 0)
-	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
@@ -431,15 +415,11 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 		currentBlockNumber := uint64(4)
 
 		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
-		header := &types.Header{
-			Number:     big.NewInt(int64(currentBlockNumber)),
-			ParentHash: common.HexToHash("0x123"),
-		}
-		headerHash := header.Hash()
+
+		headerHash := latestHeader.Hash()
 		trackedBlock := &reorgdetector.Header{Hash: common.HexToHash("0x456")}
 
 		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
-		clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
 		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(trackedBlock, nil).Once()
 		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber, headerHash).Return(nil).Once()
 
@@ -470,13 +450,8 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 		currentBlockNumber := uint64(4)
 
 		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
-		header := &types.Header{
-			Number:     big.NewInt(int64(currentBlockNumber)),
-			ParentHash: common.HexToHash("0x123"),
-		}
 
 		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
-		clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
 		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
 
 		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
