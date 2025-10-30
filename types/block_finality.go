@@ -138,19 +138,12 @@ func (b *BlockNumberFinality) BlockHeader(
 	ctx context.Context,
 	requester ethereum.ChainReader,
 ) (*types.Header, error) {
-	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
+	blockNum, err := b.BlockNumber(ctx, requester)
 	if err != nil {
-		log.Errorf("BlockNumberFinality.Header: Error getting block %s. Err: %s", b.String(), err.Error())
-		return nil, err
+		return nil, fmt.Errorf("failed to resolve offseted block by number (block number: %s): %w", b, err)
 	}
 
-	blockNumberOffset := b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset)
-	blockHeaderOffset, err := requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumberOffset))
-	if err != nil {
-		log.Errorf("BlockNumberFinality.Header: Error getting block %s. Err: %s", b.String(), err.Error())
-		return nil, err
-	}
-	return blockHeaderOffset, nil
+	return requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
 }
 
 // LessFinalThan returns true if b is less strict commitment level than other.

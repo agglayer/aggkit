@@ -406,7 +406,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_reorg.sqlite")
-	blocktime := time.Millisecond * 100
+	blocktime := time.Millisecond * 250
 
 	// Setup simulated L1 environment with bridge and GER contracts
 	//nolint:dogsled
@@ -539,6 +539,8 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	auth.Value = nil
 	helpers.CommitBlocks(t, client, 2, blocktime)
 	t.Logf("  Created third bridge tx after fork: %s", txAfterFork.Hash().Hex())
+
+	time.Sleep(time.Millisecond * 500)
 
 	// Check reorg event count
 	reorgCount := getReorgCount()

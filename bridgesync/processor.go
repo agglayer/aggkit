@@ -790,21 +790,6 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		return err
 	}
 
-	newTx, err := db.NewTx(dbCtx, p.db)
-	if err != nil {
-		p.log.Errorf("failed to start transaction for reorg: %v", err)
-		return err
-	}
-	err = p.exitTree.InitCache(newTx)
-	if err != nil {
-		p.log.Errorf("failed to initialize exit tree cache: %v", err)
-		return err
-	}
-	if err = newTx.Commit(); err != nil {
-		p.log.Errorf("failed to commit reorg transaction: %v", err)
-		return err
-	}
-
 	shouldRollback = false
 
 	if rowsAffected > 0 {
