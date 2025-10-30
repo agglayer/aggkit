@@ -347,7 +347,6 @@ func (f *baseFlow) getImportedBridgeExits(
 	unclaims []bridgesynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-
 	// Build unclaim counts by GlobalIndex
 	unclaimCnt := make(map[string]int)
 	for _, u := range unclaims {

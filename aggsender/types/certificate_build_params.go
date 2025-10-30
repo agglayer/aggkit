@@ -65,8 +65,8 @@ type CertificateBuildParams struct {
 }
 
 func (c *CertificateBuildParams) String() string {
-	return fmt.Sprintf("Type: %s FromBlock: %d, ToBlock: %d, numBridges: %d, numClaims: %d, createdAt: %d",
-		c.CertificateType, c.FromBlock, c.ToBlock, c.NumberOfBridges(), c.NumberOfClaims(), c.CreatedAt)
+	return fmt.Sprintf("Type: %s FromBlock: %d, ToBlock: %d, numBridges: %d, numClaims: %d, numUnclaims: %d, createdAt: %d",
+		c.CertificateType, c.FromBlock, c.ToBlock, c.NumberOfBridges(), c.NumberOfClaims(), c.NumberOfUnclaims(), c.CreatedAt)
 }
 
 // Range create a new CertificateBuildParams with the given range
@@ -139,6 +139,14 @@ func (c *CertificateBuildParams) NumberOfClaims() int {
 		return 0
 	}
 	return len(c.Claims)
+}
+
+// NumberOfUnclaims returns the number of unclaims in the certificate
+func (c *CertificateBuildParams) NumberOfUnclaims() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.Unclaims)
 }
 
 // NumberOfBlocks returns the number of blocks in the certificate

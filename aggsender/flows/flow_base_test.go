@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -52,6 +53,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				ToBlock:   9,
 				Bridges:   []bridgesync.Bridge{{BlockNum: 9}},
 				Claims:    []bridgesync.Claim{},
+				Unclaims:  []bridgesynctypes.Unclaim{},
 			},
 		},
 		{
@@ -67,6 +69,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				ToBlock:   9,
 				Bridges:   []bridgesync.Bridge{},
 				Claims:    []bridgesync.Claim{},
+				Unclaims:  []bridgesynctypes.Unclaim{},
 			},
 		},
 		{
