@@ -66,7 +66,6 @@ const (
 	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
 	aggOracleBlockFinalityDeprecated       = "AggOracle.BlockFinality is deprecated, remove it from configuration"
-	l1InfoTreeSyncBlockFinalityDeprecated  = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
 	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
@@ -190,10 +189,6 @@ var (
 		{
 			FieldNamePattern: "AggOracle.BlockFinality",
 			Reason:           aggOracleBlockFinalityDeprecated,
-		},
-		{
-			FieldNamePattern: "L1InfoTreeSync.BlockFinality",
-			Reason:           l1InfoTreeSyncBlockFinalityDeprecated,
 		},
 		{
 			FieldNamePattern: "LastGERSync.SyncMode",

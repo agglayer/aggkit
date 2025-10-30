@@ -58,7 +58,6 @@ func NewReadOnly(
 func New(
 	ctx context.Context,
 	cfg Config,
-	blockFinalityType aggkittypes.BlockNumberFinality,
 	l1Client aggkittypes.BaseEthereumClienter,
 	flags CreationFlags,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
@@ -101,7 +100,7 @@ func New(
 		"l1infotreesync",
 		l1Client,
 		cfg.SyncBlockChunkSize,
-		blockFinalityType,
+		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
 		[]common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr},

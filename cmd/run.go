@@ -526,7 +526,6 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		cfg.L1InfoTreeSync,
-		aggkittypes.SafeBlock,
 		l1Client,
 		l1infotreesync.FlagNone,
 		aggkittypes.SafeBlock,

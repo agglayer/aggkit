@@ -70,6 +70,7 @@ func TestE2E(t *testing.T) {
 		DBPath:                             dbPath,
 		InitialBlock:                       0,
 		SyncBlockChunkSize:                 10,
+		BlockFinality:                      aggkittypes.LatestBlock,
 		GlobalExitRootAddr:                 gerAddr,
 		RollupManagerAddr:                  verifyAddr,
 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
@@ -77,7 +78,7 @@ func TestE2E(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, aggkittypes.LatestBlock, client.Client(),
+	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(),
 		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock)
 	require.NoError(t, err)
 
@@ -133,6 +134,7 @@ func TestStress(t *testing.T) {
 		DBPath:                             dbPathSyncer,
 		InitialBlock:                       0,
 		SyncBlockChunkSize:                 10,
+		BlockFinality:                      aggkittypes.LatestBlock,
 		GlobalExitRootAddr:                 gerAddr,
 		RollupManagerAddr:                  verifyAddr,
 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
@@ -140,7 +142,7 @@ func TestStress(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, aggkittypes.LatestBlock, client.Client(),
+	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(),
 		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock)
 	require.NoError(t, err)
 	go syncer.Start(ctx)

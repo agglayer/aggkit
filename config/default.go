@@ -93,6 +93,7 @@ FinalizedBlock = "LatestBlock"
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
 GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
+BlockFinality = "SafeBlock"
 SyncBlockChunkSize = 100
 URLRPCL1 = "{{L1URL}}"
 WaitForNewBlocksPeriod = "100ms"

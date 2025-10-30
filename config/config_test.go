@@ -155,9 +155,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	PolAddr="{{L1Config.polTokenAddress}}"
 	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
 
-	[L1InfoTreeSync]
-	BlockFinality = "LatestBlock"
-
 	[Etherman]
 	URL = "{{L1URL}}"
 	[Etherman.EthermanConfig]
@@ -198,7 +195,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrHint)
 	require.ErrorContains(t, err, delayBetweenRetriesHint)
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
-	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
