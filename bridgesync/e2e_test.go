@@ -203,11 +203,10 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	forkBlockNum, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	// Fork from the current block (which should be tracked) to ensure reorg detection
-	forkFromBlock := forkBlockNum
-	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkFromBlock)))
+	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlockNum)))
 	require.NoError(t, err)
 	forkBlockHash := forkBlockHeader.Hash()
-	t.Logf("  Fork point: block %d, hash %s", forkFromBlock, forkBlockHash.Hex())
+	t.Logf("  Fork point: block %d, hash %s", forkBlockNum, forkBlockHash.Hex())
 
 	// Commit additional blocks
 	helpers.CommitBlocks(t, client, 2, blocktime)
@@ -245,7 +244,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	require.Equal(t, 2, len(bridgesBeforeFork), "Should have 2 bridges before fork")
 
 	// Step 7: Fork from the recorded block
-	t.Log("Step 7: Creating fork from block", forkFromBlock)
+	t.Log("Step 7: Creating fork from block", forkBlockNum)
 
 	err = client.Fork(forkBlockHash)
 	require.NoError(t, err)
@@ -483,11 +482,10 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	forkBlockNum, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	// Fork from the current block (which should be tracked) to ensure reorg detection
-	forkFromBlock := forkBlockNum
-	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkFromBlock)))
+	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlockNum)))
 	require.NoError(t, err)
 	forkBlockHash := forkBlockHeader.Hash()
-	t.Logf("  Fork point: block %d, hash %s", forkFromBlock, forkBlockHash.Hex())
+	t.Logf("  Fork point: block %d, hash %s", forkBlockNum, forkBlockHash.Hex())
 
 	helpers.CommitBlocks(t, client, 2, blocktime)
 
@@ -518,7 +516,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	require.Equal(t, 2, len(bridgesBeforeFork), "Should have 2 bridges before fork")
 
 	// Step 7: Fork from the recorded block
-	t.Log("Step 7: Creating fork from block", forkFromBlock)
+	t.Log("Step 7: Creating fork from block", forkBlockNum)
 
 	err = client.Fork(forkBlockHash)
 	require.NoError(t, err)
