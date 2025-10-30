@@ -132,7 +132,8 @@ func (l *L1InfoTreeLeaf) GetGlobalExitRoot() common.Hash {
 	return CalculateGER(l.MainnetExitRoot, l.RollupExitRoot)
 }
 
-// CalculateGER calculates the Global Exit Root (GER) based on the keccak 256 of mainnet and rollup exit roots
+// CalculateGER calculates the Global Exit Root (GER) based on the keccak256 hash of concatenated
+// mainnet and rollup exit roots
 func CalculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
 	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 }
