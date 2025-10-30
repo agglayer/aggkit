@@ -10,7 +10,6 @@ function export_values_of_aggkit_config() {
     export_key_from_toml_file_or_fatal sovereign_bridge_proxy_addr $AGGKIT_CONFIG_FILE BridgeL2Sync BridgeAddr
     export_key_from_toml_file_or_fatal sovereign_rollup_addr $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
     export_key_from_toml_file_or_fatal sovereign_ger_proxy_addr $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
-    export_key_from_toml_file_or_fatal sovereign_bridge_proxy_addr $AGGKIT_CONFIG_FILE L2Config BridgeAddr
 }
 ###############################################################################
 function export_ports_from_kurtosis() {

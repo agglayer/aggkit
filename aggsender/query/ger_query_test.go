@@ -128,7 +128,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader) {
 				mockChainGERReader.EXPECT().GetRemovedGERsForRange(ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
-			expectedError: "aggchainProverFlow - error getting removed GERs for range 1 : 10: some error",
+			expectedError: "error getting removed GERs for range 1 : 10: some error",
 		},
 		{
 			name: "success with empty result",

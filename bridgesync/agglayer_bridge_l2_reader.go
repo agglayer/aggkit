@@ -50,7 +50,7 @@ func NewAgglayerBridgeL2Reader(
 //   - toBlock: The ending block number for the search range (inclusive)
 //
 // Returns:
-//   - []*types.Unclaim: A slice of Unclaim objects containing global index, block number, and block index
+//   - []types.Unclaim: A slice of Unclaim objects containing global index, block number, and block index
 //   - error: Any error that occurred during the event filtering or iteration
 func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]types.Unclaim, error) {

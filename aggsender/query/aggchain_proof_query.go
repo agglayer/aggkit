@@ -106,7 +106,6 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		return nil, nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
 	}
 
-	// convert unclaims map to unclaims
 	unclaims, err := a.convertUnclaimsToUnclaims(certBuildParams.Unclaims)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting unclaims to unclaims: %w", err)
@@ -212,7 +211,6 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 	return importedBridgeExits, nil
 }
 
-// convert unclaims map to imported bridge exits
 func (a *aggchainProofQuery) convertUnclaimsToUnclaims(
 	unclaims []bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
 	unclaimsConverted := make([]*agglayertypes.Unclaim, 0, len(unclaims))

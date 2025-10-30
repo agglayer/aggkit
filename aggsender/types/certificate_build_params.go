@@ -65,7 +65,9 @@ type CertificateBuildParams struct {
 }
 
 func (c *CertificateBuildParams) String() string {
-	return fmt.Sprintf("Type: %s FromBlock: %d, ToBlock: %d, numBridges: %d, numClaims: %d, numUnclaims: %d, createdAt: %d",
+	return fmt.Sprintf(
+		"Type: %s FromBlock: %d, ToBlock: %d, numBridges: %d, "+
+			"numClaims: %d, numUnclaims: %d, createdAt: %d",
 		c.CertificateType, c.FromBlock, c.ToBlock, c.NumberOfBridges(), c.NumberOfClaims(), c.NumberOfUnclaims(), c.CreatedAt)
 }
 

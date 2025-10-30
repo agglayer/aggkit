@@ -321,9 +321,9 @@ func TestGetUnsetClaimsForBlockRange(t *testing.T) {
 			toBlock:   200,
 			mockFn: func(mockReader *mocks.AgglayerBridgeL2Reader) {
 				// No mocks needed for syncer as the error occurs before calling it
-				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, errors.New("database error")).Once()
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, errors.New("failed to get unclaim block range: error")).Once()
 			},
-			expectedError: "failed to get unclaim block range: database error",
+			expectedError: "failed to get unclaim block range: error",
 		},
 		{
 			name:      "success - empty unclaims list",

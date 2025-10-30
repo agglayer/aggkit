@@ -87,7 +87,6 @@ polygonZkEVMAddress = "{{.sovereign_rollup_addr}}"
 # Address of the sovereign global exit root proxy contract on L2
 # ------------------------------------------------------------------------------
 GlobalExitRootAddr = "{{.sovereign_ger_proxy_addr}}"
-BridgeAddr = "{{.sovereign_bridge_proxy_addr}}"
 
 # ==============================================================================
 #  _     ___   ____

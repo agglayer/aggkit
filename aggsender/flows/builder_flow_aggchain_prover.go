@@ -202,7 +202,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		unclaims, err := a.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
 			fromBlock, toBlock)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting unset claims for block range: %w", err)
+			return nil, fmt.Errorf("error getting unset claims for block range: %w", err)
 		}
 
 		buildParams := &types.CertificateBuildParams{
