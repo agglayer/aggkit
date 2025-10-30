@@ -136,7 +136,7 @@ func start(cliCtx *cli.Context) error {
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
 			cfg.REST,
-			cfg.Common.NetworkID,
+			rollupDataQuerier.RollupID,
 			l1InfoTreeSync,
 			l2GERSync,
 			l1BridgeSync,

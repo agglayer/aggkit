@@ -73,6 +73,7 @@ const (
 	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
+	networkIDDeprecatedHint = "Common.NetworkID is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -221,6 +222,10 @@ var (
 		{
 			FieldNamePattern: "AggSender.KeepCertificatesHistory",
 			Reason:           "field moved to AggSender.StorageRetainCertificatesPolicy.KeepCertificatesHistory",
+		},
+		{
+			FieldNamePattern: "Common.NetworkID",
+			Reason:           networkIDDeprecatedHint,
 		},
 	}
 )
