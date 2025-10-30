@@ -129,7 +129,7 @@ func (b *BlockNumberFinality) BlockNumber(
 	if err != nil {
 		log.Errorf(
 			"BlockNumberFinality.BlockNumber: Error getting base header (block=%s, offset=%d). Err: %s",
-			b.Block.String(), b.Offset, err.Error(),
+			b.String(), b.Offset, err.Error(),
 		)
 		return 0, err
 	}
@@ -145,7 +145,7 @@ func (b *BlockNumberFinality) BlockHeader(
 	if err != nil {
 		log.Errorf(
 			"BlockNumberFinality.BlockHeader: Error getting base header (block=%d, offset=%d). Err: %s",
-			b.Block.String(), b.Offset, err.Error(),
+			b.String(), b.Offset, err.Error(),
 		)
 		return nil, err
 	}
