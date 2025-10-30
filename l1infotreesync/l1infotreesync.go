@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -20,7 +19,7 @@ import (
 )
 
 const (
-	reorgDetectorID    = "l1InfoTreeSyncer"
+	syncerID           = "l1infotreesync"
 	downloadBufferSize = 1000
 )
 
@@ -59,8 +58,8 @@ func New(
 	ctx context.Context,
 	cfg Config,
 	l1Client aggkittypes.BaseEthereumClienter,
+	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
-	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*L1InfoTreeSync, error) {
 	processor, err := newProcessor(cfg.DBPath)
 	if err != nil {
@@ -105,9 +104,9 @@ func New(
 		appender,
 		[]common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr},
 		rh,
-		finalizedBlockType,
-		reorgdetector.NewNoOpReorgDetector(), // reorgDetector
-		"l1infotreesync",                     // reorgDetectorID
+		reorgDetector.GetFinalizedBlockType(),
+		reorgDetector, // reorgDetector
+		syncerID,      // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err
@@ -117,7 +116,7 @@ func New(
 		downloader.RuntimeData,
 		processor)
 
-	driver, err := sync.NewEVMDriver(reorgdetector.NewNoOpReorgDetector(), processor, downloader, reorgDetectorID,
+	driver, err := sync.NewEVMDriver(reorgDetector, processor, downloader, syncerID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err

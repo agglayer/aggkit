@@ -167,8 +167,6 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 	subscriberIDs := rd.getSubscriberIDs()
 	startTime := time.Now()
 	for _, id := range subscriberIDs {
-		id := id
-
 		// This is done like this because of a possible deadlock
 		// between AddBlocksToTrack and detectReorgInTrackedList
 		rd.trackedBlocksLock.RLock()

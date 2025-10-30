@@ -40,6 +40,7 @@ import (
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -107,7 +108,7 @@ func start(cliCtx *cli.Context) error {
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 	var rpcServices []jRPC.Service
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, l1Client)
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1, l1Client)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
@@ -515,6 +516,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	ctx context.Context,
 	components []string,
 	cfg config.Config,
+	reorgDetectorL1 aggkitsync.ReorgDetector,
 	l1Client aggkittypes.BaseEthereumClienter,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
@@ -527,8 +529,8 @@ func runL1InfoTreeSyncerIfNeeded(
 		ctx,
 		cfg.L1InfoTreeSync,
 		l1Client,
+		reorgDetectorL1,
 		l1infotreesync.FlagNone,
-		aggkittypes.SafeBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -594,12 +596,14 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC},
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN},
 		components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 
+	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 	errChan := make(chan error)
 	go func() {
 		if err := rd.Start(ctx); err != nil {
@@ -673,7 +677,7 @@ func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
 	cfg bridgesync.Config,
-	reorgDetectorL1 *reorgdetector.ReorgDetector,
+	reorgDetectorL1 bridgesync.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
 	wg *sync.WaitGroup,
