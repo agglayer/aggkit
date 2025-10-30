@@ -54,8 +54,6 @@ type EVMDownloader struct {
 	finalizedBlockType         *aggkittypes.BlockNumberFinality
 	stopDownloaderOnIterationN int
 	addressesToQuery           []common.Address
-	reorgDetector              ReorgDetector
-	reorgDetectorID            string
 }
 
 func NewEVMDownloader(
@@ -90,8 +88,6 @@ func NewEVMDownloader(
 		log:                logger,
 		finalizedBlockType: &finalizedBlockType,
 		addressesToQuery:   addressesToQuery,
-		reorgDetector:      reorgDetector,
-		reorgDetectorID:    reorgDetectorID,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
 			ethClient,
