@@ -95,7 +95,6 @@ GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 BlockFinality = "SafeBlock"
 SyncBlockChunkSize = 100
-URLRPCL1 = "{{L1URL}}"
 WaitForNewBlocksPeriod = "100ms"
 InitialBlock = {{genesisBlockNumber}}
 RetryAfterErrorPeriod = "1s"
@@ -104,7 +103,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
 TargetChainType = "EVM"
-URLRPCL1 = "{{L1URL}}"
 WaitPeriodNextGER = "10s"
 EnableAggOracleCommittee = false
 	[AggOracle.EVMSender]

@@ -17,7 +17,6 @@ type Config struct {
 	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock,enum=SafeBlock,enum=PendingBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// SyncBlockChunkSize is the amount of blocks that will be queried to the client on each request
 	SyncBlockChunkSize uint64 `mapstructure:"SyncBlockChunkSize"`
-	URLRPCL1           string `mapstructure:"URLRPCL1"`
 	// WaitForNewBlocksPeriod time that will be waited when the synchronizer has queries for new blocks
 	WaitForNewBlocksPeriod types.Duration `mapstructure:"WaitForNewBlocksPeriod"`
 	// InitialBlock is the first block that will be queried when starting the synchronization from scratch
