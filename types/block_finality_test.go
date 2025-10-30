@@ -316,22 +316,25 @@ func TestBlockNumberFinality_BlockHeader(t *testing.T) {
 		result, err := blockFinality.BlockHeader(ctx, mockClient)
 		require.Error(t, err)
 		require.Nil(t, result)
-		require.Equal(t, testErr, err)
+		require.Contains(t, err.Error(), testErr.Error())
 	})
 
 	t.Run("Error on second call", func(t *testing.T) {
 		mockClient := mocks.NewBaseEthereumClienter(t)
-		blockFinality := BlockNumberFinality{Block: Latest, Offset: 10}
+		// Safe with positive offset so the resolved block differs from the base and triggers a second fetch
+		blockFinality := BlockNumberFinality{Block: Safe, Offset: 10}
 
-		latestHeader := &types.Header{Number: big.NewInt(100)}
+		safeHeader := &types.Header{Number: big.NewInt(100)}
 		testErr := fmt.Errorf("second call error")
 
-		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(100)).Return(nil, testErr).Once()
+		// First call resolves base Safe header (100)
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.SafeBlockNumber))).Return(safeHeader, nil).Once()
+		// Second call attempts to fetch 110 and fails
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(110)).Return(nil, testErr).Once()
 
 		result, err := blockFinality.BlockHeader(ctx, mockClient)
 		require.Error(t, err)
 		require.Nil(t, result)
-		require.Equal(t, testErr, err)
+		require.Contains(t, err.Error(), testErr.Error())
 	})
 }

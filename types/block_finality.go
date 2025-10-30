@@ -127,7 +127,10 @@ func (b *BlockNumberFinality) BlockNumber(
 ) (uint64, error) {
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
-		log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", b.String(), err.Error())
+		log.Errorf(
+			"BlockNumberFinality.BlockNumber: Error getting base header (block=%s, offset=%d). Err: %s",
+			b.Block.String(), b.Offset, err.Error(),
+		)
 		return 0, err
 	}
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
@@ -138,11 +141,19 @@ func (b *BlockNumberFinality) BlockHeader(
 	ctx context.Context,
 	requester ethereum.ChainReader,
 ) (*types.Header, error) {
-	blockNum, err := b.BlockNumber(ctx, requester)
+	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve offseted block by number (block number: %s): %w", b, err)
+		log.Errorf(
+			"BlockNumberFinality.BlockHeader: Error getting base header (block=%d, offset=%d). Err: %s",
+			b.Block.String(), b.Offset, err.Error(),
+		)
+		return nil, err
 	}
 
+	blockNum := b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset)
+	if blockNum == blockHeader.Number.Uint64() {
+		return blockHeader, nil
+	}
 	return requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
 }
 
