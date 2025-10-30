@@ -297,8 +297,7 @@ func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context)
 	if blockFinality == nil {
 		blockFinality = &d.blockFinality
 	}
-	blockNumber, err := blockFinality.BlockNumber(ctx, d.ethClient)
-	return blockNumber, err
+	return blockFinality.BlockNumber(ctx, d.ethClient)
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(

@@ -298,8 +298,8 @@ func TestBlockNumberFinality_BlockHeader(t *testing.T) {
 		finalizedHeader := &types.Header{Number: big.NewInt(100)}
 		offsetHeader := &types.Header{Number: big.NewInt(95)}
 
-		mockClient.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Once()
-		mockClient.On("HeaderByNumber", ctx, big.NewInt(95)).Return(offsetHeader, nil).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(95)).Return(offsetHeader, nil).Once()
 
 		result, err := blockFinality.BlockHeader(ctx, mockClient)
 		require.NoError(t, err)
@@ -311,7 +311,7 @@ func TestBlockNumberFinality_BlockHeader(t *testing.T) {
 		blockFinality := BlockNumberFinality{Block: Latest, Offset: 0}
 
 		testErr := fmt.Errorf("first call error")
-		mockClient.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(nil, testErr).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, testErr).Once()
 
 		result, err := blockFinality.BlockHeader(ctx, mockClient)
 		require.Error(t, err)
@@ -326,8 +326,8 @@ func TestBlockNumberFinality_BlockHeader(t *testing.T) {
 		latestHeader := &types.Header{Number: big.NewInt(100)}
 		testErr := fmt.Errorf("second call error")
 
-		mockClient.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
-		mockClient.On("HeaderByNumber", ctx, big.NewInt(100)).Return(nil, testErr).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(100)).Return(nil, testErr).Once()
 
 		result, err := blockFinality.BlockHeader(ctx, mockClient)
 		require.Error(t, err)

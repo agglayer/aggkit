@@ -363,11 +363,11 @@ func TestWaitForNewBlocks(t *testing.T) {
 	currentBlock := uint64(5)
 	expectedBlock := uint64(6)
 	// First call to get latest block header (with nil)
-	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	// Second call to get the offset block header (with 6 since offset is 0)
-	clientMock.On("HeaderByNumber", ctx, big.NewInt(6)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock := d.WaitForNewBlocks(ctx, currentBlock)
@@ -375,19 +375,19 @@ func TestWaitForNewBlocks(t *testing.T) {
 
 	// 2 iterations
 	// First call to get latest block header (with nil)
-	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(5),
 	}, nil).Once()
 	// Second call to get the offset block header (with 5 since offset is 0)
-	clientMock.On("HeaderByNumber", ctx, big.NewInt(5)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(5)).Return(&types.Header{
 		Number: big.NewInt(5),
 	}, nil).Once()
 	// First call to get latest block header (with nil) - second iteration
-	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	// Second call to get the offset block header (with 6 since offset is 0) - second iteration
-	clientMock.On("HeaderByNumber", ctx, big.NewInt(6)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
@@ -395,13 +395,13 @@ func TestWaitForNewBlocks(t *testing.T) {
 
 	// after error from client
 	// First call to get latest block header (with nil) - returns error
-	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(nil, errors.New("foo")).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, errors.New("foo")).Once()
 	// First call to get latest block header (with nil) - retry after error
-	clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	// Second call to get the offset block header (with 6 since offset is 0)
-	clientMock.On("HeaderByNumber", ctx, big.NewInt(6)).Return(&types.Header{
+	clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(6)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
@@ -438,10 +438,10 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 		headerHash := header.Hash()
 		trackedBlock := &reorgdetector.Header{Hash: common.HexToHash("0x456")}
 
-		clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
-		clientMock.On("HeaderByNumber", ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
-		reorgDetectorMock.On("GetTrackedBlockByBlockNumber", "test-reorg-detector-id", currentBlockNumber).Return(trackedBlock, nil).Once()
-		reorgDetectorMock.On("AddBlockToTrack", ctx, "test-reorg-detector-id", currentBlockNumber, headerHash).Return(nil).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
+		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(trackedBlock, nil).Once()
+		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber, headerHash).Return(nil).Once()
 
 		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
 		assert.Equal(t, uint64(4), actualBlock)
@@ -475,9 +475,9 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 			ParentHash: common.HexToHash("0x123"),
 		}
 
-		clientMock.On("HeaderByNumber", ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
-		clientMock.On("HeaderByNumber", ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
-		reorgDetectorMock.On("GetTrackedBlockByBlockNumber", "test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(currentBlockNumber))).Return(header, nil).Once()
+		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
 
 		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
 		assert.Equal(t, latestSyncedBlock, actualBlock)
@@ -502,29 +502,29 @@ func TestGetBlockHeader(t *testing.T) {
 	}
 
 	// at first attempt
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled := d.GetBlockHeader(ctx, blockNum)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
 
 	// after error from client
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(nil, errors.New("foo")).Once()
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(nil, errors.New("foo")).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled = d.GetBlockHeader(ctx, blockNum)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
 
 	// header not found default
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled = d.GetBlockHeader(ctx, 5)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
 
 	// header not found default TO
 	d, clientMock = NewTestDownloader(t, 0)
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled = d.GetBlockHeader(ctx, 5)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
@@ -695,16 +695,16 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 		downloader.setStopDownloaderOnIterationN(i + 1)
 		expectedBlocks := EVMBlocks{}
 		for _, step := range steps[:i+1] {
-			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(step.finalizedBlock, nil).Once()
+			mockEthDownloader.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(step.finalizedBlock, nil).Once()
 			if step.waitForNewBlocks {
-				mockEthDownloader.On("WaitForNewBlocks", mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
+				mockEthDownloader.EXPECT().WaitForNewBlocks(mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
 			}
-			mockEthDownloader.On("GetEventsByBlockRange", mock.Anything, step.fromBlock, step.toBlock).
-				Return(step.eventsReponse, false).Once()
+			mockEthDownloader.EXPECT().GetEventsByBlockRange(mock.Anything, step.fromBlock, step.toBlock).
+				Return(step.eventsReponse).Once()
 			expectedBlocks = append(expectedBlocks, step.eventsReponse...)
 			if step.getBlockHeader != nil {
 				log.Infof("iteration:%d : GetBlockHeader(%d) ", i, step.getBlockHeader.Num)
-				mockEthDownloader.On("GetBlockHeader", mock.Anything, step.getBlockHeader.Num).Return(*step.getBlockHeader, false).Once()
+				mockEthDownloader.EXPECT().GetBlockHeader(mock.Anything, step.getBlockHeader.Num).Return(*step.getBlockHeader, false).Once()
 				expectedBlocks = append(expectedBlocks, &EVMBlock{
 					EVMBlockHeader:   *step.getBlockHeader,
 					IsFinalizedBlock: step.getBlockHeader.Num <= step.finalizedBlock,
