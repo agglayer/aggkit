@@ -55,6 +55,7 @@ func New(
 func (a *AggOracle) Start(ctx context.Context) {
 	// Register metrics
 	metrics.Register()
+
 	for {
 		if err := a.processLatestGER(ctx); err != nil {
 			a.handleGERProcessingError(err)
