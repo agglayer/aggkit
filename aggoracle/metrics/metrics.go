@@ -8,27 +8,30 @@ import (
 )
 
 const (
-	prefix                = "aggoracle_"
-	gerProcessDuration    = prefix + "ger_processing_duration_seconds"
-	gerProcessCount       = prefix + "ger_processing_trigger_total"
-	gerProcessErrorsCount = prefix + "ger_processing_errors_total"
+	namespace             = "aggoracle"
+	gerProcessDuration    = "ger_processing_duration_seconds"
+	gerProcessCount       = "ger_processing_trigger_total"
+	gerProcessErrorsCount = "ger_processing_errors_total"
 )
 
 // Register the metrics for the aggoracle package
 func Register() {
 	gerProcessingDuration := prometheusclient.HistogramOpts{
-		Name: gerProcessDuration,
-		Help: "[AGGORACLE] Duration in seconds for processing a Global Exit Root.",
+		Namespace: namespace,
+		Name:      gerProcessDuration,
+		Help:      "Duration in seconds for processing a Global Exit Root.",
 	}
 
 	gerProcessTriggerCount := prometheusclient.CounterOpts{
-		Name: gerProcessCount,
-		Help: "[AGGORACLE] Total number of GER processing triggers.",
+		Namespace: namespace,
+		Name:      gerProcessCount,
+		Help:      "Total number of GER processing triggers.",
 	}
 
 	gerProcessErrorCount := prometheusclient.CounterOpts{
-		Name: gerProcessErrorsCount,
-		Help: "[AGGORACLE] Total number of GER processing errors, labeled by error type.",
+		Namespace: namespace,
+		Name:      gerProcessErrorsCount,
+		Help:      "Total number of GER processing errors.",
 	}
 
 	prometheus.RegisterHistograms(gerProcessingDuration)
