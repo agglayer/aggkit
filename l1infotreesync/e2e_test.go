@@ -72,6 +72,7 @@ func TestE2E(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(&reorgdetector.Subscription{}, nil)
 	mockReorgDetector.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(aggkittypes.FinalizedBlock).Once()
+	mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
 	cfg := l1infotreesync.Config{
