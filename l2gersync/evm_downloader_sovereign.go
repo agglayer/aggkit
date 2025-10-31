@@ -61,7 +61,7 @@ func newDownloaderSovereign(
 	evmDownloader := sync.NewEVMDownloaderImplementation(
 		"l2GERSync", l2Client, blockFinality,
 		waitForNewBlocksPeriod, appender, []common.Address{l2GERAddr},
-		rh, nil)
+		rh, nil, nil, "l2GERSync")
 
 	d.EVMDownloaderImplementation = evmDownloader
 

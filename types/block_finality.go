@@ -9,6 +9,7 @@ import (
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/invopop/jsonschema"
 )
@@ -119,14 +120,41 @@ func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
 }
 
-// BlockNumber gets the safe block number from RPC
-func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereum.ChainReader) (uint64, error) {
+// BlockNumber gets the block number from RPC with offset taken into account
+func (b *BlockNumberFinality) BlockNumber(
+	ctx context.Context,
+	requester ethereum.ChainReader,
+) (uint64, error) {
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
-		log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", b.String(), err.Error())
+		log.Errorf(
+			"BlockNumberFinality.BlockNumber: Error getting base header (block=%s, offset=%d). Err: %s",
+			b.String(), b.Offset, err.Error(),
+		)
 		return 0, err
 	}
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
+}
+
+// BlockHeader gets the block header from RPC with offset taken into account
+func (b *BlockNumberFinality) BlockHeader(
+	ctx context.Context,
+	requester ethereum.ChainReader,
+) (*types.Header, error) {
+	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
+	if err != nil {
+		log.Errorf(
+			"BlockNumberFinality.BlockHeader: Error getting base header (block=%d, offset=%d). Err: %s",
+			b.String(), b.Offset, err.Error(),
+		)
+		return nil, err
+	}
+
+	blockNum := b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset)
+	if blockNum == blockHeader.Number.Uint64() {
+		return blockHeader, nil
+	}
+	return requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
 }
 
 // LessFinalThan returns true if b is less strict commitment level than other.
