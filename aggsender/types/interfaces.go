@@ -167,7 +167,7 @@ type GERQuerier interface {
 		ctx context.Context,
 		finalizedL1InfoTreeRoot *treetypes.Root,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
-	GetRemovedGERsBlockDetails(ctx context.Context,
+	GetRemovedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
 }
 

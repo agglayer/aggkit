@@ -89,8 +89,8 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 	return proofs, nil
 }
 
-// GetRemovedGERsBlockDetails returns the removed GlobalExitRoots for the given block range
-func (g *gerDataQuerier) GetRemovedGERsBlockDetails(ctx context.Context,
+// GetRemovedGERsForRange returns the removed GlobalExitRoots for the given block range
+func (g *gerDataQuerier) GetRemovedGERsForRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	removedGERs, err := g.chainGERReader.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {

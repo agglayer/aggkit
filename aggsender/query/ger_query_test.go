@@ -112,7 +112,7 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 	}
 }
 
-func Test_GetRemovedGERsBlockDetails(t *testing.T) {
+func Test_GetRemovedGERsForRange(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -208,7 +208,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 
 			tc.mockFn(mockGERReader)
 
-			removedGERs, err := gerQuerier.GetRemovedGERsBlockDetails(ctx, 1, 10)
+			removedGERs, err := gerQuerier.GetRemovedGERsForRange(ctx, 1, 10)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

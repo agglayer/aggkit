@@ -88,12 +88,12 @@ func (_c *GERQuerier_GetInjectedGERsProofs_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
-// GetRemovedGERsBlockDetails provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *GERQuerier) GetRemovedGERsBlockDetails(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
+// GetRemovedGERsForRange provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *GERQuerier) GetRemovedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetRemovedGERsBlockDetails")
+		panic("no return value specified for GetRemovedGERsForRange")
 	}
 
 	var r0 []*agglayertypes.RemovedGER
@@ -118,32 +118,32 @@ func (_m *GERQuerier) GetRemovedGERsBlockDetails(ctx context.Context, fromBlock 
 	return r0, r1
 }
 
-// GERQuerier_GetRemovedGERsBlockDetails_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemovedGERsBlockDetails'
-type GERQuerier_GetRemovedGERsBlockDetails_Call struct {
+// GERQuerier_GetRemovedGERsForRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemovedGERsForRange'
+type GERQuerier_GetRemovedGERsForRange_Call struct {
 	*mock.Call
 }
 
-// GetRemovedGERsBlockDetails is a helper method to define mock.On call
+// GetRemovedGERsForRange is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-func (_e *GERQuerier_Expecter) GetRemovedGERsBlockDetails(ctx interface{}, fromBlock interface{}, toBlock interface{}) *GERQuerier_GetRemovedGERsBlockDetails_Call {
-	return &GERQuerier_GetRemovedGERsBlockDetails_Call{Call: _e.mock.On("GetRemovedGERsBlockDetails", ctx, fromBlock, toBlock)}
+func (_e *GERQuerier_Expecter) GetRemovedGERsForRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *GERQuerier_GetRemovedGERsForRange_Call {
+	return &GERQuerier_GetRemovedGERsForRange_Call{Call: _e.mock.On("GetRemovedGERsForRange", ctx, fromBlock, toBlock)}
 }
 
-func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *GERQuerier_GetRemovedGERsBlockDetails_Call {
+func (_c *GERQuerier_GetRemovedGERsForRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *GERQuerier_GetRemovedGERsForRange_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
 	})
 	return _c
 }
 
-func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) Return(_a0 []*agglayertypes.RemovedGER, _a1 error) *GERQuerier_GetRemovedGERsBlockDetails_Call {
+func (_c *GERQuerier_GetRemovedGERsForRange_Call) Return(_a0 []*agglayertypes.RemovedGER, _a1 error) *GERQuerier_GetRemovedGERsForRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)) *GERQuerier_GetRemovedGERsBlockDetails_Call {
+func (_c *GERQuerier_GetRemovedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)) *GERQuerier_GetRemovedGERsForRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

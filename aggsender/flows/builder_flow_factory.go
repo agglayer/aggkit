@@ -6,8 +6,6 @@ import (
 	"math/big"
 	"time"
 
-	ethCommon "github.com/ethereum/go-ethereum/common"
-
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
@@ -21,6 +19,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (

@@ -101,7 +101,7 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
 
-	removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
+	removedGERs, err := a.gerQuerier.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
 	}
