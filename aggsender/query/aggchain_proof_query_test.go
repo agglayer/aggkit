@@ -411,7 +411,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 	}
 }
 
-func TestConvertUnclaimsToUnclaims(t *testing.T) {
+func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -566,12 +566,12 @@ func TestConvertUnclaimsToUnclaims(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			log := log.WithFields("aggchain_proof_query", "TestConvertUnclaimsToUnclaims")
+			log := log.WithFields("aggchain_proof_query", "TestConvertUnclaimsToAgglayerUnclaims")
 			query := &aggchainProofQuery{
 				log: log,
 			}
 
-			unclaims, err := query.convertUnclaimsToUnclaims(tc.unclaims)
+			unclaims, err := query.convertUnclaimsToAgglayerUnclaims(tc.unclaims)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 				require.Nil(t, unclaims)
