@@ -177,6 +177,65 @@ func (_c *ReorgDetector_GetLastReorgEvent_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
+// GetTrackedBlockByBlockNumber provides a mock function with given fields: id, blockNumber
+func (_m *ReorgDetector) GetTrackedBlockByBlockNumber(id string, blockNumber uint64) (*reorgdetector.Header, error) {
+	ret := _m.Called(id, blockNumber)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTrackedBlockByBlockNumber")
+	}
+
+	var r0 *reorgdetector.Header
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string, uint64) (*reorgdetector.Header, error)); ok {
+		return rf(id, blockNumber)
+	}
+	if rf, ok := ret.Get(0).(func(string, uint64) *reorgdetector.Header); ok {
+		r0 = rf(id, blockNumber)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*reorgdetector.Header)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(string, uint64) error); ok {
+		r1 = rf(id, blockNumber)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ReorgDetector_GetTrackedBlockByBlockNumber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTrackedBlockByBlockNumber'
+type ReorgDetector_GetTrackedBlockByBlockNumber_Call struct {
+	*mock.Call
+}
+
+// GetTrackedBlockByBlockNumber is a helper method to define mock.On call
+//   - id string
+//   - blockNumber uint64
+func (_e *ReorgDetector_Expecter) GetTrackedBlockByBlockNumber(id interface{}, blockNumber interface{}) *ReorgDetector_GetTrackedBlockByBlockNumber_Call {
+	return &ReorgDetector_GetTrackedBlockByBlockNumber_Call{Call: _e.mock.On("GetTrackedBlockByBlockNumber", id, blockNumber)}
+}
+
+func (_c *ReorgDetector_GetTrackedBlockByBlockNumber_Call) Run(run func(id string, blockNumber uint64)) *ReorgDetector_GetTrackedBlockByBlockNumber_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *ReorgDetector_GetTrackedBlockByBlockNumber_Call) Return(_a0 *reorgdetector.Header, _a1 error) *ReorgDetector_GetTrackedBlockByBlockNumber_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ReorgDetector_GetTrackedBlockByBlockNumber_Call) RunAndReturn(run func(string, uint64) (*reorgdetector.Header, error)) *ReorgDetector_GetTrackedBlockByBlockNumber_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // String provides a mock function with no fields
 func (_m *ReorgDetector) String() string {
 	ret := _m.Called()

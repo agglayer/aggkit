@@ -98,7 +98,7 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     single-l2-network-op-succinct-aggoracle-committee)
         jq -s '.[0] * .[1] * .[2]' \
             "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
-            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json"
+            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json" \
             "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" > /tmp/single_aggoracle_committee_op_succinct.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "/tmp/single_aggoracle_committee_op_succinct.json" .
         ;;
@@ -174,6 +174,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
         bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/op/optimistic-mode.bats || exit 1
         bats ./tests/aggkit/e2e-pp.bats || exit 1
         bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
         bats ./tests/op/optimistic-mode.bats || exit 1

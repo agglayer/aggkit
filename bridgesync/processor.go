@@ -769,12 +769,12 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
-	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {
 		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
 	}
-	rowsAffected, err := res.RowsAffected()
+	rowsAffected, err := blocksRes.RowsAffected()
 	if err != nil {
 		p.log.Errorf("failed to get rows affected during reorg: %v", err)
 		return err
@@ -784,6 +784,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
 		return err
 	}
+
 	if err = tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
@@ -824,7 +825,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
+	query := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
+	if _, err := tx.Exec(query, block.Num, block.Hash.String()); err != nil {
 		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
 		return err
 	}
