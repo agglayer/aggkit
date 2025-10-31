@@ -133,7 +133,8 @@ func (b BlockNumberFinality) IsLatest() bool {
 func (b BlockNumberFinality) Validate() error {
 	if b.Block != Latest && b.Block != Pending && b.Block != Safe && b.Block != Finalized {
 		return fmt.Errorf(
-			"invalid block finality: block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock (got: %s)",
+			"invalid block finality: block type must be one of LatestBlock, SafeBlock, "+
+				"FinalizedBlock, or PendingBlock (got: %s)",
 			b.String(),
 		)
 	}
@@ -154,7 +155,7 @@ func (b BlockNumberFinality) Validate() error {
 	if b.Offset > maxOffset {
 		return fmt.Errorf(
 			"positive offset %d exceeds maximum allowed %d for %s (got: %s)",
-			b.Offset, maxOffset, b.String(), b.String(),
+			b.Offset, maxOffset, b.Block.String(), b.String(),
 		)
 	}
 	return nil
