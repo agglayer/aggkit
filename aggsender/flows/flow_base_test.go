@@ -3,6 +3,8 @@ package flows
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/big"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -12,7 +14,9 @@ import (
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -754,6 +758,317 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 				require.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_baseFlow_getImportedBridgeExits(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	rootFromWhichToProve := common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234")
+
+	mockProof := func() treetypes.Proof {
+		proof := treetypes.Proof{}
+		for i := 0; i < int(treetypes.DefaultHeight) && i < 10; i++ {
+			proof[i] = common.HexToHash(fmt.Sprintf("0x%02x", i))
+		}
+		return proof
+	}()
+
+	tests := []struct {
+		name             string
+		claims           []bridgesync.Claim
+		unclaims         []bridgesynctypes.Unclaim
+		fullClaimsNeeded bool
+		mockFn           func(*mocks.L1InfoTreeDataQuerier)
+		expectedCount    int
+		expectedError    string
+	}{
+		{
+			name:             "no claims, no unclaims",
+			claims:           []bridgesync.Claim{},
+			unclaims:         []bridgesynctypes.Unclaim{},
+			fullClaimsNeeded: false,
+			expectedCount:    0,
+			expectedError:    "",
+		},
+		{
+			name: "claims without unclaims - FullClaimsNeeded false",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:      1,
+					BlockPos:      0,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 1,
+					OriginAddress: common.HexToAddress("0x123"),
+					Amount:        big.NewInt(1000),
+				},
+				{
+					BlockNum:      2,
+					BlockPos:      1,
+					GlobalIndex:   big.NewInt(200),
+					OriginNetwork: 2,
+					OriginAddress: common.HexToAddress("0x456"),
+					Amount:        big.NewInt(2000),
+				},
+			},
+			unclaims:         []bridgesynctypes.Unclaim{},
+			fullClaimsNeeded: false,
+			expectedCount:    2,
+			expectedError:    "",
+		},
+		{
+			name: "claims without unclaims - FullClaimsNeeded true",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:            1,
+					BlockPos:            0,
+					GlobalIndex:         big.NewInt(100),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x123"),
+					Amount:              big.NewInt(1000),
+					GlobalExitRoot:      common.HexToHash("0xger1"),
+					RollupExitRoot:      common.HexToHash("0xrer1"),
+					MainnetExitRoot:     common.HexToHash("0xmer1"),
+					ProofLocalExitRoot:  mockProof,
+					ProofRollupExitRoot: mockProof,
+				},
+			},
+			unclaims:         []bridgesynctypes.Unclaim{},
+			fullClaimsNeeded: true,
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(ctx, common.HexToHash("0xger1"), rootFromWhichToProve).
+					Return(
+						&l1infotreesync.L1InfoTreeLeaf{
+							L1InfoTreeIndex:   1,
+							Timestamp:         123456789,
+							PreviousBlockHash: common.HexToHash("0xabc"),
+							GlobalExitRoot:    common.HexToHash("0xger1"),
+						}, mockProof, nil)
+			},
+			expectedCount: 1,
+			expectedError: "",
+		},
+		{
+			name: "claims with unclaims canceling some claims",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:      1,
+					BlockPos:      0,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 1,
+					Amount:        big.NewInt(1000),
+				},
+				{
+					BlockNum:      2,
+					BlockPos:      1,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 2,
+					Amount:        big.NewInt(2000),
+				},
+				{
+					BlockNum:      3,
+					BlockPos:      2,
+					GlobalIndex:   big.NewInt(200),
+					OriginNetwork: 3,
+					Amount:        big.NewInt(3000),
+				},
+			},
+			unclaims: []bridgesynctypes.Unclaim{
+				{GlobalIndex: big.NewInt(100), BlockNumber: 10, LogIndex: 0},
+			},
+			fullClaimsNeeded: false,
+			expectedCount:    2, // one claim with GlobalIndex 100 remains, plus the one with 200
+			expectedError:    "",
+		},
+		{
+			name: "claims with unclaims canceling all claims of same GlobalIndex",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:      1,
+					BlockPos:      0,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 1,
+					Amount:        big.NewInt(1000),
+				},
+				{
+					BlockNum:      2,
+					BlockPos:      1,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 2,
+					Amount:        big.NewInt(2000),
+				},
+				{
+					BlockNum:      3,
+					BlockPos:      2,
+					GlobalIndex:   big.NewInt(200),
+					OriginNetwork: 3,
+					Amount:        big.NewInt(3000),
+				},
+			},
+			unclaims: []bridgesynctypes.Unclaim{
+				{GlobalIndex: big.NewInt(100), BlockNumber: 10, LogIndex: 0},
+				{GlobalIndex: big.NewInt(100), BlockNumber: 11, LogIndex: 1},
+			},
+			fullClaimsNeeded: false,
+			expectedCount:    1, // only the claim with GlobalIndex 200 remains
+			expectedError:    "",
+		},
+		{
+			name: "more unclaims than claims for a GlobalIndex",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:      1,
+					BlockPos:      0,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 1,
+					Amount:        big.NewInt(1000),
+				},
+			},
+			unclaims: []bridgesynctypes.Unclaim{
+				{GlobalIndex: big.NewInt(100), BlockNumber: 10, LogIndex: 0},
+				{GlobalIndex: big.NewInt(100), BlockNumber: 11, LogIndex: 1},
+				{GlobalIndex: big.NewInt(100), BlockNumber: 12, LogIndex: 2},
+			},
+			fullClaimsNeeded: false,
+			expectedCount:    0,
+			expectedError:    "",
+		},
+		{
+			name: "multiple GlobalIndices with mixed cancellation",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:      1,
+					BlockPos:      0,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 1,
+					Amount:        big.NewInt(1000),
+				},
+				{
+					BlockNum:      2,
+					BlockPos:      1,
+					GlobalIndex:   big.NewInt(100),
+					OriginNetwork: 2,
+					Amount:        big.NewInt(2000),
+				},
+				{
+					BlockNum:      3,
+					BlockPos:      2,
+					GlobalIndex:   big.NewInt(200),
+					OriginNetwork: 3,
+					Amount:        big.NewInt(3000),
+				},
+				{
+					BlockNum:      4,
+					BlockPos:      3,
+					GlobalIndex:   big.NewInt(200),
+					OriginNetwork: 4,
+					Amount:        big.NewInt(4000),
+				},
+			},
+			unclaims: []bridgesynctypes.Unclaim{
+				{GlobalIndex: big.NewInt(100), BlockNumber: 10, LogIndex: 0},
+				{GlobalIndex: big.NewInt(200), BlockNumber: 11, LogIndex: 1},
+			},
+			fullClaimsNeeded: false,
+			expectedCount:    2, // one claim with 100, one claim with 200
+			expectedError:    "",
+		},
+		{
+			name: "using GenerateGlobalIndex helper",
+			claims: []bridgesync.Claim{
+				{
+					BlockNum:      1,
+					BlockPos:      0,
+					GlobalIndex:   bridgesync.GenerateGlobalIndex(false, 1, 1),
+					OriginNetwork: 1,
+					Amount:        big.NewInt(1000),
+				},
+				{
+					BlockNum:      2,
+					BlockPos:      1,
+					GlobalIndex:   bridgesync.GenerateGlobalIndex(false, 1, 1),
+					OriginNetwork: 2,
+					Amount:        big.NewInt(2000),
+				},
+			},
+			unclaims: []bridgesynctypes.Unclaim{
+				{GlobalIndex: bridgesync.GenerateGlobalIndex(false, 1, 1), BlockNumber: 10, LogIndex: 0},
+			},
+			fullClaimsNeeded: false,
+			expectedCount:    1, // one claim remains after unclaim
+			expectedError:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+			if tt.mockFn != nil {
+				tt.mockFn(mockL1InfoTreeQuery)
+			}
+
+			f := &baseFlow{
+				cfg: BaseFlowConfig{
+					FullClaimsNeeded: tt.fullClaimsNeeded,
+				},
+				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
+				log:                   log.WithFields("test", t.Name()),
+			}
+
+			result, err := f.getImportedBridgeExits(ctx, tt.claims, tt.unclaims, rootFromWhichToProve)
+
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, tt.expectedCount, len(result))
+
+				// Verify that the filtered claims are correct by checking GlobalIndex
+				if !tt.fullClaimsNeeded && len(tt.claims) > 0 {
+					// Count remaining claims by GlobalIndex
+					remainingByIndex := make(map[string]int)
+					for _, claim := range tt.claims {
+						key := claim.GlobalIndex.String()
+						remainingByIndex[key]++
+					}
+					for _, unclaim := range tt.unclaims {
+						key := unclaim.GlobalIndex.String()
+						if remainingByIndex[key] > 0 {
+							remainingByIndex[key]--
+						}
+					}
+
+					// Verify that result has correct count per GlobalIndex
+					resultByIndex := make(map[string]int)
+					for _, ibe := range result {
+						if ibe != nil && ibe.GlobalIndex != nil {
+							// Reconstruct the original GlobalIndex string representation
+							mainnetFlag := ibe.GlobalIndex.MainnetFlag
+							rollupIndex := ibe.GlobalIndex.RollupIndex
+							leafIndex := ibe.GlobalIndex.LeafIndex
+							reconstructed := bridgesync.GenerateGlobalIndex(mainnetFlag, rollupIndex, leafIndex)
+							key := reconstructed.String()
+							resultByIndex[key]++
+						}
+					}
+
+					// Verify total count matches
+					totalExpected := 0
+					for _, count := range remainingByIndex {
+						totalExpected += count
+					}
+					require.Equal(t, totalExpected, len(result), "Total filtered claims should match expected count")
+				}
 			}
 		})
 	}
