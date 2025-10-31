@@ -66,6 +66,8 @@ func NewEVMDownloader(
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
 	finalizedBlockType aggkittypes.BlockNumberFinality,
+	reorgDetector ReorgDetector,
+	reorgDetectorID string,
 ) (*EVMDownloader, error) {
 	if finality.IsEmpty() {
 		return nil, fmt.Errorf("block finality must be set")
@@ -95,6 +97,8 @@ func NewEVMDownloader(
 			addressesToQuery,
 			rh,
 			&finalizedBlockType,
+			reorgDetector,
+			reorgDetectorID,
 		),
 	}, nil
 }
@@ -231,6 +235,8 @@ type EVMDownloaderImplementation struct {
 	rh                     *RetryHandler
 	log                    *log.Logger
 	finalizedBlockType     *aggkittypes.BlockNumberFinality
+	reorgDetector          ReorgDetector
+	reorgDetectorID        string
 }
 
 // NewEVMDownloaderImplementation creates a new EVMDownloaderImplementation
@@ -244,6 +250,8 @@ func NewEVMDownloaderImplementation(
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
 	finalizedBlockType *aggkittypes.BlockNumberFinality,
+	reorgDetector ReorgDetector,
+	reorgDetectorID string,
 ) *EVMDownloaderImplementation {
 	logger := log.WithFields("syncer", syncerID)
 	var topics []common.Hash
@@ -261,6 +269,8 @@ func NewEVMDownloaderImplementation(
 		rh:                     rh,
 		log:                    logger,
 		finalizedBlockType:     finalizedBlockType,
+		reorgDetector:          reorgDetector,
+		reorgDetectorID:        reorgDetectorID,
 	}
 }
 
@@ -297,7 +307,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockNumber, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
+			blockHeader, err := d.blockFinality.BlockHeader(ctx, d.ethClient)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -308,8 +318,36 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
+			blockNumber := blockHeader.Number.Uint64()
+			headerHash := blockHeader.Hash()
 			if blockNumber > latestSyncedBlock {
+				if d.reorgDetector != nil {
+					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, headerHash); err != nil {
+						d.log.Errorf("Failed to notify reorg detector: %v", err)
+					}
+				}
+
 				return blockNumber
+			}
+			// If blockNumber <= latestSyncedBlock, a reorg may have occurred
+			// Get the block header to verify the hash and notify the reorg detector
+			if blockNumber <= latestSyncedBlock && d.reorgDetector != nil {
+				d.log.Debugf("Getting tracked block for block number %d and latest synced block %d", blockNumber, latestSyncedBlock)
+				trackedBlock, err := d.reorgDetector.GetTrackedBlockByBlockNumber(d.reorgDetectorID, blockNumber)
+				if err != nil {
+					d.log.Errorf("Failed to get tracked block: %v, block number: %d", err, blockNumber)
+					return latestSyncedBlock
+				}
+
+				if trackedBlock != nil && trackedBlock.Hash != headerHash {
+					d.log.Warnf("Potential reorg detected: current block number %d (hash: %s) is different from "+
+						"latest synced block %d (hash: %s)",
+						blockNumber, headerHash.Hex(), latestSyncedBlock, trackedBlock.Hash.Hex())
+					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, headerHash); err != nil {
+						d.log.Errorf("Failed to notify reorg detector: %v", err)
+					}
+					return blockNumber
+				}
 			}
 		}
 	}

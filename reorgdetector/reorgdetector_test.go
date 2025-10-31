@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/db"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	common "github.com/ethereum/go-ethereum/common"
@@ -122,15 +123,15 @@ func TestGetTrackedBlocks(t *testing.T) {
 	})
 
 	t.Run("Tracked blocks for subscriber Foo", func(t *testing.T) {
-		headerFoo2 := header{Num: 2, Hash: common.HexToHash("foofoo")}
+		headerFoo2 := Header{Num: 2, Hash: common.HexToHash("foofoo")}
 		err := reorgDetector.saveTrackedBlock("Foo", headerFoo2)
 		require.NoError(t, err)
 
-		headerFoo3 := header{Num: 3, Hash: common.HexToHash("foofoofoo")}
+		headerFoo3 := Header{Num: 3, Hash: common.HexToHash("foofoofoo")}
 		err = reorgDetector.saveTrackedBlock("Foo", headerFoo3)
 		require.NoError(t, err)
 
-		expectedHeadersFoo := map[uint64]header{
+		expectedHeadersFoo := map[uint64]Header{
 			2: headerFoo2,
 			3: headerFoo3,
 		}
@@ -144,18 +145,18 @@ func TestGetTrackedBlocks(t *testing.T) {
 	})
 
 	t.Run("Tracked blocks for subscribers Foo and Bar", func(t *testing.T) {
-		headerBar2 := header{Num: 2, Hash: common.HexToHash("barbar")}
+		headerBar2 := Header{Num: 2, Hash: common.HexToHash("barbar")}
 		err := reorgDetector.saveTrackedBlock("Bar", headerBar2)
 		require.NoError(t, err)
 
 		expectedList := map[string]*headersList{
 			"Bar": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: headerBar2,
 				},
 			},
 			"Foo": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: {Num: 2, Hash: common.HexToHash("foofoo")},
 					3: {Num: 3, Hash: common.HexToHash("foofoofoo")},
 				},
@@ -168,24 +169,24 @@ func TestGetTrackedBlocks(t *testing.T) {
 	})
 
 	t.Run("Tracked blocks for subscribers Foo, Bar and Zzz", func(t *testing.T) {
-		headerZzz6 := header{Num: 6, Hash: common.HexToHash("zzzzzz")}
+		headerZzz6 := Header{Num: 6, Hash: common.HexToHash("zzzzzz")}
 		err := reorgDetector.saveTrackedBlock("Zzz", headerZzz6)
 		require.NoError(t, err)
 
 		expectedList := map[string]*headersList{
 			"Bar": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: {Num: 2, Hash: common.HexToHash("barbar")},
 				},
 			},
 			"Foo": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					2: {Num: 2, Hash: common.HexToHash("foofoo")},
 					3: {Num: 3, Hash: common.HexToHash("foofoofoo")},
 				},
 			},
 			"Zzz": {
-				headers: map[uint64]header{
+				headers: map[uint64]Header{
 					6: headerZzz6,
 				},
 			},
@@ -229,7 +230,6 @@ func TestDetectReorgs(t *testing.T) {
 		lastFinalizedBlock := &types.Header{Number: big.NewInt(8)}
 		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
-		client.On("HeaderByNumber", ctx, lastFinalizedBlock.Number).Return(lastFinalizedBlock, nil)
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(trackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
@@ -257,7 +257,7 @@ func TestDetectReorgs(t *testing.T) {
 		lastFinalizedBlock := trackedBlock
 		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
-		client.On("HeaderByNumber", ctx, lastFinalizedBlock.Number).Return(lastFinalizedBlock, nil)
+		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(trackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
 		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
@@ -282,8 +282,6 @@ func TestDetectReorgs(t *testing.T) {
 
 		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
-		client.On("HeaderByNumber", ctx, lastFinalizedBlock.Number).Return(lastFinalizedBlock, nil)
-
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(reorgedTrackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
@@ -334,7 +332,7 @@ func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := range numSaves {
-			header := header{
+			header := Header{
 				Num:  uint64(i),
 				Hash: common.BigToHash(big.NewInt(int64(i))),
 			}
@@ -362,4 +360,60 @@ func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 	tracked, ok := reorgDetector.trackedBlocks["sub"]
 	require.True(t, ok)
 	require.GreaterOrEqual(t, len(tracked.getSorted()), 1)
+}
+
+func TestGetTrackedBlockByBlockNumber(t *testing.T) {
+	ctx := context.Background()
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetTrackedBlockByBlockNumber.sqlite")
+
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}, L1)
+	require.NoError(t, err)
+
+	syncerID := "test-syncer"
+	_, err = reorgDetector.Subscribe(syncerID)
+	require.NoError(t, err)
+
+	// Test subscriber not found
+	header, err := reorgDetector.GetTrackedBlockByBlockNumber("non-existent-syncer", 1)
+	require.Error(t, err)
+	require.Nil(t, header)
+	require.Equal(t, db.ErrNotFound, err)
+
+	// Test block number not found for existing subscriber
+	testHeader := Header{Num: 5, Hash: common.BigToHash(big.NewInt(5))}
+	err = reorgDetector.AddBlockToTrack(ctx, syncerID, testHeader.Num, testHeader.Hash)
+	require.NoError(t, err)
+
+	header, err = reorgDetector.GetTrackedBlockByBlockNumber(syncerID, 10)
+	require.Error(t, err)
+	require.Nil(t, header)
+	require.Equal(t, db.ErrNotFound, err)
+
+	// Test successful retrieval
+	header, err = reorgDetector.GetTrackedBlockByBlockNumber(syncerID, 5)
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, testHeader.Num, header.Num)
+	require.Equal(t, testHeader.Hash, header.Hash)
+}
+
+func TestGetDB(t *testing.T) {
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetDB.sqlite")
+
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}, L1)
+	require.NoError(t, err)
+
+	db := reorgDetector.GetDB()
+	require.NotNil(t, db)
+
+	err = db.Ping()
+	require.NoError(t, err)
 }
