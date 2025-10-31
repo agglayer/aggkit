@@ -158,7 +158,10 @@ func (b BlockNumberFinality) ValidateOffset() error {
 	}
 
 	if b.Offset > maxOffset {
-		return fmt.Errorf("positive offset %d exceeds maximum allowed %d for %s (got: %s)", b.Offset, maxOffset, blockName, b.String())
+		return fmt.Errorf(
+			"positive offset %d exceeds maximum allowed %d for %s (got: %s)",
+			b.Offset, maxOffset, blockName, b.String(),
+		)
 	}
 
 	return nil
