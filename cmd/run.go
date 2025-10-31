@@ -160,7 +160,6 @@ func start(cliCtx *cli.Context) error {
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l2Client,
-				cfg.BridgeL2Sync.BridgeAddr,
 				rollupDataQuerier,
 				committeeQuerier,
 			)
@@ -177,7 +176,6 @@ func start(cliCtx *cli.Context) error {
 				cfg.AggchainProofGen,
 				l1Client,
 				l2Client,
-				cfg.BridgeL2Sync.BridgeAddr,
 				l1InfoTreeSync,
 				l2BridgeSync,
 			)
@@ -194,7 +192,6 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l1Client,
 				l2Client,
-				cfg.BridgeL2Sync.BridgeAddr,
 				rollupDataQuerier,
 				committeeQuerier,
 			)
@@ -233,7 +230,6 @@ func createAggchainProofGen(
 	cfg prover.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	agglayerBridgeL2Addr common.Address,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 ) (*prover.AggchainProofGenerationTool, error) {
@@ -245,7 +241,6 @@ func createAggchainProofGen(
 		cfg,
 		l1Client,
 		l2Client,
-		agglayerBridgeL2Addr,
 		l2Syncer,
 		l1InfoTreeSync,
 	)
@@ -262,7 +257,6 @@ func createAggSenderValidator(ctx context.Context,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	agglayerBridgeL2Addr common.Address,
 	rollupDataQuerier *etherman.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
@@ -310,7 +304,6 @@ func createAggSenderValidator(ctx context.Context,
 		l2Client,
 		l1InfoTreeSync,
 		l2Syncer,
-		agglayerBridgeL2Addr,
 		rollupDataQuerier,
 		committeeQuerier,
 	)
@@ -336,7 +329,6 @@ func createAggSender(
 	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
 	l2Syncer aggsendertypes.L2BridgeSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
-	agglayerBridgeL2Addr common.Address,
 	rollupDataQuerier aggsendertypes.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
@@ -377,7 +369,7 @@ func createAggSender(
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
 		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client,
-		agglayerBridgeL2Addr, rollupDataQuerier, committeeQuerier)
+		rollupDataQuerier, committeeQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}

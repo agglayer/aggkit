@@ -109,7 +109,6 @@ func TestAggSenderStart(t *testing.T) {
 		epochNotifierMock,
 		nil, // l1 client
 		nil, // l2 client
-		common.Address{},
 		rollupQuerierMock,
 		committeQuerierMock,
 	)
@@ -526,7 +525,6 @@ func TestNewAggSender(t *testing.T) {
 		nil, // epoch notifier
 		nil, // l1 client
 		nil, // l2 client
-		common.Address{},
 		mockRollupQuerier,
 		mockCommitteeQuerier,
 	)

@@ -24,7 +24,6 @@ func NewVerifierFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	agglayerBridgeL2Addr common.Address,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (types.AggsenderVerifierFlow, *CommonFlowComponents, error) {
@@ -37,7 +36,7 @@ func NewVerifierFlow(
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
-			agglayerBridgeL2Addr,
+			cfg.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -65,7 +64,7 @@ func NewVerifierFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
-			agglayerBridgeL2Addr,
+			cfg.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)

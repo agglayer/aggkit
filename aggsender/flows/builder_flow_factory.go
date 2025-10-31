@@ -6,6 +6,8 @@ import (
 	"math/big"
 	"time"
 
+	ethCommon "github.com/ethereum/go-ethereum/common"
+
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
@@ -19,7 +21,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -37,7 +38,6 @@ func NewBuilderFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	agglayerBridgeL2Addr common.Address,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (types.AggsenderBuilderFlow, error) {
@@ -51,7 +51,7 @@ func NewBuilderFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
-			agglayerBridgeL2Addr,
+			cfg.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -98,7 +98,7 @@ func NewBuilderFlow(
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
-			agglayerBridgeL2Addr,
+			cfg.AgglayerBridgeL2Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -163,7 +163,7 @@ func CreateCommonFlowComponents(
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
-	agglayerBridgeL2Addr common.Address,
+	agglayerBridgeL2Addr ethCommon.Address,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {

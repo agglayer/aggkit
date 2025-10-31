@@ -14,8 +14,6 @@ AggchainProofURL = "http://localhost:5576"
 SequencerPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
 
-polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
-
 # This values can be override directly from genesis.json
 rollupCreationBlockNumber = 0
 rollupManagerCreationBlockNumber = 0
@@ -29,10 +27,12 @@ genesisBlockNumber = 0
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
 	BlocksChunkSize = 1000
 	RollupManagerCreationBlock = {{rollupManagerCreationBlockNumber}}
+	BridgeAddr = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
 	AggOracleCommitteeAddr = "0x0000000000000000000000000000000000000000"
+	BridgeAddr = "0x0000000000000000000000000000000000000000"
 `
 
 // This doesnt below to config, but are the vars used
@@ -153,7 +153,7 @@ MaxRequestsPerIPAndSecond = 10
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
 BlockFinality = "FinalizedBlock"
 InitialBlockNum = 0
-BridgeAddr = "{{polygonBridgeAddr}}"
+BridgeAddr = "{{L1Config.BridgeAddr}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
@@ -165,7 +165,7 @@ DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
-BridgeAddr = "{{polygonBridgeAddr}}"
+BridgeAddr = "{{L2Config.BridgeAddr}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
@@ -210,6 +210,7 @@ RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
+AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
@@ -288,6 +289,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 # PessimisticProof, AggchainProof or Auto
 Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
+AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578

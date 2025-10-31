@@ -11,7 +11,6 @@ import (
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -155,6 +154,6 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, common.Address{}, mockL2Syncer, nil)
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, nil)
 	require.Error(t, err)
 }

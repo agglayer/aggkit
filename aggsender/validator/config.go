@@ -40,12 +40,12 @@ type Config struct {
 	FEPConfig FEPConfig `mapstructure:"FEPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
-	// BridgeQuerier contains the configuration for the bridge querier
-	BridgeQuerier BridgeQuerierConfig `mapstructure:"BridgeQuerier"`
 	// Mode is the mode of the AggSender Validator (regular pessimistic proof mode or the aggchain proof mode)
 	Mode aggsendertypes.AggsenderMode `jsonschema:"enum=PessimisticProof, enum=AggchainProof, enum=Auto" mapstructure:"Mode"` //nolint:lll
 	// RequireCommitteeMembershipCheck indicates whether to check if the validator is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
+	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 type PPConfig struct {
@@ -69,11 +69,6 @@ type LerQuerierConfig struct {
 	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
-}
-
-type BridgeQuerierConfig struct {
-	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
-	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 // Validate checks if the configuration is valid
