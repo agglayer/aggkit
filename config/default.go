@@ -151,7 +151,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
-BlockFinality = "FinalizedBlock"
+BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100
