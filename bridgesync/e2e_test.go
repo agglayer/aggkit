@@ -132,7 +132,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 	// Setup simulated L1 environment with bridge and GER contracts
 	//nolint:dogsled
-	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+	client, auth, _, _, bridgeAddr, bridgeContract := helpers.NewSimulatedL1(t)
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
@@ -305,7 +305,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 
 	// Setup simulated L1 environment
 	//nolint:dogsled
-	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+	client, auth, _, _, bridgeAddr, bridgeContract := helpers.NewSimulatedL1(t)
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
@@ -410,7 +410,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 
 	// Setup simulated L1 environment with bridge and GER contracts
 	//nolint:dogsled
-	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
+	client, auth, _, _, bridgeAddr, bridgeContract := helpers.NewSimulatedL1(t)
 
 	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorg,
