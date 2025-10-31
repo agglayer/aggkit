@@ -66,26 +66,6 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("invalid L2 RPC config: %w", err)
 	}
 
-	if err := cfg.L2GERSync.Validate(); err != nil {
-		return fmt.Errorf("invalid L2GERSync config: %w", err)
-	}
-
-	if err := cfg.BridgeL1Sync.Validate(); err != nil {
-		return fmt.Errorf("invalid BridgeL1Sync config: %w", err)
-	}
-
-	if err := cfg.BridgeL2Sync.Validate(); err != nil {
-		return fmt.Errorf("invalid BridgeL2Sync config: %w", err)
-	}
-
-	if err := cfg.ReorgDetectorL1.Validate(); err != nil {
-		return fmt.Errorf("invalid ReorgDetectorL1 config: %w", err)
-	}
-
-	if err := cfg.ReorgDetectorL2.Validate(); err != nil {
-		return fmt.Errorf("invalid ReorgDetectorL2 config: %w", err)
-	}
-
 	log.Init(cfg.Log)
 
 	switch cfg.Log.Environment {
@@ -619,6 +599,9 @@ func runReorgDetectorL1IfNeeded(
 		components) {
 		return nil, nil
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid ReorgDetectorL1 config: %v", err)
+	}
 	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 
 	errChan := make(chan error)
@@ -701,6 +684,10 @@ func runBridgeSyncL1IfNeeded(
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
+	}
+
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
 
 	bridgeSyncL1, err := bridgesync.NewL1(

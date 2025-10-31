@@ -339,7 +339,7 @@ func TestBlockNumberFinality_BlockHeader(t *testing.T) {
 	})
 }
 
-func TestBlockNumberFinality_ValidateOffset(t *testing.T) {
+func TestBlockNumberFinality_Validate(t *testing.T) {
 	tests := []struct {
 		name          string
 		finality      BlockNumberFinality
@@ -411,15 +411,35 @@ func TestBlockNumberFinality_ValidateOffset(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:          "Empty block with positive offset should pass (no validation)",
+			name:          "Empty block should fail validation",
+			finality:      BlockNumberFinality{Block: Empty, Offset: 0},
+			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
+		},
+		{
+			name:          "Empty block with positive offset should fail validation",
 			finality:      BlockNumberFinality{Block: Empty, Offset: 100},
+			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
+		},
+		{
+			name:          "Unknown block type should fail validation",
+			finality:      BlockNumberFinality{Block: BlockNumber(999), Offset: 0},
+			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
+		},
+		{
+			name:          "Valid block with zero offset should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: 0},
+			expectedError: "",
+		},
+		{
+			name:          "Valid block with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: -5},
 			expectedError: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.finality.ValidateOffset()
+			err := tt.finality.Validate()
 			if tt.expectedError == "" {
 				require.NoError(t, err)
 			} else {

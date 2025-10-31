@@ -37,7 +37,7 @@ type Config struct {
 
 // Validate checks if the configuration is valid
 func (c Config) Validate() error {
-	if err := c.BlockFinality.ValidateOffset(); err != nil {
+	if err := c.BlockFinality.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
 	}
 	return nil

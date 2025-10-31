@@ -26,7 +26,7 @@ type Config struct {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if err := c.FinalizedBlock.ValidateOffset(); err != nil {
+	if err := c.FinalizedBlock.Validate(); err != nil {
 		return fmt.Errorf("invalid FinalizedBlock configuration: %w", err)
 	}
 	return nil

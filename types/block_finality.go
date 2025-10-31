@@ -123,47 +123,40 @@ func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
 }
 
-// ValidateOffset validates that the positive offset does not exceed the maximum allowed
-// for the specific block finality type. Each block finality type has a strict upper limit
-// on the positive offset that can be set:
+// Validate validates the BlockNumberFinality configuration, ensuring that:
+// - The block name is valid (one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock)
+// - The positive offset does not exceed the maximum allowed for the specific block finality type
 //   - LatestBlock: cannot have positive offset (limit = 0)
 //   - PendingBlock: cannot have positive offset (limit = 0) as pending blocks don't exist yet
 //   - SafeBlock: maximum positive offset is MaxPositiveOffsetSafe
 //   - FinalizedBlock: maximum positive offset is MaxPositiveOffsetFinalized (most restrictive)
-func (b BlockNumberFinality) ValidateOffset() error {
-	if b.Offset <= 0 {
-		// Negative or zero offsets are always valid
-		return nil
-	}
-
-	var maxOffset int64
-	var blockName string
-
-	switch b.Block {
-	case Latest:
-		maxOffset = MaxPositiveOffsetLatest
-		blockName = LatestBlockName
-	case Pending:
-		maxOffset = MaxPositiveOffsetPending
-		blockName = PendingBlockName
-	case Safe:
-		maxOffset = MaxPositiveOffsetSafe
-		blockName = SafeBlockName
-	case Finalized:
-		maxOffset = MaxPositiveOffsetFinalized
-		blockName = FinalizedBlockName
-	default:
-		// Empty or unknown block types - no validation needed
-		return nil
-	}
-
-	if b.Offset > maxOffset {
+func (b BlockNumberFinality) Validate() error {
+	if b.Block != Latest && b.Block != Pending && b.Block != Safe && b.Block != Finalized {
 		return fmt.Errorf(
-			"positive offset %d exceeds maximum allowed %d for %s (got: %s)",
-			b.Offset, maxOffset, blockName, b.String(),
+			"invalid block finality: block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock (got: %s)",
+			b.String(),
 		)
 	}
 
+	var maxOffset int64
+	switch b.Block {
+	case Latest:
+		maxOffset = MaxPositiveOffsetLatest
+	case Pending:
+		maxOffset = MaxPositiveOffsetPending
+	case Safe:
+		maxOffset = MaxPositiveOffsetSafe
+	case Finalized:
+		maxOffset = MaxPositiveOffsetFinalized
+	}
+
+	// Validate offset limits (negative or zero offsets are always valid)
+	if b.Offset > maxOffset {
+		return fmt.Errorf(
+			"positive offset %d exceeds maximum allowed %d for %s (got: %s)",
+			b.Offset, maxOffset, b.String(), b.String(),
+		)
+	}
 	return nil
 }
 
