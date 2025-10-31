@@ -166,7 +166,7 @@ func TestStress(t *testing.T) {
 
 	helpers.CommitBlocks(t, client, 11, time.Millisecond*10)
 
-	waitForSyncerToCatchUp(ctx, t, syncer, client)
+	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
 	// Assert L1 Info tree root
 	expectedL1InfoRoot, err := gerSc.GetRoot(&bind.CallOpts{Pending: false})
@@ -181,19 +181,4 @@ func TestStress(t *testing.T) {
 	t.Logf("expectedL1InfoRoot: %s", common.Hash(expectedL1InfoRoot).String())
 	require.Equal(t, common.Hash(expectedGER), info.GlobalExitRoot, fmt.Sprintf("%+v", info))
 	require.Equal(t, common.Hash(expectedL1InfoRoot), lastRoot.Hash)
-}
-
-func waitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer *l1infotreesync.L1InfoTreeSync, client *simulated.Backend) {
-	t.Helper()
-	for {
-		lastBlockNum, err := client.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		helpers.RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
-		time.Sleep(time.Second / 2)
-		lastBlockNum2, err := client.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		if lastBlockNum == lastBlockNum2 {
-			return
-		}
-	}
 }

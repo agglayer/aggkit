@@ -34,4 +34,9 @@ func TestNoOpReorgDetector(t *testing.T) {
 	event, err := detector.GetLastReorgEvent(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, ReorgEvent{}, event)
+
+	// Test GetTrackedBlockByBlockNumber (should return nil, nil)
+	header, err := detector.GetTrackedBlockByBlockNumber("test-id", 123)
+	assert.NoError(t, err)
+	assert.Nil(t, header)
 }

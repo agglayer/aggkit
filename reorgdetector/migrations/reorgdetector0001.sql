@@ -1,7 +1,5 @@
 -- +migrate Down
-DROP TABLE IF EXISTS block;
-DROP TABLE IF EXISTS claim;
-DROP TABLE IF EXISTS bridge;
+DROP TABLE IF EXISTS tracked_block;
 
 -- +migrate Up
 CREATE TABLE tracked_block (

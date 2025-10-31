@@ -13,9 +13,9 @@ func TestBlockMap(t *testing.T) {
 
 	// Create a new block map
 	bm := newHeadersList(
-		header{Num: 1, Hash: common.HexToHash("0x123")},
-		header{Num: 2, Hash: common.HexToHash("0x456")},
-		header{Num: 3, Hash: common.HexToHash("0x789")},
+		Header{Num: 1, Hash: common.HexToHash("0x123")},
+		Header{Num: 2, Hash: common.HexToHash("0x456")},
+		Header{Num: 3, Hash: common.HexToHash("0x789")},
 	)
 
 	t.Run("len", func(t *testing.T) {
@@ -40,7 +40,7 @@ func TestBlockMap(t *testing.T) {
 		t.Parallel()
 
 		bm := bm.copy()
-		tba := header{Num: 4, Hash: common.HexToHash("0xabc")}
+		tba := Header{Num: 4, Hash: common.HexToHash("0xabc")}
 		bm.add(tba)
 		if !reflect.DeepEqual(tba, bm.headers[4]) {
 			t.Errorf("add() returned incorrect result, expected: %v, got: %v", tba, bm.headers[4])
@@ -74,7 +74,7 @@ func TestBlockMap(t *testing.T) {
 		t.Parallel()
 
 		sortedBlocks := bm.getSorted()
-		expectedSortedBlocks := []header{
+		expectedSortedBlocks := []Header{
 			{Num: 1, Hash: common.HexToHash("0x123")},
 			{Num: 2, Hash: common.HexToHash("0x456")},
 			{Num: 3, Hash: common.HexToHash("0x789")},
@@ -88,16 +88,16 @@ func TestBlockMap(t *testing.T) {
 		t.Parallel()
 
 		bm := newHeadersList(
-			header{Num: 1, Hash: common.HexToHash("0x123")},
-			header{Num: 2, Hash: common.HexToHash("0x456")},
-			header{Num: 3, Hash: common.HexToHash("0x789")},
-			header{Num: 4, Hash: common.HexToHash("0xabc")},
-			header{Num: 5, Hash: common.HexToHash("0xdef")},
+			Header{Num: 1, Hash: common.HexToHash("0x123")},
+			Header{Num: 2, Hash: common.HexToHash("0x456")},
+			Header{Num: 3, Hash: common.HexToHash("0x789")},
+			Header{Num: 4, Hash: common.HexToHash("0xabc")},
+			Header{Num: 5, Hash: common.HexToHash("0xdef")},
 		)
 
 		bm.removeRange(3, 5)
 
-		expectedBlocks := []header{
+		expectedBlocks := []Header{
 			{Num: 1, Hash: common.HexToHash("0x123")},
 			{Num: 2, Hash: common.HexToHash("0x456")},
 		}

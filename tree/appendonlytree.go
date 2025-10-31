@@ -37,7 +37,7 @@ func NewAppendOnlyTree(db *sql.DB, dbPrefix string) *AppendOnlyTree {
 func (t *AppendOnlyTree) AddLeaf(tx dbtypes.Txer, blockNum, blockPosition uint64, leaf types.Leaf) error {
 	if int64(leaf.Index) != t.lastIndex+1 {
 		// rebuild cache
-		if err := t.initCache(tx); err != nil {
+		if err := t.InitCache(tx); err != nil {
 			return err
 		}
 		if int64(leaf.Index) != t.lastIndex+1 {
@@ -88,7 +88,7 @@ func (t *AppendOnlyTree) AddLeaf(tx dbtypes.Txer, blockNum, blockPosition uint64
 	return nil
 }
 
-func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
+func (t *AppendOnlyTree) InitCache(tx dbtypes.Txer) error {
 	siblings := [types.DefaultHeight]common.Hash{}
 	lastRoot, err := t.getLastRootWithTx(tx)
 	if err != nil {
