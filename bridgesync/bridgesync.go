@@ -404,6 +404,11 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
 }
 
+// SubscribeToSync allows a subscriber to receive block and reorg notifications
+func (s *BridgeSync) SubscribeToSync(subscriberID string, bufferSize int) *sync.Subscription {
+	return s.processor.subscriberManager.Subscribe(subscriberID, bufferSize)
+}
+
 type LastReorg struct {
 	DetectedAt int64  `json:"detected_at"`
 	FromBlock  uint64 `json:"from_block"`
