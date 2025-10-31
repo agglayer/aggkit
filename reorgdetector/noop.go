@@ -52,3 +52,9 @@ func (n *NoOpReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, 
 	// Return empty reorg event since no-op detector never detects reorgs
 	return ReorgEvent{}, nil
 }
+
+// GetTrackedBlockByBlockNumber implements sync.ReorgDetector interface
+func (n *NoOpReorgDetector) GetTrackedBlockByBlockNumber(id string, blockNumber uint64) (*Header, error) {
+	// Return nil since no-op detector never detects reorgs
+	return nil, nil
+}

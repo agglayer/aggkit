@@ -93,7 +93,14 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "/tmp/single_op_succinct_args.json" .
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
+<<<<<<< HEAD
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" > /tmp/single_aggoracle_committee_op_succinct.json
+=======
+        jq -s '.[0] * .[1] * .[2]' \
+            "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
+            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json" \
+            "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" > /tmp/single_aggoracle_committee_op_succinct.json
+>>>>>>> c6b5011f (feat: Add tests for L1 reorg detector in bridge syncer (#1120))
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "/tmp/single_aggoracle_committee_op_succinct.json" .
         ;;
     single-l2-network-op-pessimistic)
@@ -164,11 +171,11 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats --jobs 5 ./tests/aggkit/bridge-e2e.bats || exit 1 
-        bats  ./tests/op/optimistic-mode.bats || exit 1
-        bats  ./tests/aggkit/e2e-pp.bats || exit 1
-        bats  ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
-
+        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/op/optimistic-mode.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
