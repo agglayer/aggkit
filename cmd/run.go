@@ -66,6 +66,26 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("invalid L2 RPC config: %w", err)
 	}
 
+	if err := cfg.L2GERSync.Validate(); err != nil {
+		return fmt.Errorf("invalid L2GERSync config: %w", err)
+	}
+
+	if err := cfg.BridgeL1Sync.Validate(); err != nil {
+		return fmt.Errorf("invalid BridgeL1Sync config: %w", err)
+	}
+
+	if err := cfg.BridgeL2Sync.Validate(); err != nil {
+		return fmt.Errorf("invalid BridgeL2Sync config: %w", err)
+	}
+
+	if err := cfg.ReorgDetectorL1.Validate(); err != nil {
+		return fmt.Errorf("invalid ReorgDetectorL1 config: %w", err)
+	}
+
+	if err := cfg.ReorgDetectorL2.Validate(); err != nil {
+		return fmt.Errorf("invalid ReorgDetectorL2 config: %w", err)
+	}
+
 	log.Init(cfg.Log)
 
 	switch cfg.Log.Environment {

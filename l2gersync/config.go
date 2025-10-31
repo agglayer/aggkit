@@ -1,6 +1,8 @@
 package l2gersync
 
 import (
+	"fmt"
+
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,4 +33,12 @@ type Config struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+}
+
+// Validate checks if the configuration is valid
+func (c Config) Validate() error {
+	if err := c.BlockFinality.ValidateOffset(); err != nil {
+		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
+	}
+	return nil
 }

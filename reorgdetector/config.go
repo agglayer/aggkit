@@ -1,6 +1,7 @@
 package reorgdetector
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/agglayer/aggkit/config/types"
@@ -21,6 +22,14 @@ type Config struct {
 	// FinalizedBlockType indicates the status of the blocks that will be queried in order to sync
 	// if finalizedBlock == "LatestBlock" then it's disabled and we assume the network has no chances of reorgs
 	FinalizedBlock aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"FinalizedBlock"` //nolint:lll
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if err := c.FinalizedBlock.ValidateOffset(); err != nil {
+		return fmt.Errorf("invalid FinalizedBlock configuration: %w", err)
+	}
+	return nil
 }
 
 // GetCheckReorgsInterval returns the interval to check for reorgs in tracked blocks

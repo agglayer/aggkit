@@ -338,3 +338,94 @@ func TestBlockNumberFinality_BlockHeader(t *testing.T) {
 		require.Contains(t, err.Error(), testErr.Error())
 	})
 }
+
+func TestBlockNumberFinality_ValidateOffset(t *testing.T) {
+	tests := []struct {
+		name          string
+		finality      BlockNumberFinality
+		expectedError string
+	}{
+		{
+			name:          "LatestBlock with positive offset should fail",
+			finality:      BlockNumberFinality{Block: Latest, Offset: 1},
+			expectedError: fmt.Sprintf("positive offset 1 exceeds maximum allowed %d for LatestBlock", MaxPositiveOffsetLatest),
+		},
+		{
+			name:          "LatestBlock with zero offset should pass",
+			finality:      BlockNumberFinality{Block: Latest, Offset: 0},
+			expectedError: "",
+		},
+		{
+			name:          "LatestBlock with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Latest, Offset: -5},
+			expectedError: "",
+		},
+		{
+			name:          "PendingBlock with positive offset should fail",
+			finality:      BlockNumberFinality{Block: Pending, Offset: 1},
+			expectedError: fmt.Sprintf("positive offset 1 exceeds maximum allowed %d for PendingBlock", MaxPositiveOffsetPending),
+		},
+		{
+			name:          "PendingBlock with zero offset should pass",
+			finality:      BlockNumberFinality{Block: Pending, Offset: 0},
+			expectedError: "",
+		},
+		{
+			name:          "SafeBlock with offset exceeding limit should fail",
+			finality:      BlockNumberFinality{Block: Safe, Offset: MaxPositiveOffsetSafe + 1},
+			expectedError: fmt.Sprintf("positive offset %d exceeds maximum allowed %d for SafeBlock", MaxPositiveOffsetSafe+1, MaxPositiveOffsetSafe),
+		},
+		{
+			name:          "SafeBlock with offset at limit should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: MaxPositiveOffsetSafe},
+			expectedError: "",
+		},
+		{
+			name:          "SafeBlock with offset below limit should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: MaxPositiveOffsetSafe - 1},
+			expectedError: "",
+		},
+		{
+			name:          "FinalizedBlock with offset exceeding limit should fail",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: MaxPositiveOffsetFinalized + 1},
+			expectedError: fmt.Sprintf("positive offset %d exceeds maximum allowed %d for FinalizedBlock", MaxPositiveOffsetFinalized+1, MaxPositiveOffsetFinalized),
+		},
+		{
+			name:          "FinalizedBlock with offset at limit should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: MaxPositiveOffsetFinalized},
+			expectedError: "",
+		},
+		{
+			name:          "FinalizedBlock with offset below limit should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: MaxPositiveOffsetFinalized - 1},
+			expectedError: "",
+		},
+		{
+			name:          "SafeBlock with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: -10},
+			expectedError: "",
+		},
+		{
+			name:          "FinalizedBlock with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: -10},
+			expectedError: "",
+		},
+		{
+			name:          "Empty block with positive offset should pass (no validation)",
+			finality:      BlockNumberFinality{Block: Empty, Offset: 100},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.finality.ValidateOffset()
+			if tt.expectedError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
