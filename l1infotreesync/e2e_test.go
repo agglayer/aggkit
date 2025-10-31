@@ -134,7 +134,7 @@ func TestWithReorgs(t *testing.T) {
 
 	rdConfig := reorgdetector.Config{
 		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 30),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}
 	rd, err := reorgdetector.New(client.Client(), rdConfig, reorgdetector.L1)
@@ -148,8 +148,8 @@ func TestWithReorgs(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		GlobalExitRootAddr:                 gerAddr,
 		RollupManagerAddr:                  verifyAddr,
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 500),
-		MaxRetryAttemptsAfterError:         5,
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
+		MaxRetryAttemptsAfterError:         25,
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
