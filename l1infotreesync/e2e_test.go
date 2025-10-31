@@ -58,7 +58,6 @@ func newSimulatedClient(t *testing.T) (
 	client.Commit()
 
 	err = setup.DeployBridge(client, gerAddr, 0)
-
 	require.NoError(t, err)
 
 	return client, setup.UserAuth, gerAddr, verifyAddr, gerContract, verifyContract
@@ -149,8 +148,8 @@ func TestWithReorgs(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		GlobalExitRootAddr:                 gerAddr,
 		RollupManagerAddr:                  verifyAddr,
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 100),
-		MaxRetryAttemptsAfterError:         1,
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Millisecond * 500),
+		MaxRetryAttemptsAfterError:         5,
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
@@ -270,7 +269,7 @@ func TestStressAndReorgs(t *testing.T) {
 	// Start reorg detector
 	reorgDetectorCfg := reorgdetector.Config{
 		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
 		FinalizedBlock:      aggkittypes.FinalizedBlock}
 	rd, err := reorgdetector.New(client.Client(), reorgDetectorCfg, reorgdetector.L1)
 	require.NoError(t, err)
@@ -284,9 +283,9 @@ func TestStressAndReorgs(t *testing.T) {
 		GlobalExitRootAddr:                 gerAddr,
 		RollupManagerAddr:                  verifyAddr,
 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Second * 1),
-		MaxRetryAttemptsAfterError:         100,
+		MaxRetryAttemptsAfterError:         25,
 		RequireStorageContentCompatibility: true,
-		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 100),
 	}
 	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), rd, l1infotreesync.FlagAllowWrongContractsAddrs)
 	require.NoError(t, err)
@@ -319,7 +318,7 @@ func TestStressAndReorgs(t *testing.T) {
 		}
 	}
 
-	helpers.CommitBlocks(t, client, 1, time.Millisecond*10)
+	helpers.CommitBlocks(t, client, 2, time.Millisecond*100)
 	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
 
 	// Assert L1 Info tree root

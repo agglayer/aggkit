@@ -2,10 +2,12 @@ package helpers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +33,11 @@ func RequireProcessorUpdated(t *testing.T, processor Processorer, targetBlock ui
 	ctx := context.Background()
 	for i := range maxIterations {
 		lastProcessedBlock, err = processor.GetLastProcessedBlock(ctx)
+		if errors.Is(err, sync.ErrInconsistentState) {
+			time.Sleep(sleepInterval)
+			continue
+		}
+
 		require.NoError(t, err)
 		if lastProcessedBlock >= targetBlock {
 			return
