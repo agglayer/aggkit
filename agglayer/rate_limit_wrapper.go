@@ -61,6 +61,16 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 			methodName,
 			rateLimitSleepTime.String(), rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
+		// After sleeping externally, re-check and record the call. Loop to be safe under concurrency.
+		for {
+			r.mu.Lock()
+			rateLimitSleepTime = rateLimiter.Call(methodName, true)
+			r.mu.Unlock()
+			if rateLimitSleepTime == nil {
+				break
+			}
+			time.Sleep(*rateLimitSleepTime)
+		}
 	}
 }
 
