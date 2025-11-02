@@ -98,11 +98,11 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	dh.log.Infof("Safe sync completed. Starting tip sync...")
-	err = dh.Sync(ctx, dh.StepTip)
-	if err != nil {
-		return err
-	}
+	// dh.log.Infof("Safe sync completed. Starting tip sync...")
+	// err = dh.Sync(ctx, dh.StepTip)
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -139,7 +139,6 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 func (dh *EVMMultidownloader) Sync(ctx context.Context,
 	stepFunc func(ctx context.Context) (bool, error)) error {
 	dh.statistics.StartSyncing()
-	defer dh.statistics.FinishSyncing()
 	iteration := 0
 	// Execute steps until done or error
 	for done, err := stepFunc(ctx); !done; done, err = stepFunc(ctx) {
@@ -150,6 +149,7 @@ func (dh *EVMMultidownloader) Sync(ctx context.Context,
 
 	}
 	dh.log.Infof("🎉🎉🎉🎉🎉 Safe sync completed after %d iterations.", iteration)
+	dh.statistics.FinishSyncing()
 	dh.ShowStatistics(iteration)
 	return nil
 }
@@ -350,10 +350,10 @@ func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(ctx context.Context) 
 			logQueryData.String())
 		dh.statistics.LaunchedEthCall()
 		logs, err := dh.ethClient.FilterLogs(ctx, rpcFilterQuery)
+		dh.statistics.FinishEthCall(err, uint64(len(logs)), logQueryData.BlockRange.CountBlocks())
 		if err == nil {
 			return logs, logQueryData, nil
 		}
-		dh.statistics.FinishEthCall(err, uint64(len(logs)), logQueryData.BlockRange.CountBlocks())
 		if err != nil && !isEthClientErrorTooManyResults(err) {
 			return nil, nil, fmt.Errorf("Safe/Step: fails ethClient.FilterLogs(%v): %v. err: %w",
 				rpcFilterQuery, ethGetExtendendError(err), err)

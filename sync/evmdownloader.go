@@ -383,7 +383,7 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 				if b.Hash != l.BlockHash {
 					d.log.Infof(
 						"there has been a block hash change between the event query and the block query "+
-							"for block %d: %s vs %s. Retrying attempt %d/%d.",
+							"for block %d: %s vs (logs)%s. Retrying attempt %d/%d.",
 						l.BlockNumber, b.Hash, l.BlockHash, retryCount, MaxRetryCountBlockHashMismatch,
 					)
 					if retryCount >= MaxRetryCountBlockHashMismatch {

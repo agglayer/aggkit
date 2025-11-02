@@ -49,16 +49,15 @@ func (s *Statistics) FinishDBOperation(_ error) {
 	s.timeTrackerDB.Stop()
 }
 
-func (s *Statistics) ETA(totalBlocks uint64) time.Duration {
+func (s *Statistics) ETA(pendingBlocks uint64) time.Duration {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.totalBlocksSynced == 0 {
 		return 0
 	}
 	elapsed := s.timeTrackerTotal.Elapsed()
-	estimatedTotal := time.Duration(float64(elapsed) * (float64(totalBlocks) / float64(s.totalBlocksSynced)))
-	eta := estimatedTotal - elapsed
-	return eta
+	estimatedPendingTime := time.Duration(float64(elapsed) * (float64(pendingBlocks) / float64(s.totalBlocksSynced)))
+	return estimatedPendingTime
 }
 
 func (s *Statistics) FinishEthCall(err error, numLogs uint64, numBlocks uint64) {
@@ -74,6 +73,8 @@ func (s *Statistics) FinishEthCall(err error, numLogs uint64, numBlocks uint64) 
 func (s *Statistics) Show(logFunc func(format string, args ...interface{}), iteration int) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	logFunc("[%d]Historical/Step: time Total=%s", iteration, s.timeTrackerTotal.String())
+	logFunc("-----------------------------------------------------------------------")
 	logFunc("[%d]Historical/Step: time EthCalls=%s", iteration, s.timeTrackerEthCalls.String())
 	logFunc("[%d]Historical/Step: time Database=%s", iteration, s.timeTrackerDB.String())
 	logFunc("[%d]Historical/Step: totalLogsSynced=%d", iteration, s.totalLogsSynced)

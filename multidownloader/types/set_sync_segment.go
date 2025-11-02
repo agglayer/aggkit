@@ -139,6 +139,13 @@ type LogQuery struct {
 	BlockRange aggkitcommon.BlockRange
 }
 
+func NewLogQuery(fromBlock uint64, toBlock uint64, addrs []common.Address) LogQuery {
+	return LogQuery{
+		Addrs:      addrs,
+		BlockRange: aggkitcommon.NewBlockRange(fromBlock, toBlock),
+	}
+}
+
 func NewLogQueryFromEthereumFilter(query ethereum.FilterQuery) LogQuery {
 	return LogQuery{
 		Addrs:      query.Addresses,

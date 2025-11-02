@@ -125,20 +125,37 @@ func (a *MdrSQLStorage) ExistsBlockHeader(tx dbtypes.Querier, blockNumber uint64
 	return count > 0, nil
 }
 
+type logAndBlockRow struct {
+	Address        common.Address `meddler:"address,address"`
+	Topics         string         `meddler:"topics"`
+	Data           []byte         `meddler:"data"`
+	BlockNumber    uint64         `meddler:"block_number"`
+	TxHash         common.Hash    `meddler:"tx_hash,hash"`
+	TxIndex        uint           `meddler:"tx_index"`
+	Index          uint           `meddler:"log_index"`
+	BlockHash      common.Hash    `meddler:"block_hash,hash"`
+	BlockTimestamp uint64         `meddler:"block_timestamp"`
+}
+
 func (a *MdrSQLStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error) {
 	if tx == nil {
 		tx = a.db
 	}
 
 	logs := make([]types.Log, 0)
-	dbRows := make([]*logDBRow, 0)
+	dbRows := make([]*logAndBlockRow, 0)
 	sqlQuery := `
 	SELECT * FROM logs
+	LEFT JOIN block_base ON logs.block_number = block_base.block_number
 	WHERE address IN (?)
-	AND block_number BETWEEN ? AND ?
-	ORDER BY block_number ASC, log_index ASC
+	AND logs.block_number>=? AND logs.block_number<=?
+	ORDER BY logs.block_number ASC, log_index ASC
 	`
-	queryStr, args, err := sqlx.In(sqlQuery, query.Addrs, query.BlockRange.FromBlock, query.BlockRange.ToBlock)
+	addrs := []string{}
+	for _, addr := range query.Addrs {
+		addrs = append(addrs, addr.Hex())
+	}
+	queryStr, args, err := sqlx.In(sqlQuery, addrs, query.BlockRange.FromBlock, query.BlockRange.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error building SQL query: %w", err)
 	}
@@ -152,13 +169,15 @@ func (a *MdrSQLStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) 
 			return nil, fmt.Errorf("error unmarshaling topics: %w", err)
 		}
 		log := types.Log{
-			Address:     dbRow.Address,
-			Topics:      topics,
-			Data:        dbRow.Data,
-			BlockNumber: dbRow.BlockNumber,
-			TxHash:      dbRow.TxHash,
-			TxIndex:     dbRow.TxIndex,
-			Index:       dbRow.Index,
+			Address:        dbRow.Address,
+			Topics:         topics,
+			Data:           dbRow.Data,
+			BlockNumber:    dbRow.BlockNumber,
+			TxHash:         dbRow.TxHash,
+			TxIndex:        dbRow.TxIndex,
+			Index:          dbRow.Index,
+			BlockHash:      dbRow.BlockHash,
+			BlockTimestamp: dbRow.BlockTimestamp,
 		}
 		logs = append(logs, log)
 	}

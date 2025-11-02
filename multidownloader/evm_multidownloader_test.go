@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const runL1InfoTree = false
+const runL1InfoTree = true
 
 func TestEVMMultidownloader(t *testing.T) {
 	rpcClientCfg := config.RPCClientConfig{
