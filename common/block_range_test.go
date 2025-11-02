@@ -1,4 +1,4 @@
-package types
+package common
 
 import (
 	"testing"
@@ -241,4 +241,27 @@ func TestBlockRange_Greater(t *testing.T) {
 			require.Equal(t, tt.expected, got, "Greater() for %s: expected %v, got %v", tt.name, tt.expected, got)
 		})
 	}
+}
+
+func TestBlockRange_Substract(t *testing.T) {
+	bn := NewBlockRange(10, 50)
+	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Substract(NewBlockRange(20, 30)))
+	require.Equal(t, []BlockRange{NewBlockRange(31, 50)}, bn.Substract(NewBlockRange(1, 30)))
+	require.Equal(t, []BlockRange{NewBlockRange(10, 29)}, bn.Substract(NewBlockRange(30, 50)))
+	require.Equal(t, []BlockRange{bn}, bn.Substract(NewBlockRange(300, 500)))
+	require.Equal(t, []BlockRange{}, bn.Substract(NewBlockRange(1, 500)))
+	require.Equal(t, []BlockRange{bn}, bn.Substract(NewBlockRange(0, 0)))
+}
+func TestBlockRange_Intersect(t *testing.T) {
+	bn := NewBlockRange(10, 50)
+	require.Equal(t, BlockRange{10, 15}, bn.Intersect(NewBlockRange(5, 15)))
+	require.Equal(t, BlockRange{30, 40}, bn.Intersect(NewBlockRange(30, 40)))
+	require.Equal(t, BlockRangeZero, bn.Intersect(NewBlockRange(51, 60)))
+}
+
+func TestBlockRange_Cap(t *testing.T) {
+	bn := NewBlockRange(10, 50)
+	require.Equal(t, BlockRange{10, 40}, bn.Cap(40))
+	require.Equal(t, BlockRange{10, 50}, bn.Cap(60))
+	require.Equal(t, BlockRangeZero, bn.Cap(5))
 }

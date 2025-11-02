@@ -37,6 +37,8 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
+	mutlidownloaderstorage "github.com/agglayer/aggkit/multidownloader/storage"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -95,7 +97,10 @@ func start(cliCtx *cli.Context) error {
 			log.Fatal("Error from ReorgDetectorL2: ", err)
 		}
 	}()
-
+	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components, l1Client, cfg.L1NetworkConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
+	}
 	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
@@ -108,7 +113,7 @@ func start(cliCtx *cli.Context) error {
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 	var rpcServices []jRPC.Service
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1, l1Client)
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1, l1Client, l1MultiDownloader)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
@@ -219,6 +224,10 @@ func start(cliCtx *cli.Context) error {
 
 	if cfg.Profiling.ProfilingEnabled {
 		go pprof.StartProfilingHTTPServer(ctx, cfg.Profiling)
+	}
+	if l1MultiDownloader != nil {
+		log.Info("starting L1 MultiDownloader...")
+		go l1MultiDownloader.Start(ctx)
 	}
 
 	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
@@ -496,6 +505,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	cfg config.Config,
 	reorgDetectorL1 aggkitsync.ReorgDetector,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l1MultiDownloader aggkittypes.MultiDownloader,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
@@ -506,7 +516,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		cfg.L1InfoTreeSync,
-		l1Client,
+		l1MultiDownloader,
 		reorgDetectorL1,
 		l1infotreesync.FlagNone,
 	)
@@ -594,6 +604,32 @@ func runReorgDetectorL1IfNeeded(
 	}()
 
 	return rd, errChan
+}
+
+func runL1MultiDownloaderIfNeeded(
+	ctx context.Context,
+	components []string,
+	l1Client aggkittypes.BaseEthereumClienter,
+	cfg config.L1NetworkConfig,
+) (*multidownloader.EVMMultidownloader, error) {
+	//The requirements are the same as L1Client
+	if l1Client == nil {
+		return nil, nil
+	}
+	logger := log.WithFields("module", "L1MultiDownloader")
+	storage, err := mutlidownloaderstorage.NewMdrSQLStorage(logger, mutlidownloaderstorage.MultidownloaderStorageConfig{
+		DBPath: "/tmp/mdr_test.db",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multidownloader storage: %w", err)
+	}
+	return multidownloader.NewEVMMultidownloader(logger,
+		aggkittypes.FinalizedBlock,
+		l1Client,
+		storage,
+		nil,
+	), nil
+
 }
 
 func runReorgDetectorL2IfNeeded(

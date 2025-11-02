@@ -1,0 +1,111 @@
+package multidownloader
+
+import (
+	"context"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/config"
+	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader/storage"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+)
+
+const runL1InfoTree = false
+
+func TestEVMMultidownloader(t *testing.T) {
+	rpcClientCfg := config.RPCClientConfig{
+		URL: os.Getenv("L1URL"),
+	}
+	retryHandler, err := rpcClientCfg.NewRetryHandler()
+	if err != nil {
+		log.Fatalf("failed to create retry handler: %w", err)
+	}
+
+	ethClient, err := aggkittypes.DialWithRetry(t.Context(), rpcClientCfg.URL, retryHandler)
+	if err != nil {
+		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
+	}
+	block, err := ethClient.BlockByNumber(t.Context(), nil) // Test connection
+	require.NoError(t, err)
+	log.Infof("Connected to Ethereum. Current block: %d", block.Number().Uint64())
+
+	logger := log.WithFields("test", "test")
+
+	db, err := storage.NewMdrSQLStorage(logger, storage.MultidownloaderStorageConfig{
+		DBPath: "/tmp/mdr_test.sqlite",
+	})
+	require.NoError(t, err)
+	mdr := NewEVMMultidownloader(logger, aggkittypes.FinalizedBlock, ethClient, db, nil)
+	require.NotNil(t, mdr)
+	mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		SyncerID: "test_syncer",
+		ContractsAddr: []common.Address{
+			common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"), // GERManager
+			common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"), // RollupManager
+		},
+		FromBlock: 5157574,
+		ToBlock:   aggkittypes.FinalizedBlock,
+	})
+
+	ctx := context.TODO()
+	var l1infotree *l1infotreesync.L1InfoTreeSync
+	if runL1InfoTree == true {
+		l1infotree, err = l1infotreesync.New(
+			ctx,
+			l1infotreesync.Config{
+				DBPath:             "/tmp/l1infotree.sqlite",
+				InitialBlock:       5157574,
+				GlobalExitRootAddr: common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"),
+				RollupManagerAddr:  common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"),
+				SyncBlockChunkSize: 50000,
+				WaitForNewBlocksPeriod: types.Duration{
+					Duration: 5 * time.Second,
+				},
+			},
+			aggkittypes.FinalizedBlock,
+			mdr,
+			l1infotreesync.FlagStopOnFinalizedBlockReached,
+			aggkittypes.FinalizedBlock,
+		)
+		require.NoError(t, err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		timer := aggkitcommon.TimeTracker{}
+		timer.Start()
+		_ = mdr.Start(ctx)
+		timer.Stop()
+		log.Infof("Multidownloader sync finished in %s", timer.String())
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		timer := aggkitcommon.TimeTracker{}
+		timer.Start()
+		if l1infotree != nil {
+			l1infotree.Start(t.Context())
+		}
+		timer.Stop()
+		log.Infof("L1InfoTree sync finished in %s", timer.String())
+	}()
+	wg.Wait()
+}
+
+func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) {
+	br := extractSuggestedBlockRangeFromErrorMsg("Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273].")
+	require.NotNil(t, br)
+	require.Equal(t, uint64(8727574), br.FromBlock)
+	require.Equal(t, uint64(8729203), br.ToBlock)
+}

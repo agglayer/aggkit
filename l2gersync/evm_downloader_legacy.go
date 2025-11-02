@@ -64,7 +64,7 @@ func newDownloaderLegacy(
 	}
 
 	evmDownloader := sync.NewEVMDownloaderImplementation(
-		"l2GERSync", l2Client, blockFinality,
+		"l2GERSync", sync.NewAdaptEthClient(l2Client), blockFinality,
 		waitForNewBlocksPeriod, nil, nil,
 		rh, nil, nil, "l2GERSync")
 

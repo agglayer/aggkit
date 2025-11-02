@@ -49,15 +49,16 @@ func (m LogAppenderMap) GetTopics() []common.Hash {
 
 type EVMDownloader struct {
 	EVMDownloaderInterface
-	syncBlockChunkSize         uint64
-	log                        *log.Logger
-	addressesToQuery           []common.Address
-	stopDownloaderOnIterationN int
+	log                         *log.Logger
+	finalizedBlockType          *aggkittypes.BlockNumberFinality
+	stopDownloaderOnIterationN  int
+	stopOnFinalizedBlockReached bool
+	addressesToQuery            []common.Address
 }
 
 func NewEVMDownloader(
 	syncerID string,
-	ethClient aggkittypes.BaseEthereumClienter,
+	ethClient aggkittypes.MultiDownloader, //aggkittypes.BaseEthereumClienter,
 	syncBlockChunkSize uint64,
 	finality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -104,6 +105,11 @@ func NewEVMDownloader(
 // setStopDownloaderOnIterationN sets the block number to stop the downloader (just for unittest)
 func (d *EVMDownloader) setStopDownloaderOnIterationN(iteration int) {
 	d.stopDownloaderOnIterationN = iteration
+}
+
+func (d *EVMDownloader) SetStopOnFinalizedBlockReachedFlag() {
+	d.log.Info("setting stop on finalized block reached flag")
+	d.stopOnFinalizedBlockReached = true
 }
 
 // RuntimeData returns the runtime data: chainID + addresses to query
@@ -197,6 +203,10 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			d.log.Infof("stop downloader on iteration %d", iteration)
 			return
 		}
+		if d.stopOnFinalizedBlockReached && fromBlock >= lastFinalizedBlockNumber {
+			d.log.Infof("stop downloader on finalized block reached at block %d", lastFinalizedBlockNumber)
+			return
+		}
 	}
 }
 
@@ -224,7 +234,8 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 }
 
 type EVMDownloaderImplementation struct {
-	ethClient              aggkittypes.BaseEthereumClienter
+	//ethClient              aggkittypes.BaseEthereumClienter
+	ethClient              aggkittypes.MultiDownloader
 	blockFinality          aggkittypes.BlockNumberFinality
 	waitForNewBlocksPeriod time.Duration
 	appender               LogAppenderMap
@@ -241,7 +252,7 @@ type EVMDownloaderImplementation struct {
 // finalizedBlockType can be nil, in this case, it means that the reorgs are not happening on the network
 func NewEVMDownloaderImplementation(
 	syncerID string,
-	ethClient aggkittypes.BaseEthereumClienter,
+	ethClient aggkittypes.MultiDownloader,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
@@ -273,16 +284,7 @@ func NewEVMDownloaderImplementation(
 }
 
 func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, error) {
-	chainID, err := d.ethClient.ChainID(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to retrieve chain id. Err: %w", err)
-	}
-
-	if chainID == nil {
-		return 0, errChainIDUndefined
-	}
-
-	return chainID.Uint64(), nil
+	return d.ethClient.ChainID(ctx)
 }
 
 func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (uint64, error) {
@@ -291,7 +293,7 @@ func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context)
 	if blockFinality == nil {
 		blockFinality = &d.blockFinality
 	}
-	return blockFinality.BlockNumber(ctx, d.ethClient)
+	return d.ethClient.BlockNumber(ctx, *blockFinality)
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(
@@ -305,7 +307,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockHeader, err := d.blockFinality.BlockHeader(ctx, d.ethClient)
+			blockNumber, err := d.ethClient.BlockNumber(ctx, d.blockFinality)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -537,8 +539,8 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 			continue
 		}
 		return EVMBlockHeader{
-			Num:        header.Number.Uint64(),
-			Hash:       header.Hash(),
+			Num:        header.Number,
+			Hash:       header.Hash,
 			ParentHash: header.ParentHash,
 			Timestamp:  header.Time,
 		}, false

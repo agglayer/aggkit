@@ -108,21 +108,21 @@ func (f *baseFlow) StartL2Block() uint64 {
 
 // NextCertificateBlockRange returns the block range and retryCount for the next certificate
 func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
-	lastSentCertificate *types.CertificateHeader) (types.BlockRange, int, error) {
+	lastSentCertificate *types.CertificateHeader) (aggkitcommon.BlockRange, int, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
-		return types.BlockRangeZero, 0, fmt.Errorf("error getting last processed block from l2: %w", err)
+		return aggkitcommon.BlockRangeZero, 0, fmt.Errorf("error getting last processed block from l2: %w", err)
 	}
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
 	if previousToBlock >= lastL2BlockSynced {
 		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
-		return types.BlockRangeZero, 0, errNoNewBlocks
+		return aggkitcommon.BlockRangeZero, 0, errNoNewBlocks
 	}
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
-	return types.NewBlockRange(fromBlock, toBlock), retryCount, nil
+	return aggkitcommon.NewBlockRange(fromBlock, toBlock), retryCount, nil
 }
 
 // GetLastCertificate returns latest certificate in local database
@@ -495,8 +495,8 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 		lastSettledToBlock = lastSentCertificate.ToBlock
 	}
 
-	nextBlockRange := types.NewBlockRange(newFromBlock, newToBlock)
-	lastBlockRange := types.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
+	nextBlockRange := aggkitcommon.NewBlockRange(newFromBlock, newToBlock)
+	lastBlockRange := aggkitcommon.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
 
 	if lastBlockRange.Greater(nextBlockRange) {
 		// This is a strange situation, but don't need to check anything.

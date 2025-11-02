@@ -65,6 +65,12 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	}
 	return result, nil
 }
+func (b *BlockNumberFinality) Equal(other BlockNumberFinality) bool {
+	if b == nil {
+		return false
+	}
+	return b.Block == other.Block && b.Offset == other.Offset
+}
 
 // String returns the string representation of the BlockNumberFinality
 func (b *BlockNumberFinality) String() string {
@@ -196,6 +202,20 @@ func (b *BlockNumberFinality) BlockHeader(
 		return blockHeader, nil
 	}
 	return requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
+}
+
+type BlockNotifier interface {
+	BlockFinality() *BlockNumberFinality
+	GetCurrentBlockNumber() uint64
+}
+
+func (b *BlockNumberFinality) BlockNumberFromBlockNotifier(notifier BlockNotifier) uint64 {
+	if notifier.BlockFinality().Equal(*b) == false {
+		log.Fatalf("BlockNumberFinality.BlockNumberFromBlockNotifier: Block finality mismatch between %s and %s",
+			b.String(), notifier.BlockFinality().String())
+	}
+	// Don't require offset adjustment because is included in the notifier's block number
+	return notifier.GetCurrentBlockNumber()
 }
 
 // LessFinalThan returns true if b is less strict commitment level than other.
