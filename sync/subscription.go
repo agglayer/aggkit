@@ -43,7 +43,8 @@ func NewSubscriberManager(logger *log.Logger) *SubscriberManager {
 
 // Subscribe creates a new subscription with buffered channels
 // bufferSize determines the channel buffer size (0 for unbuffered)
-// The caller is responsible for reading from the channels and closing them when done
+// The caller is responsible for reading from the channels.
+// Call Unsubscribe to close the channels and clean up the subscription.
 func (sm *SubscriberManager) Subscribe(id string, bufferSize int) *Subscription {
 	if sm == nil {
 		return nil

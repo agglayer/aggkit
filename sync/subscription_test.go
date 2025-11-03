@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -422,7 +423,7 @@ func TestConcurrency(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				sm.Subscribe(string(rune(id)), 10)
+				sm.Subscribe(fmt.Sprintf("subscriber-%d", id), 10)
 			}(i)
 		}
 
@@ -433,7 +434,7 @@ func TestConcurrency(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				sm.Unsubscribe(string(rune(id)))
+				sm.Unsubscribe(fmt.Sprintf("subscriber-%d", id))
 			}(i)
 		}
 
@@ -502,7 +503,7 @@ func TestConcurrency(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				sub := sm.Subscribe(string(rune(id)), 100)
+				sub := sm.Subscribe(fmt.Sprintf("subscriber-%d", id), 100)
 				if sub != nil {
 					// Read some notifications
 					for range 10 {

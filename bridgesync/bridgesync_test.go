@@ -825,7 +825,7 @@ func TestSubscribeToSync(t *testing.T) {
 			require.NoError(t, s.processor.ProcessBlock(ctx, blocks[uint64(i)]))
 		}
 
-		close(subscription.BlockCh)
+		s.processor.subscriberManager.Unsubscribe("test-subscriber")
 	}()
 
 	for syncNotification := range subscription.BlockCh {
