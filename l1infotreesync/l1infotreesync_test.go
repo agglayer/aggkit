@@ -15,17 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetL1InfoTreeMerkleProof(t *testing.T) {
-	s := L1InfoTreeSync{
-		processor: &processor{
-			halted: true,
-		},
-	}
-	_, _, err := s.GetL1InfoTreeMerkleProof(context.Background(), 0)
-	require.Error(t, err)
-	require.True(t, errors.Is(err, sync.ErrInconsistentState))
-}
-
 func TestGetRollupExitTreeMerkleProof(t *testing.T) {
 	s := L1InfoTreeSync{
 		processor: &processor{

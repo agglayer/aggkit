@@ -14,7 +14,6 @@ import (
 
 	"github.com/agglayer/aggkit/db"
 	aggkitsync "github.com/agglayer/aggkit/sync"
-	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -181,79 +180,6 @@ func TestGetLatestL1InfoLeafUntilBlock(t *testing.T) {
 	}
 }
 
-func TestProcessor_GetL1InfoTreeMerkleProof(t *testing.T) {
-	testTable := []struct {
-		name         string
-		getProcessor func(t *testing.T) *processor
-		idx          uint32
-		expectedRoot types.Root
-		expectedErr  error
-	}{
-		{
-			name: "empty tree",
-			getProcessor: func(t *testing.T) *processor {
-				t.Helper()
-
-				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTestProcessor_GetL1InfoTreeMerkleProof_1.sqlite"))
-				require.NoError(t, err)
-
-				return p
-			},
-			idx:         0,
-			expectedErr: db.ErrNotFound,
-		},
-		{
-			name: "single leaf tree",
-			getProcessor: func(t *testing.T) *processor {
-				t.Helper()
-
-				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTestProcessor_GetL1InfoTreeMerkleProof_2.sqlite"))
-				require.NoError(t, err)
-
-				info := &UpdateL1InfoTree{
-					MainnetExitRoot: common.HexToHash("beef"),
-					RollupExitRoot:  common.HexToHash("5ca1e"),
-					ParentHash:      common.HexToHash("1010101"),
-					Timestamp:       420,
-				}
-				err = p.ProcessBlock(context.Background(), aggkitsync.Block{
-					Num: 1,
-					Events: []interface{}{
-						Event{UpdateL1InfoTree: info},
-					},
-				})
-				require.NoError(t, err)
-
-				return p
-			},
-			idx: 0,
-			expectedRoot: types.Root{
-				Hash:          common.HexToHash("beef"),
-				Index:         0,
-				BlockNum:      1,
-				BlockPosition: 0,
-			},
-		},
-	}
-
-	for _, tt := range testTable {
-		t.Run(tt.name, func(t *testing.T) {
-			p := tt.getProcessor(t)
-			proof, root, err := p.GetL1InfoTreeMerkleProof(context.Background(), tt.idx)
-			if tt.expectedErr != nil {
-				require.Equal(t, tt.expectedErr, err)
-			} else {
-				require.NoError(t, err)
-				require.NotEmpty(t, proof)
-				require.NotEmpty(t, root.Hash)
-				require.Equal(t, tt.expectedRoot.Index, root.Index)
-				require.Equal(t, tt.expectedRoot.BlockNum, root.BlockNum)
-				require.Equal(t, tt.expectedRoot.BlockPosition, root.BlockPosition)
-			}
-		})
-	}
-}
-
 func TestProcessor_Reorg(t *testing.T) {
 	t.Parallel()
 
@@ -323,13 +249,14 @@ func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 	require.NoError(t, err)
 	block := aggkitsync.Block{
 		Num: 10,
-		Events: []interface{}{
-			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
-				MainnetExitRoot: common.HexToHash("beef"),
-				RollupExitRoot:  common.HexToHash("5ca1e"),
-				ParentHash:      common.HexToHash("1010101"),
-				Timestamp:       420,
-			}},
+		Events: []any{
+			Event{
+				UpdateL1InfoTree: &UpdateL1InfoTree{
+					MainnetExitRoot: common.HexToHash("beef"),
+					RollupExitRoot:  common.HexToHash("5ca1e"),
+					ParentHash:      common.HexToHash("1010101"),
+					Timestamp:       420,
+				}},
 			Event{UpdateL1InfoTreeV2: &UpdateL1InfoTreeV2{
 				CurrentL1InfoRoot: common.HexToHash("beef"),
 				LeafCount:         1,

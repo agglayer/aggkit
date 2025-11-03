@@ -15,7 +15,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
@@ -28,8 +28,8 @@ var (
 
 type processor struct {
 	db             *sql.DB
-	l1InfoTree     *tree.AppendOnlyTree
-	rollupExitTree *tree.UpdatableTree
+	l1InfoTree     treetypes.FullTreer
+	rollupExitTree treetypes.FullTreer
 	mu             mutex.RWMutex
 	halted         bool
 	haltedReason   string
@@ -157,19 +157,6 @@ func newProcessor(dbPath string) (*processor, error) {
 			aggkitcommon.L1INFOTREESYNC,
 		),
 	}, nil
-}
-
-// GetL1InfoTreeMerkleProof creates a merkle proof for the L1 Info tree
-func (p *processor) GetL1InfoTreeMerkleProof(
-	ctx context.Context, index uint32,
-) (treeTypes.Proof, treeTypes.Root, error) {
-	root, err := p.l1InfoTree.GetRootByIndex(ctx, index)
-	if err != nil {
-		return treeTypes.Proof{}, treeTypes.Root{}, err
-	}
-
-	proof, err := p.l1InfoTree.GetProof(ctx, root.Index, root.Hash)
-	return proof, root, err
 }
 
 // GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
@@ -416,7 +403,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("insert l1info_leaf %s. err: %w", info.String(), err)
 			}
 
-			_, err = p.l1InfoTree.PutLeaf(tx, info.BlockNumber, info.BlockPosition, treeTypes.Leaf{
+			_, err = p.l1InfoTree.PutLeaf(tx, info.BlockNumber, info.BlockPosition, treetypes.Leaf{
 				Index: info.L1InfoTreeIndex,
 				Hash:  info.Hash,
 			})

@@ -145,14 +145,6 @@ func (s *L1InfoTreeSync) Start(ctx context.Context) {
 	s.driver.Sync(ctx)
 }
 
-// GetL1InfoTreeMerkleProof creates a merkle proof for the L1 Info tree
-func (s *L1InfoTreeSync) GetL1InfoTreeMerkleProof(ctx context.Context, index uint32) (types.Proof, types.Root, error) {
-	if s.processor.isHalted() {
-		return types.Proof{}, types.Root{}, sync.ErrInconsistentState
-	}
-	return s.processor.GetL1InfoTreeMerkleProof(ctx, index)
-}
-
 // GetRollupExitTreeMerkleProof creates a merkle proof for the rollup exit tree
 func (s *L1InfoTreeSync) GetRollupExitTreeMerkleProof(
 	ctx context.Context,
