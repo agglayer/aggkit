@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
@@ -23,6 +24,7 @@ type MultidownloaderStorageConfig struct {
 }
 
 type MdrSQLStorage struct {
+	mutex sync.RWMutex
 	dbtypes.KeyValueStorager
 	logger aggkitcommon.Logger
 	db     *sql.DB
@@ -115,16 +117,6 @@ func (a *MdrSQLStorage) NewTx(ctx context.Context) (dbtypes.Txer, error) {
 	return tx, nil
 }
 
-func (a *MdrSQLStorage) ExistsBlockHeader(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
-	var count int
-	query := "SELECT COUNT(1) FROM block_header WHERE block_number = ?"
-	row := tx.QueryRow(query, blockNumber)
-	if err := row.Scan(&count); err != nil {
-		return false, fmt.Errorf("error checking block existence: %w", err)
-	}
-	return count > 0, nil
-}
-
 type logAndBlockRow struct {
 	Address        common.Address `meddler:"address,address"`
 	Topics         string         `meddler:"topics"`
@@ -141,6 +133,8 @@ func (a *MdrSQLStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) 
 	if tx == nil {
 		tx = a.db
 	}
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
 
 	logs := make([]types.Log, 0)
 	dbRows := make([]*logAndBlockRow, 0)
@@ -189,16 +183,17 @@ func (a *MdrSQLStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFina
 	if tx == nil {
 		tx = a.db
 	}
-
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	for _, log := range logs {
 		// TODO: this don't work in all cases use INSERT OR IGNORE"
-		exists, err := a.ExistsBlockBase(tx, log.BlockNumber)
+		exists, err := a.existsBlockBaseNoMutex(tx, log.BlockNumber)
 		if err != nil {
 			return fmt.Errorf("error checking block existence: %w", err)
 		}
 		if !exists {
 			block := NewBlockRowFromEthLog(log, isFinal)
-			err = a.SaveBlockBase(tx, aggkittypes.NewBlockBase(
+			err = a.saveBlockBaseNoMutex(tx, aggkittypes.NewBlockBase(
 				block.BlockNumber,
 				block.BlockHash,
 				block.BlockTimestamp,
@@ -220,7 +215,8 @@ func (a *MdrSQLStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders 
 	if tx == nil {
 		tx = a.db
 	}
-
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	// This populate block_base and logs tables
 	err := a.SaveEthLogs(tx, logs, false)
 	if err != nil {
@@ -247,6 +243,8 @@ func (a *MdrSQLStorage) SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header,
 	if tx == nil {
 		tx = a.db
 	}
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	blockRow := &BlockBaseRow{
 		BlockNumber:    block.Number.Uint64(),
 		BlockHash:      block.Hash(),
@@ -284,6 +282,8 @@ func (r *syncStatusRow) ToSyncSegment() mdrtypes.SyncSegment {
 }
 
 func (a *MdrSQLStorage) GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error) {
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
 	result := make([]*syncStatusRow, 0)
 	if tx == nil {
 		tx = a.db
@@ -303,6 +303,8 @@ func (a *MdrSQLStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtyp
 	if tx == nil {
 		tx = a.db
 	}
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	// This set synced_from_block to first query if zero or if it's lower than current
 	from := logQuery.BlockRange.FromBlock
 	for _, addr := range logQuery.Addrs {
@@ -328,6 +330,8 @@ func (a *MdrSQLStorage) UpdateSyncerConfigs(tx dbtypes.Querier, configs []mdrtyp
 	if tx == nil {
 		tx = a.db
 	}
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	for _, config := range configs {
 		row := syncStatusRow{
 			Address:         config.Address,

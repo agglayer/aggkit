@@ -11,10 +11,17 @@ import (
 )
 
 func (a *MdrSQLStorage) SaveBlockBase(tx dbtypes.Querier, base *aggkittypes.BlockBase, isFinal bool) error {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	return a.saveBlockBaseNoMutex(tx, base, isFinal)
+}
+
+// saveBlockBaseNoMutex saves a BlockBase without acquiring the mutex (it must be held by the caller)
+func (a *MdrSQLStorage) saveBlockBaseNoMutex(tx dbtypes.Querier, base *aggkittypes.BlockBase, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
-	exists, err := a.ExistsBlockBase(tx, base.Number)
+	exists, err := a.existsBlockBaseNoMutex(tx, base.Number)
 	if err != nil {
 		return fmt.Errorf("SaveBlockBase: error checking block base existence: %w", err)
 	}
@@ -32,8 +39,9 @@ func (a *MdrSQLStorage) SaveBlockBase(tx dbtypes.Querier, base *aggkittypes.Bloc
 	}
 	return nil
 }
-func (a *MdrSQLStorage) ExistsBlockBase(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
-	blockBase, err := a.GetBlockBaseByNumber(tx, blockNumber)
+
+func (a *MdrSQLStorage) existsBlockBaseNoMutex(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
+	blockBase, err := a.getBlockBaseByNumberNoMutex(tx, blockNumber)
 	if err != nil {
 		return false, fmt.Errorf("error getting block base %d: %w", blockNumber, err)
 	}
@@ -45,16 +53,40 @@ func (a *MdrSQLStorage) ExistsBlockBase(tx dbtypes.Querier, blockNumber uint64) 
 }
 
 func (a *MdrSQLStorage) SaveBlockHeader(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	return a.saveBlockHeaderNoMutex(tx, header, isFinal)
+
+}
+
+func (a *MdrSQLStorage) ExistsBlockHeader(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+	return a.existsBlockHeaderNoMutex(tx, blockNumber)
+}
+
+func (a *MdrSQLStorage) existsBlockHeaderNoMutex(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
+	var count int
+	query := "SELECT COUNT(1) FROM block_header WHERE block_number = ?"
+	row := tx.QueryRow(query, blockNumber)
+	if err := row.Scan(&count); err != nil {
+		return false, fmt.Errorf("error checking block existence: %w", err)
+	}
+	return count > 0, nil
+}
+
+// saveBlockHeaderNoMutex saves a BlockHeader without acquiring the mutex (it must be held by the caller)
+func (a *MdrSQLStorage) saveBlockHeaderNoMutex(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
 	// TODO: Sanity check that hash is the same in table block_base
-	exists, err := a.ExistsBlockHeader(tx, header.Number)
+	exists, err := a.existsBlockHeaderNoMutex(tx, header.Number)
 	if err != nil {
 		return fmt.Errorf("SaveBlockHeader: error checking block header existence: %w", err)
 	}
 	if !exists {
-		a.SaveBlockBase(tx, &header.BlockBase, isFinal)
+		a.saveBlockBaseNoMutex(tx, &header.BlockBase, isFinal)
 	}
 	blockHeaderRow := &BlockHeaderRow{
 		BlockNumber:     header.Number,
@@ -66,7 +98,7 @@ func (a *MdrSQLStorage) SaveBlockHeader(tx dbtypes.Querier, header *aggkittypes.
 	return nil
 }
 
-func (a *MdrSQLStorage) GetBlockBaseByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockBase, error) {
+func (a *MdrSQLStorage) getBlockBaseByNumberNoMutex(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockBase, error) {
 
 	if tx == nil {
 		tx = a.db
@@ -91,7 +123,10 @@ func (a *MdrSQLStorage) GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber u
 	if tx == nil {
 		tx = a.db
 	}
-	blockBase, err := a.GetBlockBaseByNumber(tx, blockNumber)
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	blockBase, err := a.getBlockBaseByNumberNoMutex(tx, blockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("GetBlockHeaderByNumber: error getting block base: %w", err)
 	}

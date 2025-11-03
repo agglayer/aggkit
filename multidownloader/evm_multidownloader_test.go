@@ -65,7 +65,7 @@ func TestEVMMultidownloader(t *testing.T) {
 				InitialBlock:       5157574,
 				GlobalExitRootAddr: common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"),
 				RollupManagerAddr:  common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"),
-				SyncBlockChunkSize: 50000,
+				SyncBlockChunkSize: 5000,
 				WaitForNewBlocksPeriod: types.Duration{
 					Duration: 5 * time.Second,
 				},

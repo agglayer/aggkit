@@ -34,6 +34,8 @@ func (dh *EVMMultidownloader) BlockNumber(ctx context.Context, finality aggkitty
 }
 
 func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+	dh.log.Debugf("EVMMultidownloader.FilterLogs: received query: %+v", query)
+	defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)
 	logQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
@@ -44,10 +46,28 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 }
 
 func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.Int) (*aggkittypes.BlockHeader, error) {
+	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
+	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	if number.Cmp(big.NewInt(0)) < 0 {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: negative block number not supported=%s", number.String())
 	}
-	block, err := dh.storage.GetBlockHeaderByNumber(nil, number.Uint64())
+	finalizedBlock, err := dh.getFinalizedBlockNumber(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get finalized block number: %w", err)
+	}
+	txCommited := false
+	tx, err := dh.storage.NewTx(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot create storage transaction: %w", err)
+	}
+	defer func() {
+		if !txCommited {
+			_ = tx.Rollback()
+		}
+	}()
+
+	block, err := dh.storage.GetBlockHeaderByNumber(tx, number.Uint64())
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get BlockHeader number=%d: %w", number.Uint64(), err)
 	}
@@ -59,15 +79,17 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get full BlockHeader number=%d from ethClient: %w", number.Uint64(), err)
 	}
-	finalizedBlock, err := dh.getFinalizedBlockNumber(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get finalized block number: %w", err)
-	}
+
 	isFinal := number.Uint64() <= finalizedBlock
 	blockHeader := aggkittypes.NewBlockHeaderFromEthBlockHeader(ethBlock)
-	err = dh.storage.SaveBlockHeader(nil, blockHeader, isFinal)
+	err = dh.storage.SaveBlockHeader(tx, blockHeader, isFinal)
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot save BlockHeader number=%d: %w", number.Uint64(), err)
+	}
+	txCommited = true
+	err = tx.Commit()
+	if err != nil {
+		dh.log.Warnf("failed to commit the blockHeader %d. %w", number.Uint64(), err)
 	}
 	return blockHeader, nil
 }
