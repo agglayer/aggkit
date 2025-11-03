@@ -12,6 +12,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	sync "github.com/agglayer/aggkit/sync"
+
 	treetypes "github.com/agglayer/aggkit/tree/types"
 )
 
@@ -477,6 +479,55 @@ func (_c *L2BridgeSyncer_OriginNetwork_Call) Return(_a0 uint32) *L2BridgeSyncer_
 }
 
 func (_c *L2BridgeSyncer_OriginNetwork_Call) RunAndReturn(run func() uint32) *L2BridgeSyncer_OriginNetwork_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SubscribeToSync provides a mock function with given fields: subscriberID, bufferSize
+func (_m *L2BridgeSyncer) SubscribeToSync(subscriberID string, bufferSize int) *sync.Subscription {
+	ret := _m.Called(subscriberID, bufferSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubscribeToSync")
+	}
+
+	var r0 *sync.Subscription
+	if rf, ok := ret.Get(0).(func(string, int) *sync.Subscription); ok {
+		r0 = rf(subscriberID, bufferSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*sync.Subscription)
+		}
+	}
+
+	return r0
+}
+
+// L2BridgeSyncer_SubscribeToSync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubscribeToSync'
+type L2BridgeSyncer_SubscribeToSync_Call struct {
+	*mock.Call
+}
+
+// SubscribeToSync is a helper method to define mock.On call
+//   - subscriberID string
+//   - bufferSize int
+func (_e *L2BridgeSyncer_Expecter) SubscribeToSync(subscriberID interface{}, bufferSize interface{}) *L2BridgeSyncer_SubscribeToSync_Call {
+	return &L2BridgeSyncer_SubscribeToSync_Call{Call: _e.mock.On("SubscribeToSync", subscriberID, bufferSize)}
+}
+
+func (_c *L2BridgeSyncer_SubscribeToSync_Call) Run(run func(subscriberID string, bufferSize int)) *L2BridgeSyncer_SubscribeToSync_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(int))
+	})
+	return _c
+}
+
+func (_c *L2BridgeSyncer_SubscribeToSync_Call) Return(_a0 *sync.Subscription) *L2BridgeSyncer_SubscribeToSync_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *L2BridgeSyncer_SubscribeToSync_Call) RunAndReturn(run func(string, int) *sync.Subscription) *L2BridgeSyncer_SubscribeToSync_Call {
 	_c.Call.Return(run)
 	return _c
 }

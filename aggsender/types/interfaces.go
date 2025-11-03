@@ -12,6 +12,7 @@ import (
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -101,6 +102,7 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
+	SubscribeToSync(subscriberID string, bufferSize int) *sync.Subscription
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -365,4 +367,16 @@ type FEPInputsQuerier interface {
 	GetAggchainParams(
 		lastProvenBlock, requestedEndBlock uint64,
 		l1InfoTreeLeafHash common.Hash) (*AggchainParams, error)
+}
+
+type CertificateSender interface {
+	SendEpochBasedCertificates(
+		ctx context.Context,
+		epochNotifier EpochNotifier,
+		returnAfterNIterations int)
+}
+
+type Runner interface {
+	Run(ctx context.Context, certSender CertificateSender)
+	Status() string
 }

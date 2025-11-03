@@ -36,8 +36,6 @@ type RateLimiter interface {
 type AggSender struct {
 	log aggkitcommon.Logger
 
-	epochNotifier types.EpochNotifier
-
 	storage                      db.AggSenderStorage
 	aggLayerClient               agglayer.AgglayerClientInterface
 	compatibilityStoragedChecker compatibility.CompatibilityChecker
@@ -49,6 +47,8 @@ type AggSender struct {
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
+
+	runner types.Runner
 
 	cfg config.Config
 
@@ -66,7 +66,6 @@ func New(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -82,6 +81,47 @@ func New(
 		cfg.Mode = mode
 	}
 
+	runner, err := NewRunner(
+		ctx,
+		cfg,
+		logger,
+		l1Client,
+		l2Syncer,
+		aggLayerClient,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating runner: %w", err)
+	}
+
+	return newAggsender(
+		ctx,
+		logger,
+		cfg,
+		aggLayerClient,
+		l1InfoTreeSyncer,
+		l2Syncer,
+		l1Client,
+		l2Client,
+		rollupDataQuerier,
+		committeeQuerier,
+		runner,
+	)
+}
+
+// newAggsender returns a new AggSender instance
+func newAggsender(
+	ctx context.Context,
+	logger *log.Logger,
+	cfg config.Config,
+	aggLayerClient agglayer.AgglayerClientInterface,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	l2Syncer types.L2BridgeSyncer,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
+	rollupDataQuerier types.RollupDataQuerier,
+	committeeQuerier types.MultisigQuerier,
+	runner types.Runner,
+) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
 		CertificatesDir:          cfg.CertificatesDir,
@@ -120,7 +160,7 @@ func New(
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
 	)
 
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, mode,
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
 		cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
@@ -159,7 +199,6 @@ func New(
 		log:                          logger,
 		storage:                      storage,
 		aggLayerClient:               aggLayerClient,
-		epochNotifier:                epochNotifier,
 		status:                       &types.AggsenderStatus{Status: types.StatusNone},
 		flow:                         flowManager,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
@@ -178,16 +217,17 @@ func New(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 		l1Client:         l1Client,
 		l1InfoTreeSyncer: l1InfoTreeSyncer,
+		runner:           runner,
 	}, nil
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
-		AggsenderStatus:          *a.status,
-		Version:                  aggkit.GetVersion(),
-		EpochNotifierDescription: a.epochNotifier.String(),
-		NetworkID:                a.l2OriginNetwork,
-		Mode:                     a.cfg.Mode,
+		AggsenderStatus: *a.status,
+		Version:         aggkit.GetVersion(),
+		RunnerStatus:    a.runner.Status(),
+		NetworkID:       a.l2OriginNetwork,
+		Mode:            a.cfg.Mode,
 	}
 	return res
 }
@@ -219,7 +259,7 @@ func (a *AggSender) Start(ctx context.Context) {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 
-	a.sendCertificates(ctx, 0)
+	a.runner.Run(ctx, a)
 }
 
 func (a *AggSender) checkDBCompatibility(ctx context.Context) {
@@ -231,6 +271,7 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		a.log.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
 	}
 }
+
 func (a *AggSender) checkSendCertificateStopCondition(err error) {
 	if errors.Is(err, flows.ErrComplete) {
 		a.log.Infof("AggSender reached the end of the certificates to send")
@@ -242,8 +283,13 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 	}
 }
 
-// sendCertificates sends certificates to the aggLayer
-func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
+// SendEpochBasedCertificates sends certificates to the aggLayer based on epoch notifications
+func (a *AggSender) SendEpochBasedCertificates(
+	ctx context.Context,
+	epochNotifier types.EpochNotifier,
+	returnAfterNIterations int) {
+	a.log.Info("Running in epoch-based mode")
+
 	var checkCertChannel <-chan time.Time
 	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
 		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
@@ -254,7 +300,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 		checkCertChannel = make(chan time.Time)
 	}
 
-	chEpoch := a.epochNotifier.Subscribe("aggsender")
+	chEpoch := epochNotifier.Subscribe("aggsender")
 	a.status.Status = types.StatusCertificateStage
 	iteration := 0
 	for {
@@ -345,8 +391,8 @@ func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayerty
 
 // sendCertificate sends certificate for a network
 func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certificate, error) {
-	startEpochStatus := a.epochNotifier.GetEpochStatus()
-	a.log.Infof("trying to send a new certificate... %s", startEpochStatus.String())
+	startRunnerStatus := a.runner.Status()
+	a.log.Infof("trying to send a new certificate... %s", startRunnerStatus)
 
 	start := time.Now()
 
@@ -381,7 +427,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
-		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
+		certificate.Brief(), startRunnerStatus, a.runner.Status())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	if a.cfg.DryRun {

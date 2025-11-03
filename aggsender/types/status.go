@@ -22,11 +22,11 @@ type AggsenderStatus struct {
 }
 
 type AggsenderInfo struct {
-	AggsenderStatus          AggsenderStatus `json:"aggsender_status"`
-	Version                  zkevm.FullVersion
-	EpochNotifierDescription string        `json:"epoch_notifier_description"`
-	NetworkID                uint32        `json:"network_id"`
-	Mode                     AggsenderMode `json:"mode"`
+	AggsenderStatus AggsenderStatus `json:"aggsender_status"`
+	Version         zkevm.FullVersion
+	RunnerStatus    string        `json:"runner_status"`
+	NetworkID       uint32        `json:"network_id"`
+	Mode            AggsenderMode `json:"mode"`
 }
 
 func (a *AggsenderStatus) Start(startTime time.Time) {
