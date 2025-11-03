@@ -13,11 +13,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
-	EmptyProof = types.Proof{}
+	EmptyProof                       = types.Proof{}
+	_          types.ReorganizeTreer = (*Tree)(nil)
 )
 
 type Tree struct {
@@ -28,11 +28,7 @@ type Tree struct {
 }
 
 func newTreeNode(left, right common.Hash) types.TreeNode {
-	var hash common.Hash
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(left[:])
-	hasher.Write(right[:])
-	copy(hash[:], hasher.Sum(nil))
+	hash := crypto.Keccak256Hash(left.Bytes(), right.Bytes())
 	return types.TreeNode{
 		Hash:  hash,
 		Left:  left,
@@ -41,14 +37,26 @@ func newTreeNode(left, right common.Hash) types.TreeNode {
 }
 
 func newTree(db *sql.DB, tablePrefix string) *Tree {
-	t := &Tree{
+	return &Tree{
 		db:         db,
 		zeroHashes: generateZeroHashes(types.DefaultHeight),
 		rhtTable:   tablePrefix + "rht",
 		rootTable:  tablePrefix + "root",
 	}
+}
 
-	return t
+func generateZeroHashes(height uint8) []common.Hash {
+	var zeroHashes = []common.Hash{
+		{},
+	}
+	// This generates a leaf = HashZero in position 0. In the rest of the positions that are
+	// equivalent to the ascending levels, we set the hashes of the nodes.
+	// So all nodes from level i=5 will have the same value and same children nodes.
+	for i := 1; i <= int(height); i++ {
+		currentHeightHash := crypto.Keccak256Hash(zeroHashes[i-1][:], zeroHashes[i-1][:])
+		zeroHashes = append(zeroHashes, currentHeightHash)
+	}
+	return zeroHashes
 }
 
 func (t *Tree) getSiblings(tx dbtypes.Querier, index uint32, root common.Hash) (
@@ -108,19 +116,6 @@ func (t *Tree) getSiblings(tx dbtypes.Querier, index uint32, root common.Hash) (
 	return
 }
 
-// GetProof returns the merkle proof for a given index and root.
-func (t *Tree) GetProof(ctx context.Context, index uint32, root common.Hash) (types.Proof, error) {
-	siblings, isErrNotFound, err := t.getSiblings(t.db, index, root)
-	if err != nil {
-		return types.Proof{}, err
-	}
-	if isErrNotFound {
-		// TODO: Validate it. It returns a proof of a tree with missing leafs
-		log.Warnf("getSiblings returned proof with zero hashes for index %d and root %s", index, root.String())
-	}
-	return siblings, nil
-}
-
 func (t *Tree) getRHTNode(tx dbtypes.Querier, nodeHash common.Hash) (*types.TreeNode, error) {
 	node := &types.TreeNode{}
 	err := meddler.QueryRow(
@@ -135,24 +130,6 @@ func (t *Tree) getRHTNode(tx dbtypes.Querier, nodeHash common.Hash) (*types.Tree
 		return node, err
 	}
 	return node, err
-}
-
-func generateZeroHashes(height uint8) []common.Hash {
-	var zeroHashes = []common.Hash{
-		{},
-	}
-	// This generates a leaf = HashZero in position 0. In the rest of the positions that are
-	// equivalent to the ascending levels, we set the hashes of the nodes.
-	// So all nodes from level i=5 will have the same value and same children nodes.
-	for i := 1; i <= int(height); i++ {
-		hasher := sha3.NewLegacyKeccak256()
-		hasher.Write(zeroHashes[i-1][:])
-		hasher.Write(zeroHashes[i-1][:])
-		thisHeightHash := common.Hash{}
-		copy(thisHeightHash[:], hasher.Sum(nil))
-		zeroHashes = append(zeroHashes, thisHeightHash)
-	}
-	return zeroHashes
 }
 
 func (t *Tree) storeNodes(tx dbtypes.Txer, nodes []types.TreeNode) error {
@@ -173,29 +150,6 @@ func (t *Tree) storeNodes(tx dbtypes.Txer, nodes []types.TreeNode) error {
 
 func (t *Tree) storeRoot(tx dbtypes.Txer, root types.Root) error {
 	return meddler.Insert(tx, t.rootTable, &root)
-}
-
-// GetLastRoot returns the last processed root
-func (t *Tree) GetLastRoot(tx dbtypes.Querier) (types.Root, error) {
-	if tx == nil {
-		tx = t.db
-	}
-	return t.getLastRootWithTx(tx)
-}
-
-func (t *Tree) getLastRootWithTx(tx dbtypes.Querier) (types.Root, error) {
-	var root types.Root
-	err := meddler.QueryRow(
-		tx, &root,
-		fmt.Sprintf(`SELECT * FROM %s ORDER BY block_num DESC, block_position DESC LIMIT 1;`, t.rootTable),
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return root, db.ErrNotFound
-		}
-		return root, err
-	}
-	return root, nil
 }
 
 // GetRootByIndex returns the root associated to the index
@@ -231,6 +185,28 @@ func (t *Tree) GetRootByHash(ctx context.Context, hash common.Hash) (*types.Root
 	return &root, nil
 }
 
+// GetLastRoot returns the last processed root
+func (t *Tree) GetLastRoot(tx dbtypes.Querier) (types.Root, error) {
+	if tx == nil {
+		tx = t.db
+	}
+
+	var root types.Root
+	err := meddler.QueryRow(
+		tx, &root,
+		fmt.Sprintf(`SELECT * FROM %s ORDER BY block_num DESC, block_position DESC LIMIT 1;`, t.rootTable),
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return root, db.ErrNotFound
+		}
+		return root, err
+	}
+
+	return root, nil
+}
+
+// GetLeaf returns the leaf hash for a given index and root.
 func (t *Tree) GetLeaf(tx dbtypes.Querier, index uint32, root common.Hash) (common.Hash, error) {
 	currentNodeHash := root
 	for h := int(types.DefaultHeight - 1); h >= 0; h-- {
@@ -246,6 +222,19 @@ func (t *Tree) GetLeaf(tx dbtypes.Querier, index uint32, root common.Hash) (comm
 	}
 
 	return currentNodeHash, nil
+}
+
+// GetProof returns the merkle proof for a given index and root.
+func (t *Tree) GetProof(ctx context.Context, index uint32, root common.Hash) (types.Proof, error) {
+	siblings, isErrNotFound, err := t.getSiblings(t.db, index, root)
+	if err != nil {
+		return types.Proof{}, err
+	}
+	if isErrNotFound {
+		// TODO: Validate it. It returns a proof of a tree with missing leafs
+		log.Warnf("getSiblings returned proof with zero hashes for index %d and root %s", index, root.String())
+	}
+	return siblings, nil
 }
 
 // Reorg deletes all the data relevant from firstReorgedBlock (included) and onwards

@@ -157,9 +157,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	PolAddr="{{L1Config.polTokenAddress}}"
 	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
 
-	[L1InfoTreeSync]
-	BlockFinality = "LatestBlock"
-
 	[Etherman]
 	URL = "{{L1URL}}"
 	[Etherman.EthermanConfig]
@@ -173,6 +170,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[AggOracle]
 	BlockFinality = "FinalizedBlock"
+	URLRPCL1 = "http://localhost:8545"
+	
+	[L1InfoTreeSync]
+	URLRPCL1 = "http://localhost:8545"
 
 	[LastGERSync]
 	SyncMode = "Legacy"
@@ -200,10 +201,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrHint)
 	require.ErrorContains(t, err, delayBetweenRetriesHint)
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
-	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
+	require.ErrorContains(t, err, urlRPCL1DeprecatedHint)
 }

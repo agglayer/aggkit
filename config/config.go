@@ -66,7 +66,6 @@ const (
 	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
 	aggOracleBlockFinalityDeprecated       = "AggOracle.BlockFinality is deprecated, remove it from configuration"
-	l1InfoTreeSyncBlockFinalityDeprecated  = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
 	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
@@ -74,6 +73,7 @@ const (
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
 	networkIDDeprecatedHint = "Common.NetworkID is deprecated, remove it from configuration"
+	urlRPCL1DeprecatedHint  = "URLRPCL1 field is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -188,10 +188,6 @@ var (
 			Reason:           aggOracleBlockFinalityDeprecated,
 		},
 		{
-			FieldNamePattern: "L1InfoTreeSync.BlockFinality",
-			Reason:           l1InfoTreeSyncBlockFinalityDeprecated,
-		},
-		{
 			FieldNamePattern: "LastGERSync.SyncMode",
 			Reason:           lastGERSyncSyncModeDeprecatedHint,
 		},
@@ -222,6 +218,18 @@ var (
 		{
 			FieldNamePattern: "Common.NetworkID",
 			Reason:           networkIDDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Common.NetworkID",
+			Reason:           networkIDDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggOracle.URLRPCL1",
+			Reason:           urlRPCL1DeprecatedHint,
+		},
+		{
+			FieldNamePattern: "L1InfoTreeSync.URLRPCL1",
+			Reason:           urlRPCL1DeprecatedHint,
 		},
 	}
 )

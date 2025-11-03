@@ -35,10 +35,11 @@ func (p *processor) processVerifyBatches(tx dbtypes.Txer, blockNumber uint64, ev
 		return nil
 	}
 	log.Infof("UpsertLeaf VerifyBatches event (blockNumber=%d, event=%s)", blockNumber, event.String())
-	newRoot, err := p.rollupExitTree.UpsertLeaf(tx, blockNumber, event.BlockPosition, treeTypes.Leaf{
-		Index: event.RollupID - 1,
-		Hash:  event.ExitRoot,
-	})
+	newRoot, err := p.rollupExitTree.PutLeaf(tx, blockNumber, event.BlockPosition,
+		treeTypes.Leaf{
+			Index: event.RollupID - 1,
+			Hash:  event.ExitRoot,
+		})
 	if err != nil {
 		return fmt.Errorf("error rollupExitTree.UpsertLeaf. err: %w", err)
 	}

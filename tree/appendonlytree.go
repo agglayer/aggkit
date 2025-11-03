@@ -13,7 +13,8 @@ import (
 )
 
 var (
-	ErrInvalidIndex = errors.New("invalid index")
+	ErrInvalidIndex                 = errors.New("invalid index")
+	_               types.FullTreer = (*AppendOnlyTree)(nil)
 )
 
 // AppendOnlyTree is a tree where leaves are added sequentially (by index)
@@ -34,18 +35,19 @@ func NewAppendOnlyTree(db *sql.DB, dbPrefix string) *AppendOnlyTree {
 	}
 }
 
-func (t *AppendOnlyTree) AddLeaf(tx dbtypes.Txer, blockNum, blockPosition uint64, leaf types.Leaf) error {
+func (t *AppendOnlyTree) PutLeaf(tx dbtypes.Txer,
+	blockNum, blockPosition uint64, leaf types.Leaf) (common.Hash, error) {
 	if int64(leaf.Index) != t.lastIndex+1 {
 		// rebuild cache
-		if err := t.InitCache(tx); err != nil {
-			return err
+		if err := t.initCache(tx); err != nil {
+			return common.Hash{}, err
 		}
 		if int64(leaf.Index) != t.lastIndex+1 {
 			log.Errorf(
 				"mismatched index. Expected: %d, actual: %d",
 				t.lastIndex+1, leaf.Index,
 			)
-			return ErrInvalidIndex
+			return common.Hash{}, ErrInvalidIndex
 		}
 	}
 	// Calculate new tree nodes
@@ -73,24 +75,25 @@ func (t *AppendOnlyTree) AddLeaf(tx dbtypes.Txer, blockNum, blockPosition uint64
 		BlockNum:      blockNum,
 		BlockPosition: blockPosition,
 	}); err != nil {
-		return err
+		return common.Hash{}, err
 	}
 
 	// store nodes
 	if err := t.storeNodes(tx, newNodes); err != nil {
-		return err
+		return common.Hash{}, err
 	}
 	t.lastIndex++
 	tx.AddRollbackCallback(func() {
 		log.Debugf("decreasing index due to rollback")
 		t.lastIndex--
 	})
-	return nil
+	return currentChildHash, nil
 }
 
-func (t *AppendOnlyTree) InitCache(tx dbtypes.Txer) error {
+// initCache initializes the lastLeftCache and lastIndex values
+func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
 	siblings := [types.DefaultHeight]common.Hash{}
-	lastRoot, err := t.getLastRootWithTx(tx)
+	lastRoot, err := t.GetLastRoot(tx)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			t.lastIndex = -1
