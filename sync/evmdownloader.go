@@ -478,6 +478,7 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 	attempts := 0
 	for {
 		header, err := d.ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
+		d.log.Debugf("HeaderByNumber: %d, %v\n\n\n", blockNum, header)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				// context is canceled, we don't want to fatal on max attempts in this case
