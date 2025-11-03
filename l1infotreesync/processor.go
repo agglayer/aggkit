@@ -416,7 +416,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("insert l1info_leaf %s. err: %w", info.String(), err)
 			}
 
-			err = p.l1InfoTree.AddLeaf(tx, info.BlockNumber, info.BlockPosition, treeTypes.Leaf{
+			_, err = p.l1InfoTree.PutLeaf(tx, info.BlockNumber, info.BlockPosition, treeTypes.Leaf{
 				Index: info.L1InfoTreeIndex,
 				Hash:  info.Hash,
 			})

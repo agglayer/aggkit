@@ -36,10 +36,11 @@ func TestCheckExpectedRoot(t *testing.T) {
 		require.NoError(t, err)
 
 		for i := from; i < from+numOfLeavesToAdd; i++ {
-			require.NoError(t, merkletree.AddLeaf(tx, uint64(i), 0, types.Leaf{
+			_, err := merkletree.PutLeaf(tx, uint64(i), 0, types.Leaf{
 				Index: uint32(i),
 				Hash:  common.HexToHash(fmt.Sprintf("%x", i)),
-			}))
+			})
+			require.NoError(t, err)
 		}
 
 		require.NoError(t, tx.Commit())
@@ -87,10 +88,11 @@ func TestCheckExpectedRoot(t *testing.T) {
 		// rebuild cache on adding new leaf
 		tx, err = db.NewTx(context.Background(), treeDB)
 		require.NoError(t, err)
-		require.NoError(t, merkleTree.AddLeaf(tx, uint64(indexToCheck+1), 0, types.Leaf{
+		_, err = merkleTree.PutLeaf(tx, uint64(indexToCheck+1), 0, types.Leaf{
 			Index: indexToCheck + 1,
 			Hash:  common.HexToHash(fmt.Sprintf("%x", indexToCheck+1)),
-		}))
+		})
+		require.NoError(t, err)
 		require.NoError(t, tx.Commit())
 
 		root2, err := merkleTree.GetRootByIndex(context.Background(), indexToCheck)
@@ -125,7 +127,7 @@ func TestMTAddLeaf(t *testing.T) {
 			tx, err := db.NewTx(ctx, treeDB)
 			require.NoError(t, err)
 			for i, leaf := range testVector.ExistingLeaves {
-				err = merkletree.AddLeaf(tx, uint64(i), 0, types.Leaf{
+				_, err = merkletree.PutLeaf(tx, uint64(i), 0, types.Leaf{
 					Index: uint32(i),
 					Hash:  common.HexToHash(leaf),
 				})
@@ -141,7 +143,7 @@ func TestMTAddLeaf(t *testing.T) {
 			// Add new bridge
 			tx, err = db.NewTx(ctx, treeDB)
 			require.NoError(t, err)
-			err = merkletree.AddLeaf(tx, uint64(len(testVector.ExistingLeaves)), 0, types.Leaf{
+			_, err = merkletree.PutLeaf(tx, uint64(len(testVector.ExistingLeaves)), 0, types.Leaf{
 				Index: uint32(len(testVector.ExistingLeaves)),
 				Hash:  common.HexToHash(testVector.NewLeaf.CurrentHash),
 			})
@@ -176,7 +178,7 @@ func TestMTGetProof(t *testing.T) {
 			tx, err := db.NewTx(ctx, treeDB)
 			require.NoError(t, err)
 			for li, leaf := range testVector.Deposits {
-				err = tre.AddLeaf(tx, uint64(li), 0, types.Leaf{
+				_, err = tre.PutLeaf(tx, uint64(li), 0, types.Leaf{
 					Index: uint32(li),
 					Hash:  leaf.Hash(),
 				})
@@ -201,7 +203,7 @@ func TestMTGetProof(t *testing.T) {
 func TestVerifyProof(t *testing.T) {
 	ctx := context.Background()
 	treeDB := createTreeDBForTest(t)
-	tre := NewAppendOnlyTree(treeDB, "")
+	tree := NewAppendOnlyTree(treeDB, "")
 
 	numOfLeavesToAdd := 11
 
@@ -209,19 +211,20 @@ func TestVerifyProof(t *testing.T) {
 	tx, err := db.NewTx(ctx, treeDB)
 	require.NoError(t, err)
 	for i := range numOfLeavesToAdd {
-		require.NoError(t, tre.AddLeaf(tx, uint64(i), 0, types.Leaf{
+		_, err := tree.PutLeaf(tx, uint64(i), 0, types.Leaf{
 			Index: uint32(i),
 			Hash:  common.HexToHash(fmt.Sprintf("%x", i)),
-		}))
+		})
+		require.NoError(t, err)
 	}
 	require.NoError(t, tx.Commit())
 
-	root, err := tre.GetLastRoot(nil)
+	root, err := tree.GetLastRoot(nil)
 	require.NoError(t, err)
 
 	for i := range numOfLeavesToAdd {
 		leaf := common.HexToHash(fmt.Sprintf("%x", i))
-		proof, err := tre.GetProof(ctx, uint32(i), root.Hash)
+		proof, err := tree.GetProof(ctx, uint32(i), root.Hash)
 		require.NoError(t, err)
 
 		// valid proof should return nil
