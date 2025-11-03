@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/agglayer/aggkit/aggoracle/metrics"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
@@ -52,6 +53,9 @@ func New(
 
 // Start starts the AggOracle process that checks for new GERs and injects them if not already injected
 func (a *AggOracle) Start(ctx context.Context) {
+	// Register metrics
+	metrics.Register()
+
 	for {
 		if err := a.processLatestGER(ctx); err != nil {
 			a.handleGERProcessingError(err)
@@ -70,17 +74,22 @@ func (a *AggOracle) Start(ctx context.Context) {
 // processLatestGER fetches the latest finalized GER, checks if it is already injected and injects it if not
 func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	a.logger.Debugf("checking for new GERs...")
+	metrics.IncGERProcessCount()
 	// Fetch the latest GER
 	latestGER, err := a.l1Info.GetLatestL1InfoGER(ctx)
 	if err != nil {
+		metrics.IncGERProcessErrCount()
 		return err
 	}
 
 	a.logger.Debugf("latest GER retrieved: %s", latestGER.String())
 
 	go func() {
+		start := time.Now()
 		err := a.chainSender.ProcessGER(ctx, latestGER)
+		metrics.ObserveGERProcessDuration(time.Since(start))
 		if err != nil {
+			metrics.IncGERProcessErrCount()
 			a.logger.Error(err)
 		}
 	}()
