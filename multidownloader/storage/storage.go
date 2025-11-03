@@ -23,7 +23,7 @@ type MultidownloaderStorageConfig struct {
 	DBPath string
 }
 
-type MdrSQLStorage struct {
+type MultidownloaderStorage struct {
 	mutex sync.RWMutex
 	dbtypes.KeyValueStorager
 	logger aggkitcommon.Logger
@@ -92,7 +92,7 @@ func NewBlockRowFromEthLog(log types.Log, isFinal bool) *BlockBaseRow {
 	}
 }
 
-func NewMdrSQLStorage(logger aggkitcommon.Logger, cfg MultidownloaderStorageConfig) (*MdrSQLStorage, error) {
+func NewMultidownloaderStorage(logger aggkitcommon.Logger, cfg MultidownloaderStorageConfig) (*MultidownloaderStorage, error) {
 	database, err := db.NewSQLiteDB(cfg.DBPath)
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func NewMdrSQLStorage(logger aggkitcommon.Logger, cfg MultidownloaderStorageConf
 		return nil, err
 	}
 
-	return &MdrSQLStorage{
+	return &MultidownloaderStorage{
 		db:               database,
 		logger:           logger,
 		cfg:              cfg,
@@ -109,10 +109,12 @@ func NewMdrSQLStorage(logger aggkitcommon.Logger, cfg MultidownloaderStorageConf
 	}, nil
 }
 
-func (a *MdrSQLStorage) NewTx(ctx context.Context) (dbtypes.Txer, error) {
+func (a *MultidownloaderStorage) NewTx(ctx context.Context) (dbtypes.Txer, error) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
-		return nil, fmt.Errorf("error starting transaction: %w", err)
+		return nil, fmt.Errorf("MultidownloaderStorage.NewTx. Error starting transaction: %w", err)
 	}
 	return tx, nil
 }
@@ -129,7 +131,7 @@ type logAndBlockRow struct {
 	BlockTimestamp uint64         `meddler:"block_timestamp"`
 }
 
-func (a *MdrSQLStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error) {
+func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error) {
 	if tx == nil {
 		tx = a.db
 	}
@@ -179,7 +181,7 @@ func (a *MdrSQLStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) 
 }
 
 // tx dbtypes.Txer
-func (a *MdrSQLStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFinal bool) error {
+func (a *MultidownloaderStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -211,7 +213,7 @@ func (a *MdrSQLStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFina
 	return nil
 }
 
-func (a *MdrSQLStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*types.Header, logs []types.Log, isFinal bool) error {
+func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*types.Header, logs []types.Log, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -239,7 +241,7 @@ func (a *MdrSQLStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders 
 	return nil
 }
 
-func (a *MdrSQLStorage) SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header, logs []types.Log) error {
+func (a *MultidownloaderStorage) SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header, logs []types.Log) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -281,7 +283,7 @@ func (r *syncStatusRow) ToSyncSegment() mdrtypes.SyncSegment {
 	}
 }
 
-func (a *MdrSQLStorage) GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error) {
+func (a *MultidownloaderStorage) GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error) {
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
 	result := make([]*syncStatusRow, 0)
@@ -299,7 +301,7 @@ func (a *MdrSQLStorage) GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrt
 	return setSegments, nil
 }
 
-func (a *MdrSQLStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error {
+func (a *MultidownloaderStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -326,7 +328,7 @@ func (a *MdrSQLStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtyp
 	return nil
 }
 
-func (a *MdrSQLStorage) UpdateSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error {
+func (a *MultidownloaderStorage) UpdateSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error {
 	if tx == nil {
 		tx = a.db
 	}

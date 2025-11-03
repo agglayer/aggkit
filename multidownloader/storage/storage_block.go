@@ -10,14 +10,14 @@ import (
 	"github.com/russross/meddler"
 )
 
-func (a *MdrSQLStorage) SaveBlockBase(tx dbtypes.Querier, base *aggkittypes.BlockBase, isFinal bool) error {
+func (a *MultidownloaderStorage) SaveBlockBase(tx dbtypes.Querier, base *aggkittypes.BlockBase, isFinal bool) error {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	return a.saveBlockBaseNoMutex(tx, base, isFinal)
 }
 
 // saveBlockBaseNoMutex saves a BlockBase without acquiring the mutex (it must be held by the caller)
-func (a *MdrSQLStorage) saveBlockBaseNoMutex(tx dbtypes.Querier, base *aggkittypes.BlockBase, isFinal bool) error {
+func (a *MultidownloaderStorage) saveBlockBaseNoMutex(tx dbtypes.Querier, base *aggkittypes.BlockBase, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -40,7 +40,7 @@ func (a *MdrSQLStorage) saveBlockBaseNoMutex(tx dbtypes.Querier, base *aggkittyp
 	return nil
 }
 
-func (a *MdrSQLStorage) existsBlockBaseNoMutex(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
+func (a *MultidownloaderStorage) existsBlockBaseNoMutex(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
 	blockBase, err := a.getBlockBaseByNumberNoMutex(tx, blockNumber)
 	if err != nil {
 		return false, fmt.Errorf("error getting block base %d: %w", blockNumber, err)
@@ -51,21 +51,31 @@ func (a *MdrSQLStorage) existsBlockBaseNoMutex(tx dbtypes.Querier, blockNumber u
 
 	return true, nil
 }
-
-func (a *MdrSQLStorage) SaveBlockHeader(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error {
+func (a *MultidownloaderStorage) SaveBlockHeaders(tx dbtypes.Querier, headers map[uint64]*aggkittypes.BlockHeader, finalBlockNumber uint64) error {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	for _, header := range headers {
+		isFinal := header.Number <= finalBlockNumber
+		if err := a.saveBlockHeaderNoMutex(tx, header, isFinal); err != nil {
+			return fmt.Errorf("SaveBlockHeaders: error saving block header %d: %w", header.Number, err)
+		}
+	}
+	return nil
+}
+func (a *MultidownloaderStorage) SaveBlockHeader(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	return a.saveBlockHeaderNoMutex(tx, header, isFinal)
 
 }
 
-func (a *MdrSQLStorage) ExistsBlockHeader(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
+func (a *MultidownloaderStorage) ExistsBlockHeader(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
 	return a.existsBlockHeaderNoMutex(tx, blockNumber)
 }
 
-func (a *MdrSQLStorage) existsBlockHeaderNoMutex(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
+func (a *MultidownloaderStorage) existsBlockHeaderNoMutex(tx dbtypes.Querier, blockNumber uint64) (bool, error) {
 	var count int
 	query := "SELECT COUNT(1) FROM block_header WHERE block_number = ?"
 	row := tx.QueryRow(query, blockNumber)
@@ -76,7 +86,7 @@ func (a *MdrSQLStorage) existsBlockHeaderNoMutex(tx dbtypes.Querier, blockNumber
 }
 
 // saveBlockHeaderNoMutex saves a BlockHeader without acquiring the mutex (it must be held by the caller)
-func (a *MdrSQLStorage) saveBlockHeaderNoMutex(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error {
+func (a *MultidownloaderStorage) saveBlockHeaderNoMutex(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -98,7 +108,7 @@ func (a *MdrSQLStorage) saveBlockHeaderNoMutex(tx dbtypes.Querier, header *aggki
 	return nil
 }
 
-func (a *MdrSQLStorage) getBlockBaseByNumberNoMutex(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockBase, error) {
+func (a *MultidownloaderStorage) getBlockBaseByNumberNoMutex(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockBase, error) {
 
 	if tx == nil {
 		tx = a.db
@@ -119,7 +129,37 @@ func (a *MdrSQLStorage) getBlockBaseByNumberNoMutex(tx dbtypes.Querier, blockNum
 	return blockBase, nil
 }
 
-func (a *MdrSQLStorage) GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, error) {
+// GetBlockBaseUnsafes retrieves all non-final block bases up to the specified finalized block number.
+func (a *MultidownloaderStorage) GetBlockBaseUnsafes(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockBase, error) {
+	if tx == nil {
+		tx = a.db
+	}
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+	var blockBases []*aggkittypes.BlockBase
+	query := "SELECT * FROM block_base WHERE is_final = 0 AND block_number <= ? ORDER BY block_number ASC"
+	err := meddler.QueryAll(tx, &blockBases, query, finalizedBlockNumber)
+	if err != nil {
+		return nil, fmt.Errorf("GetBlockBaseUnsafes: error querying block bases: %w", err)
+	}
+
+	return blockBases, nil
+}
+
+func (a *MultidownloaderStorage) UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error {
+	if tx == nil {
+		tx = a.db
+	}
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	query := "UPDATE block_base SET is_final = 1 WHERE block_number IN (?)"
+	_, err := tx.Exec(query, blockNumbers)
+	if err != nil {
+		return fmt.Errorf("UpdateIsFinal: error updating block bases: %w", err)
+	}
+	return nil
+}
+func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, error) {
 	if tx == nil {
 		tx = a.db
 	}

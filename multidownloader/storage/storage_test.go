@@ -111,14 +111,14 @@ func TestStorage_GetLogs(t *testing.T) {
 	require.Len(t, readLogs, 3, "expected 3 logs for both addresses")
 }
 
-func newStorageForTest(t *testing.T) *MdrSQLStorage {
+func newStorageForTest(t *testing.T) *MultidownloaderStorage {
 	logger := log.WithFields("module", "test")
 	path := path.Join(t.TempDir(), "multidownloader_Storage.sqlite")
 	cfg := MultidownloaderStorageConfig{
 		DBPath: path,
 	}
 
-	storage, err := NewMdrSQLStorage(logger, cfg)
+	storage, err := NewMultidownloaderStorage(logger, cfg)
 	require.NoError(t, err, "cannot create storage")
 	return storage
 }

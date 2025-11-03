@@ -4,20 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
+	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	dbtypes "github.com/agglayer/aggkit/db/types"
+	"github.com/agglayer/aggkit/log"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 )
 
-const syncBlockChunkSize = uint32(10000)
+const safeMode = true
+const unsafeMode = false
 
 type StorageInterface interface {
 	// GetSyncedBlockRangePerContract It returns the synced block range stored in DB
@@ -31,18 +36,29 @@ type StorageInterface interface {
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, error)
 
 	SaveBlockHeader(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error
+	SaveBlockHeaders(tx dbtypes.Querier, header map[uint64]*aggkittypes.BlockHeader, finalBlockNumber uint64) error
+
+	GetBlockBaseUnsafes(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockBase, error)
+	UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error
 
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 }
 
+type MultidownloaderConfig struct {
+	BlockChunkSize                  uint32
+	MaxParallelBlockHeaderRetrieval int
+	BlockFinality                   aggkittypes.BlockNumberFinality
+}
+
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
+	cfg                  MultidownloaderConfig
 	ethClient            aggkittypes.BaseEthereumClienter
 	storage              StorageInterface
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter
 	blockFinality        aggkittypes.BlockNumberFinality
-
-	syncersConfig mdrtypes.SetSyncerConfig
+	name                 string
+	syncersConfig        mdrtypes.SetSyncerConfig
 
 	mutex         sync.Mutex
 	isInitialized bool
@@ -55,10 +71,11 @@ type EVMMultidownloader struct {
 }
 
 func NewEVMMultidownloader(log aggkitcommon.Logger,
-	blockFinality aggkittypes.BlockNumberFinality,
+	cfg MultidownloaderConfig,
 	ethClient aggkittypes.BaseEthereumClienter,
 	storage StorageInterface,
-	blockNotifierManager mdrtypes.BlockNotifierManagerGetter) *EVMMultidownloader {
+	blockNotifierManager mdrtypes.BlockNotifierManagerGetter,
+	name string) *EVMMultidownloader {
 	if blockNotifierManager == nil {
 		blockNotifierManager = NewBlockNotifierManager(log,
 			func(finality aggkittypes.BlockNumberFinality) (mdrtypes.BlockNotifier, error) {
@@ -73,9 +90,10 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 		ethClient:            ethClient,
 		storage:              storage,
 		blockNotifierManager: blockNotifierManager,
-		blockFinality:        blockFinality,
+		cfg:                  cfg,
 		syncersConfig:        mdrtypes.NewSetSyncerConfig(),
 		statistics:           NewStatistics(),
+		name:                 name,
 	}
 }
 
@@ -89,8 +107,62 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) {
 	dh.syncersConfig.Add(mdrtypes.NewSyncerConfig(data))
 }
 
+func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) error {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+
+	finalizedBlockNumber, err := dh.getFinalizedBlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get finalized block number: %w", err)
+	}
+
+	committed := false
+	tx, err := dh.storage.NewTx(ctx)
+	if err != nil {
+		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot create new tx: %w", err)
+	}
+	defer func() {
+		if !committed {
+			dh.log.Debugf("MoveUnsafeToSafeIfPossible: rolling back tx")
+			tx.Rollback()
+		}
+	}()
+
+	blocks, err := dh.storage.GetBlockBaseUnsafes(tx, finalizedBlockNumber)
+	if err != nil {
+		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
+	}
+	err = dh.detectReorgs(ctx, tx, blocks)
+	if err != nil {
+		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot detect reorgs: %w", err)
+	}
+	var blockNumbers []uint64
+	for _, block := range blocks {
+		blockNumbers = append(blockNumbers, block.Number)
+	}
+
+	err = dh.storage.UpdateIsFinal(tx, blockNumbers)
+	if err != nil {
+		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
+	}
+	committed = true
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot commit tx: %w", err)
+	}
+	return nil
+}
+
+func (dh *EVMMultidownloader) detectReorgs(ctx context.Context, tx dbtypes.Querier, blocks []*aggkittypes.BlockBase) error {
+	// TODO: implement reorg detection
+	return nil
+}
+
 func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	err := dh.Initialize(ctx)
+	if err != nil {
+		return err
+	}
+	err = dh.MoveUnsafeToSafeIfPossible(ctx)
 	if err != nil {
 		return err
 	}
@@ -98,13 +170,23 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// dh.log.Infof("Safe sync completed. Starting tip sync...")
-	// err = dh.Sync(ctx, dh.StepTip)
-	// if err != nil {
-	// 	return err
-	// }
+	dh.log.Infof("Safe sync completed. Starting Unsafe sync...")
+	err = dh.Sync(ctx, dh.StepUnsafe)
+	if err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func (dh *EVMMultidownloader) GetRPCServices() []jRPC.Service {
+	logger := log.WithFields("module", "multidownloader-rpc-"+dh.name)
+	return []jRPC.Service{
+		{
+			Name:    "multidownloader-" + dh.name,
+			Service: NewEVMMultidownloaderRPC(logger, dh),
+		},
+	}
 }
 
 func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
@@ -148,42 +230,58 @@ func (dh *EVMMultidownloader) Sync(ctx context.Context,
 		iteration++
 
 	}
-	dh.log.Infof("🎉🎉🎉🎉🎉 Safe sync completed after %d iterations.", iteration)
+	dh.log.Infof("🎉🎉🎉🎉🎉 sync stage completed after %d iterations.", iteration)
 	dh.statistics.FinishSyncing()
 	dh.ShowStatistics(iteration)
 	return nil
 }
 
-func (dh *EVMMultidownloader) StepTip(ctx context.Context) (bool, error) {
+func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
+	dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	if dh.pendingSync.Finished() {
+		return true, nil
+	}
 	committed := false
 	tx, err := dh.storage.NewTx(ctx)
 	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot create new tx: %w", err)
+		return false, fmt.Errorf("Unsafe/Step: cannot create new tx: %w", err)
 	}
 	defer func() {
 		if !committed {
+			dh.log.Debugf("Unsafe/Step: rolling back tx")
 			tx.Rollback()
 		}
 	}()
 
 	logQueryData, err := dh.pendingSync.NextQuery(1, 0)
-	rpcQuery := logQueryData.ToRPCFilterQuery()
-	blockHeader, err := dh.ethClient.HeaderByNumber(ctx, rpcQuery.ToBlock)
 	if err != nil {
-		return false, fmt.Errorf("Unsafe/StepTip: cannot get block header for block %d: %w", rpcQuery.ToBlock.Uint64(), err)
+		return false, fmt.Errorf("Unsafe/Step: cannot get next query: %w", err)
 	}
-	logs, err := dh.ethClient.FilterLogs(ctx, logQueryData.ToRPCFilterQuery())
+	if logQueryData.BlockRange.CountBlocks() != 1 {
+		return false, fmt.Errorf("Unsafe/Step: invalid block range for Step: %s", logQueryData.BlockRange.String())
+	}
+	blockHeader, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(logQueryData.BlockRange.ToBlock)))
 	if err != nil {
-		return false, fmt.Errorf("Unsafe/StepTip: ethClient.FilterLogs: %w", err)
+		return false, fmt.Errorf("Unsafe/Step: cannot get block header for block %d: %w", logQueryData.BlockRange.ToBlock, err)
 	}
-	dh.log.Infof("Unsafe/StepTip: reached block %d/%s logs len=%d", blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
+	blockHash := blockHeader.Hash()
+	rpcFilter := ethereum.FilterQuery{
+		Addresses: logQueryData.Addrs,
+		BlockHash: &blockHash,
+	}
+
+	logs, err := dh.ethClient.FilterLogs(ctx, rpcFilter)
+	if err != nil {
+		return false, fmt.Errorf("Unsafe/Step: ethClient.FilterLogs: %w", err)
+	}
+	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d", blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
 	err = dh.storage.SaveUnsafeBlock(tx, blockHeader, logs)
 	if err != nil {
-		return false, fmt.Errorf("Unsafe/StepTip: cannot save unsafe block: %w", err)
+		return false, fmt.Errorf("Unsafe/Step: cannot save unsafe block: %w", err)
 	}
 	newSyncing := dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
 	if err = dh.storage.UpdateSyncingStatus(tx, logQueryData); err != nil {
-		return false, fmt.Errorf("Unsafe/StepTip: cannot update syncing status: %w", err)
+		return false, fmt.Errorf("Unsafe/Step: cannot update syncing status: %w", err)
 	}
 	committed = true
 	if err := tx.Commit(); err != nil {
@@ -197,7 +295,82 @@ func (dh *EVMMultidownloader) StepTip(ctx context.Context) (bool, error) {
 	return dh.pendingSync.Finished(), nil
 }
 
+func getBlockNumbers(logs []types.Log) map[uint64]struct{} {
+	blockNumbers := make(map[uint64]struct{})
+	for _, lg := range logs {
+		blockNumbers[lg.BlockNumber] = struct{}{}
+	}
+	return blockNumbers
+}
+
+func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+	return dh.syncedSegments.IsAvailable(query)
+}
+
+func (dh *EVMMultidownloader) saveBlockHeaders(ctx context.Context, tx dbtypes.Txer, blocks map[uint64]*aggkittypes.BlockHeader) error {
+	finalizedBlockNumber, err := dh.getFinalizedBlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("saveBlockHeaders: cannot get finalized block number: %w", err)
+	}
+
+	if err := dh.storage.SaveBlockHeaders(tx, blocks, finalizedBlockNumber); err != nil {
+		return fmt.Errorf("saveBlockHeaders: cannot save block headers: %w", err)
+	}
+
+	return nil
+}
+
+func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Context, blockNumbers map[uint64]struct{}, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	headers := make(map[uint64]*aggkittypes.BlockHeader)
+	timeTracker := aggkitcommon.NewTimeTracker()
+	timeTracker.Start()
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrency)
+	dh.log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieving block headers for blocks %d", len(blockNumbers))
+	for blockNumber := range blockNumbers {
+		wg.Add(1)
+		sem <- struct{}{} // get an slot
+		go func(blockNumber uint64) {
+			defer wg.Done()
+			defer func() { <-sem }() // free slot
+			bn := big.NewInt(int64(blockNumber))
+
+			header, err := dh.ethClient.HeaderByNumber(ctx, bn)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			headers[blockNumber] = aggkittypes.NewBlockHeaderFromEthBlockHeader(header)
+			mu.Unlock()
+		}(blockNumber)
+	}
+	wg.Wait()
+	timeTracker.Stop()
+	dh.log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)", len(blockNumbers), timeTracker.Duration().String())
+	return headers, nil
+}
+
 func (dh *EVMMultidownloader) Step(ctx context.Context) (bool, error) {
+
+	logs, logQueryData, err := dh.filterLogsAdaptingBlockRange(ctx)
+	if err != nil {
+		if errors.Is(err, mdrtypes.ErrFinished) {
+			return true, nil
+		}
+		return false, fmt.Errorf("Safe/Step: cannot filter logs adapting block range: %w", err)
+	}
+	dh.log.Debugf("Safe/Step:: logs (%d) for blockRange=%s, addrs=%v", len(logs),
+		logQueryData.BlockRange.String(), logQueryData.Addrs)
+	blocks := getBlockNumbers(logs)
+	dh.log.Debugf("Safe/Step:: querying blockHeaders for %d blocks", len(blocks))
+	blockHeaders, err := dh.retrieveRPCBlockHeadersInParallel(ctx, blocks, max(dh.cfg.MaxParallelBlockHeaderRetrieval, 1))
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot retrieve block headers (%d): %w", len(blockHeaders), err)
+	}
+	dh.statistics.StartDBOperation()
 	committed := false
 	tx, err := dh.storage.NewTx(ctx)
 	if err != nil {
@@ -209,47 +382,41 @@ func (dh *EVMMultidownloader) Step(ctx context.Context) (bool, error) {
 			tx.Rollback()
 		}
 	}()
-	logs, logQueryData, err := dh.filterLogsAdaptingBlockRange(ctx)
-	if err != nil {
-		if errors.Is(err, mdrtypes.ErrFinished) {
-			return true, nil
-		}
-		return false, fmt.Errorf("Safe/Step: cannot filter logs adapting block range: %w", err)
-	}
-
-	dh.log.Debugf("Safe/Step:: querying logs for blockRange=%s, addrs=%v",
-		logQueryData.BlockRange.String(), logQueryData.Addrs)
-
-	dh.statistics.StartDBOperation()
 	defer dh.statistics.FinishDBOperation(errors.New("fails"))
 	err = dh.storage.SaveEthLogs(tx, logs, true)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot save eth logs: %w", err)
 	}
-
+	err = dh.saveBlockHeaders(ctx, tx, blockHeaders)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot save block headers: %w", err)
+	}
 	if err = dh.storage.UpdateSyncingStatus(tx, logQueryData); err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot update syncing status: %w", err)
+	}
+	storageSyncSegments, err := dh.storage.GetSyncedBlockRangePerContract(tx)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot get synced block range per contract: %w", err)
 	}
 	committed = true
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot commit tx: %w", err)
 	}
-	storageSyncSegments, err := dh.storage.GetSyncedBlockRangePerContract(nil)
+
 	dh.statistics.FinishDBOperation(nil)
-	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot get synced block range per contract: %w", err)
-	}
 
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	// Update synced segments
 	dh.syncedSegments = storageSyncSegments
 	dh.pendingSync = dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
-	dh.log.Infof("Safe/Step: finished br=%s logs=%d pendingBlocks=%d ETA=%s",
+	dh.log.Infof("Safe/Step: finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s",
 		logQueryData.BlockRange.String(),
 		len(logs),
+		len(blockHeaders),
 		dh.pendingSync.TotalBlocks(),
 		dh.statistics.ETA(dh.pendingSync.TotalBlocks()))
+
 	dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
 	return dh.pendingSync.Finished(), nil
 }
@@ -312,23 +479,28 @@ func (dh *EVMMultidownloader) getFinalizedBlockNumber(ctx context.Context) (uint
 	return bn.GetCurrentBlockNumber(), nil
 }
 
-func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32) (*mdrtypes.LogQuery, error) {
+func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32, safe bool) (*mdrtypes.LogQuery, error) {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
-
-	maxBlock, err := dh.getFinalizedBlockNumber(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("Safe/Step: cannot get finalized block number: %w", err)
+	var err error
+	var maxBlock uint64
+	if safe {
+		maxBlock, err = dh.getFinalizedBlockNumber(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getNextQuery: cannot get finalized block number: %w", err)
+		}
+	} else {
+		maxBlock = 0
 	}
 	logQueryData, err := dh.pendingSync.NextQuery(chunck, maxBlock)
 	if err != nil {
-		return nil, fmt.Errorf("Safe/Step: cannot get NextQuery: %w", err)
+		return nil, fmt.Errorf("getNextQuery: cannot get NextQuery: %w", err)
 	}
 	return logQueryData, nil
 }
 
 func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(ctx context.Context) ([]types.Log, *mdrtypes.LogQuery, error) {
-	initialsyncBlockChunkSize := syncBlockChunkSize
+	initialsyncBlockChunkSize := dh.cfg.BlockChunkSize
 	try := 0
 	var err error
 	var logQueryData *mdrtypes.LogQuery
@@ -337,7 +509,7 @@ func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(ctx context.Context) 
 		try++
 
 		if suggestedBlockRange == nil {
-			logQueryData, err = dh.getNextQuery(ctx, initialsyncBlockChunkSize)
+			logQueryData, err = dh.getNextQuery(ctx, initialsyncBlockChunkSize, safeMode)
 			if err != nil {
 				return nil, nil, fmt.Errorf("Safe/Step: cannot get NextQuery: %w", err)
 			}

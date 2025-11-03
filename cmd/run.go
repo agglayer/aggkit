@@ -617,7 +617,7 @@ func runL1MultiDownloaderIfNeeded(
 		return nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
-	storage, err := mutlidownloaderstorage.NewMdrSQLStorage(logger, mutlidownloaderstorage.MultidownloaderStorageConfig{
+	storage, err := mutlidownloaderstorage.NewMultidownloaderStorage(logger, mutlidownloaderstorage.MultidownloaderStorageConfig{
 		DBPath: "/tmp/mdr_test.db",
 	})
 	if err != nil {

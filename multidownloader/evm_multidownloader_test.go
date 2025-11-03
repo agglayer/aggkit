@@ -39,11 +39,16 @@ func TestEVMMultidownloader(t *testing.T) {
 
 	logger := log.WithFields("test", "test")
 
-	db, err := storage.NewMdrSQLStorage(logger, storage.MultidownloaderStorageConfig{
+	db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
 		DBPath: "/tmp/mdr_test.sqlite",
 	})
 	require.NoError(t, err)
-	mdr := NewEVMMultidownloader(logger, aggkittypes.FinalizedBlock, ethClient, db, nil)
+	cfg := MultidownloaderConfig{
+		BlockChunkSize:                  5000,
+		MaxParallelBlockHeaderRetrieval: 100,
+		BlockFinality:                   aggkittypes.FinalizedBlock,
+	}
+	mdr := NewEVMMultidownloader(logger, cfg, ethClient, db, nil, "l1")
 	require.NotNil(t, mdr)
 	mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 		SyncerID: "test_syncer",
@@ -52,7 +57,7 @@ func TestEVMMultidownloader(t *testing.T) {
 			common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"), // RollupManager
 		},
 		FromBlock: 5157574,
-		ToBlock:   aggkittypes.FinalizedBlock,
+		ToBlock:   aggkittypes.LatestBlock,
 	})
 
 	ctx := context.TODO()
