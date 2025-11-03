@@ -123,10 +123,10 @@ func TestGetInfo(t *testing.T) {
 }
 
 func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
+	ctx := t.Context()
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound.sqlite")
 	sut, err := newProcessor(dbPath)
 	require.NoError(t, err)
-	ctx := context.Background()
 	// Fake block 1
 	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
 	require.NoError(t, err)
@@ -134,6 +134,51 @@ func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
 	blockNum := uint64(1)
 	_, err = sut.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
 	require.Equal(t, db.ErrNotFound, err)
+}
+
+func TestGetLatestL1InfoLeafUntilBlock(t *testing.T) {
+	ctx := t.Context()
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestL1InfoLeafUntilBlock.sqlite")
+
+	sut, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Insert a base block for tests that need one
+	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		blockNum    *uint64
+		expectedErr error
+	}{
+		{
+			name:        "returns ErrNoBlock0 when block number is zero",
+			blockNum:    func() *uint64 { n := uint64(0); return &n }(),
+			expectedErr: ErrNoBlock0,
+		},
+		{
+			name:        "returns ErrBlockNotProcessed when requested block not processed yet",
+			blockNum:    func() *uint64 { n := uint64(5); return &n }(),
+			expectedErr: ErrBlockNotProcessed,
+		},
+		{
+			name:        "returns ErrNotFound when no L1 info leaf before given block",
+			blockNum:    func() *uint64 { n := uint64(1); return &n }(),
+			expectedErr: db.ErrNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean DB state between test cases
+			_, err := sut.db.Exec("DELETE FROM l1info_leaf;")
+			require.NoError(t, err)
+
+			_, err = sut.GetLatestL1InfoLeafUntilBlock(ctx, tt.blockNum)
+			require.ErrorIs(t, err, tt.expectedErr)
+		})
+	}
 }
 
 func TestProcessor_GetL1InfoTreeMerkleProof(t *testing.T) {
@@ -360,6 +405,11 @@ func TestProcessorGetLatestL1InfoGER(t *testing.T) {
 	p, err := newProcessor(dbPath)
 	require.NoError(t, err)
 
+	// Querying latest GER on empty processor should return error
+	latestGER, err := p.GetLatestL1InfoGER(ctx)
+	require.ErrorIs(t, err, db.ErrNotFound)
+	require.Equal(t, common.Hash{}, latestGER)
+
 	addBlock := func(num, pos uint64, mainnetRoot, rollupRoot, parentHash string, ts uint64) {
 		err := p.ProcessBlock(ctx, aggkitsync.Block{
 			Num: num,
@@ -382,7 +432,7 @@ func TestProcessorGetLatestL1InfoGER(t *testing.T) {
 	addBlock(1, 1, "beef", "5ca1e", "1010101", 420)
 	addBlock(2, 1, "aabb", "ccdd", "10101010", 421)
 
-	// Check latest GER
+	// Check latest GER on non empty database
 	gotGER, err := p.GetLatestL1InfoGER(ctx)
 	require.NoError(t, err)
 
