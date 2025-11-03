@@ -19,46 +19,19 @@ import (
 )
 
 func TestCheckExpectedRoot(t *testing.T) {
-	createTreeDB := func() *sql.DB {
-		dbPath := path.Join(t.TempDir(), "treeTestCheckExpectedRoot.sqlite")
-		log.Debug("DB created at: ", dbPath)
-		require.NoError(t, migrations.RunMigrations(dbPath))
-		treeDB, err := db.NewSQLiteDB(dbPath)
-		require.NoError(t, err)
-
-		return treeDB
-	}
-
-	addLeaves := func(merkletree *AppendOnlyTree,
-		treeDB *sql.DB,
-		numOfLeavesToAdd, from int) {
-		tx, err := db.NewTx(context.Background(), treeDB)
-		require.NoError(t, err)
-
-		for i := from; i < from+numOfLeavesToAdd; i++ {
-			_, err := merkletree.PutLeaf(tx, uint64(i), 0, types.Leaf{
-				Index: uint32(i),
-				Hash:  common.HexToHash(fmt.Sprintf("%x", i)),
-			})
-			require.NoError(t, err)
-		}
-
-		require.NoError(t, tx.Commit())
-	}
-
 	t.Run("Check when no reorg", func(t *testing.T) {
 		numOfLeavesToAdd := 10
 		indexToCheck := uint32(numOfLeavesToAdd - 1)
 
-		treeDB := createTreeDB()
+		treeDB := createTreeDBForTest(t)
 		merkleTree := NewAppendOnlyTree(treeDB, "")
 
-		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, 0)
+		putTestLeaves(t, merkleTree, treeDB, numOfLeavesToAdd, 0)
 
 		expectedRoot, err := merkleTree.GetLastRoot(nil)
 		require.NoError(t, err)
 
-		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, numOfLeavesToAdd)
+		putTestLeaves(t, merkleTree, treeDB, numOfLeavesToAdd, numOfLeavesToAdd)
 
 		root2, err := merkleTree.GetRootByIndex(context.Background(), indexToCheck)
 		require.NoError(t, err)
@@ -69,40 +42,40 @@ func TestCheckExpectedRoot(t *testing.T) {
 	t.Run("Check after rebuild tree when reorg", func(t *testing.T) {
 		numOfLeavesToAdd := 10
 		indexToCheck := uint32(numOfLeavesToAdd - 1)
-		treeDB := createTreeDB()
-		merkleTree := NewAppendOnlyTree(treeDB, "")
+		treeDB := createTreeDBForTest(t)
+		tree := NewAppendOnlyTree(treeDB, "")
 
-		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, 0)
+		putTestLeaves(t, tree, treeDB, numOfLeavesToAdd, 0)
 
-		expectedRoot, err := merkleTree.GetLastRoot(nil)
+		expectedRoot, err := tree.GetLastRoot(nil)
 		require.NoError(t, err)
 
-		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, numOfLeavesToAdd)
+		putTestLeaves(t, tree, treeDB, numOfLeavesToAdd, numOfLeavesToAdd)
 
 		// reorg tree
 		tx, err := db.NewTx(context.Background(), treeDB)
 		require.NoError(t, err)
-		require.NoError(t, merkleTree.Reorg(tx, uint64(indexToCheck+1)))
+		require.NoError(t, tree.Reorg(tx, uint64(indexToCheck+1)))
 		require.NoError(t, tx.Commit())
 
 		// rebuild cache on adding new leaf
 		tx, err = db.NewTx(context.Background(), treeDB)
 		require.NoError(t, err)
-		_, err = merkleTree.PutLeaf(tx, uint64(indexToCheck+1), 0, types.Leaf{
+		_, err = tree.PutLeaf(tx, uint64(indexToCheck+1), 0, types.Leaf{
 			Index: indexToCheck + 1,
 			Hash:  common.HexToHash(fmt.Sprintf("%x", indexToCheck+1)),
 		})
 		require.NoError(t, err)
 		require.NoError(t, tx.Commit())
 
-		root2, err := merkleTree.GetRootByIndex(context.Background(), indexToCheck)
+		root2, err := tree.GetRootByIndex(context.Background(), indexToCheck)
 		require.NoError(t, err)
 		require.Equal(t, expectedRoot.Hash, root2.Hash)
 		require.Equal(t, expectedRoot.Index, root2.Index)
 	})
 }
 
-func TestMTAddLeaf(t *testing.T) {
+func TestTree_PutLeaf(t *testing.T) {
 	data, err := os.ReadFile("testvectors/root-vectors.json")
 	require.NoError(t, err)
 
@@ -121,13 +94,13 @@ func TestMTAddLeaf(t *testing.T) {
 			require.NoError(t, err)
 			_, err = treeDB.Exec(`select * from root`)
 			require.NoError(t, err)
-			merkletree := NewAppendOnlyTree(treeDB, "")
+			tree := NewAppendOnlyTree(treeDB, "")
 
 			// Add exisiting leaves
 			tx, err := db.NewTx(ctx, treeDB)
 			require.NoError(t, err)
 			for i, leaf := range testVector.ExistingLeaves {
-				_, err = merkletree.PutLeaf(tx, uint64(i), 0, types.Leaf{
+				_, err = tree.PutLeaf(tx, uint64(i), 0, types.Leaf{
 					Index: uint32(i),
 					Hash:  common.HexToHash(leaf),
 				})
@@ -135,7 +108,7 @@ func TestMTAddLeaf(t *testing.T) {
 			}
 			require.NoError(t, tx.Commit())
 			if len(testVector.ExistingLeaves) > 0 {
-				root, err := merkletree.GetLastRoot(nil)
+				root, err := tree.GetLastRoot(nil)
 				require.NoError(t, err)
 				require.Equal(t, common.HexToHash(testVector.CurrentRoot), root.Hash)
 			}
@@ -143,21 +116,21 @@ func TestMTAddLeaf(t *testing.T) {
 			// Add new bridge
 			tx, err = db.NewTx(ctx, treeDB)
 			require.NoError(t, err)
-			_, err = merkletree.PutLeaf(tx, uint64(len(testVector.ExistingLeaves)), 0, types.Leaf{
+			_, err = tree.PutLeaf(tx, uint64(len(testVector.ExistingLeaves)), 0, types.Leaf{
 				Index: uint32(len(testVector.ExistingLeaves)),
 				Hash:  common.HexToHash(testVector.NewLeaf.CurrentHash),
 			})
 			require.NoError(t, err)
 			require.NoError(t, tx.Commit())
 
-			root, err := merkletree.GetLastRoot(nil)
+			root, err := tree.GetLastRoot(nil)
 			require.NoError(t, err)
 			require.Equal(t, common.HexToHash(testVector.NewRoot), root.Hash)
 		})
 	}
 }
 
-func TestMTGetProof(t *testing.T) {
+func TestTree_GetProof(t *testing.T) {
 	data, err := os.ReadFile("testvectors/claim-vectors.json")
 	require.NoError(t, err)
 
@@ -195,6 +168,95 @@ func TestMTGetProof(t *testing.T) {
 			require.NoError(t, err)
 			for i, sibling := range testVector.MerkleProof {
 				require.Equal(t, common.HexToHash(sibling), proof[i])
+			}
+		})
+	}
+}
+
+func TestTree_GetRootByHash(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	testCases := []struct {
+		name           string
+		setup          func(t *testing.T) *Tree
+		queryHash      common.Hash
+		expectedRoot   *types.Root
+		expectedErrMsg string
+	}{
+		{
+			name: "existing root found",
+			setup: func(t *testing.T) *Tree {
+				t.Helper()
+				dbPath := path.Join(t.TempDir(), "tree_GetRootByHash_found.sqlite")
+				require.NoError(t, migrations.RunMigrations(dbPath))
+				treeDB, err := db.NewSQLiteDB(dbPath)
+				require.NoError(t, err)
+				tree := NewAppendOnlyTree(treeDB, "")
+				putTestLeaves(t, tree, treeDB, 6, 0)
+
+				return tree.Tree
+			},
+			queryHash: common.HexToHash("0x440213f4dff167e3f5c655fbb6a3327af3512affed50ce3c1a3f139458a8a6d1"),
+			expectedRoot: &types.Root{
+				Hash:          common.HexToHash("0x440213f4dff167e3f5c655fbb6a3327af3512affed50ce3c1a3f139458a8a6d1"),
+				Index:         5,
+				BlockNum:      5,
+				BlockPosition: 0,
+			},
+		},
+		{
+			name: "root not found",
+			setup: func(t *testing.T) *Tree {
+				t.Helper()
+				dbPath := path.Join(t.TempDir(), "tree_GetRootByHash_notfound.sqlite")
+				require.NoError(t, migrations.RunMigrations(dbPath))
+				treeDB, err := db.NewSQLiteDB(dbPath)
+				require.NoError(t, err)
+
+				return &Tree{
+					db:        treeDB,
+					rootTable: "root",
+				}
+			},
+			queryHash:      common.HexToHash("0xdeadbeef"),
+			expectedErrMsg: db.ErrNotFound.Error(),
+		},
+		{
+			name: "database error (malformed SQL)",
+			setup: func(t *testing.T) *Tree {
+				t.Helper()
+				dbPath := path.Join(t.TempDir(), "tree_GetRootByHash_dberr.sqlite")
+				require.NoError(t, migrations.RunMigrations(dbPath))
+				treeDB, err := db.NewSQLiteDB(dbPath)
+				require.NoError(t, err)
+
+				// Intentionally invalid table name to trigger SQL error
+				return &Tree{
+					db:        treeDB,
+					rootTable: "nonexistent_table",
+				}
+			},
+			queryHash:      common.HexToHash("0xbeef"),
+			expectedErrMsg: "no such table", // part of SQLite error message
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := tc.setup(t)
+			root, err := tree.GetRootByHash(ctx, tc.queryHash)
+
+			if tc.expectedErrMsg != "" {
+				require.Error(t, err)
+				require.ErrorContains(t, err, tc.expectedErrMsg)
+				require.Nil(t, root)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, root)
+				require.Equal(t, tc.expectedRoot, root)
 			}
 		})
 	}
@@ -246,10 +308,28 @@ func TestVerifyProof(t *testing.T) {
 
 func createTreeDBForTest(t *testing.T) *sql.DB {
 	t.Helper()
+
 	dbPath := path.Join(t.TempDir(), "tree_createTreeDBForTest.sqlite")
 	err := migrations.RunMigrations(dbPath)
 	require.NoError(t, err)
 	treeDB, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
 	return treeDB
+}
+
+func putTestLeaves(t *testing.T, tree *AppendOnlyTree, treeDB *sql.DB, numOfLeaves, from int) {
+	t.Helper()
+
+	tx, err := db.NewTx(context.Background(), treeDB)
+	require.NoError(t, err)
+
+	for i := from; i < from+numOfLeaves; i++ {
+		_, err := tree.PutLeaf(tx, uint64(i), 0, types.Leaf{
+			Index: uint32(i),
+			Hash:  common.HexToHash(fmt.Sprintf("%x", i)),
+		})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tx.Commit())
 }
