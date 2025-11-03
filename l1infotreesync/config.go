@@ -13,8 +13,12 @@ type Config struct {
 	GlobalExitRootAddr common.Address `mapstructure:"GlobalExitRootAddr"`
 	// RollupManagerAddr is the address of the RollupManager/AgglayerManager contract
 	RollupManagerAddr common.Address `mapstructure:"RollupManagerAddr"`
-	// Possible values: LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
-	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock,enum=SafeBlock,enum=PendingBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+	// BlockFinality indicates the block finality that will be used when querying L1 blocks and related data.
+	// Possible values: PendingBlock, LatestBlock, SafeBlock, FinalizedBlock, EarliestBlock
+	// (with an optional offset, e.g. SafeBlock/-5)
+	//
+	// See also: aggkittypes.BlockNumberFinality
+	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// SyncBlockChunkSize is the amount of blocks that will be queried to the client on each request
 	SyncBlockChunkSize uint64 `mapstructure:"SyncBlockChunkSize"`
 	// WaitForNewBlocksPeriod time that will be waited when the synchronizer has queries for new blocks

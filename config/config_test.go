@@ -168,6 +168,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[AggOracle]
 	BlockFinality = "FinalizedBlock"
+	URLRPCL1 = "http://localhost:8545"
+	
+	[L1InfoTreeSync]
+	URLRPCL1 = "http://localhost:8545"
 
 	[LastGERSync]
 	SyncMode = "Legacy"
@@ -200,4 +204,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
+	require.ErrorContains(t, err, urlRPCL1DeprecatedHint)
 }
