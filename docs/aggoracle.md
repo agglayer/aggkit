@@ -280,6 +280,17 @@ AggOracle:
 
 ---
 
+## 📊 Aggoracle Metrics
+
+The **Aggoracle** service exposes Prometheus metrics to track Global Exit Root (GER) processing activity, latency, and error rates.
+All metrics are registered under the namespace: `aggoracle`
+
+| Metric | Type | Description | Unit |
+|---------|------|--------------|------|
+| `aggoracle_ger_processing_trigger_total` | Counter | Total number of GER processing triggers. | count |
+| `aggoracle_ger_processing_errors_total` | Counter | Total number of GER processing errors. | count |
+| `aggoracle_ger_processing_duration_seconds` | Histogram | Time taken to process a single Global Exit Root from start to finish. | seconds |
+
 ## Summary
 
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks. It supports two operational modes:
