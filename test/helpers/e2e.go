@@ -144,6 +144,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		DBPath:                             dbPathL1InfoTreeSync,
 		InitialBlock:                       0,
 		SyncBlockChunkSize:                 syncBlockChunkSize,
+		BlockFinality:                      aggkittypes.LatestBlock,
 		GlobalExitRootAddr:                 gerL1Addr,
 		RollupManagerAddr:                  common.Address{},
 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(l1InfoTreeSyncerRetryFreq),
@@ -154,10 +155,9 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		l1InfoTreeSyncCfg,
-		aggkittypes.LatestBlock,
 		l1Client.Client(),
+		rdL1,
 		l1infotreesync.FlagAllowWrongContractsAddrs,
-		aggkittypes.SafeBlock,
 	)
 	require.NoError(t, err)
 
