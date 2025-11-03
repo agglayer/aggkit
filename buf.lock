@@ -2,7 +2,7 @@
 version: v2
 deps:
   - name: buf.build/agglayer/agglayer
-    commit: 3cfc6365bbfd4008b28f2e602af3e218
+    commit: b2806847d7f34b16b2d8ef488316eead
     digest: b5:ec5415acd7424f150e2bebfc572530345dca08bc6fe7746ea8e4a26dee5001a9a8b3498990d4c3f9c7f4f2d2d064a0c04a6537b6463121231e8c4a078c4e517b
   - name: buf.build/agglayer/interop
     commit: 31a4887bc637444c819f92e05c0ebc93
