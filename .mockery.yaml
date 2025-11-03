@@ -139,4 +139,3 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
-      
