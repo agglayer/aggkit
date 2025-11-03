@@ -2,6 +2,7 @@ package l1infotreesync
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -14,8 +15,10 @@ import (
 
 	"github.com/agglayer/aggkit/db"
 	aggkitsync "github.com/agglayer/aggkit/sync"
+	treetypesmocks "github.com/agglayer/aggkit/tree/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
@@ -187,7 +190,7 @@ func TestProcessor_Reorg(t *testing.T) {
 		name         string
 		getProcessor func(t *testing.T) *processor
 		reorgBlock   uint64
-		expectedErr  error
+		expectedErr  string
 	}{
 		{
 			name: "empty tree",
@@ -199,7 +202,7 @@ func TestProcessor_Reorg(t *testing.T) {
 				return p
 			},
 			reorgBlock:  0,
-			expectedErr: nil,
+			expectedErr: "",
 		},
 		{
 			name: "single leaf tree",
@@ -225,7 +228,49 @@ func TestProcessor_Reorg(t *testing.T) {
 
 				return p
 			},
-			reorgBlock: 1,
+			reorgBlock:  1,
+			expectedErr: "",
+		},
+		{
+			name: "l1 info tree fails to reorg",
+			getProcessor: func(t *testing.T) *processor {
+				t.Helper()
+				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_3.sqlite"))
+				require.NoError(t, err)
+
+				l1InfoTreeMock := treetypesmocks.NewFullTreer(t)
+				l1InfoTreeMock.EXPECT().
+					Reorg(mock.Anything, mock.Anything).
+					Return(errors.New("failed to reorg l1 info tree")).
+					Once()
+				p.l1InfoTree = l1InfoTreeMock
+				return p
+			},
+			expectedErr: "failed to reorg l1 info tree",
+		},
+		{
+			name: "rollup exit tree fails to reorg",
+			getProcessor: func(t *testing.T) *processor {
+				t.Helper()
+				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_4.sqlite"))
+				require.NoError(t, err)
+
+				l1InfoTreeMock := treetypesmocks.NewFullTreer(t)
+				l1InfoTreeMock.EXPECT().
+					Reorg(mock.Anything, mock.Anything).
+					Return(nil).
+					Once()
+				p.l1InfoTree = l1InfoTreeMock
+
+				rollupExitTreeMock := treetypesmocks.NewFullTreer(t)
+				rollupExitTreeMock.EXPECT().
+					Reorg(mock.Anything, mock.Anything).
+					Return(errors.New("failed to reorg rollup exit tree")).
+					Once()
+				p.rollupExitTree = rollupExitTreeMock
+				return p
+			},
+			expectedErr: "failed to reorg rollup exit tree",
 		},
 	}
 
@@ -235,12 +280,112 @@ func TestProcessor_Reorg(t *testing.T) {
 
 			p := tt.getProcessor(t)
 			err := p.Reorg(context.Background(), tt.reorgBlock)
-			if tt.expectedErr != nil {
-				require.Equal(t, tt.expectedErr, err)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
 			} else {
 				require.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "processor_concurrent_process_block_reorg.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	const maxBlockNum = 30
+	var (
+		wg    sync.WaitGroup
+		errCh = make(chan error, 2)
+	)
+
+	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
+	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
+
+	var maxAllowedBlock atomic.Uint64
+	maxAllowedBlock.Store(math.MaxUint64)
+
+	// Block processing goroutine
+	wg.Go(func() {
+		for i := uint64(0); i <= maxBlockNum; i++ {
+			select {
+			case <-ctx.Done():
+				t.Logf("🛑 Stopping block processing at block %d", i)
+				return
+			default:
+			}
+
+			if i >= maxAllowedBlock.Load() {
+				t.Logf("🚫 Skipping ProcessBlock(%d) due to reorg limit", i)
+				return
+			}
+
+			block := aggkitsync.Block{Num: i}
+			block.Events = []any{
+				Event{
+					UpdateL1InfoTree: &UpdateL1InfoTree{
+						BlockPosition:   i,
+						MainnetExitRoot: common.HexToHash(fmt.Sprintf("%x", i)),
+						RollupExitRoot:  common.HexToHash(fmt.Sprintf("%x", i)),
+					},
+				},
+			}
+
+			if err := p.ProcessBlock(ctx, block); err != nil && !strings.Contains(err.Error(), "context canceled") {
+				errCh <- fmt.Errorf("❌ ProcessBlock(%d) failed: %w", i, err)
+				return
+			}
+			t.Logf("✅ Processed block %d", i)
+
+			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+		}
+	})
+
+	// Reorg goroutine
+	wg.Go(func() {
+		time.Sleep(time.Duration(rand.Intn(200)+50) * time.Millisecond)
+
+		t.Logf("🔄 Starting Reorg to block %d", reorgBlock)
+		if err := p.Reorg(ctx, reorgBlock); err != nil {
+			errCh <- fmt.Errorf("❌ Reorg to block %d failed: %w", reorgBlock, err)
+			return
+		} else {
+			t.Logf("✅ Reorg to %d succeeded", reorgBlock)
+		}
+
+		maxAllowedBlock.Store(reorgBlock)
+
+		// Cancel context to stop block processing
+		cancel()
+	})
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	// Assert DB state
+	rows, err := p.db.QueryContext(context.Background(), `SELECT num FROM block`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var remaining []uint64
+	for rows.Next() {
+		var n uint64
+		require.NoError(t, rows.Scan(&n))
+		remaining = append(remaining, n)
+	}
+	require.NoError(t, rows.Err())
+
+	t.Logf("🧾 Remaining blocks in DB: %v", remaining)
+	for _, n := range remaining {
+		require.Truef(t, n < reorgBlock, "Block %d should not be in DB (>= reorgBlock %d)", n, reorgBlock)
 	}
 }
 
@@ -397,105 +542,5 @@ func TestCalculateGER(t *testing.T) {
 			calculatedGER := CalculateGER(c.mainnetExitRoot, c.rollupExitRoot)
 			require.Equal(t, c.expectedGER, calculatedGER)
 		})
-	}
-}
-
-func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
-	dbPath := path.Join(t.TempDir(), "processor_concurrent_process_block_reorg.sqlite")
-	p, err := newProcessor(dbPath)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-
-	const maxBlockNum = 30
-	var (
-		wg    sync.WaitGroup
-		errCh = make(chan error, 2)
-	)
-
-	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
-	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
-
-	var maxAllowedBlock atomic.Uint64
-	maxAllowedBlock.Store(math.MaxUint64)
-
-	// Block processing goroutine
-	wg.Go(func() {
-		for i := uint64(0); i <= maxBlockNum; i++ {
-			select {
-			case <-ctx.Done():
-				t.Logf("🛑 Stopping block processing at block %d", i)
-				return
-			default:
-			}
-
-			if i >= maxAllowedBlock.Load() {
-				t.Logf("🚫 Skipping ProcessBlock(%d) due to reorg limit", i)
-				return
-			}
-
-			block := aggkitsync.Block{Num: i}
-			block.Events = []any{
-				Event{
-					UpdateL1InfoTree: &UpdateL1InfoTree{
-						BlockPosition:   i,
-						MainnetExitRoot: common.HexToHash(fmt.Sprintf("%x", i)),
-						RollupExitRoot:  common.HexToHash(fmt.Sprintf("%x", i)),
-					},
-				},
-			}
-
-			if err := p.ProcessBlock(ctx, block); err != nil && !strings.Contains(err.Error(), "context canceled") {
-				errCh <- fmt.Errorf("❌ ProcessBlock(%d) failed: %w", i, err)
-				return
-			}
-			t.Logf("✅ Processed block %d", i)
-
-			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
-		}
-	})
-
-	// Reorg goroutine
-	wg.Go(func() {
-		time.Sleep(time.Duration(rand.Intn(200)+50) * time.Millisecond)
-
-		t.Logf("🔄 Starting Reorg to block %d", reorgBlock)
-		if err := p.Reorg(ctx, reorgBlock); err != nil {
-			errCh <- fmt.Errorf("❌ Reorg to block %d failed: %w", reorgBlock, err)
-			return
-		} else {
-			t.Logf("✅ Reorg to %d succeeded", reorgBlock)
-		}
-
-		maxAllowedBlock.Store(reorgBlock)
-
-		// Cancel context to stop block processing
-		cancel()
-	})
-
-	wg.Wait()
-	close(errCh)
-
-	for err := range errCh {
-		require.NoError(t, err)
-	}
-
-	// Assert DB state
-	rows, err := p.db.QueryContext(context.Background(), `SELECT num FROM block`)
-	require.NoError(t, err)
-	defer rows.Close()
-
-	var remaining []uint64
-	for rows.Next() {
-		var n uint64
-		require.NoError(t, rows.Scan(&n))
-		remaining = append(remaining, n)
-	}
-	require.NoError(t, rows.Err())
-
-	t.Logf("🧾 Remaining blocks in DB: %v", remaining)
-	for _, n := range remaining {
-		require.Truef(t, n < reorgBlock, "Block %d should not be in DB (>= reorgBlock %d)", n, reorgBlock)
 	}
 }

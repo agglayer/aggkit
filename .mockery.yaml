@@ -135,4 +135,8 @@ packages:
       filename: "mock_{{ .InterfaceName | snakecase }}.go"
       mockname: "{{ .InterfaceName }}Mock"
       all: true
+  github.com/agglayer/aggkit/tree/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
       
