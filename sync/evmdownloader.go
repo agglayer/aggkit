@@ -337,7 +337,7 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 		var latestBlock *EVMBlock
 		for _, l := range logs {
 			if latestBlock == nil || latestBlock.Num < l.BlockNumber {
-				b, canceled := d.GetBlockHeader(ctx, l.BlockNumber)
+				b, canceled := d.GetBlockHeaderByNumber(ctx, l.BlockNumber)
 				if canceled {
 					return nil
 				}
@@ -507,5 +507,65 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 			ParentHash: header.ParentHash,
 			Timestamp:  header.Time,
 		}, false
+	}
+}
+
+func (d *EVMDownloaderImplementation) GetBlockHeaderByNumber(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {
+	attempts := 0
+	for {
+		// Try to get block with transactions hashes only (not full transactions) to avoid decoding issues
+		// with unsupported transaction types (e.g., OP Stack specific types)
+		type rpcBlock struct {
+			Number     string   `json:"number"`
+			Hash       string   `json:"hash"`
+			ParentHash string   `json:"parentHash"`
+			Timestamp  string   `json:"timestamp"`
+		}
+
+		// Check if we have access to RPC client for raw calls
+		if rpcClient, ok := d.ethClient.(interface{ Call(result any, method string, args ...any) error }); ok {
+			var result rpcBlock
+			blockNumHex := fmt.Sprintf("0x%x", blockNum)
+			// false parameter means return only transaction hashes, not full transaction objects
+			err := rpcClient.Call(&result, "eth_getBlockByNumber", blockNumHex, false)
+			d.log.Debugf("eth_getBlockByNumber (via RPC): %d, hash: %s\n\n\n", blockNum, result.Hash)
+
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return EVMBlockHeader{}, true
+				}
+				if strings.Contains(err.Error(), "not found") {
+					log.Warnf("block %d not found on the ethereum client: %v", blockNum, err)
+					if d.rh.RetryAfterErrorPeriod != 0 {
+						time.Sleep(d.rh.RetryAfterErrorPeriod)
+					} else {
+						time.Sleep(DefaultWaitPeriodBlockNotFound)
+					}
+					continue
+				}
+
+				attempts++
+				d.log.Errorf("error getting block via RPC for block %d, err: %v", blockNum, err)
+				d.rh.Handle(ctx, "getBlockByNumber", attempts)
+				continue
+			}
+
+			// Parse hex strings to proper types
+			num := new(big.Int)
+			num.SetString(result.Number[2:], 16)
+			timestamp := new(big.Int)
+			timestamp.SetString(result.Timestamp[2:], 16)
+
+			return EVMBlockHeader{
+				Num:        num.Uint64(),
+				Hash:       common.HexToHash(result.Hash),
+				ParentHash: common.HexToHash(result.ParentHash),
+				Timestamp:  timestamp.Uint64(),
+			}, false
+		}
+
+		// If we get here, RPC client is not available
+		d.log.Fatalf("ethClient does not support RPC Call method, cannot use GetBlockHeaderByNumber")
+		return EVMBlockHeader{}, true
 	}
 }
