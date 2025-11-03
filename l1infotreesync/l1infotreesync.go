@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -20,7 +19,7 @@ import (
 )
 
 const (
-	reorgDetectorID    = "l1InfoTreeSyncer"
+	syncerID           = "l1infotreesync"
 	downloadBufferSize = 1000
 )
 
@@ -58,10 +57,9 @@ func NewReadOnly(
 func New(
 	ctx context.Context,
 	cfg Config,
-	blockFinalityType aggkittypes.BlockNumberFinality,
 	l1Client aggkittypes.BaseEthereumClienter,
+	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
-	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*L1InfoTreeSync, error) {
 	processor, err := newProcessor(cfg.DBPath)
 	if err != nil {
@@ -101,14 +99,14 @@ func New(
 		"l1infotreesync",
 		l1Client,
 		cfg.SyncBlockChunkSize,
-		blockFinalityType,
+		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
 		[]common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr},
 		rh,
-		finalizedBlockType,
-		reorgdetector.NewNoOpReorgDetector(), // reorgDetector
-		"l1infotreesync",                     // reorgDetectorID
+		reorgDetector.GetFinalizedBlockType(),
+		reorgDetector, // reorgDetector
+		syncerID,      // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err
@@ -118,7 +116,7 @@ func New(
 		downloader.RuntimeData,
 		processor)
 
-	driver, err := sync.NewEVMDriver(reorgdetector.NewNoOpReorgDetector(), processor, downloader, reorgDetectorID,
+	driver, err := sync.NewEVMDriver(reorgDetector, processor, downloader, syncerID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
@@ -145,14 +143,6 @@ func (a *L1InfoTreeSync) GetRPCServices() []jRPC.Service {
 func (s *L1InfoTreeSync) Start(ctx context.Context) {
 	s.processor.log.Info("starting l1infotreesync")
 	s.driver.Sync(ctx)
-}
-
-// GetL1InfoTreeMerkleProof creates a merkle proof for the L1 Info tree
-func (s *L1InfoTreeSync) GetL1InfoTreeMerkleProof(ctx context.Context, index uint32) (types.Proof, types.Root, error) {
-	if s.processor.isHalted() {
-		return types.Proof{}, types.Root{}, sync.ErrInconsistentState
-	}
-	return s.processor.GetL1InfoTreeMerkleProof(ctx, index)
 }
 
 // GetRollupExitTreeMerkleProof creates a merkle proof for the rollup exit tree
@@ -192,7 +182,7 @@ func (s *L1InfoTreeSync) GetLatestL1InfoLeafUntilBlock(ctx context.Context, bloc
 }
 
 // GetLatestL1InfoLeaf returns the most recent L1InfoTreeLeaf that has been indexed
-// It can return next errors:
+// It can return the following errors:
 // - ErrInconsistentState
 // - ErrNotFound
 func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error) {
@@ -201,6 +191,18 @@ func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLe
 	}
 	leaf, err := s.processor.GetLatestL1InfoLeafUntilBlock(ctx, nil)
 	return leaf, translateError(err)
+}
+
+// GetLatestL1InfoGER returns the most recent Global Exit Root that has been indexed
+// It can return the following errors:
+// - ErrInconsistentState
+// - ErrNotFound
+func (s *L1InfoTreeSync) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error) {
+	if s.processor.isHalted() {
+		return common.Hash{}, sync.ErrInconsistentState
+	}
+	ger, err := s.processor.GetLatestL1InfoGER(ctx)
+	return ger, translateError(err)
 }
 
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree
@@ -297,6 +299,7 @@ func (s *L1InfoTreeSync) GetFirstInfo() (*L1InfoTreeLeaf, error) {
 	}
 	return s.processor.GetFirstInfo()
 }
+
 func (s *L1InfoTreeSync) GetInfoByRoot(root common.Hash) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState

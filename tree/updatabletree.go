@@ -10,6 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+var (
+	_ types.FullTreer = (*UpdatableTree)(nil)
+)
+
 // UpdatableTree is a tree that have updatable leaves, and doesn't need to have sequential inserts
 type UpdatableTree struct {
 	*Tree
@@ -24,10 +28,9 @@ func NewUpdatableTree(db *sql.DB, dbPrefix string) *UpdatableTree {
 	return ut
 }
 
-func (t *UpdatableTree) UpsertLeaf(tx dbtypes.Txer,
-	blockNum, blockPosition uint64, leaf types.Leaf) (common.Hash, error) {
+func (t *UpdatableTree) PutLeaf(tx dbtypes.Txer, blockNum, blockPosition uint64, leaf types.Leaf) (common.Hash, error) {
 	var rootHash common.Hash
-	root, err := t.getLastRootWithTx(tx)
+	root, err := t.GetLastRoot(tx)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			rootHash = t.zeroHashes[types.DefaultHeight]

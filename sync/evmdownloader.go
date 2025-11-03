@@ -48,12 +48,11 @@ func (m LogAppenderMap) GetTopics() []common.Hash {
 }
 
 type EVMDownloader struct {
-	syncBlockChunkSize uint64
 	EVMDownloaderInterface
+	syncBlockChunkSize         uint64
 	log                        *log.Logger
-	finalizedBlockType         *aggkittypes.BlockNumberFinality
-	stopDownloaderOnIterationN int
 	addressesToQuery           []common.Address
+	stopDownloaderOnIterationN int
 }
 
 func NewEVMDownloader(
@@ -86,7 +85,6 @@ func NewEVMDownloader(
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
-		finalizedBlockType: &finalizedBlockType,
 		addressesToQuery:   addressesToQuery,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
