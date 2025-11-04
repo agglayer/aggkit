@@ -1061,7 +1061,7 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	_, bridgesCount, err := bridge.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		c.JSON(http.StatusInternalServerError,
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get bridges from %s database: %s", networkName, err)})
 		return statusCode
 	}
