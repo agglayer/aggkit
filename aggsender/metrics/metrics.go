@@ -132,7 +132,7 @@ func Settled() {
 	prometheus.CounterInc(numberOfCertificatesSettled)
 }
 
-// CertificateBuildTime sets the counter for the certificate build time
+// CertificateBuildTime provides a histogram for the certificate build time
 func CertificateBuildTime(value float64) {
 	prometheus.HistogramObserve(certificateBuildTime, value)
 }
