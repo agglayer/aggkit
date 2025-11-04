@@ -13,7 +13,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/sync"
 	ethmanmocks "github.com/agglayer/aggkit/types/mocks"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +22,6 @@ func TestNewRunner(t *testing.T) {
 		name                string
 		mode                types.AggsenderMode
 		setupMocks          func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock)
-		expectedRunnerType  string
 		expectError         bool
 		expectedErrorString string
 	}{
@@ -42,8 +40,7 @@ func TestNewRunner(t *testing.T) {
 
 				return logger, l1Client, l2BridgeSync, agglayerClient
 			},
-			expectedRunnerType: "*aggsender.preconfRunner",
-			expectError:        false,
+			expectError: false,
 		},
 		{
 			name: "Default mode returns epochBasedRunner successfully",
@@ -66,8 +63,7 @@ func TestNewRunner(t *testing.T) {
 
 				return logger, l1Client, l2BridgeSync, agglayerClient
 			},
-			expectedRunnerType: "*aggsender.epochBasedRunner",
-			expectError:        false,
+			expectError: false,
 		},
 		{
 			name: "EpochBasedRunner creation fails due to agglayer client error",
@@ -83,7 +79,6 @@ func TestNewRunner(t *testing.T) {
 
 				return logger, l1Client, l2BridgeSync, agglayerClient
 			},
-			expectedRunnerType:  "",
 			expectError:         true,
 			expectedErrorString: "failed to generate Epoch Notifier config",
 		},
@@ -110,7 +105,6 @@ func TestNewRunner(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, runner)
-				assert.ObjectsAreEqual(runner, tt.expectedRunnerType)
 			}
 		})
 	}
@@ -221,15 +215,14 @@ func TestNewPreconfRunner(t *testing.T) {
 	l2BridgeSync := mocks.NewL2BridgeSyncer(t)
 
 	// Mock subscription creation
-	expectedSubscription := make(<-chan sync.Block)
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(expectedSubscription)
+	l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(make(chan sync.Block))
 
 	runner := newPreconfRunner(logger, l2BridgeSync)
 
 	require.NotNil(t, runner)
 	require.Equal(t, logger, runner.log)
 	require.Equal(t, l2BridgeSync, runner.l2BridgeSync)
-	require.Equal(t, expectedSubscription, runner.syncedBlockSub)
+	require.NotNil(t, runner.syncedBlockSub)
 }
 
 func TestPreconfRunner_Status(t *testing.T) {

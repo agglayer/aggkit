@@ -148,9 +148,8 @@ func newPreconfRunner(
 	l2BridgeSync types.L2BridgeSyncer,
 ) *preconfRunner {
 	return &preconfRunner{
-		log:          log,
-		l2BridgeSync: l2BridgeSync,
-		// TODO make buffer size configurable
+		log:            log,
+		l2BridgeSync:   l2BridgeSync,
 		syncedBlockSub: l2BridgeSync.SubscribeToSync("aggsender"),
 	}
 }
