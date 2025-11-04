@@ -2,13 +2,23 @@ package l1infotreesync
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
+	"math"
+	"math/rand"
 	"path"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/db"
 	aggkitsync "github.com/agglayer/aggkit/sync"
-	"github.com/agglayer/aggkit/tree/types"
+	treetypesmocks "github.com/agglayer/aggkit/tree/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
@@ -52,7 +62,7 @@ func TestGetInfo(t *testing.T) {
 	expected1.Hash = expected1.GetHash()
 	err = p.ProcessBlock(ctx, aggkitsync.Block{
 		Num: 1,
-		Events: []interface{}{
+		Events: []any{
 			Event{UpdateL1InfoTree: info1},
 		},
 	})
@@ -115,10 +125,10 @@ func TestGetInfo(t *testing.T) {
 }
 
 func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
+	ctx := t.Context()
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound.sqlite")
 	sut, err := newProcessor(dbPath)
 	require.NoError(t, err)
-	ctx := context.Background()
 	// Fake block 1
 	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
 	require.NoError(t, err)
@@ -128,33 +138,78 @@ func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
 	require.Equal(t, db.ErrNotFound, err)
 }
 
-func Test_processor_GetL1InfoTreeMerkleProof(t *testing.T) {
+func TestGetLatestL1InfoLeafUntilBlock(t *testing.T) {
+	ctx := t.Context()
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestL1InfoLeafUntilBlock.sqlite")
+
+	sut, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Insert a base block for tests that need one
+	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		blockNum    *uint64
+		expectedErr error
+	}{
+		{
+			name:        "returns ErrNoBlock0 when block number is zero",
+			blockNum:    func() *uint64 { n := uint64(0); return &n }(),
+			expectedErr: ErrNoBlock0,
+		},
+		{
+			name:        "returns ErrBlockNotProcessed when requested block not processed yet",
+			blockNum:    func() *uint64 { n := uint64(5); return &n }(),
+			expectedErr: ErrBlockNotProcessed,
+		},
+		{
+			name:        "returns ErrNotFound when no L1 info leaf before given block",
+			blockNum:    func() *uint64 { n := uint64(1); return &n }(),
+			expectedErr: db.ErrNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean DB state between test cases
+			_, err := sut.db.Exec("DELETE FROM l1info_leaf;")
+			require.NoError(t, err)
+
+			_, err = sut.GetLatestL1InfoLeafUntilBlock(ctx, tt.blockNum)
+			require.ErrorIs(t, err, tt.expectedErr)
+		})
+	}
+}
+
+func TestProcessor_Reorg(t *testing.T) {
+	t.Parallel()
+
 	testTable := []struct {
 		name         string
 		getProcessor func(t *testing.T) *processor
-		idx          uint32
-		expectedRoot types.Root
-		expectedErr  error
+		reorgBlock   uint64
+		expectedErr  string
 	}{
 		{
 			name: "empty tree",
 			getProcessor: func(t *testing.T) *processor {
 				t.Helper()
 
-				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_GetL1InfoTreeMerkleProof_1.sqlite"))
+				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_1.sqlite"))
 				require.NoError(t, err)
-
 				return p
 			},
-			idx:         0,
-			expectedErr: db.ErrNotFound,
+			reorgBlock:  0,
+			expectedErr: "",
 		},
 		{
 			name: "single leaf tree",
 			getProcessor: func(t *testing.T) *processor {
 				t.Helper()
 
-				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_GetL1InfoTreeMerkleProof_2.sqlite"))
+				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_2.sqlite"))
 				require.NoError(t, err)
 
 				info := &UpdateL1InfoTree{
@@ -173,33 +228,164 @@ func Test_processor_GetL1InfoTreeMerkleProof(t *testing.T) {
 
 				return p
 			},
-			idx: 0,
-			expectedRoot: types.Root{
-				Hash:          common.HexToHash("beef"),
-				Index:         0,
-				BlockNum:      1,
-				BlockPosition: 0,
+			reorgBlock:  1,
+			expectedErr: "",
+		},
+		{
+			name: "l1 info tree fails to reorg",
+			getProcessor: func(t *testing.T) *processor {
+				t.Helper()
+				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_3.sqlite"))
+				require.NoError(t, err)
+
+				l1InfoTreeMock := treetypesmocks.NewFullTreer(t)
+				l1InfoTreeMock.EXPECT().
+					Reorg(mock.Anything, mock.Anything).
+					Return(errors.New("failed to reorg l1 info tree")).
+					Once()
+				p.l1InfoTree = l1InfoTreeMock
+				return p
 			},
+			expectedErr: "failed to reorg l1 info tree",
+		},
+		{
+			name: "rollup exit tree fails to reorg",
+			getProcessor: func(t *testing.T) *processor {
+				t.Helper()
+				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_4.sqlite"))
+				require.NoError(t, err)
+
+				l1InfoTreeMock := treetypesmocks.NewFullTreer(t)
+				l1InfoTreeMock.EXPECT().
+					Reorg(mock.Anything, mock.Anything).
+					Return(nil).
+					Once()
+				p.l1InfoTree = l1InfoTreeMock
+
+				rollupExitTreeMock := treetypesmocks.NewFullTreer(t)
+				rollupExitTreeMock.EXPECT().
+					Reorg(mock.Anything, mock.Anything).
+					Return(errors.New("failed to reorg rollup exit tree")).
+					Once()
+				p.rollupExitTree = rollupExitTreeMock
+				return p
+			},
+			expectedErr: "failed to reorg rollup exit tree",
 		},
 	}
 
 	for _, tt := range testTable {
-		tt := tt
-
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			p := tt.getProcessor(t)
-			proof, root, err := p.GetL1InfoTreeMerkleProof(context.Background(), tt.idx)
-			if tt.expectedErr != nil {
-				require.Equal(t, tt.expectedErr, err)
+			err := p.Reorg(context.Background(), tt.reorgBlock)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
 			} else {
 				require.NoError(t, err)
-				require.NotEmpty(t, proof)
-				require.NotEmpty(t, root.Hash)
-				require.Equal(t, tt.expectedRoot.Index, root.Index)
-				require.Equal(t, tt.expectedRoot.BlockNum, root.BlockNum)
-				require.Equal(t, tt.expectedRoot.BlockPosition, root.BlockPosition)
 			}
 		})
+	}
+}
+
+func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "processor_concurrent_process_block_reorg.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	const maxBlockNum = 30
+	var (
+		wg    sync.WaitGroup
+		errCh = make(chan error, 2)
+	)
+
+	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
+	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
+
+	var maxAllowedBlock atomic.Uint64
+	maxAllowedBlock.Store(math.MaxUint64)
+
+	// Block processing goroutine
+	wg.Go(func() {
+		for i := uint64(0); i <= maxBlockNum; i++ {
+			select {
+			case <-ctx.Done():
+				t.Logf("🛑 Stopping block processing at block %d", i)
+				return
+			default:
+			}
+
+			if i >= maxAllowedBlock.Load() {
+				t.Logf("🚫 Skipping ProcessBlock(%d) due to reorg limit", i)
+				return
+			}
+
+			block := aggkitsync.Block{Num: i}
+			block.Events = []any{
+				Event{
+					UpdateL1InfoTree: &UpdateL1InfoTree{
+						BlockPosition:   i,
+						MainnetExitRoot: common.HexToHash(fmt.Sprintf("%x", i)),
+						RollupExitRoot:  common.HexToHash(fmt.Sprintf("%x", i)),
+					},
+				},
+			}
+
+			if err := p.ProcessBlock(ctx, block); err != nil && !strings.Contains(err.Error(), "context canceled") {
+				errCh <- fmt.Errorf("❌ ProcessBlock(%d) failed: %w", i, err)
+				return
+			}
+			t.Logf("✅ Processed block %d", i)
+
+			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+		}
+	})
+
+	// Reorg goroutine
+	wg.Go(func() {
+		time.Sleep(time.Duration(rand.Intn(200)+50) * time.Millisecond)
+
+		t.Logf("🔄 Starting Reorg to block %d", reorgBlock)
+		if err := p.Reorg(ctx, reorgBlock); err != nil {
+			errCh <- fmt.Errorf("❌ Reorg to block %d failed: %w", reorgBlock, err)
+			return
+		} else {
+			t.Logf("✅ Reorg to %d succeeded", reorgBlock)
+		}
+
+		maxAllowedBlock.Store(reorgBlock)
+
+		// Cancel context to stop block processing
+		cancel()
+	})
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	// Assert DB state
+	rows, err := p.db.QueryContext(context.Background(), `SELECT num FROM block`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var remaining []uint64
+	for rows.Next() {
+		var n uint64
+		require.NoError(t, rows.Scan(&n))
+		remaining = append(remaining, n)
+	}
+	require.NoError(t, rows.Err())
+
+	t.Logf("🧾 Remaining blocks in DB: %v", remaining)
+	for _, n := range remaining {
+		require.Truef(t, n < reorgBlock, "Block %d should not be in DB (>= reorgBlock %d)", n, reorgBlock)
 	}
 }
 
@@ -208,13 +394,14 @@ func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 	require.NoError(t, err)
 	block := aggkitsync.Block{
 		Num: 10,
-		Events: []interface{}{
-			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
-				MainnetExitRoot: common.HexToHash("beef"),
-				RollupExitRoot:  common.HexToHash("5ca1e"),
-				ParentHash:      common.HexToHash("1010101"),
-				Timestamp:       420,
-			}},
+		Events: []any{
+			Event{
+				UpdateL1InfoTree: &UpdateL1InfoTree{
+					MainnetExitRoot: common.HexToHash("beef"),
+					RollupExitRoot:  common.HexToHash("5ca1e"),
+					ParentHash:      common.HexToHash("1010101"),
+					Timestamp:       420,
+				}},
 			Event{UpdateL1InfoTreeV2: &UpdateL1InfoTreeV2{
 				CurrentL1InfoRoot: common.HexToHash("beef"),
 				LeafCount:         1,
@@ -280,4 +467,80 @@ func TestGetProcessedBlockUntil(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), blockNum)
 	require.Equal(t, common.Hash{}, blockHash)
+}
+
+func TestProcessorGetLatestL1InfoGER(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	dbPath := path.Join(t.TempDir(), "TestGetLatestL1InfoGER.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Querying latest GER on empty processor should return error
+	latestGER, err := p.GetLatestL1InfoGER(ctx)
+	require.ErrorIs(t, err, db.ErrNotFound)
+	require.Equal(t, common.Hash{}, latestGER)
+
+	addBlock := func(num, pos uint64, mainnetRoot, rollupRoot, parentHash string, ts uint64) {
+		err := p.ProcessBlock(ctx, aggkitsync.Block{
+			Num: num,
+			Events: []any{
+				Event{
+					UpdateL1InfoTree: &UpdateL1InfoTree{
+						BlockPosition:   pos,
+						MainnetExitRoot: common.HexToHash(mainnetRoot),
+						RollupExitRoot:  common.HexToHash(rollupRoot),
+						ParentHash:      common.HexToHash(parentHash),
+						Timestamp:       ts,
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	// Insert blocks
+	addBlock(1, 1, "beef", "5ca1e", "1010101", 420)
+	addBlock(2, 1, "aabb", "ccdd", "10101010", 421)
+
+	// Check latest GER on non empty database
+	gotGER, err := p.GetLatestL1InfoGER(ctx)
+	require.NoError(t, err)
+
+	wantGER := crypto.Keccak256Hash(
+		common.HexToHash("aabb").Bytes(),
+		common.HexToHash("ccdd").Bytes(),
+	)
+
+	require.Equal(t, wantGER, gotGER, "latest GER should match last processed block")
+}
+
+func TestCalculateGER(t *testing.T) {
+	cases := []struct {
+		testName        string
+		mainnetExitRoot common.Hash
+		rollupExitRoot  common.Hash
+		expectedGER     common.Hash
+	}{
+		{
+			testName:        "both MER and RER non-zero",
+			mainnetExitRoot: common.HexToHash("0xdde590a282827306734e608dac3f46fbd0c7d2ad9a2f2fa231619bf717074ebc"),
+			rollupExitRoot:  common.HexToHash("0xfa61f6390bc150b7daa1f876b3b750e1a5e3ae1582dbd014887aff8657c1e947"),
+			expectedGER:     common.HexToHash("0x7fe6169049e0e70ed4f6f5c15f00ccf1f312da1ebff927e8fa65fff0dbab1e0e"),
+		},
+		{
+			testName:        "MER non-zero, RER zero",
+			mainnetExitRoot: common.HexToHash("0x3f586b16c4b88ef284961e9fdd12b414e8e8227311c968f94454dc46680a9701"),
+			rollupExitRoot:  common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+			expectedGER:     common.HexToHash("0x8e4eda1ee01e9df0f792b4b84fdbcdbe1393f73dc03d81381557140445b28e76"),
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.testName, func(t *testing.T) {
+			calculatedGER := CalculateGER(c.mainnetExitRoot, c.rollupExitRoot)
+			require.Equal(t, c.expectedGER, calculatedGER)
+		})
+	}
 }

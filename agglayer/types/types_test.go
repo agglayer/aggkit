@@ -1487,10 +1487,11 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 			DestinationAddress: common.HexToAddress(fmt.Sprintf("0x%040x", i+1)),
 			Amount:             big.NewInt(int64(i+1) * 1000),
 		}
-		require.NoError(t, rollupExitTree.AddLeaf(tx, uint64(i), 0, types.Leaf{
+		_, err := rollupExitTree.PutLeaf(tx, uint64(i), 0, types.Leaf{
 			Index: uint32(i),
 			Hash:  bridgeExits[i].Hash(),
-		}))
+		})
+		require.NoError(t, err)
 	}
 
 	require.NoError(t, tx.Commit())
@@ -1514,10 +1515,11 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 			},
 		}
 
-		require.NoError(t, l1InfoTree.AddLeaf(tx, uint64(i), 0, types.Leaf{
+		_, err = l1InfoTree.PutLeaf(tx, uint64(i), 0, types.Leaf{
 			Index: uint32(i),
 			Hash:  l1Leaves[i].Hash(),
-		}))
+		})
+		require.NoError(t, err)
 	}
 
 	require.NoError(t, tx.Commit())
