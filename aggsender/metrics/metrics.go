@@ -45,7 +45,7 @@ func Register() {
 		{
 			Namespace: namespace,
 			Name:      numberOfCertificatesSettled,
-			Help:      "number of certificates settled",
+			Help:      "Number of certificates settled",
 		},
 		{
 			Namespace: namespace,
