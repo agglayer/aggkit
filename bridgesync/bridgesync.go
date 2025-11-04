@@ -70,7 +70,6 @@ func NewL1(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
-	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -80,7 +79,7 @@ func NewL1(
 		ethClient,
 		L1BridgeSyncer,
 		originNetwork,
-		syncFullClaims,
+		false,
 	)
 }
 
