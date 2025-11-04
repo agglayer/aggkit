@@ -14,16 +14,16 @@ const (
 	handlerID      = "handler_id"
 	statusCode     = "status_code"
 
-	GetBridgesReq               = "get_bridges"
-	GetClaimsReq                = "get_claims"
-	GetTokenMappingsReq         = "get_token_mappings"
-	GetLegacyTokenMigrationsReq = "get_legacy_token_migrations"
-	GetL1InfoTreeIndexReq       = "l1_info_tree_index_for_bridge"
-	GetIjectedInfoAfterIndexReq = "injected_info_after_index"
-	GetClaimProofReq            = "claim_proof"
-	GetLastReorgEventReq        = "last_reorg_event"
-	GetSyncStatusReq            = "get_sync_status"
-	GetHealthCheckReq           = "health_check"
+	GetBridgesReq                = "get_bridges"
+	GetClaimsReq                 = "get_claims"
+	GetTokenMappingsReq          = "get_token_mappings"
+	GetLegacyTokenMigrationsReq  = "get_legacy_token_migrations"
+	GetL1InfoTreeIndexReq        = "l1_info_tree_index_for_bridge"
+	GetInjectedInfoAfterIndexReq = "injected_info_after_index"
+	GetClaimProofReq             = "claim_proof"
+	GetLastReorgEventReq         = "last_reorg_event"
+	GetSyncStatusReq             = "get_sync_status"
+	GetHealthCheckReq            = "health_check"
 )
 
 func Register() {

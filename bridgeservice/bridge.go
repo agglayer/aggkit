@@ -292,7 +292,9 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetBridgesReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetBridgesReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -421,7 +423,9 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetClaimsReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetClaimsReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -561,7 +565,9 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetTokenMappingsReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetTokenMappingsReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -643,7 +649,9 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetLegacyTokenMigrationsReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetLegacyTokenMigrationsReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -722,7 +730,9 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetL1InfoTreeIndexReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetL1InfoTreeIndexReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -790,7 +800,9 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetIjectedInfoAfterIndexReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetInjectedInfoAfterIndexReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -875,7 +887,9 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetClaimProofReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetClaimProofReq, statusCode, startTime)
+	}()
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
@@ -991,7 +1005,9 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetLastReorgEventReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetLastReorgEventReq, statusCode, startTime)
+	}()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -1051,7 +1067,7 @@ func (b *BridgeService) populateNetworkSyncInfo(
 
 	contractDepositCount, err := bridge.GetContractDepositCount(ctx)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
+		statusCode = http.StatusInternalServerError
 		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get deposit count from %s bridge contract: %s", networkName, err)})
 		return statusCode
@@ -1104,7 +1120,9 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
-	defer reportMetrics(metrics.GetSyncStatusReq, statusCode, startTime)
+	defer func() {
+		reportMetrics(metrics.GetSyncStatusReq, statusCode, startTime)
+	}()
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
@@ -1315,8 +1333,6 @@ func (b *BridgeService) setupRequest(c *gin.Context) (context.Context, context.C
 }
 
 // reportMetrics reports the request metric for the given handler and status code
-//
-//nolint:unparam
 func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 	metrics.IncTotalRequestCounter(handlerID, strconv.Itoa(statusCode))
 	metrics.ObserveRequestLatencyHistogram(handlerID, startTime)
