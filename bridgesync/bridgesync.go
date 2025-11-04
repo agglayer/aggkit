@@ -405,7 +405,7 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 }
 
 // SubscribeToSync allows a subscriber to receive block notifications
-func (s *BridgeSync) SubscribeToSync(subscriberID string, bufferSize int) <-chan sync.Block {
+func (s *BridgeSync) SubscribeToSync(subscriberID string) <-chan sync.Block {
 	return s.driver.SubscribeToNewBlocks(subscriberID)
 }
 
