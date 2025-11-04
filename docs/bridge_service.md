@@ -223,20 +223,24 @@ sequenceDiagram
 
 ## Prometheus Metrics
 
-The bridge service exposes several Prometheus counters to track the number of requests handled by different API endpoints.
-Each counter represents how many times a specific bridge-related operation was requested through the service.
+The bridge service exposes several Prometheus metrics to track the number of handled requests and their latencies for different API endpoints.
+These metrics help monitor service performance, request volume, and latency distribution across various handlers.
+Each handler is described with a unique handler id and these are the values, depending of what data they are providing:
+- `get_bridges`,
+- `get_claims`,
+- `get_token_mappings`,
+- `get_legacy_token_migrations`,
+- `l1_info_tree_index_for_bridge`,
+- `injected_info_after_index`,
+- `claim_proof`,
+- `last_reorg_event`,
+- `get_sync_status`,
+- `health_check`,
 
-| **Metric Name** | **Description** |
-|------------------|-----------------|
-| `bridge_get_bridges` | Number of requests to **list or retrieve bridge information**. |
-| `bridge_l1_info_tree_index_for_bridge` | Number of requests to fetch the **L1 info tree index for a specific bridge**. |
-| `bridge_injected_info_after_index` | Number of requests for **retrieving injected info after a given index**. |
-| `bridge_get_claims` | Number of **claim data** retrieval requests. |
-| `bridge_claim_proof` | Number of **claim proof** generation or retrieval requests. |
-| `bridge_get_token_mappings` | Number of requests to **fetch token mapping information**. |
-| `bridge_get_legacy_token_migrations` | Number of **legacy token migration** information requests. |
-| `bridge_last_reorg_event` | Number of **last reorganization event** queries. |
-| `bridge_get_sync_status` | Number of **sync status** retrieval requests, used to check synchronization between chains. |
+| **Metric Name** | **Type** | **Description** |
+| --- | --- | --- |
+| `bridge_total_requests` | CounterVec | Total number of requests handled per endpoint (`handler_id`) and HTTP status code (`status_code`). |
+| `bridge_request_latency_seconds` | HistogramVec | Latency of requests in seconds, recorded per endpoint (`handler_id`). Useful for analyzing request duration distributions. |
 
 ### Usage Notes
 
