@@ -2,6 +2,12 @@ package common
 
 import "sync"
 
+// PubSub defines the interface for a generic publish/subscribe mechanism.
+type PubSub[T any] interface {
+	Subscribe(subscriberName string) <-chan T
+	Publish(data T)
+}
+
 type GenericSubscriber[T any] struct {
 	// map of subscribers with names
 	subs map[chan T]string

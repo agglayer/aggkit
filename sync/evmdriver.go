@@ -38,7 +38,7 @@ type EVMDriver struct {
 	rh                   *RetryHandler
 	log                  aggkitcommon.Logger
 	compatibilityChecker compatibility.CompatibilityChecker
-	blockSubscriber      *aggkitcommon.GenericSubscriber[Block]
+	blockSubscriber      aggkitcommon.PubSub[Block]
 }
 
 // RuntimeData is the data that is used to check that the DB is compatible with the runtime data
