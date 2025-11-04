@@ -107,7 +107,6 @@ func TestNewLx(t *testing.T) {
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
 
-	// Fails the sanity check of the contract address
 	mockEthClient = mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	mockEthClient.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
@@ -668,12 +667,10 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		root, err := s.GetLastRoot(ctx)
 		require.Error(t, err)
 		require.Nil(t, root)
-		// The error should be db.ErrNotFound from the tree package
 		require.Contains(t, err.Error(), "not found")
 	})
 
 	t.Run("get last root after processing bridge events", func(t *testing.T) {
-		// Create some bridge events to process
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
 				BlockNum:           1,
@@ -732,10 +729,8 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	})
 
 	t.Run("get last root after multiple blocks", func(t *testing.T) {
-		// Reset halted state
 		s.processor.halted = false
 
-		// Process another block with more bridge events
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
 				BlockNum:           2,

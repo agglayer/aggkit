@@ -88,6 +88,66 @@ func (_c *GERQuerier_GetInjectedGERsProofs_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// GetRemovedGERsForRange provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *GERQuerier) GetRemovedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRemovedGERsForRange")
+	}
+
+	var r0 []*agglayertypes.RemovedGER
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)); ok {
+		return rf(ctx, fromBlock, toBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []*agglayertypes.RemovedGER); ok {
+		r0 = rf(ctx, fromBlock, toBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*agglayertypes.RemovedGER)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) error); ok {
+		r1 = rf(ctx, fromBlock, toBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GERQuerier_GetRemovedGERsForRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemovedGERsForRange'
+type GERQuerier_GetRemovedGERsForRange_Call struct {
+	*mock.Call
+}
+
+// GetRemovedGERsForRange is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fromBlock uint64
+//   - toBlock uint64
+func (_e *GERQuerier_Expecter) GetRemovedGERsForRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *GERQuerier_GetRemovedGERsForRange_Call {
+	return &GERQuerier_GetRemovedGERsForRange_Call{Call: _e.mock.On("GetRemovedGERsForRange", ctx, fromBlock, toBlock)}
+}
+
+func (_c *GERQuerier_GetRemovedGERsForRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *GERQuerier_GetRemovedGERsForRange_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
+	})
+	return _c
+}
+
+func (_c *GERQuerier_GetRemovedGERsForRange_Call) Return(_a0 []*agglayertypes.RemovedGER, _a1 error) *GERQuerier_GetRemovedGERsForRange_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *GERQuerier_GetRemovedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)) *GERQuerier_GetRemovedGERsForRange_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewGERQuerier creates a new instance of GERQuerier. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewGERQuerier(t interface {

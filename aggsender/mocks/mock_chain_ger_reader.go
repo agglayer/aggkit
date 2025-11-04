@@ -3,9 +3,10 @@
 package mocks
 
 import (
-	context "context"
-
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	common "github.com/ethereum/go-ethereum/common"
+
+	context "context"
 
 	l2gersync "github.com/agglayer/aggkit/l2gersync"
 
@@ -81,6 +82,66 @@ func (_c *ChainGERReader_GetInjectedGERsForRange_Call) Return(_a0 map[common.Has
 }
 
 func (_c *ChainGERReader_GetInjectedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)) *ChainGERReader_GetInjectedGERsForRange_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRemovedGERsForRange provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *ChainGERReader) GetRemovedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRemovedGERsForRange")
+	}
+
+	var r0 []*agglayertypes.RemovedGER
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)); ok {
+		return rf(ctx, fromBlock, toBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []*agglayertypes.RemovedGER); ok {
+		r0 = rf(ctx, fromBlock, toBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*agglayertypes.RemovedGER)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) error); ok {
+		r1 = rf(ctx, fromBlock, toBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ChainGERReader_GetRemovedGERsForRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemovedGERsForRange'
+type ChainGERReader_GetRemovedGERsForRange_Call struct {
+	*mock.Call
+}
+
+// GetRemovedGERsForRange is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fromBlock uint64
+//   - toBlock uint64
+func (_e *ChainGERReader_Expecter) GetRemovedGERsForRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *ChainGERReader_GetRemovedGERsForRange_Call {
+	return &ChainGERReader_GetRemovedGERsForRange_Call{Call: _e.mock.On("GetRemovedGERsForRange", ctx, fromBlock, toBlock)}
+}
+
+func (_c *ChainGERReader_GetRemovedGERsForRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *ChainGERReader_GetRemovedGERsForRange_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
+	})
+	return _c
+}
+
+func (_c *ChainGERReader_GetRemovedGERsForRange_Call) Return(_a0 []*agglayertypes.RemovedGER, _a1 error) *ChainGERReader_GetRemovedGERsForRange_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ChainGERReader_GetRemovedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)) *ChainGERReader_GetRemovedGERsForRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

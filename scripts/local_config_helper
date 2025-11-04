@@ -253,13 +253,14 @@ function common_export_values_of_aggkit_config() {
     local AGGKIT_CONFIG_FILE=$1
     export_key_from_toml_file_or_fatal zkevm_rollup_id $AGGKIT_CONFIG_FILE "." NetworkID
     export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $AGGKIT_CONFIG_FILE "." genesisBlockNumber
-    export_key_from_toml_file_or_fatal zkevm_bridge_address $AGGKIT_CONFIG_FILE "." polygonBridgeAddr
     export_key_from_toml_file_or_fatal zkevm_l2_keystore_password $AGGKIT_CONFIG_FILE "." SequencerPrivateKeyPassword
     export_key_from_toml_file_or_fatal l1_chain_id $AGGKIT_CONFIG_FILE L1Config chainId
     export_key_from_toml_file_or_fatal pol_token_address $AGGKIT_CONFIG_FILE L1Config polTokenAddress
     export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $AGGKIT_CONFIG_FILE L1Config polygonRollupManagerAddress
     export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
     export_key_from_toml_file_or_fatal zkevm_rollup_chain_id $AGGKIT_CONFIG_FILE AggOracle.EVMSender.EthTxManager.Etherman L1ChainID
+    export_key_from_toml_file_or_fatal zkevm_bridge_address $AGGKIT_CONFIG_FILE L1Config BridgeAddr
+    export_key_from_toml_file_or_fatal zkevm_bridge_l2_address $AGGKIT_CONFIG_FILE L2Config BridgeAddr
 }
 
 ###############################################################################
@@ -281,15 +282,14 @@ function common_aggsender_committee_override_urls(){
     export aggsender_committee_override_urls=""
     local _VALIDATOR
     for _VALIDATOR in $(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep aggkit-001-aggsender-validator | sed -r "s/\ +/\ /g" | cut -f 2 -d ' '); do
-        
         export_portnum_from_kurtosis_or_fail _LOCAL_PORT_VALIDATOR $_VALIDATOR validator-grpc
-        log_debug "Found validator: $_VALIDATOR port=$_LOCAL_PORT_VALIDATOR" 
+        log_debug "Found validator: $_VALIDATOR port=$_LOCAL_PORT_VALIDATOR"
         aggsender_committee_override_urls="${aggsender_committee_override_urls} \"http://${_VALIDATOR}:5578\" = \"http://localhost:${_LOCAL_PORT_VALIDATOR}\","
     done
     if [ ! -z "$aggsender_committee_override_urls" ]; then
         # Remove last ',' and add the {}
         aggsender_committee_override_urls="{ ${aggsender_committee_override_urls::-1} }"
-    else 
+    else
         aggsender_committee_override_urls="{}"
     fi
     log_debug "aggsender_committee_override_urls=${aggsender_committee_override_urls}"
@@ -347,7 +347,6 @@ function main(){
     common_aggsender_committee_override_urls
     download_kurtosis_artifacts
 
-  
     export_ports_from_kurtosis
     export_values_of_aggkit_config $DEST/config.toml
     export_forced_values

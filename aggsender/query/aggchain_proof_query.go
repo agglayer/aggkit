@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"google.golang.org/grpc/codes"
@@ -33,6 +34,7 @@ type aggchainProofQuery struct {
 	lerQuerier            types.LocalExitRootQuery
 	optimisticSigner      types.OptimisticSigner
 	gerQuerier            types.GERQuerier
+	bridgeQuerier         types.BridgeQuerier
 }
 
 // NewAggchainProofQuery creates a new instance of aggchainProofQuery with the provided dependencies.
@@ -43,6 +45,7 @@ func NewAggchainProofQuery(
 	optimisticSigner types.OptimisticSigner,
 	lerQuerier types.LocalExitRootQuery,
 	gerQuerier types.GERQuerier,
+	bridgeQuerier types.BridgeQuerier,
 ) *aggchainProofQuery {
 	return &aggchainProofQuery{
 		aggchainProofClient:   aggchainproofclient,
@@ -51,6 +54,7 @@ func NewAggchainProofQuery(
 		gerQuerier:            gerQuerier,
 		lerQuerier:            lerQuerier,
 		log:                   log,
+		bridgeQuerier:         bridgeQuerier,
 	}
 }
 
@@ -96,6 +100,17 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
+
+	removedGERs, err := a.gerQuerier.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
+	}
+
+	unclaims, err := a.convertUnclaimsToAgglayerUnclaims(certBuildParams.Unclaims)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error converting unclaims to unclaims: %w", err)
+	}
+
 	var aggchainProof *types.AggchainProof
 	request := &types.AggchainProofRequest{
 		LastProvenBlock:    lastProvenBlock,
@@ -108,6 +123,8 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		},
 		GERLeavesWithBlockNumber:           injectedGERsProofs,
 		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
+		RemovedGERs:                        removedGERs,
+		Unclaims:                           unclaims,
 	}
 	// It decide if must generate optimistic proof using CertType
 	optimisticMode := certBuildParams.CertificateType == types.CertificateTypeOptimistic
@@ -183,11 +200,38 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
 		}
+
 		importedBridgeExits = append(importedBridgeExits, &agglayertypes.ImportedBridgeExitWithBlockNumber{
 			ImportedBridgeExit: ibe,
 			BlockNumber:        claim.BlockNum,
+			LogIndex:           claim.BlockPos,
 		})
 	}
 
 	return importedBridgeExits, nil
+}
+
+func (a *aggchainProofQuery) convertUnclaimsToAgglayerUnclaims(
+	unclaims []bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
+	unclaimsConverted := make([]*agglayertypes.Unclaim, 0, len(unclaims))
+
+	for _, unclaim := range unclaims {
+		// Decode the *big.Int GlobalIndex to GlobalIndex struct
+		mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(unclaim.GlobalIndex)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding global index: %w", err)
+		}
+
+		unclaimsConverted = append(unclaimsConverted, &agglayertypes.Unclaim{
+			GlobalIndex: &agglayertypes.GlobalIndex{
+				MainnetFlag: mainnetFlag,
+				RollupIndex: rollupIndex,
+				LeafIndex:   leafIndex,
+			},
+			BlockNumber: unclaim.BlockNumber,
+			LogIndex:    unclaim.LogIndex,
+		})
+	}
+
+	return unclaimsConverted, nil
 }
