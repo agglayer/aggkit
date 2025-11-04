@@ -13,7 +13,7 @@ const (
 	numberOfCertificatesSent    = "number_of_certificates_sent"
 	numberOfCertificatesInError = "number_of_certificates_in_error"
 	numberOfSendingRetries      = "number_of_sending_retries"
-	numberOfCertificatesSettled = "number_of_sending_settled"
+	numberOfCertificatesSettled = "number_of_certificates_settled"
 	certificateBuildTime        = "certificate_build_time"
 	proverTime                  = "prover_time"
 	numberOfProverErrors        = "number_of_prover_errors"
@@ -26,7 +26,7 @@ const (
 
 // Register the metrics for the aggsender package
 func Register() {
-	gauges := []prometheusClient.GaugeOpts{
+	counters := []prometheusClient.CounterOpts{
 		{
 			Namespace: namespace,
 			Name:      numberOfCertificatesSent,
@@ -58,7 +58,7 @@ func Register() {
 			Help:      "Number of times multisig threshold was not reached",
 		},
 	}
-	prometheus.RegisterGauges(gauges...)
+	prometheus.RegisterCounters(counters...)
 
 	counterVecs := []prometheus.CounterVecOpts{
 		{
@@ -112,44 +112,44 @@ func Register() {
 	log.Info("Registered prometheus aggsender metrics")
 }
 
-// CertificateSent increments the gauge for the number of certificates sent
+// CertificateSent increments the counter for the number of certificates sent
 func CertificateSent() {
-	prometheus.GaugeInc(numberOfCertificatesSent)
+	prometheus.CounterInc(numberOfCertificatesSent)
 }
 
-// InError increments the gauge for the number of certificates in error
+// InError increments the counter for the number of certificates in error
 func InError() {
-	prometheus.GaugeInc(numberOfCertificatesInError)
+	prometheus.CounterInc(numberOfCertificatesInError)
 }
 
-// SendingRetry increments the gauge for the number of sending retries
+// SendingRetry increments the counter for the number of sending retries
 func SendingRetry() {
-	prometheus.GaugeInc(numberOfSendingRetries)
+	prometheus.CounterInc(numberOfSendingRetries)
 }
 
-// Settled increments the gauge for the number of certificates settled
+// Settled increments the counter for the number of certificates settled
 func Settled() {
-	prometheus.GaugeInc(numberOfCertificatesSettled)
+	prometheus.CounterInc(numberOfCertificatesSettled)
 }
 
-// CertificateBuildTime sets the gauge for the certificate build time
+// CertificateBuildTime sets the counter for the certificate build time
 func CertificateBuildTime(value float64) {
 	prometheus.HistogramObserve(certificateBuildTime, value)
 }
 
-// ProverTime sets the gauge for the prover time
+// ProverTime provides a histogram for the prover time
 func ProverTime(value float64) {
 	prometheus.HistogramObserve(proverTime, value)
 }
 
-// CertificateSettlementTime sets the gauge for the certificate settlement time
+// CertificateSettlementTime provides a histogram for the certificate settlement time
 func CertificateSettlementTime(value float64) {
 	prometheus.HistogramObserve(certificateSettlementTime, value)
 }
 
-// ProverError increments the gauge for the number of prover errors
+// ProverError increments the counter for the number of prover errors
 func ProverError() {
-	prometheus.GaugeInc(numberOfProverErrors)
+	prometheus.CounterInc(numberOfProverErrors)
 }
 
 // ValidatorError increments the counter for the number of validator errors, labeled by validator address
@@ -163,13 +163,13 @@ func ValidatorInvalidSignature(validator common.Address) {
 	prometheus.CounterVecInc(validatorInvalidSignature, validator.String())
 }
 
-// ValidateTime sets the gauge for the time taken to validate a certificate
+// ValidateTime provides a histogram for the time taken to validate a certificate
 func ValidateTime(value float64) {
 	prometheus.HistogramObserve(validateTime, value)
 }
 
-// MultiSigThresholdNotReached increments the gauge for the number of times
+// MultiSigThresholdNotReached increments the counter for the number of times
 // the multisig threshold was not reached
 func MultiSigThresholdNotReached() {
-	prometheus.GaugeInc(multiSigThresholdNotReached)
+	prometheus.CounterInc(multiSigThresholdNotReached)
 }
