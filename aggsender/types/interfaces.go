@@ -102,7 +102,7 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
-	SubscribeToSync(subscriberID string, bufferSize int) *sync.Subscription
+	SubscribeToSync(subscriberID string) <-chan sync.Block
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement

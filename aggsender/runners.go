@@ -13,8 +13,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
-const bufferSizeBlockNotifier = 100
-
 // NewRunner creates and returns a new Runner instance based on the provided configuration mode.
 // It supports two modes: PreconfPPMode which returns a preconfRunner, and all other modes
 // which return an epochBasedRunner.
@@ -130,9 +128,9 @@ func (r *epochBasedRunner) Run(ctx context.Context, certSender types.Certificate
 // preconfRunner handles preconfirmation operations by listening to L2 bridge synchronization
 // and maintaining subscription state to the synchronized L2 bridge events.
 type preconfRunner struct {
-	log          aggkitcommon.Logger
-	l2BridgeSync types.L2BridgeSyncer
-	subscription *sync.Subscription
+	log            aggkitcommon.Logger
+	l2BridgeSync   types.L2BridgeSyncer
+	syncedBlockSub <-chan sync.Block
 }
 
 // newPreconfRunner creates and initializes a new preconfRunner instance.
@@ -152,7 +150,8 @@ func newPreconfRunner(
 	return &preconfRunner{
 		log:          log,
 		l2BridgeSync: l2BridgeSync,
-		subscription: l2BridgeSync.SubscribeToSync("aggsender", bufferSizeBlockNotifier), // TODO make buffer size configurable
+		// TODO make buffer size configurable
+		syncedBlockSub: l2BridgeSync.SubscribeToSync("aggsender"),
 	}
 }
 
@@ -167,9 +166,9 @@ func (r *preconfRunner) Run(ctx context.Context, certSender types.CertificateSen
 
 	for {
 		select {
-		case blockNotification := <-r.subscription.BlockCh:
+		case blockNotification := <-r.syncedBlockSub:
 			r.log.Infof("PreconfPP: received block %d with %d events",
-				blockNotification.Block.Num, len(blockNotification.Block.Events))
+				blockNotification.Num, len(blockNotification.Events))
 			// TODO build preconf request and send it
 		case <-ctx.Done():
 			r.log.Info("PreconfPP runner stopped")

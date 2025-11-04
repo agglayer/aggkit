@@ -483,20 +483,20 @@ func (_c *L2BridgeSyncer_OriginNetwork_Call) RunAndReturn(run func() uint32) *L2
 	return _c
 }
 
-// SubscribeToSync provides a mock function with given fields: subscriberID, bufferSize
-func (_m *L2BridgeSyncer) SubscribeToSync(subscriberID string, bufferSize int) *sync.Subscription {
-	ret := _m.Called(subscriberID, bufferSize)
+// SubscribeToSync provides a mock function with given fields: subscriberID
+func (_m *L2BridgeSyncer) SubscribeToSync(subscriberID string) <-chan sync.Block {
+	ret := _m.Called(subscriberID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SubscribeToSync")
 	}
 
-	var r0 *sync.Subscription
-	if rf, ok := ret.Get(0).(func(string, int) *sync.Subscription); ok {
-		r0 = rf(subscriberID, bufferSize)
+	var r0 <-chan sync.Block
+	if rf, ok := ret.Get(0).(func(string) <-chan sync.Block); ok {
+		r0 = rf(subscriberID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*sync.Subscription)
+			r0 = ret.Get(0).(<-chan sync.Block)
 		}
 	}
 
@@ -510,24 +510,23 @@ type L2BridgeSyncer_SubscribeToSync_Call struct {
 
 // SubscribeToSync is a helper method to define mock.On call
 //   - subscriberID string
-//   - bufferSize int
-func (_e *L2BridgeSyncer_Expecter) SubscribeToSync(subscriberID interface{}, bufferSize interface{}) *L2BridgeSyncer_SubscribeToSync_Call {
-	return &L2BridgeSyncer_SubscribeToSync_Call{Call: _e.mock.On("SubscribeToSync", subscriberID, bufferSize)}
+func (_e *L2BridgeSyncer_Expecter) SubscribeToSync(subscriberID interface{}) *L2BridgeSyncer_SubscribeToSync_Call {
+	return &L2BridgeSyncer_SubscribeToSync_Call{Call: _e.mock.On("SubscribeToSync", subscriberID)}
 }
 
-func (_c *L2BridgeSyncer_SubscribeToSync_Call) Run(run func(subscriberID string, bufferSize int)) *L2BridgeSyncer_SubscribeToSync_Call {
+func (_c *L2BridgeSyncer_SubscribeToSync_Call) Run(run func(subscriberID string)) *L2BridgeSyncer_SubscribeToSync_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(int))
+		run(args[0].(string))
 	})
 	return _c
 }
 
-func (_c *L2BridgeSyncer_SubscribeToSync_Call) Return(_a0 *sync.Subscription) *L2BridgeSyncer_SubscribeToSync_Call {
+func (_c *L2BridgeSyncer_SubscribeToSync_Call) Return(_a0 <-chan sync.Block) *L2BridgeSyncer_SubscribeToSync_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *L2BridgeSyncer_SubscribeToSync_Call) RunAndReturn(run func(string, int) *sync.Subscription) *L2BridgeSyncer_SubscribeToSync_Call {
+func (_c *L2BridgeSyncer_SubscribeToSync_Call) RunAndReturn(run func(string) <-chan sync.Block) *L2BridgeSyncer_SubscribeToSync_Call {
 	_c.Call.Return(run)
 	return _c
 }

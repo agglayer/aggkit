@@ -37,12 +37,8 @@ func TestNewRunner(t *testing.T) {
 				agglayerClient := agglayermocks.NewAgglayerClientMock(t)
 
 				// Mock subscription creation for preconfRunner
-				subscription := &sync.Subscription{
-					ID:      "aggsender",
-					BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
-					ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
-				}
-				l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
+				subscription := make(chan sync.Block)
+				l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(subscription)
 
 				return logger, l1Client, l2BridgeSync, agglayerClient
 			},
@@ -225,19 +221,15 @@ func TestNewPreconfRunner(t *testing.T) {
 	l2BridgeSync := mocks.NewL2BridgeSyncer(t)
 
 	// Mock subscription creation
-	expectedSubscription := &sync.Subscription{
-		ID:      "aggsender",
-		BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
-		ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
-	}
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(expectedSubscription)
+	expectedSubscription := make(<-chan sync.Block)
+	l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(expectedSubscription)
 
 	runner := newPreconfRunner(logger, l2BridgeSync)
 
 	require.NotNil(t, runner)
 	require.Equal(t, logger, runner.log)
 	require.Equal(t, l2BridgeSync, runner.l2BridgeSync)
-	require.Equal(t, expectedSubscription, runner.subscription)
+	require.Equal(t, expectedSubscription, runner.syncedBlockSub)
 }
 
 func TestPreconfRunner_Status(t *testing.T) {
@@ -245,12 +237,8 @@ func TestPreconfRunner_Status(t *testing.T) {
 	l2BridgeSync := mocks.NewL2BridgeSyncer(t)
 
 	// Mock subscription creation
-	subscription := &sync.Subscription{
-		ID:      "aggsender",
-		BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
-		ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
-	}
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
+	subscription := make(chan sync.Block)
+	l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(subscription)
 
 	runner := newPreconfRunner(logger, l2BridgeSync)
 	status := runner.Status()
@@ -268,13 +256,8 @@ func TestPreconfRunner_Run(t *testing.T) {
 		mockCertSender := mocks.NewCertificateSender(t)
 
 		// Create subscription with channels
-		blockCh := make(chan sync.BlockNotification, bufferSizeBlockNotifier)
-		subscription := &sync.Subscription{
-			ID:      "aggsender",
-			BlockCh: blockCh,
-			ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
-		}
-		l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
+		blockCh := make(chan sync.Block, 1)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(blockCh)
 
 		// Mock logging calls
 		logger.EXPECT().Info("PreconfPP mode: listening to bridge sync events")
@@ -286,11 +269,9 @@ func TestPreconfRunner_Run(t *testing.T) {
 		// Send a test block notification
 		go func() {
 			time.Sleep(10 * time.Millisecond)
-			blockNotification := sync.BlockNotification{
-				Block: sync.Block{
-					Num:    100,
-					Events: make([]any, 2), // 2 events
-				},
+			blockNotification := sync.Block{
+				Num:    100,
+				Events: make([]any, 2), // 2 events
 			}
 			blockCh <- blockNotification
 		}()
@@ -307,12 +288,8 @@ func TestPreconfRunner_Run(t *testing.T) {
 		mockCertSender := mocks.NewCertificateSender(t)
 
 		// Create subscription
-		subscription := &sync.Subscription{
-			ID:      "aggsender",
-			BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
-			ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
-		}
-		l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
+		subscription := make(chan sync.Block)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(subscription)
 
 		// Mock logging calls
 		logger.EXPECT().Info("PreconfPP mode: listening to bridge sync events")
