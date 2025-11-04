@@ -705,7 +705,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		b.logger.Errorf(
+		b.logger.Debugf(
 			"failed to get L1 info tree index (network id=%d, deposit count=%d): %v",
 			networkID,
 			depositCount,
