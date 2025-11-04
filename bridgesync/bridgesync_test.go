@@ -75,7 +75,6 @@ func TestNewLx(t *testing.T) {
 		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
-		false,
 	)
 
 	require.NoError(t, err)

@@ -160,7 +160,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
 
 	// Create the bridge syncer with reorg detector
-	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
 	require.Equal(t, originNetwork, syncer.OriginNetwork())
@@ -331,7 +331,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	}
 
 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
-	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
 
@@ -438,7 +438,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
 
 	// Create the bridge syncer with reorg detector
-	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, true)
+	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
 	require.Equal(t, originNetwork, syncer.OriginNetwork())
