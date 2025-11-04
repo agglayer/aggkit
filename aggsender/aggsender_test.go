@@ -750,7 +750,6 @@ type aggsenderTestData struct {
 	l1InfoQuerier           *mocks.L1InfoTreeDataQuerier
 	l2BridgeQuerier         *mocks.BridgeQuerier
 	storageMock             *mocks.AggSenderStorage
-	epochNotifierMock       *mocks.EpochNotifier
 	flowMock                *mocks.AggsenderBuilderFlow
 	compatibilityChekerMock *mocksdb.CompatibilityChecker
 	certStatusCheckerMock   *mocks.CertificateStatusChecker

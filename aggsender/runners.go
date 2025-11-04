@@ -13,6 +13,8 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
+const bufferSizeBlockNotifier = 100
+
 // NewRunner creates and returns a new Runner instance based on the provided configuration mode.
 // It supports two modes: PreconfPPMode which returns a preconfRunner, and all other modes
 // which return an epochBasedRunner.
@@ -150,7 +152,7 @@ func newPreconfRunner(
 	return &preconfRunner{
 		log:          log,
 		l2BridgeSync: l2BridgeSync,
-		subscription: l2BridgeSync.SubscribeToSync("aggsender", 10), // TODO make buffer size configurable
+		subscription: l2BridgeSync.SubscribeToSync("aggsender", bufferSizeBlockNotifier), // TODO make buffer size configurable
 	}
 }
 
