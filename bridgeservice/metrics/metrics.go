@@ -1,15 +1,18 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/agglayer/aggkit/prometheus"
 	prometheusclient "github.com/prometheus/client_golang/prometheus"
 )
 
 const (
-	namespace     = "bridge"
-	totalRequests = "total_requests"
-	handlerName   = "handler_name"
-	statusCode    = "status_code"
+	namespace      = "bridge"
+	totalRequests  = "total_requests"
+	requestLatency = "request_latency_seconds"
+	handlerID      = "handler_id"
+	statusCode     = "status_code"
 
 	GetBridgesReq               = "get_bridges"
 	GetClaimsReq                = "get_claims"
@@ -29,16 +32,33 @@ func Register() {
 			CounterOpts: prometheusclient.CounterOpts{
 				Namespace: namespace,
 				Name:      totalRequests,
-				Help:      "Total number of requests per handler name and http response code",
+				Help:      "Total number of requests per handler id and http response code",
 			},
-			Labels: []string{handlerName, statusCode},
+			Labels: []string{handlerID, statusCode},
 		},
 	}
 
 	prometheus.RegisterCounterVecs(counterVecs...)
+
+	histogramVecs := []prometheus.HistogramVecOpts{
+		{
+			HistogramOpts: prometheusclient.HistogramOpts{
+				Namespace: namespace,
+				Name:      requestLatency,
+				Help:      "Request latencies per handler id",
+			},
+			Labels: []string{handlerID},
+		},
+	}
+	prometheus.RegisterHistogramVecs(histogramVecs...)
 }
 
-// IncTotalRequestCounter increments counter for given handler name and status code
-func IncTotalRequestCounter(handler string, status string) {
-	prometheus.CounterVecInc(totalRequests, handler, status)
+// IncTotalRequestCounter increments counter for given handler id and status code
+func IncTotalRequestCounter(handlerID string, status string) {
+	prometheus.CounterVecInc(totalRequests, handlerID, status)
+}
+
+// ObserveRequestLatencyHistogram reports latency in seconds for given handler id
+func ObserveRequestLatencyHistogram(handlerID string, startTime time.Time) {
+	prometheus.HistogramVecObserve(requestLatency, handlerID, time.Since(startTime).Seconds())
 }

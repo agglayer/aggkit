@@ -258,15 +258,16 @@ func (b *BridgeService) Start(ctx context.Context) {
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router / [get]
 func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
+	time := time.Now()
 	version := aggkit.GetVersion()
 	c.JSON(http.StatusOK,
 		types.HealthCheckResponse{
 			Status:  "ok",
-			Time:    time.Now().UTC(),
+			Time:    time.UTC(),
 			Version: version.Version,
 		})
 
-	reportMetrics(metrics.GetHealthCheckReq, http.StatusOK)
+	reportMetrics(metrics.GetHealthCheckReq, http.StatusOK, time)
 }
 
 // GetBridgesHandler retrieves paginated bridge data for the specified network.
@@ -290,7 +291,8 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetBridgesReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetBridgesReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -418,7 +420,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		c.Query(includeAllFields), c.Query(globalIndexParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetClaimsReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetClaimsReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -557,7 +560,8 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(originTokenAddrParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetTokenMappingsReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetTokenMappingsReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -638,7 +642,8 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetLegacyTokenMigrationsReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetLegacyTokenMigrationsReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -716,7 +721,8 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(depositCountParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetL1InfoTreeIndexReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetL1InfoTreeIndexReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -783,7 +789,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(leafIndexParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetIjectedInfoAfterIndexReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetIjectedInfoAfterIndexReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -867,7 +874,8 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(leafIndexParam), c.Query(depositCountParam))
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetClaimProofReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetClaimProofReq, statusCode, startTime)
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
@@ -982,7 +990,8 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	defer cancel()
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetLastReorgEventReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetLastReorgEventReq, statusCode, startTime)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -1094,7 +1103,8 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	b.logger.Debugf("GetSyncStatus request received")
 
 	statusCode := http.StatusOK
-	defer reportMetrics(metrics.GetSyncStatusReq, statusCode)
+	startTime := time.Now()
+	defer reportMetrics(metrics.GetSyncStatusReq, statusCode, startTime)
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
@@ -1307,6 +1317,7 @@ func (b *BridgeService) setupRequest(c *gin.Context) (context.Context, context.C
 // reportMetrics reports the request metric for the given handler and status code
 //
 //nolint:unparam
-func reportMetrics(handlerName string, statusCode int) {
-	metrics.IncTotalRequestCounter(handlerName, strconv.Itoa(statusCode))
+func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
+	metrics.IncTotalRequestCounter(handlerID, strconv.Itoa(statusCode))
+	metrics.ObserveRequestLatencyHistogram(handlerID, startTime)
 }
