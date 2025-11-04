@@ -111,3 +111,112 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 		})
 	}
 }
+
+func Test_GetRemovedGERsForRange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	testCases := []struct {
+		name          string
+		mockFn        func(*mocks.ChainGERReader)
+		expectedGERs  []*agglayertypes.RemovedGER
+		expectedError string
+	}{
+		{
+			name: "error getting removed GERs for range",
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader) {
+				mockChainGERReader.EXPECT().GetRemovedGERsForRange(ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
+			},
+			expectedError: "error getting removed GERs for range 1 : 10: some error",
+		},
+		{
+			name: "success with empty result",
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader) {
+				mockChainGERReader.EXPECT().GetRemovedGERsForRange(ctx, uint64(1), uint64(10)).Return([]*agglayertypes.RemovedGER{}, nil)
+			},
+			expectedGERs: []*agglayertypes.RemovedGER{},
+		},
+		{
+			name: "success with single removed GER",
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader) {
+				mockChainGERReader.EXPECT().GetRemovedGERsForRange(ctx, uint64(1), uint64(10)).Return([]*agglayertypes.RemovedGER{
+					{
+						GlobalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"),
+						BlockNumber:    5,
+						LogIndex:       2,
+					},
+				}, nil)
+			},
+			expectedGERs: []*agglayertypes.RemovedGER{
+				{
+					GlobalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"),
+					BlockNumber:    5,
+					LogIndex:       2,
+				},
+			},
+		},
+		{
+			name: "success with multiple removed GERs",
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader) {
+				mockChainGERReader.EXPECT().GetRemovedGERsForRange(ctx, uint64(1), uint64(10)).Return([]*agglayertypes.RemovedGER{
+					{
+						GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+						BlockNumber:    3,
+						LogIndex:       0,
+					},
+					{
+						GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+						BlockNumber:    7,
+						LogIndex:       1,
+					},
+					{
+						GlobalExitRoot: common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+						BlockNumber:    9,
+						LogIndex:       3,
+					},
+				}, nil)
+			},
+			expectedGERs: []*agglayertypes.RemovedGER{
+				{
+					GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+					BlockNumber:    3,
+					LogIndex:       0,
+				},
+				{
+					GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+					BlockNumber:    7,
+					LogIndex:       1,
+				},
+				{
+					GlobalExitRoot: common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+					BlockNumber:    9,
+					LogIndex:       3,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockGERReader := mocks.NewChainGERReader(t)
+			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+			gerQuerier := NewGERDataQuerier(mockL1InfoTreeQuery, mockGERReader)
+
+			tc.mockFn(mockGERReader)
+
+			removedGERs, err := gerQuerier.GetRemovedGERsForRange(ctx, 1, 10)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedGERs, removedGERs)
+			}
+
+			mockGERReader.AssertExpectations(t)
+		})
+	}
+}

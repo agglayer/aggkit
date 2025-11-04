@@ -25,8 +25,6 @@ NetworkID = {{.zkevm_rollup_id}}
 SequencerPrivateKeyPath = "{{.zkevm_l2_sequencer_keystore_file_path}}"
 SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 
-polygonBridgeAddr = "{{.zkevm_bridge_address}}"
-
 RPCURL = "{{.op_el_rpc_url}}"
 
 # These values can be overriden directly from genesis.json
@@ -74,6 +72,11 @@ polTokenAddress = "{{.pol_token_address}}"
 # ------------------------------------------------------------------------------
 polygonZkEVMAddress = "{{.sovereign_rollup_addr}}"
 
+# ------------------------------------------------------------------------------
+# Address of the bridge addr on L1
+# ------------------------------------------------------------------------------
+BridgeAddr = "0x0000000000000000000000000000000000000000"
+
 # ==============================================================================
 #  _     ____   ____ ___  _   _ _____ ___ ____
 # | |   |___ \ / ___/ _ \| \ | |  ___|_ _/ ___|
@@ -87,6 +90,10 @@ polygonZkEVMAddress = "{{.sovereign_rollup_addr}}"
 # Address of the sovereign global exit root proxy contract on L2
 # ------------------------------------------------------------------------------
 GlobalExitRootAddr = "{{.sovereign_ger_proxy_addr}}"
+# ------------------------------------------------------------------------------
+# Address of the bridge addr on L2
+# ------------------------------------------------------------------------------
+BridgeAddr = "0x0000000000000000000000000000000000000000"
 
 # ==============================================================================
 #  _     ___   ____

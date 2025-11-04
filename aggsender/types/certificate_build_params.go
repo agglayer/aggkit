@@ -6,6 +6,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -52,6 +53,7 @@ type CertificateBuildParams struct {
 	ToBlock                        uint64
 	Bridges                        []bridgesync.Bridge
 	Claims                         []bridgesync.Claim
+	Unclaims                       []bridgesynctypes.Unclaim
 	CreatedAt                      uint32
 	RetryCount                     int
 	LastSentCertificate            *CertificateHeader
@@ -63,8 +65,10 @@ type CertificateBuildParams struct {
 }
 
 func (c *CertificateBuildParams) String() string {
-	return fmt.Sprintf("Type: %s FromBlock: %d, ToBlock: %d, numBridges: %d, numClaims: %d, createdAt: %d",
-		c.CertificateType, c.FromBlock, c.ToBlock, c.NumberOfBridges(), c.NumberOfClaims(), c.CreatedAt)
+	return fmt.Sprintf(
+		"Type: %s FromBlock: %d, ToBlock: %d, numBridges: %d, "+
+			"numClaims: %d, numUnclaims: %d, createdAt: %d",
+		c.CertificateType, c.FromBlock, c.ToBlock, c.NumberOfBridges(), c.NumberOfClaims(), c.NumberOfUnclaims(), c.CreatedAt)
 }
 
 // Range create a new CertificateBuildParams with the given range
@@ -92,6 +96,8 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 			aggkitcommon.EstimateSliceCapacity(len(c.Bridges), span, fullSpan)),
 		Claims: make([]bridgesync.Claim, 0,
 			aggkitcommon.EstimateSliceCapacity(len(c.Claims), span, fullSpan)),
+		Unclaims: make([]bridgesynctypes.Unclaim, 0,
+			aggkitcommon.EstimateSliceCapacity(len(c.Unclaims), span, fullSpan)),
 		CreatedAt:                      c.CreatedAt,
 		RetryCount:                     c.RetryCount,
 		LastSentCertificate:            c.LastSentCertificate,
@@ -112,6 +118,12 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 			newCert.Claims = append(newCert.Claims, claim)
 		}
 	}
+
+	for _, unclaim := range c.Unclaims {
+		if unclaim.BlockNumber >= fromBlock && unclaim.BlockNumber <= toBlock {
+			newCert.Unclaims = append(newCert.Unclaims, unclaim)
+		}
+	}
 	return newCert, nil
 }
 
@@ -129,6 +141,14 @@ func (c *CertificateBuildParams) NumberOfClaims() int {
 		return 0
 	}
 	return len(c.Claims)
+}
+
+// NumberOfUnclaims returns the number of unclaims in the certificate
+func (c *CertificateBuildParams) NumberOfUnclaims() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.Unclaims)
 }
 
 // NumberOfBlocks returns the number of blocks in the certificate

@@ -9,6 +9,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -112,12 +113,22 @@ type BridgeQuerier interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
+	GetUnsetClaimsForBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
+	GetRemovedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
+}
+
+// AgglayerBridgeL2Reader is an interface defining functions that an AgglayerBridgeL2Reader should implement
+type AgglayerBridgeL2Reader interface {
+	GetUnsetClaimsForBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -156,6 +167,8 @@ type GERQuerier interface {
 		ctx context.Context,
 		finalizedL1InfoTreeRoot *treetypes.Root,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
+	GetRemovedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
 }
 
 // Logger is an interface that defines the methods to log messages

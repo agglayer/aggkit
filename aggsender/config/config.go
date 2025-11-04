@@ -91,6 +91,8 @@ type Config struct {
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 	// It allow to change committee URL for testing purposes
 	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
+	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

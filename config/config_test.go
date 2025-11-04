@@ -122,6 +122,8 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 	_, err = tmpFile.Write([]byte(`
+
+	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 	[Common]
 	IsValidiumMode = true
 	ContractVersions="banana"

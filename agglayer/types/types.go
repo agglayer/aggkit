@@ -862,10 +862,22 @@ func (l *L1InfoTreeLeaf) Validate() error {
 	return nil
 }
 
+type RemovedGER struct {
+	GlobalExitRoot common.Hash `json:"global_exit_root"`
+	BlockNumber    uint64      `json:"block_number"`
+	LogIndex       uint64      `json:"log_index"`
+}
+
+type Unclaim struct {
+	GlobalIndex *GlobalIndex `json:"global_index"`
+	BlockNumber uint64       `json:"block_number"`
+	LogIndex    uint64       `json:"log_index"`
+}
+
 type ProvenInsertedGERWithBlockNumber struct {
 	BlockNumber           uint64            `json:"block_number"`
 	ProvenInsertedGERLeaf ProvenInsertedGER `json:"inserted_ger_leaf"`
-	BlockIndex            uint              `json:"block_index"`
+	LogIndex              uint64            `json:"log_index"`
 }
 
 type ProvenInsertedGER struct {
@@ -875,6 +887,7 @@ type ProvenInsertedGER struct {
 
 type ImportedBridgeExitWithBlockNumber struct {
 	BlockNumber        uint64              `json:"block_number"`
+	LogIndex           uint64              `json:"log_index"`
 	ImportedBridgeExit *ImportedBridgeExit `json:"imported_bridge_exit"`
 }
 

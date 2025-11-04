@@ -134,7 +134,7 @@ func convertAggchainProofRequestToGrpcRequest(
 		}
 		convertedGerLeaves[k.String()] = &aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: v.BlockNumber,
-			BlockIndex:  uint64(v.BlockIndex),
+			LogIndex:    v.LogIndex,
 			ProvenInsertedGer: &aggkitProverV1Proto.ProvenInsertedGER{
 				ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
 					Root:     &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Root[:]},
@@ -167,6 +167,7 @@ func convertAggchainProofRequestToGrpcRequest(
 	for i, importedBridgeExitWithBlockNumber := range req.ImportedBridgeExitsWithBlockNumber {
 		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
 			BlockNumber: importedBridgeExitWithBlockNumber.BlockNumber,
+			LogIndex:    importedBridgeExitWithBlockNumber.LogIndex,
 			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.MainnetFlag,
@@ -180,6 +181,32 @@ func convertAggchainProofRequestToGrpcRequest(
 		}
 	}
 
+	convertedRemovedGers := make([]*aggkitProverV1Proto.RemovedGER, len(req.RemovedGERs))
+	for i, removedGER := range req.RemovedGERs {
+		convertedRemovedGers[i] = &aggkitProverV1Proto.RemovedGER{
+			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: removedGER.GlobalExitRoot[:],
+			},
+			BlockNumber: removedGER.BlockNumber,
+			LogIndex:    removedGER.LogIndex,
+		}
+	}
+
+	convertedUnclaims := make([]*aggkitProverV1Proto.Unclaim, len(req.Unclaims))
+	for i, unclaim := range req.Unclaims {
+		convertedUnclaims[i] = &aggkitProverV1Proto.Unclaim{
+			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
+					unclaim.GlobalIndex.MainnetFlag,
+					unclaim.GlobalIndex.RollupIndex,
+					unclaim.GlobalIndex.LeafIndex,
+				)).Bytes(),
+			},
+			BlockNumber: unclaim.BlockNumber,
+			LogIndex:    unclaim.LogIndex,
+		}
+	}
+
 	request := &aggkitProverV1Proto.GenerateAggchainProofRequest{
 		LastProvenBlock:       req.LastProvenBlock,
 		RequestedEndBlock:     req.RequestedEndBlock,
@@ -188,6 +215,8 @@ func convertAggchainProofRequestToGrpcRequest(
 		L1InfoTreeMerkleProof: convertedMerkleProof,
 		GerLeaves:             convertedGerLeaves,
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
+		RemovedGers:           convertedRemovedGers,
+		Unclaims:              convertedUnclaims,
 	}
 
 	return request

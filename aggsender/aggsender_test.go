@@ -23,6 +23,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
@@ -258,6 +259,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 			DepositCount:       1,
 		},
 	}, []bridgesync.Claim{}, nil).Once()
+	mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, uint64(11), uint64(50)).Return([]bridgesynctypes.Unclaim{}, nil).Once()
 	mockL1Querier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(common.Hash{}, nil).Once()
 	mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1)).Once()
