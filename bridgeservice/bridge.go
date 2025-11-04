@@ -259,11 +259,14 @@ func (b *BridgeService) Start(ctx context.Context) {
 // @Router / [get]
 func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 	version := aggkit.GetVersion()
-	c.JSON(http.StatusOK, types.HealthCheckResponse{
-		Status:  "ok",
-		Time:    time.Now().UTC(),
-		Version: version.Version,
-	})
+	c.JSON(http.StatusOK,
+		types.HealthCheckResponse{
+			Status:  "ok",
+			Time:    time.Now().UTC(),
+			Version: version.Version,
+		})
+
+	reportMetrics(metrics.GetHealthCheckReq, http.StatusOK)
 }
 
 // GetBridgesHandler retrieves paginated bridge data for the specified network.
@@ -286,17 +289,22 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	b.logger.Debugf("GetBridges request received (network id=%s, page number=%s, page size=%s)",
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetBridgesReq, statusCode)
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	depositCount, err := parseUintQuery(c, depositCountParam, false, uint64(math.MaxUint64))
 	if err != nil {
 		b.logger.Warnf(errDepositCountParam, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -310,14 +318,16 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	networkIDs, err := parseNetworkIDSliceParam(c, networkIDsParam)
 	if err != nil {
 		b.logger.Warnf("invalid network IDs parameter: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid network_ids: %s", err)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid network_ids: %s", err)})
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.BridgesReqs)
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -335,33 +345,37 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
-			c.JSON(http.StatusServiceUnavailable,
-				gin.H{"error": "L1 bridge syncer is not available"})
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
+
 		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L1 network: %v", err)
-			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err)})
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err)})
 			return
 		}
 	case b.networkID:
 		if b.bridgeL2 == nil {
-			c.JSON(http.StatusServiceUnavailable,
-				gin.H{"error": "L2 bridge syncer is not available"})
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
+
 		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L2 network (ID=%d): %v", networkID, err)
-			c.JSON(http.StatusInternalServerError,
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode,
 				gin.H{"error": fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s", networkID, err)})
 			return
 		}
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -373,7 +387,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
 	}
 
-	c.JSON(http.StatusOK,
+	c.JSON(statusCode,
 		types.BridgesResult{
 			Bridges: bridgeResponses,
 			Count:   count,
@@ -403,17 +417,22 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam),
 		c.Query(includeAllFields), c.Query(globalIndexParam))
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetClaimsReq, statusCode)
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	networkIDs, err := parseNetworkIDSliceParam(c, networkIDsParam)
 	if err != nil {
 		b.logger.Warnf("invalid network IDs parameter: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -425,7 +444,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		includeAllFieldsFlag, err = strconv.ParseBool(includeAllFieldsStr)
 		if err != nil {
 			b.logger.Warnf("invalid include_all_fields parameter: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid include_all_fields parameter"})
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": "invalid include_all_fields parameter"})
 			return
 		}
 	}
@@ -439,16 +459,18 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		globalIndex, ok = new(big.Int).SetString(globalIndexRaw, 0)
 		if !ok {
 			b.logger.Warnf("invalid %s parameter", globalIndexParam)
-			c.JSON(http.StatusBadRequest,
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode,
 				gin.H{"error": fmt.Sprintf("invalid %s parameter, it should be a numeric", globalIndexParam)})
 			return
 		}
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.ClaimsReqs)
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -467,33 +489,40 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
-			c.JSON(http.StatusServiceUnavailable,
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode,
 				gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
+
 		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
-			c.JSON(http.StatusInternalServerError,
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode,
 				gin.H{"error": fmt.Sprintf("failed to get claims for the L1 network, error: %s", err)})
 			return
 		}
 	case b.networkID:
 		if b.bridgeL2 == nil {
-			c.JSON(http.StatusServiceUnavailable,
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode,
 				gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
+
 		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
-			c.JSON(http.StatusInternalServerError,
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode,
 				gin.H{"error": fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err)})
 			return
 		}
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -503,7 +532,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		claimResponses[i] = NewClaimResponse(claim, includeAllFieldsFlag)
 	}
 
-	c.JSON(http.StatusOK,
+	c.JSON(statusCode,
 		types.ClaimsResult{
 			Claims: claimResponses,
 			Count:  count,
@@ -527,19 +556,24 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		"GetTokenMappings request received (network id=%s, page number=%s, page size=%s, origin token address=%s)",
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(originTokenAddrParam))
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetTokenMappingsReq, statusCode)
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	originTokenAddress := c.Query(originTokenAddrParam)
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.TokenMappingsReqs)
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -552,34 +586,36 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
-			c.JSON(http.StatusServiceUnavailable,
-				gin.H{"error": "L1 bridge syncer is not available"})
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
 		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	case b.networkID:
 		if b.bridgeL2 == nil {
-			c.JSON(http.StatusServiceUnavailable,
-				gin.H{"error": "L2 bridge syncer is not available"})
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
 		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
 	if err != nil {
 		b.logger.Errorf("failed to fetch token mappings: %v", err)
-		c.JSON(http.StatusInternalServerError,
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", err.Error())})
 		return
 	}
 
 	tokenMappingResponses := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
-	c.JSON(http.StatusOK,
+	c.JSON(statusCode,
 		types.TokenMappingsResult{
 			TokenMappings: tokenMappingResponses,
 			Count:         tokenMappingsCount,
@@ -601,17 +637,22 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s, page number=%s, page size=%s)",
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetLegacyTokenMigrationsReq, statusCode)
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, metrics.LegacyTokenMigrationReqs)
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -624,34 +665,36 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
-			c.JSON(http.StatusServiceUnavailable,
-				gin.H{"error": "L1 bridge syncer is not available"})
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	case b.networkID:
 		if b.bridgeL2 == nil {
-			c.JSON(http.StatusServiceUnavailable,
-				gin.H{"error": "L2 bridge syncer is not available"})
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
 	if err != nil {
 		b.logger.Errorf("failed to fetch legacy token migrations: %v", err)
-		c.JSON(http.StatusInternalServerError,
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", err.Error())})
 		return
 	}
 
 	tokenMigrationResponses := aggkitcommon.MapSlice(tokenMigrations, NewTokenMigrationResponse)
 
-	c.JSON(http.StatusOK,
+	c.JSON(statusCode,
 		types.LegacyTokenMigrationsResult{
 			TokenMigrations: tokenMigrationResponses,
 			Count:           tokenMigrationsCount,
@@ -672,27 +715,29 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
 		c.Query(networkIDParam), c.Query(depositCountParam))
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetL1InfoTreeIndexReq, statusCode)
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	depositCount, err := parseUintQuery(c, depositCountParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errDepositCountParam, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	metrics.IncL1InfoTreeIndexReqs()
-
 	var l1InfoTreeIndex uint32
-
 	switch networkID {
 	case mainnetNetworkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
@@ -700,7 +745,8 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -711,13 +757,14 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 			depositCount,
 			err,
 		)
-		c.JSON(http.StatusInternalServerError,
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get l1 info tree index for network id %d and deposit count %d, error: %s",
 				networkID, depositCount, err)})
 		return
 	}
 
-	c.JSON(http.StatusOK, l1InfoTreeIndex)
+	c.JSON(statusCode, l1InfoTreeIndex)
 }
 
 // @Summary Get injected L1 info tree leaf after a given L1 info tree index
@@ -735,24 +782,27 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
 		c.Query(networkIDParam), c.Query(leafIndexParam))
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetIjectedInfoAfterIndexReq, statusCode)
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	l1InfoTreeIndex, err := parseUintQuery(c, leafIndexParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf("invalid L1 info tree index parameter: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
-
-	metrics.IncInjectedInfoAfterIndexReqs()
 
 	var l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
 
@@ -763,7 +813,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
 			b.logger.Errorf("failed to get injected global exit root for leaf index=%d: %v", l1InfoTreeIndex, err)
-			c.JSON(http.StatusInternalServerError,
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode,
 				gin.H{"error": fmt.Sprintf("failed to get injected global exit root for leaf index=%d, error: %s",
 					l1InfoTreeIndex, err)})
 			return
@@ -772,27 +823,29 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
 			b.logger.Errorf("failed to get L1 info tree leaf (leaf index=%d): %v", e.L1InfoTreeIndex, err)
-			c.JSON(http.StatusInternalServerError,
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode,
 				gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s",
 					e.L1InfoTreeIndex, err)})
 			return
 		}
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
 	if err != nil {
 		b.logger.Debugf("failed to get L1 info tree leaf (network id=%d, leaf index=%d): %v", networkID, l1InfoTreeIndex, err)
-		c.JSON(http.StatusInternalServerError,
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
 				networkID, l1InfoTreeIndex, err)})
 		return
 	}
 
-	l1InfoLeafResponse := NewL1InfoTreeLeafResponse(l1InfoLeaf)
-	c.JSON(http.StatusOK, l1InfoLeafResponse)
+	c.JSON(statusCode, NewL1InfoTreeLeafResponse(l1InfoLeaf))
 }
 
 // ClaimProofHandler returns the Merkle proofs required to verify a claim on the target network.
@@ -812,10 +865,12 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	b.logger.Debugf("ClaimProof request received (network id=%s, l1 info tree index=%s, deposit count=%s)",
 		c.Query(networkIDParam), c.Query(leafIndexParam), c.Query(depositCountParam))
+
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetClaimProofReq, statusCode)
+
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
-
-	metrics.IncClaimProofReqs()
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -926,7 +981,8 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	metrics.IncLastReorgEventsReqs()
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetLastReorgEventReq, statusCode)
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -981,20 +1037,24 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	bridge Bridger,
 	networkInfo *types.NetworkSyncInfo,
 	networkName string,
-) bool {
+) int {
+	statusCode := http.StatusOK
+
 	contractDepositCount, err := bridge.GetContractDepositCount(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError,
+		statusCode := http.StatusInternalServerError
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get deposit count from %s bridge contract: %s", networkName, err)})
-		return false
+		return statusCode
 	}
 
 	// Get the last bridge from database
 	_, bridgesCount, err := bridge.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
 	if err != nil {
+		statusCode = http.StatusInternalServerError
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get bridges from %s database: %s", networkName, err)})
-		return false
+		return statusCode
 	}
 
 	networkInfo.SynchronizedDepositCount = uint32(bridgesCount)
@@ -1017,7 +1077,7 @@ func (b *BridgeService) populateNetworkSyncInfo(
 		}
 	}
 
-	return true
+	return statusCode
 }
 
 // GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks.
@@ -1033,10 +1093,11 @@ func (b *BridgeService) populateNetworkSyncInfo(
 func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	b.logger.Debugf("GetSyncStatus request received")
 
+	statusCode := http.StatusOK
+	defer reportMetrics(metrics.GetSyncStatusReq, statusCode)
+
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
-
-	metrics.IncSyncStatusReqs()
 
 	var syncStatus types.SyncStatus
 
@@ -1049,7 +1110,8 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		}
 
 		if l1IsActive {
-			if !b.populateNetworkSyncInfo(ctx, c, b.bridgeL1, syncStatus.L1Info, "L1") {
+			statusCode = b.populateNetworkSyncInfo(ctx, c, b.bridgeL1, syncStatus.L1Info, "L1")
+			if statusCode != http.StatusOK {
 				return
 			}
 		}
@@ -1068,7 +1130,8 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		}
 
 		if l2IsActive {
-			if !b.populateNetworkSyncInfo(ctx, c, b.bridgeL2, syncStatus.L2Info, "L2") {
+			statusCode = b.populateNetworkSyncInfo(ctx, c, b.bridgeL2, syncStatus.L2Info, "L2")
+			if statusCode != http.StatusOK {
 				return
 			}
 		}
@@ -1078,7 +1141,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, syncStatus)
+	c.JSON(statusCode, syncStatus)
 }
 
 func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
@@ -1220,9 +1283,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 }
 
 // setupRequest parses the pagination parameters from the request context
-func (b *BridgeService) setupRequest(
-	c *gin.Context,
-	counterName string) (context.Context, context.CancelFunc, uint32, uint32, error) {
+func (b *BridgeService) setupRequest(c *gin.Context) (context.Context, context.CancelFunc, uint32, uint32, error) {
 	pageNumber, err := parseUintQuery(c, pageNumberParam, false, DefaultPage)
 	if err != nil {
 		return nil, nil, 0, 0, err
@@ -1239,7 +1300,13 @@ func (b *BridgeService) setupRequest(
 	}
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
-	metrics.IncrementCounter(counterName)
 
 	return ctx, cancel, pageNumber, pageSize, nil
+}
+
+// reportMetrics reports the request metric for the given handler and status code
+//
+//nolint:unparam
+func reportMetrics(handlerName string, statusCode int) {
+	metrics.IncTotalRequestCounter(handlerName, strconv.Itoa(statusCode))
 }
