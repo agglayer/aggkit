@@ -4,6 +4,8 @@ package mocks
 
 import (
 	bridgesync "github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+
 	common "github.com/ethereum/go-ethereum/common"
 
 	context "context"
@@ -204,6 +206,66 @@ func (_c *BridgeQuerier_GetLastProcessedBlock_Call) Return(_a0 uint64, _a1 error
 }
 
 func (_c *BridgeQuerier_GetLastProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, error)) *BridgeQuerier_GetLastProcessedBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetUnsetClaimsForBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *BridgeQuerier) GetUnsetClaimsForBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesynctypes.Unclaim, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUnsetClaimsForBlockRange")
+	}
+
+	var r0 []bridgesynctypes.Unclaim
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]bridgesynctypes.Unclaim, error)); ok {
+		return rf(ctx, fromBlock, toBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []bridgesynctypes.Unclaim); ok {
+		r0 = rf(ctx, fromBlock, toBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]bridgesynctypes.Unclaim)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) error); ok {
+		r1 = rf(ctx, fromBlock, toBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// BridgeQuerier_GetUnsetClaimsForBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsForBlockRange'
+type BridgeQuerier_GetUnsetClaimsForBlockRange_Call struct {
+	*mock.Call
+}
+
+// GetUnsetClaimsForBlockRange is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fromBlock uint64
+//   - toBlock uint64
+func (_e *BridgeQuerier_Expecter) GetUnsetClaimsForBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
+	return &BridgeQuerier_GetUnsetClaimsForBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsForBlockRange", ctx, fromBlock, toBlock)}
+}
+
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
+	})
+	return _c
+}
+
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Return(_a0 []bridgesynctypes.Unclaim, _a1 error) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesynctypes.Unclaim, error)) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

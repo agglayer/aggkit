@@ -277,12 +277,12 @@ If enabled in the configuration, Aggsender exposes the following Prometheus metr
 
 | **Metric Name**                               | **Type**                                   | **Description**                                           |
 | --------------------------------------------- | ------------------------------------------ | --------------------------------------------------------- |
-| `aggsender_number_of_certificates_sent`       | Gauge                                      | Number of certificates sent                               |
-| `aggsender_number_of_certificates_in_error`   | Gauge                                      | Number of certificates in error                           |
-| `aggsender_number_of_sending_retries`         | Gauge                                      | Number of sending retries                                 |
-| `aggsender_number_of_sending_settled`         | Gauge                                      | Number of certificates settled                            |
-| `aggsender_number_of_prover_errors`           | Gauge                                      | Number of prover errors                                   |
-| `aggsender_multisig_threshold_not_reached`    | Gauge                                      | Number of times multisig threshold was not reached        |
+| `aggsender_number_of_certificates_sent`       | Counter                                      | Number of certificates sent                               |
+| `aggsender_number_of_certificates_in_error`   | Counter                                      | Number of certificates in error                           |
+| `aggsender_number_of_sending_retries`         | Counter                                      | Number of sending retries                                 |
+| `aggsender_number_of_certificates_settled`         | Counter                                      | Number of certificates settled                            |
+| `aggsender_number_of_prover_errors`           | Counter                                      | Number of prover errors                                   |
+| `aggsender_multisig_threshold_not_reached`    | Counter                                      | Number of times multisig threshold was not reached        |
 | `aggsender_validator_errors_total`            | Counter (labeled by `aggsender_validator`) | Total number of errors returned by a validator over time  |
 | `aggsender_validator_invalid_signature_total` | Counter (labeled by `aggsender_validator`) | Number of times a validator returned an invalid signature |
 | `aggsender_validate_time`                     | Histogram                                  | Time taken to validate a certificate (seconds)            |

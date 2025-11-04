@@ -90,9 +90,10 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 			mockSyncer := new(mocks.L2BridgeSyncer)
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
+			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
 
 			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
@@ -148,9 +149,10 @@ func TestGetExitRootByIndex(t *testing.T) {
 
 			mockSyncer := new(mocks.L2BridgeSyncer)
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
+			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
 
 			hash, err := bridgeQuerier.GetExitRootByIndex(ctx, tc.index)
 			if tc.expectedError != "" {
@@ -199,9 +201,10 @@ func TestGetLastProcessedBlock(t *testing.T) {
 
 			mockSyncer := new(mocks.L2BridgeSyncer)
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
+			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
 
 			block, err := bridgeQuerier.GetLastProcessedBlock(ctx)
 			if tc.expectedError != "" {
@@ -222,7 +225,9 @@ func TestOriginNetwork(t *testing.T) {
 	mockSyncer := new(mocks.L2BridgeSyncer)
 	mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 
-	bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+	AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
+
+	bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
 
 	originNetwork := bridgeQuerier.OriginNetwork()
 	require.Equal(t, uint32(1), originNetwork)
@@ -275,14 +280,16 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			mockSyncer := mocks.NewL2BridgeSyncer(t)
+			mockReader := mocks.NewAgglayerBridgeL2Reader(t)
 			if tc.mockFn != nil {
 				tc.mockFn(mockSyncer)
 			}
 
 			bridgeQuerier := &bridgeDataQuerier{
-				log:                 log.WithFields("test", "TestWaitForSyncerToCatchUp"),
-				bridgeSyncer:        mockSyncer,
-				delayBetweenRetries: tc.delayBetweenRetries,
+				log:                    log.WithFields("test", "TestWaitForSyncerToCatchUp"),
+				bridgeSyncer:           mockSyncer,
+				delayBetweenRetries:    tc.delayBetweenRetries,
+				agglayerBridgeL2Reader: mockReader,
 			}
 
 			err := bridgeQuerier.WaitForSyncerToCatchUp(ctx, tc.block)
@@ -293,6 +300,65 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 			}
 
 			mockSyncer.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetUnsetClaimsForBlockRange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	testCases := []struct {
+		name          string
+		fromBlock     uint64
+		toBlock       uint64
+		mockFn        func(*mocks.AgglayerBridgeL2Reader)
+		expectedError string
+	}{
+		{
+			name:      "error - failed to get unset claims from reader",
+			fromBlock: 100,
+			toBlock:   200,
+			mockFn: func(mockReader *mocks.AgglayerBridgeL2Reader) {
+				// No mocks needed for syncer as the error occurs before calling it
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, errors.New("failed to get unclaim block range: error")).Once()
+			},
+			expectedError: "failed to get unclaim block range: error",
+		},
+		{
+			name:      "success - empty unclaims list",
+			fromBlock: 100,
+			toBlock:   200,
+			mockFn: func(mockReader *mocks.AgglayerBridgeL2Reader) {
+				// No mocks needed for syncer as there are no unclaims to process
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, nil).Once()
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSyncer := new(mocks.L2BridgeSyncer)
+			mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
+			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
+			tc.mockFn(AgglayerBridgeL2Reader)
+
+			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", "TestGetUnsetClaimsForBlockRange"), mockSyncer, 0, AgglayerBridgeL2Reader)
+
+			unclaims, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, unclaims, 0) // Empty list case
+			}
+
+			mockSyncer.AssertExpectations(t)
+			AgglayerBridgeL2Reader.AssertExpectations(t)
 		})
 	}
 }
