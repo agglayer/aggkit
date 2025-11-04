@@ -504,6 +504,11 @@ func TestSendCertificate(t *testing.T) {
 }
 
 func TestNewAggSender(t *testing.T) {
+	mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
+	mockAgglayerClient.EXPECT().GetEpochConfiguration(t.Context()).Return(&agglayertypes.ClockConfiguration{
+		EpochDuration: 10,
+		GenesisBlock:  1000,
+	}, nil).Once()
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
 	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
 	mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
@@ -513,21 +518,21 @@ func TestNewAggSender(t *testing.T) {
 		1)
 	require.NoError(t, err)
 	mockCommitteeQuerier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
-	sut, err := newAggsender(context.TODO(), log.WithFields("module", "ut"),
+	mockCommitteeQuerier.EXPECT().ResolveAutoMode(mock.Anything).Return(aggsendertypes.PessimisticProofMode, nil).Once()
+	sut, err := New(t.Context(), log.WithFields("module", "ut"),
 		config.Config{
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
 			Mode: aggsendertypes.PessimisticProofMode,
 		},
-		nil, // agglayerClient
+		mockAgglayerClient,
 		nil, // l1 info tree syncer
 		mockBridgeSyncer,
 		nil, // l1 client
 		nil, // l2 client
 		mockRollupQuerier,
 		mockCommitteeQuerier,
-		nil, // runner
 	)
 	require.NoError(t, err)
 	require.NotNil(t, sut)

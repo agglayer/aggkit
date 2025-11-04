@@ -39,10 +39,10 @@ func TestNewRunner(t *testing.T) {
 				// Mock subscription creation for preconfRunner
 				subscription := &sync.Subscription{
 					ID:      "aggsender",
-					BlockCh: make(chan sync.BlockNotification, 10),
-					ReorgCh: make(chan sync.ReorgNotification, 10),
+					BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
+					ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
 				}
-				l2BridgeSync.EXPECT().SubscribeToSync("aggsender", 10).Return(subscription)
+				l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
 
 				return logger, l1Client, l2BridgeSync, agglayerClient
 			},
@@ -227,10 +227,10 @@ func TestNewPreconfRunner(t *testing.T) {
 	// Mock subscription creation
 	expectedSubscription := &sync.Subscription{
 		ID:      "aggsender",
-		BlockCh: make(chan sync.BlockNotification, 10),
-		ReorgCh: make(chan sync.ReorgNotification, 10),
+		BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
+		ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
 	}
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender", 10).Return(expectedSubscription)
+	l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(expectedSubscription)
 
 	runner := newPreconfRunner(logger, l2BridgeSync)
 
@@ -247,10 +247,10 @@ func TestPreconfRunner_Status(t *testing.T) {
 	// Mock subscription creation
 	subscription := &sync.Subscription{
 		ID:      "aggsender",
-		BlockCh: make(chan sync.BlockNotification, 10),
-		ReorgCh: make(chan sync.ReorgNotification, 10),
+		BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
+		ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
 	}
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender", 10).Return(subscription)
+	l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
 
 	runner := newPreconfRunner(logger, l2BridgeSync)
 	status := runner.Status()
@@ -268,13 +268,13 @@ func TestPreconfRunner_Run(t *testing.T) {
 		mockCertSender := mocks.NewCertificateSender(t)
 
 		// Create subscription with channels
-		blockCh := make(chan sync.BlockNotification, 10)
+		blockCh := make(chan sync.BlockNotification, bufferSizeBlockNotifier)
 		subscription := &sync.Subscription{
 			ID:      "aggsender",
 			BlockCh: blockCh,
-			ReorgCh: make(chan sync.ReorgNotification, 10),
+			ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
 		}
-		l2BridgeSync.EXPECT().SubscribeToSync("aggsender", 10).Return(subscription)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
 
 		// Mock logging calls
 		logger.EXPECT().Info("PreconfPP mode: listening to bridge sync events")
@@ -309,10 +309,10 @@ func TestPreconfRunner_Run(t *testing.T) {
 		// Create subscription
 		subscription := &sync.Subscription{
 			ID:      "aggsender",
-			BlockCh: make(chan sync.BlockNotification, 10),
-			ReorgCh: make(chan sync.ReorgNotification, 10),
+			BlockCh: make(chan sync.BlockNotification, bufferSizeBlockNotifier),
+			ReorgCh: make(chan sync.ReorgNotification, bufferSizeBlockNotifier),
 		}
-		l2BridgeSync.EXPECT().SubscribeToSync("aggsender", 10).Return(subscription)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender", bufferSizeBlockNotifier).Return(subscription)
 
 		// Mock logging calls
 		logger.EXPECT().Info("PreconfPP mode: listening to bridge sync events")
