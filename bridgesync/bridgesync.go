@@ -404,9 +404,9 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
 }
 
-// SubscribeToSync allows a subscriber to receive block and reorg notifications
-func (s *BridgeSync) SubscribeToSync(subscriberID string, bufferSize int) *sync.Subscription {
-	return s.processor.subscriberManager.Subscribe(subscriberID, bufferSize)
+// SubscribeToSync allows a subscriber to receive block notifications
+func (s *BridgeSync) SubscribeToSync(subscriberID string, bufferSize int) <-chan sync.Block {
+	return s.driver.SubscribeToNewBlocks(subscriberID)
 }
 
 type LastReorg struct {

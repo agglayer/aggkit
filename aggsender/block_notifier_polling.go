@@ -53,7 +53,7 @@ func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	logger aggkitcommon.Logger,
 	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
-		subscriber = NewGenericSubscriberImpl[types.EventNewBlock]()
+		subscriber = aggkitcommon.NewGenericSubscriber[types.EventNewBlock]()
 	}
 
 	return &BlockNotifierPolling{

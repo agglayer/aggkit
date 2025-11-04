@@ -82,7 +82,7 @@ func NewEpochNotifierPerBlock(blockNotifier types.BlockNotifier,
 	config ConfigEpochNotifierPerBlock,
 	subscriber types.GenericSubscriber[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
 	if subscriber == nil {
-		subscriber = NewGenericSubscriberImpl[types.EpochEvent]()
+		subscriber = aggkitcommon.NewGenericSubscriber[types.EpochEvent]()
 	}
 
 	err := config.Validate()

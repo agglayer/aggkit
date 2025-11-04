@@ -344,14 +344,13 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 }
 
 type processor struct {
-	db                *sql.DB
-	exitTree          *tree.AppendOnlyTree
-	log               *log.Logger
-	mu                mutex.RWMutex
-	halted            bool
-	haltedReason      string
-	dbQueryTimeout    time.Duration
-	subscriberManager *sync.SubscriberManager
+	db             *sql.DB
+	exitTree       *tree.AppendOnlyTree
+	log            *log.Logger
+	mu             mutex.RWMutex
+	halted         bool
+	haltedReason   string
+	dbQueryTimeout time.Duration
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -373,11 +372,10 @@ func newProcessor(
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
-		db:                database,
-		exitTree:          exitTree,
-		log:               logger,
-		dbQueryTimeout:    dbQueryTimeout,
-		subscriberManager: sync.NewSubscriberManager(logger),
+		db:             database,
+		exitTree:       exitTree,
+		log:            logger,
+		dbQueryTimeout: dbQueryTimeout,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			name,
@@ -800,11 +798,6 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
 
-	// Notify subscribers after successful reorg
-	if p.subscriberManager != nil {
-		p.subscriberManager.NotifyReorg(ctx, firstReorgedBlock)
-	}
-
 	return nil
 }
 
@@ -902,11 +895,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		p.log.Info(logMsg)
 	} else {
 		p.log.Debugf(logMsg)
-	}
-
-	// Notify subscribers after successful commit
-	if p.subscriberManager != nil {
-		p.subscriberManager.NotifyBlockProcessed(ctx, block)
 	}
 
 	return nil

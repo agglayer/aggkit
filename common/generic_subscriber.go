@@ -1,20 +1,20 @@
-package aggsender
+package common
 
 import "sync"
 
-type GenericSubscriberImpl[T any] struct {
+type GenericSubscriber[T any] struct {
 	// map of subscribers with names
 	subs map[chan T]string
 	mu   sync.RWMutex
 }
 
-func NewGenericSubscriberImpl[T any]() *GenericSubscriberImpl[T] {
-	return &GenericSubscriberImpl[T]{
+func NewGenericSubscriber[T any]() *GenericSubscriber[T] {
+	return &GenericSubscriber[T]{
 		subs: make(map[chan T]string),
 	}
 }
 
-func (g *GenericSubscriberImpl[T]) Subscribe(subscriberName string) <-chan T {
+func (g *GenericSubscriber[T]) Subscribe(subscriberName string) <-chan T {
 	ch := make(chan T)
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -22,7 +22,7 @@ func (g *GenericSubscriberImpl[T]) Subscribe(subscriberName string) <-chan T {
 	return ch
 }
 
-func (g *GenericSubscriberImpl[T]) Publish(data T) {
+func (g *GenericSubscriber[T]) Publish(data T) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	for ch := range g.subs {
