@@ -697,7 +697,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		b.logger.Errorf(
+		b.logger.Debugf(
 			"failed to get L1 info tree index (network id=%d, deposit count=%d): %v",
 			networkID,
 			depositCount,
@@ -780,7 +780,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		b.logger.Errorf("failed to get L1 info tree leaf (network id=%d, leaf index=%d): %v", networkID, l1InfoTreeIndex, err)
+		b.logger.Debugf("failed to get L1 info tree leaf (network id=%d, leaf index=%d): %v", networkID, l1InfoTreeIndex, err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
 				networkID, l1InfoTreeIndex, err)})
