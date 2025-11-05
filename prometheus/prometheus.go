@@ -231,13 +231,13 @@ func CounterVec(name string) (counterVec *prometheus.CounterVec, exist bool) {
 }
 
 // CounterVecInc increments the counter vec with the given name and label.
-func CounterVecInc(name string, label string) {
+func CounterVecInc(name string, labelValues ...string) {
 	if !initialized {
 		return
 	}
 
 	if cv, ok := CounterVec(name); ok {
-		cv.WithLabelValues(label).Inc()
+		cv.WithLabelValues(labelValues...).Inc()
 	}
 }
 
