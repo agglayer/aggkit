@@ -350,6 +350,63 @@ func (_c *L1InfoTreeDataQuerier_GetProofForGER_Call) RunAndReturn(run func(conte
 	return _c
 }
 
+// IsGERFinalized provides a mock function with given fields: ger, finalizedL1InfoLeafCount
+func (_m *L1InfoTreeDataQuerier) IsGERFinalized(ger common.Hash, finalizedL1InfoLeafCount uint32) (bool, error) {
+	ret := _m.Called(ger, finalizedL1InfoLeafCount)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsGERFinalized")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(common.Hash, uint32) (bool, error)); ok {
+		return rf(ger, finalizedL1InfoLeafCount)
+	}
+	if rf, ok := ret.Get(0).(func(common.Hash, uint32) bool); ok {
+		r0 = rf(ger, finalizedL1InfoLeafCount)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(common.Hash, uint32) error); ok {
+		r1 = rf(ger, finalizedL1InfoLeafCount)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeDataQuerier_IsGERFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsGERFinalized'
+type L1InfoTreeDataQuerier_IsGERFinalized_Call struct {
+	*mock.Call
+}
+
+// IsGERFinalized is a helper method to define mock.On call
+//   - ger common.Hash
+//   - finalizedL1InfoLeafCount uint32
+func (_e *L1InfoTreeDataQuerier_Expecter) IsGERFinalized(ger interface{}, finalizedL1InfoLeafCount interface{}) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	return &L1InfoTreeDataQuerier_IsGERFinalized_Call{Call: _e.mock.On("IsGERFinalized", ger, finalizedL1InfoLeafCount)}
+}
+
+func (_c *L1InfoTreeDataQuerier_IsGERFinalized_Call) Run(run func(ger common.Hash, finalizedL1InfoLeafCount uint32)) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(common.Hash), args[1].(uint32))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_IsGERFinalized_Call) Return(_a0 bool, _a1 error) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_IsGERFinalized_Call) RunAndReturn(run func(common.Hash, uint32) (bool, error)) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewL1InfoTreeDataQuerier creates a new instance of L1InfoTreeDataQuerier. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewL1InfoTreeDataQuerier(t interface {

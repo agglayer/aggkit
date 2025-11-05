@@ -201,6 +201,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						RollupExitRoot:  rer,
 					}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
 					Return(nil, errors.New("some error"))
 			},
@@ -247,6 +248,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					RollupExitRoot:  rer,
 				}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(11)).Return(true, nil).Once()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -301,6 +303,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						{BlockNum: 9, GlobalIndex: big.NewInt(2), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer}},
 					nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(11)).Return(true, nil).Twice()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},

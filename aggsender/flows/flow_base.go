@@ -208,6 +208,10 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 	if err != nil {
 		return nil, fmt.Errorf("error generating build params: %w", err)
 	}
+	params, err = f.adjustCertificateIfNonFinalizedClaims(params)
+	if err != nil {
+		return nil, fmt.Errorf("error adjusting certificate if non-finalized claims: %w", err)
+	}
 	params, err = f.LimitCertSize(params)
 	if err != nil {
 		return nil, fmt.Errorf("error applying limit size: %w", err)
@@ -546,4 +550,40 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 		retryCount = lastSentCertificateInfo.RetryCount + 1
 	}
 	return lastSentBlock, retryCount
+}
+
+// adjustCertificateIfNonFinalizedClaims checks if any claims in the certificate parameters
+// contain non-finalized Global Exit Roots (GERs). If a non-finalized GER is found, it
+// adjusts the certificate parameters to exclude that block and all subsequent blocks by
+// resizing the certificate to the block before the non-finalized claim.
+//
+// The function iterates through all claims in the certificate parameters and verifies
+// each claim's Global Exit Root finalization status using the L1 info tree data querier.
+// When a non-finalized GER is encountered, the certificate is truncated at the block
+// number preceding the problematic claim to ensure all included claims are finalized.
+//
+// Parameters:
+//   - certParams: Certificate build parameters containing claims to be validated
+//
+// Returns:
+//   - *types.CertificateBuildParams: Adjusted certificate parameters if non-finalized
+//     claims are found, otherwise returns the original parameters
+//   - error: Error if GER finalization status check fails
+func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
+	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+	for _, c := range certParams.Claims {
+		isGERFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(
+			c.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+		if err != nil {
+			return nil, fmt.Errorf("error checking if GER %s is finalized: %w", c.GlobalExitRoot.String(), err)
+		}
+
+		if !isGERFinalized {
+			f.log.Warnf("found a non-finalized GER: %s on block: %d. Certificate will be resized to exclude it and all blocks after it",
+				c.GlobalExitRoot.String(), c.BlockNum)
+			return certParams.AdjustToBlock(c.BlockNum - 1)
+		}
+	}
+
+	return certParams, nil
 }

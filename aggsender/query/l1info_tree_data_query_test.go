@@ -278,3 +278,112 @@ func Test_GetProofForGER(t *testing.T) {
 		})
 	}
 }
+
+func Test_IsGERFinalized(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                     string
+		ger                      common.Hash
+		finalizedL1InfoLeafCount uint32
+		mockFn                   func(*mocks.L1InfoTreeSyncer)
+		expectedResult           bool
+		expectedError            string
+	}{
+		{
+			name:                     "error getting info by global exit root",
+			ger:                      common.HexToHash("0x1"),
+			finalizedL1InfoLeafCount: 10,
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(nil, errors.New("some error"))
+			},
+			expectedError: "error getting info by global exit root: some error",
+		},
+		{
+			name:                     "no L1 Info tree leaf found for global exit root",
+			ger:                      common.HexToHash("0x1"),
+			finalizedL1InfoLeafCount: 10,
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(nil, nil)
+			},
+			expectedError: "no L1 Info tree leaf found for global exit root 0x0000000000000000000000000000000000000000000000000000000000000001",
+		},
+		{
+			name:                     "GER is finalized - leaf index equals finalized count minus 1",
+			ger:                      common.HexToHash("0x1"),
+			finalizedL1InfoLeafCount: 10,
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 9,
+						Hash:            common.HexToHash("0x2"),
+					}, nil,
+				)
+			},
+			expectedResult: true,
+		},
+		{
+			name:                     "GER is finalized - leaf index less than finalized count minus 1",
+			ger:                      common.HexToHash("0x1"),
+			finalizedL1InfoLeafCount: 10,
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 5,
+						Hash:            common.HexToHash("0x2"),
+					}, nil,
+				)
+			},
+			expectedResult: true,
+		},
+		{
+			name:                     "GER is not finalized - leaf index greater than finalized count minus 1",
+			ger:                      common.HexToHash("0x1"),
+			finalizedL1InfoLeafCount: 10,
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 10,
+						Hash:            common.HexToHash("0x2"),
+					}, nil,
+				)
+			},
+			expectedResult: false,
+		},
+		{
+			name:                     "edge case - finalized count is 1",
+			ger:                      common.HexToHash("0x1"),
+			finalizedL1InfoLeafCount: 1,
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 0,
+						Hash:            common.HexToHash("0x2"),
+					}, nil,
+				)
+			},
+			expectedResult: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(nil, mockL1InfoTreeSyncer)
+
+			tc.mockFn(mockL1InfoTreeSyncer)
+
+			result, err := l1InfoTreeDataQuery.IsGERFinalized(tc.ger, tc.finalizedL1InfoLeafCount)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedResult, result)
+			}
+
+			mockL1InfoTreeSyncer.AssertExpectations(t)
+		})
+	}
+}

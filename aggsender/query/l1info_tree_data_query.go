@@ -182,3 +182,19 @@ func (l *L1InfoTreeDataQuerier) GetInfoByIndex(
 	}
 	return info, nil
 }
+
+// IsGERFinalized checks if the given global exit root is finalized
+func (l *L1InfoTreeDataQuerier) IsGERFinalized(
+	ger common.Hash,
+	finalizedL1InfoLeafCount uint32) (bool, error) {
+	info, err := l.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(ger)
+	if err != nil {
+		return false, fmt.Errorf("error getting info by global exit root: %w", err)
+	}
+
+	if info == nil {
+		return false, fmt.Errorf("no L1 Info tree leaf found for global exit root %s", ger.String())
+	}
+
+	return info.L1InfoTreeIndex <= finalizedL1InfoLeafCount-1, nil
+}
