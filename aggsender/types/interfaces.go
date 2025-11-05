@@ -187,7 +187,8 @@ type Logger interface {
 
 // CertificateStatusChecker is an interface defining functions that a CertificateStatusChecker should implement
 type CertificateStatusChecker interface {
-	CheckPendingCertificatesStatus(ctx context.Context) CertStatus
+	//CheckPendingCertificatesStatus(ctx context.Context) CertStatus
+	CheckPeriodicallyCertificateStatus(ctx context.Context) (CertStatus, error)
 	CheckInitialStatus(
 		ctx context.Context,
 		delayBetweenRetries time.Duration,

@@ -263,7 +263,12 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			iteration++
 			a.log.Debugf("Checking perodical certificates status (%s)",
 				a.cfg.CheckCertConfigBriefString())
-			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
+
+			checkResult, err := a.certStatusChecker.CheckPeriodicallyCertificateStatus(ctx)
+			if err != nil {
+				a.status.SetLastError(err)
+				a.log.Errorf("error checking last certificate from agglayer: %v", err)
+			}
 			if !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
 				if a.cfg.RetryCertAfterInError {
 					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
@@ -284,20 +289,24 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 		case epoch := <-chEpoch:
 			iteration++
 			a.log.Infof("Epoch received: %s", epoch.String())
-			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
+			checkResult, err := a.certStatusChecker.CheckPeriodicallyCertificateStatus(ctx)
+			if err != nil {
+				a.log.Errorf("Epoch trigger: error checking certificate status: %v", err)
+				break
+			}
 			if !checkResult.ExistPendingCerts {
 				_, err := a.sendCertificateWithRetries(ctx)
 				if err != nil {
-					a.log.Errorf("error sending certificate: %v", err)
+					a.log.Errorf("Epoch trigger: error sending certificate: %v", err)
 					a.status.SetLastError(err)
 				}
 			} else {
-				a.log.Infof("Skipping epoch %s because there are pending certificates",
+				a.log.Infof("epoch trigger: Skipping epoch %s because there are pending certificates",
 					epoch.String())
 			}
 
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
-				a.log.Warnf("reached number of iterations, so we are going to return")
+				a.log.Warnf("epoch trigger: reached number of iterations, so we are going to return")
 				return
 			}
 		case <-ctx.Done():

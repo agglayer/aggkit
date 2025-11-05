@@ -100,6 +100,19 @@ func (c *certStatusChecker) CheckInitialStatus(
 	}
 }
 
+// CheckPeriodicallyCertificateStatus checks the status of pending certificates
+// and the last certificate from the aggregation layer.
+// It returns the status of pending certificates and any error encountered
+// while checking the last certificate from the aggregation layer.
+func (c *certStatusChecker) CheckPeriodicallyCertificateStatus(
+	ctx context.Context,
+) (types.CertStatus, error) {
+	// Don't need to check the returned value here
+	c.CheckPendingCertificatesStatus(ctx)
+	err := c.checkLastCertificateFromAgglayer(ctx)
+	return c.CheckPendingCertificatesStatus(ctx), err
+}
+
 // CheckPendingCertificatesStatus checks the status of pending certificates
 // and updates in the storage if it changed on agglayer
 // It returns:
