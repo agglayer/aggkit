@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	zkevm "github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit"
 )
 
 type AggsenderStatusType string
@@ -23,7 +23,7 @@ type AggsenderStatus struct {
 
 type AggsenderInfo struct {
 	AggsenderStatus AggsenderStatus `json:"aggsender_status"`
-	Version         zkevm.FullVersion
+	Version         aggkit.FullVersion
 	RunnerStatus    string        `json:"runner_status"`
 	NetworkID       uint32        `json:"network_id"`
 	Mode            AggsenderMode `json:"mode"`
