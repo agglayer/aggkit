@@ -42,7 +42,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 					Claims: []bridgesync.Claim{},
 				}
 				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), certBuildParams).Return(
-					&types.AggchainProof{SP1StarkProof: &types.SP1StarkProof{Proof: []byte("proof")}}, nil, nil)
+					&types.AggchainProof{SP1StarkProof: &types.SP1StarkProof{Proof: []byte("proof")}}, nil)
 			},
 			expectedProof: &types.SP1StarkProof{Proof: []byte("proof")},
 		},
@@ -82,7 +82,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 					Claims: []bridgesync.Claim{},
 				}
 				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), certBuildParams).Return(
-					nil, nil, errors.New("test error"))
+					nil, errors.New("test error"))
 			},
 			expectedError: "error generating Aggchain proof",
 		},
