@@ -404,6 +404,11 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
 }
 
+// SubscribeToSync allows a subscriber to receive block notifications
+func (s *BridgeSync) SubscribeToSync(subscriberID string) <-chan sync.Block {
+	return s.driver.SubscribeToNewBlocks(subscriberID)
+}
+
 type LastReorg struct {
 	DetectedAt int64  `json:"detected_at"`
 	FromBlock  uint64 `json:"from_block"`
