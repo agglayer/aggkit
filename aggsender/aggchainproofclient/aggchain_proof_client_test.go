@@ -56,7 +56,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		L1InfoTreeLeaf:     l1infotreesync.L1InfoTreeLeaf{},
 		L1InfoTreeMerkleProof: agglayer.MerkleProof{
 			Root:  common.Hash{},
-			Proof: [32]common.Hash{},
+			Proof: [common.HashLength]common.Hash{},
 		},
 		GERLeavesWithBlockNumber:           nil,
 		ImportedBridgeExitsWithBlockNumber: nil,
@@ -128,7 +128,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 		},
 		L1InfoTreeMerkleProof: agglayer.MerkleProof{
 			Root:  common.HexToHash("0x3"),
-			Proof: [32]common.Hash{common.HexToHash("0x4")},
+			Proof: [common.HashLength]common.Hash{common.HexToHash("0x4")},
 		},
 		GERLeavesWithBlockNumber: map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
 			common.HexToHash("0x5"): {
@@ -136,7 +136,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 				ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
 					ProofGERToL1Root: &agglayer.MerkleProof{
 						Root:  common.HexToHash("0x8"),
-						Proof: [32]common.Hash{common.HexToHash("0x9")},
+						Proof: [common.HashLength]common.Hash{common.HexToHash("0x9")},
 					},
 					L1Leaf: &agglayer.L1InfoTreeLeaf{
 						Inner: &agglayer.L1InfoTreeLeafInner{
