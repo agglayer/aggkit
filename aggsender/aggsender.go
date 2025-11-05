@@ -292,6 +292,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			checkResult, err := a.certStatusChecker.CheckPeriodicallyCertificateStatus(ctx)
 			if err != nil {
 				a.log.Errorf("Epoch trigger: error checking certificate status: %v", err)
+				a.status.SetLastError(err)
 				break
 			}
 			if !checkResult.ExistPendingCerts {

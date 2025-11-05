@@ -121,7 +121,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			certStatusChecker, ok := sut.(*certStatusChecker)
 			require.True(t, ok)
 			ctx := context.TODO()
-			checkResult := certStatusChecker.CheckPendingCertificatesStatus(ctx)
+			checkResult := certStatusChecker.checkPendingCertificatesStatus(ctx)
 			require.Equal(t, tt.expectedError, checkResult.ExistPendingCerts)
 			mockAggLayerClient.AssertExpectations(t)
 			mockStorage.AssertExpectations(t)
@@ -511,6 +511,77 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 				require.ErrorContains(t, err, tt.expectedError)
 			} else {
 				require.NoError(t, err)
+			}
+
+			mockStorage.AssertExpectations(t)
+			mockAggLayerClient.AssertExpectations(t)
+		})
+	}
+}
+
+func TestCheckPeriodicallyCertificateStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		newInitialErr  error
+		processErr     error
+		action         *initialStatusResult
+		localCert      *types.CertificateHeader
+		agglayerCert   *agglayertypes.CertificateHeader
+		mockFn         func(m *mocks.AggSenderStorage)
+		expectedError  string
+		expectedStatus types.CertStatus
+	}{
+
+		{
+			name: "cert local InError, agglayer Settled",
+			localCert: &types.CertificateHeader{
+				CertificateID: common.HexToHash("0x1"),
+				Status:        agglayertypes.InError,
+			},
+			agglayerCert: &agglayertypes.CertificateHeader{
+				CertificateID: common.HexToHash("0x1"),
+				Status:        agglayertypes.Settled,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.TODO()
+			mockLogger := log.WithFields("test", "unittest")
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
+			mockInitialStatus := &initialStatus{
+				log:                     mockLogger,
+				LocalLastCert:           tt.localCert,
+				AgglayerLastSettledCert: tt.agglayerCert,
+			}
+			newInitialStatusFn = func(_ context.Context,
+				_ types.Logger, _ uint32,
+				_ db.AggSenderStorage,
+				_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
+				return mockInitialStatus, tt.newInitialErr
+			}
+
+			certStatusChecker := &certStatusChecker{
+				log:            mockLogger,
+				storage:        mockStorage,
+				agglayerClient: mockAggLayerClient,
+			}
+			mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
+				[]*types.CertificateHeader{tt.localCert}, nil)
+			mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything,
+				mock.Anything).Return(tt.agglayerCert, nil)
+			mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything,
+				tt.localCert.CertificateID,
+				tt.agglayerCert.Status,
+				mock.Anything).Return(nil)
+			status, err := certStatusChecker.CheckPeriodicallyCertificateStatus(ctx)
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedStatus, status)
 			}
 
 			mockStorage.AssertExpectations(t)
