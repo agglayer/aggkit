@@ -40,7 +40,7 @@ type BlockNotifierPolling struct {
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
 	lastStatus    *blockNotifierPollingInternalStatus
-	types.GenericSubscriber[types.EventNewBlock]
+	aggkitcommon.PubSub[types.EventNewBlock]
 }
 
 // NewBlockNotifierPolling creates a new BlockNotifierPolling.
@@ -51,17 +51,17 @@ type BlockNotifierPolling struct {
 func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	config ConfigBlockNotifierPolling,
 	logger aggkitcommon.Logger,
-	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {
+	subscriber aggkitcommon.PubSub[types.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
 		subscriber = aggkitcommon.NewGenericSubscriber[types.EventNewBlock]()
 	}
 
 	return &BlockNotifierPolling{
-		ethClient:         ethClient,
-		blockFinality:     config.BlockFinalityType,
-		logger:            logger,
-		config:            config,
-		GenericSubscriber: subscriber,
+		ethClient:     ethClient,
+		blockFinality: config.BlockFinalityType,
+		logger:        logger,
+		config:        config,
+		PubSub:        subscriber,
 	}, nil
 }
 
