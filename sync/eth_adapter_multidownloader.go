@@ -52,7 +52,7 @@ func (a *AdaptEthClient) HeaderByNumber(ctx context.Context, number *big.Int) (*
 		header.Number.Uint64(),
 		header.Hash(),
 		header.Time,
-		header.ParentHash,
+		&header.ParentHash,
 	), nil
 }
 

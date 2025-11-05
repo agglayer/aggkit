@@ -43,10 +43,8 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 			break
 		}
 		dh.log.Warnf("EVMMultidownloader.FilterLogs: waiting for logs to be available: %s", logQuery.String())
-		time.Sleep(time.Second)
+		time.Sleep(10 * time.Second)
 	}
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
 	return dh.storage.GetEthLogs(nil, logQuery)
 }
 

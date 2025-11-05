@@ -41,6 +41,23 @@ type logDBRow struct {
 	Index       uint           `meddler:"log_index"`
 }
 
+func (l *logDBRow) String() string {
+	if l == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("logDBRow{Address: %s, Topics: %s, DataLen: %d, BlockNumber: %d, TxHash: %s, TxIndex: %d, Index: %d}",
+		l.Address.Hex(), l.Topics, len(l.Data), l.BlockNumber, l.TxHash.Hex(), l.TxIndex, l.Index)
+}
+
+func NewLogDBRowsFromEthLogs(logs []types.Log) []*logDBRow {
+	rows := make([]*logDBRow, 0, len(logs))
+	for _, log := range logs {
+		row := NewLogDBRowFromEthLog(log)
+		rows = append(rows, row)
+	}
+	return rows
+}
+
 type syncStatusRow struct {
 	Address         common.Address `meddler:"contract_address,address"`
 	TargetFromBlock uint64         `meddler:"target_from_block"`
@@ -70,26 +87,82 @@ func NewLogDBRowFromEthLog(log types.Log) *logDBRow {
 const SqliteBoolTrue = 1
 const SqliteBoolFalse = 0
 
-type BlockBaseRow struct {
+type BlockRow struct {
 	BlockNumber    uint64      `meddler:"block_number"`
 	BlockHash      common.Hash `meddler:"block_hash,hash"`
 	BlockTimestamp uint64      `meddler:"block_timestamp"`
-	IsFinal        bool        `meddler:"is_final"`
+	// BlockParentHash can be nil (the ethLogs doesn't include it)
+	BlockParentHash *common.Hash `meddler:"block_parent_hash,hash"`
+	IsFinal         bool         `meddler:"is_final"`
 }
 
-type BlockHeaderRow struct {
-	BlockNumber uint64 `meddler:"block_number"`
-	// `meddler:"tx_hash,hash"`
-	BlockParentHash common.Hash `meddler:"block_parent_hash,hash"`
-}
-
-func NewBlockRowFromEthLog(log types.Log, isFinal bool) *BlockBaseRow {
-	return &BlockBaseRow{
-		BlockNumber:    log.BlockNumber,
-		BlockHash:      log.BlockHash,
-		BlockTimestamp: log.BlockTimestamp,
-		IsFinal:        isFinal,
+func (br *BlockRow) String() string {
+	if br == nil {
+		return "<nil>"
 	}
+	blockParentHashString := func(parentHash *common.Hash) string {
+		if parentHash == nil {
+			return "<nil>"
+		}
+		return parentHash.Hex()
+	}
+	return fmt.Sprintf("BlockRow{BlockNumber: %d, BlockHash: %s, BlockTimestamp: %d, BlockParentHash: %s, IsFinal: %t}",
+		br.BlockNumber, br.BlockHash.String(), br.BlockTimestamp, blockParentHashString(br.BlockParentHash), br.IsFinal)
+}
+
+func NewBlockRowFromEthLog(log types.Log, isFinal bool) *BlockRow {
+	return &BlockRow{
+		BlockNumber:     log.BlockNumber,
+		BlockHash:       log.BlockHash,
+		BlockTimestamp:  log.BlockTimestamp,
+		BlockParentHash: nil,
+		IsFinal:         isFinal,
+	}
+}
+
+func newBlockRowFromEthBlock(ethBlock *types.Header, isFinal bool) *BlockRow {
+	return &BlockRow{
+		BlockNumber:     ethBlock.Number.Uint64(),
+		BlockHash:       ethBlock.Hash(),
+		BlockTimestamp:  ethBlock.Time,
+		BlockParentHash: &ethBlock.ParentHash,
+		IsFinal:         isFinal,
+	}
+}
+func newBlockRowFromAggkitBlock(block *aggkittypes.BlockHeader, isFinal bool) *BlockRow {
+	return &BlockRow{
+		BlockNumber:     block.Number,
+		BlockHash:       block.Hash,
+		BlockTimestamp:  block.Time,
+		BlockParentHash: block.ParentHash,
+		IsFinal:         isFinal,
+	}
+}
+
+func NewBlockRowsFromLogs(logs []types.Log) map[uint64]*BlockRow {
+	blockMap := make(map[uint64]*BlockRow)
+	for _, log := range logs {
+		if _, exists := blockMap[log.BlockNumber]; !exists {
+			blockMap[log.BlockNumber] = NewBlockRowFromEthLog(log, false)
+		}
+	}
+	return blockMap
+}
+
+func NewBlockRowsFromEthBlock(blockHeaders []*types.Header) map[uint64]*BlockRow {
+	blockMap := make(map[uint64]*BlockRow)
+	for _, header := range blockHeaders {
+		blockMap[header.Number.Uint64()] = newBlockRowFromEthBlock(header, false)
+	}
+	return blockMap
+}
+
+func NewBlockRowsFromAggkitBlock(blockHeaders []*aggkittypes.BlockHeader) map[uint64]*BlockRow {
+	blockMap := make(map[uint64]*BlockRow)
+	for _, header := range blockHeaders {
+		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, false)
+	}
+	return blockMap
 }
 
 func NewMultidownloaderStorage(logger aggkitcommon.Logger, cfg MultidownloaderStorageConfig) (*MultidownloaderStorage, error) {
@@ -120,15 +193,16 @@ func (a *MultidownloaderStorage) NewTx(ctx context.Context) (dbtypes.Txer, error
 }
 
 type logAndBlockRow struct {
-	Address        common.Address `meddler:"address,address"`
-	Topics         string         `meddler:"topics"`
-	Data           []byte         `meddler:"data"`
-	BlockNumber    uint64         `meddler:"block_number"`
-	TxHash         common.Hash    `meddler:"tx_hash,hash"`
-	TxIndex        uint           `meddler:"tx_index"`
-	Index          uint           `meddler:"log_index"`
-	BlockHash      common.Hash    `meddler:"block_hash,hash"`
-	BlockTimestamp uint64         `meddler:"block_timestamp"`
+	Address         common.Address `meddler:"address,address"`
+	Topics          string         `meddler:"topics"`
+	Data            []byte         `meddler:"data"`
+	BlockNumber     uint64         `meddler:"block_number"`
+	TxHash          common.Hash    `meddler:"tx_hash,hash"`
+	TxIndex         uint           `meddler:"tx_index"`
+	Index           uint           `meddler:"log_index"`
+	BlockHash       common.Hash    `meddler:"block_hash,hash"`
+	BlockTimestamp  uint64         `meddler:"block_timestamp"`
+	BlockParentHash *common.Hash   `meddler:"block_parent_hash,hash"`
 }
 
 func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error) {
@@ -142,7 +216,7 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 	dbRows := make([]*logAndBlockRow, 0)
 	sqlQuery := `
 	SELECT * FROM logs
-	LEFT JOIN block_base ON logs.block_number = block_base.block_number
+	LEFT JOIN block ON logs.block_number = block.block_number
 	WHERE address IN (?)
 	AND logs.block_number>=? AND logs.block_number<=?
 	ORDER BY logs.block_number ASC, log_index ASC
@@ -182,100 +256,80 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 
 // tx dbtypes.Txer
 func (a *MultidownloaderStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFinal bool) error {
-	if tx == nil {
-		tx = a.db
-	}
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	for _, log := range logs {
-		// TODO: this don't work in all cases use INSERT OR IGNORE"
-		exists, err := a.existsBlockBaseNoMutex(tx, log.BlockNumber)
-		if err != nil {
-			return fmt.Errorf("error checking block existence: %w", err)
-		}
-		if !exists {
-			block := NewBlockRowFromEthLog(log, isFinal)
-			err = a.saveBlockBaseNoMutex(tx, aggkittypes.NewBlockBase(
-				block.BlockNumber,
-				block.BlockHash,
-				block.BlockTimestamp,
-			), isFinal)
-			if err != nil {
-				return fmt.Errorf("error saving block base: %w", err)
-			}
-		}
-
-		log := NewLogDBRowFromEthLog(log)
-		if err := meddler.Insert(tx, "logs", log); err != nil {
-			return fmt.Errorf("error inserting eth log: %w", err)
-		}
-	}
-	return nil
+	return a.saveLogsAndBlocks(tx, NewBlockRowsFromLogs(logs), NewLogDBRowsFromEthLogs(logs), isFinal)
 }
 
-func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*types.Header, logs []types.Log, isFinal bool) error {
+func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error {
+	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders), NewLogDBRowsFromEthLogs(logs), isFinal)
+}
+
+func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier, blockRows map[uint64]*BlockRow, logRows []*logDBRow, isFinal bool) error {
 	if tx == nil {
 		tx = a.db
 	}
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	// This populate block_base and logs tables
-	err := a.SaveEthLogs(tx, logs, false)
-	if err != nil {
-		return fmt.Errorf("SaveEthLogsWithHeaders: error saving eth logs: %w", err)
+	// Save blocks headers
+	if err := a.saveBlocksNoMutex(tx, blockRows); err != nil {
+		return fmt.Errorf("saveLogsAndBlocks: error saving blocks: %w", err)
 	}
-	for _, blockHeader := range blockHeaders {
-		header := aggkittypes.NewBlockHeader(
-			blockHeader.Number.Uint64(),
-			blockHeader.Hash(),
-			blockHeader.Time,
-			blockHeader.ParentHash,
-		)
-		err := a.SaveBlockHeader(tx, header, isFinal)
 
-		if err != nil {
-			return fmt.Errorf("SaveEthLogsWithHeaders: error saving block header [%s]: %w", header.String(), err)
-		}
+	if err := a.saveLogsNoMutex(tx, logRows); err != nil {
+		return fmt.Errorf("saveLogsAndBlocks: error saving logs: %w", err)
 	}
 	// TODO: Sanity check logs match blockHash match with headers
 	return nil
 }
 
-func (a *MultidownloaderStorage) SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header, logs []types.Log) error {
+func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows map[uint64]*BlockRow) error {
 	if tx == nil {
 		tx = a.db
 	}
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	blockRow := &BlockBaseRow{
-		BlockNumber:    block.Number.Uint64(),
-		BlockHash:      block.Hash(),
-		BlockTimestamp: block.Time,
-		IsFinal:        false,
-	}
-	if err := meddler.Insert(tx, "block", blockRow); err != nil {
-		return fmt.Errorf("SaveUnsafeBlock: error inserting unsafe block: %w", err)
-	}
-	unsafeBlockRow := &BlockHeaderRow{
-		BlockNumber:     block.Number.Uint64(),
-		BlockParentHash: block.ParentHash,
-	}
-	if err := meddler.Insert(tx, "block_unsafe", unsafeBlockRow); err != nil {
-		return fmt.Errorf("SaveUnsafeBlock: error inserting unsafe block row: %w", err)
-	}
-	for _, log := range logs {
-		if log.BlockHash != block.Hash() {
-			return fmt.Errorf("SaveUnsafeBlock: log block hash %s does not match header block hash %s",
-				log.BlockHash.Hex(), block.Hash().Hex())
-		}
-		log := NewLogDBRowFromEthLog(log)
-		if err := meddler.Insert(tx, "logs", log); err != nil {
-			return fmt.Errorf("SaveUnsafeBlock: error inserting eth log: %w", err)
+	for _, blockRow := range blockRows {
+		if err := meddler.Insert(tx, "block", blockRow); err != nil {
+			return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", blockRow.String(), err)
 		}
 	}
 	return nil
 }
 
+func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*logDBRow) error {
+	if tx == nil {
+		tx = a.db
+	}
+	for _, log := range logRows {
+		if err := meddler.Insert(tx, "logs", log); err != nil {
+			return fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", log.String(), err)
+		}
+	}
+	return nil
+}
+
+/*
+	func (a *MultidownloaderStorage) SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header, logs []types.Log) error {
+		if tx == nil {
+			tx = a.db
+		}
+		a.mutex.Lock()
+		defer a.mutex.Unlock()
+		blockRow := newBlockRowFromEthBlock(block, false)
+		if err := meddler.Insert(tx, "block", blockRow); err != nil {
+			return fmt.Errorf("SaveUnsafeBlock: error inserting unsafe block: %w", err)
+		}
+
+		for _, log := range logs {
+			if log.BlockHash != block.Hash() {
+				return fmt.Errorf("SaveUnsafeBlock: log block hash %s does not match header block hash %s",
+					log.BlockHash.Hex(), block.Hash().Hex())
+			}
+			log := NewLogDBRowFromEthLog(log)
+			if err := meddler.Insert(tx, "logs", log); err != nil {
+				return fmt.Errorf("SaveUnsafeBlock: error inserting eth log: %w", err)
+			}
+		}
+		return nil
+	}
+*/
 func (r *syncStatusRow) ToSyncSegment() mdrtypes.SyncSegment {
 	return mdrtypes.SyncSegment{
 		ContractAddr: r.Address,

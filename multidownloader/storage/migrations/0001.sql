@@ -7,25 +7,22 @@ CREATE TABLE logs (
     address TEXT NOT NULL,                -- 
     topics TEXT NOT NULL,                 -- list of hashes in JSON
     data BLOB,                            -- 
-    block_number BIGINT NOT NULL REFERENCES block_base(block_number),
+    block_number BIGINT NOT NULL REFERENCES block(block_number),
     tx_hash TEXT NOT NULL,
     tx_index INTEGER NOT NULL,
     log_index INTEGER NOT NULL,      -- “index” is a reserved keyword
     PRIMARY KEY (address, block_number, log_index)
 );
 
-CREATE TABLE block_base (
+CREATE TABLE block (
     block_number BIGINT NOT NULL,
     block_hash TEXT NOT NULL,             
     block_timestamp INTEGER NOT NULL,
+    block_parent_hash TEXT NOT NULL, 
     is_final INTEGER NOT NULL,
     PRIMARY KEY (block_number)
 );
-CREATE TABLE block_header (
-    block_number BIGINT NOT NULL REFERENCES block_base(block_number) ON DELETE CASCADE,
-    block_parent_hash TEXT NOT NULL, 
-    PRIMARY KEY (block_number)
-);
+
 
 
 

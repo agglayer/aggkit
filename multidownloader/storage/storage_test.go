@@ -30,29 +30,47 @@ var (
 	}
 )
 
+func TestStorage_Exploratory(t *testing.T) {
+	dbFile := "/tmp/mdr_test.sqlite"
+	storage := newStorageForTest(t, &dbFile)
+	logs, err := storage.GetEthLogs(nil, mdrtypes.NewLogQuery(5157574, 5157574+2000, []common.Address{exampleAddr2}))
+	require.NoError(t, err)
+	log.Infof("Retrieved %d logs", len(logs))
+	for i, lg := range logs {
+		log.Infof("Log %d: %+v", i, lg)
+	}
+	block, err := storage.GetBlockHeaderByNumber(nil, 5157912)
+	require.NoError(t, err)
+	require.NotNil(t, block, "expected non-nil block")
+	log.Infof("Retrieved block: %+v", block)
+}
+
 func TestStorage_GetBlock(t *testing.T) {
-	storage := newStorageForTest(t)
-	// BlockBase not present
-	blockBase, err := storage.GetBlockBaseByNumber(nil, 1234)
-	require.NoError(t, err, "cannot get BlockBase")
-	require.Nil(t, blockBase, "expected nil BlockBase")
+	storage := newStorageForTest(t, nil)
 	// BlockBase not present
 	blockHeader, err := storage.GetBlockHeaderByNumber(nil, 1234)
 	require.NoError(t, err, "cannot get BlockHeader")
 	require.Nil(t, blockHeader, "expected nil BlockHeader")
-	// Insert BlockBase
-	newBlockBase := aggkittypes.NewBlockBase(1234, [32]byte{0x12}, 5678)
-	err = storage.SaveBlockBase(nil, newBlockBase, true)
-	require.NoError(t, err, "cannot insert BlockBase")
-	// Get BlockBase
-	blockBase, err = storage.GetBlockBaseByNumber(nil, newBlockBase.Number)
-	require.NoError(t, err, "cannot get BlockBase")
-	require.NotNil(t, blockBase, "expected non-nil BlockBase")
-	require.Equal(t, newBlockBase, blockBase, "BlockBase mismatch")
+	block := aggkittypes.NewBlockHeader(1234, exampleTestHash[0], 5678, &exampleTestHash[1])
+	err = storage.SaveBlockAggkitBlock(nil, block, true)
+	require.NoError(t, err, "cannot insert BlockHeader")
+	// Get and verify block
+	readBlock, err := storage.GetBlockHeaderByNumber(nil, 1234)
+	require.NoError(t, err, "cannot get BlockHeader")
+	require.NotNil(t, readBlock, "expected non-nil BlockHeader")
+	require.Equal(t, block, readBlock, "BlockHeader mismatch")
+
+	blockNilParentHash := aggkittypes.NewBlockHeader(1235, exampleTestHash[0], 5678, nil)
+	err = storage.SaveBlockAggkitBlock(nil, blockNilParentHash, true)
+	require.NoError(t, err, "cannot get BlockHeader")
+	readBlock, err = storage.GetBlockHeaderByNumber(nil, blockNilParentHash.Number)
+	require.NoError(t, err, "cannot get BlockHeader")
+	require.Equal(t, blockNilParentHash, readBlock, "BlockHeader mismatch")
+
 }
 
 func TestStorage_GetLogs(t *testing.T) {
-	storage := newStorageForTest(t)
+	storage := newStorageForTest(t, nil)
 	// Logs not present
 	logs, err := storage.GetEthLogs(nil, mdrtypes.NewLogQuery(1000, 2000, []common.Address{exampleAddr1}))
 	require.NoError(t, err)
@@ -71,6 +89,19 @@ func TestStorage_GetLogs(t *testing.T) {
 			TxHash:  exampleTestHash[4],
 			TxIndex: 123,
 			Index:   34,
+		},
+		{
+			Address:        exampleAddr1,
+			BlockNumber:    1500,
+			BlockHash:      exampleTestHash[0],
+			BlockTimestamp: 1630000000,
+			Topics: []common.Hash{
+				exampleTestHash[0],
+			},
+			Data:    []byte{0x01, 0x02},
+			TxHash:  exampleTestHash[4],
+			TxIndex: 124,
+			Index:   35,
 		},
 		{
 			Address:     exampleAddr1,
@@ -98,9 +129,10 @@ func TestStorage_GetLogs(t *testing.T) {
 	// Get logs for exampleAddr1
 	readLogs, err := storage.GetEthLogs(nil, mdrtypes.NewLogQuery(1000, 2000, []common.Address{exampleAddr1}))
 	require.NoError(t, err, "cannot get logs")
-	require.Len(t, readLogs, 2, "expected 2 logs for exampleAddr1")
+	require.Len(t, readLogs, 3, "expected 2 logs for exampleAddr1")
 	require.Equal(t, logsToInsert[0], readLogs[0], "log 0 mismatch")
 	require.Equal(t, logsToInsert[1], readLogs[1], "log 1 mismatch")
+	require.Equal(t, logsToInsert[2], readLogs[2], "log 2 mismatch")
 	// Get logs for exampleAddr2
 	readLogs, err = storage.GetEthLogs(nil, mdrtypes.NewLogQuery(1000, 2000, []common.Address{exampleAddr2}))
 	require.NoError(t, err, "cannot get logs")
@@ -108,14 +140,19 @@ func TestStorage_GetLogs(t *testing.T) {
 	// Get logs for both addresses
 	readLogs, err = storage.GetEthLogs(nil, mdrtypes.NewLogQuery(1000, 2000, []common.Address{exampleAddr1, exampleAddr2}))
 	require.NoError(t, err, "cannot get logs")
-	require.Len(t, readLogs, 3, "expected 3 logs for both addresses")
+	require.Len(t, readLogs, 4, "expected 3 logs for both addresses")
 }
 
-func newStorageForTest(t *testing.T) *MultidownloaderStorage {
+func newStorageForTest(t *testing.T, dbFileFullPath *string) *MultidownloaderStorage {
 	logger := log.WithFields("module", "test")
-	path := path.Join(t.TempDir(), "multidownloader_Storage.sqlite")
+	var dbPath string
+	if dbFileFullPath == nil {
+		dbPath = path.Join(t.TempDir(), "multidownloader_Storage.sqlite")
+	} else {
+		dbPath = *dbFileFullPath
+	}
 	cfg := MultidownloaderStorageConfig{
-		DBPath: path,
+		DBPath: dbPath,
 	}
 
 	storage, err := NewMultidownloaderStorage(logger, cfg)

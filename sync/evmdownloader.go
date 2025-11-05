@@ -541,7 +541,7 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 		return EVMBlockHeader{
 			Num:        header.Number,
 			Hash:       header.Hash,
-			ParentHash: header.ParentHash,
+			ParentHash: *header.ParentHash,
 			Timestamp:  header.Time,
 		}, false
 	}

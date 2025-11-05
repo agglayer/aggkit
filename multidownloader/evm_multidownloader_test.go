@@ -13,14 +13,23 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
 const runL1InfoTree = true
+const l1InfoTreeUseMultidownloader = true
 
 func TestEVMMultidownloader(t *testing.T) {
+	cfgLog := log.Config{
+		Environment: "development",
+		Level:       "info",
+		Outputs:     []string{"stderr"},
+	}
+	log.Init(cfgLog)
+
 	rpcClientCfg := config.RPCClientConfig{
 		URL: os.Getenv("L1URL"),
 	}
@@ -63,10 +72,20 @@ func TestEVMMultidownloader(t *testing.T) {
 	ctx := context.TODO()
 	var l1infotree *l1infotreesync.L1InfoTreeSync
 	if runL1InfoTree == true {
+		var multidownloader aggkittypes.MultiDownloader
+		var dbPath string
+		if l1InfoTreeUseMultidownloader {
+			multidownloader = mdr
+			dbPath = "/tmp/l1infotree_md.sqlite"
+		} else {
+			multidownloader = aggkitsync.NewAdaptEthClient(ethClient)
+			dbPath = "/tmp/l1infotree_eth.sqlite"
+		}
+
 		l1infotree, err = l1infotreesync.New(
 			ctx,
 			l1infotreesync.Config{
-				DBPath:             "/tmp/l1infotree.sqlite",
+				DBPath:             dbPath,
 				InitialBlock:       5157574,
 				GlobalExitRootAddr: common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"),
 				RollupManagerAddr:  common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"),
@@ -76,7 +95,7 @@ func TestEVMMultidownloader(t *testing.T) {
 				},
 			},
 			aggkittypes.FinalizedBlock,
-			mdr,
+			multidownloader,
 			l1infotreesync.FlagStopOnFinalizedBlockReached,
 			aggkittypes.FinalizedBlock,
 		)
@@ -89,9 +108,10 @@ func TestEVMMultidownloader(t *testing.T) {
 		defer wg.Done()
 		timer := aggkitcommon.TimeTracker{}
 		timer.Start()
-		_ = mdr.Start(ctx)
+		err = mdr.Start(ctx)
 		timer.Stop()
-		log.Infof("Multidownloader sync finished in %s", timer.String())
+		log.Infof("Multidownloader sync finished in %s. err: %w", timer.String(), err)
+		require.NoError(t, err)
 	}()
 
 	wg.Add(1)
