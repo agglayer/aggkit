@@ -2786,7 +2786,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
 
-			require.True(t, result)
+			require.Equal(t, http.StatusOK, result)
 			require.Equal(t, http.StatusOK, w.Code)
 			require.Equal(t, tc.contractCount, networkInfo.ContractDepositCount)
 			require.Equal(t, tc.bridgeCount, networkInfo.SynchronizedDepositCount)
@@ -2848,7 +2848,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
 
-			require.False(t, result)
+			require.Equal(t, tc.expectedStatusCode, result)
 			require.Equal(t, tc.expectedStatusCode, w.Code)
 
 			var response gin.H

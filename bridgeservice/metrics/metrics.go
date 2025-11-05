@@ -1,134 +1,64 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/agglayer/aggkit/prometheus"
 	prometheusclient "github.com/prometheus/client_golang/prometheus"
 )
 
-type PrometheusClienter interface {
-	CounterInc(name string)
-	RegisterCounters(opts ...prometheusclient.CounterOpts)
-}
-
-var promClient PrometheusClienter = prometheusWrapper{}
-
-type prometheusWrapper struct{}
-
-func (p prometheusWrapper) CounterInc(name string) {
-	prometheus.CounterInc(name)
-}
-
-func (p prometheusWrapper) RegisterCounters(opts ...prometheusclient.CounterOpts) {
-	prometheus.RegisterCounters(opts...)
-}
-
 const (
-	prefix                     = "bridge_"
-	L1InfoTreeIndexReqs        = prefix + "l1_info_tree_index_for_bridge"
-	InjectedInfoAfterIndexReqs = prefix + "injected_info_after_index"
-	ClaimProofReqs             = prefix + "claim_proof"
-	LastReorgEventReqs         = prefix + "last_reorg_event"
-	SyncStatusReqs             = prefix + "get_sync_status"
-	BridgesReqs                = prefix + "get_bridges"
-	ClaimsReqs                 = prefix + "get_claims"
-	TokenMappingsReqs          = prefix + "get_token_mappings"
-	LegacyTokenMigrationReqs   = prefix + "get_legacy_token_migrations"
-)
+	namespace      = "bridge"
+	totalRequests  = "total_requests"
+	requestLatency = "request_latency_seconds"
+	handlerID      = "handler_id"
+	statusCode     = "status_code"
 
-var (
-	incrementCountersHandlerMap = map[string]func(){
-		L1InfoTreeIndexReqs:        IncL1InfoTreeIndexReqs,
-		InjectedInfoAfterIndexReqs: IncInjectedInfoAfterIndexReqs,
-		ClaimProofReqs:             IncClaimProofReqs,
-		LastReorgEventReqs:         IncLastReorgEventsReqs,
-		SyncStatusReqs:             IncSyncStatusReqs,
-		BridgesReqs:                IncBridgesReqs,
-		ClaimsReqs:                 IncClaimsReqs,
-		TokenMappingsReqs:          IncTokenMappingReqs,
-		LegacyTokenMigrationReqs:   IncLegacyTokenMigrationReqs,
-	}
+	GetBridgesReq                = "get_bridges"
+	GetClaimsReq                 = "get_claims"
+	GetTokenMappingsReq          = "get_token_mappings"
+	GetLegacyTokenMigrationsReq  = "get_legacy_token_migrations"
+	GetL1InfoTreeIndexReq        = "l1_info_tree_index_for_bridge"
+	GetInjectedInfoAfterIndexReq = "injected_info_after_index"
+	GetClaimProofReq             = "claim_proof"
+	GetLastReorgEventReq         = "last_reorg_event"
+	GetSyncStatusReq             = "get_sync_status"
+	GetHealthCheckReq            = "health_check"
 )
 
 func Register() {
-	counters := []prometheusclient.CounterOpts{
+	counterVecs := []prometheus.CounterVecOpts{
 		{
-			Name: L1InfoTreeIndexReqs,
-			Help: "[BRIDGE] number of l1 info tree index for bridge requests",
-		},
-		{
-			Name: InjectedInfoAfterIndexReqs,
-			Help: "[BRIDGE] number of injected info after index requests",
-		},
-		{
-			Name: ClaimProofReqs,
-			Help: "[BRIDGE] number of claim proof requests",
-		},
-		{
-			Name: LastReorgEventReqs,
-			Help: "[BRIDGE] number of last reorg event requests",
-		},
-		{
-			Name: SyncStatusReqs,
-			Help: "[BRIDGE] number of get sync status requests",
-		},
-		{
-			Name: BridgesReqs,
-			Help: "[BRIDGE] number of get bridge requests",
-		},
-		{
-			Name: ClaimsReqs,
-			Help: "[BRIDGE] number of get claims requests",
-		},
-		{
-			Name: TokenMappingsReqs,
-			Help: "[BRIDGE] number of get token mappings requests",
-		},
-		{
-			Name: LegacyTokenMigrationReqs,
-			Help: "[BRIDGE] number of get legacy token migrations requests",
+			CounterOpts: prometheusclient.CounterOpts{
+				Namespace: namespace,
+				Name:      totalRequests,
+				Help:      "Total number of requests per handler id and http response code",
+			},
+			Labels: []string{handlerID, statusCode},
 		},
 	}
-	promClient.RegisterCounters(counters...)
-}
 
-func IncrementCounter(counterName string) {
-	if handler, exists := incrementCountersHandlerMap[counterName]; exists {
-		handler()
+	prometheus.RegisterCounterVecs(counterVecs...)
+
+	histogramVecs := []prometheus.HistogramVecOpts{
+		{
+			HistogramOpts: prometheusclient.HistogramOpts{
+				Namespace: namespace,
+				Name:      requestLatency,
+				Help:      "Request latencies per handler id",
+			},
+			Labels: []string{handlerID},
+		},
 	}
+	prometheus.RegisterHistogramVecs(histogramVecs...)
 }
 
-func IncL1InfoTreeIndexReqs() {
-	promClient.CounterInc(L1InfoTreeIndexReqs)
+// IncTotalRequestCounter increments counter for given handler id and status code
+func IncTotalRequestCounter(handlerID string, status string) {
+	prometheus.CounterVecInc(totalRequests, handlerID, status)
 }
 
-func IncInjectedInfoAfterIndexReqs() {
-	promClient.CounterInc(InjectedInfoAfterIndexReqs)
-}
-
-func IncClaimProofReqs() {
-	promClient.CounterInc(ClaimProofReqs)
-}
-
-func IncLastReorgEventsReqs() {
-	promClient.CounterInc(LastReorgEventReqs)
-}
-
-func IncSyncStatusReqs() {
-	promClient.CounterInc(SyncStatusReqs)
-}
-
-func IncBridgesReqs() {
-	promClient.CounterInc(BridgesReqs)
-}
-
-func IncClaimsReqs() {
-	promClient.CounterInc(ClaimsReqs)
-}
-
-func IncTokenMappingReqs() {
-	promClient.CounterInc(TokenMappingsReqs)
-}
-
-func IncLegacyTokenMigrationReqs() {
-	promClient.CounterInc(LegacyTokenMigrationReqs)
+// ObserveRequestLatencyHistogram reports latency in seconds for given handler id
+func ObserveRequestLatencyHistogram(handlerID string, startTime time.Time) {
+	prometheus.HistogramVecObserve(requestLatency, handlerID, time.Since(startTime).Seconds())
 }
