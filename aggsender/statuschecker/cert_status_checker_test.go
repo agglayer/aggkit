@@ -118,7 +118,8 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			}
 
 			sut := NewCertStatusChecker(mockLogger, mockStorage, mockAggLayerClient, nil, 1)
-			certStatusChecker := sut.(*certStatusChecker)
+			certStatusChecker, ok := sut.(*certStatusChecker)
+			require.True(t, ok)
 			ctx := context.TODO()
 			checkResult := certStatusChecker.CheckPendingCertificatesStatus(ctx)
 			require.Equal(t, tt.expectedError, checkResult.ExistPendingCerts)
