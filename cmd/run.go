@@ -606,6 +606,9 @@ func runReorgDetectorL1IfNeeded(
 		components) {
 		return nil, nil
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid ReorgDetectorL1 config: %v", err)
+	}
 
 	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 	errChan := make(chan error)
@@ -688,6 +691,10 @@ func runBridgeSyncL1IfNeeded(
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
+	}
+
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
 
 	bridgeSyncL1, err := bridgesync.NewL1(

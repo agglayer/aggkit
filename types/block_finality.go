@@ -22,6 +22,12 @@ const (
 	EmptyBlockName     = ""
 
 	blockNameAndOffsetSeparator = "/"
+
+	// Maximum positive offset limits for each block finality type
+	MaxPositiveOffsetLatest    = int64(0)  // LatestBlock cannot have positive offset (cannot go beyond latest)
+	MaxPositiveOffsetFinalized = int64(32) // ~1 epoch on Ethereum
+	MaxPositiveOffsetSafe      = int64(64) // ~2 epochs
+	MaxPositiveOffsetPending   = int64(0)  // Pending blocks don't exist yet, cannot go forward
 )
 
 var (
@@ -56,9 +62,6 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 			return result, fmt.Errorf("invalid block offset format: %s", splitted[1])
 		}
 		result.Offset = offset
-	}
-	if result.Block == Latest && result.Offset > 0 {
-		return result, fmt.Errorf("invalid block finality: cannot have positive offset with LatestBlock")
 	}
 	return result, nil
 }
@@ -118,6 +121,44 @@ func (b BlockNumberFinality) IsSafe() bool {
 // IsLatest returns true if b is latest with non-negative offset
 func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
+}
+
+// Validate validates the BlockNumberFinality configuration, ensuring that:
+// - The block name is valid (one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock)
+// - The positive offset does not exceed the maximum allowed for the specific block finality type
+//   - LatestBlock: cannot have positive offset (limit = 0)
+//   - PendingBlock: cannot have positive offset (limit = 0) as pending blocks don't exist yet
+//   - SafeBlock: maximum positive offset is MaxPositiveOffsetSafe
+//   - FinalizedBlock: maximum positive offset is MaxPositiveOffsetFinalized (most restrictive)
+func (b BlockNumberFinality) Validate() error {
+	if b.Block != Latest && b.Block != Pending && b.Block != Safe && b.Block != Finalized {
+		return fmt.Errorf(
+			"invalid block finality: block type must be one of LatestBlock, SafeBlock, "+
+				"FinalizedBlock, or PendingBlock (got: %s)",
+			b.String(),
+		)
+	}
+
+	var maxOffset int64
+	switch b.Block {
+	case Latest:
+		maxOffset = MaxPositiveOffsetLatest
+	case Pending:
+		maxOffset = MaxPositiveOffsetPending
+	case Safe:
+		maxOffset = MaxPositiveOffsetSafe
+	case Finalized:
+		maxOffset = MaxPositiveOffsetFinalized
+	}
+
+	// Validate offset limits (negative or zero offsets are always valid)
+	if b.Offset > maxOffset {
+		return fmt.Errorf(
+			"positive offset %d exceeds maximum allowed %d for %s (got: %s)",
+			b.Offset, maxOffset, b.Block.String(), b.String(),
+		)
+	}
+	return nil
 }
 
 // BlockNumber gets the block number from RPC with offset taken into account
