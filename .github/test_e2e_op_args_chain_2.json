@@ -1,0 +1,23 @@
+{
+  "deployment_stages": {
+    "deploy_l1": false,
+    "deploy_agglayer": false
+  },
+  "args": {
+    "deployment_suffix": "-002",
+    "zkevm_rollup_chain_id": 20202,
+    "zkevm_rollup_id": 2
+  },
+  "optimism_package": {
+    "chains": {
+      "002": {
+        "proposer_params": {
+          "enabled": false
+        },
+        "network_params": {
+          "network_id": "20202"
+        }
+      }
+    }
+  }
+}
