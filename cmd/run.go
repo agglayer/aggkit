@@ -703,7 +703,6 @@ func runBridgeSyncL1IfNeeded(
 		reorgDetectorL1,
 		l1Client,
 		rollupID,
-		true,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)

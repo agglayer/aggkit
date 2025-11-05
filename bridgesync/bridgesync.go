@@ -70,7 +70,6 @@ func NewL1(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
-	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -80,7 +79,7 @@ func NewL1(
 		ethClient,
 		L1BridgeSyncer,
 		originNetwork,
-		syncFullClaims,
+		false,
 	)
 }
 
@@ -403,6 +402,11 @@ func (s *BridgeSync) GetExitRootByIndex(ctx context.Context, index uint32) (tree
 // OriginNetwork returns the network ID of the origin chain
 func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
+}
+
+// SubscribeToSync allows a subscriber to receive block notifications
+func (s *BridgeSync) SubscribeToSync(subscriberID string) <-chan sync.Block {
+	return s.driver.SubscribeToNewBlocks(subscriberID)
 }
 
 type LastReorg struct {

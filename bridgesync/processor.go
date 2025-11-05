@@ -896,6 +896,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	} else {
 		p.log.Debugf(logMsg)
 	}
+
 	return nil
 }
 

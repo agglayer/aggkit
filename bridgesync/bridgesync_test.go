@@ -75,7 +75,6 @@ func TestNewLx(t *testing.T) {
 		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
-		false,
 	)
 
 	require.NoError(t, err)
@@ -764,5 +763,113 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		require.Equal(t, uint64(0), root.BlockPosition)
 		require.Equal(t, uint32(2), root.Index)
 		require.NotEqual(t, common.Hash{}, root.Hash)
+	})
+}
+
+func TestBridgeSync_SubscribeToSync(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestSubscribeToSync.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
+
+	s, err := NewL2(
+		ctx,
+		bridgeSyncCfg,
+		mockReorgDetector,
+		mockEthClient,
+		originNetwork,
+		false,
+	)
+	require.NoError(t, err)
+
+	t.Run("subscribe to sync with valid parameters", func(t *testing.T) {
+		subscriberID := "test-subscriber"
+
+		blockChan := s.SubscribeToSync(subscriberID)
+		require.NotNil(t, blockChan)
+
+		// Verify the channel is not closed immediately
+		select {
+		case _, ok := <-blockChan:
+			if !ok {
+				t.Fatal("channel should not be closed immediately")
+			}
+		default:
+			// Expected - no blocks available initially
+		}
+	})
+
+	t.Run("subscribe with empty subscriber ID", func(t *testing.T) {
+		subscriberID := ""
+
+		blockChan := s.SubscribeToSync(subscriberID)
+		require.NotNil(t, blockChan)
+	})
+
+	t.Run("multiple subscribers", func(t *testing.T) {
+		subscriber1ID := "subscriber-1"
+		subscriber2ID := "subscriber-2"
+
+		blockChan1 := s.SubscribeToSync(subscriber1ID)
+		blockChan2 := s.SubscribeToSync(subscriber2ID)
+
+		require.NotNil(t, blockChan1)
+		require.NotNil(t, blockChan2)
+
+		// Channels should be different instances
+		require.NotEqual(t, blockChan1, blockChan2)
+	})
+
+	t.Run("subscribe with same subscriber ID multiple times", func(t *testing.T) {
+		subscriberID := "duplicate-subscriber"
+
+		blockChan1 := s.SubscribeToSync(subscriberID)
+		blockChan2 := s.SubscribeToSync(subscriberID)
+
+		require.NotNil(t, blockChan1)
+		require.NotNil(t, blockChan2)
 	})
 }
