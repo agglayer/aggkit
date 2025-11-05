@@ -335,8 +335,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				d.log.Debugf("Getting tracked block for block number %d and latest synced block %d", blockNumber, latestSyncedBlock)
 				trackedBlock, err := d.reorgDetector.GetTrackedBlockByBlockNumber(d.reorgDetectorID, blockNumber)
 				if err != nil {
-					d.log.Errorf("Failed to get tracked block: %v, block number: %d", err, blockNumber)
-					return latestSyncedBlock
+					d.log.Debugf("Failed to get tracked block: %v, block number: %d", err, blockNumber)
+					continue
 				}
 
 				if trackedBlock != nil && trackedBlock.Hash != headerHash {
