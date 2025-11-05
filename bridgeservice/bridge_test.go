@@ -893,6 +893,47 @@ func TestGetClaimsHandler(t *testing.T) {
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
 
+	t.Run("GetClaims for L2 network failed invalid network ids", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(networkIDsParam, "foo,bar")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid global index", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(globalIndexParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "invalid")
+		query.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
+	})
+
 	t.Run("GetClaims for L1 network with include_all_fields=true", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
