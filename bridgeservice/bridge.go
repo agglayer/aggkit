@@ -323,7 +323,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	if err != nil {
 		b.logger.Warnf("invalid network IDs parameter: %v", err)
 		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid network_ids: %s", err)})
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid %s parameter: %s", networkIDsParam, err)})
 		return
 	}
 
