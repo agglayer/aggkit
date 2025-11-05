@@ -447,15 +447,19 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 		require.NoError(t, err)
 
 		latestSyncedBlock := uint64(5)
-		currentBlockNumber := uint64(4)
+		currentBlockNumber := uint64(5)
 
 		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
+		latestHeaderNext := &types.Header{Number: big.NewInt(int64(currentBlockNumber + 1))}
 
 		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
 		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeaderNext, nil).Once()
+		headerHashNext := latestHeaderNext.Hash()
+		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber+1, headerHashNext).Return(nil).Once()
 
 		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
-		assert.Equal(t, latestSyncedBlock, actualBlock)
+		assert.Equal(t, uint64(6), actualBlock)
 
 		reorgDetectorMock.AssertExpectations(t)
 		clientMock.AssertExpectations(t)
