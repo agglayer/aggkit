@@ -267,8 +267,12 @@ func TestBuildAppender(t *testing.T) {
 			agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
+			bridgeDeployment := &bridgeDeployment{
+				kind:           SovereignChain,
+				agglayerBridge: agglayerBridge,
+			}
 			logger := logger.WithFields("module", "test")
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, agglayerBridge, logger)
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -663,11 +667,15 @@ func TestTxnSenderField(t *testing.T) {
 				Return(nil).
 				Maybe()
 
-			bridgeContractV2, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
+			agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
 			logger := logger.WithFields("module", "test")
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, logger)
+			bridgeDeployment := &bridgeDeployment{
+				kind:           SovereignChain,
+				agglayerBridge: agglayerBridge,
+			}
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

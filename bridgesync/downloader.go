@@ -65,7 +65,7 @@ func buildAppender(
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
-	agglayerBridge *agglayerbridge.Agglayerbridge,
+	bridgeDeployment *bridgeDeployment,
 	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
 	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
@@ -73,26 +73,23 @@ func buildAppender(
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
 
-	agglayerBridgeL2, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Agglayerbridgel2 SC binding (bridge addr: %s): %w", bridgeAddr, err)
-	}
-
 	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		agglayerBridge, bridgeAddr, client, logger)
+		bridgeDeployment.agglayerBridge, bridgeAddr, client, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
-		agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
+		bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
-		legacyBridge, client,
-		bridgeAddr, syncFullClaims, logger)
-	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(agglayerBridgeL2)
-	appender[tokenMappingEventSignature] = buildTokenMappingHandler(agglayerBridge)
-	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(agglayerBridgeL2)
-	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(agglayerBridgeL2)
-	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(agglayerBridgeL2)
+		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
+	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
+
+	if bridgeDeployment.kind == SovereignChain {
+		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
+	}
 
 	return appender, nil
 }
