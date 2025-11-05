@@ -620,6 +620,15 @@ func TestSendCertificates(t *testing.T) {
 		certStatusCheckInterval time.Duration
 	}{
 		{
+			name: "fails CheckPeriodicallyCertificateStatus",
+			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
+				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyCertificateStatus(mock.Anything).
+					Return(aggsendertypes.CertStatus{}, errors.New("some error")).Maybe()
+			},
+			returnAfterNIterations: 1,
+		},
+		{
 			name: "context canceled",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()

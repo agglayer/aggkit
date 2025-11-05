@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
@@ -588,4 +589,31 @@ func TestCheckPeriodicallyCertificateStatus(t *testing.T) {
 			mockAggLayerClient.AssertExpectations(t)
 		})
 	}
+}
+
+func TestCheckInitialStatus(t *testing.T) {
+	ctx := t.Context()
+	mockLogger := log.WithFields("test", "unittest")
+	mockStorage := mocks.NewAggSenderStorage(t)
+	mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
+
+	newInitialStatusFn = func(_ context.Context,
+		_ types.Logger, _ uint32,
+		_ db.AggSenderStorage,
+		_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
+		return nil, fmt.Errorf("error")
+	}
+
+	certStatusChecker := &certStatusChecker{
+		log:            mockLogger,
+		storage:        mockStorage,
+		agglayerClient: mockAggLayerClient,
+	}
+	mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
+		nil, fmt.Errorf("error"))
+	aggsenderStatus := &types.AggsenderStatus{}
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
+	defer cancel()
+	certStatusChecker.CheckInitialStatus(ctx, time.Millisecond, aggsenderStatus)
+	require.Equal(t, "recovery: error retrieving initial status: error", aggsenderStatus.LastError)
 }
