@@ -155,24 +155,19 @@ func (c *Claim) decodeEtrogCalldata(senderAddr common.Address, data []any) (bool
 		// not the claim we're looking for
 		return false, nil
 	}
-	proofLER := [types.DefaultHeight]common.Hash{}
-	proofLERBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+
+	rawLERProof, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
 	if !ok {
-		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
+		return false, fmt.Errorf("unexpected type for rawLERProof, expected [32][32]byte got '%T'", data[0])
 	}
 
-	proofRER := [types.DefaultHeight]common.Hash{}
-	proofRERBytes, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
+	rawRERProof, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
 	if !ok {
-		return false, fmt.Errorf("unexpected type for proofRERBytes, expected [32][32]byte got '%T'", data[1])
+		return false, fmt.Errorf("unexpected type for rawRERProof, expected [32][32]byte got '%T'", data[1])
 	}
 
-	for i := range int(types.DefaultHeight) {
-		proofLER[i] = proofLERBytes[i]
-		proofRER[i] = proofRERBytes[i]
-	}
-	c.ProofLocalExitRoot = proofLER
-	c.ProofRollupExitRoot = proofRER
+	c.ProofLocalExitRoot = types.NewProof(rawLERProof)
+	c.ProofRollupExitRoot = types.NewProof(rawRERProof)
 
 	c.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
 	if !ok {
@@ -224,16 +219,12 @@ func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (b
 		return false, nil
 	}
 
-	proof := [types.DefaultHeight]common.Hash{}
-	proofBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+	rawLERProof, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
 	if !ok {
 		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
 	}
 
-	for i := range int(types.DefaultHeight) {
-		proof[i] = proofBytes[i]
-	}
-	c.ProofLocalExitRoot = proof
+	c.ProofLocalExitRoot = types.NewProof(rawLERProof)
 
 	c.MainnetExitRoot, ok = data[2].([common.HashLength]byte)
 	if !ok {

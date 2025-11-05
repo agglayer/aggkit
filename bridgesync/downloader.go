@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -30,6 +31,9 @@ var (
 	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
 
 	// sovereign chain contract events
+	detailedClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)",
+	))
 	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"SetSovereignTokenAddress(uint32,address,address,bool)",
 	))
@@ -84,14 +88,11 @@ func buildAppender(
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		legacyBridge, client,
 		bridgeAddr, syncFullClaims, logger)
-	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
-		agglayerBridge)
-	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
-		agglayerBridgeL2)
-	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
-		agglayerBridgeL2)
-	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
-		agglayerBridgeL2)
+	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(agglayerBridgeL2)
+	appender[tokenMappingEventSignature] = buildTokenMappingHandler(agglayerBridge)
+	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(agglayerBridgeL2)
+	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(agglayerBridgeL2)
+	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(agglayerBridgeL2)
 
 	return appender, nil
 }
@@ -136,11 +137,11 @@ func buildBridgeEventHandler(
 }
 
 // buildClaimEventHandler creates a handler for the Claim event log.
-func buildClaimEventHandler(contract *agglayerbridge.Agglayerbridge,
+func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
-		claimEvent, err := contract.ParseClaimEvent(l)
+		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
 		}
@@ -171,6 +172,41 @@ func buildClaimEventHandler(contract *agglayerbridge.Agglayerbridge,
 			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {
 				return err
 			}
+		}
+
+		b.Events = append(b.Events, Event{Claim: claim})
+		return nil
+	}
+}
+
+// buildDetailedClaimEventHandler creates a handler for the DetailedClaimEvent event log.
+func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
+) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		claimEvent, err := contract.ParseDetailedClaimEvent(l)
+		if err != nil {
+			return fmt.Errorf("error parsing DetailedClaimEvent event log %+v: %w", l, err)
+		}
+
+		claim := &Claim{
+			BlockNum:            b.Num,
+			BlockPos:            uint64(l.Index),
+			BlockTimestamp:      b.Timestamp,
+			TxHash:              l.TxHash,
+			GlobalIndex:         claimEvent.GlobalIndex,
+			OriginNetwork:       claimEvent.OriginNetwork,
+			OriginAddress:       claimEvent.OriginTokenAddress,
+			DestinationNetwork:  claimEvent.DestinationNetwork,
+			DestinationAddress:  claimEvent.DestinationAddress,
+			Amount:              claimEvent.Amount,
+			Metadata:            claimEvent.Metadata,
+			MainnetExitRoot:     claimEvent.MainnetExitRoot,
+			RollupExitRoot:      claimEvent.RollupExitRoot,
+			ProofLocalExitRoot:  treetypes.NewProof(claimEvent.SmtProofLocalExitRoot),
+			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
+			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
+			// TODO: Populate if provided by bridge contract
+			// FromAddress:      claimEvent.Sender,
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
@@ -230,17 +266,18 @@ func buildTokenMappingHandler(contract *agglayerbridge.Agglayerbridge,
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
-		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
-			BlockNum:            b.Num,
-			BlockPos:            uint64(l.Index),
-			BlockTimestamp:      b.Timestamp,
-			TxHash:              l.TxHash,
-			OriginNetwork:       tokenMappingEvent.OriginNetwork,
-			OriginTokenAddress:  tokenMappingEvent.OriginTokenAddress,
-			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
-			Metadata:            tokenMappingEvent.Metadata,
-			Type:                bridgetypes.WrappedToken,
-		}})
+		b.Events = append(b.Events, Event{
+			TokenMapping: &TokenMapping{
+				BlockNum:            b.Num,
+				BlockPos:            uint64(l.Index),
+				BlockTimestamp:      b.Timestamp,
+				TxHash:              l.TxHash,
+				OriginNetwork:       tokenMappingEvent.OriginNetwork,
+				OriginTokenAddress:  tokenMappingEvent.OriginTokenAddress,
+				WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
+				Metadata:            tokenMappingEvent.Metadata,
+				Type:                bridgetypes.WrappedToken,
+			}})
 		return nil
 	}
 }
