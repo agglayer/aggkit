@@ -340,11 +340,11 @@ type FEPContractQuerier interface {
 	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
 	OptimisticMode(opts *bind.CallOpts) (bool, error)
-	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error)
-	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
-		AggregationVkey     [32]byte
-		RangeVkeyCommitment [32]byte
-		RollupConfigHash    [32]byte
+	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([common.HashLength]byte, error)
+	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [common.HashLength]byte) (struct {
+		AggregationVkey     [common.HashLength]byte
+		RangeVkeyCommitment [common.HashLength]byte
+		RollupConfigHash    [common.HashLength]byte
 	}, error)
 }
 

@@ -32,12 +32,13 @@ type EthTxManager interface {
 type L2GERManagerContract interface {
 	GlobalExitRootMap(opts *bind.CallOpts, ger [common.HashLength]byte) (*big.Int, error)
 	BridgeAddress(*bind.CallOpts) (common.Address, error)
-	FilterUpdateHashChainValue(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (
+	FilterUpdateHashChainValue(opts *bind.FilterOpts,
+		newGlobalExitRoot [][common.HashLength]byte, newHashChainValue [][common.HashLength]byte) (
 		*agglayergerl2.Agglayergerl2UpdateHashChainValueIterator, error)
 	FilterUpdateRemovalHashChainValue(
 		opts *bind.FilterOpts,
-		removedGlobalExitRoot [][32]byte,
-		newRemovalHashChainValue [][32]byte) (
+		removedGlobalExitRoot [][common.HashLength]byte,
+		newRemovalHashChainValue [][common.HashLength]byte) (
 		*agglayergerl2.Agglayergerl2UpdateRemovalHashChainValueIterator,
 		error,
 	)
@@ -50,5 +51,5 @@ type AggOracleCommitteeContract interface {
 	GetAggOracleMemberIndex(opts *bind.CallOpts, oracleMember common.Address) (*big.Int, error)
 
 	// View method to check the last proposed GER by an oracle member
-	AddressToLastProposedGER(opts *bind.CallOpts, oracleMember common.Address) ([32]byte, error)
+	AddressToLastProposedGER(opts *bind.CallOpts, oracleMember common.Address) ([common.HashLength]byte, error)
 }

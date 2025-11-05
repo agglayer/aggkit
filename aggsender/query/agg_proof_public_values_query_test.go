@@ -108,11 +108,11 @@ func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
 
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(common.Hash{}, nil)
 		mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(common.Hash{}, nil)
-		mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([32]byte{0x00}, nil).Once()
-		mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [32]byte{0x00}).Return(struct {
-			AggregationVkey     [32]byte
-			RangeVkeyCommitment [32]byte
-			RollupConfigHash    [32]byte
+		mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([common.HashLength]byte{0x00}, nil).Once()
+		mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [common.HashLength]byte{0x00}).Return(struct {
+			AggregationVkey     [common.HashLength]byte
+			RangeVkeyCommitment [common.HashLength]byte
+			RollupConfigHash    [common.HashLength]byte
 		}{}, errors.New("mock error")).Once()
 		result, err := sut.GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock, l1InfoTreeLeafHash)
 
@@ -134,20 +134,20 @@ func TestGetAggregationProofPublicValuesData_GetTrustedSequencerFromContract(t *
 
 	expectedL2PreRoot := common.HexToHash("0xdeadbeef")
 	expectedClaimRoot := common.HexToHash("0xcafebabe")
-	expectedRollupConfigHash := [32]byte{0x01}
-	expectedMultiBlockVKey := [32]byte{0x02}
+	expectedRollupConfigHash := [common.HashLength]byte{0x01}
+	expectedMultiBlockVKey := [common.HashLength]byte{0x02}
 	expectedTrustedSequencer := common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd")
 
 	mockOPNodeClient.EXPECT().OutputAtBlockRoot(lastProvenBlock).Return(expectedL2PreRoot, nil)
 	mockOPNodeClient.EXPECT().OutputAtBlockRoot(requestedEndBlock).Return(expectedClaimRoot, nil)
-	mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([32]byte{0x00}, nil).Once()
-	mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [32]byte{0x00}).Return(struct {
-		AggregationVkey     [32]byte
-		RangeVkeyCommitment [32]byte
-		RollupConfigHash    [32]byte
+	mockFEPContract.EXPECT().SelectedOpSuccinctConfigName((*bind.CallOpts)(nil)).Return([common.HashLength]byte{0x00}, nil).Once()
+	mockFEPContract.EXPECT().OpSuccinctConfigs((*bind.CallOpts)(nil), [common.HashLength]byte{0x00}).Return(struct {
+		AggregationVkey     [common.HashLength]byte
+		RangeVkeyCommitment [common.HashLength]byte
+		RollupConfigHash    [common.HashLength]byte
 	}{
-		AggregationVkey:     [32]byte{0x01},
-		RangeVkeyCommitment: [32]byte{0x02},
+		AggregationVkey:     [common.HashLength]byte{0x01},
+		RangeVkeyCommitment: [common.HashLength]byte{0x02},
 		RollupConfigHash:    expectedRollupConfigHash,
 	}, nil).Once()
 	mockFEPContract.EXPECT().GetAggchainSigners((*bind.CallOpts)(nil)).Return([]common.Address{expectedTrustedSequencer}, nil)
