@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -81,24 +80,6 @@ func NewL1(
 		originNetwork,
 		false,
 	)
-}
-
-func NewL2ReadOnly(
-	ctx context.Context,
-	dbPath string,
-	originNetwork uint32,
-	dbQueryTimeout time.Duration,
-) (*BridgeSync, error) {
-	syncerID := L2BridgeSyncer
-	logger := log.WithFields("module", syncerID.String())
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
-	if err != nil {
-		return nil, err
-	}
-	return &BridgeSync{
-		processor:     processor,
-		originNetwork: originNetwork,
-	}, nil
 }
 
 // NewL2 creates a bridge syncer that synchronizes the local exit tree
