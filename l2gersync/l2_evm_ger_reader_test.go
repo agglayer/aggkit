@@ -180,7 +180,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		l2.SimBackend.Commit()
 
 		// Now remove the GER
-		removalTx, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][32]byte{gerToRemove})
+		removalTx, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][common.HashLength]byte{gerToRemove})
 		require.NoError(t, err)
 
 		// commit another block
@@ -232,11 +232,11 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		l2.SimBackend.Commit()
 
 		// Remove all GERs
-		removalTx1, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][32]byte{ger1})
+		removalTx1, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][common.HashLength]byte{ger1})
 		require.NoError(t, err)
-		removalTx2, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][32]byte{ger2})
+		removalTx2, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][common.HashLength]byte{ger2})
 		require.NoError(t, err)
-		removalTx3, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][32]byte{ger3})
+		removalTx3, err := l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][common.HashLength]byte{ger3})
 		require.NoError(t, err)
 
 		// commit another block

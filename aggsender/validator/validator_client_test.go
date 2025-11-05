@@ -59,11 +59,11 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				ClaimData: &agglayertypes.ClaimFromMainnet{
 					ProofLeafMER: &agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
-						Proof: [32]common.Hash{},
+						Proof: [common.HashLength]common.Hash{},
 					},
 					ProofGERToL1Root: &agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x3"),
-						Proof: [32]common.Hash{},
+						Proof: [common.HashLength]common.Hash{},
 					},
 					L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 						L1InfoTreeIndex: 1,

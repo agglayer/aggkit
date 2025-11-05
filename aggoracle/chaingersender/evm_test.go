@@ -152,7 +152,7 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 					// Mock IsGERProposed to return false (not already proposed)
 					mockAggOracleCommittee.EXPECT().
 						AddressToLastProposedGER(mock.Anything, expectedAddress).
-						Return([32]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, nil)
+						Return([common.HashLength]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, nil)
 					sender.aggOracleCommittee = mockAggOracleCommittee
 				}
 			} else {
@@ -644,7 +644,7 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 		name           string
 		mode           GERMode
 		ger            common.Hash
-		mockReturn     [32]byte
+		mockReturn     [common.HashLength]byte
 		mockError      error
 		expectedResult bool
 		expectedErrMsg string
@@ -662,7 +662,7 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 			name:           "GER is not proposed - committee mode",
 			mode:           AggOracleCommitteeMode,
 			ger:            common.HexToHash("0x1234567890abcdef"),
-			mockReturn:     [32]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			mockReturn:     [common.HashLength]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 			mockError:      nil,
 			expectedResult: false,
 			expectedErrMsg: "",
@@ -671,7 +671,7 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 			name:           "Contract error - committee mode",
 			mode:           AggOracleCommitteeMode,
 			ger:            common.HexToHash("0x1234567890abcdef"),
-			mockReturn:     [32]byte{},
+			mockReturn:     [common.HashLength]byte{},
 			mockError:      errors.New("contract error"),
 			expectedResult: false,
 			expectedErrMsg: "failed to check last proposed GER for oracle committee member",
