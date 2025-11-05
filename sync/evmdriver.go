@@ -38,6 +38,7 @@ type EVMDriver struct {
 	rh                   *RetryHandler
 	log                  aggkitcommon.Logger
 	compatibilityChecker compatibility.CompatibilityChecker
+	blockSubscriber      aggkitcommon.PubSub[Block]
 }
 
 // RuntimeData is the data that is used to check that the DB is compatible with the runtime data
@@ -109,7 +110,12 @@ func NewEVMDriver(
 		rh:                   rh,
 		log:                  logger,
 		compatibilityChecker: compatibilityChecker,
+		blockSubscriber:      aggkitcommon.NewGenericSubscriber[Block](),
 	}, nil
+}
+
+func (d *EVMDriver) SubscribeToNewBlocks(subscriberName string) <-chan Block {
+	return d.blockSubscriber.Subscribe(subscriberName)
 }
 
 func (d *EVMDriver) Sync(ctx context.Context) {
@@ -211,16 +217,24 @@ func (d *EVMDriver) trackNonFinalizedBlock(ctx context.Context, b EVMBlock) erro
 
 func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
 	return d.withRetry(ctx, "processBlock", func() error {
-		err := d.processor.ProcessBlock(ctx, Block{
+		block := Block{
 			Num:    b.Num,
 			Hash:   b.Hash,
 			Events: b.Events,
-		})
+		}
+		err := d.processor.ProcessBlock(ctx, block)
 		if errors.Is(err, ErrInconsistentState) {
 			d.log.Warn("state got inconsistent after processing this block; halting until reorg")
 			return newStopRetryError(err)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+
+		// Notify subscribers about the new block after successful processing
+		d.blockSubscriber.Publish(block)
+
+		return nil
 	})
 }
 
