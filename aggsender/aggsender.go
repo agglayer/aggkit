@@ -268,21 +268,20 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			if err != nil {
 				a.status.SetLastError(err)
 				a.log.Errorf("error checking last certificate from agglayer: %v", err)
-			} else {
-				if err == nil && !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
-					if a.cfg.RetryCertAfterInError {
-						a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
-						_, err := a.sendCertificate(ctx)
-						a.status.SetLastError(err)
-						if err != nil {
-							a.log.Error(err)
-						}
-						a.checkSendCertificateStopCondition(err)
-					} else {
-						a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
+			} else if err == nil && !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
+				if a.cfg.RetryCertAfterInError {
+					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
+					_, err := a.sendCertificate(ctx)
+					a.status.SetLastError(err)
+					if err != nil {
+						a.log.Error(err)
 					}
+					a.checkSendCertificateStopCondition(err)
+				} else {
+					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
 			}
+
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
 				a.log.Warnf("reached number of iterations, so we are going to return")
 				return
