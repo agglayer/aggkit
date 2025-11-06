@@ -11,6 +11,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -146,6 +147,46 @@ func TestBuildAppender(t *testing.T) {
 					Data:   data,
 				}
 				return l, nil
+			},
+		},
+		{
+			name:           "detailedClaimEventSignature appender",
+			eventSignature: detailedClaimEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(detailedClaimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				// indexed args
+				globalIndex := common.BigToHash(big.NewInt(5))
+				destinationAddress := common.HexToHash(common.HexToAddress("0x30").Hex())
+
+				// non-indexed args
+				lerProof := [treetypes.DefaultHeight]common.Hash{}
+				rerProof := [treetypes.DefaultHeight]common.Hash{}
+				mainnetExitRoot := common.HexToHash("5ca1e")
+				rollupExitRoot := common.HexToHash("5ca1e1")
+				originNet := uint32(6)
+				originAddress := common.HexToAddress("0x20")
+				destinationNet := uint32(7)
+				amount := big.NewInt(10)
+				metadata := []byte{}
+				data, err := event.Inputs.NonIndexed().Pack(lerProof, rerProof, mainnetExitRoot, rollupExitRoot,
+					originNet, originAddress, destinationNet, amount, metadata)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				return types.Log{
+					Topics: []common.Hash{
+						detailedClaimEventSignature,
+						globalIndex,
+						destinationAddress,
+					},
+					Data: data,
+				}, nil
 			},
 		},
 		{
