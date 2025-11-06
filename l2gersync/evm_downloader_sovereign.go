@@ -159,7 +159,7 @@ func (d *downloaderSovereign) buildAppender(
 				gerHash := common.Hash(insertGEREvent.NewGlobalExitRoot)
 				timestamp, err := d.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerHash)
 				if err != nil {
-					log.Errorf("L1InfoTreeSync is up to date, GER lookup for %s failed in L1InfoTreeSync, and L1 contract check also failed: %v",
+					log.Errorf("GER lookup for %s failed in L1 contract: %v",
 						gerHash.Hex(), err)
 				}
 
