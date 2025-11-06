@@ -106,8 +106,6 @@ func (c *certStatusChecker) CheckInitialStatus(
 func (c *certStatusChecker) CheckPeriodicallyCertificateStatus(
 	ctx context.Context,
 ) (types.CertStatus, error) {
-	// Don't need to check the returned value here
-	c.checkPendingCertificatesStatus(ctx)
 	err := c.checkLastCertificateFromAgglayer(ctx)
 	return c.checkPendingCertificatesStatus(ctx), err
 }

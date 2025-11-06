@@ -268,7 +268,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			if err != nil {
 				a.status.SetLastError(err)
 				a.log.Errorf("error checking last certificate from agglayer: %v", err)
-			} else if err == nil && !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
+			} else if !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
 				if a.cfg.RetryCertAfterInError {
 					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
 					_, err := a.sendCertificate(ctx)
