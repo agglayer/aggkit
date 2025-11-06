@@ -268,18 +268,19 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			if err != nil {
 				a.status.SetLastError(err)
 				a.log.Errorf("error checking last certificate from agglayer: %v", err)
-			}
-			if err == nil && !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
-				if a.cfg.RetryCertAfterInError {
-					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
-					_, err := a.sendCertificate(ctx)
-					a.status.SetLastError(err)
-					if err != nil {
-						a.log.Error(err)
+			} else {
+				if err == nil && !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
+					if a.cfg.RetryCertAfterInError {
+						a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
+						_, err := a.sendCertificate(ctx)
+						a.status.SetLastError(err)
+						if err != nil {
+							a.log.Error(err)
+						}
+						a.checkSendCertificateStopCondition(err)
+					} else {
+						a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 					}
-					a.checkSendCertificateStopCondition(err)
-				} else {
-					a.log.Infof("An InError cert exists or fails check (%w) but skipping send cert because RetryCertAfterInError is false", err)
 				}
 			}
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
@@ -293,17 +294,17 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			if err != nil {
 				a.log.Errorf("Epoch trigger: error checking certificate status: %v", err)
 				a.status.SetLastError(err)
-				break
-			}
-			if !checkResult.ExistPendingCerts {
-				_, err := a.sendCertificateWithRetries(ctx)
-				if err != nil {
-					a.log.Errorf("Epoch trigger: error sending certificate: %v", err)
-					a.status.SetLastError(err)
-				}
 			} else {
-				a.log.Infof("epoch trigger: Skipping epoch %s because there are pending certificates",
-					epoch.String())
+				if !checkResult.ExistPendingCerts {
+					_, err := a.sendCertificateWithRetries(ctx)
+					if err != nil {
+						a.log.Errorf("Epoch trigger: error sending certificate: %v", err)
+						a.status.SetLastError(err)
+					}
+				} else {
+					a.log.Infof("epoch trigger: Skipping epoch %s because there are pending certificates",
+						epoch.String())
+				}
 			}
 
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
