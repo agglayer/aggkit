@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -28,6 +30,7 @@ type downloaderSovereign struct {
 	l2GERAddr          common.Address
 	l1InfoTreeSync     L1InfoTreeQuerier
 	l1Client           aggkittypes.BaseEthereumClienter
+	l1GERManager       *agglayerger.Agglayerger
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
 }
@@ -37,6 +40,7 @@ func newDownloaderSovereign(
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l1GERAddr common.Address,
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -47,11 +51,18 @@ func newDownloaderSovereign(
 		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)
 	}
 
+	l1GERManager, err := agglayerger.NewAgglayerger(
+		l1GERAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize L1 GER manager contract: %w", err)
+	}
+
 	d := &downloaderSovereign{
 		l2GERManager:       l2GERManager,
 		l2GERAddr:          l2GERAddr,
 		l1InfoTreeSync:     l1InfoTreeSync,
 		l1Client:           l1Client,
+		l1GERManager:       l1GERManager,
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
 	}
@@ -136,14 +147,27 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
+			log.Errorf("failed to fetch l1 info tree for global exit root %s: %v",
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 			ctx := context.Background()
-			isUpToDate, err := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
-			if err != nil {
-				log.Warnf("Failed to check if L1InfoTreeSync is up to date: %v", err)
+			isUpToDate, upToDateErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
+			if upToDateErr != nil {
+				log.Errorf("Failed to check if L1InfoTreeSync is up to date: %v", upToDateErr)
 			}
 			if isUpToDate {
-				log.Fatal("L1InfoTreeSync is to date, GER lookup for %s failed: %v",
-					common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
+				// Check L1 contract directly before failing
+				gerHash := common.Hash(insertGEREvent.NewGlobalExitRoot)
+				timestamp, contractErr := d.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerHash)
+				if contractErr != nil {
+					log.Errorf("GER lookup for %s failed in L1 contract: %v",
+						gerHash.Hex(), contractErr)
+				}
+
+				if timestamp.Cmp(common.Big0) == 0 {
+					log.Fatalf("GER %s not found in L1 contract globalExitRootMap", gerHash.Hex())
+				} else {
+					log.Infof("GER %s exists in L1 contract", gerHash.Hex())
+				}
 			}
 
 			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
