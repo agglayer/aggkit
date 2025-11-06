@@ -83,6 +83,7 @@ func (c *certStatusChecker) CheckInitialStatus(
 	defer ticker.Stop()
 
 	for {
+		c.checkPendingCertificatesStatus(ctx)
 		err := c.checkLastCertificateFromAgglayer(ctx)
 		aggsenderStatus.SetLastError(err)
 		if err != nil {
