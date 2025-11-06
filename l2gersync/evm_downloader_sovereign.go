@@ -31,7 +31,6 @@ type downloaderSovereign struct {
 	l1InfoTreeSync     L1InfoTreeQuerier
 	l1Client           aggkittypes.BaseEthereumClienter
 	l1GERManager       *agglayerger.Agglayerger
-	l1GERAddr          common.Address
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
 }
@@ -64,7 +63,6 @@ func newDownloaderSovereign(
 		l1InfoTreeSync:     l1InfoTreeSync,
 		l1Client:           l1Client,
 		l1GERManager:       l1GERManager,
-		l1GERAddr:          l1GERAddr,
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
 	}
@@ -149,6 +147,8 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
+			log.Errorf("failed to fetch l1 info tree for global exit root %s: %v",
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 			ctx := context.Background()
 			isUpToDate, err := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
 			if err != nil {
@@ -170,8 +170,7 @@ func (d *downloaderSovereign) buildAppender(
 				}
 			}
 
-			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
-				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
+			return err
 		}
 
 		b.Events = []any{
