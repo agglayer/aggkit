@@ -284,11 +284,7 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 }
 
 // sendCertificates sends certificates to the aggLayer based on epoch notifications
-func (a *AggSender) sendCertificates(
-	ctx context.Context,
-	returnAfterNIterations int) {
-	a.log.Info("Running in epoch-based mode")
-
+func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
 	var checkCertChannel <-chan time.Time
 	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
 		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
