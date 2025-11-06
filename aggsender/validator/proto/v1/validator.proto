@@ -14,6 +14,8 @@ service AggsenderValidator {
     rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse);
     // Method to validate a new certificate
     rpc ValidateCertificate(ValidateCertificateRequest) returns (ValidateCertificateResponse);
+    // Method to validate a Global Exit Root
+    rpc ValidateGER(ValidateGERRequest) returns (ValidateGERResponse);
 }
 
 // Response Status() 
@@ -38,3 +40,15 @@ message ValidateCertificateResponse {
   // The signature provided by the aggsender validator.
    agglayer.interop.types.v1.FixedBytes65 signature = 1;
 }
+
+ // Request to validate a GER.
+ message ValidateGERRequest {
+   // GER to be validated
+   bytes ger = 1;
+ }
+
+  // Response to a GER validation request.
+ message ValidateGERResponse {
+   // The signature provided by the aggsender validator.
+   agglayer.interop.types.v1.FixedBytes65 signature = 1;
+ }
