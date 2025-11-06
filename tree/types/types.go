@@ -32,12 +32,11 @@ type Proof [DefaultHeight]common.Hash
 
 // NewProof creates proof an array of hashes
 func NewProof(proofRaw [DefaultHeight][common.HashLength]byte) Proof {
-	proof := make([]common.Hash, 0, DefaultHeight)
-	for _, currentLeaf := range proofRaw {
-		proof = append(proof, currentLeaf)
+	var proof Proof
+	for i, currentLeaf := range proofRaw {
+		proof[i] = currentLeaf
 	}
-
-	return Proof(proof)
+	return proof
 }
 
 func (r *Root) String() string {

@@ -22,6 +22,8 @@ import (
 
 // BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
 type BridgeDeployment byte
+
+const (
 	Unknown BridgeDeployment = iota
 	NonSovereignChain
 	SovereignChain
