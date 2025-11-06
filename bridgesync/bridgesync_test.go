@@ -16,6 +16,8 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -274,18 +276,32 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	)
 
 	mockEthClient := mocksethclient.NewEthClienter(t)
-	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
-		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
-	mockEthClient.EXPECT().
-		CallContract(
-			mock.Anything,
-			mock.Anything,
-			mock.Anything,
-		).
-		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
-		Maybe()
-	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+	// lastUpdatedDepositCount function call (bridge contract)
+	mockEthClient.EXPECT().CallContract(mock.Anything,
+		ethereum.CallMsg{
+			To:   &bridge,
+			Data: common.Hex2Bytes("be5831c7"),
+		}, mock.Anything).
+		Return(common.LeftPadBytes(common.Hex2Bytes("2a"), common.HashLength), nil).
+		Once()
 
+	tString, err := abi.NewType("string", "", nil)
+	require.NoError(t, err)
+
+	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
+	require.NoError(t, err)
+
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	mockEthClient.EXPECT().
+		CallContract(mock.Anything,
+			ethereum.CallMsg{
+				To:   &bridge,
+				Data: common.Hex2Bytes("f67566e4")},
+			mock.Anything).
+		Return(bridgeVersionOut, nil).
+		Once()
+
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
@@ -315,7 +331,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	require.NoError(t, err)
 
 	allTokenMappings := make([]*TokenMapping, 0, tokenMappingsCount)
-	genericEvts := make([]interface{}, 0, tokenMappingsCount)
+	genericEvts := make([]any, 0, tokenMappingsCount)
 
 	for i := tokenMappingsCount - 1; i >= 0; i-- {
 		tokenMappingEvt := &TokenMapping{
@@ -435,18 +451,32 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	)
 
 	mockEthClient := mocksethclient.NewEthClienter(t)
-	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
-		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
-	mockEthClient.EXPECT().
-		CallContract(
-			mock.Anything,
-			mock.Anything,
-			mock.Anything,
-		).
-		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
-		Maybe()
-	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+	// lastUpdatedDepositCount function call (bridge contract)
+	mockEthClient.EXPECT().CallContract(mock.Anything,
+		ethereum.CallMsg{
+			To:   &bridge,
+			Data: common.Hex2Bytes("be5831c7"),
+		}, mock.Anything).
+		Return(common.LeftPadBytes(common.Hex2Bytes("2a"), common.HashLength), nil).
+		Once()
 
+	tString, err := abi.NewType("string", "", nil)
+	require.NoError(t, err)
+
+	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
+	require.NoError(t, err)
+
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	mockEthClient.EXPECT().
+		CallContract(mock.Anything,
+			ethereum.CallMsg{
+				To:   &bridge,
+				Data: common.Hex2Bytes("f67566e4")},
+			mock.Anything).
+		Return(bridgeVersionOut, nil).
+		Once()
+
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
@@ -622,18 +652,32 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	)
 
 	mockEthClient := mocksethclient.NewEthClienter(t)
-	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
-		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
-	mockEthClient.EXPECT().
-		CallContract(
-			mock.Anything,
-			mock.Anything,
-			mock.Anything,
-		).
-		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
-		Maybe()
-	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+	// lastUpdatedDepositCount function call (bridge contract)
+	mockEthClient.EXPECT().CallContract(mock.Anything,
+		ethereum.CallMsg{
+			To:   &bridge,
+			Data: common.Hex2Bytes("be5831c7"),
+		}, mock.Anything).
+		Return(common.LeftPadBytes(common.Hex2Bytes("2a"), common.HashLength), nil).
+		Once()
 
+	tString, err := abi.NewType("string", "", nil)
+	require.NoError(t, err)
+
+	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
+	require.NoError(t, err)
+
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	mockEthClient.EXPECT().
+		CallContract(mock.Anything,
+			ethereum.CallMsg{
+				To:   &bridge,
+				Data: common.Hex2Bytes("f67566e4")},
+			mock.Anything).
+		Return(bridgeVersionOut, nil).
+		Once()
+
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
@@ -784,18 +828,32 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 	)
 
 	mockEthClient := mocksethclient.NewEthClienter(t)
-	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
-		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
-	mockEthClient.EXPECT().
-		CallContract(
-			mock.Anything,
-			mock.Anything,
-			mock.Anything,
-		).
-		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
-		Maybe()
-	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+	// lastUpdatedDepositCount function call (bridge contract)
+	mockEthClient.EXPECT().CallContract(mock.Anything,
+		ethereum.CallMsg{
+			To:   &bridge,
+			Data: common.Hex2Bytes("be5831c7"),
+		}, mock.Anything).
+		Return(common.LeftPadBytes(common.Hex2Bytes("2a"), common.HashLength), nil).
+		Once()
 
+	tString, err := abi.NewType("string", "", nil)
+	require.NoError(t, err)
+
+	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
+	require.NoError(t, err)
+
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	mockEthClient.EXPECT().
+		CallContract(mock.Anything,
+			ethereum.CallMsg{
+				To:   &bridge,
+				Data: common.Hex2Bytes("f67566e4")},
+			mock.Anything).
+		Return(bridgeVersionOut, nil).
+		Once()
+
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
