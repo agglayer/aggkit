@@ -844,6 +844,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
 					BlockRange: types.NewBlockRange(1, 10),
 				}).Return(expectedParams, nil).Once()
+				mockBaseFlow.EXPECT().VerifyBuildParams(ctx, expectedParams).Return(nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:       1,

@@ -194,6 +194,12 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		L1InfoTreeLeafCount:            preParams.L1InfoTreeToProve.L1InfoTreeLeafCount,
 		Unclaims:                       unclaims,
 	}
+
+	buildParams, err = f.adjustCertificateIfNonFinalizedClaims(buildParams)
+	if err != nil {
+		return nil, fmt.Errorf("error adjusting certificate if non-finalized claims: %w", err)
+	}
+
 	return buildParams, nil
 }
 
@@ -207,10 +213,6 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 	params, err := f.GenerateBuildParams(ctx, *preParams)
 	if err != nil {
 		return nil, fmt.Errorf("error generating build params: %w", err)
-	}
-	params, err = f.adjustCertificateIfNonFinalizedClaims(params)
-	if err != nil {
-		return nil, fmt.Errorf("error adjusting certificate if non-finalized claims: %w", err)
 	}
 	params, err = f.LimitCertSize(params)
 	if err != nil {

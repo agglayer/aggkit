@@ -55,6 +55,8 @@ func (p *PPBuilderFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
 }
 
+// GenerateBuildParams generates the build parameters for the PPBuilderFlow
+// Only used in aggsender validator
 func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
 	if preParams == nil {
@@ -68,6 +70,10 @@ func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("error applying limit size: %w", err)
 	}
+	if err := p.baseFlow.VerifyBuildParams(ctx, params); err != nil {
+		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
+	}
+
 	return params, nil
 }
 
