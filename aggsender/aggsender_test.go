@@ -559,7 +559,7 @@ func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
 	}, "Expected panic when starting AggSender")
 }
 
-func TestSendCertificatesRetry(t *testing.T) {
+func TestRetrySendCertificates(t *testing.T) {
 	mockCertStatusChecker := mocks.NewCertificateStatusChecker(t)
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
 	mockStorage := mocks.NewAggSenderStorage(t)
@@ -591,10 +591,10 @@ func TestSendCertificatesRetry(t *testing.T) {
 	chEpoch := make(chan aggsendertypes.EpochEvent)
 	mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
 	expectedNumAttempts := 4
-	mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+	mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 		ExistPendingCerts:   false,
 		ExistNewInErrorCert: false,
-	}).Times(2)
+	}, nil).Times(2)
 	mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
 		Epoch:        123,
 		PercentEpoch: 0.2,
@@ -615,56 +615,71 @@ func TestSendCertificates(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		mockFn                  func(*mocks.CertificateStatusChecker, *mocks.EpochNotifier, *mocks.AggSenderStorage, *mocks.AggsenderBuilderFlow)
+		mockFn                  func(context.Context, *mocks.CertificateStatusChecker, *mocks.EpochNotifier, *mocks.AggSenderStorage, *mocks.AggsenderBuilderFlow)
 		returnAfterNIterations  int
 		certStatusCheckInterval time.Duration
+		needTimeoutCancel       bool
 	}{
 		{
+			name: "fails CheckPeriodicallyStatus",
+			mockFn: func(ctx context.Context, mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
+				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
+				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(ctx).Return(aggsendertypes.CertStatus{}, errors.New("some error")).Once()
+			},
+			returnAfterNIterations: 1,
+		},
+		{
 			name: "context canceled",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
+			mockFn: func(ctx context.Context, mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()
 			},
 			returnAfterNIterations: 0,
+			needTimeoutCancel:      true,
 		},
 		{
 			name: "retry certificate after in-error",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
-				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+			mockFn: func(ctx context.Context, mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts:   false,
 					ExistNewInErrorCert: true,
-				}).Once()
+				}, nil).Once()
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()
 				mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
 			},
 			returnAfterNIterations:  1,
 			certStatusCheckInterval: 100 * time.Millisecond,
+			needTimeoutCancel:       true,
 		},
 		{
 			name: "epoch received with no pending certificates",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
+			mockFn: func(ctx context.Context, mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
 				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
 				mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
-				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: false,
-				}).Once()
+				}, nil).Once()
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
 			},
 			returnAfterNIterations: 1,
+			needTimeoutCancel:      true,
 		},
 		{
 			name: "epoch received with pending certificates",
-			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
+			mockFn: func(ctx context.Context, mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow) {
 				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
 				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
 				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
-				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: true,
-				}).Once()
+				}, nil).Once()
 			},
 			returnAfterNIterations: 1,
+			needTimeoutCancel:      true,
 		},
 	}
 
@@ -678,8 +693,6 @@ func TestSendCertificates(t *testing.T) {
 			mockEpochNotifier := mocks.NewEpochNotifier(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockFlow := mocks.NewAggsenderBuilderFlow(t)
-
-			tt.mockFn(mockCertStatusChecker, mockEpochNotifier, mockStorage, mockFlow)
 
 			logger := log.WithFields("aggsender-test", tt.name)
 			aggSender := &AggSender{
@@ -697,11 +710,13 @@ func TestSendCertificates(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-
-			go func() {
-				time.Sleep(300 * time.Millisecond)
-				cancel()
-			}()
+			tt.mockFn(ctx, mockCertStatusChecker, mockEpochNotifier, mockStorage, mockFlow)
+			if tt.needTimeoutCancel {
+				go func() {
+					time.Sleep(300 * time.Millisecond)
+					cancel()
+				}()
+			}
 
 			aggSender.sendCertificates(ctx, tt.returnAfterNIterations)
 
