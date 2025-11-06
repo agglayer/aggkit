@@ -532,7 +532,7 @@ func TestTxnSenderField(t *testing.T) {
 	blockNum := uint64(1)
 	expectedTxnSender := common.HexToAddress("0x1234567890123456789012345678901234567890")
 
-	bridgeV2Abi, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+	agglayerBridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -560,7 +560,7 @@ func TestTxnSenderField(t *testing.T) {
 			},
 			expectedTxnSender: expectedTxnSender,
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
+				event, err := agglayerBridgeABI.EventByID(bridgeEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -606,7 +606,7 @@ func TestTxnSenderField(t *testing.T) {
 			},
 			expectedTxnSender: expectedTxnSender,
 			logBuilder: func() (types.Log, error) {
-				event, err := bridgeV2Abi.EventByID(claimEventSignature)
+				event, err := agglayerBridgeABI.EventByID(claimEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -664,7 +664,7 @@ func TestTxnSenderField(t *testing.T) {
 
 			logger := logger.WithFields("module", "test")
 			bridgeDeployment := &bridgeDeployment{
-				kind:           SovereignChain,
+				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
 			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeDeployment, logger)
