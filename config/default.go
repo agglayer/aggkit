@@ -174,6 +174,7 @@ DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
+GlobalExitRootL1Addr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1

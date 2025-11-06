@@ -84,7 +84,7 @@ func New(
 	case SovereignChain:
 		downloader, err = newDownloaderSovereign(
 			l2Client, cfg.GlobalExitRootL2Addr,
-			l1InfoTreeSync, l1Client,
+			l1InfoTreeSync, l1Client, cfg.GlobalExitRootL1Addr,
 			rh, cfg.BlockFinality, cfg.WaitForNewBlocksPeriod.Duration,
 			cfg.SyncBlockChunkSize,
 		)
