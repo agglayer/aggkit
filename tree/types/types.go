@@ -30,7 +30,7 @@ type TreeNode struct {
 
 type Proof [DefaultHeight]common.Hash
 
-// NewProof creates proof an array of hashes
+// NewProof creates a proof from an array of hashes
 func NewProof(proofRaw [DefaultHeight][common.HashLength]byte) Proof {
 	var proof Proof
 	for i, currentLeaf := range proofRaw {
