@@ -520,7 +520,7 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 	}
 }
 
-func TestCheckPeriodicallyCertificateStatus(t *testing.T) {
+func TestCheckPeriodicallyStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		newInitialErr  error
@@ -577,7 +577,7 @@ func TestCheckPeriodicallyCertificateStatus(t *testing.T) {
 				tt.localCert.CertificateID,
 				tt.agglayerCert.Status,
 				mock.Anything).Return(nil)
-			status, err := certStatusChecker.CheckPeriodicallyCertificateStatus(ctx)
+			status, err := certStatusChecker.CheckPeriodicallyStatus(ctx)
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
 			} else {

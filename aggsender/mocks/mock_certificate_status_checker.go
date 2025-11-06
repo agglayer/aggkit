@@ -59,12 +59,12 @@ func (_c *CertificateStatusChecker_CheckInitialStatus_Call) RunAndReturn(run fun
 	return _c
 }
 
-// CheckPeriodicallyCertificateStatus provides a mock function with given fields: ctx
-func (_m *CertificateStatusChecker) CheckPeriodicallyCertificateStatus(ctx context.Context) (types.CertStatus, error) {
+// CheckPeriodicallyStatus provides a mock function with given fields: ctx
+func (_m *CertificateStatusChecker) CheckPeriodicallyStatus(ctx context.Context) (types.CertStatus, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CheckPeriodicallyCertificateStatus")
+		panic("no return value specified for CheckPeriodicallyStatus")
 	}
 
 	var r0 types.CertStatus
@@ -87,30 +87,30 @@ func (_m *CertificateStatusChecker) CheckPeriodicallyCertificateStatus(ctx conte
 	return r0, r1
 }
 
-// CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckPeriodicallyCertificateStatus'
-type CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call struct {
+// CertificateStatusChecker_CheckPeriodicallyStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckPeriodicallyStatus'
+type CertificateStatusChecker_CheckPeriodicallyStatus_Call struct {
 	*mock.Call
 }
 
-// CheckPeriodicallyCertificateStatus is a helper method to define mock.On call
+// CheckPeriodicallyStatus is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *CertificateStatusChecker_Expecter) CheckPeriodicallyCertificateStatus(ctx interface{}) *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call {
-	return &CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call{Call: _e.mock.On("CheckPeriodicallyCertificateStatus", ctx)}
+func (_e *CertificateStatusChecker_Expecter) CheckPeriodicallyStatus(ctx interface{}) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
+	return &CertificateStatusChecker_CheckPeriodicallyStatus_Call{Call: _e.mock.On("CheckPeriodicallyStatus", ctx)}
 }
 
-func (_c *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call) Run(run func(ctx context.Context)) *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call {
+func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) Run(run func(ctx context.Context)) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context))
 	})
 	return _c
 }
 
-func (_c *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call) Return(_a0 types.CertStatus, _a1 error) *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call {
+func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) Return(_a0 types.CertStatus, _a1 error) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call) RunAndReturn(run func(context.Context) (types.CertStatus, error)) *CertificateStatusChecker_CheckPeriodicallyCertificateStatus_Call {
+func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) RunAndReturn(run func(context.Context) (types.CertStatus, error)) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }
