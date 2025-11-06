@@ -94,6 +94,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		l2GERAddr,
 		mockL1InfoTreeSync,
 		mockL1Client,
+		common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
 		rh,
 		aggkittypes.LatestBlock,
 		time.Millisecond*10, // waitForNewBlocksPeriod
@@ -179,6 +180,7 @@ func TestIsL1InfoTreeQuerierUpToDate(t *testing.T) {
 				common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
 				mockL1InfoTreeSync,
 				mockL1Client,
+				common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
 				rh,
 				aggkittypes.LatestBlock,
 				time.Millisecond*10,
@@ -297,6 +299,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 				l2GERAddr,
 				mockL1InfoTreeSync,
 				mockL1Client,
+				common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
 				rh,
 				aggkittypes.LatestBlock,
 				time.Millisecond*10,
