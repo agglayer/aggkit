@@ -307,7 +307,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			}
 
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
-				a.log.Warnf("epoch trigger: reached number of iterations, so we are going to return")
+				a.log.Warnf("Epoch trigger: reached number of iterations, so we are going to return")
 				return
 			}
 		case <-ctx.Done():
