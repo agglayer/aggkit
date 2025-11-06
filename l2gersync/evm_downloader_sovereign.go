@@ -170,7 +170,8 @@ func (d *downloaderSovereign) buildAppender(
 				}
 			}
 
-			return err
+			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 		}
 
 		b.Events = []any{
