@@ -150,17 +150,17 @@ func (d *downloaderSovereign) buildAppender(
 			log.Errorf("failed to fetch l1 info tree for global exit root %s: %v",
 				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 			ctx := context.Background()
-			isUpToDate, err := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
-			if err != nil {
-				log.Warnf("Failed to check if L1InfoTreeSync is up to date: %v", err)
+			isUpToDate, upToDateErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
+			if upToDateErr != nil {
+				log.Errorf("Failed to check if L1InfoTreeSync is up to date: %v", upToDateErr)
 			}
 			if isUpToDate {
 				// Check L1 contract directly before failing
 				gerHash := common.Hash(insertGEREvent.NewGlobalExitRoot)
-				timestamp, err := d.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerHash)
-				if err != nil {
+				timestamp, contractErr := d.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerHash)
+				if contractErr != nil {
 					log.Errorf("GER lookup for %s failed in L1 contract: %v",
-						gerHash.Hex(), err)
+						gerHash.Hex(), contractErr)
 				}
 
 				if timestamp.Cmp(common.Big0) == 0 {
