@@ -283,7 +283,7 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 	}
 }
 
-// sendCertificates sends certificates to the aggLayer based on epoch notifications
+// sendCertificates sends certificates to the aggLayer
 func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
 	var checkCertChannel <-chan time.Time
 	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
