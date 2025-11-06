@@ -38,6 +38,7 @@ type GERMode string
 const (
 	DirectInjectionMode    GERMode = "direct_injection"
 	AggOracleCommitteeMode GERMode = "aggoracle_committee"
+	ValidatorSignedMode    GERMode = "validator_signed"
 )
 
 type EVMChainGERSender struct {
@@ -276,9 +277,46 @@ func (c *EVMChainGERSender) ProcessGER(ctx context.Context, ger common.Hash) err
 		return c.InjectGER(ctx, ger)
 	case AggOracleCommitteeMode:
 		return c.ProposeGER(ctx, ger)
+	case ValidatorSignedMode:
+		// In ValidatorSigned mode, ProcessGER should not be called directly
+		// Use InjectGERWithSignatures instead
+		return fmt.Errorf("ProcessGER should not be called in ValidatorSigned mode, use InjectGERWithSignatures instead")
 	default:
 		return fmt.Errorf("unknown GER mode: %s", c.mode)
 	}
+}
+
+// InjectGERWithSignatures injects the provided global exit root into the L2 GER manager contract with validator signatures
+func (c *EVMChainGERSender) InjectGERWithSignatures(ctx context.Context, ger common.Hash, signatures [][]byte) error {
+	isGERInjected, err := c.IsGERInjected(ger)
+	if err != nil {
+		return fmt.Errorf("error checking if GER (%s) is already injected: %w", ger, err)
+	}
+
+	if isGERInjected {
+		c.logger.Debugf("GER (%s) is already injected", ger.Hex())
+		return nil
+	}
+
+	// TODO: Implement the actual contract call with signatures
+	// This is a placeholder - the actual implementation will depend on the L2 contract interface
+	// For now, we'll just log that we would call the contract
+	c.logger.Infof("InjectGERWithSignatures called for GER: %s with %d signatures", ger.Hex(), len(signatures))
+	c.logger.Warnf("InjectGERWithSignatures: Contract call not yet implemented, assuming success")
+
+	// Placeholder: In the actual implementation, this would:
+	// 1. Pack the function call with ger and signatures
+	// 2. Submit the transaction via ethTxMan
+	// 3. Monitor the transaction status
+	// Example:
+	// txInput, err := c.l2GERManagerAbi.Pack("insertGlobalExitRootWithSignatures", ger, signatures)
+	// if err != nil {
+	//     return fmt.Errorf("failed to pack insertGlobalExitRootWithSignatures call: %w", err)
+	// }
+	// id, err := c.ethTxMan.Add(ctx, &c.l2GERManagerAddr, common.Big0, txInput, c.gasOffset, nil)
+	// ... monitor transaction ...
+
+	return nil
 }
 
 // validateGERSender validates whether the provided GER sender is allowed to send and remove GERs

@@ -105,6 +105,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 TargetChainType = "EVM"
 WaitPeriodNextGER = "10s"
 EnableAggOracleCommittee = false
+EnableValidatorSigned = false
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 		AggOracleCommitteeAddr = "{{L2Config.AggOracleCommitteeAddr}}"
@@ -133,6 +134,16 @@ EnableAggOracleCommittee = false
 						# This field should be populated with L2ChainID
 						L1ChainID = 0
 						HTTPHeaders = []
+	[AggOracle.ValidatorClient]
+		URL = ""
+		MinConnectTimeout = "5s"
+		RequestTimeout = "30s"
+		UseTLS = false
+		[AggOracle.ValidatorClient.Retry]
+			InitialBackoff = "1s"
+			MaxBackoff = "10s"
+			BackoffMultiplier = 2.0
+			MaxAttempts = 20
 
 [RPC]
 Host = "0.0.0.0"

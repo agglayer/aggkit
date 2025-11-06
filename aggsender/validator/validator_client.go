@@ -75,6 +75,22 @@ func (v *ValidatorClient) ValidateCertificate(
 	return response.Signature.Value, nil
 }
 
+// ValidateGER sends a GER to the AggsenderValidator service for validation.
+func (v *ValidatorClient) ValidateGER(
+	ctx context.Context,
+	ger common.Hash,
+) ([]byte, error) {
+	response, err := v.client.ValidateGER(ctx, &v1.ValidateGERRequest{
+		Ger: ger.Bytes(),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("aggsender validator failed to successfully validate GER: %w", err)
+	}
+
+	return response.Signature.Value, nil
+}
+
 // certIDToProtoNullable converts a common.Hash pointer to a nodev1.CertificateId proto message.
 func certIDToProtoNullable(certID *common.Hash) *nodev1.CertificateId {
 	if certID == nil {

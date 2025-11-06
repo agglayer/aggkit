@@ -3,6 +3,7 @@ package aggoracle
 import (
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/grpc"
 )
 
 type TargetChainType string
@@ -20,4 +21,6 @@ type Config struct {
 	WaitPeriodNextGER        types.Duration           `mapstructure:"WaitPeriodNextGER"`
 	EVMSender                chaingersender.EVMConfig `mapstructure:"EVMSender"`
 	EnableAggOracleCommittee bool                     `mapstructure:"EnableAggOracleCommittee"`
+	EnableValidatorSigned    bool                     `mapstructure:"EnableValidatorSigned"`
+	ValidatorClient          grpc.ClientConfig        `mapstructure:"ValidatorClient"`
 }

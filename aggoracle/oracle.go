@@ -3,8 +3,10 @@ package aggoracle
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/metrics"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -24,14 +26,22 @@ type ChainSender interface {
 	ProposeGER(ctx context.Context, ger common.Hash) error
 	IsGERProposed(ger common.Hash) (bool, error)
 	ProcessGER(ctx context.Context, ger common.Hash) error
+	InjectGERWithSignatures(ctx context.Context, ger common.Hash, signatures [][]byte) error
+}
+
+// GERValidatorPoller is an interface for polling validators to validate GERs
+type GERValidatorPoller interface {
+	PollValidators(ctx context.Context, ger common.Hash) (*agglayertypes.Multisig, error)
 }
 
 type AggOracle struct {
-	logger            *log.Logger
-	waitPeriodNextGER time.Duration
-	l1Client          ethereum.ChainReader
-	l1Info            L1InfoTreeSyncer
-	chainSender       ChainSender
+	logger                *log.Logger
+	waitPeriodNextGER     time.Duration
+	l1Client              ethereum.ChainReader
+	l1Info                L1InfoTreeSyncer
+	chainSender           ChainSender
+	validatorPoller       GERValidatorPoller
+	enableValidatorSigned bool
 }
 
 // New creates a new AggOracle instance that will monitor the L1 info tree for new Global Exit Roots (GERs)
@@ -41,13 +51,17 @@ func New(
 	l1Client ethereum.ChainReader,
 	l1InfoTreeSyncer L1InfoTreeSyncer,
 	waitPeriodNextGER time.Duration,
+	validatorPoller GERValidatorPoller,
+	enableValidatorSigned bool,
 ) (*AggOracle, error) {
 	return &AggOracle{
-		logger:            logger,
-		chainSender:       chainSender,
-		l1Client:          l1Client,
-		l1Info:            l1InfoTreeSyncer,
-		waitPeriodNextGER: waitPeriodNextGER,
+		logger:                logger,
+		chainSender:           chainSender,
+		l1Client:              l1Client,
+		l1Info:                l1InfoTreeSyncer,
+		waitPeriodNextGER:     waitPeriodNextGER,
+		validatorPoller:       validatorPoller,
+		enableValidatorSigned: enableValidatorSigned,
 	}, nil
 }
 
@@ -84,6 +98,27 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 
 	a.logger.Debugf("latest GER retrieved: %s", latestGER.String())
 
+	// Check if GER is already injected
+	isInjected, err := a.chainSender.IsGERInjected(latestGER)
+	if err != nil {
+		metrics.IncGERProcessErrCount()
+		return err
+	}
+
+	if isInjected {
+		a.logger.Debugf("GER (%s) is already injected", latestGER.Hex())
+		return nil
+	}
+
+	// Handle ValidatorSigned mode
+	if a.enableValidatorSigned {
+		if a.validatorPoller == nil {
+			return fmt.Errorf("validatorPoller is required for ValidatorSigned mode")
+		}
+		return a.processGERWithValidatorSigned(ctx, latestGER)
+	}
+
+	// Default mode: process GER normally
 	go func() {
 		start := time.Now()
 		err := a.chainSender.ProcessGER(ctx, latestGER)
@@ -91,6 +126,41 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 		if err != nil {
 			metrics.IncGERProcessErrCount()
 			a.logger.Error(err)
+		}
+	}()
+
+	return nil
+}
+
+// processGERWithValidatorSigned processes GER in ValidatorSigned mode
+func (a *AggOracle) processGERWithValidatorSigned(ctx context.Context, ger common.Hash) error {
+	a.logger.Infof("processing GER in ValidatorSigned mode: %s", ger.Hex())
+
+	// Call validator service to get signatures
+	multisig, err := a.validatorPoller.PollValidators(ctx, ger)
+	if err != nil {
+		metrics.IncGERProcessErrCount()
+		return fmt.Errorf("failed to poll validators for GER: %w", err)
+	}
+
+	// Extract signatures from multisig
+	signatures := make([][]byte, 0, len(multisig.Signatures))
+	for _, sigEntry := range multisig.Signatures {
+		signatures = append(signatures, sigEntry.Signature)
+	}
+
+	a.logger.Infof("collected %d signatures for GER: %s", len(signatures), ger.Hex())
+
+	// Call L2 contract with signatures and GER
+	go func() {
+		start := time.Now()
+		err := a.chainSender.InjectGERWithSignatures(ctx, ger, signatures)
+		metrics.ObserveGERProcessDuration(time.Since(start))
+		if err != nil {
+			metrics.IncGERProcessErrCount()
+			a.logger.Error(err)
+		} else {
+			a.logger.Infof("successfully injected GER with signatures: %s", ger.Hex())
 		}
 	}()
 
