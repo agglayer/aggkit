@@ -581,7 +581,8 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 		}
 
 		if !isGERFinalized {
-			f.log.Warnf("found a non-finalized GER: %s on block: %d. Certificate will be resized to exclude it and all blocks after it",
+			f.log.Warnf("found a non-finalized GER: %s on block: %d. "+
+				"Certificate will be resized to exclude it and all blocks after it",
 				c.GlobalExitRoot.String(), c.BlockNum)
 			return certParams.AdjustToBlock(c.BlockNum - 1)
 		}

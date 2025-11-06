@@ -196,6 +196,8 @@ func TestAdjustToBlock(t *testing.T) {
 			},
 			newToBlock: 200,
 			validate: func(t *testing.T, result *CertificateBuildParams) {
+				t.Helper()
+
 				require.Equal(t, uint64(100), result.FromBlock)
 				require.Equal(t, uint64(200), result.ToBlock)
 				require.Len(t, result.Bridges, 1)
@@ -226,6 +228,8 @@ func TestAdjustToBlock(t *testing.T) {
 			},
 			newToBlock: 200,
 			validate: func(t *testing.T, result *CertificateBuildParams) {
+				t.Helper()
+
 				require.Equal(t, uint64(100), result.FromBlock)
 				require.Equal(t, uint64(200), result.ToBlock)
 				require.Equal(t, CertificateTypeFEP, result.CertificateType)
@@ -260,6 +264,8 @@ func TestAdjustToBlock(t *testing.T) {
 			},
 			newToBlock: 150,
 			validate: func(t *testing.T, result *CertificateBuildParams) {
+				t.Helper()
+
 				require.Equal(t, uint64(100), result.FromBlock)
 				require.Equal(t, uint64(150), result.ToBlock)
 				require.Len(t, result.Bridges, 3) // Includes blocks 100, 150, 150
@@ -280,6 +286,8 @@ func TestAdjustToBlock(t *testing.T) {
 			},
 			newToBlock: 150,
 			validate: func(t *testing.T, result *CertificateBuildParams) {
+				t.Helper()
+
 				require.Equal(t, uint64(100), result.FromBlock)
 				require.Equal(t, uint64(150), result.ToBlock)
 				require.Len(t, result.Bridges, 0)
@@ -299,6 +307,8 @@ func TestAdjustToBlock(t *testing.T) {
 			},
 			newToBlock: 100,
 			validate: func(t *testing.T, result *CertificateBuildParams) {
+				t.Helper()
+
 				require.Equal(t, uint64(100), result.FromBlock)
 				require.Equal(t, uint64(100), result.ToBlock)
 				require.Len(t, result.Bridges, 1)

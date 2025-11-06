@@ -237,7 +237,7 @@ func (c *CertificateBuildParams) AdjustToBlock(newToBlock uint64) (*CertificateB
 		// to only include the ones in the new range that aggchain prover returned
 		adjustedParams, err := c.Range(c.FromBlock, newToBlock)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error adjusting the range of the certificate: %w", err)
+			return nil, fmt.Errorf("error adjusting the range of the certificate: %w", err)
 		}
 
 		return adjustedParams, nil
