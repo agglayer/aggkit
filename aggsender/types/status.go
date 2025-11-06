@@ -24,7 +24,7 @@ type AggsenderStatus struct {
 type AggsenderInfo struct {
 	AggsenderStatus AggsenderStatus `json:"aggsender_status"`
 	Version         aggkit.FullVersion
-	RunnerStatus    string        `json:"runner_status"`
+	TriggerStatus   string        `json:"trigger_status"`
 	NetworkID       uint32        `json:"network_id"`
 	Mode            AggsenderMode `json:"mode"`
 }

@@ -81,7 +81,7 @@ func New(
 		cfg.Mode = mode
 	}
 
-	runner, err := NewCertificateSendTrigger(
+	certificateSendTrigger, err := NewCertificateSendTrigger(
 		ctx,
 		cfg,
 		logger,
@@ -104,7 +104,7 @@ func New(
 		l2Client,
 		rollupDataQuerier,
 		committeeQuerier,
-		runner,
+		certificateSendTrigger,
 	)
 }
 
@@ -120,7 +120,7 @@ func newAggsender(
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
-	runner types.CertificateSendTrigger,
+	certificateSendTrigger types.CertificateSendTrigger,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
@@ -217,7 +217,7 @@ func newAggsender(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 		l1Client:               l1Client,
 		l1InfoTreeSyncer:       l1InfoTreeSyncer,
-		certificateSendTrigger: runner,
+		certificateSendTrigger: certificateSendTrigger,
 	}, nil
 }
 
@@ -225,7 +225,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus: *a.status,
 		Version:         aggkit.GetVersion(),
-		RunnerStatus:    a.certificateSendTrigger.Status(),
+		TriggerStatus:   a.certificateSendTrigger.Status(),
 		NetworkID:       a.l2OriginNetwork,
 		Mode:            a.cfg.Mode,
 	}
