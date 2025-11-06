@@ -20,9 +20,8 @@ import (
 	gethvm "github.com/ethereum/go-ethereum/core/vm"
 )
 
+// BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
 type BridgeDeployment byte
-
-const (
 	Unknown BridgeDeployment = iota
 	NonSovereignChain
 	SovereignChain
