@@ -9,28 +9,28 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
-// NewRunner creates and returns a new Runner instance based on the provided configuration mode.
-// It supports two modes: PreconfPPMode which returns a preconfRunner, and all other modes
-// which return an epochBasedRunner.
-func NewRunner(
+// NewCertificateSendTrigger creates and returns a new CertificateSendTrigger instance
+// based on the provided configuration mode.
+// It supports two modes: PreconfPPMode which returns a preconfTrigger, and all other modes
+// which return an epochBasedTrigger.
+func NewCertificateSendTrigger(
 	ctx context.Context,
 	cfg config.Config,
 	log aggkitcommon.Logger,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2BridgeSync types.L2BridgeSyncer,
-	agglayerClient agglayer.AgglayerClientInterface) (types.Runner, error) {
+	agglayerClient agglayer.AgglayerClientInterface) (types.CertificateSendTrigger, error) {
 	switch cfg.Mode {
 	case types.PreconfPPMode:
-		return newPreconfRunner(
+		return newPreconfTrigger(
 			log,
 			l2BridgeSync,
 		), nil
 	default:
-		return newEpochBasedRunner(
+		return newEpochBasedTrigger(
 			ctx,
 			cfg,
 			log,
@@ -40,35 +40,35 @@ func NewRunner(
 	}
 }
 
-// epochBasedRunner is a runner implementation that executes operations based on epoch transitions.
+// epochBasedTrigger is a trigger implementation that executes operations based on epoch transitions.
 // It listens to both epoch and block notifications to coordinate execution timing with the
-// underlying blockchain's epoch boundaries. This runner is suitable for operations that need
+// underlying blockchain's epoch boundaries. This trigger is suitable for operations that need
 // to be synchronized with epoch changes, such as aggregation tasks that must complete within
 // specific epoch windows.
-type epochBasedRunner struct {
+type epochBasedTrigger struct {
 	epochNotifier types.EpochNotifier
 	blockNotifier types.BlockNotifier
 }
 
-// newEpochBasedRunner creates and initializes a new epochBasedRunner instance.
+// newEpochBasedTrigger creates and initializes a new epochBasedTrigger instance.
 // It sets up a block notifier that polls L1 for new blocks with latest block finality,
 // configures an epoch notifier based on agglayer settings using the provided epoch
-// notification percentage, and returns a runner that combines both notifiers.
-//
+// notification percentage, and returns a trigger that combines both notifiers.
+
 // Returns:
-//   - *epochBasedRunner: Configured runner with epoch and block notifiers
+//   - *epochBasedTrigger: Configured trigger with epoch and block notifiers
 //   - error: Any error encountered during initialization
 //
 // The function will return an error if:
 //   - Block notifier initialization fails
 //   - Epoch notifier configuration generation fails
 //   - Epoch notifier creation fails
-func newEpochBasedRunner(
+func newEpochBasedTrigger(
 	ctx context.Context,
 	cfg config.Config,
 	log aggkitcommon.Logger,
 	l1Client aggkittypes.BaseEthereumClienter,
-	agglayerClient agglayer.AgglayerClientInterface) (*epochBasedRunner, error) {
+	agglayerClient agglayer.AgglayerClientInterface) (*epochBasedTrigger, error) {
 	// Create block notifier that polls L1 for new blocks
 	blockNotifier, err := NewBlockNotifierPolling(
 		l1Client,
@@ -96,45 +96,58 @@ func newEpochBasedRunner(
 		return nil, fmt.Errorf("failed to create epoch notifier: %w", err)
 	}
 
-	return &epochBasedRunner{
+	return &epochBasedTrigger{
 		epochNotifier: epochNotifier,
 		blockNotifier: blockNotifier,
 	}, nil
 }
 
-// Status returns the current status of the epoch-based runner as a string.
+// Status returns the current status of the epoch-based trigger as a string.
 // It retrieves the epoch status from the epoch notifier and converts it to its string representation.
-func (r *epochBasedRunner) Status() string {
+func (r *epochBasedTrigger) Status() string {
 	return r.epochNotifier.GetEpochStatus().String()
 }
 
-// Run starts the epoch-based runner by initializing both block and epoch notifiers
-// in separate goroutines and begins sending epoch-based certificates through the
-// provided certificate sender. The method starts the block notifier first, followed
-// by the epoch notifier, and then delegates certificate sending to the certSender
-// with the epoch notifier and a starting epoch of 0.
-//
-// The method does not return until the certificate sending process completes or
-// the context is cancelled.
-func (r *epochBasedRunner) Run(ctx context.Context, certSender types.CertificateSender) {
+// TriggerCh returns a read-only channel of events produced by the epoch notifier.
+// Values sent through this channel are types.EpochEvent (which implement CertificateTriggerEvent).
+// The returned channel will be closed when the provided context is canceled.
+func (r *epochBasedTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
+	ch := make(chan types.CertificateTriggerEvent)
+	epochSub := r.epochNotifier.Subscribe("aggsender")
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				close(ch)
+				return
+			case epochEvent := <-epochSub:
+				ch <- epochEvent
+			}
+		}
+	}()
+
+	return ch
+}
+
+// Setup starts the internal block and epoch notifiers asynchronously so they can
+// begin emitting events. This should typically be called once during component
+// initialization and will return immediately after spawning the background tasks.
+func (r *epochBasedTrigger) Setup(ctx context.Context) {
 	log.Infof("Starting blockNotifier: %s", r.blockNotifier.String())
 	go r.blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", r.epochNotifier.String())
 	go r.epochNotifier.Start(ctx)
-
-	certSender.SendEpochBasedCertificates(ctx, r.epochNotifier, 0)
 }
 
-// preconfRunner handles preconfirmation operations by listening to L2 bridge synchronization
+// preconfTrigger handles preconfirmation operations by listening to L2 bridge synchronization
 // and maintaining subscription state to the synchronized L2 bridge events.
-type preconfRunner struct {
-	log            aggkitcommon.Logger
-	l2BridgeSync   types.L2BridgeSyncer
-	syncedBlockSub <-chan sync.Block
+type preconfTrigger struct {
+	log          aggkitcommon.Logger
+	l2BridgeSync types.L2BridgeSyncer
 }
 
-// newPreconfRunner creates and initializes a new preconfRunner instance.
-// It sets up the runner with the provided logger and L2 bridge synchronizer,
+// newPreconfTrigger creates and initializes a new preconfTrigger instance.
+// It sets up the trigger with the provided logger and L2 bridge synchronizer,
 // and establishes a subscription to the sync events with a buffer size of 10.
 //
 // Parameters:
@@ -142,36 +155,45 @@ type preconfRunner struct {
 //   - l2BridgeSync: L2 bridge synchronizer for handling bridge synchronization
 //
 // Returns:
-//   - *preconfRunner: A new preconfRunner instance ready for use
-func newPreconfRunner(
+//   - *preconfTrigger: A new preconfTrigger instance ready for use
+func newPreconfTrigger(
 	log aggkitcommon.Logger,
 	l2BridgeSync types.L2BridgeSyncer,
-) *preconfRunner {
-	return &preconfRunner{
-		log:            log,
-		l2BridgeSync:   l2BridgeSync,
-		syncedBlockSub: l2BridgeSync.SubscribeToSync("aggsender"),
+) *preconfTrigger {
+	return &preconfTrigger{
+		log:          log,
+		l2BridgeSync: l2BridgeSync,
 	}
 }
 
-// Status returns a human-readable string describing the current state of the preconf runner.
-// It indicates that the runner is actively listening for bridge synchronization events.
-func (r *preconfRunner) Status() string {
+// Status returns a human-readable string describing the current state of the preconf trigger.
+// It indicates that the trigger is actively listening for bridge synchronization events.
+func (r *preconfTrigger) Status() string {
 	return "PreconfPP Runner: listening to bridge sync events"
 }
 
-func (r *preconfRunner) Run(ctx context.Context, certSender types.CertificateSender) {
-	r.log.Info("PreconfPP mode: listening to bridge sync events")
+func (r *preconfTrigger) Setup(ctx context.Context) {
+	// The preconf trigger does not have a blocking operation in this implementation.
+	// It relies on the TriggerCh method to provide synchronization events.
+}
 
-	for {
-		select {
-		case blockNotification := <-r.syncedBlockSub:
-			r.log.Infof("PreconfPP: received block %d with %d events",
-				blockNotification.Num, len(blockNotification.Events))
-			// TODO build preconf request and send it
-		case <-ctx.Done():
-			r.log.Info("PreconfPP runner stopped")
-			return
+// TriggerCh returns a read-only channel that forwards bridge sync block
+// notifications. Each value is a sync.Block (which implements CertificateTriggerEvent).
+// The returned channel will be closed when the provided context is canceled.
+func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
+	ch := make(chan types.CertificateTriggerEvent)
+	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				close(ch)
+				return
+			case epochEvent := <-syncSub:
+				ch <- epochEvent
+			}
 		}
-	}
+	}()
+
+	return ch
 }

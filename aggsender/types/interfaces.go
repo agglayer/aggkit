@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -369,14 +370,16 @@ type FEPInputsQuerier interface {
 		l1InfoTreeLeafHash common.Hash) (*AggchainParams, error)
 }
 
-type CertificateSender interface {
-	SendEpochBasedCertificates(
-		ctx context.Context,
-		epochNotifier EpochNotifier,
-		returnAfterNIterations int)
+// CertificateTriggerEvent represents an event that triggers certificate sending actions.
+// This can be expanded in the future to include more specific methods or properties
+type CertificateTriggerEvent interface {
+	fmt.Stringer
 }
 
-type Runner interface {
-	Run(ctx context.Context, certSender CertificateSender)
+// CertificateSendTrigger is an interface that defines methods for setting up and managing
+// certificate sending triggers based on specific events.
+type CertificateSendTrigger interface {
+	Setup(ctx context.Context)
 	Status() string
+	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
 }

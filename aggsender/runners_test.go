@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/sync"
 	ethmanmocks "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -33,10 +34,6 @@ func TestNewRunner(t *testing.T) {
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
 				l2BridgeSync := mocks.NewL2BridgeSyncer(t)
 				agglayerClient := agglayermocks.NewAgglayerClientMock(t)
-
-				// Mock subscription creation for preconfRunner
-				subscription := make(chan sync.Block)
-				l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(subscription)
 
 				return logger, l1Client, l2BridgeSync, agglayerClient
 			},
@@ -94,7 +91,7 @@ func TestNewRunner(t *testing.T) {
 
 			logger, l1Client, l2BridgeSync, agglayerClient := tt.setupMocks()
 
-			runner, err := NewRunner(ctx, cfg, logger, l1Client, l2BridgeSync, agglayerClient)
+			runner, err := NewCertificateSendTrigger(ctx, cfg, logger, l1Client, l2BridgeSync, agglayerClient)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -130,7 +127,7 @@ func TestNewEpochBasedRunner(t *testing.T) {
 		// Mock successful block notifier creation (HeaderByNumber might be called)
 		l1Client.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
-		runner, err := newEpochBasedRunner(ctx, cfg, logger, l1Client, agglayerClient)
+		runner, err := newEpochBasedTrigger(ctx, cfg, logger, l1Client, agglayerClient)
 
 		require.NoError(t, err)
 		require.NotNil(t, runner)
@@ -150,7 +147,7 @@ func TestNewEpochBasedRunner(t *testing.T) {
 		// Mock failed epoch notifier config generation
 		agglayerClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(nil, errors.New("connection timeout"))
 
-		runner, err := newEpochBasedRunner(ctx, cfg, logger, l1Client, agglayerClient)
+		runner, err := newEpochBasedTrigger(ctx, cfg, logger, l1Client, agglayerClient)
 
 		require.Error(t, err)
 		require.Nil(t, runner)
@@ -169,7 +166,7 @@ func TestEpochBasedRunner_Status(t *testing.T) {
 	}
 	mockEpochNotifier.EXPECT().GetEpochStatus().Return(expectedStatus)
 
-	runner := &epochBasedRunner{
+	runner := &epochBasedTrigger{
 		epochNotifier: mockEpochNotifier,
 		blockNotifier: mockBlockNotifier,
 	}
@@ -178,122 +175,272 @@ func TestEpochBasedRunner_Status(t *testing.T) {
 	require.Contains(t, status, "EpochStatus: [5, 75.00%]")
 }
 
-func TestEpochBasedRunner_Run(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
+func TestEpochBasedRunner_Setup(t *testing.T) {
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
 	mockBlockNotifier := mocks.NewBlockNotifier(t)
-	mockCertSender := mocks.NewCertificateSender(t)
 
-	mockBlockNotifier.EXPECT().String().Return("BlockNotifier[polling]")
-	mockEpochNotifier.EXPECT().String().Return("EpochNotifier[per-block]")
-	mockBlockNotifier.EXPECT().Start(ctx).Return()
-	mockEpochNotifier.EXPECT().Start(ctx).Return()
+	// Mock the String() methods for logging
+	mockBlockNotifier.EXPECT().String().Return("BlockNotifier")
+	mockEpochNotifier.EXPECT().String().Return("EpochNotifier")
 
-	// Mock certificate sender - this should be the main blocking call
-	mockCertSender.EXPECT().SendEpochBasedCertificates(
-		mock.MatchedBy(func(ctx context.Context) bool { return ctx != nil }),
-		mockEpochNotifier,
-		0,
-	).Run(func(ctx context.Context, epochNotifier types.EpochNotifier, iterations int) {
-		// Simulate some work then exit due to context cancellation
-		<-ctx.Done()
-	})
+	// Mock the Start() methods to expect the canceled context
+	mockBlockNotifier.EXPECT().Start(mock.Anything).Return().Once()
+	mockEpochNotifier.EXPECT().Start(mock.Anything).Return().Once()
 
-	runner := &epochBasedRunner{
+	runner := &epochBasedTrigger{
 		epochNotifier: mockEpochNotifier,
 		blockNotifier: mockBlockNotifier,
 	}
 
-	// This should not panic and should complete when context is cancelled
-	runner.Run(ctx, mockCertSender)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	runner.Setup(ctx)
+
+	// Give a small amount of time for goroutines to start and validate all expectations
+	time.Sleep(200 * time.Millisecond)
+
+	mockBlockNotifier.AssertExpectations(t)
+	mockEpochNotifier.AssertExpectations(t)
 }
 
 func TestNewPreconfRunner(t *testing.T) {
 	logger := mocks.NewLogger(t)
 	l2BridgeSync := mocks.NewL2BridgeSyncer(t)
 
-	// Mock subscription creation
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(make(chan sync.Block))
-
-	runner := newPreconfRunner(logger, l2BridgeSync)
+	runner := newPreconfTrigger(logger, l2BridgeSync)
 
 	require.NotNil(t, runner)
 	require.Equal(t, logger, runner.log)
 	require.Equal(t, l2BridgeSync, runner.l2BridgeSync)
-	require.NotNil(t, runner.syncedBlockSub)
 }
 
 func TestPreconfRunner_Status(t *testing.T) {
 	logger := mocks.NewLogger(t)
 	l2BridgeSync := mocks.NewL2BridgeSyncer(t)
 
-	// Mock subscription creation
-	subscription := make(chan sync.Block)
-	l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(subscription)
-
-	runner := newPreconfRunner(logger, l2BridgeSync)
+	runner := newPreconfTrigger(logger, l2BridgeSync)
 	status := runner.Status()
 
 	require.Equal(t, "PreconfPP Runner: listening to bridge sync events", status)
 }
 
 func TestPreconfRunner_Run(t *testing.T) {
-	t.Run("processes block notifications successfully", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	logger := mocks.NewLogger(t)
+	l2BridgeSync := mocks.NewL2BridgeSyncer(t)
+
+	runner := newPreconfTrigger(logger, l2BridgeSync)
+
+	// Run the runner - preconf runner's Run method does not block
+	// so this should complete immediately without issues
+	runner.Setup(t.Context())
+}
+
+func TestPreconfRunner_TriggerCh(t *testing.T) {
+	t.Run("forwards events from l2BridgeSync subscription", func(t *testing.T) {
+		logger := mocks.NewLogger(t)
+		l2BridgeSync := mocks.NewL2BridgeSyncer(t)
+
+		// Create a mock subscription channel
+		syncCh := make(chan sync.Block, 1)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(syncCh)
+
+		runner := newPreconfTrigger(logger, l2BridgeSync)
+
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		logger := mocks.NewLogger(t)
-		l2BridgeSync := mocks.NewL2BridgeSyncer(t)
-		mockCertSender := mocks.NewCertificateSender(t)
+		triggerCh := runner.TriggerCh(ctx)
 
-		// Create subscription with channels
-		blockCh := make(chan sync.Block, 1)
-		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(blockCh)
+		// Create a mock event
+		mockEvent := sync.Block{Num: 123, Events: []any{}, Hash: common.HexToHash("0x1")}
 
-		// Mock logging calls
-		logger.EXPECT().Info("PreconfPP mode: listening to bridge sync events")
-		logger.EXPECT().Infof("PreconfPP: received block %d with %d events", uint64(100), 2).Maybe()
-		logger.EXPECT().Info("PreconfPP runner stopped")
+		// Send event to sync channel
+		syncCh <- mockEvent
 
-		runner := newPreconfRunner(logger, l2BridgeSync)
-
-		// Send a test block notification
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			blockNotification := sync.Block{
-				Num:    100,
-				Events: make([]any, 2), // 2 events
-			}
-			blockCh <- blockNotification
-		}()
-
-		// Run the runner - should exit when context is cancelled
-		runner.Run(ctx, mockCertSender)
+		// Verify event is forwarded to trigger channel
+		select {
+		case receivedEvent := <-triggerCh:
+			require.Equal(t, mockEvent, receivedEvent)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Expected event was not received")
+		}
 	})
 
-	t.Run("exits gracefully on context cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-
+	t.Run("closes channel when context is canceled", func(t *testing.T) {
 		logger := mocks.NewLogger(t)
 		l2BridgeSync := mocks.NewL2BridgeSyncer(t)
-		mockCertSender := mocks.NewCertificateSender(t)
 
-		// Create subscription
-		subscription := make(chan sync.Block)
-		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(subscription)
+		// Create a mock subscription channel
+		syncCh := make(chan sync.Block)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(syncCh)
 
-		// Mock logging calls
-		logger.EXPECT().Info("PreconfPP mode: listening to bridge sync events")
-		logger.EXPECT().Info("PreconfPP runner stopped")
+		runner := newPreconfTrigger(logger, l2BridgeSync)
 
-		runner := newPreconfRunner(logger, l2BridgeSync)
+		ctx, cancel := context.WithCancel(context.Background())
+		triggerCh := runner.TriggerCh(ctx)
 
-		// Cancel context immediately to test graceful shutdown
+		// Cancel context
 		cancel()
 
-		// Should exit quickly without hanging
-		runner.Run(ctx, mockCertSender)
+		// Verify channel is closed
+		select {
+		case _, ok := <-triggerCh:
+			require.False(t, ok, "Channel should be closed")
+		case <-time.After(1 * time.Second):
+			t.Fatal("Channel was not closed within timeout")
+		}
+	})
+
+	t.Run("handles multiple events", func(t *testing.T) {
+		logger := mocks.NewLogger(t)
+		l2BridgeSync := mocks.NewL2BridgeSyncer(t)
+
+		// Create a mock subscription channel
+		syncCh := make(chan sync.Block, 3)
+		l2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(syncCh)
+
+		runner := newPreconfTrigger(logger, l2BridgeSync)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		triggerCh := runner.TriggerCh(ctx)
+
+		// Create mock events
+		mockEvent1 := sync.Block{Num: 124, Events: []any{}, Hash: common.HexToHash("0x2")}
+		mockEvent2 := sync.Block{Num: 125, Events: []any{}, Hash: common.HexToHash("0x3")}
+		mockEvent3 := sync.Block{Num: 126, Events: []any{}, Hash: common.HexToHash("0x4")}
+
+		// Send multiple events
+		syncCh <- mockEvent1
+		syncCh <- mockEvent2
+		syncCh <- mockEvent3
+
+		// Verify all events are forwarded
+		receivedEvents := make([]types.CertificateTriggerEvent, 0, 3)
+		for i := 0; i < 3; i++ {
+			select {
+			case event := <-triggerCh:
+				receivedEvents = append(receivedEvents, event)
+			case <-time.After(1 * time.Second):
+				t.Fatalf("Expected event %d was not received", i+1)
+			}
+		}
+
+		require.Len(t, receivedEvents, 3)
+		require.Equal(t, mockEvent1, receivedEvents[0])
+		require.Equal(t, mockEvent2, receivedEvents[1])
+		require.Equal(t, mockEvent3, receivedEvents[2])
+	})
+}
+
+func TestEpochBasedRunner_TriggerCh(t *testing.T) {
+	t.Run("forwards events from epoch notifier subscription", func(t *testing.T) {
+		mockEpochNotifier := mocks.NewEpochNotifier(t)
+		mockBlockNotifier := mocks.NewBlockNotifier(t)
+
+		// Create a mock subscription channel
+		epochCh := make(chan types.EpochEvent, 1)
+		mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(epochCh)
+
+		runner := &epochBasedTrigger{
+			epochNotifier: mockEpochNotifier,
+			blockNotifier: mockBlockNotifier,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		triggerCh := runner.TriggerCh(ctx)
+
+		// Create a mock epoch event
+		mockEvent := types.EpochEvent{
+			Epoch: 42,
+		}
+
+		// Send event to epoch channel
+		epochCh <- mockEvent
+
+		// Verify event is forwarded to trigger channel
+		select {
+		case receivedEvent := <-triggerCh:
+			require.Equal(t, mockEvent, receivedEvent)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Expected event was not received")
+		}
+	})
+
+	t.Run("closes channel when context is canceled", func(t *testing.T) {
+		mockEpochNotifier := mocks.NewEpochNotifier(t)
+		mockBlockNotifier := mocks.NewBlockNotifier(t)
+
+		// Create a mock subscription channel
+		epochCh := make(chan types.EpochEvent)
+		mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(epochCh)
+
+		runner := &epochBasedTrigger{
+			epochNotifier: mockEpochNotifier,
+			blockNotifier: mockBlockNotifier,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		triggerCh := runner.TriggerCh(ctx)
+
+		// Cancel context
+		cancel()
+
+		// Verify channel is closed
+		select {
+		case _, ok := <-triggerCh:
+			require.False(t, ok, "Channel should be closed")
+		case <-time.After(1 * time.Second):
+			t.Fatal("Channel was not closed within timeout")
+		}
+	})
+
+	t.Run("handles multiple events", func(t *testing.T) {
+		mockEpochNotifier := mocks.NewEpochNotifier(t)
+		mockBlockNotifier := mocks.NewBlockNotifier(t)
+
+		// Create a mock subscription channel
+		epochCh := make(chan types.EpochEvent, 3)
+		mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(epochCh)
+
+		runner := &epochBasedTrigger{
+			epochNotifier: mockEpochNotifier,
+			blockNotifier: mockBlockNotifier,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		triggerCh := runner.TriggerCh(ctx)
+
+		// Create mock events
+		mockEvent1 := types.EpochEvent{Epoch: 10}
+		mockEvent2 := types.EpochEvent{Epoch: 11}
+		mockEvent3 := types.EpochEvent{Epoch: 12}
+
+		// Send multiple events
+		epochCh <- mockEvent1
+		epochCh <- mockEvent2
+		epochCh <- mockEvent3
+
+		// Verify all events are forwarded
+		receivedEvents := make([]types.CertificateTriggerEvent, 0, 3)
+		for i := 0; i < 3; i++ {
+			select {
+			case event := <-triggerCh:
+				receivedEvents = append(receivedEvents, event)
+			case <-time.After(1 * time.Second):
+				t.Fatalf("Expected event %d was not received", i+1)
+			}
+		}
+
+		require.Len(t, receivedEvents, 3)
+		require.Equal(t, mockEvent1, receivedEvents[0])
+		require.Equal(t, mockEvent2, receivedEvents[1])
+		require.Equal(t, mockEvent3, receivedEvents[2])
 	})
 }

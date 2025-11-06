@@ -48,7 +48,7 @@ type AggSender struct {
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 
-	runner types.Runner
+	certificateSendTrigger types.CertificateSendTrigger
 
 	cfg config.Config
 
@@ -81,7 +81,7 @@ func New(
 		cfg.Mode = mode
 	}
 
-	runner, err := NewRunner(
+	runner, err := NewCertificateSendTrigger(
 		ctx,
 		cfg,
 		logger,
@@ -120,7 +120,7 @@ func newAggsender(
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
-	runner types.Runner,
+	runner types.CertificateSendTrigger,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
@@ -215,9 +215,9 @@ func newAggsender(
 		),
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
-		l1Client:         l1Client,
-		l1InfoTreeSyncer: l1InfoTreeSyncer,
-		runner:           runner,
+		l1Client:               l1Client,
+		l1InfoTreeSyncer:       l1InfoTreeSyncer,
+		certificateSendTrigger: runner,
 	}, nil
 }
 
@@ -225,7 +225,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus: *a.status,
 		Version:         aggkit.GetVersion(),
-		RunnerStatus:    a.runner.Status(),
+		RunnerStatus:    a.certificateSendTrigger.Status(),
 		NetworkID:       a.l2OriginNetwork,
 		Mode:            a.cfg.Mode,
 	}
@@ -259,7 +259,7 @@ func (a *AggSender) Start(ctx context.Context) {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 
-	a.runner.Run(ctx, a)
+	a.certificateSendTrigger.Setup(ctx)
 }
 
 func (a *AggSender) checkDBCompatibility(ctx context.Context) {
@@ -283,10 +283,9 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 	}
 }
 
-// SendEpochBasedCertificates sends certificates to the aggLayer based on epoch notifications
-func (a *AggSender) SendEpochBasedCertificates(
+// sendCertificates sends certificates to the aggLayer based on epoch notifications
+func (a *AggSender) sendCertificates(
 	ctx context.Context,
-	epochNotifier types.EpochNotifier,
 	returnAfterNIterations int) {
 	a.log.Info("Running in epoch-based mode")
 
@@ -300,7 +299,7 @@ func (a *AggSender) SendEpochBasedCertificates(
 		checkCertChannel = make(chan time.Time)
 	}
 
-	chEpoch := epochNotifier.Subscribe("aggsender")
+	sendTriggerCh := a.certificateSendTrigger.TriggerCh(ctx)
 	a.status.Status = types.StatusCertificateStage
 	iteration := 0
 	for {
@@ -332,28 +331,27 @@ func (a *AggSender) SendEpochBasedCertificates(
 				a.log.Warnf("reached number of iterations, so we are going to return")
 				return
 			}
-		case epoch := <-chEpoch:
+		case triggerEvent := <-sendTriggerCh:
 			iteration++
-			a.log.Infof("Epoch received: %s", epoch.String())
+			a.log.Infof("Certificate send trigger event received: %s", triggerEvent.String())
 			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx)
 			if err != nil {
-				a.log.Errorf("Epoch trigger: error checking certificate status: %v", err)
+				a.log.Errorf("Certificate send trigger: error checking certificate status: %v", err)
 				a.status.SetLastError(err)
 			} else {
 				if !checkResult.ExistPendingCerts {
 					_, err := a.sendCertificateWithRetries(ctx)
 					if err != nil {
-						a.log.Errorf("Epoch trigger: error sending certificate: %v", err)
+						a.log.Errorf("Certificate send trigger: error sending certificate: %v", err)
 						a.status.SetLastError(err)
 					}
 				} else {
-					a.log.Infof("Epoch trigger: Skipping epoch %s because there are pending certificates",
-						epoch.String())
+					a.log.Info("Skipping certificate sending because there are pending certificates")
 				}
 			}
 
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
-				a.log.Warnf("Epoch trigger: reached number of iterations, so we are going to return")
+				a.log.Warnf("Certificate send trigger: reached number of iterations, so we are going to return")
 				return
 			}
 		case <-ctx.Done():
@@ -391,7 +389,7 @@ func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayerty
 
 // sendCertificate sends certificate for a network
 func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certificate, error) {
-	startRunnerStatus := a.runner.Status()
+	startRunnerStatus := a.certificateSendTrigger.Status()
 	a.log.Infof("trying to send a new certificate... %s", startRunnerStatus)
 
 	start := time.Now()
@@ -427,7 +425,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
-		certificate.Brief(), startRunnerStatus, a.runner.Status())
+		certificate.Brief(), startRunnerStatus, a.certificateSendTrigger.Status())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	if a.cfg.DryRun {
