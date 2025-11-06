@@ -301,7 +301,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 						a.status.SetLastError(err)
 					}
 				} else {
-					a.log.Infof("epoch trigger: Skipping epoch %s because there are pending certificates",
+					a.log.Infof("Epoch trigger: Skipping epoch %s because there are pending certificates",
 						epoch.String())
 				}
 			}
