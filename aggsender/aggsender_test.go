@@ -81,9 +81,13 @@ func TestAggSenderStart(t *testing.T) {
 	committeQuerierMock := mocks.NewMultisigQuerier(t)
 	sendTrigger := mocks.NewCertificateSendTrigger(t)
 	sendTrigger.EXPECT().Setup(ctx)
+	ch := make(chan aggsendertypes.CertificateTriggerEvent)
+	sendTrigger.EXPECT().TriggerCh(ctx).Return(ch).Once()
+	sendTrigger.EXPECT().Status().Return("test status").Once()
 	bridgeL2SyncerMock.EXPECT().OriginNetwork().Return(uint32(2))
-	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil).Once()
-	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil).Once()
+	bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), nil)
+	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil).Twice()
+	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil).Twice()
 	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
 	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
 	require.NoError(t, err)
@@ -111,7 +115,11 @@ func TestAggSenderStart(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
-	aggSender.Start(ctx)
+	go aggSender.Start(ctx)
+	ch <- aggsendertypes.EpochEvent{
+		Epoch: 1,
+	}
+	time.Sleep(200 * time.Millisecond)
 
 	aggLayerMock.AssertExpectations(t)
 	bridgeL2SyncerMock.AssertExpectations(t)

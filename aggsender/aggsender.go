@@ -259,7 +259,11 @@ func (a *AggSender) Start(ctx context.Context) {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 
+	// Initialize the trigger sources (block/epoch notifiers, bridge sync, etc.)
 	a.certificateSendTrigger.Setup(ctx)
+
+	// Start the certificate send loop so TriggerCh events are consumed and acted upon
+	a.sendCertificates(ctx, 0)
 }
 
 func (a *AggSender) checkDBCompatibility(ctx context.Context) {
