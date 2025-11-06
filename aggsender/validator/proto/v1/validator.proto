@@ -18,7 +18,7 @@ service AggsenderValidator {
     rpc ValidateGER(ValidateGERRequest) returns (ValidateGERResponse);
 }
 
-// Response Status() 
+// Response Status()
 message HealthCheckResponse {
   string version = 1; // Version of the validator
   string status = 2; // Status of the validator
@@ -41,15 +41,14 @@ message ValidateCertificateResponse {
    agglayer.interop.types.v1.FixedBytes65 signature = 1;
 }
 
- // Request to validate a GER.
- message ValidateGERRequest {
-   // GER to be validated
-   bytes ger = 1;
- }
+// Request to validate a GER.
+message ValidateGERRequest {
+  // GER to be validated
+  bytes ger = 1;
+}
 
-  // Response to a GER validation request.
- message ValidateGERResponse {
-   // The signature provided by the aggsender validator.
-   agglayer.interop.types.v1.FixedBytes65 signature = 1;
- }
- 
+// Response to a GER validation request.
+message ValidateGERResponse {
+  // The signature provided by the aggsender validator.
+  agglayer.interop.types.v1.FixedBytes65 signature = 1;
+}
