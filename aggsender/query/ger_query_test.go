@@ -98,7 +98,7 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 
 			tc.mockFn(mockGERReader, mockL1InfoTreeQuery)
 
-			proofs, err := gerQuerier.GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
+			proofs, err := gerQuerier.GetInjectedGERsProofs(ctx, common.HexToHash("0x2"), 1, 10)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

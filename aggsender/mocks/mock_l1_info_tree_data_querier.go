@@ -3,10 +3,9 @@
 package mocks
 
 import (
-	bridgesync "github.com/agglayer/aggkit/bridgesync"
-	common "github.com/ethereum/go-ethereum/common"
-
 	context "context"
+
+	common "github.com/ethereum/go-ethereum/common"
 
 	l1infotreesync "github.com/agglayer/aggkit/l1infotreesync"
 
@@ -28,56 +27,9 @@ func (_m *L1InfoTreeDataQuerier) EXPECT() *L1InfoTreeDataQuerier_Expecter {
 	return &L1InfoTreeDataQuerier_Expecter{mock: &_m.Mock}
 }
 
-// CheckIfClaimsArePartOfFinalizedL1InfoTree provides a mock function with given fields: finalizedL1InfoTreeRoot, claims
-func (_m *L1InfoTreeDataQuerier) CheckIfClaimsArePartOfFinalizedL1InfoTree(finalizedL1InfoTreeRoot *types.Root, claims []bridgesync.Claim) error {
-	ret := _m.Called(finalizedL1InfoTreeRoot, claims)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CheckIfClaimsArePartOfFinalizedL1InfoTree")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(*types.Root, []bridgesync.Claim) error); ok {
-		r0 = rf(finalizedL1InfoTreeRoot, claims)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckIfClaimsArePartOfFinalizedL1InfoTree'
-type L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call struct {
-	*mock.Call
-}
-
-// CheckIfClaimsArePartOfFinalizedL1InfoTree is a helper method to define mock.On call
-//   - finalizedL1InfoTreeRoot *types.Root
-//   - claims []bridgesync.Claim
-func (_e *L1InfoTreeDataQuerier_Expecter) CheckIfClaimsArePartOfFinalizedL1InfoTree(finalizedL1InfoTreeRoot interface{}, claims interface{}) *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call {
-	return &L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call{Call: _e.mock.On("CheckIfClaimsArePartOfFinalizedL1InfoTree", finalizedL1InfoTreeRoot, claims)}
-}
-
-func (_c *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call) Run(run func(finalizedL1InfoTreeRoot *types.Root, claims []bridgesync.Claim)) *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*types.Root), args[1].([]bridgesync.Claim))
-	})
-	return _c
-}
-
-func (_c *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call) Return(_a0 error) *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call) RunAndReturn(run func(*types.Root, []bridgesync.Claim) error) *L1InfoTreeDataQuerier_CheckIfClaimsArePartOfFinalizedL1InfoTree_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetFinalizedL1InfoTreeData provides a mock function with given fields: ctx
-func (_m *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(ctx context.Context) (types.Proof, *l1infotreesync.L1InfoTreeLeaf, *types.Root, error) {
-	ret := _m.Called(ctx)
+// GetFinalizedL1InfoTreeData provides a mock function with given fields: ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount
+func (_m *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(ctx context.Context, finalizedL1InfoTreeRootHash common.Hash, finalizedL1InfoTreeLeafCount uint32) (types.Proof, *l1infotreesync.L1InfoTreeLeaf, error) {
+	ret := _m.Called(ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFinalizedL1InfoTreeData")
@@ -85,42 +37,33 @@ func (_m *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(ctx context.Context)
 
 	var r0 types.Proof
 	var r1 *l1infotreesync.L1InfoTreeLeaf
-	var r2 *types.Root
-	var r3 error
-	if rf, ok := ret.Get(0).(func(context.Context) (types.Proof, *l1infotreesync.L1InfoTreeLeaf, *types.Root, error)); ok {
-		return rf(ctx)
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash, uint32) (types.Proof, *l1infotreesync.L1InfoTreeLeaf, error)); ok {
+		return rf(ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) types.Proof); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash, uint32) types.Proof); ok {
+		r0 = rf(ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(types.Proof)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) *l1infotreesync.L1InfoTreeLeaf); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash, uint32) *l1infotreesync.L1InfoTreeLeaf); ok {
+		r1 = rf(ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*l1infotreesync.L1InfoTreeLeaf)
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context) *types.Root); ok {
-		r2 = rf(ctx)
+	if rf, ok := ret.Get(2).(func(context.Context, common.Hash, uint32) error); ok {
+		r2 = rf(ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount)
 	} else {
-		if ret.Get(2) != nil {
-			r2 = ret.Get(2).(*types.Root)
-		}
+		r2 = ret.Error(2)
 	}
 
-	if rf, ok := ret.Get(3).(func(context.Context) error); ok {
-		r3 = rf(ctx)
-	} else {
-		r3 = ret.Error(3)
-	}
-
-	return r0, r1, r2, r3
+	return r0, r1, r2
 }
 
 // L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFinalizedL1InfoTreeData'
@@ -130,23 +73,25 @@ type L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call struct {
 
 // GetFinalizedL1InfoTreeData is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *L1InfoTreeDataQuerier_Expecter) GetFinalizedL1InfoTreeData(ctx interface{}) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
-	return &L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call{Call: _e.mock.On("GetFinalizedL1InfoTreeData", ctx)}
+//   - finalizedL1InfoTreeRootHash common.Hash
+//   - finalizedL1InfoTreeLeafCount uint32
+func (_e *L1InfoTreeDataQuerier_Expecter) GetFinalizedL1InfoTreeData(ctx interface{}, finalizedL1InfoTreeRootHash interface{}, finalizedL1InfoTreeLeafCount interface{}) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
+	return &L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call{Call: _e.mock.On("GetFinalizedL1InfoTreeData", ctx, finalizedL1InfoTreeRootHash, finalizedL1InfoTreeLeafCount)}
 }
 
-func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) Run(run func(ctx context.Context)) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
+func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) Run(run func(ctx context.Context, finalizedL1InfoTreeRootHash common.Hash, finalizedL1InfoTreeLeafCount uint32)) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run(args[0].(context.Context), args[1].(common.Hash), args[2].(uint32))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) Return(_a0 types.Proof, _a1 *l1infotreesync.L1InfoTreeLeaf, _a2 *types.Root, _a3 error) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
-	_c.Call.Return(_a0, _a1, _a2, _a3)
+func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) Return(_a0 types.Proof, _a1 *l1infotreesync.L1InfoTreeLeaf, _a2 error) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
+	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) RunAndReturn(run func(context.Context) (types.Proof, *l1infotreesync.L1InfoTreeLeaf, *types.Root, error)) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
+func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) RunAndReturn(run func(context.Context, common.Hash, uint32) (types.Proof, *l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -401,6 +346,63 @@ func (_c *L1InfoTreeDataQuerier_GetProofForGER_Call) Return(_a0 *l1infotreesync.
 }
 
 func (_c *L1InfoTreeDataQuerier_GetProofForGER_Call) RunAndReturn(run func(context.Context, common.Hash, common.Hash) (*l1infotreesync.L1InfoTreeLeaf, types.Proof, error)) *L1InfoTreeDataQuerier_GetProofForGER_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsGERFinalized provides a mock function with given fields: ger, finalizedL1InfoLeafCount
+func (_m *L1InfoTreeDataQuerier) IsGERFinalized(ger common.Hash, finalizedL1InfoLeafCount uint32) (bool, error) {
+	ret := _m.Called(ger, finalizedL1InfoLeafCount)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsGERFinalized")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(common.Hash, uint32) (bool, error)); ok {
+		return rf(ger, finalizedL1InfoLeafCount)
+	}
+	if rf, ok := ret.Get(0).(func(common.Hash, uint32) bool); ok {
+		r0 = rf(ger, finalizedL1InfoLeafCount)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(common.Hash, uint32) error); ok {
+		r1 = rf(ger, finalizedL1InfoLeafCount)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeDataQuerier_IsGERFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsGERFinalized'
+type L1InfoTreeDataQuerier_IsGERFinalized_Call struct {
+	*mock.Call
+}
+
+// IsGERFinalized is a helper method to define mock.On call
+//   - ger common.Hash
+//   - finalizedL1InfoLeafCount uint32
+func (_e *L1InfoTreeDataQuerier_Expecter) IsGERFinalized(ger interface{}, finalizedL1InfoLeafCount interface{}) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	return &L1InfoTreeDataQuerier_IsGERFinalized_Call{Call: _e.mock.On("IsGERFinalized", ger, finalizedL1InfoLeafCount)}
+}
+
+func (_c *L1InfoTreeDataQuerier_IsGERFinalized_Call) Run(run func(ger common.Hash, finalizedL1InfoLeafCount uint32)) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(common.Hash), args[1].(uint32))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_IsGERFinalized_Call) Return(_a0 bool, _a1 error) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_IsGERFinalized_Call) RunAndReturn(run func(common.Hash, uint32) (bool, error)) *L1InfoTreeDataQuerier_IsGERFinalized_Call {
 	_c.Call.Return(run)
 	return _c
 }

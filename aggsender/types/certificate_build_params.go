@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -37,6 +38,7 @@ func (c *CertificatePreBuildParams) String() string {
 type CertificateL1InfoTreeData struct {
 	L1InfoTreeRootToProve common.Hash
 	L1InfoTreeLeafCount   uint32
+	L1InfoTreeLeaf        *l1infotreesync.L1InfoTreeLeaf
 }
 
 func (c *CertificateL1InfoTreeData) String() string {
@@ -210,4 +212,36 @@ func (c *CertificateBuildParams) MaxDepositCount() uint32 {
 		return 0
 	}
 	return c.Bridges[len(c.Bridges)-1].DepositCount
+}
+
+// AdjustToBlock adjusts the certificate build parameters to a new target block.
+// If newToBlock is higher than the current ToBlock, it returns an error.
+// If newToBlock is lower than the current ToBlock, it creates new parameters
+// with an adjusted range that includes only bridges, claims and unclaims within the new range.
+// If newToBlock equals the current ToBlock, it returns the original parameters unchanged.
+//
+// Parameters:
+//   - newToBlock: the new target block number to adjust to
+//
+// Returns:
+//   - *CertificateBuildParams: adjusted parameters or original if no adjustment needed
+//   - error: if newToBlock is higher than current ToBlock or if range adjustment fails
+func (c *CertificateBuildParams) AdjustToBlock(newToBlock uint64) (*CertificateBuildParams, error) {
+	if c.ToBlock < newToBlock {
+		return nil, fmt.Errorf("cannot adjust toBlock to a higher value. current toBlock: %d, new toBlock: %d",
+			c.ToBlock, newToBlock)
+	}
+
+	if c.ToBlock > newToBlock {
+		// if the toBlock was adjusted, we need to adjust the bridges and claims
+		// to only include the ones in the new range that aggchain prover returned
+		adjustedParams, err := c.Range(c.FromBlock, newToBlock)
+		if err != nil {
+			return nil, fmt.Errorf("error adjusting the range of the certificate: %w", err)
+		}
+
+		return adjustedParams, nil
+	}
+
+	return c, nil
 }
