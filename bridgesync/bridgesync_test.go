@@ -55,7 +55,7 @@ func TestNewLx(t *testing.T) {
 	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
 	require.NoError(t, err)
 
-	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) function call (bridge contract)
 	mockEthClient.EXPECT().
 		CallContract(mock.Anything,
 			ethereum.CallMsg{
@@ -303,7 +303,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
 	require.NoError(t, err)
 
-	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) function call (bridge contract)
 	mockEthClient.EXPECT().
 		CallContract(mock.Anything,
 			ethereum.CallMsg{
@@ -478,7 +478,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
 	require.NoError(t, err)
 
-	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) function call (bridge contract)
 	mockEthClient.EXPECT().
 		CallContract(mock.Anything,
 			ethereum.CallMsg{
@@ -679,7 +679,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
 	require.NoError(t, err)
 
-	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) function call (bridge contract)
 	mockEthClient.EXPECT().
 		CallContract(mock.Anything,
 			ethereum.CallMsg{
@@ -855,7 +855,7 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 	bridgeVersionOut, err := abi.Arguments{{Type: tString}}.Pack("v1.1.0")
 	require.NoError(t, err)
 
-	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) bridge contract function call
+	// BRIDGE_SOVEREIGN_VERSION ("v1.1.0", abi encoded) function call (bridge contract)
 	mockEthClient.EXPECT().
 		CallContract(mock.Anything,
 			ethereum.CallMsg{
