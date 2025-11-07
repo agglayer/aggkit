@@ -60,10 +60,7 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 
 	param64, err := strconv.ParseUint(paramStr, 10, 64)
 	if err != nil {
-		if mandatory {
-			return 0, fmt.Errorf("invalid %s parameter: %w", key, err)
-		}
-		return defaultVal, nil
+		return 0, fmt.Errorf("invalid %s parameter: %w", key, err)
 	}
 
 	var result T

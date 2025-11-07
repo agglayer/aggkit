@@ -83,7 +83,7 @@ func (c *certStatusChecker) CheckInitialStatus(
 	defer ticker.Stop()
 
 	for {
-		c.CheckPendingCertificatesStatus(ctx)
+		c.checkPendingCertificatesStatus(ctx)
 		err := c.checkLastCertificateFromAgglayer(ctx)
 		aggsenderStatus.SetLastError(err)
 		if err != nil {
@@ -100,11 +100,22 @@ func (c *certStatusChecker) CheckInitialStatus(
 	}
 }
 
-// CheckPendingCertificatesStatus checks the status of pending certificates
+// CheckPeriodicallyStatus checks the status of pending certificates
+// and the last certificate from the aggregation layer.
+// It returns the status of pending certificates and any error encountered
+// while checking the last certificate from the aggregation layer.
+func (c *certStatusChecker) CheckPeriodicallyStatus(
+	ctx context.Context,
+) (types.CertStatus, error) {
+	err := c.checkLastCertificateFromAgglayer(ctx)
+	return c.checkPendingCertificatesStatus(ctx), err
+}
+
+// checkPendingCertificatesStatus checks the status of pending certificates
 // and updates in the storage if it changed on agglayer
 // It returns:
 // bool -> if there are pending certificates
-func (c *certStatusChecker) CheckPendingCertificatesStatus(ctx context.Context) types.CertStatus {
+func (c *certStatusChecker) checkPendingCertificatesStatus(ctx context.Context) types.CertStatus {
 	pendingCertificates, err := c.storage.GetCertificateHeadersByStatus(agglayertypes.NonSettledStatuses)
 	if err != nil {
 		c.log.Errorf("error getting pending certificates: %w", err)

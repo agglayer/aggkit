@@ -676,6 +676,42 @@ func TestGetBridgesHandler(t *testing.T) {
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
 
+	t.Run("GetBridges invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{strconv.Itoa(mainnetNetworkID)},
+			pageNumberParam: []string{"foo"},
+		}
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
+	})
+
+	t.Run("GetBridges invalid deposit count parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{
+			networkIDParam:    []string{strconv.Itoa(mainnetNetworkID)},
+			depositCountParam: []string{"foo"},
+		}
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
+	})
+
+	t.Run("GetBridges invalid network ids parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{strconv.Itoa(mainnetNetworkID)},
+			networkIDsParam: []string{"foo", "bar"},
+		}
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
+	})
+
 	t.Run("GetBridges for L1 network with nil L1 syncer", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.bridgeL1 = nil
@@ -855,6 +891,47 @@ func TestGetClaimsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid network ids", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(networkIDsParam, "foo,bar")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid global index", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(globalIndexParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "invalid")
+		query.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
 	})
 
 	t.Run("GetClaims for L1 network with include_all_fields=true", func(t *testing.T) {
