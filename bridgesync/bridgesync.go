@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -171,7 +170,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 	}
 
-	bridgeDeployment, err := resolveBridgeDeployment(cfg.BridgeAddr, ethClient)
+	bridgeDeployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
@@ -263,44 +262,43 @@ type bridgeDeployment struct {
 // resolveBridgeDeployment resolves which bridge contract flavor is deployed:
 // AgglayerBridge => NonSovereign bridge
 // AgglayerBridgeL2 => Sovereign bridge
-func resolveBridgeDeployment(bridgeAddr common.Address, backend bind.ContractBackend) (*bridgeDeployment, error) {
+func resolveBridgeDeployment(ctx context.Context,
+	bridgeAddr common.Address, backend bind.ContractBackend) (*bridgeDeployment, error) {
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, backend)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AgglayerBridge SC binding (bridge addr: %s): %w",
-			bridgeAddr, err)
+		return nil, fmt.Errorf("failed to create AgglayerBridge binding (%s): %w", bridgeAddr, err)
 	}
 
 	agglayerBridgeL2, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, backend)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AgglayerBridgeL2 SC binding (bridge addr: %s): %w",
-			bridgeAddr, err)
+		return nil, fmt.Errorf("failed to create AgglayerBridgeL2 binding (%s): %w", bridgeAddr, err)
 	}
 
-	_, err = agglayerBridgeL2.BRIDGESOVEREIGNVERSION(nil)
-	if err == nil {
+	callOpts := &bind.CallOpts{Pending: false, Context: ctx}
+
+	// 1. Try calling BRIDGE_SOVEREIGN_VERSION — only exists on AgglayerBridgeL2
+	if _, err := agglayerBridgeL2.BRIDGESOVEREIGNVERSION(callOpts); err == nil {
 		return &bridgeDeployment{
 			kind:             SovereignChain,
 			agglayerBridge:   agglayerBridge,
 			agglayerBridgeL2: agglayerBridgeL2,
 		}, nil
-	}
-	if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
-		return nil, fmt.Errorf("failed to resolve bridge deployment when querying AgglayerBridgeL2 contract: %w", err)
+	} else if !errors.Is(err, gethvm.ErrExecutionReverted) {
+		return nil, fmt.Errorf("unexpected error querying AgglayerBridgeL2.BRIDGE_SOVEREIGN_VERSION: %w", err)
 	}
 
-	_, err = agglayerBridge.BRIDGEVERSION(nil)
-	if err == nil {
+	// 2. If that failed, try BRIDGE_VERSION — exists on base AgglayerBridge
+	if _, err := agglayerBridge.BRIDGEVERSION(callOpts); err == nil {
 		return &bridgeDeployment{
 			kind:             NonSovereignChain,
 			agglayerBridge:   agglayerBridge,
 			agglayerBridgeL2: agglayerBridgeL2,
 		}, nil
-	}
-	if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
-		return nil, fmt.Errorf("failed to resolve bridge deployment when querying AgglayerBridge contract: %w", err)
+	} else if !errors.Is(err, gethvm.ErrExecutionReverted) {
+		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.BRIDGE_VERSION: %w", err)
 	}
 
-	return nil, fmt.Errorf("failed to resolve bridge deployment type, unknown contract deployed on %s address", bridgeAddr)
+	return nil, fmt.Errorf("unable to determine bridge contract type at address %s", bridgeAddr)
 }
 
 // Start starts the synchronization process
