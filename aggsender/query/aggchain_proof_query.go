@@ -12,7 +12,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/grpc"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"google.golang.org/grpc/codes"
 )
 
@@ -62,7 +61,7 @@ func NewAggchainProofQuery(
 // It retrieves finalized L1 Info tree data, verifies that the provided claims are part of the finalized tree,
 // fetches injected GERs proofs and imported bridge exits, and constructs an AggchainProofRequest.
 // Depending on the certificate type, it either generates a standard or optimistic proof.
-// Returns the generated AggchainProof, the L1 Info tree root, or an error if any step fails.
+// Returns the generated AggchainProof, or an error if any step fails.
 //
 // Parameters:
 //   - ctx: Context for controlling cancellation and deadlines.
@@ -72,53 +71,49 @@ func NewAggchainProofQuery(
 //
 // Returns:
 //   - *types.AggchainProof: The generated Aggchain proof.
-//   - *treetypes.Root: The root of the L1 Info tree used for the proof.
 //   - error: An error if the proof generation fails at any step.
 func (a *aggchainProofQuery) GenerateAggchainProof(
 	ctx context.Context,
 	lastProvenBlock, toBlock uint64,
 	certBuildParams *types.CertificateBuildParams,
-) (*types.AggchainProof, *treetypes.Root, error) {
-	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
+) (*types.AggchainProof, error) {
+	finalizedL1InfoRootHash := certBuildParams.L1InfoTreeRootFromWhichToProve
+
+	proof, leaf, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx,
+		finalizedL1InfoRootHash, certBuildParams.L1InfoTreeLeafCount)
 	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
-	}
-	claims := certBuildParams.Claims
-	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
-		root, claims); err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
-			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
+		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 
 	fromBlock := lastProvenBlock + 1
-	injectedGERsProofs, err := a.gerQuerier.GetInjectedGERsProofs(ctx, root, fromBlock, toBlock)
+	injectedGERsProofs, err := a.gerQuerier.GetInjectedGERsProofs(ctx, finalizedL1InfoRootHash, fromBlock, toBlock)
 	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
+		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
 	}
 
-	importedBridgeExits, err := a.getImportedBridgeExitsForProver(claims)
+	importedBridgeExits, err := a.getImportedBridgeExitsForProver(certBuildParams.Claims)
 	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
+		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
 
 	removedGERs, err := a.gerQuerier.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
+		return nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
 	}
 
 	unclaims, err := a.convertUnclaimsToAgglayerUnclaims(certBuildParams.Unclaims)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error converting unclaims to unclaims: %w", err)
+		return nil, fmt.Errorf("error converting unclaims to unclaims: %w", err)
 	}
 
 	var aggchainProof *types.AggchainProof
 	request := &types.AggchainProofRequest{
 		LastProvenBlock:    lastProvenBlock,
 		RequestedEndBlock:  toBlock,
-		L1InfoTreeRootHash: root.Hash,
+		L1InfoTreeRootHash: finalizedL1InfoRootHash,
 		L1InfoTreeLeaf:     *leaf,
 		L1InfoTreeMerkleProof: agglayertypes.MerkleProof{
-			Root:  root.Hash,
+			Root:  finalizedL1InfoRootHash,
 			Proof: proof,
 		},
 		GERLeavesWithBlockNumber:           injectedGERsProofs,
@@ -143,14 +138,14 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 			"maxEndBlock: %d. Err: %w. Message sent: %s", optimisticMode, lastProvenBlock, toBlock, err, request.String(),
 		)
 		a.log.Error(err.Error())
-		return nil, nil, err
+		return nil, err
 	}
 
 	a.log.Infof("aggchainProverFlow - aggkit-prover fetched aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
-		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock,
-		root.String(), request.String())
+		"maxEndBlock: %d. root: %s. Message sent: %s", optimisticMode, lastProvenBlock, toBlock,
+		finalizedL1InfoRootHash.String(), request.String())
 
-	return aggchainProof, root, nil
+	return aggchainProof, nil
 }
 
 // generateOptimisticAggchainProof fetch required data and call to aggkit-prover for optimistic aggchain proof

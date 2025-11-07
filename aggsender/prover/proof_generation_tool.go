@@ -14,7 +14,6 @@ import (
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -30,7 +29,7 @@ type AggchainProofFlow interface {
 	GenerateAggchainProof(
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
-		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)
+		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, error)
 }
 
 // Config is the configuration for the AggchainProofGenerationTool
@@ -178,7 +177,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	certBuildParams := &types.CertificateBuildParams{
 		Claims: claims,
 	}
-	aggchainProof, _, err := a.flow.GenerateAggchainProof(
+	aggchainProof, err := a.flow.GenerateAggchainProof(
 		ctx,
 		lastProvenBlock,
 		maxEndBlock,

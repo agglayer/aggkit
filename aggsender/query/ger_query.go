@@ -6,7 +6,6 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -47,7 +46,7 @@ func NewGERDataQuerier(
 //   - Returns an error if there is an issue generating proofs for any GER.
 func (g *gerDataQuerier) GetInjectedGERsProofs(
 	ctx context.Context,
-	finalizedL1InfoTreeRoot *treetypes.Root,
+	finalizedL1InfoTreeRootHash common.Hash,
 	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {
 	injectedGERs, err := g.chainGERReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
@@ -58,7 +57,7 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for ger, injectedGER := range injectedGERs {
-		info, proof, err := g.l1InfoTreeQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRoot.Hash)
+		info, proof, err := g.l1InfoTreeQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRootHash)
 		if err != nil {
 			return nil, fmt.Errorf("error getting proof for GER: %s: %w", ger.String(), err)
 		}
@@ -71,7 +70,7 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 			BlockNumber: injectedGER.BlockNum,
 			LogIndex:    *injectedGER.BlockPosition,
 			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
-				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
+				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRootHash, Proof: proof},
 				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: info.L1InfoTreeIndex,
 					RollupExitRoot:  info.RollupExitRoot,

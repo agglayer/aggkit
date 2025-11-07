@@ -7,8 +7,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	treetypes "github.com/agglayer/aggkit/tree/types"
-
 	types "github.com/agglayer/aggkit/aggsender/types"
 )
 
@@ -26,7 +24,7 @@ func (_m *AggchainProofFlow) EXPECT() *AggchainProofFlow_Expecter {
 }
 
 // GenerateAggchainProof provides a mock function with given fields: ctx, lastProvenBlock, toBlock, certBuildParams
-func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, lastProvenBlock uint64, toBlock uint64, certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error) {
+func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, lastProvenBlock uint64, toBlock uint64, certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, error) {
 	ret := _m.Called(ctx, lastProvenBlock, toBlock, certBuildParams)
 
 	if len(ret) == 0 {
@@ -34,9 +32,8 @@ func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, lastProv
 	}
 
 	var r0 *types.AggchainProof
-	var r1 *treetypes.Root
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)); ok {
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, *types.CertificateBuildParams) (*types.AggchainProof, error)); ok {
 		return rf(ctx, lastProvenBlock, toBlock, certBuildParams)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, *types.CertificateBuildParams) *types.AggchainProof); ok {
@@ -47,21 +44,13 @@ func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, lastProv
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64, *types.CertificateBuildParams) *treetypes.Root); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64, *types.CertificateBuildParams) error); ok {
 		r1 = rf(ctx, lastProvenBlock, toBlock, certBuildParams)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*treetypes.Root)
-		}
+		r1 = ret.Error(1)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint64, uint64, *types.CertificateBuildParams) error); ok {
-		r2 = rf(ctx, lastProvenBlock, toBlock, certBuildParams)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
+	return r0, r1
 }
 
 // AggchainProofFlow_GenerateAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateAggchainProof'
@@ -85,12 +74,12 @@ func (_c *AggchainProofFlow_GenerateAggchainProof_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *AggchainProofFlow_GenerateAggchainProof_Call) Return(_a0 *types.AggchainProof, _a1 *treetypes.Root, _a2 error) *AggchainProofFlow_GenerateAggchainProof_Call {
-	_c.Call.Return(_a0, _a1, _a2)
+func (_c *AggchainProofFlow_GenerateAggchainProof_Call) Return(_a0 *types.AggchainProof, _a1 error) *AggchainProofFlow_GenerateAggchainProof_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggchainProofFlow_GenerateAggchainProof_Call) RunAndReturn(run func(context.Context, uint64, uint64, *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)) *AggchainProofFlow_GenerateAggchainProof_Call {
+func (_c *AggchainProofFlow_GenerateAggchainProof_Call) RunAndReturn(run func(context.Context, uint64, uint64, *types.CertificateBuildParams) (*types.AggchainProof, error)) *AggchainProofFlow_GenerateAggchainProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
