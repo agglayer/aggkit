@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -283,7 +284,7 @@ func resolveBridgeDeployment(ctx context.Context,
 			agglayerBridge:   agglayerBridge,
 			agglayerBridgeL2: agglayerBridgeL2,
 		}, nil
-	} else if !errors.Is(err, gethvm.ErrExecutionReverted) {
+	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
 		return nil, fmt.Errorf("unexpected error querying AgglayerBridgeL2.BRIDGE_SOVEREIGN_VERSION: %w", err)
 	}
 
@@ -294,7 +295,7 @@ func resolveBridgeDeployment(ctx context.Context,
 			agglayerBridge:   agglayerBridge,
 			agglayerBridgeL2: agglayerBridgeL2,
 		}, nil
-	} else if !errors.Is(err, gethvm.ErrExecutionReverted) {
+	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
 		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.BRIDGE_VERSION: %w", err)
 	}
 
