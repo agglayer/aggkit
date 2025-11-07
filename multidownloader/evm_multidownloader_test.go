@@ -20,7 +20,7 @@ import (
 )
 
 const runL1InfoTree = true
-const l1InfoTreeUseMultidownloader = true
+const l1InfoTreeUseMultidownloader = false
 
 func TestEVMMultidownloader(t *testing.T) {
 	cfgLog := log.Config{
@@ -54,7 +54,7 @@ func TestEVMMultidownloader(t *testing.T) {
 	require.NoError(t, err)
 	cfg := MultidownloaderConfig{
 		BlockChunkSize:                  5000,
-		MaxParallelBlockHeaderRetrieval: 100,
+		MaxParallelBlockHeaderRetrieval: 50,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
 	}
 	mdr := NewEVMMultidownloader(logger, cfg, ethClient, db, nil, "l1")
@@ -89,7 +89,7 @@ func TestEVMMultidownloader(t *testing.T) {
 				InitialBlock:       5157574,
 				GlobalExitRootAddr: common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"),
 				RollupManagerAddr:  common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"),
-				SyncBlockChunkSize: 5000,
+				SyncBlockChunkSize: 6500,
 				WaitForNewBlocksPeriod: types.Duration{
 					Duration: 5 * time.Second,
 				},

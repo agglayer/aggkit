@@ -623,11 +623,18 @@ func runL1MultiDownloaderIfNeeded(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create multidownloader storage: %w", err)
 	}
+	cfgMD := multidownloader.MultidownloaderConfig{
+		BlockChunkSize:                  1000,
+		MaxParallelBlockHeaderRetrieval: 15,
+		BlockFinality:                   aggkittypes.FinalizedBlock,
+	}
+
 	return multidownloader.NewEVMMultidownloader(logger,
-		aggkittypes.FinalizedBlock,
+		cfgMD,
 		l1Client,
 		storage,
 		nil,
+		"l1",
 	), nil
 
 }

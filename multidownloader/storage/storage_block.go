@@ -61,8 +61,6 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier, quer
 	if tx == nil {
 		tx = a.db
 	}
-	a.mutex.RLock()
-	defer a.mutex.RUnlock()
 	var blocks []*BlockRow
 	err := meddler.QueryAll(tx, &blocks, query, args...)
 	if err != nil {

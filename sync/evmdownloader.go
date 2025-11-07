@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -125,6 +126,12 @@ func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 }
 
 func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
+	timeTracker := aggkitcommon.NewTimeTracker()
+	timeTracker.Start()
+	defer func() {
+		timeTracker.Stop()
+		d.log.Infof("EVMDownloader.Download finished in %s", timeTracker.String())
+	}()
 	lastBlock := d.WaitForNewBlocks(ctx, 0)
 	toBlock := fromBlock + d.syncBlockChunkSize
 	iteration := 0

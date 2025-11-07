@@ -243,6 +243,77 @@ func TestBlockRange_Greater(t *testing.T) {
 	}
 }
 
+func TestBlockRange_Contains(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        BlockRange
+		b        BlockRange
+		expected bool
+	}{
+		{
+			name:     "no contained",
+			a:        NewBlockRange(10, 20),
+			b:        NewBlockRange(1, 9),
+			expected: false,
+		},
+		{
+			name:     "a overlaps b but not contained",
+			a:        NewBlockRange(10, 20),
+			b:        NewBlockRange(15, 25),
+			expected: false,
+		},
+		{
+			name:     "adjacent but not contained",
+			a:        NewBlockRange(1, 5),
+			b:        NewBlockRange(6, 10),
+			expected: false,
+		},
+		{
+			name:     "identical ranges",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(5, 10),
+			expected: true,
+		},
+		{
+			name:     "contained =toBLock",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(11, 15),
+			expected: true,
+		},
+		{
+			name:     "contained =fromBLock",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(10, 14),
+			expected: true,
+		},
+		{
+			name:     "empty a, non-empty b",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(1, 10),
+			expected: false,
+		},
+		{
+			name:     "non-empty a, empty b",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(0, 0),
+			expected: false,
+		},
+		{
+			name:     "both empty",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(0, 0),
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.a.Contains(tt.b)
+			require.Equal(t, tt.expected, got, "Contains() for %s: expected %v, got %v", tt.name, tt.expected, got)
+		})
+	}
+}
+
 func TestBlockRange_Substract(t *testing.T) {
 	bn := NewBlockRange(10, 50)
 	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Substract(NewBlockRange(20, 30)))

@@ -123,6 +123,9 @@ func (b BlockRange) Cap(maxBlockNumber uint64) BlockRange {
 	}
 	return NewBlockRange(b.FromBlock, min(b.ToBlock, maxBlockNumber))
 }
+func (b BlockRange) Contains(other BlockRange) bool {
+	return b.FromBlock <= other.FromBlock && b.ToBlock >= other.ToBlock
+}
 
 func (b BlockRange) Overlaps(other BlockRange) bool {
 	return b.FromBlock <= other.ToBlock && other.FromBlock <= b.ToBlock

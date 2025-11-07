@@ -12,8 +12,10 @@ import (
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -25,6 +27,7 @@ const safeMode = true
 const unsafeMode = false
 
 type StorageInterface interface {
+	dbtypes.KeyValueStorager
 	// GetSyncedBlockRangePerContract It returns the synced block range stored in DB
 	GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error)
 	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error
@@ -83,6 +86,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 				return bn, er
 			})
 	}
+
 	return &EVMMultidownloader{
 		log:                  log,
 		ethClient:            ethClient,
@@ -188,14 +192,37 @@ func (dh *EVMMultidownloader) GetRPCServices() []jRPC.Service {
 		},
 	}
 }
+func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
+	chainID, err := dh.ChainID(ctx)
+	if err != nil {
+		return fmt.Errorf("Initialize: cannot get chainID: %w", err)
+	}
+	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
+		true,
+		func(ctx context.Context) (storage.DBRuntimeData, error) {
+			return storage.DBRuntimeData{NetworkID: chainID,
+				DataVersion: storage.DataVersionCurrent}, nil
+		},
+		compatibility.NewKeyValueToCompatibilityStorage[storage.DBRuntimeData](dh.storage, "multidownloader-"+dh.name),
+	)
 
+	err = compatibilityStoragedChecker.Check(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("Initialize: compatibility check failed: %w", err)
+	}
+	return nil
+}
 func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	if dh.isInitialized {
 		return nil
 	}
-	err := dh.storage.UpdateSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
+	err := dh.CheckDatabase(ctx)
+	if err != nil {
+		return err
+	}
+	err = dh.storage.UpdateSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
 	if err != nil {
 		return err
 	}
@@ -312,19 +339,6 @@ func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 	return dh.syncedSegments.IsAvailable(query)
 }
 
-// func (dh *EVMMultidownloader) saveBlockHeaders(ctx context.Context, tx dbtypes.Txer, blocks map[uint64]*aggkittypes.BlockHeader) error {
-// 	finalizedBlockNumber, err := dh.getFinalizedBlockNumber(ctx)
-// 	if err != nil {
-// 		return fmt.Errorf("saveBlockHeaders: cannot get finalized block number: %w", err)
-// 	}
-
-// 	if err := dh.storage.SaveBlockHeaders(tx, blocks, finalizedBlockNumber); err != nil {
-// 		return fmt.Errorf("saveBlockHeaders: cannot save block headers: %w", err)
-// 	}
-
-// 	return nil
-// }
-
 func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkittypes.BlockHeader {
 	var headers []*aggkittypes.BlockHeader
 	for _, header := range blocks {
@@ -405,6 +419,9 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	storageSyncSegments, err := dh.storage.GetSyncedBlockRangePerContract(tx)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot get synced block range per contract: %w", err)
+	}
+	if dh.IsAvailable(*logQueryData) {
+		panic("logQueryData should not be available after doing the query")
 	}
 	committed = true
 	if err := tx.Commit(); err != nil {

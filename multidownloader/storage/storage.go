@@ -24,11 +24,12 @@ type MultidownloaderStorageConfig struct {
 }
 
 type MultidownloaderStorage struct {
-	mutex sync.RWMutex
 	dbtypes.KeyValueStorager
 	logger aggkitcommon.Logger
 	db     *sql.DB
 	cfg    MultidownloaderStorageConfig
+
+	mutex sync.RWMutex
 }
 
 type logDBRow struct {

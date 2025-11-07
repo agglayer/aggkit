@@ -127,7 +127,7 @@ func (f *SetSyncSegment) IsAvailable(query LogQuery) bool {
 	}
 	for _, addr := range query.Addrs {
 		segment := f.GetByContract(addr)
-		if segment == nil || !segment.BlockRange.Overlaps(query.BlockRange) {
+		if segment == nil || !segment.BlockRange.Contains(query.BlockRange) {
 			return false
 		}
 	}
