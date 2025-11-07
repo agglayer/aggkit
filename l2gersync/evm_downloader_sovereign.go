@@ -163,6 +163,7 @@ func (d *downloaderSovereign) buildAppender(
 						gerHash.Hex(), contractErr)
 				}
 
+				// if timestamp is 0, the GER is not found in the L1 contract
 				if timestamp.Cmp(common.Big0) == 0 {
 					log.Fatalf("GER %s not found in L1 contract globalExitRootMap", gerHash.Hex())
 				} else {
