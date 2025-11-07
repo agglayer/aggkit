@@ -96,7 +96,7 @@ func start(cliCtx *cli.Context) error {
 			log.Fatal("Error from ReorgDetectorL2: ", err)
 		}
 	}()
-	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components, l1Client, cfg.L1NetworkConfig)
+	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components, l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}
