@@ -107,16 +107,51 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 	// Validate received signature
 	// We do not support ethereum legacy v+27 signatures
 
-	recoveredPublicKey, err := crypto.SigToPub(certificateHash[:], signature)
+	err = v.validateSignature(certificateHash, signature)
 	if err != nil {
-		return nil, fmt.Errorf("error validating remote validator signature: %w", err)
+		return nil, fmt.Errorf("error validating signature from remote validator: %w", err)
+	}
+
+	return signature, nil
+}
+
+// ValidateAndSignGER validates the GlobalExitRoot that needs to be injected and signs it.
+func (v *RemoteValidator) ValidateAndSignGER(
+	ctx context.Context,
+	ger common.Hash,
+) ([]byte, error) {
+	signature, err := v.client.ValidateGER(ctx, ger)
+	if err != nil {
+		return nil, fmt.Errorf("error validating GER on aggsender validator service: %w", err)
+	}
+
+	// Validate received signature
+	// We do not support ethereum legacy v+27 signatures
+
+	err = v.validateSignature(ger, signature)
+	if err != nil {
+		return nil, fmt.Errorf("error validating signature from remote validator: %w", err)
+	}
+
+	return signature, nil
+}
+
+// validateSignature checks if the signature corresponds to the given message hash
+// and was created by the remote validator's address.
+func (v *RemoteValidator) validateSignature(
+	messageHash common.Hash,
+	signature []byte,
+) error {
+	recoveredPublicKey, err := crypto.SigToPub(messageHash.Bytes(), signature)
+	if err != nil {
+		return fmt.Errorf("error validating remote validator signature: %w", err)
 	}
 
 	recoveredAddress := crypto.PubkeyToAddress(*recoveredPublicKey)
 	if v.address != recoveredAddress {
-		return nil, fmt.Errorf("error validating remote validator signature, mismatch expected:%v current:%v",
+		return fmt.Errorf("error validating remote validator signature, mismatch. Expected: %v current: %v",
 			v.address, recoveredAddress)
 	}
 
-	return signature, nil
+	return nil
 }

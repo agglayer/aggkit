@@ -257,6 +257,7 @@ func (h *HealthCheckResponse) String() string {
 
 type CertificateValidator interface {
 	ValidateCertificate(ctx context.Context, params VerifyIncomingRequest) error
+	ValidateGER(ctx context.Context, ger common.Hash) error
 }
 
 // CertificateValidateAndSigner is an interface to attach a certificate validator and signer
@@ -270,10 +271,19 @@ type CertificateValidateAndSigner interface {
 		certificate *agglayertypes.Certificate,
 		lastL2BlockInCert uint64,
 	) ([]byte, error)
+	// URL returns the URL of the validator service
 	URL() string
+	// String returns a string representation of the validator service
 	String() string
+	// Address returns the Ethereum address of the validator
 	Address() common.Address
+	// Index returns the index of the validator in the signers list
 	Index() uint32
+	// ValidateAndSignGER validates the GlobalExitRoot that needs to be injected and signs it if valid.
+	ValidateAndSignGER(
+		ctx context.Context,
+		ger common.Hash,
+	) ([]byte, error)
 }
 
 // ValidatorClient is an interface defining functions that a ValidatorClient should implement
@@ -284,6 +294,10 @@ type ValidatorClient interface {
 		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 		certificate *agglayertypes.Certificate,
 		lastL2BlockInCert uint64,
+	) ([]byte, error)
+	ValidateGER(
+		ctx context.Context,
+		ger common.Hash,
 	) ([]byte, error)
 }
 

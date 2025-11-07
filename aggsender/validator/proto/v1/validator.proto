@@ -44,7 +44,7 @@ message ValidateCertificateResponse {
  // Request to validate a GER.
  message ValidateGERRequest {
    // GER to be validated
-   bytes ger = 1;
+   agglayer.interop.types.v1.FixedBytes32 ger = 1;
  }
 
   // Response to a GER validation request.

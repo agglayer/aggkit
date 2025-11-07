@@ -95,7 +95,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					mock.Anything,
 				).Return(certAtHeight11Sig, nil)
 			},
-			expectedError: "error validating remote validator signature, mismatch expected:0x9D36c7795cC5F041010F1eb74f3e70306Ab9Ede5 current:0x38996100B11d9637C61c2d903A8dE79F26B01A9a",
+			expectedError: "error validating remote validator signature, mismatch. Expected: 0x9D36c7795cC5F041010F1eb74f3e70306Ab9Ede5 current: 0x38996100B11d9637C61c2d903A8dE79F26B01A9a",
 		},
 		{
 			name:        "fail, empty signature",

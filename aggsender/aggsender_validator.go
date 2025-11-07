@@ -11,6 +11,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -62,4 +63,9 @@ func (a *AggsenderValidator) Start(ctx context.Context) {
 // ValidateCertificate validates the incoming certificate against the previous one.
 func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params types.VerifyIncomingRequest) error {
 	return a.validator.ValidateCertificate(ctx, params)
+}
+
+// ValidateGER validates the GlobalExitRoot that needs to be injected.
+func (a *AggsenderValidator) ValidateGER(ctx context.Context, ger common.Hash) error {
+	return a.validator.ValidateGER(ctx, ger)
 }

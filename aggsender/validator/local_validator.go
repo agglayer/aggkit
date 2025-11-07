@@ -99,6 +99,26 @@ func (a *LocalValidator) ValidateAndSignCertificate(
 	return aggkitcommon.EmptySignature, nil
 }
 
+// ValidateAndSignGER validates the GlobalExitRoot that needs to be injected.
+// LocalValidator does not sign the GER, it just validates it.
+func (a *LocalValidator) ValidateAndSignGER(
+	ctx context.Context,
+	ger common.Hash,
+) ([]byte, error) {
+	a.log.Infof("GER validation: %s ....", ger.Hex())
+
+	err := a.validator.ValidateGER(ctx, ger)
+	if err != nil {
+		a.log.Errorf("GER %s validation failed: %s", ger.Hex(), err.Error())
+		return nil, fmt.Errorf("GER %s validation failed: %w", ger.Hex(), err)
+	}
+
+	a.log.Infof("GER %s validation passed", ger.Hex())
+
+	// local validator does not sign the GER, it just validates it
+	return aggkitcommon.EmptySignature, nil
+}
+
 // getPreviousCertificate retrieves the previous certificate based on the new certificate's height.
 func getPreviousCertificate(
 	storage db.AggSenderStorage,

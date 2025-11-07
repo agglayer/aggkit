@@ -47,6 +47,12 @@ func NewAggsenderValidator(logger aggkitcommon.Logger,
 	}
 }
 
+// ValidateGER validates the GlobalExitRoot that needs to be injected.
+func (a *CertificateValidator) ValidateGER(ctx context.Context, ger common.Hash) error {
+	// TODO : implement GER validation logic for local validator
+	return nil
+}
+
 // ValidateCertificate validates the incoming certificate against the previous one.
 func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params types.VerifyIncomingRequest) error {
 	if params.Certificate == nil {

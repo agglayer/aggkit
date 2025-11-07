@@ -19,6 +19,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+var (
+	errSignerNotInitialized = grpc.GRPCError{
+		Code:    codes.Internal,
+		Message: "Signer is not initialized",
+	}
+)
+
 // ValidatorService implements the gRPC server for the AggsenderValidator service.
 type ValidatorService struct {
 	// Embed the generated server interface to ensure forward compatibility
@@ -50,6 +57,47 @@ func (s *ValidatorService) HealthCheck(ctx context.Context, in *emptypb.Empty) (
 		Version: version.Brief(),
 		Status:  types.HealthCheckStatusOK,
 		Reason:  "",
+	}, nil
+}
+
+func (s *ValidatorService) ValidateGER(
+	ctx context.Context,
+	req *v1.ValidateGERRequest,
+) (*v1.ValidateGERResponse, error) {
+	if req == nil || req.Ger == nil {
+		return nil, grpc.GRPCError{
+			Code:    codes.NotFound,
+			Message: "required a GlobalExitRoot",
+		}
+	}
+
+	ger := common.BytesToHash(req.Ger.Value)
+	s.log.Infof("Received GER to validate and sign: %s", ger.Hex())
+
+	err := s.validator.ValidateGER(ctx, ger)
+	if err != nil {
+		s.log.Errorf("Error signing GER: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Error signing GER: " + err.Error(),
+		}
+	}
+
+	signature, err := s.signGER(ctx, ger)
+	if err != nil {
+		s.log.Errorf("Error signing GER: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Error signing GER: " + err.Error(),
+		}
+	}
+
+	s.log.Infof("GER %s validated and signed successfully: %s", ger.Hex(), common.Bytes2Hex(signature))
+
+	return &v1.ValidateGERResponse{
+		Signature: &v1types.FixedBytes65{
+			Value: signature,
+		},
 	}, nil
 }
 
@@ -126,10 +174,7 @@ func (s *ValidatorService) ValidateCertificate(
 
 func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayertypes.Certificate) ([]byte, error) {
 	if s.signer == nil {
-		return nil, grpc.GRPCError{
-			Code:    codes.Internal,
-			Message: "Signer is not initialized",
-		}
+		return nil, errSignerNotInitialized
 	}
 	hashToSign, err := HashCertificateToSign(cert)
 	if err != nil {
@@ -139,4 +184,12 @@ func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayerty
 		}
 	}
 	return s.signer.SignHash(ctx, hashToSign)
+}
+
+func (s *ValidatorService) signGER(ctx context.Context, ger common.Hash) ([]byte, error) {
+	if s.signer == nil {
+		return nil, errSignerNotInitialized
+	}
+
+	return s.signer.SignHash(ctx, ger)
 }

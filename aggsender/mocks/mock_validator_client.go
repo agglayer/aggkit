@@ -145,6 +145,65 @@ func (_c *ValidatorClient_ValidateCertificate_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// ValidateGER provides a mock function with given fields: ctx, ger
+func (_m *ValidatorClient) ValidateGER(ctx context.Context, ger common.Hash) ([]byte, error) {
+	ret := _m.Called(ctx, ger)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateGER")
+	}
+
+	var r0 []byte
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) ([]byte, error)); ok {
+		return rf(ctx, ger)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) []byte); ok {
+		r0 = rf(ctx, ger)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
+		r1 = rf(ctx, ger)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ValidatorClient_ValidateGER_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateGER'
+type ValidatorClient_ValidateGER_Call struct {
+	*mock.Call
+}
+
+// ValidateGER is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ger common.Hash
+func (_e *ValidatorClient_Expecter) ValidateGER(ctx interface{}, ger interface{}) *ValidatorClient_ValidateGER_Call {
+	return &ValidatorClient_ValidateGER_Call{Call: _e.mock.On("ValidateGER", ctx, ger)}
+}
+
+func (_c *ValidatorClient_ValidateGER_Call) Run(run func(ctx context.Context, ger common.Hash)) *ValidatorClient_ValidateGER_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *ValidatorClient_ValidateGER_Call) Return(_a0 []byte, _a1 error) *ValidatorClient_ValidateGER_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ValidatorClient_ValidateGER_Call) RunAndReturn(run func(context.Context, common.Hash) ([]byte, error)) *ValidatorClient_ValidateGER_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewValidatorClient creates a new instance of ValidatorClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewValidatorClient(t interface {
