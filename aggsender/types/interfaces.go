@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -101,6 +103,7 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
+	SubscribeToSync(subscriberID string) <-chan sync.Block
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -365,4 +368,18 @@ type FEPInputsQuerier interface {
 	GetAggchainParams(
 		lastProvenBlock, requestedEndBlock uint64,
 		l1InfoTreeLeafHash common.Hash) (*AggchainParams, error)
+}
+
+// CertificateTriggerEvent represents an event that triggers certificate sending actions.
+// This can be expanded in the future to include more specific methods or properties
+type CertificateTriggerEvent interface {
+	fmt.Stringer
+}
+
+// CertificateSendTrigger is an interface that defines methods for setting up and managing
+// certificate sending triggers based on specific events.
+type CertificateSendTrigger interface {
+	Setup(ctx context.Context)
+	Status() string
+	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
 }

@@ -22,6 +22,7 @@ type AggsenderMode string
 const (
 	PessimisticProofMode AggsenderMode = "PessimisticProof"
 	AggchainProofMode    AggsenderMode = "AggchainProof"
+	PreconfPPMode        AggsenderMode = "PreconfPP"
 	AutoMode             AggsenderMode = "Auto"
 )
 
@@ -54,6 +55,8 @@ func NewAggsenderMode(mode string) (AggsenderMode, error) {
 		return PessimisticProofMode, nil
 	case strings.ToUpper(AggchainProofMode.String()):
 		return AggchainProofMode, nil
+	case strings.ToUpper(PreconfPPMode.String()):
+		return PreconfPPMode, nil
 	case strings.ToUpper(AutoMode.String()):
 		return AutoMode, nil
 	default:
@@ -72,11 +75,13 @@ const (
 	CertificateTypePPStr         string = "pp"
 	CertificateTypeFEPStr        string = "fep"
 	CertificateTypeOptimisticStr string = "optimistic"
+	CertificateTypePreconfPPStr  string = "preconf_pp"
 
 	CertificateTypeUnknown    CertificateType = 0
 	CertificateTypePP         CertificateType = 1
 	CertificateTypeFEP        CertificateType = 2
 	CertificateTypeOptimistic CertificateType = 3
+	CertificateTypePreconfPP  CertificateType = 4
 )
 
 func (c CertificateType) String() string {
@@ -87,6 +92,8 @@ func (c CertificateType) String() string {
 		return CertificateTypePPStr
 	case CertificateTypeOptimistic:
 		return CertificateTypeOptimisticStr
+	case CertificateTypePreconfPP:
+		return CertificateTypePreconfPPStr
 	default:
 		return CertificateTypeUnknownStr
 	}
@@ -98,7 +105,7 @@ func (c CertificateType) Value() (driver.Value, error) {
 }
 
 // meddler support for store as string
-func (c *CertificateType) Scan(value interface{}) error {
+func (c *CertificateType) Scan(value any) error {
 	str, ok := value.(string)
 	if !ok {
 		return fmt.Errorf("CertificateType: expected string, got %T", value)
@@ -127,6 +134,8 @@ func NewCertificateTypeFromStr(v string) (CertificateType, error) {
 		return CertificateTypeFEP, nil
 	case CertificateTypeOptimisticStr:
 		return CertificateTypeOptimistic, nil
+	case CertificateTypePreconfPPStr:
+		return CertificateTypePreconfPP, nil
 	case CertificateTypeUnknownStr:
 		return CertificateTypeUnknown, nil
 	default:

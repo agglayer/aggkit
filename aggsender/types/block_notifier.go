@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"time"
 
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -18,4 +19,5 @@ type BlockNotifier interface {
 	Subscribe(id string) <-chan EventNewBlock
 	GetCurrentBlockNumber() uint64
 	String() string
+	Start(ctx context.Context)
 }

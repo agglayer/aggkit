@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	context "context"
+
 	types "github.com/agglayer/aggkit/aggsender/types"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -62,6 +64,39 @@ func (_c *BlockNotifier_GetCurrentBlockNumber_Call) Return(_a0 uint64) *BlockNot
 
 func (_c *BlockNotifier_GetCurrentBlockNumber_Call) RunAndReturn(run func() uint64) *BlockNotifier_GetCurrentBlockNumber_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// Start provides a mock function with given fields: ctx
+func (_m *BlockNotifier) Start(ctx context.Context) {
+	_m.Called(ctx)
+}
+
+// BlockNotifier_Start_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Start'
+type BlockNotifier_Start_Call struct {
+	*mock.Call
+}
+
+// Start is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *BlockNotifier_Expecter) Start(ctx interface{}) *BlockNotifier_Start_Call {
+	return &BlockNotifier_Start_Call{Call: _e.mock.On("Start", ctx)}
+}
+
+func (_c *BlockNotifier_Start_Call) Run(run func(ctx context.Context)) *BlockNotifier_Start_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *BlockNotifier_Start_Call) Return() *BlockNotifier_Start_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *BlockNotifier_Start_Call) RunAndReturn(run func(context.Context)) *BlockNotifier_Start_Call {
+	_c.Run(run)
 	return _c
 }
 
