@@ -19,17 +19,15 @@ type SyncerConfig struct {
 	// Starting block
 	FromBlock uint64
 	// Taget for final block
-	ToBlock             aggkittypes.BlockNumberFinality
-	RequiredBlockHeader bool
+	ToBlock aggkittypes.BlockNumberFinality
 }
 
 func NewSyncerConfig(data aggkittypes.SyncerConfig) SyncerConfig {
 	return SyncerConfig{
-		SyncerID:            data.SyncerID,
-		ContractsAddr:       data.ContractsAddr,
-		FromBlock:           data.FromBlock,
-		ToBlock:             data.ToBlock,
-		RequiredBlockHeader: data.RequiredBlockHeader,
+		SyncerID:      data.SyncerID,
+		ContractsAddr: data.ContractsAddr,
+		FromBlock:     data.FromBlock,
+		ToBlock:       data.ToBlock,
 	}
 }
 
@@ -118,11 +116,10 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 			cc, exists := contractMap[addr]
 			if !exists {
 				cc = &ContractConfig{
-					Address:             addr,
-					FromBlock:           filter.FromBlock,
-					ToBlock:             filter.ToBlock,
-					Syncers:             []SyncerID{},
-					RequiredBlockHeader: filter.RequiredBlockHeader,
+					Address:   addr,
+					FromBlock: filter.FromBlock,
+					ToBlock:   filter.ToBlock,
+					Syncers:   []SyncerID{},
 				}
 				contractMap[addr] = cc
 			} else {
@@ -133,7 +130,6 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 				if filter.ToBlock.LessFinalThan(cc.ToBlock) {
 					cc.ToBlock = filter.ToBlock
 				}
-				cc.RequiredBlockHeader = cc.RequiredBlockHeader || filter.RequiredBlockHeader
 			}
 			if !elementMatch(cc.Syncers, syncerID) {
 				cc.Syncers = append(cc.Syncers, syncerID)
@@ -169,9 +165,8 @@ func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
 			segment := SyncSegment{
 				ContractAddr: addr,
 				// Initially set ToBlock as 0, it will be updated later
-				BlockRange:          aggkitcommon.NewBlockRange(filter.FromBlock, 0),
-				TargetToBlock:       filter.ToBlock,
-				RequiredBlockHeader: filter.RequiredBlockHeader,
+				BlockRange:    aggkitcommon.NewBlockRange(filter.FromBlock, 0),
+				TargetToBlock: filter.ToBlock,
 			}
 			segments.Add(segment)
 		}

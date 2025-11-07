@@ -100,11 +100,10 @@ func New(
 	addressesToQuery := []common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr}
 	l1Client.RegisterSyncer(
 		aggkittypes.SyncerConfig{
-			SyncerID:            "l1infotreesync",
-			ContractsAddr:       addressesToQuery,
-			FromBlock:           cfg.InitialBlock,
-			ToBlock:             blockFinalityType,
-			RequiredBlockHeader: false,
+			SyncerID:      "l1infotreesync",
+			ContractsAddr: addressesToQuery,
+			FromBlock:     cfg.InitialBlock,
+			ToBlock:       blockFinalityType,
 		},
 	)
 

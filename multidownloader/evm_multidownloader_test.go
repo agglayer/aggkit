@@ -24,6 +24,7 @@ const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = false
 
 func TestEVMMultidownloader(t *testing.T) {
+	t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",

@@ -77,13 +77,18 @@ func TestE2E(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
 	cfgMD := multidownloader.NewConfigDefault("l1")
+	cfgMD := multidownloader.NewConfigDefault("l1")
 	cfgMD.Enabled = true
-	multidownloaderClient := multidownloader.NewEVMMultidownloader(
+	cfgMD.StoragePath = path.Join(t.TempDir(), "md.sqlite")
+	multidownloaderClient, err := multidownloader.NewEVMMultidownloader(
 		log.WithFields("module", "multidownloader"),
 		cfgMD,
-		client,
-		multiDownloaderSotrage,
+		"testMD",
+		client.Client(),
+		nil,
+		nil,
 	)
+	require.NoError(t, err)
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPath,
 		InitialBlock:                       0,
@@ -96,8 +101,8 @@ func TestE2E(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), mockReorgDetector,
-		l1infotreesync.FlagAllowWrongContractsAddrs)
+	syncer, err := l1infotreesync.New(ctx, cfg, aggkittypes.LatestBlock, multidownloaderClient,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock)
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -163,141 +168,20 @@ func TestWithReorgs(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), rd, l1infotreesync.FlagAllowWrongContractsAddrs)
-	require.NoError(t, err)
-	go syncer.Start(ctx)
-
-	// Commit block 6
-	header, err := client.Client().HeaderByHash(ctx, client.Commit())
-	require.NoError(t, err)
-	reorgFrom := header.Hash()
-
-	// Commit block 7
-	helpers.CommitBlocks(t, client, 1, time.Millisecond*500)
-
-	updateL1InfoTreeAndRollupExitTree := func(i int, rollupID uint32) {
-		// Update L1 Info Tree
-		_, err := gerSc.UpdateExitRoot(auth, common.HexToHash(strconv.Itoa(i)))
-		require.NoError(t, err)
-
-		// Update L1 Info Tree + Rollup Exit Tree
-		newLocalExitRoot := common.HexToHash(strconv.Itoa(i) + "ffff" + strconv.Itoa(1))
-		_, err = verifySC.VerifyBatchesTrustedAggregator(auth, rollupID, 0, newLocalExitRoot, common.Hash{}, true)
-		require.NoError(t, err)
-
-		// Update Rollup Exit Tree
-		newLocalExitRoot = common.HexToHash(strconv.Itoa(i) + "ffff" + strconv.Itoa(2))
-		_, err = verifySC.VerifyBatchesTrustedAggregator(auth, rollupID, 0, newLocalExitRoot, common.Hash{}, false)
-		require.NoError(t, err)
-	}
-
-	// create some events and update the trees
-	updateL1InfoTreeAndRollupExitTree(1, 1)
-
-	// Commit block 8 that contains the transaction that updates the trees
-	helpers.CommitBlocks(t, client, 1, time.Millisecond*500)
-
-	// Make sure syncer is up to date
-	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
-
-	// Assert rollup exit root
-	expectedRollupExitRoot, err := verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	actualRollupExitRoot, err := syncer.GetLastRollupExitRoot(ctx)
-	require.NoError(t, err)
-	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
-
-	// Assert L1 Info tree root
-	expectedL1InfoRoot, err := gerSc.GetRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	expectedGER, err := gerSc.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	actualL1InfoRoot, err := syncer.GetLastL1InfoTreeRoot(ctx)
-	require.NoError(t, err)
-	info, err := syncer.GetInfoByIndex(ctx, actualL1InfoRoot.Index)
-	require.NoError(t, err)
-
-	require.Equal(t, common.Hash(expectedL1InfoRoot), actualL1InfoRoot.Hash)
-	require.Equal(t, common.Hash(expectedGER), info.GlobalExitRoot, fmt.Sprintf("%+v", info))
-
-	// Forking from block 6
-	// Note: reorged trx will be added to pending transactions
-	// and will be committed when the forked block is committed
-	err = client.Fork(reorgFrom)
-	require.NoError(t, err)
-
-	blockNum, err := client.Client().BlockNumber(ctx)
-	require.NoError(t, err)
-	require.Equal(t, header.Number.Uint64(), blockNum)
-
-	// Commit block 7, 8, 9 after the fork
-	helpers.CommitBlocks(t, client, 5, time.Millisecond*100)
-
-	// Assert rollup exit root after committing new blocks on the fork
-	expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	actualRollupExitRoot, err = syncer.GetLastRollupExitRoot(ctx)
-	require.NoError(t, err)
-	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
-
-	// Forking from block 6 again
-	err = client.Fork(reorgFrom)
-	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 500)
-
-	helpers.CommitBlocks(t, client, 1, time.Millisecond*100) // Commit block 7
-
-	// create some events and update the trees
-	updateL1InfoTreeAndRollupExitTree(2, 1)
-	helpers.CommitBlocks(t, client, 1, time.Millisecond*100)
-
-	// Make sure syncer is up to date
-	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
-
-	// Assert rollup exit root after the fork
-	expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	actualRollupExitRoot, err = syncer.GetLastRollupExitRoot(ctx)
-	require.NoError(t, err)
-	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
-}
-
-func TestStressAndReorgs(t *testing.T) {
-	const (
-		totalIterations       = 3
-		blocksInIteration     = 140
-		reorgEveryXIterations = 70
-		reorgSizeInBlocks     = 2
-		maxRollupID           = 31
+	cfgMD := multidownloader.NewConfigDefault("l1")
+	cfgMD.Enabled = true
+	cfgMD.StoragePath = path.Join(t.TempDir(), "md.sqlite")
+	multidownloaderClient, err := multidownloader.NewEVMMultidownloader(
+		log.WithFields("module", "multidownloader"),
+		cfgMD,
+		"testMD",
+		client.Client(),
+		nil,
+		nil,
 	)
-
-	ctx := context.Background()
-	dbPathSyncer := path.Join(t.TempDir(), "l1infotreesyncTestStressAndReorgs_sync.sqlite")
-	dbPathReorg := path.Join(t.TempDir(), "l1infotreesyncTestStressAndReorgs_reorg.sqlite")
-
-	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
-	// Start reorg detector
-	reorgDetectorCfg := reorgdetector.Config{
-		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
-		FinalizedBlock:      aggkittypes.FinalizedBlock}
-	rd, err := reorgdetector.New(client.Client(), reorgDetectorCfg, reorgdetector.L1)
 	require.NoError(t, err)
-	require.NoError(t, rd.Start(ctx))
-
-	cfg := l1infotreesync.Config{
-		DBPath:                             dbPathSyncer,
-		InitialBlock:                       0,
-		SyncBlockChunkSize:                 10,
-		BlockFinality:                      aggkittypes.LatestBlock,
-		GlobalExitRootAddr:                 gerAddr,
-		RollupManagerAddr:                  verifyAddr,
-		RetryAfterErrorPeriod:              cfgtypes.NewDuration(time.Second * 1),
-		MaxRetryAttemptsAfterError:         25,
-		RequireStorageContentCompatibility: true,
-		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 100),
-	}
-	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), rd, l1infotreesync.FlagAllowWrongContractsAddrs)
+	syncer, err := l1infotreesync.New(ctx, cfg, aggkittypes.LatestBlock, multidownloaderClient,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 

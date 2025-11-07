@@ -23,9 +23,6 @@ CREATE TABLE block (
     PRIMARY KEY (block_number)
 );
 
-
-
-
 CREATE TABLE sync_status (
     contract_address TEXT NOT NULL,              -- Contract address       
     target_from_block BIGINT NOT NULL,  -- Desired from block

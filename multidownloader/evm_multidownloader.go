@@ -385,7 +385,7 @@ func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Cont
 }
 
 func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
-
+	// TODO: Rename filterLogsAdaptingBlockRange
 	logs, logQueryData, err := dh.filterLogsAdaptingBlockRange(ctx)
 	if err != nil {
 		if errors.Is(err, mdrtypes.ErrFinished) {

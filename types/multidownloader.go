@@ -17,9 +17,8 @@ type SyncerConfig struct {
 	ContractsAddr []common.Address
 	// Starting block
 	FromBlock uint64
-	// Taget for final block
-	ToBlock             BlockNumberFinality
-	RequiredBlockHeader bool
+	// Target for final block (e.g. LatestBlock, SafeBlock, FinalizedBlock)
+	ToBlock BlockNumberFinality
 }
 
 type MultiDownloader interface {

@@ -51,19 +51,7 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 		return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
 	}
 	dh.log.Debugf("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d", query.FromBlock, query.ToBlock, len(logs))
-	// TODO: Remove this sanity check when we are sure that logs are always ordered
-	var lastBlockNumber = uint64(0)
-	var lastIndex = uint(0)
-	for _, log := range logs {
-		if log.BlockNumber > lastBlockNumber {
-			lastBlockNumber = log.BlockNumber
-			lastIndex = log.Index
-		} else if log.BlockNumber == lastBlockNumber && log.Index > lastIndex {
-			lastIndex = log.Index
-		} else {
-			panic("logs are not ordered by block number and index")
-		}
-	}
+
 	return logs, nil
 }
 

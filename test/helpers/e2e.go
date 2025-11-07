@@ -19,6 +19,7 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -152,10 +153,19 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
+	multidownloaderClient, err := multidownloader.NewEVMMultidownloader(
+		log.WithFields("module", "multidownloader"),
+		multidownloader.NewConfigDefault("l1"),
+		"testMD",
+		l1Client.Client(),
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		l1InfoTreeSyncCfg,
-		l1Client.Client(),
+		multidownloaderClient,
 		rdL1,
 		l1infotreesync.FlagAllowWrongContractsAddrs,
 	)
