@@ -10,6 +10,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/multidownloader"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -73,6 +74,9 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, aggsendertypes.AutoMode, cfg.AggSender.Mode)
 	require.Equal(t, aggsendertypes.AutoMode, cfg.Validator.Mode)
 	require.Equal(t, cfg.AggSender.StorageRetainCertificatesPolicy.String(), "retain all certificates, keep history: true")
+	require.Equal(t, multidownloader.NewConfigDefault("l1"), cfg.L1Multidownloader)
+	require.Equal(t, multidownloader.NewConfigDefault("l2"), cfg.L2Multidownloader)
+
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {

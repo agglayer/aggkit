@@ -29,4 +29,5 @@ type MultiDownloader interface {
 	HeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error)
 	EthClient() BaseEthereumClienter
 	RegisterSyncer(data SyncerConfig)
+	Start(ctx context.Context) error
 }

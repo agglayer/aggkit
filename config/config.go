@@ -18,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -286,6 +287,12 @@ type Config struct {
 
 	// Validator is the configuration of the aggsender validator service
 	Validator validator.Config
+
+	// L1Multidownloader is the configuration of the multidownloader service for L1
+	L1Multidownloader multidownloader.Config
+
+	// L2Multidownloader is the configuration of the multidownloader service for L2
+	L2Multidownloader multidownloader.Config
 }
 
 // Load loads the configuration

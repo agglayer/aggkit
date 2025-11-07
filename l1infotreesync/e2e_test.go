@@ -13,6 +13,8 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l1infotreesync/mocks"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
 	"github.com/agglayer/aggkit/test/helpers"
@@ -74,6 +76,14 @@ func TestE2E(t *testing.T) {
 	mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
+	cfgMD := multidownloader.NewConfigDefault("l1")
+	cfgMD.Enabled = true
+	multidownloaderClient := multidownloader.NewEVMMultidownloader(
+		log.WithFields("module", "multidownloader"),
+		cfgMD,
+		client,
+		multiDownloaderSotrage,
+	)
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPath,
 		InitialBlock:                       0,

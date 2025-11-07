@@ -40,7 +40,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		inputLogs          []types.Log
 		fromBlock, toBlock uint64
 		expectedBlocks     EVMBlocks
-		setupMocks         func(*aggkittypesmocks.BaseEthereumClienter)
+		setupMocks         func(*aggkittypesmocks.MultiDownloader)
 		contextCancelled   bool
 	}
 	testCases := []testCase{}
@@ -190,18 +190,26 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		fromBlock:      10,
 		toBlock:        10,
 		expectedBlocks: blocksC5,
-		setupMocks: func(clientMock *aggkittypesmocks.BaseEthereumClienter) {
+		setupMocks: func(clientMock *aggkittypesmocks.MultiDownloader) {
 			// First call returns different hash (mismatch)
+			parentHash := common.HexToHash("foo")
+			header := types.Header{
+				Number:     big.NewInt(int64(10)),
+				ParentHash: common.HexToHash("foo"),
+			}
+			blockHash := header.Hash()
 			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
-				Return(&types.Header{
-					Number:     big.NewInt(10),
-					ParentHash: common.HexToHash("foo"),
+				Return(&aggkittypes.BlockHeader{
+					Number:     10,
+					Hash:       blockHash,
+					ParentHash: &parentHash,
 				}, nil).Once()
 			// Second call returns correct hash
 			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
-				Return(&types.Header{
-					Number:     big.NewInt(10),
-					ParentHash: common.HexToHash("foo"),
+				Return(&aggkittypes.BlockHeader{
+					Number:     10,
+					Hash:       blockHash,
+					ParentHash: &parentHash,
 				}, nil).Once()
 		},
 	}
@@ -216,14 +224,15 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		fromBlock:      15,
 		toBlock:        15,
 		expectedBlocks: nil,
-		setupMocks: func(clientMock *aggkittypesmocks.BaseEthereumClienter) {
+		setupMocks: func(clientMock *aggkittypesmocks.MultiDownloader) {
 			// Return a different hash than the log's block hash for all retry attempts
 			// This will trigger the retry logic and eventually exceed max retries
 			for i := 0; i < MaxRetryCountBlockHashMismatch+1; i++ {
+				parentHash := common.HexToHash("bar") // Different parent hash to create different block hash
 				clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(15)).
-					Return(&types.Header{
-						Number:     big.NewInt(15),
-						ParentHash: common.HexToHash("bar"), // Different parent hash to create different block hash
+					Return(&aggkittypes.BlockHeader{
+						Number:     15,
+						ParentHash: &parentHash, // Different parent hash to create different block hash
 						// The hash will be different from logC6.BlockHash, causing mismatch
 					}, nil).Once()
 			}
@@ -313,10 +322,17 @@ func TestGetEventsByBlockRange(t *testing.T) {
 			} else {
 				// Default mock setup for block headers
 				for _, b := range tc.expectedBlocks {
+					parentHash := common.HexToHash("foo")
+					header := types.Header{
+						Number:     big.NewInt(int64(b.Num)),
+						ParentHash: common.HexToHash("foo"),
+					}
+					blockHash := header.Hash()
 					clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(b.Num))).
-						Return(&types.Header{
-							Number:     big.NewInt(int64(b.Num)),
-							ParentHash: common.HexToHash("foo"),
+						Return(&aggkittypes.BlockHeader{
+							Number:     b.Num,
+							Hash:       blockHash,
+							ParentHash: &parentHash,
 						}, nil)
 				}
 			}
@@ -362,32 +378,19 @@ func TestWaitForNewBlocks(t *testing.T) {
 	// at first attempt
 	currentBlock := uint64(5)
 	expectedBlock := uint64(6)
-	// First call to get latest block header (with nil)
-	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-		Number: big.NewInt(6),
-	}, nil).Once()
+	clientMock.On("BlockNumber", ctx, mock.Anything).Return(uint64(6), nil).Once()
 	actualBlock := d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
 	// 2 iterations
-	// First call to get latest block header (with nil)
-	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-		Number: big.NewInt(5),
-	}, nil).Once()
-	// First call to get latest block header (with nil) - second iteration
-	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-		Number: big.NewInt(6),
-	}, nil).Once()
+	clientMock.On("BlockNumber", ctx, mock.Anything).Return(uint64(5), nil).Once()
+	clientMock.On("BlockNumber", ctx, mock.Anything).Return(uint64(6), nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
 	// after error from client
-	// First call to get latest block header (with nil) - returns error
-	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, errors.New("foo")).Once()
-	// First call to get latest block header (with nil) - retry after error
-	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-		Number: big.NewInt(6),
-	}, nil).Once()
+	clientMock.On("BlockNumber", ctx, mock.Anything).Return(uint64(0), errors.New("foo")).Once()
+	clientMock.On("BlockNumber", ctx, mock.Anything).Return(uint64(6), nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 }
@@ -472,12 +475,17 @@ func TestGetBlockHeader(t *testing.T) {
 
 	blockNum := uint64(5)
 	blockNumBig := big.NewInt(5)
-	returnedBlock := &types.Header{
+	returnedBlockEth := &types.Header{
 		Number: blockNumBig,
+	}
+	returnedBlock := &aggkittypes.BlockHeader{
+		Number:     blockNum,
+		Hash:       returnedBlockEth.Hash(),
+		ParentHash: &returnedBlockEth.ParentHash,
 	}
 	expectedBlock := EVMBlockHeader{
 		Num:  5,
-		Hash: returnedBlock.Hash(),
+		Hash: returnedBlockEth.Hash(),
 	}
 
 	// at first attempt
@@ -531,7 +539,7 @@ func TestFilterQueryToString(t *testing.T) {
 
 func TestGetLogs(t *testing.T) {
 	t.Run("timeout scenario", func(t *testing.T) {
-		mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
 		sut := EVMDownloaderImplementation{
 			ethClient:        mockEthClient,
 			addressesToQuery: []common.Address{contractAddr},
@@ -551,7 +559,7 @@ func TestGetLogs(t *testing.T) {
 	})
 
 	t.Run("success scenario", func(t *testing.T) {
-		mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
 		sut := EVMDownloaderImplementation{
 			ethClient:        mockEthClient,
 			addressesToQuery: []common.Address{contractAddr},
@@ -613,14 +621,14 @@ func buildAppender() LogAppenderMap {
 	return appender
 }
 
-func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader, *aggkittypesmocks.BaseEthereumClienter) {
+func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader, *aggkittypesmocks.MultiDownloader) {
 	t.Helper()
 
 	rh := &RetryHandler{
 		MaxRetryAttemptsAfterError: 5,
 		RetryAfterErrorPeriod:      retryPeriod,
 	}
-	clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+	clientMock := aggkittypesmocks.NewMultiDownloader(t)
 	d, err := NewEVMDownloader("test",
 		clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
 		buildAppender(), []common.Address{contractAddr}, rh,
@@ -702,7 +710,7 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 }
 
 func TestTooManyResultsErrorHandling(t *testing.T) {
-	mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
 	sut := EVMDownloaderImplementation{
 		ethClient:        mockEthClient,
 		addressesToQuery: []common.Address{contractAddr},

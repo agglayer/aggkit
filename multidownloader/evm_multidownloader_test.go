@@ -8,7 +8,7 @@ import (
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/config"
+
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -16,6 +16,7 @@ import (
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,18 +30,10 @@ func TestEVMMultidownloader(t *testing.T) {
 		Outputs:     []string{"stderr"},
 	}
 	log.Init(cfgLog)
-
-	rpcClientCfg := config.RPCClientConfig{
-		URL: os.Getenv("L1URL"),
-	}
-	retryHandler, err := rpcClientCfg.NewRetryHandler()
+	l1url := os.Getenv("L1URL")
+	ethClient, err := ethclient.Dial(l1url)
 	if err != nil {
-		log.Fatalf("failed to create retry handler: %w", err)
-	}
-
-	ethClient, err := aggkittypes.DialWithRetry(t.Context(), rpcClientCfg.URL, retryHandler)
-	if err != nil {
-		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
+		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", l1url, err)
 	}
 	block, err := ethClient.BlockByNumber(t.Context(), nil) // Test connection
 	require.NoError(t, err)
@@ -52,12 +45,13 @@ func TestEVMMultidownloader(t *testing.T) {
 		DBPath: "/tmp/mdr_test.sqlite",
 	})
 	require.NoError(t, err)
-	cfg := MultidownloaderConfig{
+	cfg := Config{
 		BlockChunkSize:                  5000,
 		MaxParallelBlockHeaderRetrieval: 50,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
 	}
-	mdr := NewEVMMultidownloader(logger, cfg, ethClient, db, nil, "l1")
+	mdr, err := NewEVMMultidownloader(logger, cfg, "l1", ethClient, db, nil)
+	require.NoError(t, err)
 	require.NotNil(t, mdr)
 	mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 		SyncerID: "test_syncer",

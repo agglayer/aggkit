@@ -38,7 +38,6 @@ import (
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader"
-	mutlidownloaderstorage "github.com/agglayer/aggkit/multidownloader/storage"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -610,32 +609,26 @@ func runL1MultiDownloaderIfNeeded(
 	ctx context.Context,
 	components []string,
 	l1Client aggkittypes.BaseEthereumClienter,
-	cfg config.L1NetworkConfig,
-) (*multidownloader.EVMMultidownloader, error) {
+	cfg multidownloader.Config,
+) (aggkittypes.MultiDownloader, error) {
 	//The requirements are the same as L1Client
 	if l1Client == nil {
 		return nil, nil
 	}
+	// If it's disable I create a direct eth client
+	if !cfg.Enabled {
+		return aggkitsync.NewAdaptEthClient(l1Client), nil
+	}
 	logger := log.WithFields("module", "L1MultiDownloader")
-	storage, err := mutlidownloaderstorage.NewMultidownloaderStorage(logger, mutlidownloaderstorage.MultidownloaderStorageConfig{
-		DBPath: "/tmp/mdr_test.db",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create multidownloader storage: %w", err)
-	}
-	cfgMD := multidownloader.MultidownloaderConfig{
-		BlockChunkSize:                  1000,
-		MaxParallelBlockHeaderRetrieval: 15,
-		BlockFinality:                   aggkittypes.FinalizedBlock,
-	}
 
-	return multidownloader.NewEVMMultidownloader(logger,
-		cfgMD,
-		l1Client,
-		storage,
-		nil,
+	return multidownloader.NewEVMMultidownloader(
+		logger,
+		cfg,
 		"l1",
-	), nil
+		l1Client,
+		nil, // storage
+		nil, // blockNotifierManager
+	)
 
 }
 

@@ -174,11 +174,7 @@ func (b *BlockNumberFinality) BlockNumber(
 ) (uint64, error) {
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
-		log.Errorf(
-			"BlockNumberFinality.BlockNumber: Error getting base header (block=%s, offset=%d). Err: %s",
-			b.String(), b.Offset, err.Error(),
-		)
-		return 0, err
+		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %w", b.String(), err)
 	}
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }
@@ -211,8 +207,8 @@ type BlockNotifier interface {
 
 func (b *BlockNumberFinality) BlockNumberFromBlockNotifier(notifier BlockNotifier) uint64 {
 	if notifier.BlockFinality().Equal(*b) == false {
-		log.Fatalf("BlockNumberFinality.BlockNumberFromBlockNotifier: Block finality mismatch between %s and %s",
-			b.String(), notifier.BlockFinality().String())
+		panic(fmt.Sprintf("BlockNumberFinality.BlockNumberFromBlockNotifier: Block finality mismatch between %s and %s",
+			b.String(), notifier.BlockFinality().String()))
 	}
 	// Don't require offset adjustment because is included in the notifier's block number
 	return notifier.GetCurrentBlockNumber()

@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -45,15 +46,9 @@ type StorageInterface interface {
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 }
 
-type MultidownloaderConfig struct {
-	BlockChunkSize                  uint32
-	MaxParallelBlockHeaderRetrieval int
-	BlockFinality                   aggkittypes.BlockNumberFinality
-}
-
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
-	cfg                  MultidownloaderConfig
+	cfg                  Config
 	ethClient            aggkittypes.BaseEthereumClienter
 	storage              StorageInterface
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter
@@ -72,11 +67,12 @@ type EVMMultidownloader struct {
 }
 
 func NewEVMMultidownloader(log aggkitcommon.Logger,
-	cfg MultidownloaderConfig,
+	cfg Config,
+	name string,
 	ethClient aggkittypes.BaseEthereumClienter,
-	storage StorageInterface,
+	storageDB StorageInterface,
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter,
-	name string) *EVMMultidownloader {
+) (*EVMMultidownloader, error) {
 	if blockNotifierManager == nil {
 		blockNotifierManager = NewBlockNotifierManager(log,
 			func(finality aggkittypes.BlockNumberFinality) (mdrtypes.BlockNotifier, error) {
@@ -86,17 +82,27 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 				return bn, er
 			})
 	}
+	var err error
+	if storageDB == nil {
+		storageDB, err = storage.NewMultidownloaderStorage(log,
+			storage.MultidownloaderStorageConfig{
+				DBPath: cfg.StoragePath,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("Initialize: cannot create storage: %w", err)
+		}
+	}
 
 	return &EVMMultidownloader{
 		log:                  log,
 		ethClient:            ethClient,
-		storage:              storage,
+		storage:              storageDB,
 		blockNotifierManager: blockNotifierManager,
 		cfg:                  cfg,
 		syncersConfig:        mdrtypes.NewSetSyncerConfig(),
 		statistics:           NewStatistics(),
 		name:                 name,
-	}
+	}, nil
 }
 
 func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) {

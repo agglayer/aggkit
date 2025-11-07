@@ -42,14 +42,16 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 		if dh.IsAvailable(logQuery) {
 			break
 		}
-		dh.log.Warnf("EVMMultidownloader.FilterLogs: waiting for logs to be available: %s", logQuery.String())
-		time.Sleep(10 * time.Second)
+		dh.log.Infof("EVMMultidownloader.FilterLogs: waiting %s for logs to be available: %s",
+			dh.cfg.WaitPeriodToCheckCatchUp.String(), logQuery.String())
+		time.Sleep(dh.cfg.WaitPeriodToCheckCatchUp.Duration)
 	}
 	logs, err := dh.storage.GetEthLogs(nil, logQuery)
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
 	}
-	dh.log.Infof("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d", query.FromBlock, query.ToBlock, len(logs))
+	dh.log.Debugf("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d", query.FromBlock, query.ToBlock, len(logs))
+	// TODO: Remove this sanity check when we are sure that logs are always ordered
 	var lastBlockNumber = uint64(0)
 	var lastIndex = uint(0)
 	for _, log := range logs {
@@ -66,8 +68,8 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 }
 
 func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.Int) (*aggkittypes.BlockHeader, error) {
-	//dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
-	//defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
+	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
+	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	if number.Cmp(big.NewInt(0)) < 0 {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: negative block number not supported=%s", number.String())
 	}
@@ -80,7 +82,7 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 		return block, nil
 	}
 	// This is a fallback mechanism in case the block is not found in storage (must be on storage!)
-	dh.log.Warnf("EVMMultidownloader.HeaderByNumber: block number=%d not found in storage, fetching from ethClient", number.Uint64())
+	dh.log.Infof("EVMMultidownloader.HeaderByNumber: block number=%d not found in storage, fetching from ethClient", number.Uint64())
 	ethBlock, err := dh.ethClient.HeaderByNumber(ctx, number) // Just to comply with the interface
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get full BlockHeader number=%d from ethClient: %w", number.Uint64(), err)
