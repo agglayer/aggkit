@@ -134,7 +134,7 @@ func TestWithReorgs(t *testing.T) {
 
 	rdConfig := reorgdetector.Config{
 		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 500),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}
 	rd, err := reorgdetector.New(client.Client(), rdConfig, reorgdetector.L1)
