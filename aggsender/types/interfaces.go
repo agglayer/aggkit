@@ -145,30 +145,34 @@ type L1InfoTreeDataQuerier interface {
 	// l1InfoTreeData is:
 	// - merkle proof of given l1 info tree leaf
 	// - the leaf data of the highest index leaf on that block and root
-	// - the root of the l1 info tree on that block
-	GetFinalizedL1InfoTreeData(ctx context.Context,
-	) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error)
+	GetFinalizedL1InfoTreeData(
+		ctx context.Context,
+		finalizedL1InfoTreeRootHash common.Hash,
+		finalizedL1InfoTreeLeafCount uint32,
+	) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, error)
 
 	// GetProofForGER returns the L1 Info tree leaf and the merkle proof for the given GER
 	GetProofForGER(ctx context.Context, ger, rootFromWhichToProve common.Hash) (
 		*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error)
-
-	// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
-	CheckIfClaimsArePartOfFinalizedL1InfoTree(
-		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
 
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 
 	// GetInfoByIndex returns the L1 Info tree leaf for the given index
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+
+	// IsGERFinalized checks if the given global exit root is finalized
+	IsGERFinalized(
+		ger common.Hash,
+		finalizedL1InfoLeafCount uint32,
+	) (bool, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement
 type GERQuerier interface {
 	GetInjectedGERsProofs(
 		ctx context.Context,
-		finalizedL1InfoTreeRoot *treetypes.Root,
+		finalizedL1InfoTreeRootHash common.Hash,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
 	GetRemovedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
@@ -295,7 +299,7 @@ type AggchainProofQuerier interface {
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
 		certBuildParams *CertificateBuildParams,
-	) (*AggchainProof, *treetypes.Root, error)
+	) (*AggchainProof, error)
 }
 
 // MultisigContract is an abstraction for Multisig smart contract

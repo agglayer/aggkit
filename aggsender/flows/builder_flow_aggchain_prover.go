@@ -143,7 +143,7 @@ func (a *AggchainProverBuilderFlow) getCertificateTypeToGenerate() (types.Certif
 	return types.CertificateTypeFEP, nil
 }
 
-// GeneratePreBuildParams generates the pre-build parameters for the AggchainProverFlow
+// GenerateBuildParams generates the build parameters for the AggchainProverFlow
 // Only used in aggsender validator
 func (a *AggchainProverBuilderFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
@@ -154,6 +154,10 @@ func (a *AggchainProverBuilderFlow) GenerateBuildParams(ctx context.Context,
 	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error generating build params: %w", err)
+	}
+
+	if err := a.baseFlow.VerifyBuildParams(ctx, params); err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
 	// we do not limit the size of the certificate in FEP flow,
@@ -215,6 +219,9 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 			CreatedAt:           lastSentCert.CreatedAt,
 			CertificateType:     typeCert,
 			Unclaims:            unclaims,
+			// old certificate already got the finalized l1 info tree data
+			L1InfoTreeRootFromWhichToProve: *lastSentCert.FinalizedL1InfoTreeRoot,
+			L1InfoTreeLeafCount:            lastSentCert.L1InfoTreeLeafCount,
 		}
 		if a.featureMaxL2Block != nil {
 			// If the feature is enabled, we need to adapt the build params
@@ -233,11 +240,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		}
 
 		// if we have the aggchain proof, we need to set it in the build params
-		// and set the root from which to prove the imported bridge exits
-		// no need to call the prover again
 		buildParams.AggchainProof = proof
-		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCert.FinalizedL1InfoTreeRoot
-		buildParams.L1InfoTreeLeafCount = lastSentCert.L1InfoTreeLeafCount
 
 		return buildParams, nil
 	}
@@ -285,7 +288,7 @@ func (a *AggchainProverBuilderFlow) verifyBuildParamsAndGenerateProof(
 
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
 
-	aggchainProof, rootFromWhichToProveClaims, err := a.aggchainProofQuerier.GenerateAggchainProof(
+	aggchainProof, err := a.aggchainProofQuerier.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams)
 	if err != nil {
 		if errors.Is(err, query.ErrNoProofBuiltYet) {
@@ -301,13 +304,9 @@ func (a *AggchainProverBuilderFlow) verifyBuildParamsAndGenerateProof(
 		"from aggchain prover. End block gotten from the prover: %d. Proof length: %d",
 		lastProvenBlock, buildParams.ToBlock, aggchainProof.EndBlock, len(aggchainProof.SP1StarkProof.Proof))
 
-	// set the root from which to generate merkle proofs for each claim
-	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
-	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims.Hash
 	buildParams.AggchainProof = aggchainProof
-	buildParams.L1InfoTreeLeafCount = rootFromWhichToProveClaims.Index + 1
 
-	return adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
+	return buildParams.AdjustToBlock(aggchainProof.EndBlock)
 }
 
 // BuildCertificate builds a certificate based on the buildParams
@@ -363,22 +362,6 @@ func (a *AggchainProverBuilderFlow) UpdateAggchainData(
 	}
 
 	return nil
-}
-
-// adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
-func adjustBlockRange(buildParams *types.CertificateBuildParams,
-	requestedToBlock, aggchainProverToBlock uint64) (*types.CertificateBuildParams, error) {
-	var err error
-	if requestedToBlock != aggchainProverToBlock {
-		// if the toBlock was adjusted, we need to adjust the bridges and claims
-		// to only include the ones in the new range that aggchain prover returned
-		buildParams, err = buildParams.Range(buildParams.FromBlock, aggchainProverToBlock)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error adjusting the range of the certificate: %w", err)
-		}
-	}
-
-	return buildParams, nil
 }
 
 func (a *AggchainProverBuilderFlow) getLastProvenBlock(

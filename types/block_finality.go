@@ -185,7 +185,7 @@ func (b *BlockNumberFinality) BlockHeader(
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
 		log.Errorf(
-			"BlockNumberFinality.BlockHeader: Error getting base header (block=%d, offset=%d). Err: %s",
+			"BlockNumberFinality.BlockHeader: Error getting base header (block=%s, offset=%d). Err: %s",
 			b.String(), b.Offset, err.Error(),
 		)
 		return nil, err

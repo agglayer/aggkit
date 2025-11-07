@@ -9,7 +9,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -96,7 +95,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 			Proof: []byte("proof"),
 		},
 		EndBlock: 60,
-	}, &treetypes.Root{}, nil)
+	}, nil)
 
 	res, err := data.sut.GetCertificateBuildParams(data.ctx)
 	require.NoError(t, err)
