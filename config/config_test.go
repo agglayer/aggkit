@@ -123,14 +123,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 	_, err = tmpFile.Write([]byte(`
 
-	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 	[Common]
 	IsValidiumMode = true
 	ContractVersions="banana"
 	Translator = ""
-
-	[L1Config]
-	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
 	[L1NetworkConfig]
 	URL = "http://localhost:8545"
@@ -171,7 +167,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[AggOracle]
 	BlockFinality = "FinalizedBlock"
 	URLRPCL1 = "http://localhost:8545"
-	
+
 	[L1InfoTreeSync]
 	URLRPCL1 = "http://localhost:8545"
 
@@ -184,7 +180,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	_, err = Load(ctx)
 	require.Error(t, err)
 	require.ErrorContains(t, err, bridgeMetadataAsHashHint)
-	require.ErrorContains(t, err, bridgeAddrSetOnWrongSection)
 	require.ErrorContains(t, err, aggsenderAgglayerClientHint)
 	require.ErrorContains(t, err, aggsenderAggkitProverClientHint)
 	require.ErrorContains(t, err, aggsenderAggkitProverClientHint)

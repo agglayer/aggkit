@@ -15,10 +15,17 @@ import (
 
 var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
 
+var _ fmt.Stringer = (*Block)(nil)
+
 type Block struct {
 	Num    uint64
 	Events []any
 	Hash   common.Hash
+}
+
+func (b Block) String() string {
+	return fmt.Sprintf("SyncBlock{Num: %d, Hash: %s, EventsCount: %d}",
+		b.Num, b.Hash.String(), len(b.Events))
 }
 
 type Downloader interface {
