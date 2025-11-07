@@ -103,7 +103,7 @@ func (l *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(
 	}
 
 	proof, err := l.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
-		finalizedL1InfoTreeLeafCount-1, finalizedL1InfoTreeRootHash)
+		leafIndex, finalizedL1InfoTreeRootHash)
 	if err != nil {
 		return treetypes.Proof{}, nil,
 			fmt.Errorf("error getting L1 Info tree merkle proof from index %d to root %s: %w",

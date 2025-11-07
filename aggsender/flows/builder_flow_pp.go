@@ -68,7 +68,7 @@ func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 	}
 	params, err = p.baseFlow.LimitCertSize(params)
 	if err != nil {
-		return nil, fmt.Errorf("error applying limit size: %w", err)
+		return nil, fmt.Errorf("ppFlow - error applying limit size: %w", err)
 	}
 	if err := p.baseFlow.VerifyBuildParams(ctx, params); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
