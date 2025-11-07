@@ -45,8 +45,6 @@ const (
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
 
-	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the L1 or L2 section of " +
-		"config file as BridgeAddr."
 	l2URLHint                = "Use L2URL instead"
 	bridgeMetadataAsHashHint = "BridgeMetaDataAsHash is deprecated, remove it from configuration " +
 		"(bridge metadata is always stored as hash)"
@@ -107,10 +105,6 @@ type DeprecatedField struct {
 
 var (
 	deprecatedFieldsOnConfig = []DeprecatedField{
-		{
-			FieldNamePattern: "polygonBridgeAddr",
-			Reason:           bridgeAddrSetOnWrongSection,
-		},
 		{
 			FieldNamePattern: "AggOracle.EVMSender.URLRPCL2",
 			Reason:           l2URLHint,
