@@ -342,35 +342,9 @@ func createAggSender(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
-	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
-		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     aggkittypes.LatestBlock,
-			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
-		}, logger, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize block notifier: %w", err)
-	}
-
-	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(ctx,
-		agglayerClient, cfg.EpochNotificationPercentage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate Epoch Notifier config. Reason: %w", err)
-	}
-	epochNotifier, err := aggsender.NewEpochNotifierPerBlock(
-		blockNotifier,
-		logger,
-		*notifierCfg, nil)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("Starting blockNotifier: %s", blockNotifier.String())
-	go blockNotifier.Start(ctx)
-	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
-	go epochNotifier.Start(ctx)
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client,
-		rollupDataQuerier, committeeQuerier)
+		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
