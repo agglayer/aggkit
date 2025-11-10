@@ -44,9 +44,10 @@ type logDBRow struct {
 
 func (l *logDBRow) String() string {
 	if l == nil {
-		return "<nil>"
+		return "logDBRow{nil}"
 	}
-	return fmt.Sprintf("logDBRow{Address: %s, Topics: %s, DataLen: %d, BlockNumber: %d, TxHash: %s, TxIndex: %d, Index: %d}",
+	return fmt.Sprintf("logDBRow{Address: %s, Topics: %s, DataLen: %d, BlockNumber: %d, "+
+		"TxHash: %s, TxIndex: %d, Index: %d}",
 		l.Address.Hex(), l.Topics, len(l.Data), l.BlockNumber, l.TxHash.Hex(), l.TxIndex, l.Index)
 }
 
@@ -140,11 +141,11 @@ func newBlockRowFromAggkitBlock(block *aggkittypes.BlockHeader, isFinal bool) *B
 	}
 }
 
-func NewBlockRowsFromLogs(logs []types.Log) map[uint64]*BlockRow {
+func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*BlockRow {
 	blockMap := make(map[uint64]*BlockRow)
 	for _, log := range logs {
 		if _, exists := blockMap[log.BlockNumber]; !exists {
-			blockMap[log.BlockNumber] = NewBlockRowFromEthLog(log, false)
+			blockMap[log.BlockNumber] = NewBlockRowFromEthLog(log, isFinal)
 		}
 	}
 	return blockMap
@@ -158,15 +159,16 @@ func NewBlockRowsFromEthBlock(blockHeaders []*types.Header) map[uint64]*BlockRow
 	return blockMap
 }
 
-func NewBlockRowsFromAggkitBlock(blockHeaders []*aggkittypes.BlockHeader) map[uint64]*BlockRow {
+func NewBlockRowsFromAggkitBlock(blockHeaders []*aggkittypes.BlockHeader, isFinal bool) map[uint64]*BlockRow {
 	blockMap := make(map[uint64]*BlockRow)
 	for _, header := range blockHeaders {
-		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, false)
+		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, isFinal)
 	}
 	return blockMap
 }
 
-func NewMultidownloaderStorage(logger aggkitcommon.Logger, cfg MultidownloaderStorageConfig) (*MultidownloaderStorage, error) {
+func NewMultidownloaderStorage(logger aggkitcommon.Logger,
+	cfg MultidownloaderStorageConfig) (*MultidownloaderStorage, error) {
 	database, err := db.NewSQLiteDB(cfg.DBPath)
 	if err != nil {
 		return nil, err
@@ -257,14 +259,16 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 
 // tx dbtypes.Txer
 func (a *MultidownloaderStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFinal bool) error {
-	return a.saveLogsAndBlocks(tx, NewBlockRowsFromLogs(logs), NewLogDBRowsFromEthLogs(logs), isFinal)
+	return a.saveLogsAndBlocks(tx, NewBlockRowsFromLogs(logs, isFinal), NewLogDBRowsFromEthLogs(logs))
 }
 
-func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error {
-	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders), NewLogDBRowsFromEthLogs(logs), isFinal)
+func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier,
+	blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error {
+	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders, isFinal), NewLogDBRowsFromEthLogs(logs))
 }
 
-func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier, blockRows map[uint64]*BlockRow, logRows []*logDBRow, isFinal bool) error {
+func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
+	blockRows map[uint64]*BlockRow, logRows []*logDBRow) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -400,7 +404,8 @@ func (a *MultidownloaderStorage) UpdateSyncerConfigs(tx dbtypes.Querier, configs
 		}
 		// Upsert logic
 		query := `
-		INSERT INTO sync_status (contract_address, target_from_block, target_to_block, synced_from_block, synced_to_block, syncers_id)
+		INSERT INTO sync_status (contract_address, target_from_block, 
+		     target_to_block, synced_from_block, synced_to_block, syncers_id)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(contract_address) DO UPDATE SET
 			target_from_block = excluded.target_from_block,

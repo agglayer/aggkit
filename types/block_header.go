@@ -37,7 +37,8 @@ func (gb *BlockHeader) String() string {
 	if gb == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("BlockHeader{Number: %d, Hash: %s, Time: %d, ParentHash: %s}", gb.Number, gb.Hash.Hex(), gb.Time, gb.ParentHash.Hex())
+	return fmt.Sprintf("BlockHeader{Number: %d, Hash: %s, Time: %d, ParentHash: %s}",
+		gb.Number, gb.Hash.Hex(), gb.Time, gb.ParentHash.Hex())
 }
 
 func NewBlockHeaderFromEthBlockHeader(ethHeader *types.Header) *BlockHeader {

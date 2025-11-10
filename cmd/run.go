@@ -226,7 +226,12 @@ func start(cliCtx *cli.Context) error {
 	}
 	if l1MultiDownloader != nil {
 		log.Info("starting L1 MultiDownloader...")
-		go l1MultiDownloader.Start(ctx)
+		go func() {
+			err := l1MultiDownloader.Start(ctx)
+			if err != nil {
+				log.Error("l1MultiDownloader stopped: %w", err)
+			}
+		}()
 	}
 
 	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
@@ -503,7 +508,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	components []string,
 	cfg config.Config,
 	reorgDetectorL1 aggkitsync.ReorgDetector,
-	l1Client aggkittypes.BaseEthereumClienter,
+	_ aggkittypes.BaseEthereumClienter,
 	l1MultiDownloader aggkittypes.MultiDownloader,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
@@ -611,7 +616,7 @@ func runL1MultiDownloaderIfNeeded(
 	l1Client aggkittypes.BaseEthereumClienter,
 	cfg multidownloader.Config,
 ) (aggkittypes.MultiDownloader, error) {
-	//The requirements are the same as L1Client
+	// The requirements are the same as L1Client
 	if l1Client == nil {
 		return nil, nil
 	}

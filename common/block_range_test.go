@@ -314,14 +314,14 @@ func TestBlockRange_Contains(t *testing.T) {
 	}
 }
 
-func TestBlockRange_Substract(t *testing.T) {
+func TestBlockRange_Subtract(t *testing.T) {
 	bn := NewBlockRange(10, 50)
-	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Substract(NewBlockRange(20, 30)))
-	require.Equal(t, []BlockRange{NewBlockRange(31, 50)}, bn.Substract(NewBlockRange(1, 30)))
-	require.Equal(t, []BlockRange{NewBlockRange(10, 29)}, bn.Substract(NewBlockRange(30, 50)))
-	require.Equal(t, []BlockRange{bn}, bn.Substract(NewBlockRange(300, 500)))
-	require.Equal(t, []BlockRange{}, bn.Substract(NewBlockRange(1, 500)))
-	require.Equal(t, []BlockRange{bn}, bn.Substract(NewBlockRange(0, 0)))
+	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Subtract(NewBlockRange(20, 30)))
+	require.Equal(t, []BlockRange{NewBlockRange(31, 50)}, bn.Subtract(NewBlockRange(1, 30)))
+	require.Equal(t, []BlockRange{NewBlockRange(10, 29)}, bn.Subtract(NewBlockRange(30, 50)))
+	require.Equal(t, []BlockRange{bn}, bn.Subtract(NewBlockRange(300, 500)))
+	require.Equal(t, []BlockRange{}, bn.Subtract(NewBlockRange(1, 500)))
+	require.Equal(t, []BlockRange{bn}, bn.Subtract(NewBlockRange(0, 0)))
 }
 func TestBlockRange_Intersect(t *testing.T) {
 	bn := NewBlockRange(10, 50)

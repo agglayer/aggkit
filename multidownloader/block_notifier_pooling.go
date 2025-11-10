@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agglayer/aggkit/common"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -45,7 +44,7 @@ type BlockNotifierPolling struct {
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
 	lastStatus    *blockNotifierPollingInternalStatus
-	common.PubSub[mdrtypes.EventNewBlock]
+	aggkitcommon.PubSub[mdrtypes.EventNewBlock]
 }
 
 // NewBlockNotifierPolling creates a new BlockNotifierPolling.
@@ -56,9 +55,9 @@ type BlockNotifierPolling struct {
 func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	config ConfigBlockNotifierPolling,
 	logger aggkitcommon.Logger,
-	subscriber common.PubSub[mdrtypes.EventNewBlock]) (*BlockNotifierPolling, error) {
+	subscriber aggkitcommon.PubSub[mdrtypes.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
-		subscriber = common.NewGenericSubscriber[mdrtypes.EventNewBlock]()
+		subscriber = aggkitcommon.NewGenericSubscriber[mdrtypes.EventNewBlock]()
 	}
 
 	return &BlockNotifierPolling{

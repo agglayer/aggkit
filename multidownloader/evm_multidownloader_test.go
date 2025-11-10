@@ -8,12 +8,11 @@ import (
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/reorgdetector"
-
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
+	"github.com/agglayer/aggkit/reorgdetector"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,7 +24,7 @@ const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = false
 
 func TestEVMMultidownloader(t *testing.T) {
-	//t.Skip("code to test/debug not real unittest")
+	t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",

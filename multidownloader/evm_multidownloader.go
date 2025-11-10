@@ -17,7 +17,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
-
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -25,21 +24,20 @@ import (
 )
 
 const safeMode = true
-const unsafeMode = false // lint:unused
+
+// const unsafeMode = false
 
 type StorageInterface interface {
 	dbtypes.KeyValueStorager
 	// GetSyncedBlockRangePerContract It returns the synced block range stored in DB
 	GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error)
-	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error
+	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader,
+		logs []types.Log, isFinal bool) error
 	GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error)
 	UpdateSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error
 	UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error
-	//SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header, logs []types.Log) error
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, error)
 
-	//SaveBlockHeader(tx dbtypes.Querier, header *aggkittypes.BlockHeader, isFinal bool) error
-	//SaveBlockHeaders(tx dbtypes.Querier, header map[uint64]*aggkittypes.BlockHeader, finalBlockNumber uint64) error
 	GetBlockHeaderNotFinal(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error)
 	UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error
 
@@ -132,7 +130,9 @@ func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) er
 	defer func() {
 		if !committed {
 			dh.log.Debugf("MoveUnsafeToSafeIfPossible: rolling back tx")
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				dh.log.Errorf("MoveUnsafeToSafeIfPossible: error rolling back tx: %v", err)
+			}
 		}
 	}()
 
@@ -144,7 +144,7 @@ func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) er
 	if err != nil {
 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot detect reorgs: %w", err)
 	}
-	var blockNumbers []uint64
+	blockNumbers := make([]uint64, 0, len(blocks))
 	for _, block := range blocks {
 		blockNumbers = append(blockNumbers, block.Number)
 	}
@@ -160,7 +160,8 @@ func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) er
 	return nil
 }
 
-func (dh *EVMMultidownloader) detectReorgs(ctx context.Context, tx dbtypes.Querier, blocks []*aggkittypes.BlockHeader) error {
+func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
+	tx dbtypes.Querier, blocks []*aggkittypes.BlockHeader) error {
 	// TODO: implement reorg detection
 	return nil
 }
@@ -245,7 +246,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 		return err
 	}
 	// What is pending to download?
-	dh.pendingSync = syncSegments.Substract(&storageSyncSegments)
+	dh.pendingSync = syncSegments.Subtract(&storageSyncSegments)
 	dh.syncedSegments = storageSyncSegments
 	dh.isInitialized = true
 	return nil
@@ -283,7 +284,9 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	defer func() {
 		if !committed {
 			dh.log.Debugf("Unsafe/Step: rolling back tx")
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				dh.log.Errorf("Unsafe/Step: error rolling back tx: %v", err)
+			}
 		}
 	}()
 
@@ -296,7 +299,8 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	}
 	blockHeader, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(logQueryData.BlockRange.ToBlock)))
 	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot get block header for block %d: %w", logQueryData.BlockRange.ToBlock, err)
+		return false, fmt.Errorf("Unsafe/Step: cannot get block header for block %d: %w",
+			logQueryData.BlockRange.ToBlock, err)
 	}
 	blockHash := blockHeader.Hash()
 	rpcFilter := ethereum.FilterQuery{
@@ -308,7 +312,8 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: ethClient.FilterLogs: %w", err)
 	}
-	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d", blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
+	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d",
+		blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
 	blockHeaders := []*aggkittypes.BlockHeader{aggkittypes.NewBlockHeaderFromEthBlockHeader(blockHeader)}
 	err = dh.storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, false)
 	if err != nil {
@@ -345,15 +350,17 @@ func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 }
 
 func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkittypes.BlockHeader {
-	var headers []*aggkittypes.BlockHeader
+	headers := make([]*aggkittypes.BlockHeader, 0, len(blocks))
 	for _, header := range blocks {
 		headers = append(headers, header)
 	}
 	return headers
 }
 
-func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Context, blockNumbers map[uint64]struct{}, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Context,
+	blockNumbers map[uint64]struct{}, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	headers := make(map[uint64]*aggkittypes.BlockHeader)
+	errs := make([]error, 0)
 	timeTracker := aggkitcommon.NewTimeTracker()
 	timeTracker.Start()
 	var mu sync.Mutex
@@ -370,16 +377,25 @@ func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Cont
 
 			header, err := dh.ethClient.HeaderByNumber(ctx, bn)
 			if err != nil {
+				mu.Lock()
+				defer mu.Unlock()
+				errs = append(errs, fmt.Errorf("retrieveRPCBlockHeadersInParallel: cannot get block header for block %d: %w",
+					blockNumber, err))
+
 				return
 			}
 			mu.Lock()
+			defer mu.Unlock()
 			headers[blockNumber] = aggkittypes.NewBlockHeaderFromEthBlockHeader(header)
-			mu.Unlock()
 		}(blockNumber)
 	}
 	wg.Wait()
 	timeTracker.Stop()
-	dh.log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)", len(blockNumbers), timeTracker.Duration().String())
+	dh.log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)",
+		len(blockNumbers), timeTracker.Duration().String())
+	if len(errs) > 0 {
+		return headers, fmt.Errorf("retrieveRPCBlockHeadersInParallel: errors: %v", errs)
+	}
 	return headers, nil
 }
 
@@ -409,7 +425,9 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	defer func() {
 		if !committed {
 			dh.log.Debugf("Safe/Step: rolling back tx")
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				dh.log.Errorf("Safe/Step: error rolling back tx: %v", err)
+			}
 		}
 	}()
 	defer dh.statistics.FinishDBOperation(errors.New("fails"))
@@ -456,7 +474,7 @@ func ethGetExtendendError(err error) string {
 		return ""
 	}
 
-	jsonError, ok := err.(ethrpc.DataError)
+	jsonError, ok := err.(ethrpc.DataError) //nolint:errorlint
 	if !ok {
 		return ""
 	}
@@ -489,7 +507,7 @@ func extractSuggestedBlockRangeFromErrorMsg(msg string) *aggkitcommon.BlockRange
 		// Si quieres separarlos en dos valores
 		re2 := regexp.MustCompile(`0x[0-9a-fA-F]+`)
 		blocks := re2.FindAllString(rangeStr, -1)
-		if len(blocks) == 2 {
+		if len(blocks) == 2 { //nolint: mnd
 			start, err1 := strconv.ParseUint(blocks[0], 0, 64)
 			end, err2 := strconv.ParseUint(blocks[1], 0, 64)
 			if err1 == nil && err2 == nil {
@@ -529,7 +547,8 @@ func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32, s
 	return logQueryData, nil
 }
 
-func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(ctx context.Context) ([]types.Log, *mdrtypes.LogQuery, error) {
+func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(
+	ctx context.Context) ([]types.Log, *mdrtypes.LogQuery, error) {
 	initialsyncBlockChunkSize := dh.cfg.BlockChunkSize
 	try := 0
 	var err error
@@ -562,15 +581,16 @@ func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(ctx context.Context) 
 		}
 		suggestedBlockRange = extractSuggestedBlockRangeFromError(err)
 		if suggestedBlockRange == nil || !logQueryData.BlockRange.Overlaps(*suggestedBlockRange) {
+			prevBlockChunkSize := initialsyncBlockChunkSize
 			initialsyncBlockChunkSize /= 10
 			if initialsyncBlockChunkSize < 1 {
 				return nil, nil, fmt.Errorf("Safe/Step: cannot reduce block chunk size anymore")
 			}
-
-			dh.log.Warnf("Safe/Step: too many results for blockRange=%s, addrs=%v, reducing chunk size from %d to %d. Err: %s",
-				logQueryData.BlockRange.String(), logQueryData.Addrs, initialsyncBlockChunkSize*2, initialsyncBlockChunkSize, ethGetExtendendError(err))
+			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk from %d to %d. Err: %s",
+				logQueryData.BlockRange.String(), logQueryData.Addrs, prevBlockChunkSize,
+				initialsyncBlockChunkSize, ethGetExtendendError(err))
 		} else {
-			dh.log.Warnf("Safe/Step: too many results for blockRange=%s, addrs=%v, adjusting to suggested block range %s. Err: %s",
+			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, adjusting block range %s. Err: %s",
 				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendendError(err))
 		}
 	}

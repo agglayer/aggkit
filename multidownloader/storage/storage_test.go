@@ -143,6 +143,7 @@ func TestStorage_GetLogs(t *testing.T) {
 }
 
 func newStorageForTest(t *testing.T, dbFileFullPath *string) *MultidownloaderStorage {
+	t.Helper()
 	logger := log.WithFields("module", "test")
 	var dbPath string
 	if dbFileFullPath == nil {

@@ -16,7 +16,8 @@ type SyncSegment struct {
 }
 
 func (s *SyncSegment) String() string {
-	return "SyncSegment{ contracts:" + s.ContractAddr.Hex() + " range:" + s.BlockRange.String() + " blockHeader:" + fmt.Sprintf("%v", s.RequiredBlockHeader) + "}"
+	return "SyncSegment{ contracts:" + s.ContractAddr.Hex() + " range:" + s.BlockRange.String() +
+		" blockHeader:" + fmt.Sprintf("%v", s.RequiredBlockHeader) + "}"
 }
 
 func (s SyncSegment) NewBlockRange(br aggkitcommon.BlockRange) SyncSegment {

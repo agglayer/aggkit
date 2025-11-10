@@ -206,7 +206,7 @@ type BlockNotifier interface {
 }
 
 func (b *BlockNumberFinality) BlockNumberFromBlockNotifier(notifier BlockNotifier) uint64 {
-	if notifier.BlockFinality().Equal(*b) == false {
+	if !notifier.BlockFinality().Equal(*b) {
 		panic(fmt.Sprintf("BlockNumberFinality.BlockNumberFromBlockNotifier: Block finality mismatch between %s and %s",
 			b.String(), notifier.BlockFinality().String()))
 	}

@@ -97,13 +97,13 @@ func (b BlockRange) Merge(other BlockRange) BlockRange {
 	)
 }
 
-// Substract a BlockRanges
+// Subtract a BlockRanges
 // A----(C---D)----B -> [A-C-1] , [D+1 - B]
 // A----B (C---D) -> [A-B]
 // (C---D) A----B -> [A-B]
 // A----B  C----D -> [A-B]
 // (C---A---B---D) -> []
-func (b BlockRange) Substract(other BlockRange) []BlockRange {
+func (b BlockRange) Subtract(other BlockRange) []BlockRange {
 	result := []BlockRange{}
 	if !b.Overlaps(other) {
 		return []BlockRange{b}

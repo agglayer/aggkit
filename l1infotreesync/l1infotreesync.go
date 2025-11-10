@@ -74,7 +74,6 @@ func New(
 
 	parentBlockNumber := cfg.InitialBlock - 1
 	if cfg.InitialBlock > 0 && lastProcessedBlock < parentBlockNumber {
-		//block, err := l1Client.BlockByNumber(ctx, new(big.Int).SetUint64(parentBlockNumber))
 		block, err := l1Client.HeaderByNumber(ctx, new(big.Int).SetUint64(parentBlockNumber))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial block %d: %w", parentBlockNumber, err)

@@ -241,7 +241,6 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 }
 
 type EVMDownloaderImplementation struct {
-	//ethClient              aggkittypes.BaseEthereumClienter
 	ethClient              aggkittypes.MultiDownloader
 	blockFinality          aggkittypes.BlockNumberFinality
 	waitForNewBlocksPeriod time.Duration

@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrFinished = fmt.Errorf("No more segments to sync")
+	ErrFinished = fmt.Errorf("no more segments to sync")
 )
 
 type SetSyncSegment struct {
@@ -65,9 +65,9 @@ func (s *SetSyncSegment) GetByContract(addr common.Address) *SyncSegment {
 	return nil
 }
 
-// Substract removes the block ranges defined in segments from the current SetSyncSegment
+// Subtract removes the block ranges defined in segments from the current SetSyncSegment
 // This is the pending data to synchronize
-func (f *SetSyncSegment) Substract(segments *SetSyncSegment) *SetSyncSegment {
+func (f *SetSyncSegment) Subtract(segments *SetSyncSegment) *SetSyncSegment {
 	result := NewSetSyncSegment()
 	if segments == nil {
 		return f
@@ -76,7 +76,7 @@ func (f *SetSyncSegment) Substract(segments *SetSyncSegment) *SetSyncSegment {
 	for _, current := range f.segments {
 		toSub := segments.GetByContract(current.ContractAddr)
 		if toSub != nil {
-			blockRanges := current.BlockRange.Substract(toSub.BlockRange)
+			blockRanges := current.BlockRange.Subtract(toSub.BlockRange)
 			// Add as many segments as blockRange generated (0, 1 or 2)
 			for _, br := range blockRanges {
 				result.Add(current.NewBlockRange(br))
@@ -117,7 +117,7 @@ func (f *SetSyncSegment) UpdateToBlock(ctx context.Context, blockNotifierGetter 
 			log.Fatalf("Error getting BlockNotifier for finality=%s: %v", segment.TargetToBlock.String(), err)
 		}
 		currentBlock := bn.GetCurrentBlockNumber()
-		segment.UpdateToBlock(uint64(currentBlock))
+		segment.UpdateToBlock(currentBlock)
 	}
 }
 
@@ -267,7 +267,7 @@ func (f *SetSyncSegment) UpdateSyncingAfterDoingQuery(logQuery *LogQuery) *SetSy
 	for _, addr := range logQuery.Addrs {
 		segment := f.GetByContract(addr)
 		if segment != nil {
-			brs := segment.BlockRange.Substract(logQuery.BlockRange)
+			brs := segment.BlockRange.Subtract(logQuery.BlockRange)
 			switch len(brs) {
 			case 0:
 				newSegments.Remove(segment)

@@ -46,7 +46,8 @@ func (bnm *BlockNotifierManager) GetBlockNotifier(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		bnm.logger.Infof("Starting BlockNotifier for finality=%s currentBlock=%d", blockFinality.String(), bn.GetCurrentBlockNumber())
+		bnm.logger.Infof("Starting BlockNotifier for finality=%s currentBlock=%d",
+			blockFinality.String(), bn.GetCurrentBlockNumber())
 		go bn.Start(ctx)
 		return bn, nil
 	}
