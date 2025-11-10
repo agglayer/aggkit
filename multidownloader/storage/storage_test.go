@@ -66,7 +66,6 @@ func TestStorage_GetBlock(t *testing.T) {
 	readBlock, err = storage.GetBlockHeaderByNumber(nil, blockNilParentHash.Number)
 	require.NoError(t, err, "cannot get BlockHeader")
 	require.Equal(t, blockNilParentHash, readBlock, "BlockHeader mismatch")
-
 }
 
 func TestStorage_GetLogs(t *testing.T) {

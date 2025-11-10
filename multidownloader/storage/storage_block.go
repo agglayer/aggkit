@@ -72,7 +72,6 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier, quer
 	result := make([]*aggkittypes.BlockHeader, 0, len(blocks))
 
 	for _, block := range blocks {
-
 		blockResult := &aggkittypes.BlockHeader{
 			Number:     block.BlockNumber,
 			ParentHash: block.BlockParentHash,

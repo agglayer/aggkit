@@ -79,5 +79,4 @@ func (s *Statistics) Show(logFunc func(format string, args ...interface{}), iter
 	logFunc("[%d]Historical/Step: time Database=%s", iteration, s.timeTrackerDB.String())
 	logFunc("[%d]Historical/Step: totalLogsSynced=%d", iteration, s.totalLogsSynced)
 	logFunc("[%d]Historical/Step: totalBlocksSynced=%d", iteration, s.totalBlocksSynced)
-
 }

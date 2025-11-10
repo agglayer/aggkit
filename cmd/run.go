@@ -606,8 +606,8 @@ func runReorgDetectorL1IfNeeded(
 }
 
 func runL1MultiDownloaderIfNeeded(
-	ctx context.Context,
-	components []string,
+	_ context.Context,
+	_ []string,
 	l1Client aggkittypes.BaseEthereumClienter,
 	cfg multidownloader.Config,
 ) (aggkittypes.MultiDownloader, error) {
@@ -629,7 +629,6 @@ func runL1MultiDownloaderIfNeeded(
 		nil, // storage
 		nil, // blockNotifierManager
 	)
-
 }
 
 func runReorgDetectorL2IfNeeded(

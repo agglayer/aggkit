@@ -25,7 +25,7 @@ import (
 )
 
 const safeMode = true
-const unsafeMode = false
+const unsafeMode = false // lint:unused
 
 type StorageInterface interface {
 	dbtypes.KeyValueStorager
@@ -263,7 +263,6 @@ func (dh *EVMMultidownloader) Sync(ctx context.Context,
 			return err
 		}
 		iteration++
-
 	}
 	dh.log.Infof("🎉🎉🎉🎉🎉 sync %s completed after %d iterations.", name, iteration)
 	dh.statistics.FinishSyncing()
@@ -575,7 +574,6 @@ func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(ctx context.Context) 
 				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendendError(err))
 		}
 	}
-
 }
 
 func (dh *EVMMultidownloader) ShowStatistics(iteration int) {
