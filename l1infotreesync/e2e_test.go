@@ -82,9 +82,8 @@ func TestE2E(t *testing.T) {
 	var multidownloaderClient aggkittypes.MultiDownloader
 	var err error
 	if useMultidownloaderForTests {
-		cfgMD := multidownloader.NewConfigDefault("l1")
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 		cfgMD.Enabled = true
-		cfgMD.StoragePath = path.Join(t.TempDir(), "md.sqlite")
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),
 			cfgMD,
@@ -166,9 +165,8 @@ func TestWithReorgs(t *testing.T) {
 	require.NoError(t, rd.Start(ctx))
 	var multidownloaderClient aggkittypes.MultiDownloader
 	if useMultidownloaderForTests {
-		cfgMD := multidownloader.NewConfigDefault("l1")
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 		cfgMD.Enabled = true
-		cfgMD.StoragePath = path.Join(t.TempDir(), "md.sqlite")
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),
 			cfgMD,
@@ -318,9 +316,8 @@ func TestStressAndReorgs(t *testing.T) {
 
 	var multidownloaderClient aggkittypes.MultiDownloader
 	if useMultidownloaderForTests {
-		cfgMD := multidownloader.NewConfigDefault("l1")
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 		cfgMD.Enabled = true
-		cfgMD.StoragePath = path.Join(t.TempDir(), "md.sqlite")
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),
 			cfgMD,

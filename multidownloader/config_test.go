@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewConfigDefault(t *testing.T) {
-	cfg := NewConfigDefault("l1")
+	cfg := NewConfigDefault("l1", "")
 	require.Equal(t, false, cfg.Enabled)
 	require.Equal(t, "/tmp/aggkit/l1_multidownloader.sqlite", cfg.StoragePath)
 	require.Equal(t, uint32(10000), cfg.BlockChunkSize, "BlockChunkSize should be 10000")
@@ -21,7 +21,7 @@ func TestNewConfigDefault(t *testing.T) {
 }
 
 func TestNewConfigDefault_ValidatesCorrectly(t *testing.T) {
-	cfg := NewConfigDefault("l1")
+	cfg := NewConfigDefault("l1", "")
 
 	err := cfg.Validate()
 	require.NoError(t, err, "Default configuration should be valid")
@@ -69,7 +69,7 @@ func TestConfig_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewConfigDefault("l1")
+			cfg := NewConfigDefault("l1", "")
 			tt.modifyConfig(&cfg)
 
 			err := cfg.Validate()
@@ -86,7 +86,7 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestConfig_String(t *testing.T) {
-	cfg := NewConfigDefault("l1")
+	cfg := NewConfigDefault("l1", "")
 
 	str := cfg.String()
 	require.NotEmpty(t, str, "String() should not return empty string")

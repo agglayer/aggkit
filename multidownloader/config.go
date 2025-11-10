@@ -3,6 +3,7 @@ package multidownloader
 import (
 	"errors"
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/agglayer/aggkit/config/types"
@@ -39,10 +40,14 @@ const defaultBlockChunkSize = 10000
 const defaultMaxParallelBlockHeaderRetrieval = 30
 const defaultWaitPeriodToCheckCatchUp = time.Second * 10
 
-func NewConfigDefault(name string) Config {
+func NewConfigDefault(name string, basePathDB string) Config {
+	if basePathDB == "" {
+		basePathDB = "/tmp/"
+	}
+	dbPath := path.Join(basePathDB, fmt.Sprintf("%s_multidownloader.sqlite", name))
 	return Config{
 		Enabled:                         false,
-		StoragePath:                     fmt.Sprintf("/tmp/aggkit/%s_multidownloader.sqlite", name),
+		StoragePath:                     dbPath,
 		BlockChunkSize:                  defaultBlockChunkSize,
 		MaxParallelBlockHeaderRetrieval: defaultMaxParallelBlockHeaderRetrieval,
 		BlockFinality:                   aggkittypes.FinalizedBlock,

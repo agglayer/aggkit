@@ -153,9 +153,10 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
+
 	multidownloaderClient, err := multidownloader.NewEVMMultidownloader(
 		log.WithFields("module", "multidownloader"),
-		multidownloader.NewConfigDefault("l1"),
+		multidownloader.NewConfigDefault("l1", t.TempDir()),
 		"testMD",
 		l1Client.Client(),
 		nil,
