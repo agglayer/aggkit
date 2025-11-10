@@ -403,7 +403,7 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 			MaxRetryAttemptsAfterError: 5,
 			RetryAfterErrorPeriod:      time.Millisecond,
 		}
-		clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+		clientMock := aggkittypesmocks.NewMultiDownloader(t)
 		reorgDetectorMock := NewReorgDetectorMock(t)
 
 		d, err := NewEVMDownloader("test",
@@ -422,7 +422,8 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 		headerHash := latestHeader.Hash()
 		trackedBlock := &reorgdetector.Header{Hash: common.HexToHash("0x456")}
 
-		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(
+			aggkittypes.NewBlockHeaderFromEthHeader(latestHeader), nil).Once()
 		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(trackedBlock, nil).Once()
 		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber, headerHash).Return(nil).Once()
 
@@ -438,7 +439,7 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 			MaxRetryAttemptsAfterError: 5,
 			RetryAfterErrorPeriod:      time.Millisecond,
 		}
-		clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+		clientMock := aggkittypesmocks.NewMultiDownloader(t)
 		reorgDetectorMock := NewReorgDetectorMock(t)
 
 		d, err := NewEVMDownloader("test",
@@ -455,9 +456,10 @@ func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
 		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
 		latestHeaderNext := &types.Header{Number: big.NewInt(int64(currentBlockNumber + 1))}
 
-		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(
+			aggkittypes.NewBlockHeaderFromEthHeader(latestHeader), nil).Once()
 		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
-		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeaderNext, nil).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(aggkittypes.NewBlockHeaderFromEthHeader(latestHeaderNext), nil).Once()
 		headerHashNext := latestHeaderNext.Hash()
 		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber+1, headerHashNext).Return(nil).Once()
 
@@ -776,7 +778,7 @@ func TestGetLastFinalizedBlock(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("With finalizedBlockType set", func(t *testing.T) {
-		mockClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockClient := aggkittypesmocks.NewMultiDownloader(t)
 		finalizedBlockType := aggkittypes.FinalizedBlock
 		blockFinality := aggkittypes.LatestBlock
 
@@ -787,9 +789,8 @@ func TestGetLastFinalizedBlock(t *testing.T) {
 			log:                log.WithFields("test", "EVMDownloaderImplementation"),
 		}
 
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(&types.Header{
-			Number: big.NewInt(100),
-		}, nil).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx,
+			big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(aggkittypes.NewBlockHeader(100, common.Hash{}, 0, nil), nil).Once()
 
 		blockNumber, err := sut.GetLastFinalizedBlock(ctx)
 		require.NoError(t, err)
@@ -797,7 +798,7 @@ func TestGetLastFinalizedBlock(t *testing.T) {
 	})
 
 	t.Run("With finalizedBlockType nil - uses blockFinality", func(t *testing.T) {
-		mockClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockClient := aggkittypesmocks.NewMultiDownloader(t)
 		blockFinality := aggkittypes.LatestBlock
 
 		sut := EVMDownloaderImplementation{
@@ -807,9 +808,8 @@ func TestGetLastFinalizedBlock(t *testing.T) {
 			log:                log.WithFields("test", "EVMDownloaderImplementation"),
 		}
 
-		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
-			Number: big.NewInt(200),
-		}, nil).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(
+			aggkittypes.NewBlockHeader(200, common.Hash{}, 0, nil), nil).Once()
 
 		blockNumber, err := sut.GetLastFinalizedBlock(ctx)
 		require.NoError(t, err)

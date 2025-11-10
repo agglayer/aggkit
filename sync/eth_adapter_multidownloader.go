@@ -39,6 +39,14 @@ func (a *AdaptEthClient) BlockNumber(ctx context.Context, finality aggkittypes.B
 	return finality.BlockNumber(ctx, a.ethClient)
 }
 
+func (a *AdaptEthClient) BlockHeader(ctx context.Context, finality aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+	header, err := finality.BlockHeader(ctx, a.ethClient)
+	if err != nil {
+		return nil, fmt.Errorf("AdaptEthClient.BlockHeader: cannot get BlockHeader for finality=%s: %w", finality.String(), err)
+	}
+	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
+}
+
 func (a *AdaptEthClient) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	return a.ethClient.FilterLogs(ctx, query)
 }
@@ -48,12 +56,7 @@ func (a *AdaptEthClient) HeaderByNumber(ctx context.Context, number *big.Int) (*
 	if err != nil {
 		return nil, fmt.Errorf("AdaptEthClient.HeaderByNumber: cannot get BlockHeader number=%s: %w", number.String(), err)
 	}
-	return aggkittypes.NewBlockHeader(
-		header.Number.Uint64(),
-		header.Hash(),
-		header.Time,
-		&header.ParentHash,
-	), nil
+	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
 }
 
 func (a *AdaptEthClient) EthClient() aggkittypes.BaseEthereumClienter {

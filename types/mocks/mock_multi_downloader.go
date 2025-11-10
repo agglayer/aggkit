@@ -28,6 +28,65 @@ func (_m *MultiDownloader) EXPECT() *MultiDownloader_Expecter {
 	return &MultiDownloader_Expecter{mock: &_m.Mock}
 }
 
+// BlockHeader provides a mock function with given fields: ctx, finality
+func (_m *MultiDownloader) BlockHeader(ctx context.Context, finality types.BlockNumberFinality) (*types.BlockHeader, error) {
+	ret := _m.Called(ctx, finality)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BlockHeader")
+	}
+
+	var r0 *types.BlockHeader
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.BlockNumberFinality) (*types.BlockHeader, error)); ok {
+		return rf(ctx, finality)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, types.BlockNumberFinality) *types.BlockHeader); ok {
+		r0 = rf(ctx, finality)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.BlockHeader)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, types.BlockNumberFinality) error); ok {
+		r1 = rf(ctx, finality)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MultiDownloader_BlockHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BlockHeader'
+type MultiDownloader_BlockHeader_Call struct {
+	*mock.Call
+}
+
+// BlockHeader is a helper method to define mock.On call
+//   - ctx context.Context
+//   - finality types.BlockNumberFinality
+func (_e *MultiDownloader_Expecter) BlockHeader(ctx interface{}, finality interface{}) *MultiDownloader_BlockHeader_Call {
+	return &MultiDownloader_BlockHeader_Call{Call: _e.mock.On("BlockHeader", ctx, finality)}
+}
+
+func (_c *MultiDownloader_BlockHeader_Call) Run(run func(ctx context.Context, finality types.BlockNumberFinality)) *MultiDownloader_BlockHeader_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.BlockNumberFinality))
+	})
+	return _c
+}
+
+func (_c *MultiDownloader_BlockHeader_Call) Return(_a0 *types.BlockHeader, _a1 error) *MultiDownloader_BlockHeader_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MultiDownloader_BlockHeader_Call) RunAndReturn(run func(context.Context, types.BlockNumberFinality) (*types.BlockHeader, error)) *MultiDownloader_BlockHeader_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // BlockNumber provides a mock function with given fields: ctx, finality
 func (_m *MultiDownloader) BlockNumber(ctx context.Context, finality types.BlockNumberFinality) (uint64, error) {
 	ret := _m.Called(ctx, finality)

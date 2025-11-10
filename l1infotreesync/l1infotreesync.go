@@ -103,7 +103,7 @@ func New(
 			SyncerID:      "l1infotreesync",
 			ContractsAddr: addressesToQuery,
 			FromBlock:     cfg.InitialBlock,
-			ToBlock:       blockFinalityType,
+			ToBlock:       cfg.BlockFinality,
 		},
 	)
 

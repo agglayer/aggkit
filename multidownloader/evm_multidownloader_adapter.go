@@ -34,6 +34,15 @@ func (dh *EVMMultidownloader) BlockNumber(ctx context.Context, finality aggkitty
 	return bn.GetCurrentBlockNumber(), nil
 }
 
+func (dh *EVMMultidownloader) BlockHeader(ctx context.Context, finality aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+	number, err := dh.BlockNumber(ctx, finality)
+	if err != nil {
+		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get block number for finality=%s: %w", finality.String(),
+			err)
+	}
+	return dh.HeaderByNumber(ctx, big.NewInt(int64(number)))
+}
+
 func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	dh.log.Debugf("EVMMultidownloader.FilterLogs: received query: %+v", query)
 	defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)

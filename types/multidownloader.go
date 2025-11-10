@@ -24,6 +24,8 @@ type SyncerConfig struct {
 type MultiDownloader interface {
 	ChainID(ctx context.Context) (uint64, error)
 	BlockNumber(ctx context.Context, finality BlockNumberFinality) (uint64, error)
+	// TODO: delete this method because it's only required for a intermediate fix of old RerogDetector
+	BlockHeader(ctx context.Context, finality BlockNumberFinality) (*BlockHeader, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error)
 	EthClient() BaseEthereumClienter

@@ -50,16 +50,16 @@ func (m LogAppenderMap) GetTopics() []common.Hash {
 
 type EVMDownloader struct {
 	EVMDownloaderInterface
+	syncBlockChunkSize          uint64
 	log                         *log.Logger
-	finalizedBlockType          *aggkittypes.BlockNumberFinality
+	addressesToQuery            []common.Address
 	stopDownloaderOnIterationN  int
 	stopOnFinalizedBlockReached bool
-	addressesToQuery            []common.Address
 }
 
 func NewEVMDownloader(
 	syncerID string,
-	ethClient aggkittypes.MultiDownloader, //aggkittypes.BaseEthereumClienter,
+	ethClient aggkittypes.MultiDownloader,
 	syncBlockChunkSize uint64,
 	finality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -314,7 +314,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockNumber, err := d.ethClient.BlockNumber(ctx, d.blockFinality)
+			blockHeader, err := d.ethClient.BlockHeader(ctx, d.blockFinality)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -325,8 +325,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
-			blockNumber := blockHeader.Number.Uint64()
-			headerHash := blockHeader.Hash()
+			blockNumber := blockHeader.Number
+			headerHash := blockHeader.Hash
 			if blockNumber > latestSyncedBlock {
 				if d.reorgDetector != nil {
 					if err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, blockNumber, headerHash); err != nil {

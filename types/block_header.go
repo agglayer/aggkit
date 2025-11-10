@@ -23,6 +23,16 @@ func NewBlockHeader(number uint64, hash common.Hash, time uint64, parentHash *co
 	}
 }
 
+func NewBlockHeaderFromEthHeader(ethHeader *types.Header) *BlockHeader {
+	if ethHeader == nil {
+		return nil
+	}
+	return NewBlockHeader(ethHeader.Number.Uint64(),
+		ethHeader.Hash(),
+		ethHeader.Time,
+		&ethHeader.ParentHash)
+}
+
 func (gb *BlockHeader) String() string {
 	if gb == nil {
 		return "<nil>"

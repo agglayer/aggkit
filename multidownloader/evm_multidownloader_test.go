@@ -8,6 +8,7 @@ import (
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/reorgdetector"
 
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -24,7 +25,7 @@ const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = false
 
 func TestEVMMultidownloader(t *testing.T) {
-	t.Skip("code to test/debug not real unittest")
+	//t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -76,6 +77,12 @@ func TestEVMMultidownloader(t *testing.T) {
 			multidownloader = aggkitsync.NewAdaptEthClient(ethClient)
 			dbPath = "/tmp/l1infotree_eth.sqlite"
 		}
+		reorgDetector, err := reorgdetector.New(ethClient, reorgdetector.Config{
+			DBPath:              "/tmp/l1_reorgdetector.sqlite",
+			CheckReorgsInterval: types.NewDuration(time.Second * 10),
+			FinalizedBlock:      aggkittypes.FinalizedBlock,
+		}, reorgdetector.L1)
+		require.NoError(t, err)
 
 		l1infotree, err = l1infotreesync.New(
 			ctx,
@@ -88,11 +95,11 @@ func TestEVMMultidownloader(t *testing.T) {
 				WaitForNewBlocksPeriod: types.Duration{
 					Duration: 5 * time.Second,
 				},
+				BlockFinality: aggkittypes.FinalizedBlock,
 			},
-			aggkittypes.FinalizedBlock,
 			multidownloader,
+			reorgDetector,
 			l1infotreesync.FlagStopOnFinalizedBlockReached,
-			aggkittypes.FinalizedBlock,
 		)
 		require.NoError(t, err)
 	}
