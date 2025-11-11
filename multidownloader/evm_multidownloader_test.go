@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
@@ -134,4 +135,47 @@ func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) 
 	require.NotNil(t, br)
 	require.Equal(t, uint64(8727574), br.FromBlock)
 	require.Equal(t, uint64(8729203), br.ToBlock)
+}
+
+func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t)
+	testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		SyncerID: "syncer1",
+		ContractsAddr: []common.Address{
+			common.HexToAddress("0x1"),
+		},
+		FromBlock: 100,
+		ToBlock:   aggkittypes.LatestBlock,
+	})
+
+	require.Equal(t, []common.Address{common.HexToAddress("0x1")}, testData.mdr.syncersConfig.Addresses(
+		aggkitcommon.NewBlockRange(100, 200),
+	))
+}
+
+type testDataEVMMultidownloader struct {
+	mockEthClient *mocktypes.BaseEthereumClienter
+	mdr           *EVMMultidownloader
+	db            *storage.MultidownloaderStorage
+}
+
+func newEVMMultidownloaderTestData(t *testing.T) *testDataEVMMultidownloader {
+	logger := log.WithFields("test", "evm_multidownloader_test")
+	cfg := Config{
+		BlockChunkSize:                  5000,
+		MaxParallelBlockHeaderRetrieval: 50,
+		BlockFinality:                   aggkittypes.FinalizedBlock,
+	}
+	ethClient := mocktypes.NewBaseEthereumClienter(t)
+	db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
+		DBPath: cfg.StoragePath,
+	})
+	require.NoError(t, err)
+	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, db, nil)
+	require.NoError(t, err)
+	return &testDataEVMMultidownloader{
+		mockEthClient: ethClient,
+		mdr:           mdr,
+		db:            db,
+	}
 }

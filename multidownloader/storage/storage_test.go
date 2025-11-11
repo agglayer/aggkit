@@ -31,6 +31,7 @@ var (
 )
 
 func TestStorage_Exploratory(t *testing.T) {
+	t.Skip("exploratory test, not a real unit test")
 	dbFile := "/tmp/mdr_test.sqlite"
 	storage := newStorageForTest(t, &dbFile)
 	logs, err := storage.GetEthLogs(nil, mdrtypes.NewLogQuery(5157574, 5157574+2000, []common.Address{exampleAddr2}))
