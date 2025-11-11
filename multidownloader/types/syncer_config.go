@@ -2,6 +2,7 @@ package types
 
 import (
 	"math/big"
+	"sort"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -133,6 +134,7 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 			}
 			if !elementMatch(cc.Syncers, syncerID) {
 				cc.Syncers = append(cc.Syncers, syncerID)
+				sort.Strings(cc.Syncers)
 			}
 		}
 	}
