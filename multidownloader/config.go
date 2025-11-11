@@ -42,7 +42,7 @@ const defaultWaitPeriodToCheckCatchUp = time.Second * 10
 
 func NewConfigDefault(name string, basePathDB string) Config {
 	if basePathDB == "" {
-		basePathDB = "/tmp/"
+		basePathDB = "/tmp/aggkit/"
 	}
 	dbPath := path.Join(basePathDB, fmt.Sprintf("%s_multidownloader.sqlite", name))
 	return Config{
