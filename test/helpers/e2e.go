@@ -21,6 +21,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/reorgdetector"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -35,6 +36,8 @@ const (
 	rollupID              = uint32(1)
 	syncBlockChunkSize    = 10
 	defaultDBQueryTimeout = 60 * time.Second
+	// TODO: Set to true when multidownloader is integrated in the E2E tests
+	useMultidownloaderForTest = false
 )
 
 type L2GERManagerContractType int
@@ -153,16 +156,20 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-
-	multidownloaderClient, err := multidownloader.NewEVMMultidownloader(
-		log.WithFields("module", "multidownloader"),
-		multidownloader.NewConfigDefault("l1", t.TempDir()),
-		"testMD",
-		l1Client.Client(),
-		nil,
-		nil,
-	)
-	require.NoError(t, err)
+	var multidownloaderClient aggkittypes.MultiDownloader
+	if useMultidownloaderForTest {
+		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
+			log.WithFields("module", "multidownloader"),
+			multidownloader.NewConfigDefault("l1", t.TempDir()),
+			"testMD",
+			l1Client.Client(),
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
+	} else {
+		multidownloaderClient = aggkitsync.NewAdaptEthClient(l1Client.Client())
+	}
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		l1InfoTreeSyncCfg,
