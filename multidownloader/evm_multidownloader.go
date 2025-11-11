@@ -64,6 +64,8 @@ type EVMMultidownloader struct {
 	statistics     *Statistics
 }
 
+var _ aggkittypes.MultiDownloader = (*EVMMultidownloader)(nil)
+
 func NewEVMMultidownloader(log aggkitcommon.Logger,
 	cfg Config,
 	name string,
@@ -103,14 +105,15 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	}, nil
 }
 
-func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) {
+func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 
 	if dh.isInitialized {
-		dh.log.Fatalf("Cannot add new syncer config after initialization")
+		return fmt.Errorf("Cannot add new syncer config after initialization")
 	}
 	dh.syncersConfig.Add(mdrtypes.NewSyncerConfig(data))
+	return nil
 }
 
 func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) error {

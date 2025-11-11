@@ -18,6 +18,7 @@ import (
 	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -138,19 +139,71 @@ func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) 
 }
 
 func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
-	testData := newEVMMultidownloaderTestData(t)
-	testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
-		SyncerID: "syncer1",
-		ContractsAddr: []common.Address{
-			common.HexToAddress("0x1"),
-		},
-		FromBlock: 100,
-		ToBlock:   aggkittypes.LatestBlock,
+	t.Run("check Addresses", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t)
+		testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID: "syncer1",
+			ContractsAddr: []common.Address{
+				common.HexToAddress("0x1"),
+			},
+			FromBlock: 100,
+			ToBlock:   aggkittypes.LatestBlock,
+		})
+
+		require.Equal(t, []common.Address{common.HexToAddress("0x1")}, testData.mdr.syncersConfig.Addresses(
+			aggkitcommon.NewBlockRange(100, 200),
+		))
 	})
 
-	require.Equal(t, []common.Address{common.HexToAddress("0x1")}, testData.mdr.syncersConfig.Addresses(
-		aggkitcommon.NewBlockRange(100, 200),
-	))
+	t.Run("try to add after initialize", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t)
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+		err := testData.mdr.Initialize(t.Context())
+		require.NoError(t, err)
+		err = testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID: "syncer2",
+		})
+		require.Error(t, err)
+	})
+}
+
+func TestEVMMultidownloaderGetRPCServices(t *testing.T) {
+	t.Run("returns correct RPC service", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t)
+
+		services := testData.mdr.GetRPCServices()
+
+		require.Len(t, services, 1)
+		require.Equal(t, "multidownloader-test", services[0].Name)
+		require.NotNil(t, services[0].Service)
+
+		// Verify the service is of the correct type
+		_, ok := services[0].Service.(*EVMMultidownloaderRPC)
+		require.True(t, ok, "Service should be of type *EVMMultidownloaderRPC")
+	})
+
+	t.Run("service name includes multidownloader name", func(t *testing.T) {
+		logger := log.WithFields("test", "evm_multidownloader_test")
+		cfg := Config{
+			BlockChunkSize:                  5000,
+			MaxParallelBlockHeaderRetrieval: 50,
+			BlockFinality:                   aggkittypes.FinalizedBlock,
+		}
+		ethClient := mocktypes.NewBaseEthereumClienter(t)
+		db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
+			DBPath: cfg.StoragePath,
+		})
+		require.NoError(t, err)
+
+		customName := "custom-name"
+		mdr, err := NewEVMMultidownloader(logger, cfg, customName, ethClient, db, nil)
+		require.NoError(t, err)
+
+		services := mdr.GetRPCServices()
+
+		require.Len(t, services, 1)
+		require.Equal(t, "multidownloader-"+customName, services[0].Name)
+	})
 }
 
 type testDataEVMMultidownloader struct {
@@ -160,6 +213,7 @@ type testDataEVMMultidownloader struct {
 }
 
 func newEVMMultidownloaderTestData(t *testing.T) *testDataEVMMultidownloader {
+	t.Helper()
 	logger := log.WithFields("test", "evm_multidownloader_test")
 	cfg := Config{
 		BlockChunkSize:                  5000,

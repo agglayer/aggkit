@@ -65,8 +65,9 @@ func (a *AdaptEthClient) EthClient() aggkittypes.BaseEthereumClienter {
 	return a.ethClient
 }
 
-func (a *AdaptEthClient) RegisterSyncer(data aggkittypes.SyncerConfig) {
+func (a *AdaptEthClient) RegisterSyncer(data aggkittypes.SyncerConfig) error {
 	// No-op for single eth client
+	return nil
 }
 
 func (a *AdaptEthClient) Start(ctx context.Context) error {
