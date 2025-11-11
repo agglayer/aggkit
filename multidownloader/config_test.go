@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewConfigDefault(t *testing.T) {
-	cfg := NewConfigDefault("l1", "")
+	cfg := NewConfigDefault("l1", "/tmp/aggkit/")
 	require.Equal(t, false, cfg.Enabled)
 	require.Equal(t, "/tmp/aggkit/l1_multidownloader.sqlite", cfg.StoragePath)
 	require.Equal(t, uint32(10000), cfg.BlockChunkSize, "BlockChunkSize should be 10000")
