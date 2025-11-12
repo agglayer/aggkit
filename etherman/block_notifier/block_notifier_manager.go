@@ -1,11 +1,11 @@
-package multidownloader
+package blocknotifier
 
 import (
 	"context"
 	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -13,15 +13,15 @@ import (
 // implements BlockNotifierGetter interface.
 type BlockNotifierManager struct {
 	mutex           sync.Mutex
-	blockNotifiers  map[aggkittypes.BlockNumberFinality]mdrtypes.BlockNotifier
-	constructorFunc func(aggkittypes.BlockNumberFinality) (mdrtypes.BlockNotifier, error)
+	blockNotifiers  map[aggkittypes.BlockNumberFinality]ethermantypes.BlockNotifier
+	constructorFunc func(aggkittypes.BlockNumberFinality) (ethermantypes.BlockNotifier, error)
 	logger          aggkitcommon.Logger
 }
 
 func NewBlockNotifierManager(logger aggkitcommon.Logger,
-	constructorFunc func(aggkittypes.BlockNumberFinality) (mdrtypes.BlockNotifier, error)) *BlockNotifierManager {
+	constructorFunc func(aggkittypes.BlockNumberFinality) (ethermantypes.BlockNotifier, error)) *BlockNotifierManager {
 	return &BlockNotifierManager{
-		blockNotifiers:  make(map[aggkittypes.BlockNumberFinality]mdrtypes.BlockNotifier),
+		blockNotifiers:  make(map[aggkittypes.BlockNumberFinality]ethermantypes.BlockNotifier),
 		constructorFunc: constructorFunc,
 		logger:          logger,
 	}
@@ -31,7 +31,7 @@ func NewBlockNotifierManager(logger aggkitcommon.Logger,
 // the rest (that are offsets) must use the principal ones to reduce
 // the numbers of RPC requests and goroutines
 func (bnm *BlockNotifierManager) GetBlockNotifier(ctx context.Context,
-	blockFinality aggkittypes.BlockNumberFinality) (mdrtypes.BlockNotifier, error) {
+	blockFinality aggkittypes.BlockNumberFinality) (ethermantypes.BlockNotifier, error) {
 	bnm.mutex.Lock()
 	defer bnm.mutex.Unlock()
 

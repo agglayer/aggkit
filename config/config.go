@@ -15,6 +15,7 @@ import (
 	validator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/common"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -240,10 +241,10 @@ type Config struct {
 	Log log.Config
 
 	// Common Config that affects all the services
-	Common CommonConfig
+	Common ethermanconfig.CommonConfig
 
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
-	L1NetworkConfig L1NetworkConfig
+	L1NetworkConfig ethermanconfig.L1NetworkConfig
 
 	// REST contains the configuration settings for the REST service in the Aggkit
 	REST common.RESTConfig

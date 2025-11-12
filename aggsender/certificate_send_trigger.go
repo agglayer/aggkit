@@ -8,6 +8,8 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	etherman "github.com/agglayer/aggkit/etherman/block_notifier"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -48,7 +50,7 @@ func NewCertificateSendTrigger(
 // specific epoch windows.
 type epochBasedTrigger struct {
 	epochNotifier types.EpochNotifier
-	blockNotifier types.BlockNotifier
+	blockNotifier ethermantypes.BlockNotifier
 }
 
 // newEpochBasedTrigger creates and initializes a new epochBasedTrigger instance.
@@ -71,11 +73,11 @@ func newEpochBasedTrigger(
 	l1Client aggkittypes.BaseEthereumClienter,
 	agglayerClient agglayer.AgglayerClientInterface) (*epochBasedTrigger, error) {
 	// Create block notifier that polls L1 for new blocks
-	blockNotifier, err := NewBlockNotifierPolling(
+	blockNotifier, err := etherman.NewBlockNotifierPolling(
 		l1Client,
-		ConfigBlockNotifierPolling{
+		etherman.ConfigBlockNotifierPolling{
 			BlockFinalityType:     aggkittypes.LatestBlock,
-			CheckNewBlockInterval: AutomaticBlockInterval,
+			CheckNewBlockInterval: etherman.AutomaticBlockInterval,
 		}, log, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize block notifier: %w", err)

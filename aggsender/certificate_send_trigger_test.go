@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	ethermantypesmocks "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	ethmanmocks "github.com/agglayer/aggkit/types/mocks"
@@ -159,7 +160,7 @@ func TestNewEpochBasedRunner(t *testing.T) {
 
 func TestEpochBasedRunner_Status(t *testing.T) {
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
-	mockBlockNotifier := mocks.NewBlockNotifier(t)
+	mockBlockNotifier := ethermantypesmocks.NewBlockNotifier(t)
 
 	expectedStatus := types.EpochStatus{
 		Epoch:        5,
@@ -178,7 +179,7 @@ func TestEpochBasedRunner_Status(t *testing.T) {
 
 func TestEpochBasedRunner_Setup(t *testing.T) {
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
-	mockBlockNotifier := mocks.NewBlockNotifier(t)
+	mockBlockNotifier := ethermantypesmocks.NewBlockNotifier(t)
 
 	// Mock the String() methods for logging
 	mockBlockNotifier.EXPECT().String().Return("BlockNotifier")
@@ -340,7 +341,7 @@ func TestPreconfRunner_TriggerCh(t *testing.T) {
 func TestEpochBasedRunner_TriggerCh(t *testing.T) {
 	t.Run("forwards events from epoch notifier subscription", func(t *testing.T) {
 		mockEpochNotifier := mocks.NewEpochNotifier(t)
-		mockBlockNotifier := mocks.NewBlockNotifier(t)
+		mockBlockNotifier := ethermantypesmocks.NewBlockNotifier(t)
 
 		// Create a mock subscription channel
 		epochCh := make(chan types.EpochEvent, 1)
@@ -375,7 +376,7 @@ func TestEpochBasedRunner_TriggerCh(t *testing.T) {
 
 	t.Run("closes channel when context is canceled", func(t *testing.T) {
 		mockEpochNotifier := mocks.NewEpochNotifier(t)
-		mockBlockNotifier := mocks.NewBlockNotifier(t)
+		mockBlockNotifier := ethermantypesmocks.NewBlockNotifier(t)
 
 		// Create a mock subscription channel
 		epochCh := make(chan types.EpochEvent)
@@ -403,7 +404,7 @@ func TestEpochBasedRunner_TriggerCh(t *testing.T) {
 
 	t.Run("handles multiple events", func(t *testing.T) {
 		mockEpochNotifier := mocks.NewEpochNotifier(t)
-		mockBlockNotifier := mocks.NewBlockNotifier(t)
+		mockBlockNotifier := ethermantypesmocks.NewBlockNotifier(t)
 
 		// Create a mock subscription channel
 		epochCh := make(chan types.EpochEvent, 3)

@@ -14,6 +14,8 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
+	ethermanblocknotifier "github.com/agglayer/aggkit/etherman/block_notifier"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
@@ -74,9 +76,9 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter,
 ) (*EVMMultidownloader, error) {
 	if blockNotifierManager == nil {
-		blockNotifierManager = NewBlockNotifierManager(log,
-			func(finality aggkittypes.BlockNumberFinality) (mdrtypes.BlockNotifier, error) {
-				bn, er := NewBlockNotifierPolling(ethClient, ConfigBlockNotifierPolling{
+		blockNotifierManager = ethermanblocknotifier.NewBlockNotifierManager(log,
+			func(finality aggkittypes.BlockNumberFinality) (ethermantypes.BlockNotifier, error) {
+				bn, er := ethermanblocknotifier.NewBlockNotifierPolling(ethClient, ethermanblocknotifier.ConfigBlockNotifierPolling{
 					BlockFinalityType: finality,
 				}, log, nil)
 				return bn, er

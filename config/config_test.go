@@ -10,6 +10,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/multidownloader"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
@@ -48,8 +49,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.RetriesToBuildAndSendCertificate.String(),
 		"RetryPolicyConfig{Mode: delays, Config: RetryDelaysConfig{Delays: [1m0s 1m0s 2m0s 5m0s 5m0s 8m0s], MaxRetries: 6}}")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
-	require.Equal(t, L2RPCClientConfig{
-		RPCClientConfig: RPCClientConfig{
+	require.Equal(t, ethermanconfig.L2RPCClientConfig{
+		RPCClientConfig: ethermanconfig.RPCClientConfig{
 			URL: "http://localhost:8123",
 			RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
 				Mode:              aggkitcommon.RetryConfigModeBackoff,
@@ -59,7 +60,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 				BackoffMultiplier: 2.0,
 			},
 		},
-		Mode: RPCModeBasic,
+		Mode: ethermanconfig.RPCModeBasic,
 	}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")

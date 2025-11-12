@@ -1,4 +1,4 @@
-package types
+package etherman
 
 import (
 	"context"
@@ -20,4 +20,6 @@ type BlockNotifier interface {
 	GetCurrentBlockNumber() uint64
 	String() string
 	Start(ctx context.Context)
+	BlockFinality() aggkittypes.BlockNumberFinality
+	Initialize(ctx context.Context) error
 }

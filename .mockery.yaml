@@ -119,6 +119,10 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  github.com/agglayer/aggkit/common:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true      
   github.com/agglayer/aggkit/common/types:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
@@ -132,6 +136,10 @@ packages:
       mockname: "{{ .InterfaceName }}Mock"
       all: true
   github.com/agglayer/aggkit/tree/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
+  github.com/agglayer/aggkit/etherman/types:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true

@@ -1,4 +1,4 @@
-package aggsender
+package blocknotifier
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	ethmantypes "github.com/agglayer/aggkit/etherman/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -40,7 +40,7 @@ type BlockNotifierPolling struct {
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
 	lastStatus    *blockNotifierPollingInternalStatus
-	aggkitcommon.PubSub[types.EventNewBlock]
+	aggkitcommon.PubSub[ethmantypes.EventNewBlock]
 }
 
 // NewBlockNotifierPolling creates a new BlockNotifierPolling.
@@ -51,9 +51,9 @@ type BlockNotifierPolling struct {
 func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	config ConfigBlockNotifierPolling,
 	logger aggkitcommon.Logger,
-	subscriber aggkitcommon.PubSub[types.EventNewBlock]) (*BlockNotifierPolling, error) {
+	subscriber aggkitcommon.PubSub[ethmantypes.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
-		subscriber = aggkitcommon.NewGenericSubscriber[types.EventNewBlock]()
+		subscriber = aggkitcommon.NewGenericSubscriber[ethmantypes.EventNewBlock]()
 	}
 
 	return &BlockNotifierPolling{
@@ -74,6 +74,13 @@ func (b *BlockNotifierPolling) String() string {
 		res += " lastBlockSeen=none"
 	}
 	return res
+}
+
+func (b *BlockNotifierPolling) Initialize(ctx context.Context) error {
+	_, newStatus, _ := b.step(ctx, nil)
+	status := newStatus
+	b.setGlobalStatus(status)
+	return nil
 }
 
 // Start starts the BlockNotifierPolling blocking the current goroutine
@@ -97,6 +104,9 @@ func (b *BlockNotifierPolling) Start(ctx context.Context) {
 			ticker.Reset(delay)
 		}
 	}
+}
+func (b *BlockNotifierPolling) BlockFinality() aggkittypes.BlockNumberFinality {
+	return b.blockFinality
 }
 
 func (b *BlockNotifierPolling) GetCurrentBlockNumber() uint64 {
@@ -130,7 +140,7 @@ func (b *BlockNotifierPolling) getGlobalStatus() *blockNotifierPollingInternalSt
 // - the new even to emit or nil
 func (b *BlockNotifierPolling) step(ctx context.Context,
 	previousState *blockNotifierPollingInternalStatus) (time.Duration,
-	*blockNotifierPollingInternalStatus, *types.EventNewBlock) {
+	*blockNotifierPollingInternalStatus, *ethmantypes.EventNewBlock) {
 	currentBlock, err := b.blockFinality.BlockNumber(ctx, b.ethClient)
 	if err != nil {
 		b.logger.Errorf("Failed to get block number %s: %v", b.blockFinality.String(), err)
@@ -146,7 +156,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 		return b.nextBlockRequestDelay(previousState, nil), previousState, nil
 	}
 	// New blockNumber!
-	eventToEmit := &types.EventNewBlock{
+	eventToEmit := &ethmantypes.EventNewBlock{
 		BlockNumber:       currentBlock,
 		BlockFinalityType: b.config.BlockFinalityType,
 	}
