@@ -41,13 +41,14 @@ func NewBuilderFlow(
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
+			cfg.SupportLegacyZKEVM,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -87,13 +88,14 @@ func NewBuilderFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
 			cfg.RequireCommitteeMembershipCheck,
+			cfg.SupportLegacyZKEVM,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -144,6 +146,7 @@ func CreateCommonFlowComponents(
 	logger *log.Logger,
 	storage db.AggSenderStorage,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -156,6 +159,7 @@ func CreateCommonFlowComponents(
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
+	supportLegacyZKEVM config.SupportLegacyZKEVMConfig,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
@@ -176,6 +180,10 @@ func CreateCommonFlowComponents(
 		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
 		NewBaseFlowConfig(maxCertSize, startL2Block, requireNoFEPBlockGap, fullClaimsRequired),
 	)
+	if supportLegacyZKEVM.Enabled {
+		logger.Warnf("Enabling support for legacy zkEVM certificates (pre-etrog claims), this may have performance impact")
+		baseFlow.AddZKEVMSupport(supportLegacyZKEVM, l2Client)
+	}
 
 	return &CommonFlowComponents{
 		L2BridgeQuerier:       l2BridgeQuerier,

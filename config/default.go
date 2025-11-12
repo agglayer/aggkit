@@ -255,6 +255,9 @@ RequireCommitteeMembershipCheck = false
 	[AggSender.StorageRetainCertificatesPolicy]
 		RetainCertificatesCount = 0 # 0 means keep all certificates
 		KeepCertificatesHistory = true
+	[AggSender.SupportLegacyZKEVM]
+		Enabled = false
+		L2BridgeAddr = "{{polygonBridgeAddr}}"
 
 [Prometheus]
 Enabled = true

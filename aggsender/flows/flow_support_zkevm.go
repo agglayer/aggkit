@@ -1,0 +1,207 @@
+package flows
+
+import (
+	"context"
+	"fmt"
+	"math/big"
+
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/config"
+	"github.com/agglayer/aggkit/aggsender/converters"
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+)
+
+const maxErigonBlockRange = 10000
+
+var (
+	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
+	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
+)
+
+type zkEVMSupportStatus struct {
+	cfg                  config.SupportLegacyZKEVMConfig
+	l2Client             aggkittypes.BaseEthereumClienter
+	lowerBlockTested     uint64
+	etrogActivationBlock uint64
+}
+
+func (f *baseFlow) AddZKEVMSupport(cfg config.SupportLegacyZKEVMConfig, l2Client aggkittypes.BaseEthereumClienter) {
+	f.zkEVMStatus = zkEVMSupportStatus{
+		cfg:                  cfg,
+		l2Client:             l2Client,
+		etrogActivationBlock: 0,
+	}
+}
+func (f *baseFlow) getImportedBridgeExitsZKEVMSupport(
+	ctx context.Context, claims []bridgesync.Claim,
+	rootFromWhichToProve common.Hash,
+) ([]*agglayertypes.ImportedBridgeExit, error) {
+	postEtrogBlockNumber, err := f.GetEtrogActivationBlock(ctx, claims)
+	if err != nil {
+		return nil, fmt.Errorf("error getting etrog activation block: %w", err)
+	}
+	// split claims into pre-etrog and post-etrog
+	preEtrogClaims, regularClaims, err := f.splitClaims(ctx, claims, postEtrogBlockNumber)
+	if err != nil {
+		return nil, fmt.Errorf("error splitting pre-etrog claims: %w", err)
+	}
+	preEtrogClaims = f.convertGlobalIndexPreEtrog(preEtrogClaims)
+	preEtrogImportedBridgeExits, err := f.getPreEtrogImportedBridgeExits(ctx, preEtrogClaims, rootFromWhichToProve, regularClaims[0])
+	if err != nil {
+		return nil, fmt.Errorf("error getting pre-etrog imported bridge exits: %w", err)
+	}
+
+	importedBridgeExits, err := f.getImportedBridgeExits(ctx, regularClaims, rootFromWhichToProve)
+	if err != nil {
+		return nil, fmt.Errorf("error getting regular imported bridge exits: %w", err)
+	}
+	// combine both slices
+	importedBridgeExits = append(preEtrogImportedBridgeExits, importedBridgeExits...)
+	return importedBridgeExits, nil
+
+}
+
+func (f *baseFlow) convertGlobalIndexPreEtrog(claims []bridgesync.Claim) []bridgesync.Claim {
+	result := make([]bridgesync.Claim, len(claims))
+	for i, claim := range claims {
+		newClaim := claim
+		newClaim.GlobalIndex = bridgesync.GenerateGlobalIndex(true, 0, uint32(claim.GlobalIndex.Uint64()))
+		result[i] = newClaim
+	}
+	return result
+}
+
+func (f *baseFlow) getPreEtrogImportedBridgeExits(
+	ctx context.Context,
+	claims []bridgesync.Claim,
+	rootFromWhichToProve common.Hash,
+	imperson bridgesync.Claim,
+) ([]*agglayertypes.ImportedBridgeExit, error) {
+	var importedBridgeExits []*agglayertypes.ImportedBridgeExit
+	for _, claim := range claims {
+		bridgeExit, err := f.convertToPreEtrogImportedBridgeExit(ctx, claim, rootFromWhichToProve, imperson)
+		if err != nil {
+			return nil, fmt.Errorf("error converting claim to imported bridge exit: %w", err)
+		}
+		importedBridgeExits = append(importedBridgeExits, bridgeExit)
+	}
+	return importedBridgeExits, nil
+}
+
+func (f *baseFlow) convertToPreEtrogImportedBridgeExit(
+	ctx context.Context,
+	claim bridgesync.Claim,
+	rootFromWhichToProve common.Hash,
+	imperson bridgesync.Claim,
+) (*agglayertypes.ImportedBridgeExit, error) {
+	ibe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
+	if err != nil {
+		return nil, fmt.Errorf("error converting claim to imported bridge exit without claim data: %w", err)
+	}
+
+	l1Info, gerToL1Proof, err := f.l1InfoTreeDataQuerier.GetProofForGER(ctx,
+		imperson.GlobalExitRoot, rootFromWhichToProve)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"error getting L1 Info tree merkle proof for GER: %s and root: %s. Error: %w",
+			imperson.GlobalExitRoot, rootFromWhichToProve, err,
+		)
+	}
+
+	// zkEVM preEtrog only could do claims from L1
+	ibe.ClaimData = &agglayertypes.ClaimFromMainnet{
+		L1Leaf: &agglayertypes.L1InfoTreeLeaf{
+			L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
+			RollupExitRoot:  imperson.RollupExitRoot,
+			MainnetExitRoot: imperson.MainnetExitRoot,
+			Inner: &agglayertypes.L1InfoTreeLeafInner{
+				GlobalExitRoot: l1Info.GlobalExitRoot,
+				Timestamp:      l1Info.Timestamp,
+				BlockHash:      l1Info.PreviousBlockHash,
+			},
+		},
+		ProofLeafMER: &agglayertypes.MerkleProof{
+			Root:  imperson.MainnetExitRoot,
+			Proof: imperson.ProofLocalExitRoot,
+		},
+		ProofGERToL1Root: &agglayertypes.MerkleProof{
+			Root:  rootFromWhichToProve,
+			Proof: gerToL1Proof,
+		},
+	}
+
+	return ibe, nil
+}
+
+func (f *baseFlow) GetEtrogActivationBlock(ctx context.Context, claims []bridgesync.Claim) (uint64, error) {
+	if f.zkEVMStatus.etrogActivationBlock != 0 {
+		// We already known which block is it
+		return f.zkEVMStatus.etrogActivationBlock, nil
+	}
+	if claims == nil || len(claims) == 0 {
+		return 0, fmt.Errorf("cannot deduce etrog activation block without claims")
+	}
+	fromBlock := max(claims[0].BlockNum, f.zkEVMStatus.lowerBlockTested+1)
+	toBlock := claims[len(claims)-1].BlockNum
+	result, err := f.GetEtrogActivationBlockFromBlockRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return 0, fmt.Errorf("error getting etrog activation block from block range: %w", err)
+	}
+	// Update the lower block tested to avoid re-checking the same blocks
+	f.zkEVMStatus.lowerBlockTested = toBlock
+	return result, nil
+}
+
+func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context, fromBlock, toBlock uint64) (uint64, error) {
+	var logs []types.Log
+	var err error
+	lastBlockNumber := uint64(0)
+	from := fromBlock
+	to := min(fromBlock+maxErigonBlockRange, toBlock)
+	for from != toBlock {
+		filterQuery := ethereum.FilterQuery{
+			Addresses: []common.Address{f.zkEVMStatus.cfg.L2BridgeAddr},
+			FromBlock: big.NewInt(int64(from)),
+			ToBlock:   big.NewInt(int64(to)),
+			Topics:    [][]common.Hash{{claimEventSignaturePreEtrog}},
+		}
+		log.Infof("Filtering logs from block %d to block %d for etrog activation block", from, to)
+		logs, err = f.zkEVMStatus.l2Client.FilterLogs(ctx, filterQuery)
+		if err != nil {
+			return 0, fmt.Errorf("error filtering logs to find etrog activation block: %w", err)
+		}
+		if len(logs) > 0 {
+			lastBlockNumber = logs[len(logs)-1].BlockNumber
+			log.Infof("Filtering logs from block %d to block %d for etrog activation block logs=%d lastBlockNumber=%d", from, to, len(logs), lastBlockNumber)
+
+		}
+		from = min(to+1, toBlock)
+		to = min(from+maxErigonBlockRange, toBlock)
+	}
+	// If there are no logs means that all claims are post-etrog
+	if lastBlockNumber == 0 {
+		return 0, nil
+	}
+	// This is the first post-etrog block
+	f.zkEVMStatus.etrogActivationBlock = lastBlockNumber + 1
+	return f.zkEVMStatus.etrogActivationBlock, nil
+}
+
+func (f *baseFlow) splitClaims(ctx context.Context,
+	claims []bridgesync.Claim, etrogActivationBlock uint64,
+) (preEtrogClaims []bridgesync.Claim, regularClaims []bridgesync.Claim, err error) {
+	for _, claim := range claims {
+		if claim.BlockNum < etrogActivationBlock {
+			preEtrogClaims = append(preEtrogClaims, claim)
+		} else {
+			regularClaims = append(regularClaims, claim)
+		}
+	}
+	return preEtrogClaims, regularClaims, nil
+}

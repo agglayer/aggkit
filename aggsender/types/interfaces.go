@@ -67,7 +67,6 @@ type AggsenderFlowBaser interface {
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
 		newFromBlock, newToBlock uint64) error
-	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)

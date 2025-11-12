@@ -91,6 +91,14 @@ type Config struct {
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 	// It allow to change committee URL for testing purposes
 	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
+	// SupportLegacyZKEVM indicates whether to support legacy ZK-EVM certificates, it have performance impact
+	// so it should be disabled if not needed
+	SupportLegacyZKEVM SupportLegacyZKEVMConfig `mapstructure:"SupportLegacyZKEVM"`
+}
+
+type SupportLegacyZKEVMConfig struct {
+	Enabled      bool              `mapstructure:"Enabled"`
+	L2BridgeAddr ethCommon.Address `mapstructure:"L2BridgeAddr"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

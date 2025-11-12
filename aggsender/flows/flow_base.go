@@ -41,6 +41,9 @@ type BaseFlowConfig struct {
 	RequireNoFEPBlockGap bool
 	// FullClaimsNeeded indicates whether the flow requires full claims data
 	FullClaimsNeeded bool
+	// SupportLegacyZKEVM indicates whether to support legacy zkEVM certificates claims pre-etrog
+	// this claims doesn't the GER contained in L1InfoTree, so it need extra processing
+	SupportLegacyZKEVM bool
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
@@ -50,6 +53,7 @@ func NewBaseFlowConfigDefault() BaseFlowConfig {
 		StartL2Block:         0,     // 0 means start from the first block
 		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
 		FullClaimsNeeded:     true,  // default is true, can be set to false if full claims are not needed
+		SupportLegacyZKEVM:   false, // no support to zkEVM
 	}
 }
 
@@ -78,6 +82,7 @@ type baseFlow struct {
 	log                   types.Logger
 	// TimeNowFunc is a function that returns the current time as a uint32 timestamp.
 	timeNowFunc func() uint32
+	zkEVMStatus zkEVMSupportStatus
 }
 
 // NewBaseFlow creates a new instance of the base flow
@@ -274,7 +279,14 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 	}
 
 	bridgeExits := f.getBridgeExits(certParams.Bridges)
-	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims, certParams.L1InfoTreeRootFromWhichToProve)
+	var err error
+	var importedBridgeExits []*agglayertypes.ImportedBridgeExit
+	if f.zkEVMStatus.cfg.Enabled {
+		importedBridgeExits, err = f.getImportedBridgeExitsZKEVMSupport(
+			ctx, certParams.Claims, certParams.L1InfoTreeRootFromWhichToProve)
+	} else {
+		importedBridgeExits, err = f.getImportedBridgeExits(ctx, certParams.Claims, certParams.L1InfoTreeRootFromWhichToProve)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}
@@ -319,11 +331,6 @@ func (f *baseFlow) getNewLocalExitRoot(
 	}
 
 	return exitRoot, nil
-}
-
-// ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
-	return converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
 }
 
 // getBridgeExits converts bridges to agglayer.BridgeExit objects
