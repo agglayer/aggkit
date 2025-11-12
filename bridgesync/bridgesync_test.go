@@ -607,7 +607,7 @@ func TestGetClaimPaged(t *testing.T) {
 		halted: true,
 		log:    log.WithFields("module", "L2BridgeSyncer"),
 	}}
-	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "", nil)
+	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
