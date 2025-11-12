@@ -98,7 +98,7 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     single-l2-network-op-succinct-aggoracle-committee)
         jq -s '.[0] * .[1] * .[2]' \
             "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
-            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json"
+            "$PROJECT_ROOT/.github/test_e2e_op_succinct_args_base.json" \
             "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" > /tmp/single_aggoracle_committee_op_succinct.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "/tmp/single_aggoracle_committee_op_succinct.json" .
         ;;
@@ -150,17 +150,14 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         exit 1
     fi
 
-    log_info "Using provided Agglayer E2E repo at: $E2E_REPO_PATH"
-
-    aggsender_find_imported_bridge_bin="./target/aggsender_find_imported_bridge"
+    aggsender_find_imported_bridge_bin="$PROJECT_ROOT/target/aggsender_find_imported_bridge"
     if [ ! -f "$aggsender_find_imported_bridge_bin" ]; then
         log_error "The aggsender imported bridges monitor tool is not built. Expected path: $aggsender_find_imported_bridge_bin"
         exit 1
     fi
-
     cp "$aggsender_find_imported_bridge_bin" "$E2E_REPO_PATH/aggsender_find_imported_bridge"
-    chmod +x "$E2E_REPO_PATH/aggsender_find_imported_bridge"
 
+    log_info "Using provided E2E repo at: $E2E_REPO_PATH"
     pushd "$E2E_REPO_PATH" >/dev/null
 
     log_info "Setting up e2e environment..."
@@ -176,28 +173,33 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats --jobs 5 ./tests/aggkit/bridge-e2e.bats || exit 1 
-        bats  ./tests/op/optimistic-mode.bats || exit 1
-        bats  ./tests/aggkit/e2e-pp.bats || exit 1
-        bats  ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
-
+        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        bats ./tests/aggkit/internal-claims.bats || exit 1
+        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
+        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
+        bats ./tests/op/optimistic-mode.bats || exit 1
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
-        bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
+        bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats || exit 1
         ;;
     single-l2-network-op-pessimistic)
-        bats ./tests/aggkit/bridge-e2e.bats \
-             ./tests/aggkit/e2e-pp.bats \
-             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-             ./tests/aggkit/bridge-e2e-nightly.bats \
-             ./tests/aggkit/internal-claims.bats \
-             ./tests/aggkit/claim-reetrancy.bats
+        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/e2e-pp.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        bats ./tests/op/optimistic-mode.bats || exit 1
+        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        bats ./tests/aggkit/internal-claims.bats || exit 1
+        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
+        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
-        bats ./tests/aggkit/bridge-e2e-2-chains.bats
+        bats ./tests/aggkit/bridge-e2e-2-chains.bats || exit 1
         ;;
     multi-l2-networks-3-chains-cdk-erigon-pessimistic)
-        bats ./tests/aggkit/bridge-e2e-3-chains.bats
+        bats ./tests/aggkit/bridge-e2e-3-chains.bats || exit 1
         ;;
     esac
     rm -f aggsender_find_imported_bridge combined.json rollup_params.json

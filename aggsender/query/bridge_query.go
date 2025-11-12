@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -14,9 +15,10 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
 type bridgeDataQuerier struct {
-	log                 types.Logger
-	bridgeSyncer        types.L2BridgeSyncer
-	delayBetweenRetries time.Duration
+	log                    types.Logger
+	bridgeSyncer           types.L2BridgeSyncer
+	delayBetweenRetries    time.Duration
+	agglayerBridgeL2Reader types.AgglayerBridgeL2Reader
 
 	originNetwork uint32
 }
@@ -26,12 +28,14 @@ func NewBridgeDataQuerier(
 	log types.Logger,
 	bridgeSyncer types.L2BridgeSyncer,
 	delayBetweenRetries time.Duration,
+	agglayerBridgeL2Reader types.AgglayerBridgeL2Reader,
 ) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
-		log:                 log,
-		bridgeSyncer:        bridgeSyncer,
-		delayBetweenRetries: delayBetweenRetries,
-		originNetwork:       bridgeSyncer.OriginNetwork(),
+		log:                    log,
+		bridgeSyncer:           bridgeSyncer,
+		delayBetweenRetries:    delayBetweenRetries,
+		originNetwork:          bridgeSyncer.OriginNetwork(),
+		agglayerBridgeL2Reader: agglayerBridgeL2Reader,
 	}
 }
 
@@ -132,4 +136,11 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 			continue // Keep checking until the condition is met
 		}
 	}
+}
+
+// GetUnsetClaimsForBlockRange gets unset claims from agglayer bridge L2 and converts to unclaim map
+func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
+	fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error) {
+	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
+	return b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 }

@@ -46,7 +46,7 @@ func TestEVM_GERInjection(t *testing.T) {
 			cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee = tt.enableAggOracleCommittee
 			l1, l2 := helpers.NewSimulatedEVMEnvironment(t, cfg)
 
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				rootHash := common.HexToHash(strconv.Itoa(i))
 				_, err := l1.GERContract.UpdateExitRoot(l1.Auth, rootHash)
 				require.NoError(t, err)

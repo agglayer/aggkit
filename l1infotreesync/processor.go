@@ -15,11 +15,10 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -29,8 +28,8 @@ var (
 
 type processor struct {
 	db             *sql.DB
-	l1InfoTree     *tree.AppendOnlyTree
-	rollupExitTree *tree.UpdatableTree
+	l1InfoTree     treetypes.FullTreer
+	rollupExitTree treetypes.FullTreer
 	mu             mutex.RWMutex
 	halted         bool
 	haltedReason   string
@@ -133,14 +132,10 @@ func (l *L1InfoTreeLeaf) GetGlobalExitRoot() common.Hash {
 	return CalculateGER(l.MainnetExitRoot, l.RollupExitRoot)
 }
 
-// CalculateGER calculates the Global Exit Root (GER) based on the mainnet and rollup exit roots
+// CalculateGER calculates the Global Exit Root (GER) based on the keccak256 hash of concatenated
+// mainnet and rollup exit roots
 func CalculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
-	var gerBytes [treeTypes.DefaultHeight]byte
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(mainnetExitRoot[:])
-	hasher.Write(rollupExitRoot[:])
-	copy(gerBytes[:], hasher.Sum(nil))
-	return gerBytes
+	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 }
 
 func newProcessor(dbPath string) (*processor, error) {
@@ -162,19 +157,6 @@ func newProcessor(dbPath string) (*processor, error) {
 			aggkitcommon.L1INFOTREESYNC,
 		),
 	}, nil
-}
-
-// GetL1InfoTreeMerkleProof creates a merkle proof for the L1 Info tree
-func (p *processor) GetL1InfoTreeMerkleProof(
-	ctx context.Context, index uint32,
-) (treeTypes.Proof, treeTypes.Root, error) {
-	root, err := p.l1InfoTree.GetRootByIndex(ctx, index)
-	if err != nil {
-		return treeTypes.Proof{}, treeTypes.Root{}, err
-	}
-
-	proof, err := p.l1InfoTree.GetProof(ctx, root.Index, root.Hash)
-	return proof, root, err
 }
 
 // GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
@@ -224,6 +206,33 @@ func (p *processor) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum 
 		return nil, err
 	}
 	return info, nil
+}
+
+// GetLatestL1InfoGER returns the most recent Global Exit Root (GER) from the L1 Info tree leaves
+func (p *processor) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error) {
+	query := `SELECT global_exit_root FROM l1info_leaf ORDER BY block_num DESC, block_pos DESC LIMIT 1;`
+
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return common.Hash{}, err
+	}
+	// ensure tx rolled back (no commit since read-only)
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			p.log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+
+	var gerHex string
+	row := tx.QueryRowContext(ctx, query)
+	if err := row.Scan(&gerHex); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return common.Hash{}, db.ErrNotFound
+		}
+		return common.Hash{}, fmt.Errorf("querying latest GER: %w", err)
+	}
+
+	return common.HexToHash(gerHex), nil
 }
 
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree
@@ -276,9 +285,54 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 	return processedBlockNum, hash, nil
 }
 
-// Reorg is intentionally left as a no-op. This method is retained for compatibility
-// with the processor interface and to allow for potential future implementation.
+// Reorg triggers a purge and reset process on the processor to leaf it on a state
+// as if the last block processed was firstReorgedBlock-1
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
+	p.log.Infof("reorging to block %d", firstReorgedBlock)
+
+	tx, err := db.NewTx(ctx, p.db)
+	if err != nil {
+		return err
+	}
+
+	shouldRollback := true
+	defer func() {
+		if shouldRollback {
+			if errRllbck := tx.Rollback(); errRllbck != nil {
+				p.log.Errorf("error while rolling back tx %v", errRllbck)
+			}
+		}
+	}()
+
+	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	if err != nil {
+		return err
+	}
+
+	if err = p.l1InfoTree.Reorg(tx, firstReorgedBlock); err != nil {
+		return err
+	}
+
+	if err = p.rollupExitTree.Reorg(tx, firstReorgedBlock); err != nil {
+		return err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
+
+	shouldRollback = false
+
+	if rowsAffected > 0 {
+		p.unhalt()
+	}
 	return nil
 }
 
@@ -349,7 +403,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("insert l1info_leaf %s. err: %w", info.String(), err)
 			}
 
-			err = p.l1InfoTree.AddLeaf(tx, info.BlockNumber, info.BlockPosition, treeTypes.Leaf{
+			_, err = p.l1InfoTree.PutLeaf(tx, info.BlockNumber, info.BlockPosition, treetypes.Leaf{
 				Index: info.L1InfoTreeIndex,
 				Hash:  info.Hash,
 			})
@@ -512,4 +566,19 @@ func (p *processor) halt(reason string) {
 	p.halted = true
 	p.haltedReason = reason
 	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
+}
+
+// unhalt sets the processor to an unhalted state
+// It should be called when the processor is ready to process blocks again
+func (p *processor) unhalt() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if !p.halted {
+		return
+	}
+
+	p.halted = false
+	p.haltedReason = ""
+	p.log.Info("processor is unhalted")
 }

@@ -62,7 +62,12 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	}
 
 	mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
+	// First call to get latest block header (with nil)
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+		Number: big.NewInt(int64(latestBlock)),
+	}, nil).Maybe()
+	// Second call to get the offset block header (with latestBlock since offset is 0)
+	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(latestBlock))).Return(&ethtypes.Header{
 		Number: big.NewInt(int64(latestBlock)),
 	}, nil).Maybe()
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
@@ -89,6 +94,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		l2GERAddr,
 		mockL1InfoTreeSync,
 		mockL1Client,
+		common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
 		rh,
 		aggkittypes.LatestBlock,
 		time.Millisecond*10, // waitForNewBlocksPeriod
@@ -174,6 +180,7 @@ func TestIsL1InfoTreeQuerierUpToDate(t *testing.T) {
 				common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
 				mockL1InfoTreeSync,
 				mockL1Client,
+				common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
 				rh,
 				aggkittypes.LatestBlock,
 				time.Millisecond*10,
@@ -233,6 +240,8 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 		getInfoByGERError    error
 		isUpToDateResult     bool
 		isUpToDateError      error
+		l1ContractTimestamp  *big.Int
+		l1ContractError      error
 		expectError          bool
 		expectedErrorMessage string
 	}{
@@ -252,6 +261,28 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
+		{
+			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_true_L1Contract_GER_exists",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     true,
+			isUpToDateError:      nil,
+			l1ContractTimestamp:  big.NewInt(1234567890), // timestamp > 0 means GER exists
+			l1ContractError:      nil,
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
+		// Note: Skipping the case where log.Fatalf is called as it would terminate the test process
+		// The case where L1 contract returns timestamp=0 is covered by integration tests
+		{
+			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_false_skips_L1Contract_call",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     false, // Set to false to avoid L1 contract call path
+			isUpToDateError:      nil,
+			l1ContractTimestamp:  nil,
+			l1ContractError:      nil,
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
 	}
 
 	for _, tt := range tests {
@@ -268,7 +299,12 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 
 			// Set up mock expectations
 			mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
+			// First call to get latest block header (with nil)
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+				Number: big.NewInt(int64(latestBlock)),
+			}, nil).Maybe()
+			// Second call to get the offset block header (with latestBlock since offset is 0)
+			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(latestBlock))).Return(&ethtypes.Header{
 				Number: big.NewInt(int64(latestBlock)),
 			}, nil).Maybe()
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
@@ -280,6 +316,15 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
 			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mock.Anything).Return(tt.isUpToDateResult, tt.isUpToDateError).Maybe()
 
+			// Mock L1 client contract calls for test cases where isUpToDate is true
+			if tt.isUpToDateResult {
+				if tt.l1ContractTimestamp != nil {
+					callResult := make([]byte, 32)
+					tt.l1ContractTimestamp.FillBytes(callResult)
+					mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(callResult, tt.l1ContractError).Maybe()
+				}
+			}
+
 			mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
 
 			downloader, err := newDownloaderSovereign(
@@ -287,6 +332,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 				l2GERAddr,
 				mockL1InfoTreeSync,
 				mockL1Client,
+				common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
 				rh,
 				aggkittypes.LatestBlock,
 				time.Millisecond*10,
@@ -311,6 +357,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			require.Contains(t, err.Error(), tt.expectedErrorMessage)
 
 			mockL2Client.AssertExpectations(t)
+			mockL1Client.AssertExpectations(t)
 			mockL1InfoTreeSync.AssertExpectations(t)
 		})
 	}

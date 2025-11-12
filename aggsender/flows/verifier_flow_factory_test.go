@@ -119,6 +119,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				tc.cfg,
 				mockLogger,
 				mockL1Client,
+				nil,
 				mockL1InfoTreeSyncer,
 				mockL2Syncer,
 				mockRollupDataQuerier,

@@ -15,10 +15,17 @@ import (
 
 var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
 
+var _ fmt.Stringer = (*Block)(nil)
+
 type Block struct {
 	Num    uint64
 	Events []any
 	Hash   common.Hash
+}
+
+func (b Block) String() string {
+	return fmt.Sprintf("SyncBlock{Num: %d, Hash: %s, EventsCount: %d}",
+		b.Num, b.Hash.String(), len(b.Events))
 }
 
 type Downloader interface {
@@ -38,6 +45,7 @@ type EVMDriver struct {
 	rh                   *RetryHandler
 	log                  aggkitcommon.Logger
 	compatibilityChecker compatibility.CompatibilityChecker
+	blockSubscriber      aggkitcommon.PubSub[Block]
 }
 
 // RuntimeData is the data that is used to check that the DB is compatible with the runtime data
@@ -80,6 +88,7 @@ type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
 	GetFinalizedBlockType() aggkittypes.BlockNumberFinality
+	GetTrackedBlockByBlockNumber(id string, blockNumber uint64) (*reorgdetector.Header, error)
 	String() string
 }
 
@@ -108,7 +117,12 @@ func NewEVMDriver(
 		rh:                   rh,
 		log:                  logger,
 		compatibilityChecker: compatibilityChecker,
+		blockSubscriber:      aggkitcommon.NewGenericSubscriber[Block](),
 	}, nil
+}
+
+func (d *EVMDriver) SubscribeToNewBlocks(subscriberName string) <-chan Block {
+	return d.blockSubscriber.Subscribe(subscriberName)
 }
 
 func (d *EVMDriver) Sync(ctx context.Context) {
@@ -210,16 +224,24 @@ func (d *EVMDriver) trackNonFinalizedBlock(ctx context.Context, b EVMBlock) erro
 
 func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
 	return d.withRetry(ctx, "processBlock", func() error {
-		err := d.processor.ProcessBlock(ctx, Block{
+		block := Block{
 			Num:    b.Num,
 			Hash:   b.Hash,
 			Events: b.Events,
-		})
+		}
+		err := d.processor.ProcessBlock(ctx, block)
 		if errors.Is(err, ErrInconsistentState) {
 			d.log.Warn("state got inconsistent after processing this block; halting until reorg")
 			return newStopRetryError(err)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+
+		// Notify subscribers about the new block after successful processing
+		d.blockSubscriber.Publish(block)
+
+		return nil
 	})
 }
 

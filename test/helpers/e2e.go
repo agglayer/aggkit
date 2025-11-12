@@ -120,7 +120,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1Client, authL1,
 		gerL1Addr, gerL1Contract,
 		bridgeL1Addr, bridgeL1Contract,
-		agglayerManagerContract := newSimulatedL1(t)
+		agglayerManagerContract := NewSimulatedL1(t)
 
 	// Reorg detector
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
@@ -144,6 +144,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		DBPath:                             dbPathL1InfoTreeSync,
 		InitialBlock:                       0,
 		SyncBlockChunkSize:                 syncBlockChunkSize,
+		BlockFinality:                      aggkittypes.LatestBlock,
 		GlobalExitRootAddr:                 gerL1Addr,
 		RollupManagerAddr:                  common.Address{},
 		RetryAfterErrorPeriod:              cfgtypes.NewDuration(l1InfoTreeSyncerRetryFreq),
@@ -154,10 +155,9 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
 		l1InfoTreeSyncCfg,
-		aggkittypes.LatestBlock,
 		l1Client.Client(),
+		rdL1,
 		l1infotreesync.FlagAllowWrongContractsAddrs,
-		aggkittypes.SafeBlock,
 	)
 	require.NoError(t, err)
 
@@ -187,7 +187,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork, false)
+	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -352,7 +352,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	return l2Setup
 }
 
-func newSimulatedL1(t *testing.T) (
+func NewSimulatedL1(t *testing.T) (
 	*simulated.Backend,
 	*bind.TransactOpts,
 	common.Address,
@@ -613,4 +613,20 @@ func newSimulatedEVML2LegacyChain(t *testing.T) (
 	require.Equal(t, gerProxyAddr, bridgeGERAddr)
 
 	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract
+}
+
+func WaitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer Processorer, client *simulated.Backend) {
+	t.Helper()
+	for {
+		lastBlockNum, err := client.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+		RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
+		//nolint:mnd
+		time.Sleep(time.Millisecond * 500)
+		lastBlockNum2, err := client.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+		if lastBlockNum == lastBlockNum2 {
+			return
+		}
+	}
 }

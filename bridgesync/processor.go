@@ -66,7 +66,6 @@ type Bridge struct {
 	BlockPos           uint64         `meddler:"block_pos"`
 	FromAddress        common.Address `meddler:"from_address,address"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	Calldata           []byte         `meddler:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`
@@ -273,7 +272,6 @@ type TokenMapping struct {
 	WrappedTokenAddress common.Address               `meddler:"wrapped_token_address,address"`
 	Metadata            []byte                       `meddler:"metadata"`
 	IsNotMintable       bool                         `meddler:"is_not_mintable"`
-	Calldata            []byte                       `meddler:"calldata"`
 	Type                bridgetypes.TokenMappingType `meddler:"token_type"`
 }
 
@@ -288,7 +286,6 @@ type LegacyTokenMigration struct {
 	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address"`
 	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address"`
 	Amount              *big.Int       `meddler:"amount,bigint"`
-	Calldata            []byte         `meddler:"calldata"`
 }
 
 // RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
@@ -772,12 +769,12 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
-	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {
 		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
 	}
-	rowsAffected, err := res.RowsAffected()
+	rowsAffected, err := blocksRes.RowsAffected()
 	if err != nil {
 		p.log.Errorf("failed to get rows affected during reorg: %v", err)
 		return err
@@ -787,6 +784,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
 		return err
 	}
+
 	if err = tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
@@ -827,7 +825,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
+	query := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
+	if _, err := tx.Exec(query, block.Num, block.Hash.String()); err != nil {
 		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
 		return err
 	}
@@ -840,7 +839,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Bridge != nil {
-			if err = p.exitTree.AddLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
+			if _, err = p.exitTree.PutLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
 				Index: event.Bridge.DepositCount,
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
@@ -897,6 +896,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	} else {
 		p.log.Debugf(logMsg)
 	}
+
 	return nil
 }
 

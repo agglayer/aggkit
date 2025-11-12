@@ -2,9 +2,14 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"math/big"
 	"testing"
 
+	"github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -281,4 +286,166 @@ func TestBlockNumberFinalityJSONSchema(t *testing.T) {
 	schema := BlockNumberFinality{}.JSONSchema()
 	require.Equal(t, "string", schema.Type)
 	require.Equal(t, "BlockNumberFinality", schema.Title)
+}
+
+func TestBlockNumberFinality_BlockHeader(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success with offset", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		blockFinality := BlockNumberFinality{Block: Finalized, Offset: -5}
+
+		finalizedHeader := &types.Header{Number: big.NewInt(100)}
+		offsetHeader := &types.Header{Number: big.NewInt(95)}
+
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Once()
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(95)).Return(offsetHeader, nil).Once()
+
+		result, err := blockFinality.BlockHeader(ctx, mockClient)
+		require.NoError(t, err)
+		require.Equal(t, offsetHeader, result)
+	})
+
+	t.Run("Error on first call", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		blockFinality := BlockNumberFinality{Block: Latest, Offset: 0}
+
+		testErr := fmt.Errorf("first call error")
+		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, testErr).Once()
+
+		result, err := blockFinality.BlockHeader(ctx, mockClient)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), testErr.Error())
+	})
+
+	t.Run("Error on second call", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		// Safe with positive offset so the resolved block differs from the base and triggers a second fetch
+		blockFinality := BlockNumberFinality{Block: Safe, Offset: 10}
+
+		safeHeader := &types.Header{Number: big.NewInt(100)}
+		testErr := fmt.Errorf("second call error")
+
+		// First call resolves base Safe header (100)
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.SafeBlockNumber))).Return(safeHeader, nil).Once()
+		// Second call attempts to fetch 110 and fails
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(110)).Return(nil, testErr).Once()
+
+		result, err := blockFinality.BlockHeader(ctx, mockClient)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), testErr.Error())
+	})
+}
+
+func TestBlockNumberFinality_Validate(t *testing.T) {
+	tests := []struct {
+		name          string
+		finality      BlockNumberFinality
+		expectedError string
+	}{
+		{
+			name:          "LatestBlock with positive offset should fail",
+			finality:      BlockNumberFinality{Block: Latest, Offset: 1},
+			expectedError: fmt.Sprintf("positive offset 1 exceeds maximum allowed %d for LatestBlock", MaxPositiveOffsetLatest),
+		},
+		{
+			name:          "LatestBlock with zero offset should pass",
+			finality:      BlockNumberFinality{Block: Latest, Offset: 0},
+			expectedError: "",
+		},
+		{
+			name:          "LatestBlock with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Latest, Offset: -5},
+			expectedError: "",
+		},
+		{
+			name:          "PendingBlock with positive offset should fail",
+			finality:      BlockNumberFinality{Block: Pending, Offset: 1},
+			expectedError: fmt.Sprintf("positive offset 1 exceeds maximum allowed %d for PendingBlock", MaxPositiveOffsetPending),
+		},
+		{
+			name:          "PendingBlock with zero offset should pass",
+			finality:      BlockNumberFinality{Block: Pending, Offset: 0},
+			expectedError: "",
+		},
+		{
+			name:          "SafeBlock with offset exceeding limit should fail",
+			finality:      BlockNumberFinality{Block: Safe, Offset: MaxPositiveOffsetSafe + 1},
+			expectedError: fmt.Sprintf("positive offset %d exceeds maximum allowed %d for SafeBlock", MaxPositiveOffsetSafe+1, MaxPositiveOffsetSafe),
+		},
+		{
+			name:          "SafeBlock with offset at limit should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: MaxPositiveOffsetSafe},
+			expectedError: "",
+		},
+		{
+			name:          "SafeBlock with offset below limit should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: MaxPositiveOffsetSafe - 1},
+			expectedError: "",
+		},
+		{
+			name:          "FinalizedBlock with offset exceeding limit should fail",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: MaxPositiveOffsetFinalized + 1},
+			expectedError: fmt.Sprintf("positive offset %d exceeds maximum allowed %d for FinalizedBlock", MaxPositiveOffsetFinalized+1, MaxPositiveOffsetFinalized),
+		},
+		{
+			name:          "FinalizedBlock with offset at limit should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: MaxPositiveOffsetFinalized},
+			expectedError: "",
+		},
+		{
+			name:          "FinalizedBlock with offset below limit should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: MaxPositiveOffsetFinalized - 1},
+			expectedError: "",
+		},
+		{
+			name:          "SafeBlock with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: -10},
+			expectedError: "",
+		},
+		{
+			name:          "FinalizedBlock with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: -10},
+			expectedError: "",
+		},
+		{
+			name:          "Empty block should fail validation",
+			finality:      BlockNumberFinality{Block: Empty, Offset: 0},
+			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
+		},
+		{
+			name:          "Empty block with positive offset should fail validation",
+			finality:      BlockNumberFinality{Block: Empty, Offset: 100},
+			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
+		},
+		{
+			name:          "Unknown block type should fail validation",
+			finality:      BlockNumberFinality{Block: BlockNumber(999), Offset: 0},
+			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
+		},
+		{
+			name:          "Valid block with zero offset should pass",
+			finality:      BlockNumberFinality{Block: Finalized, Offset: 0},
+			expectedError: "",
+		},
+		{
+			name:          "Valid block with negative offset should pass",
+			finality:      BlockNumberFinality{Block: Safe, Offset: -5},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.finality.Validate()
+			if tt.expectedError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
 }

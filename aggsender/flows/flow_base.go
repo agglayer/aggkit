@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -115,7 +116,7 @@ func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
 	if previousToBlock >= lastL2BlockSynced {
-		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
+		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
 		return types.BlockRangeZero, 0, errNoNewBlocks
 	}
@@ -171,7 +172,13 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
 		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
 	if err != nil {
-		return nil, fmt.Errorf("generateBulidParams fails getting bridges and claims. Err: %w", err)
+		return nil, fmt.Errorf("generateBuildParams fails getting bridges and claims. Err: %w", err)
+	}
+
+	unclaims, err := f.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
+		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error getting unset claims for block range: %w", err)
 	}
 
 	buildParams := &types.CertificateBuildParams{
@@ -185,7 +192,14 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		CertificateType:                preParams.CertificateType,
 		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeToProve.L1InfoTreeRootToProve,
 		L1InfoTreeLeafCount:            preParams.L1InfoTreeToProve.L1InfoTreeLeafCount,
+		Unclaims:                       unclaims,
 	}
+
+	buildParams, err = f.adjustCertificateIfNonFinalizedClaims(buildParams)
+	if err != nil {
+		return nil, fmt.Errorf("error adjusting certificate if non-finalized claims: %w", err)
+	}
+
 	return buildParams, nil
 }
 
@@ -274,7 +288,8 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 	}
 
 	bridgeExits := f.getBridgeExits(certParams.Bridges)
-	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims, certParams.L1InfoTreeRootFromWhichToProve)
+	importedBridgeExits, err := f.getImportedBridgeExits(
+		ctx, certParams.Claims, certParams.Unclaims, certParams.L1InfoTreeRootFromWhichToProve)
 	if err != nil {
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}
@@ -333,15 +348,56 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
-	ctx context.Context, claims []bridgesync.Claim,
+	ctx context.Context,
+	claims []bridgesync.Claim,
+	unclaims []bridgesynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	if f.cfg.FullClaimsNeeded {
-		return converters.ConvertToImportedBridgeExits(
-			ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
+	// Build unclaim counts by GlobalIndex
+	unclaimCnt := make(map[string]int)
+	for _, u := range unclaims {
+		// Adjust accessor as needed:
+		//   - if GlobalIndex is uint64: key := strconv.FormatUint(u.GlobalIndex, 10)
+		//   - if it's *big.Int:         key := u.GlobalIndex.String()
+		//   - if it's a struct method:   key := u.GlobalIndex().String()
+		key := u.GlobalIndex.String()
+		unclaimCnt[key]++
 	}
 
-	return converters.ConvertToImportedBridgeExitsWithoutClaimData(claims)
+	// Build claim counts by GlobalIndex
+	claimCnt := make(map[string]int)
+	for _, c := range claims {
+		key := c.GlobalIndex.String()
+		claimCnt[key]++
+	}
+
+	// Compute how many claims should remain per index after cancelling unclaims
+	remaining := make(map[string]int, len(claimCnt))
+	for k, c := range claimCnt {
+		u := unclaimCnt[k]
+		if c > u {
+			remaining[k] = c - u
+		} else {
+			remaining[k] = 0
+		}
+	}
+
+	// Filter claims: keep in original order, but only as many as remaining[idx]
+	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
+	for _, c := range claims {
+		key := c.GlobalIndex.String()
+		if remaining[key] > 0 {
+			filteredClaims = append(filteredClaims, c)
+			remaining[key]--
+		}
+	}
+
+	if f.cfg.FullClaimsNeeded {
+		return converters.ConvertToImportedBridgeExits(
+			ctx, filteredClaims, rootFromWhichToProve, f.l1InfoTreeDataQuerier,
+		)
+	}
+	return converters.ConvertToImportedBridgeExitsWithoutClaimData(filteredClaims)
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
@@ -496,4 +552,41 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 		retryCount = lastSentCertificateInfo.RetryCount + 1
 	}
 	return lastSentBlock, retryCount
+}
+
+// adjustCertificateIfNonFinalizedClaims checks if any claims in the certificate parameters
+// contain non-finalized Global Exit Roots (GERs). If a non-finalized GER is found, it
+// adjusts the certificate parameters to exclude that block and all subsequent blocks by
+// resizing the certificate to the block before the non-finalized claim.
+//
+// The function iterates through all claims in the certificate parameters and verifies
+// each claim's Global Exit Root finalization status using the L1 info tree data querier.
+// When a non-finalized GER is encountered, the certificate is truncated at the block
+// number preceding the problematic claim to ensure all included claims are finalized.
+//
+// Parameters:
+//   - certParams: Certificate build parameters containing claims to be validated
+//
+// Returns:
+//   - *types.CertificateBuildParams: Adjusted certificate parameters if non-finalized
+//     claims are found, otherwise returns the original parameters
+//   - error: Error if GER finalization status check fails
+func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
+	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+	for _, c := range certParams.Claims {
+		isGERFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(
+			c.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+		if err != nil {
+			return nil, fmt.Errorf("error checking if GER %s is finalized: %w", c.GlobalExitRoot.String(), err)
+		}
+
+		if !isGERFinalized {
+			f.log.Warnf("found a non-finalized GER: %s on block: %d. "+
+				"Certificate will be resized to exclude it and all blocks after it",
+				c.GlobalExitRoot.String(), c.BlockNum)
+			return certParams.AdjustToBlock(c.BlockNum - 1)
+		}
+	}
+
+	return certParams, nil
 }

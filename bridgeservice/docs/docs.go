@@ -594,11 +594,6 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
                 },
-                "calldata": {
-                    "description": "Raw calldata submitted in the transaction",
-                    "type": "string",
-                    "example": "deadbeef"
-                },
                 "deposit_count": {
                     "description": "Count of total deposits processed so far for the given token/address",
                     "type": "integer",
@@ -913,11 +908,6 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1684500000
                 },
-                "calldata": {
-                    "description": "Raw calldata included in the migration transaction",
-                    "type": "string",
-                    "example": "0xdeadbeef"
-                },
                 "legacy_token_address": {
                     "description": "Legacy token address being migrated",
                     "type": "string",
@@ -1018,11 +1008,6 @@ const docTemplate = `{
                     "description": "Timestamp of the block containing the mapping event",
                     "type": "integer",
                     "example": 1684501234
-                },
-                "calldata": {
-                    "description": "Raw calldata submitted during the mapping",
-                    "type": "string",
-                    "example": "0xfeedface"
                 },
                 "is_not_mintable": {
                     "description": "Indicates whether the wrapped token is not mintable (true = not mintable)",

@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -77,27 +76,41 @@ func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context,
 	return &root, nil
 }
 
-// GetFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
-// l1InfoTreeData is:
-// - merkle proof of given l1 info tree leaf
-// - the leaf data of the highest index leaf on that block and root
-// - the root of the l1 info tree on that block
-func (l *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(ctx context.Context,
-) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error) {
-	root, leaf, err := l.GetLatestFinalizedL1InfoRoot(ctx)
+// GetFinalizedL1InfoTreeData retrieves the L1 info tree leaf and its merkle proof for a finalized L1 info tree state.
+// It takes the finalized L1 info tree root hash and leaf count to fetch the last leaf in the tree
+// and generate a merkle proof from that leaf to the specified root hash.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - finalizedL1InfoTreeRootHash: The root hash of the finalized L1 info tree
+//   - finalizedL1InfoTreeLeafCount: The total number of leaves in the finalized L1 info tree
+//
+// Returns:
+//   - treetypes.Proof: The merkle proof from the leaf to the root
+//   - *l1infotreesync.L1InfoTreeLeaf: The last leaf in the finalized tree
+//   - error: Any error that occurred during the operation
+func (l *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(
+	ctx context.Context,
+	finalizedL1InfoTreeRootHash common.Hash,
+	finalizedL1InfoTreeLeafCount uint32,
+) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, error) {
+	leafIndex := finalizedL1InfoTreeLeafCount - 1
+
+	leaf, err := l.GetInfoByIndex(ctx, leafIndex)
 	if err != nil {
-		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("error getting latest finalized L1 Info tree root: %w", err)
+		return treetypes.Proof{}, nil,
+			fmt.Errorf("error getting L1 Info tree leaf by index %d: %w", leafIndex, err)
 	}
 
-	proof, err := l.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx, root.Index, root.Hash)
+	proof, err := l.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
+		leafIndex, finalizedL1InfoTreeRootHash)
 	if err != nil {
-		return treetypes.Proof{}, nil, nil,
+		return treetypes.Proof{}, nil,
 			fmt.Errorf("error getting L1 Info tree merkle proof from index %d to root %s: %w",
-				root.Index, root.Hash.String(), err)
+				leafIndex, finalizedL1InfoTreeRootHash.String(), err)
 	}
 
-	return proof, leaf, root, nil
+	return proof, leaf, nil
 }
 
 // GetProofForGER returns the L1 Info tree leaf and the merkle proof for the given GER
@@ -117,27 +130,6 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 	}
 
 	return l1Info, gerToL1Proof, nil
-}
-
-// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
-func (l *L1InfoTreeDataQuerier) CheckIfClaimsArePartOfFinalizedL1InfoTree(
-	finalizedL1InfoTreeRoot *treetypes.Root,
-	claims []bridgesync.Claim) error {
-	for _, claim := range claims {
-		info, err := l.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
-		if err != nil {
-			return fmt.Errorf("error getting claim info by global exit root: %s: %w", claim.GlobalExitRoot, err)
-		}
-
-		if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
-			return fmt.Errorf("claim with global exit root: %s has L1 Info tree index: %d "+
-				"higher than the last finalized l1 info tree root: %s index: %d",
-				claim.GlobalExitRoot.String(), info.L1InfoTreeIndex,
-				finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
-		}
-	}
-
-	return nil
 }
 
 // getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
@@ -189,4 +181,20 @@ func (l *L1InfoTreeDataQuerier) GetInfoByIndex(
 		return nil, fmt.Errorf("no L1 Info tree leaf found for index %d", index)
 	}
 	return info, nil
+}
+
+// IsGERFinalized checks if the given global exit root is finalized
+func (l *L1InfoTreeDataQuerier) IsGERFinalized(
+	ger common.Hash,
+	finalizedL1InfoLeafCount uint32) (bool, error) {
+	info, err := l.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(ger)
+	if err != nil {
+		return false, fmt.Errorf("error getting info by global exit root: %w", err)
+	}
+
+	if info == nil {
+		return false, fmt.Errorf("no L1 Info tree leaf found for global exit root %s", ger.String())
+	}
+
+	return info.L1InfoTreeIndex <= finalizedL1InfoLeafCount-1, nil
 }

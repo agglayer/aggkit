@@ -535,7 +535,6 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
-				Calldata:           common.Hex2Bytes("efabcd"),
 			},
 		}
 
@@ -622,7 +621,6 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       1,
 				Metadata:           []byte("metadata"),
-				Calldata:           []byte{},
 			},
 		}
 
@@ -676,6 +674,42 @@ func TestGetBridgesHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetBridges invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{strconv.Itoa(mainnetNetworkID)},
+			pageNumberParam: []string{"foo"},
+		}
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
+	})
+
+	t.Run("GetBridges invalid deposit count parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{
+			networkIDParam:    []string{strconv.Itoa(mainnetNetworkID)},
+			depositCountParam: []string{"foo"},
+		}
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
+	})
+
+	t.Run("GetBridges invalid network ids parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{strconv.Itoa(mainnetNetworkID)},
+			networkIDsParam: []string{"foo", "bar"},
+		}
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
 	})
 
 	t.Run("GetBridges for L1 network with nil L1 syncer", func(t *testing.T) {
@@ -857,6 +891,47 @@ func TestGetClaimsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid network ids", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(networkIDsParam, "foo,bar")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid global index", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(globalIndexParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
+	})
+
+	t.Run("GetClaims for L2 network failed invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		query.Set(pageNumberParam, "invalid")
+		query.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
 	})
 
 	t.Run("GetClaims for L1 network with include_all_fields=true", func(t *testing.T) {
@@ -1132,7 +1207,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            common.Hex2Bytes("abcd"),
-				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
@@ -1171,7 +1245,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            []byte("metadata"),
-				Calldata:            []byte{},
 				Type:                bridgetypes.SovereignToken,
 				IsNotMintable:       true,
 			},
@@ -1263,7 +1336,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress(originTokenAddr),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            common.Hex2Bytes("abcd"),
-				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
@@ -1305,7 +1377,6 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress(originTokenAddr),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            []byte("metadata"),
-				Calldata:            []byte{},
 				Type:                bridgetypes.SovereignToken,
 				IsNotMintable:       true,
 			},
@@ -1389,7 +1460,6 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 				LegacyTokenAddress:  common.HexToAddress("0x3"),
 				UpdatedTokenAddress: common.HexToAddress("0x4"),
 				Amount:              big.NewInt(100),
-				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 		tokenMigrationsResp := aggkitcommon.MapSlice(tokenMigrations, NewTokenMigrationResponse)
@@ -2793,7 +2863,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
 
-			require.True(t, result)
+			require.Equal(t, http.StatusOK, result)
 			require.Equal(t, http.StatusOK, w.Code)
 			require.Equal(t, tc.contractCount, networkInfo.ContractDepositCount)
 			require.Equal(t, tc.bridgeCount, networkInfo.SynchronizedDepositCount)
@@ -2855,7 +2925,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
 
-			require.False(t, result)
+			require.Equal(t, tc.expectedStatusCode, result)
 			require.Equal(t, tc.expectedStatusCode, w.Code)
 
 			var response gin.H

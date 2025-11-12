@@ -74,15 +74,15 @@ type EpochNotifierPerBlock struct {
 	lastStartingEpochBlock uint64
 
 	Config ConfigEpochNotifierPerBlock
-	types.GenericSubscriber[types.EpochEvent]
+	aggkitcommon.PubSub[types.EpochEvent]
 }
 
 func NewEpochNotifierPerBlock(blockNotifier types.BlockNotifier,
 	logger aggkitcommon.Logger,
 	config ConfigEpochNotifierPerBlock,
-	subscriber types.GenericSubscriber[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
+	subscriber aggkitcommon.PubSub[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
 	if subscriber == nil {
-		subscriber = NewGenericSubscriberImpl[types.EpochEvent]()
+		subscriber = aggkitcommon.NewGenericSubscriber[types.EpochEvent]()
 	}
 
 	err := config.Validate()
@@ -94,7 +94,7 @@ func NewEpochNotifierPerBlock(blockNotifier types.BlockNotifier,
 		logger:                 logger,
 		lastStartingEpochBlock: config.StartingEpochBlock,
 		Config:                 config,
-		GenericSubscriber:      subscriber,
+		PubSub:                 subscriber,
 	}, nil
 }
 

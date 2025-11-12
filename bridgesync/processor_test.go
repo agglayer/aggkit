@@ -2647,7 +2647,6 @@ func createTestBridge(blockNum uint64, blockPos int) *Bridge {
 		BlockTimestamp:     1234567890,
 		TxHash:             common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
 		FromAddress:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		Calldata:           []byte{},
 		LeafType:           1,
 		OriginNetwork:      1,
 		OriginAddress:      common.HexToAddress("0x1234567890123456789012345678901234567890"),
@@ -2672,8 +2671,8 @@ func createTestClaim(blockNum uint64, blockPos int) *Claim {
 		OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		Amount:              big.NewInt(1000000000000000000),
-		ProofLocalExitRoot:  [32]common.Hash{},
-		ProofRollupExitRoot: [32]common.Hash{},
+		ProofLocalExitRoot:  [common.HashLength]common.Hash{},
+		ProofRollupExitRoot: [common.HashLength]common.Hash{},
 		MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
 		RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
 		GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
@@ -2695,7 +2694,6 @@ func createTestTokenMapping(blockNum uint64, blockPos int) *TokenMapping {
 		WrappedTokenAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		Metadata:            []byte{},
 		IsNotMintable:       false,
-		Calldata:            []byte{},
 		Type:                0,
 	}
 }
@@ -2711,7 +2709,6 @@ func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenM
 		LegacyTokenAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		UpdatedTokenAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		Amount:              big.NewInt(1000000000000000000),
-		Calldata:            []byte{},
 	}
 }
 

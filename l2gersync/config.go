@@ -16,6 +16,8 @@ type Config struct {
 	InitialBlockNum uint64 `mapstructure:"InitialBlockNum"`
 	// GlobalExitRootL2Addr is the address of the GER smart contract on L2
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2Addr"`
+	// GlobalExitRootL1Addr is the address of the GER smart contract on L1
+	GlobalExitRootL1Addr common.Address `mapstructure:"GlobalExitRootL1Addr"`
 	// SyncBlockChunkSize is the maximum block range downloaded at once
 	SyncBlockChunkSize uint64 `mapstructure:"SyncBlockChunkSize"`
 	// RetryAfterErrorPeriod is the time that will be waited when an unexpected error happens before retry

@@ -1,6 +1,8 @@
 package bridgesync
 
 import (
+	"fmt"
+
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,4 +33,12 @@ type Config struct {
 	// DBQueryTimeout is the timeout for database operations (queries, transactions)
 	// This is separate from HTTP timeouts to allow database operations more time when needed
 	DBQueryTimeout types.Duration `mapstructure:"DBQueryTimeout"`
+}
+
+// Validate checks if the configuration is valid
+func (c Config) Validate() error {
+	if err := c.BlockFinality.Validate(); err != nil {
+		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
+	}
+	return nil
 }

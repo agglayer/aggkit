@@ -56,10 +56,42 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		L1InfoTreeLeaf:     l1infotreesync.L1InfoTreeLeaf{},
 		L1InfoTreeMerkleProof: agglayer.MerkleProof{
 			Root:  common.Hash{},
-			Proof: [32]common.Hash{},
+			Proof: [common.HashLength]common.Hash{},
 		},
 		GERLeavesWithBlockNumber:           nil,
 		ImportedBridgeExitsWithBlockNumber: nil,
+		RemovedGERs: []*agglayer.RemovedGER{
+			{
+				GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+				BlockNumber:    150,
+				LogIndex:       1,
+			},
+			{
+				GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				BlockNumber:    175,
+				LogIndex:       2,
+			},
+		},
+		Unclaims: []*agglayer.Unclaim{
+			{
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: true,
+					RollupIndex: 1,
+					LeafIndex:   1,
+				},
+				BlockNumber: 160,
+				LogIndex:    3,
+			},
+			{
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: false,
+					RollupIndex: 2,
+					LeafIndex:   2,
+				},
+				BlockNumber: 185,
+				LogIndex:    4,
+			},
+		},
 	}
 
 	result, err := client.GenerateAggchainProof(context.Background(), request)
@@ -96,7 +128,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 		},
 		L1InfoTreeMerkleProof: agglayer.MerkleProof{
 			Root:  common.HexToHash("0x3"),
-			Proof: [32]common.Hash{common.HexToHash("0x4")},
+			Proof: [common.HashLength]common.Hash{common.HexToHash("0x4")},
 		},
 		GERLeavesWithBlockNumber: map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
 			common.HexToHash("0x5"): {
@@ -104,7 +136,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 				ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
 					ProofGERToL1Root: &agglayer.MerkleProof{
 						Root:  common.HexToHash("0x8"),
-						Proof: [32]common.Hash{common.HexToHash("0x9")},
+						Proof: [common.HashLength]common.Hash{common.HexToHash("0x9")},
 					},
 					L1Leaf: &agglayer.L1InfoTreeLeaf{
 						Inner: &agglayer.L1InfoTreeLeafInner{
@@ -205,6 +237,38 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 						},
 					},
 				},
+			},
+		},
+		RemovedGERs: []*agglayer.RemovedGER{
+			{
+				GlobalExitRoot: common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
+				BlockNumber:    350,
+				LogIndex:       5,
+			},
+			{
+				GlobalExitRoot: common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				BlockNumber:    375,
+				LogIndex:       6,
+			},
+		},
+		Unclaims: []*agglayer.Unclaim{
+			{
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: true,
+					RollupIndex: 3,
+					LeafIndex:   3,
+				},
+				BlockNumber: 360,
+				LogIndex:    7,
+			},
+			{
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: false,
+					RollupIndex: 4,
+					LeafIndex:   4,
+				},
+				BlockNumber: 385,
+				LogIndex:    8,
 			},
 		},
 	}

@@ -40,28 +40,28 @@ type BlockNotifierPolling struct {
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
 	lastStatus    *blockNotifierPollingInternalStatus
-	types.GenericSubscriber[types.EventNewBlock]
+	aggkitcommon.PubSub[types.EventNewBlock]
 }
 
 // NewBlockNotifierPolling creates a new BlockNotifierPolling.
-// if param `subscriber` is nil a new GenericSubscriberImpl[types.EventNewBlock] will be created.
+// if param `subscriber` is nil a new GenericSubscriber[types.EventNewBlock] will be created.
 // To use this class you need to subscribe and each time that a new block appear the subscriber
 // will be notified through the channel. (check unit tests TestExploratoryBlockNotifierPolling
 // for more information)
 func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	config ConfigBlockNotifierPolling,
 	logger aggkitcommon.Logger,
-	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {
+	subscriber aggkitcommon.PubSub[types.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
-		subscriber = NewGenericSubscriberImpl[types.EventNewBlock]()
+		subscriber = aggkitcommon.NewGenericSubscriber[types.EventNewBlock]()
 	}
 
 	return &BlockNotifierPolling{
-		ethClient:         ethClient,
-		blockFinality:     config.BlockFinalityType,
-		logger:            logger,
-		config:            config,
-		GenericSubscriber: subscriber,
+		ethClient:     ethClient,
+		blockFinality: config.BlockFinalityType,
+		logger:        logger,
+		config:        config,
+		PubSub:        subscriber,
 	}, nil
 }
 

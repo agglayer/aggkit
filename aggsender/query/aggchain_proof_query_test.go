@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -225,6 +226,7 @@ func TestGenerateOptimisticAggchainProof(t *testing.T) {
 				optimisticSigner,
 				lerQuery,
 				nil, // gerQuerier
+				nil, // bridgeQuerier
 			)
 
 			proof, err := query.generateOptimisticAggchainProof(ctx, tc.buildParams, tc.request)
@@ -249,80 +251,55 @@ func TestGenerateAggchainProof(t *testing.T) {
 		mockFn func(
 			*mocks.AggchainProofClientInterface,
 			*mocks.L1InfoTreeDataQuerier,
-			*mocks.GERQuerier)
+			*mocks.GERQuerier,
+			*mocks.BridgeQuerier)
 		lastProvenBlock uint64
 		buildParams     *types.CertificateBuildParams
 		expectedProof   *types.AggchainProof
-		expectedRoot    *treetypes.Root
 		expectedError   string
 	}{
 		{
 			name:            "error getting finalized L1 info tree data",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 1, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1")},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
-				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, nil, nil, errors.New("some error"))
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
+				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x1"), uint32(1)).Return(treetypes.Proof{}, nil, errors.New("some error"))
 			},
 			expectedError: "aggchainProverFlow - error getting finalized L1 Info tree data: some error",
 		},
 		{
-			name:            "error checking claims in finalized L1 info tree root",
-			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{Claims: []bridgesync.Claim{{}}},
-			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
-				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
-				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
-					treetypes.Proof{},
-					&l1infotreesync.L1InfoTreeLeaf{},
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
-					nil)
-				l1InfoTreeDataQuerier.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
-					[]bridgesync.Claim{{}},
-				).Return(errors.New("some error"))
-			},
-			expectedError: "aggchainProverFlow - error checking if claims are part of finalized L1 Info tree root",
-		},
-		{
 			name:            "error getting injected GERs",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{ToBlock: 200, Claims: []bridgesync.Claim{{}}},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"), ToBlock: 200, Claims: []bridgesync.Claim{{}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
-				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
+				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x1"), uint32(2)).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
 					nil)
-				l1InfoTreeDataQuerier.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
-					[]bridgesync.Claim{{}},
-				).Return(nil)
-				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, errors.New("some error"))
+				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, common.HexToHash("0x1"), uint64(101), uint64(200)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "aggchainProverFlow - error getting injected GERs proofs: some error",
 		},
 		{
 			name:            "error getting aggchain proof",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
-				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
+				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x123"), uint32(2)).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
 					nil)
-				l1InfoTreeDataQuerier.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
-					[]bridgesync.Claim{{GlobalIndex: big.NewInt(1)}},
-				).Return(nil)
-				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
+				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, common.HexToHash("0x123"), uint64(101), uint64(200)).Return(nil, nil)
+				gerQuerier.EXPECT().GetRemovedGERsForRange(ctx, uint64(101), uint64(200)).Return(nil, nil)
 				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(nil, errors.New("aggchain proof error"))
 			},
@@ -331,30 +308,23 @@ func TestGenerateAggchainProof(t *testing.T) {
 		{
 			name:            "success",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
-				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
+				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x123"), uint32(2)).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
 					nil)
-				l1InfoTreeDataQuerier.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1},
-					[]bridgesync.Claim{{GlobalIndex: big.NewInt(1)}},
-				).Return(nil)
-				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
+				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, common.HexToHash("0x123"), uint64(101), uint64(200)).Return(nil, nil)
+				gerQuerier.EXPECT().GetRemovedGERsForRange(ctx, uint64(101), uint64(200)).Return(nil, nil)
 				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(&types.AggchainProof{
 						LastProvenBlock: 100,
 						EndBlock:        200,
 						SP1StarkProof:   &types.SP1StarkProof{},
 					}, nil)
-			},
-			expectedRoot: &treetypes.Root{
-				Hash:  common.HexToHash("0x123"),
-				Index: 1,
 			},
 			expectedProof: &types.AggchainProof{
 				LastProvenBlock: 100,
@@ -373,8 +343,9 @@ func TestGenerateAggchainProof(t *testing.T) {
 			aggchainProofClient := mocks.NewAggchainProofClientInterface(t)
 			l1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			gerQuerier := mocks.NewGERQuerier(t)
+			bridgeQuerier := mocks.NewBridgeQuerier(t)
 			if tc.mockFn != nil {
-				tc.mockFn(aggchainProofClient, l1InfoTreeDataQuerier, gerQuerier)
+				tc.mockFn(aggchainProofClient, l1InfoTreeDataQuerier, gerQuerier, bridgeQuerier)
 			}
 
 			log := log.WithFields("aggchain_proof_query", "TestGenerateAggchainProof")
@@ -385,16 +356,214 @@ func TestGenerateAggchainProof(t *testing.T) {
 				nil, // optimisticSigner
 				nil, // lerQuerier
 				gerQuerier,
+				bridgeQuerier,
 			)
 
-			proof, root, err := query.GenerateAggchainProof(ctx, tc.lastProvenBlock, tc.buildParams.ToBlock, tc.buildParams)
+			proof, err := query.GenerateAggchainProof(ctx, tc.lastProvenBlock, tc.buildParams.ToBlock, tc.buildParams)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedProof, proof)
-				require.Equal(t, tc.expectedRoot, root)
 			}
 		})
+	}
+}
+
+func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		unclaims         []bridgesynctypes.Unclaim
+		expectedUnclaims []*agglayertypes.Unclaim
+		expectedError    string
+	}{
+		{
+			name:             "empty map",
+			unclaims:         []bridgesynctypes.Unclaim{},
+			expectedUnclaims: []*agglayertypes.Unclaim{},
+		},
+		{
+			name: "single unclaim with mainnet flag true",
+			unclaims: []bridgesynctypes.Unclaim{
+				{
+					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 5),
+					BlockNumber: 100,
+					LogIndex:    2,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: true,
+						RollupIndex: 0,
+						LeafIndex:   5,
+					},
+					BlockNumber: 100,
+					LogIndex:    2,
+				},
+			},
+		},
+		{
+			name: "single unclaim with mainnet flag false and rollup index",
+			unclaims: []bridgesynctypes.Unclaim{
+				{
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 3, 7),
+					BlockNumber: 200,
+					LogIndex:    1,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 3,
+						LeafIndex:   7,
+					},
+					BlockNumber: 200,
+					LogIndex:    1,
+				},
+			},
+		},
+		{
+			name: "multiple unclaims with different configurations",
+			unclaims: []bridgesynctypes.Unclaim{
+				{
+					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
+					BlockNumber: 100,
+					LogIndex:    0,
+				},
+				{
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 5, 10),
+					BlockNumber: 150,
+					LogIndex:    3,
+				},
+				{
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 0, 0),
+					BlockNumber: 200,
+					LogIndex:    1,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: true,
+						RollupIndex: 0,
+						LeafIndex:   1,
+					},
+					BlockNumber: 100,
+					LogIndex:    0,
+				},
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 5,
+						LeafIndex:   10,
+					},
+					BlockNumber: 150,
+					LogIndex:    3,
+				},
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 0,
+						LeafIndex:   0,
+					},
+					BlockNumber: 200,
+					LogIndex:    1,
+				},
+			},
+		},
+		{
+			name: "unclaim with zero global index",
+			unclaims: []bridgesynctypes.Unclaim{
+				{
+					GlobalIndex: big.NewInt(0),
+					BlockNumber: 100,
+					LogIndex:    0,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 0,
+						LeafIndex:   0,
+					},
+					BlockNumber: 100,
+					LogIndex:    0,
+				},
+			},
+		},
+		{
+			name: "unclaim with large values",
+			unclaims: []bridgesynctypes.Unclaim{
+				{
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 4294967295, 4294967295), // max uint32 values
+					BlockNumber: 999999,
+					LogIndex:    65535,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 4294967295,
+						LeafIndex:   4294967295,
+					},
+					BlockNumber: 999999,
+					LogIndex:    65535,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := log.WithFields("aggchain_proof_query", "TestConvertUnclaimsToAgglayerUnclaims")
+			query := &aggchainProofQuery{
+				log: log,
+			}
+
+			unclaims, err := query.convertUnclaimsToAgglayerUnclaims(tc.unclaims)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				require.Nil(t, unclaims)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, unclaims, len(tc.expectedUnclaims))
+
+				// Sort both slices by BlockNumber for consistent comparison
+				// since map iteration order is not guaranteed
+				sortUnclaimsByBlockNumber(t, unclaims)
+				sortUnclaimsByBlockNumber(t, tc.expectedUnclaims)
+
+				for i, expected := range tc.expectedUnclaims {
+					require.Equal(t, expected.GlobalIndex.MainnetFlag, unclaims[i].GlobalIndex.MainnetFlag)
+					require.Equal(t, expected.GlobalIndex.RollupIndex, unclaims[i].GlobalIndex.RollupIndex)
+					require.Equal(t, expected.GlobalIndex.LeafIndex, unclaims[i].GlobalIndex.LeafIndex)
+					require.Equal(t, expected.BlockNumber, unclaims[i].BlockNumber)
+					require.Equal(t, expected.LogIndex, unclaims[i].LogIndex)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to sort unclaims by BlockNumber for consistent comparison
+func sortUnclaimsByBlockNumber(t *testing.T, unclaims []*agglayertypes.Unclaim) {
+	t.Helper()
+
+	for i := 0; i < len(unclaims); i++ {
+		for j := i + 1; j < len(unclaims); j++ {
+			if unclaims[i].BlockNumber > unclaims[j].BlockNumber {
+				unclaims[i], unclaims[j] = unclaims[j], unclaims[i]
+			}
+		}
 	}
 }

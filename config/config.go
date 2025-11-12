@@ -45,8 +45,6 @@ const (
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
 
-	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
-		"config file as polygonBridgeAddr."
 	l2URLHint                = "Use L2URL instead"
 	bridgeMetadataAsHashHint = "BridgeMetaDataAsHash is deprecated, remove it from configuration " +
 		"(bridge metadata is always stored as hash)"
@@ -66,13 +64,14 @@ const (
 	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
 	aggOracleBlockFinalityDeprecated       = "AggOracle.BlockFinality is deprecated, remove it from configuration"
-	l1InfoTreeSyncBlockFinalityDeprecated  = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
 	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
+	networkIDDeprecatedHint = "Common.NetworkID is deprecated, remove it from configuration"
+	urlRPCL1DeprecatedHint  = "URLRPCL1 field is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -106,14 +105,6 @@ type DeprecatedField struct {
 
 var (
 	deprecatedFieldsOnConfig = []DeprecatedField{
-		{
-			FieldNamePattern: "L1Config.polygonBridgeAddr",
-			Reason:           bridgeAddrSetOnWrongSection,
-		},
-		{
-			FieldNamePattern: "L2Config.polygonBridgeAddr",
-			Reason:           bridgeAddrSetOnWrongSection,
-		},
 		{
 			FieldNamePattern: "AggOracle.EVMSender.URLRPCL2",
 			Reason:           l2URLHint,
@@ -191,10 +182,6 @@ var (
 			Reason:           aggOracleBlockFinalityDeprecated,
 		},
 		{
-			FieldNamePattern: "L1InfoTreeSync.BlockFinality",
-			Reason:           l1InfoTreeSyncBlockFinalityDeprecated,
-		},
-		{
 			FieldNamePattern: "LastGERSync.SyncMode",
 			Reason:           lastGERSyncSyncModeDeprecatedHint,
 		},
@@ -221,6 +208,22 @@ var (
 		{
 			FieldNamePattern: "AggSender.KeepCertificatesHistory",
 			Reason:           "field moved to AggSender.StorageRetainCertificatesPolicy.KeepCertificatesHistory",
+		},
+		{
+			FieldNamePattern: "Common.NetworkID",
+			Reason:           networkIDDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Common.NetworkID",
+			Reason:           networkIDDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggOracle.URLRPCL1",
+			Reason:           urlRPCL1DeprecatedHint,
+		},
+		{
+			FieldNamePattern: "L1InfoTreeSync.URLRPCL1",
+			Reason:           urlRPCL1DeprecatedHint,
 		},
 	}
 )

@@ -221,6 +221,32 @@ sequenceDiagram
     Note right of User: Bridge process completed successfully
 ```
 
+## Prometheus Metrics
+
+The bridge service exposes several Prometheus metrics to track the number of handled requests and their latencies for different API endpoints.
+These metrics help monitor service performance, request volume, and latency distribution across various handlers.
+Each handler is described with a unique handler id and these are the values, depending of what data they are providing:
+- `get_bridges`,
+- `get_claims`,
+- `get_token_mappings`,
+- `get_legacy_token_migrations`,
+- `l1_info_tree_index_for_bridge`,
+- `injected_info_after_index`,
+- `claim_proof`,
+- `last_reorg_event`,
+- `get_sync_status`,
+- `health_check`,
+
+| **Metric Name** | **Type** | **Description** |
+| --- | --- | --- |
+| `bridge_total_requests` | CounterVec | Total number of requests handled per endpoint (`handler_id`) and HTTP status code (`status_code`). |
+| `bridge_request_latency_seconds` | HistogramVec | Latency of requests in seconds, recorded per endpoint (`handler_id`). Useful for analyzing request duration distributions. |
+
+### Usage Notes
+
+All metrics are counters, meaning they only increase over time.
+Each metric helps monitor usage and performance of its corresponding API endpoint.
+
 ## API Documentation
 
 <iframe src="assets/swagger/bridge_service/index.html" 

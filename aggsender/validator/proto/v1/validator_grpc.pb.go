@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	AggsenderValidator_HealthCheck_FullMethodName         = "/aggkit.aggsender.validator.v1.AggsenderValidator/HealthCheck"
 	AggsenderValidator_ValidateCertificate_FullMethodName = "/aggkit.aggsender.validator.v1.AggsenderValidator/ValidateCertificate"
+	AggsenderValidator_ValidateGER_FullMethodName         = "/aggkit.aggsender.validator.v1.AggsenderValidator/ValidateGER"
 )
 
 // AggsenderValidatorClient is the client API for AggsenderValidator service.
@@ -32,6 +33,8 @@ type AggsenderValidatorClient interface {
 	HealthCheck(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 	// Method to validate a new certificate
 	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*ValidateCertificateResponse, error)
+	// Method to validate a Global Exit Root
+	ValidateGER(ctx context.Context, in *ValidateGERRequest, opts ...grpc.CallOption) (*ValidateGERResponse, error)
 }
 
 type aggsenderValidatorClient struct {
@@ -60,6 +63,15 @@ func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *aggsenderValidatorClient) ValidateGER(ctx context.Context, in *ValidateGERRequest, opts ...grpc.CallOption) (*ValidateGERResponse, error) {
+	out := new(ValidateGERResponse)
+	err := c.cc.Invoke(ctx, AggsenderValidator_ValidateGER_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AggsenderValidatorServer is the server API for AggsenderValidator service.
 // All implementations must embed UnimplementedAggsenderValidatorServer
 // for forward compatibility
@@ -68,6 +80,8 @@ type AggsenderValidatorServer interface {
 	HealthCheck(context.Context, *emptypb.Empty) (*HealthCheckResponse, error)
 	// Method to validate a new certificate
 	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error)
+	// Method to validate a Global Exit Root
+	ValidateGER(context.Context, *ValidateGERRequest) (*ValidateGERResponse, error)
 	mustEmbedUnimplementedAggsenderValidatorServer()
 }
 
@@ -80,6 +94,9 @@ func (UnimplementedAggsenderValidatorServer) HealthCheck(context.Context, *empty
 }
 func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateCertificate not implemented")
+}
+func (UnimplementedAggsenderValidatorServer) ValidateGER(context.Context, *ValidateGERRequest) (*ValidateGERResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateGER not implemented")
 }
 func (UnimplementedAggsenderValidatorServer) mustEmbedUnimplementedAggsenderValidatorServer() {}
 
@@ -130,6 +147,24 @@ func _AggsenderValidator_ValidateCertificate_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AggsenderValidator_ValidateGER_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateGERRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AggsenderValidatorServer).ValidateGER(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AggsenderValidator_ValidateGER_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AggsenderValidatorServer).ValidateGER(ctx, req.(*ValidateGERRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AggsenderValidator_ServiceDesc is the grpc.ServiceDesc for AggsenderValidator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -144,6 +179,10 @@ var AggsenderValidator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ValidateCertificate",
 			Handler:    _AggsenderValidator_ValidateCertificate_Handler,
+		},
+		{
+			MethodName: "ValidateGER",
+			Handler:    _AggsenderValidator_ValidateGER_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

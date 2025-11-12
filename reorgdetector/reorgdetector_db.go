@@ -15,7 +15,7 @@ import (
 // getTrackedBlocks returns a list of tracked blocks for each subscriber from db
 func (rd *ReorgDetector) getTrackedBlocks() (map[string]*headersList, error) {
 	trackedBlocks := make(map[string]*headersList, 0)
-	var headersWithID []*headerWithSubscriberID
+	var headersWithID []*HeaderWithSubscriberID
 	err := meddler.QueryAll(rd.db, &headersWithID, "SELECT * FROM tracked_block ORDER BY subscriber_id;")
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -27,7 +27,7 @@ func (rd *ReorgDetector) getTrackedBlocks() (map[string]*headersList, error) {
 		return trackedBlocks, nil
 	}
 	currentID := headersWithID[0].SubscriberID
-	currentHeaders := []header{}
+	currentHeaders := []Header{}
 	for _, row := range headersWithID {
 		// If the subscriber ID changes, save the current group
 		if row.SubscriberID != currentID {
@@ -36,7 +36,7 @@ func (rd *ReorgDetector) getTrackedBlocks() (map[string]*headersList, error) {
 			currentHeaders = nil
 		}
 
-		currentHeaders = append(currentHeaders, header{
+		currentHeaders = append(currentHeaders, Header{
 			Num:  row.Num,
 			Hash: row.Hash,
 		})
@@ -49,7 +49,7 @@ func (rd *ReorgDetector) getTrackedBlocks() (map[string]*headersList, error) {
 }
 
 // saveTrackedBlock saves the tracked block for a subscriber in db and in memory
-func (rd *ReorgDetector) saveTrackedBlock(id string, b header) error {
+func (rd *ReorgDetector) saveTrackedBlock(id string, b Header) error {
 	rd.trackedBlocksLock.Lock()
 	hdrs, ok := rd.trackedBlocks[id]
 	if !ok || hdrs.isEmpty() {
@@ -62,7 +62,7 @@ func (rd *ReorgDetector) saveTrackedBlock(id string, b header) error {
 	rd.log.Debugf("Tracking block %d for subscriber %s", b.Num, id)
 
 	rd.trackedBlocksLock.Unlock()
-	return meddler.Insert(rd.db, "tracked_block", &headerWithSubscriberID{
+	return meddler.Insert(rd.db, "tracked_block", &HeaderWithSubscriberID{
 		SubscriberID: id,
 		Num:          b.Num,
 		Hash:         b.Hash,

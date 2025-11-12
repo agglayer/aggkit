@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -9,8 +10,10 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -100,6 +103,7 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
+	SubscribeToSync(subscriberID string) <-chan sync.Block
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -112,12 +116,22 @@ type BridgeQuerier interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
+	GetUnsetClaimsForBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
+	GetRemovedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
+}
+
+// AgglayerBridgeL2Reader is an interface defining functions that an AgglayerBridgeL2Reader should implement
+type AgglayerBridgeL2Reader interface {
+	GetUnsetClaimsForBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -131,31 +145,37 @@ type L1InfoTreeDataQuerier interface {
 	// l1InfoTreeData is:
 	// - merkle proof of given l1 info tree leaf
 	// - the leaf data of the highest index leaf on that block and root
-	// - the root of the l1 info tree on that block
-	GetFinalizedL1InfoTreeData(ctx context.Context,
-	) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error)
+	GetFinalizedL1InfoTreeData(
+		ctx context.Context,
+		finalizedL1InfoTreeRootHash common.Hash,
+		finalizedL1InfoTreeLeafCount uint32,
+	) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, error)
 
 	// GetProofForGER returns the L1 Info tree leaf and the merkle proof for the given GER
 	GetProofForGER(ctx context.Context, ger, rootFromWhichToProve common.Hash) (
 		*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error)
-
-	// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
-	CheckIfClaimsArePartOfFinalizedL1InfoTree(
-		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
 
 	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 
 	// GetInfoByIndex returns the L1 Info tree leaf for the given index
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+
+	// IsGERFinalized checks if the given global exit root is finalized
+	IsGERFinalized(
+		ger common.Hash,
+		finalizedL1InfoLeafCount uint32,
+	) (bool, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement
 type GERQuerier interface {
 	GetInjectedGERsProofs(
 		ctx context.Context,
-		finalizedL1InfoTreeRoot *treetypes.Root,
+		finalizedL1InfoTreeRootHash common.Hash,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
+	GetRemovedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
 }
 
 // Logger is an interface that defines the methods to log messages
@@ -174,7 +194,7 @@ type Logger interface {
 
 // CertificateStatusChecker is an interface defining functions that a CertificateStatusChecker should implement
 type CertificateStatusChecker interface {
-	CheckPendingCertificatesStatus(ctx context.Context) CertStatus
+	CheckPeriodicallyStatus(ctx context.Context) (CertStatus, error)
 	CheckInitialStatus(
 		ctx context.Context,
 		delayBetweenRetries time.Duration,
@@ -279,7 +299,7 @@ type AggchainProofQuerier interface {
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
 		certBuildParams *CertificateBuildParams,
-	) (*AggchainProof, *treetypes.Root, error)
+	) (*AggchainProof, error)
 }
 
 // MultisigContract is an abstraction for Multisig smart contract
@@ -327,11 +347,11 @@ type FEPContractQuerier interface {
 	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
 	OptimisticMode(opts *bind.CallOpts) (bool, error)
-	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([32]byte, error)
-	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [32]byte) (struct {
-		AggregationVkey     [32]byte
-		RangeVkeyCommitment [32]byte
-		RollupConfigHash    [32]byte
+	SelectedOpSuccinctConfigName(opts *bind.CallOpts) ([common.HashLength]byte, error)
+	OpSuccinctConfigs(opts *bind.CallOpts, arg0 [common.HashLength]byte) (struct {
+		AggregationVkey     [common.HashLength]byte
+		RangeVkeyCommitment [common.HashLength]byte
+		RollupConfigHash    [common.HashLength]byte
 	}, error)
 }
 
@@ -352,4 +372,18 @@ type FEPInputsQuerier interface {
 	GetAggchainParams(
 		lastProvenBlock, requestedEndBlock uint64,
 		l1InfoTreeLeafHash common.Hash) (*AggchainParams, error)
+}
+
+// CertificateTriggerEvent represents an event that triggers certificate sending actions.
+// This can be expanded in the future to include more specific methods or properties
+type CertificateTriggerEvent interface {
+	fmt.Stringer
+}
+
+// CertificateSendTrigger is an interface that defines methods for setting up and managing
+// certificate sending triggers based on specific events.
+type CertificateSendTrigger interface {
+	Setup(ctx context.Context)
+	Status() string
+	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
 }

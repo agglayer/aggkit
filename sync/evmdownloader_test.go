@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -360,29 +362,108 @@ func TestWaitForNewBlocks(t *testing.T) {
 	// at first attempt
 	currentBlock := uint64(5)
 	expectedBlock := uint64(6)
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil)
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock := d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
 	// 2 iterations
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil)
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(5),
 	}, nil).Once()
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil) - second iteration
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
 
 	// after error from client
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(nil, errors.New("foo")).Once()
-	clientMock.On("HeaderByNumber", ctx, mock.Anything).Return(&types.Header{
+	// First call to get latest block header (with nil) - returns error
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, errors.New("foo")).Once()
+	// First call to get latest block header (with nil) - retry after error
+	clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
 		Number: big.NewInt(6),
 	}, nil).Once()
 	actualBlock = d.WaitForNewBlocks(ctx, currentBlock)
 	assert.Equal(t, expectedBlock, actualBlock)
+}
+
+func TestWaitForNewBlocksWithReorgDetection(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("reorg detected - different hash", func(t *testing.T) {
+		rh := &RetryHandler{
+			MaxRetryAttemptsAfterError: 5,
+			RetryAfterErrorPeriod:      time.Millisecond,
+		}
+		clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+		reorgDetectorMock := NewReorgDetectorMock(t)
+
+		d, err := NewEVMDownloader("test",
+			clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
+			buildAppender(), []common.Address{contractAddr}, rh,
+			aggkittypes.FinalizedBlock,
+			reorgDetectorMock, "test-reorg-detector-id",
+		)
+		require.NoError(t, err)
+
+		latestSyncedBlock := uint64(5)
+		currentBlockNumber := uint64(4)
+
+		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
+
+		headerHash := latestHeader.Hash()
+		trackedBlock := &reorgdetector.Header{Hash: common.HexToHash("0x456")}
+
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(trackedBlock, nil).Once()
+		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber, headerHash).Return(nil).Once()
+
+		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
+		assert.Equal(t, uint64(4), actualBlock)
+
+		reorgDetectorMock.AssertExpectations(t)
+		clientMock.AssertExpectations(t)
+	})
+
+	t.Run("reorg detector error", func(t *testing.T) {
+		rh := &RetryHandler{
+			MaxRetryAttemptsAfterError: 5,
+			RetryAfterErrorPeriod:      time.Millisecond,
+		}
+		clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
+		reorgDetectorMock := NewReorgDetectorMock(t)
+
+		d, err := NewEVMDownloader("test",
+			clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
+			buildAppender(), []common.Address{contractAddr}, rh,
+			aggkittypes.FinalizedBlock,
+			reorgDetectorMock, "test-reorg-detector-id",
+		)
+		require.NoError(t, err)
+
+		latestSyncedBlock := uint64(5)
+		currentBlockNumber := uint64(5)
+
+		latestHeader := &types.Header{Number: big.NewInt(int64(currentBlockNumber))}
+		latestHeaderNext := &types.Header{Number: big.NewInt(int64(currentBlockNumber + 1))}
+
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeader, nil).Once()
+		reorgDetectorMock.EXPECT().GetTrackedBlockByBlockNumber("test-reorg-detector-id", currentBlockNumber).Return(nil, errors.New("database error")).Once()
+		clientMock.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(latestHeaderNext, nil).Once()
+		headerHashNext := latestHeaderNext.Hash()
+		reorgDetectorMock.EXPECT().AddBlockToTrack(ctx, "test-reorg-detector-id", currentBlockNumber+1, headerHashNext).Return(nil).Once()
+
+		actualBlock := d.WaitForNewBlocks(ctx, latestSyncedBlock)
+		assert.Equal(t, uint64(6), actualBlock)
+
+		reorgDetectorMock.AssertExpectations(t)
+		clientMock.AssertExpectations(t)
+	})
 }
 
 func TestGetBlockHeader(t *testing.T) {
@@ -400,29 +481,29 @@ func TestGetBlockHeader(t *testing.T) {
 	}
 
 	// at first attempt
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled := d.GetBlockHeader(ctx, blockNum)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
 
 	// after error from client
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(nil, errors.New("foo")).Once()
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(nil, errors.New("foo")).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled = d.GetBlockHeader(ctx, blockNum)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
 
 	// header not found default
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled = d.GetBlockHeader(ctx, 5)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
 
 	// header not found default TO
 	d, clientMock = NewTestDownloader(t, 0)
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
-	clientMock.On("HeaderByNumber", ctx, blockNumBig).Return(returnedBlock, nil).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(nil, ethereum.NotFound).Once()
+	clientMock.EXPECT().HeaderByNumber(ctx, blockNumBig).Return(returnedBlock, nil).Once()
 	actualBlock, isCanceled = d.GetBlockHeader(ctx, 5)
 	assert.Equal(t, expectedBlock, actualBlock)
 	assert.False(t, isCanceled)
@@ -544,6 +625,8 @@ func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader,
 		clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
 		buildAppender(), []common.Address{contractAddr}, rh,
 		aggkittypes.FinalizedBlock,
+		nil,                      // reorgDetector - nil for tests
+		"test-reorg-detector-id", // reorgDetectorID
 	)
 	require.NoError(t, err)
 	return d, clientMock
@@ -591,16 +674,16 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 		downloader.setStopDownloaderOnIterationN(i + 1)
 		expectedBlocks := EVMBlocks{}
 		for _, step := range steps[:i+1] {
-			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(step.finalizedBlock, nil).Once()
+			mockEthDownloader.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(step.finalizedBlock, nil).Once()
 			if step.waitForNewBlocks {
-				mockEthDownloader.On("WaitForNewBlocks", mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
+				mockEthDownloader.EXPECT().WaitForNewBlocks(mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
 			}
-			mockEthDownloader.On("GetEventsByBlockRange", mock.Anything, step.fromBlock, step.toBlock).
-				Return(step.eventsReponse, false).Once()
+			mockEthDownloader.EXPECT().GetEventsByBlockRange(mock.Anything, step.fromBlock, step.toBlock).
+				Return(step.eventsReponse).Once()
 			expectedBlocks = append(expectedBlocks, step.eventsReponse...)
 			if step.getBlockHeader != nil {
 				log.Infof("iteration:%d : GetBlockHeader(%d) ", i, step.getBlockHeader.Num)
-				mockEthDownloader.On("GetBlockHeader", mock.Anything, step.getBlockHeader.Num).Return(*step.getBlockHeader, false).Once()
+				mockEthDownloader.EXPECT().GetBlockHeader(mock.Anything, step.getBlockHeader.Num).Return(*step.getBlockHeader, false).Once()
 				expectedBlocks = append(expectedBlocks, &EVMBlock{
 					EVMBlockHeader:   *step.getBlockHeader,
 					IsFinalizedBlock: step.getBlockHeader.Num <= step.finalizedBlock,
@@ -679,4 +762,49 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 	expected = append(expected, secondBatchLogs...)
 	expected = append(expected, thirdBatchLogs...)
 	assert.Equal(t, expected, result)
+}
+
+func TestGetLastFinalizedBlock(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("With finalizedBlockType set", func(t *testing.T) {
+		mockClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		finalizedBlockType := aggkittypes.FinalizedBlock
+		blockFinality := aggkittypes.LatestBlock
+
+		sut := EVMDownloaderImplementation{
+			ethClient:          mockClient,
+			finalizedBlockType: &finalizedBlockType,
+			blockFinality:      blockFinality,
+			log:                log.WithFields("test", "EVMDownloaderImplementation"),
+		}
+
+		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(&types.Header{
+			Number: big.NewInt(100),
+		}, nil).Once()
+
+		blockNumber, err := sut.GetLastFinalizedBlock(ctx)
+		require.NoError(t, err)
+		require.Equal(t, uint64(100), blockNumber)
+	})
+
+	t.Run("With finalizedBlockType nil - uses blockFinality", func(t *testing.T) {
+		mockClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		blockFinality := aggkittypes.LatestBlock
+
+		sut := EVMDownloaderImplementation{
+			ethClient:          mockClient,
+			finalizedBlockType: nil,
+			blockFinality:      blockFinality,
+			log:                log.WithFields("test", "EVMDownloaderImplementation"),
+		}
+
+		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(&types.Header{
+			Number: big.NewInt(200),
+		}, nil).Once()
+
+		blockNumber, err := sut.GetLastFinalizedBlock(ctx)
+		require.NoError(t, err)
+		require.Equal(t, uint64(200), blockNumber)
+	})
 }

@@ -42,10 +42,6 @@ definitions:
         description: Unique hash representing the bridge event, often used as an identifier
         example: 0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd
         type: string
-      calldata:
-        description: Raw calldata submitted in the transaction
-        example: deadbeef
-        type: string
       deposit_count:
         description: Count of total deposits processed so far for the given token/address
         example: 10
@@ -289,10 +285,6 @@ definitions:
         description: Timestamp of the block
         example: 1684500000
         type: integer
-      calldata:
-        description: Raw calldata included in the migration transaction
-        example: "0xdeadbeef"
-        type: string
       legacy_token_address:
         description: Legacy token address being migrated
         example: 0xdef456...
@@ -371,10 +363,6 @@ definitions:
         description: Timestamp of the block containing the mapping event
         example: 1684501234
         type: integer
-      calldata:
-        description: Raw calldata submitted during the mapping
-        example: "0xfeedface"
-        type: string
       is_not_mintable:
         description: Indicates whether the wrapped token is not mintable (true = not
           mintable)

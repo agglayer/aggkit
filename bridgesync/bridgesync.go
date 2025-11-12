@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -70,7 +69,6 @@ func NewL1(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
-	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -80,26 +78,8 @@ func NewL1(
 		ethClient,
 		L1BridgeSyncer,
 		originNetwork,
-		syncFullClaims,
+		false,
 	)
-}
-
-func NewL2ReadOnly(
-	ctx context.Context,
-	dbPath string,
-	originNetwork uint32,
-	dbQueryTimeout time.Duration,
-) (*BridgeSync, error) {
-	syncerID := L2BridgeSyncer
-	logger := log.WithFields("module", syncerID.String())
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
-	if err != nil {
-		return nil, err
-	}
-	return &BridgeSync{
-		processor:     processor,
-		originNetwork: originNetwork,
-	}, nil
 }
 
 // NewL2 creates a bridge syncer that synchronizes the local exit tree
@@ -192,6 +172,8 @@ func newBridgeSync(
 		[]common.Address{cfg.BridgeAddr},
 		rh,
 		rd.GetFinalizedBlockType(),
+		rd,                // reorgDetector
+		syncerID.String(), // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err
@@ -401,6 +383,11 @@ func (s *BridgeSync) GetExitRootByIndex(ctx context.Context, index uint32) (tree
 // OriginNetwork returns the network ID of the origin chain
 func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork
+}
+
+// SubscribeToSync allows a subscriber to receive block notifications
+func (s *BridgeSync) SubscribeToSync(subscriberID string) <-chan sync.Block {
+	return s.driver.SubscribeToNewBlocks(subscriberID)
 }
 
 type LastReorg struct {

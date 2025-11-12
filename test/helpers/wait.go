@@ -2,10 +2,12 @@ package helpers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 )
@@ -17,31 +19,43 @@ type Processorer interface {
 func RequireProcessorUpdated(t *testing.T, processor Processorer, targetBlock uint64, ethClient aggkittypes.BaseEthereumClienter) {
 	t.Helper()
 	const (
-		maxIterations         = 200
-		sleepTimePerIteration = 500 * time.Millisecond
+		maxIterations = int(200)
+		sleepInterval = 50 * time.Millisecond
+		logEvery      = 30 // Log every 30th iteration (every 3 seconds)
 	)
+
 	var (
-		lpb                uint64
+		lastProcessedBlock uint64
+		networkBlock       uint64
 		err                error
-		lastBlockInNetwork uint64
 	)
+
 	ctx := context.Background()
-	for i := 0; i < maxIterations; i++ {
-		if ethClient != nil {
-			lastBlockInNetwork, err = ethClient.BlockNumber(ctx)
-			require.NoError(t, err)
+	for i := range maxIterations {
+		lastProcessedBlock, err = processor.GetLastProcessedBlock(ctx)
+		if errors.Is(err, sync.ErrInconsistentState) {
+			time.Sleep(sleepInterval)
+			continue
 		}
-		lpb, err = processor.GetLastProcessedBlock(ctx)
+
 		require.NoError(t, err)
-		if targetBlock <= lpb {
+		if lastProcessedBlock >= targetBlock {
 			return
 		}
 
-		if i%30 == 0 { // Log every 30th iteration (every 3 seconds)
-			t.Logf("Waiting for processor to catch up: last processed block=%d, target block=%d, last_block_in_network: %d,  iteration=%d",
-				lpb, targetBlock, lastBlockInNetwork, i)
+		if i%logEvery == 0 {
+			if ethClient != nil {
+				networkBlock, err = ethClient.BlockNumber(ctx)
+				require.NoError(t, err)
+			}
+
+			t.Logf("Waiting for processor to catch up: last processed block=%d, target block=%d, last block in network=%d, iteration=%d",
+				lastProcessedBlock, targetBlock, networkBlock, i)
 		}
-		time.Sleep(sleepTimePerIteration)
+		time.Sleep(sleepInterval)
 	}
-	require.Fail(t, fmt.Sprintf("processor not updated. Last block: %d, target block: %d", lpb, targetBlock))
+	require.Failf(t,
+		fmt.Sprintf("processor not updated after %d iterations (~%.1fs)", maxIterations, float64(maxIterations)*sleepInterval.Seconds()),
+		"last processed block=%d, target block=%d", lastProcessedBlock, targetBlock,
+	)
 }

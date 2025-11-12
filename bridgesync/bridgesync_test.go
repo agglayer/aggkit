@@ -75,7 +75,6 @@ func TestNewLx(t *testing.T) {
 		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
-		false,
 	)
 
 	require.NoError(t, err)
@@ -107,7 +106,6 @@ func TestNewLx(t *testing.T) {
 	require.NotNil(t, l1BridgeSync)
 	require.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
 
-	// Fails the sanity check of the contract address
 	mockEthClient = mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	mockEthClient.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
@@ -668,19 +666,16 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		root, err := s.GetLastRoot(ctx)
 		require.Error(t, err)
 		require.Nil(t, root)
-		// The error should be db.ErrNotFound from the tree package
 		require.Contains(t, err.Error(), "not found")
 	})
 
 	t.Run("get last root after processing bridge events", func(t *testing.T) {
-		// Create some bridge events to process
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
 				BlockNum:           1,
 				BlockPos:           0,
 				FromAddress:        common.HexToAddress("0x1111111111111111111111111111111111111111"),
 				TxHash:             common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
-				Calldata:           []byte{0x01, 0x02, 0x03},
 				BlockTimestamp:     1234567890,
 				LeafType:           1,
 				OriginNetwork:      1,
@@ -696,7 +691,6 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 				BlockPos:           1,
 				FromAddress:        common.HexToAddress("0x5555555555555555555555555555555555555555"),
 				TxHash:             common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
-				Calldata:           []byte{0x07, 0x08, 0x09},
 				BlockTimestamp:     1234567890,
 				LeafType:           1,
 				OriginNetwork:      1,
@@ -734,17 +728,14 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	})
 
 	t.Run("get last root after multiple blocks", func(t *testing.T) {
-		// Reset halted state
 		s.processor.halted = false
 
-		// Process another block with more bridge events
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
 				BlockNum:           2,
 				BlockPos:           0,
 				FromAddress:        common.HexToAddress("0x9999999999999999999999999999999999999999"),
 				TxHash:             common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-				Calldata:           []byte{0x0d, 0x0e, 0x0f},
 				BlockTimestamp:     1234567891,
 				LeafType:           1,
 				OriginNetwork:      1,
@@ -772,5 +763,113 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		require.Equal(t, uint64(0), root.BlockPosition)
 		require.Equal(t, uint32(2), root.Index)
 		require.NotEqual(t, common.Hash{}, root.Hash)
+	})
+}
+
+func TestBridgeSync_SubscribeToSync(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestSubscribeToSync.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	dbQueryTimeout := 30 * time.Second
+
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
+
+	s, err := NewL2(
+		ctx,
+		bridgeSyncCfg,
+		mockReorgDetector,
+		mockEthClient,
+		originNetwork,
+		false,
+	)
+	require.NoError(t, err)
+
+	t.Run("subscribe to sync with valid parameters", func(t *testing.T) {
+		subscriberID := "test-subscriber"
+
+		blockChan := s.SubscribeToSync(subscriberID)
+		require.NotNil(t, blockChan)
+
+		// Verify the channel is not closed immediately
+		select {
+		case _, ok := <-blockChan:
+			if !ok {
+				t.Fatal("channel should not be closed immediately")
+			}
+		default:
+			// Expected - no blocks available initially
+		}
+	})
+
+	t.Run("subscribe with empty subscriber ID", func(t *testing.T) {
+		subscriberID := ""
+
+		blockChan := s.SubscribeToSync(subscriberID)
+		require.NotNil(t, blockChan)
+	})
+
+	t.Run("multiple subscribers", func(t *testing.T) {
+		subscriber1ID := "subscriber-1"
+		subscriber2ID := "subscriber-2"
+
+		blockChan1 := s.SubscribeToSync(subscriber1ID)
+		blockChan2 := s.SubscribeToSync(subscriber2ID)
+
+		require.NotNil(t, blockChan1)
+		require.NotNil(t, blockChan2)
+
+		// Channels should be different instances
+		require.NotEqual(t, blockChan1, blockChan2)
+	})
+
+	t.Run("subscribe with same subscriber ID multiple times", func(t *testing.T) {
+		subscriberID := "duplicate-subscriber"
+
+		blockChan1 := s.SubscribeToSync(subscriberID)
+		blockChan2 := s.SubscribeToSync(subscriberID)
+
+		require.NotNil(t, blockChan1)
+		require.NotNil(t, blockChan2)
 	})
 }

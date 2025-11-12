@@ -10,10 +10,10 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -29,7 +29,7 @@ type AggchainProofFlow interface {
 	GenerateAggchainProof(
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
-		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)
+		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, error)
 }
 
 // Config is the configuration for the AggchainProofGenerationTool
@@ -43,6 +43,9 @@ type Config struct {
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
+
+	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	AgglayerBridgeL2Addr common.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -86,8 +89,13 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
+	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.AgglayerBridgeL2Addr, l2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
+	}
+
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader)
 
 	baseFlow := flows.NewBaseFlow(
 		logger,
@@ -104,6 +112,7 @@ func NewAggchainProofGenerationTool(
 		nil, // optimistic signer is not used in the tool, so we pass nil
 		baseFlow,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
+		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader),
 	)
 
 	return &AggchainProofGenerationTool{
@@ -168,7 +177,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	certBuildParams := &types.CertificateBuildParams{
 		Claims: claims,
 	}
-	aggchainProof, _, err := a.flow.GenerateAggchainProof(
+	aggchainProof, err := a.flow.GenerateAggchainProof(
 		ctx,
 		lastProvenBlock,
 		maxEndBlock,

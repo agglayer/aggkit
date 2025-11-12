@@ -44,6 +44,8 @@ type Config struct {
 	Mode aggsendertypes.AggsenderMode `jsonschema:"enum=PessimisticProof, enum=AggchainProof, enum=Auto" mapstructure:"Mode"` //nolint:lll
 	// RequireCommitteeMembershipCheck indicates whether to check if the validator is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
+	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 }
 
 type PPConfig struct {
