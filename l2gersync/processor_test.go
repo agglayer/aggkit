@@ -292,3 +292,86 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 		}
 	})
 }
+
+func TestRemoveGEREvents(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "test_remove_ger_events.sqlite")
+	processor, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	defer processor.database.Close()
+
+	ger1 := common.HexToHash("0x1234567890abcdef")
+	ger2 := common.HexToHash("0xfedcba0987654321")
+
+	t.Run("Insert and Remove GER Events", func(t *testing.T) {
+		insertEvent1 := &Event{
+			GERInfo:   newGlobalExitRootInfo(ger1, 1, 100, 0),
+			EventType: GEREventTypeInsert,
+		}
+		removeEvent1 := &Event{
+			GERInfo:   newGlobalExitRootInfo(ger1, 0, 101, 1),
+			EventType: GEREventTypeRemove,
+		}
+		removeEvent2 := &Event{
+			GERInfo:   newGlobalExitRootInfo(ger2, 0, 102, 0),
+			EventType: GEREventTypeRemove,
+		}
+
+		// Process blocks with events
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    100,
+			Events: []any{insertEvent1},
+			Hash:   common.HexToHash("0xblock100"),
+		})
+		require.NoError(t, err)
+
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    101,
+			Events: []any{removeEvent1},
+			Hash:   common.HexToHash("0xblock101"),
+		})
+		require.NoError(t, err)
+
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    102,
+			Events: []any{removeEvent2},
+			Hash:   common.HexToHash("0xblock102"),
+		})
+		require.NoError(t, err)
+
+		// Test GetRemoveGEREvents
+		allRemoveEvents, err := processor.GetRemoveGEREvents(ctx)
+		require.NoError(t, err)
+		require.Len(t, allRemoveEvents, 2)
+
+		// Verify first remove event
+		require.Equal(t, ger1, allRemoveEvents[0].GlobalExitRoot)
+		require.Equal(t, uint64(101), allRemoveEvents[0].BlockNum)
+		require.Greater(t, allRemoveEvents[0].CreatedAt, uint64(0)) // CreatedAt should be set
+
+		// Verify second remove event
+		require.Equal(t, ger2, allRemoveEvents[1].GlobalExitRoot)
+		require.Equal(t, uint64(102), allRemoveEvents[1].BlockNum)
+		require.Greater(t, allRemoveEvents[1].CreatedAt, uint64(0)) // CreatedAt should be set
+
+		// Test GetRemoveGEREventsByBlockRange
+		rangeEvents, err := processor.GetRemoveGEREventsByBlockRange(ctx, 101, 101)
+		require.NoError(t, err)
+		require.Len(t, rangeEvents, 1)
+		require.Equal(t, ger1, rangeEvents[0].GlobalExitRoot)
+
+		// Test GetRemoveGEREventsByGER
+		gerEvents, err := processor.GetRemoveGEREventsByGER(ctx, ger1)
+		require.NoError(t, err)
+		require.Len(t, gerEvents, 1)
+		require.Equal(t, ger1, gerEvents[0].GlobalExitRoot)
+		require.Equal(t, uint64(101), gerEvents[0].BlockNum)
+
+		// Test no results for non-existent GER
+		noEvents, err := processor.GetRemoveGEREventsByGER(ctx, common.HexToHash("0xnonexistent"))
+		require.NoError(t, err)
+		require.Len(t, noEvents, 0)
+	})
+}

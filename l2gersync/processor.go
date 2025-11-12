@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -29,6 +30,14 @@ type GlobalExitRootInfo struct {
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
 	BlockPosition   *uint64        `meddler:"block_pos"`
+}
+
+// RemoveGEREvent represents a remove GER event stored in the database
+type RemoveGEREvent struct {
+	ID             uint64         `meddler:"id,pk"`
+	GlobalExitRoot ethcommon.Hash `meddler:"global_exit_root,hash"`
+	BlockNum       uint64         `meddler:"block_num"`
+	CreatedAt      uint64         `meddler:"created_at"`
 }
 
 // newGlobalExitRootInfo creates a new GlobalExitRootInfo instance with the provided parameters.
@@ -138,6 +147,17 @@ func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo,
 		if err != nil {
 			return fmt.Errorf("failed to remove global exit root %s: %w", gerInfo.GlobalExitRoot.Hex(), err)
 		}
+
+		// Store the remove event in the new table
+		removeEvent := &RemoveGEREvent{
+			GlobalExitRoot: gerInfo.GlobalExitRoot,
+			BlockNum:       gerInfo.BlockNum,
+			CreatedAt:      uint64(time.Now().Unix()),
+		}
+		if err := meddler.Insert(tx, "remove_ger_events", removeEvent); err != nil {
+			return fmt.Errorf("failed to insert remove GER event (value=%x, block=%d): %w",
+				gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
+		}
 	}
 
 	return nil
@@ -164,12 +184,43 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 	var latestGERInfo GlobalExitRootInfo
 	err := meddler.QueryRow(p.database, &latestGERInfo,
-		`SELECT l1_info_tree_index FROM imported_global_exit_root 
+		`SELECT l1_info_tree_index FROM imported_global_exit_root
 			ORDER BY l1_info_tree_index DESC LIMIT 1;`)
 	if err != nil {
 		return 0, db.ReturnErrNotFound(err)
 	}
 	return latestGERInfo.L1InfoTreeIndex, nil
+}
+
+// GetRemoveGEREvents retrieves all remove GER events from the database
+func (p *processor) GetRemoveGEREvents(ctx context.Context) ([]*RemoveGEREvent, error) {
+	var events []*RemoveGEREvent
+	if err := meddler.QueryAll(p.database, &events, "SELECT * FROM remove_ger_events ORDER BY block_num, created_at"); err != nil {
+		return nil, fmt.Errorf("failed to query remove GER events: %w", err)
+	}
+	return events, nil
+}
+
+// GetRemoveGEREventsByBlockRange retrieves remove GER events within a specific block range
+func (p *processor) GetRemoveGEREventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) ([]*RemoveGEREvent, error) {
+	var events []*RemoveGEREvent
+	if err := meddler.QueryAll(p.database, &events,
+		"SELECT * FROM remove_ger_events WHERE block_num >= $1 AND block_num <= $2 ORDER BY block_num, created_at",
+		fromBlock, toBlock); err != nil {
+		return nil, fmt.Errorf("failed to query remove GER events by block range: %w", err)
+	}
+	return events, nil
+}
+
+// GetRemoveGEREventsByGER retrieves remove GER events for a specific Global Exit Root
+func (p *processor) GetRemoveGEREventsByGER(ctx context.Context, globalExitRoot ethcommon.Hash) ([]*RemoveGEREvent, error) {
+	var events []*RemoveGEREvent
+	if err := meddler.QueryAll(p.database, &events,
+		"SELECT * FROM remove_ger_events WHERE global_exit_root = $1 ORDER BY block_num, created_at",
+		globalExitRoot.Hex()); err != nil {
+		return nil, fmt.Errorf("failed to query remove GER events by GER: %w", err)
+	}
+	return events, nil
 }
 
 // Reorg removes all blocks and associated data starting from a specific block number from l2 ger sync database
