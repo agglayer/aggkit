@@ -39,6 +39,12 @@ var (
 	removeLegacySovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"RemoveLegacySovereignTokenAddress(address)",
 	))
+	unsetClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)",
+	))
+	setClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"SetClaim(uint32,uint32)",
+	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
@@ -91,6 +97,10 @@ func buildAppender(
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
 		agglayerBridgeL2)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
+		agglayerBridgeL2)
+	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(
+		agglayerBridgeL2)
+	appender[setClaimEventSignature] = buildSetClaimEventHandler(
 		agglayerBridgeL2)
 
 	return appender, nil
@@ -307,6 +317,50 @@ func buildRemoveLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2) 
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
 			LegacyTokenAddress: event.SovereignTokenAddress,
+		}})
+		return nil
+	}
+}
+
+// buildUnsetClaimEventHandler creates a handler for the UpdatedUnsetGlobalIndexHashChain event log
+func buildUnsetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock,
+	types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseUpdatedUnsetGlobalIndexHashChain(l)
+		if err != nil {
+			return fmt.Errorf("error parsing UpdatedUnsetGlobalIndexHashChain event log %+v: %w", l, err)
+		}
+
+		// Convert bytes32 to big.Int
+		globalIndex := new(big.Int).SetBytes(event.UnsetGlobalIndex[:])
+
+		b.Events = append(b.Events, Event{UnsetClaim: &UnsetClaim{
+			BlockNum:                  b.Num,
+			BlockPos:                  uint64(l.Index),
+			BlockTimestamp:            b.Timestamp,
+			TxHash:                    l.TxHash,
+			GlobalIndex:               globalIndex,
+			UnsetGlobalIndexHashChain: event.NewUnsetGlobalIndexHashChain,
+		}})
+		return nil
+	}
+}
+
+// buildSetClaimEventHandler creates a handler for the SetClaim event log
+func buildSetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseSetClaim(l)
+		if err != nil {
+			return fmt.Errorf("error parsing SetClaim event log %+v: %w", l, err)
+		}
+
+		b.Events = append(b.Events, Event{SetClaim: &SetClaim{
+			BlockNum:            b.Num,
+			BlockPos:            uint64(l.Index),
+			BlockTimestamp:      b.Timestamp,
+			TxHash:              l.TxHash,
+			LeafIndex:           event.LeafIndex,
+			SourceBridgeNetwork: event.SourceNetwork,
 		}})
 		return nil
 	}

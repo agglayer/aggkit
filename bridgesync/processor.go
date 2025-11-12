@@ -43,6 +43,12 @@ const (
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
+
+	// unsetClaimTableName is the name of the table that stores unset claim events
+	unsetClaimTableName = "unset_claim"
+
+	// setClaimTableName is the name of the table that stores set claim events
+	setClaimTableName = "set_claim"
 )
 
 var (
@@ -298,6 +304,28 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+// UnsetClaim representation of an UpdatedUnsetGlobalIndexHashChain event,
+// that is emitted by the bridge contract when a claim is unset.
+type UnsetClaim struct {
+	BlockNum                  uint64      `meddler:"block_num"`
+	BlockPos                  uint64      `meddler:"block_pos"`
+	BlockTimestamp            uint64      `meddler:"block_timestamp"`
+	TxHash                    common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex               *big.Int    `meddler:"global_index,bigint"`
+	UnsetGlobalIndexHashChain common.Hash `meddler:"unset_global_index_hash_chain,hash"`
+}
+
+// SetClaim representation of a SetClaim event,
+// that is emitted by the bridge contract when a claim is set.
+type SetClaim struct {
+	BlockNum            uint64      `meddler:"block_num"`
+	BlockPos            uint64      `meddler:"block_pos"`
+	BlockTimestamp      uint64      `meddler:"block_timestamp"`
+	TxHash              common.Hash `meddler:"tx_hash,hash"`
+	LeafIndex           uint32      `meddler:"leaf_index"`
+	SourceBridgeNetwork uint32      `meddler:"source_bridge_network"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -305,6 +333,8 @@ type Event struct {
 	TokenMapping         *TokenMapping
 	LegacyTokenMigration *LegacyTokenMigration
 	RemoveLegacyToken    *RemoveLegacyToken
+	UnsetClaim           *UnsetClaim
+	SetClaim             *SetClaim
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -879,6 +909,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
 			if err != nil {
 				p.log.Errorf("failed to remove legacy token at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.UnsetClaim != nil {
+			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
+				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.SetClaim != nil {
+			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
+				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
