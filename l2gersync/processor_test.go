@@ -300,7 +300,7 @@ func TestRemoveGEREvents(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "test_remove_ger_events.sqlite")
 	processor, err := newProcessor(dbPath)
 	require.NoError(t, err)
-	defer processor.database.Close()
+	t.Cleanup(func() { processor.database.Close() })
 
 	ger1 := common.HexToHash("0x1234567890abcdef")
 	ger2 := common.HexToHash("0xfedcba0987654321")
