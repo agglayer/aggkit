@@ -195,14 +195,17 @@ func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 // GetRemoveGEREvents retrieves all remove GER events from the database
 func (p *processor) GetRemoveGEREvents(ctx context.Context) ([]*RemoveGEREvent, error) {
 	var events []*RemoveGEREvent
-	if err := meddler.QueryAll(p.database, &events, "SELECT * FROM remove_ger_events ORDER BY block_num, created_at"); err != nil {
+	query := "SELECT * FROM remove_ger_events ORDER BY block_num, created_at"
+	if err := meddler.QueryAll(p.database, &events, query); err != nil {
 		return nil, fmt.Errorf("failed to query remove GER events: %w", err)
 	}
 	return events, nil
 }
 
 // GetRemoveGEREventsByBlockRange retrieves remove GER events within a specific block range
-func (p *processor) GetRemoveGEREventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) ([]*RemoveGEREvent, error) {
+func (p *processor) GetRemoveGEREventsByBlockRange(
+	ctx context.Context, fromBlock, toBlock uint64,
+) ([]*RemoveGEREvent, error) {
 	var events []*RemoveGEREvent
 	if err := meddler.QueryAll(p.database, &events,
 		"SELECT * FROM remove_ger_events WHERE block_num >= $1 AND block_num <= $2 ORDER BY block_num, created_at",
@@ -213,7 +216,9 @@ func (p *processor) GetRemoveGEREventsByBlockRange(ctx context.Context, fromBloc
 }
 
 // GetRemoveGEREventsByGER retrieves remove GER events for a specific Global Exit Root
-func (p *processor) GetRemoveGEREventsByGER(ctx context.Context, globalExitRoot ethcommon.Hash) ([]*RemoveGEREvent, error) {
+func (p *processor) GetRemoveGEREventsByGER(
+	ctx context.Context, globalExitRoot ethcommon.Hash,
+) ([]*RemoveGEREvent, error) {
 	var events []*RemoveGEREvent
 	if err := meddler.QueryAll(p.database, &events,
 		"SELECT * FROM remove_ger_events WHERE global_exit_root = $1 ORDER BY block_num, created_at",

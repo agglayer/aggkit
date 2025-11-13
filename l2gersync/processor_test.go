@@ -306,6 +306,7 @@ func TestRemoveGEREvents(t *testing.T) {
 	ger2 := common.HexToHash("0xfedcba0987654321")
 
 	t.Run("Insert and Remove GER Events", func(t *testing.T) {
+		t.Parallel()
 		insertEvent1 := &Event{
 			GERInfo:   newGlobalExitRootInfo(ger1, 1, 100, 0),
 			EventType: GEREventTypeInsert,
