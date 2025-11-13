@@ -1166,3 +1166,13 @@ func (p *processor) unhalt() {
 func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, p.dbQueryTimeout)
 }
+
+func (p *processor) CheckUnsetClaim(globalIndex *big.Int) (*UnsetClaim, error) {
+	unsetClaim := &UnsetClaim{}
+	err := meddler.QueryRow(p.db, unsetClaim, fmt.Sprintf(
+		`SELECT * FROM %s WHERE global_index = ?`, unsetClaimTableName), globalIndex)
+	if err != nil {
+		return nil, err
+	}
+	return unsetClaim, nil
+}

@@ -201,7 +201,7 @@ Mode = "Auto"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-GlobalExitRootL1 = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
@@ -269,6 +269,7 @@ Port = 9091
 [AggchainProofGen]
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"

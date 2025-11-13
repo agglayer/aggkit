@@ -595,7 +595,7 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 				return certParams.AdjustToBlock(c.BlockNum - 1)
 			}
 			// if it doesnt exist, we need to check for the unset claim table if we have received an event for this claim
-			unsetClaim, err = f.l2BridgeQuerier.CheckUnsetClaim(c.GlobalIndex)
+			unsetClaim, err := f.l2BridgeQuerier.CheckUnsetClaim(c.GlobalIndex)
 			if err != nil {
 				return nil, fmt.Errorf("error checking if unset claim %s exists: %w", c.GlobalIndex.String(), err)
 			}

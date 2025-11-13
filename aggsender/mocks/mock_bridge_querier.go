@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	big "math/big"
+
 	bridgesync "github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 
@@ -24,6 +26,64 @@ type BridgeQuerier_Expecter struct {
 
 func (_m *BridgeQuerier) EXPECT() *BridgeQuerier_Expecter {
 	return &BridgeQuerier_Expecter{mock: &_m.Mock}
+}
+
+// CheckUnsetClaim provides a mock function with given fields: globalIndex
+func (_m *BridgeQuerier) CheckUnsetClaim(globalIndex *big.Int) (*bridgesync.UnsetClaim, error) {
+	ret := _m.Called(globalIndex)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckUnsetClaim")
+	}
+
+	var r0 *bridgesync.UnsetClaim
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*big.Int) (*bridgesync.UnsetClaim, error)); ok {
+		return rf(globalIndex)
+	}
+	if rf, ok := ret.Get(0).(func(*big.Int) *bridgesync.UnsetClaim); ok {
+		r0 = rf(globalIndex)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*bridgesync.UnsetClaim)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*big.Int) error); ok {
+		r1 = rf(globalIndex)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// BridgeQuerier_CheckUnsetClaim_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckUnsetClaim'
+type BridgeQuerier_CheckUnsetClaim_Call struct {
+	*mock.Call
+}
+
+// CheckUnsetClaim is a helper method to define mock.On call
+//   - globalIndex *big.Int
+func (_e *BridgeQuerier_Expecter) CheckUnsetClaim(globalIndex interface{}) *BridgeQuerier_CheckUnsetClaim_Call {
+	return &BridgeQuerier_CheckUnsetClaim_Call{Call: _e.mock.On("CheckUnsetClaim", globalIndex)}
+}
+
+func (_c *BridgeQuerier_CheckUnsetClaim_Call) Run(run func(globalIndex *big.Int)) *BridgeQuerier_CheckUnsetClaim_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*big.Int))
+	})
+	return _c
+}
+
+func (_c *BridgeQuerier_CheckUnsetClaim_Call) Return(_a0 *bridgesync.UnsetClaim, _a1 error) *BridgeQuerier_CheckUnsetClaim_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *BridgeQuerier_CheckUnsetClaim_Call) RunAndReturn(run func(*big.Int) (*bridgesync.UnsetClaim, error)) *BridgeQuerier_CheckUnsetClaim_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // GetBridgesAndClaims provides a mock function with given fields: ctx, fromBlock, toBlock

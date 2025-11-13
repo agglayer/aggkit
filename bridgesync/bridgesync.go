@@ -455,3 +455,11 @@ func (s *BridgeSync) GetLatestNetworkBlock(ctx context.Context) (uint64, error) 
 func (s *BridgeSync) IsActive(ctx context.Context) bool {
 	return !s.processor.isHalted()
 }
+
+// CheckUnsetClaim checks if an unset claim exists for a given global index
+func (s *BridgeSync) CheckUnsetClaim(globalIndex *big.Int) (*UnsetClaim, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.CheckUnsetClaim(globalIndex)
+}
