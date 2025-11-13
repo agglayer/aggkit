@@ -23,6 +23,8 @@ type Bridger interface {
 		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
 		networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*bridgesync.Claim, int, error)
+	GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
+		networkIDs []uint32, globalIndex *big.Int) ([]*bridgesync.UnsetClaim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
@@ -34,6 +36,9 @@ type L2GERSyncer interface {
 	GetFirstGERAfterL1InfoTreeIndex(
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 	) (l2gersync.GlobalExitRootInfo, error)
+	GetRemoveGEREvents(ctx context.Context) ([]*l2gersync.RemoveGEREvent, error)
+	GetRemoveGEREventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) ([]*l2gersync.RemoveGEREvent, error)
+	GetRemoveGEREventsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*l2gersync.RemoveGEREvent, error)
 }
 
 type L1InfoTreeSyncer interface {

@@ -204,7 +204,8 @@ func (p *processor) GetRemoveGEREvents(ctx context.Context) ([]*RemoveGEREvent, 
 
 // GetRemoveGEREventsByBlockRange retrieves remove GER events within a specific block range
 func (p *processor) GetRemoveGEREventsByBlockRange(
-	ctx context.Context, fromBlock, toBlock uint64) ([]*RemoveGEREvent, error) {
+	ctx context.Context, fromBlock, toBlock uint64,
+) ([]*RemoveGEREvent, error) {
 	var events []*RemoveGEREvent
 	query := "SELECT * FROM remove_ger_events WHERE block_num >= $1 AND block_num <= $2 " +
 		"ORDER BY block_num, created_at"
@@ -216,7 +217,8 @@ func (p *processor) GetRemoveGEREventsByBlockRange(
 
 // GetRemoveGEREventsByGER retrieves remove GER events for a specific Global Exit Root
 func (p *processor) GetRemoveGEREventsByGER(
-	ctx context.Context, globalExitRoot ethcommon.Hash) ([]*RemoveGEREvent, error) {
+	ctx context.Context, globalExitRoot ethcommon.Hash,
+) ([]*RemoveGEREvent, error) {
 	var events []*RemoveGEREvent
 	query := "SELECT * FROM remove_ger_events WHERE global_exit_root = $1 " +
 		"ORDER BY block_num, created_at"

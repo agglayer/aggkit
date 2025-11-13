@@ -175,12 +175,14 @@ func (s *L2GERSync) GetRemoveGEREvents(ctx context.Context) ([]*RemoveGEREvent, 
 
 // GetRemoveGEREventsByBlockRange retrieves remove GER events within a specific block range
 func (s *L2GERSync) GetRemoveGEREventsByBlockRange(
-	ctx context.Context, fromBlock, toBlock uint64) ([]*RemoveGEREvent, error) {
+	ctx context.Context, fromBlock, toBlock uint64,
+) ([]*RemoveGEREvent, error) {
 	return s.processor.GetRemoveGEREventsByBlockRange(ctx, fromBlock, toBlock)
 }
 
 // GetRemoveGEREventsByGER retrieves remove GER events for a specific Global Exit Root
 func (s *L2GERSync) GetRemoveGEREventsByGER(
-	ctx context.Context, globalExitRoot common.Hash) ([]*RemoveGEREvent, error) {
+	ctx context.Context, globalExitRoot common.Hash,
+) ([]*RemoveGEREvent, error) {
 	return s.processor.GetRemoveGEREventsByGER(ctx, globalExitRoot)
 }

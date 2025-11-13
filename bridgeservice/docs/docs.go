@@ -449,6 +449,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/remove-ger-events": {
+            "get": {
+                "description": "Returns a list of remove GER events, optionally filtered by block range or specific GER",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ger-events"
+                ],
+                "summary": "Get remove GER events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Start block number for filtering",
+                        "name": "from_block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "End block number for filtering",
+                        "name": "to_block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by specific Global Exit Root hash",
+                        "name": "global_exit_root",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of remove GER events",
+                        "schema": {
+                            "$ref": "#/definitions/types.RemoveGEREventsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sync-status": {
             "get": {
                 "description": "Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.\nShows if bridge syncers are active and whether they're keeping up with on-chain events.",
@@ -527,6 +585,71 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/unset-claims": {
+            "get": {
+                "description": "Returns unset claims for the L2 network, paginated. Note: unset claims are only available for L2 networks, not L1.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "unset-claims"
+                ],
+                "summary": "Get unset claims",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "L2 Network ID (must match the configured L2 network, cannot be 0/L1)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by global index",
+                        "name": "global_index",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.UnsetClaimsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request - Invalid network_id or L1 network not supported",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable - L2 bridge syncer not available",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -978,6 +1101,50 @@ const docTemplate = `{
                 }
             }
         },
+        "types.RemoveGEREventResponse": {
+            "description": "Information about a GER removal event",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the GER was removed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "created_at": {
+                    "description": "Timestamp when the remove event was recorded in database",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "global_exit_root": {
+                    "description": "Global Exit Root hash that was removed",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                },
+                "id": {
+                    "description": "Unique identifier for the remove event",
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "types.RemoveGEREventsResult": {
+            "description": "Paginated response of remove GER events",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of remove GER events",
+                    "type": "integer",
+                    "example": 10
+                },
+                "remove_ger_events": {
+                    "description": "List of remove GER events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.RemoveGEREventResponse"
+                    }
+                }
+            }
+        },
         "types.SyncStatus": {
             "description": "Bridge sync status comparing on-chain deposit counts with local database counts",
             "type": "object",
@@ -1060,6 +1227,60 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/types.TokenMappingResponse"
+                    }
+                }
+            }
+        },
+        "types.UnsetClaimResponse": {
+            "description": "Detailed information about an unset claim event (UpdatedUnsetGlobalIndexHashChain)",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the unset claim was processed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_pos": {
+                    "description": "Position of the unset claim event within the block",
+                    "type": "integer",
+                    "example": 2
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block containing the unset claim",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "global_index": {
+                    "description": "Global index of the claim that was unset",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "tx_hash": {
+                    "description": "Transaction hash associated with the unset claim",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "unset_global_index_hash_chain": {
+                    "description": "Hash chain value for unset global indexes",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                }
+            }
+        },
+        "types.UnsetClaimsResult": {
+            "description": "Paginated response of unset claim events (L2 networks only)",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of unset claim events",
+                    "type": "integer",
+                    "example": 15
+                },
+                "unset_claims": {
+                    "description": "List of unset claim events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.UnsetClaimResponse"
                     }
                 }
             }
