@@ -13,6 +13,7 @@ import (
 )
 
 func TestZKEVMSupportExploratory(t *testing.T) {
+	t.Skip("exploratory test")
 	l2URL := os.Getenv("L2URL")
 	require.NotEmpty(t, l2URL)
 	ethClient, err := ethclient.Dial(l2URL)
