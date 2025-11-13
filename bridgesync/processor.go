@@ -617,6 +617,72 @@ func (p *processor) GetClaimsPaged(
 	return claims, claimsCount, nil
 }
 
+// GetUnsetClaimsPaged returns a paginated list of unset claims
+func (p *processor) GetUnsetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+	networkIDs []uint32, globalIndex *big.Int,
+) ([]*UnsetClaim, int, error) {
+	whereClause := p.buildUnsetClaimsFilterClause(networkIDs, globalIndex)
+	claimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if claimsCount == 0 {
+		return []*UnsetClaim{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, "unset claims")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orderByClause := "block_num DESC, block_pos DESC"
+
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByClause, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, claimsCount, nil
+		}
+		p.log.Errorf("GetUnsetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	unsetClaims := []*UnsetClaim{}
+	if err = meddler.ScanAll(rows, &unsetClaims); err != nil {
+		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return unsetClaims, claimsCount, nil
+}
+
+// buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
+// based on the provided globalIndex (networkIDs not applicable for unset claims)
+func (p *processor) buildUnsetClaimsFilterClause(networkIDs []uint32, globalIndex *big.Int) string {
+	const clauseCapacity = 1
+	clauses := make([]string, 0, clauseCapacity)
+
+	// Note: networkIDs filtering is not applicable for unset claims as they don't have network fields
+	// Unset claims only have global_index, block info, and hash chain
+
+	if globalIndex != nil {
+		clauses = append(clauses, fmt.Sprintf("global_index = '%s'", globalIndex.String()))
+	}
+
+	if len(clauses) > 0 {
+		return " WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
+}
+
 // buildClaimsFilterClause builds the WHERE clause for the claims table
 // based on the provided networkIDs, fromAddress and globalIndex
 func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string, globalIndex *big.Int) string {
