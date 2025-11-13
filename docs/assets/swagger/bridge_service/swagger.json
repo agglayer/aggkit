@@ -442,6 +442,64 @@
                 }
             }
         },
+        "/remove-ger-events": {
+            "get": {
+                "description": "Returns a list of remove GER events, optionally filtered by block range or specific GER",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ger-events"
+                ],
+                "summary": "Get remove GER events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Start block number for filtering",
+                        "name": "from_block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "End block number for filtering",
+                        "name": "to_block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by specific Global Exit Root hash",
+                        "name": "global_exit_root",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of remove GER events",
+                        "schema": {
+                            "$ref": "#/definitions/types.RemoveGEREventsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sync-status": {
             "get": {
                 "description": "Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.\nShows if bridge syncers are active and whether they're keeping up with on-chain events.",
@@ -968,6 +1026,50 @@
                 "synchronized_deposit_count": {
                     "type": "integer",
                     "example": 676797
+                }
+            }
+        },
+        "types.RemoveGEREventResponse": {
+            "description": "Information about a GER removal event",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the GER was removed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "created_at": {
+                    "description": "Timestamp when the remove event was recorded in database",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "global_exit_root": {
+                    "description": "Global Exit Root hash that was removed",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                },
+                "id": {
+                    "description": "Unique identifier for the remove event",
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "types.RemoveGEREventsResult": {
+            "description": "Paginated response of remove GER events",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of remove GER events",
+                    "type": "integer",
+                    "example": 10
+                },
+                "remove_ger_events": {
+                    "description": "List of remove GER events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.RemoveGEREventResponse"
+                    }
                 }
             }
         },

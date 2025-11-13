@@ -338,6 +338,39 @@ definitions:
         example: 676797
         type: integer
     type: object
+  types.RemoveGEREventResponse:
+    description: Information about a GER removal event
+    properties:
+      block_num:
+        description: Block number where the GER was removed
+        example: 1234
+        type: integer
+      created_at:
+        description: Timestamp when the remove event was recorded in database
+        example: 1684500000
+        type: integer
+      global_exit_root:
+        description: Global Exit Root hash that was removed
+        example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+        type: string
+      id:
+        description: Unique identifier for the remove event
+        example: 1
+        type: integer
+    type: object
+  types.RemoveGEREventsResult:
+    description: Paginated response of remove GER events
+    properties:
+      count:
+        description: Total number of remove GER events
+        example: 10
+        type: integer
+      remove_ger_events:
+        description: List of remove GER events
+        items:
+          $ref: '#/definitions/types.RemoveGEREventResponse'
+        type: array
+    type: object
   types.SyncStatus:
     description: Bridge sync status comparing on-chain deposit counts with local database
       counts
@@ -708,6 +741,45 @@ paths:
       summary: Get legacy token migrations
       tags:
       - legacy-token-migrations
+  /remove-ger-events:
+    get:
+      description: Returns a list of remove GER events, optionally filtered by block
+        range or specific GER
+      parameters:
+      - description: Start block number for filtering
+        in: query
+        name: from_block
+        type: integer
+      - description: End block number for filtering
+        in: query
+        name: to_block
+        type: integer
+      - description: Filter by specific Global Exit Root hash
+        in: query
+        name: global_exit_root
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of remove GER events
+          schema:
+            $ref: '#/definitions/types.RemoveGEREventsResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get remove GER events
+      tags:
+      - ger-events
   /sync-status:
     get:
       description: |-
