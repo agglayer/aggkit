@@ -34,6 +34,7 @@ func NewBuilderFlow(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	l1BridgeSyncer types.L1BridgeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
@@ -41,7 +42,8 @@ func NewBuilderFlow(
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client,
+			l1InfoTreeSyncer, l1BridgeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
@@ -88,7 +90,7 @@ func NewBuilderFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l1BridgeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
@@ -148,6 +150,7 @@ func CreateCommonFlowComponents(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	l1BridgeSyncer types.L1BridgeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
@@ -182,7 +185,7 @@ func CreateCommonFlowComponents(
 	)
 	if supportLegacyZKEVM.Enabled {
 		logger.Warnf("Enabling support for legacy zkEVM certificates (pre-etrog claims), this may have performance impact")
-		baseFlow.AddZKEVMSupport(supportLegacyZKEVM, l2Client)
+		baseFlow.AddZKEVMSupport(supportLegacyZKEVM, l2Client, l1BridgeSyncer)
 	}
 
 	return &CommonFlowComponents{

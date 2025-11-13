@@ -8,6 +8,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/converters"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -22,14 +23,20 @@ var claimEventSignature = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32
 type zkEVMSupportStatus struct {
 	cfg                  config.SupportLegacyZKEVMConfig
 	l2Client             aggkittypes.BaseEthereumClienter
+	l1BridgeSyncer       aggsendertypes.L1BridgeSyncer
 	lowerBlockTested     uint64
 	etrogActivationBlock uint64
 }
 
-func (f *baseFlow) AddZKEVMSupport(cfg config.SupportLegacyZKEVMConfig, l2Client aggkittypes.BaseEthereumClienter) {
+// GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error)
+
+func (f *baseFlow) AddZKEVMSupport(cfg config.SupportLegacyZKEVMConfig,
+	l2Client aggkittypes.BaseEthereumClienter,
+	l1BridgeSyncer aggsendertypes.L1BridgeSyncer) {
 	f.zkEVMStatus = zkEVMSupportStatus{
 		cfg:                  cfg,
 		l2Client:             l2Client,
+		l1BridgeSyncer:       l1BridgeSyncer,
 		etrogActivationBlock: 0,
 	}
 }
@@ -105,7 +112,10 @@ func (f *baseFlow) convertToPreEtrogImportedBridgeExit(
 			imperson.GlobalExitRoot, rootFromWhichToProve, err,
 		)
 	}
-
+	proofMER, err := f.zkEVMStatus.l1BridgeSyncer.GetProof(ctx, ibe.GlobalIndex.LeafIndex, imperson.MainnetExitRoot)
+	if err != nil {
+		return nil, fmt.Errorf("error getting merkle proof for mainnet exit root: %w", err)
+	}
 	// zkEVM preEtrog only could do claims from L1
 	ibe.ClaimData = &agglayertypes.ClaimFromMainnet{
 		L1Leaf: &agglayertypes.L1InfoTreeLeaf{
@@ -120,7 +130,7 @@ func (f *baseFlow) convertToPreEtrogImportedBridgeExit(
 		},
 		ProofLeafMER: &agglayertypes.MerkleProof{
 			Root:  imperson.MainnetExitRoot,
-			Proof: imperson.ProofLocalExitRoot,
+			Proof: proofMER,
 		},
 		ProofGERToL1Root: &agglayertypes.MerkleProof{
 			Root:  rootFromWhichToProve,
@@ -166,7 +176,7 @@ func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context,
 			ToBlock:   big.NewInt(int64(to)),
 			Topics:    [][]common.Hash{{claimEventSignature}},
 		}
-		log.Debugf("Filtering logs from block %d to block %d for etrog activation block", from, to)
+		log.Debugf("Find first post-etrog claim in subrange block %d to block %d", from, to)
 		logs, err = f.zkEVMStatus.l2Client.FilterLogs(ctx, filterQuery)
 		if err != nil {
 			return 0, fmt.Errorf("error filtering logs to find etrog activation block: %w", err)

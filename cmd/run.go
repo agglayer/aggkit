@@ -157,6 +157,7 @@ func start(cliCtx *cli.Context) error {
 				cfg.AggSender,
 				l1Client,
 				l1InfoTreeSync,
+				l1BridgeSync,
 				l2BridgeSync,
 				l2Client,
 				rollupDataQuerier,
@@ -323,6 +324,7 @@ func createAggSender(
 	cfg aggsendercfg.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
+	l1BridgeSyncer aggsendertypes.L1BridgeSyncer,
 	l2Syncer aggsendertypes.L2BridgeSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier aggsendertypes.RollupDataQuerier,
@@ -364,7 +366,7 @@ func createAggSender(
 	go epochNotifier.Start(ctx)
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
+		l1InfoTreeSync, l1BridgeSyncer, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}

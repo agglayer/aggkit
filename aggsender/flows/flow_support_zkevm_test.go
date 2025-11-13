@@ -40,6 +40,6 @@ func TestZKEVMSUpportGlobalIndex(t *testing.T) {
 
 	require.NoError(t, err)
 	t.Logf("mainnet=%v rollup=%d leaf=%d", mainnetFlag, rollupIndex, leafIndex)
-	require.Equal(t, uint8(0), mainnetFlag)
-	require.Equal(t, uint8(0), rollupIndex)
+	require.Equal(t, true, mainnetFlag)
+	require.Equal(t, uint32(0), rollupIndex)
 }

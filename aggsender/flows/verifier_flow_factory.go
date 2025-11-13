@@ -34,7 +34,9 @@ func NewVerifierFlow(
 			nil, // storage is not used in validator,
 			l1Client,
 			nil, // l2Client is not used in FEP
-			l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
+			l1InfoTreeSyncer,
+			nil, // l1BridgeSyncer is not used in FEP
+			l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
@@ -62,7 +64,9 @@ func NewVerifierFlow(
 			nil, // storage is not used in validator,
 			l1Client,
 			nil, // l2Client is not used in validator
-			l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier,
+			l1InfoTreeSyncer,
+			nil, // l1BridgeSyncer is not used in validator
+			l2Syncer, rollupDataQuerier, committeeQuerier,
 			0, cfg.FEPConfig.RequireNoBlockGap,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,

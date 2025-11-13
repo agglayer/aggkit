@@ -89,6 +89,10 @@ type L1InfoTreeSyncer interface {
 	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
 }
 
+type L1BridgeSyncer interface {
+	GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (treetypes.Proof, error)
+}
+
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
 type L2BridgeSyncer interface {
 	GetBlockByLER(ctx context.Context, ler common.Hash) (uint64, error)
