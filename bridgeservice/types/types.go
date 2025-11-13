@@ -359,7 +359,7 @@ type RemoveGEREventResponse struct {
 	ID uint64 `json:"id" example:"1"`
 
 	// Global Exit Root hash that was removed
-	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"`
+	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
 
 	// Block number where the GER was removed
 	BlockNum uint64 `json:"block_num" example:"1234"`
@@ -407,5 +407,5 @@ type UnsetClaimResponse struct {
 	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
 
 	// Hash chain value for unset global indexes
-	UnsetGlobalIndexHashChain Hash `json:"unset_global_index_hash_chain" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"`
+	UnsetGlobalIndexHashChain Hash `json:"unset_global_index_hash_chain" example:"0x1234567890abcdef"`
 }

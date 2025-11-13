@@ -41,6 +41,8 @@ import (
 )
 
 const (
+	// hexHashLength is the expected length of a hex-encoded 32-byte hash including 0x prefix
+	hexHashLength = 66
 	// BridgeV1Prefix is the url prefix for the bridge service
 	BridgeV1Prefix = "/bridge/v1"
 
@@ -552,7 +554,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 }
 
 // @Summary Get unset claims
-// @Description Returns unset claims for the L2 network, paginated. Note: unset claims are only available for L2 networks, not L1.
+// @Description Returns unset claims for the L2 network, paginated.
+// Note: unset claims are only available for L2 networks, not L1.
 // @Tags unset-claims
 // @Param network_id query int true "L2 Network ID (must match the configured L2 network, cannot be 0/L1)"
 // @Param page_number query int false "Page number"
@@ -626,7 +629,9 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 	if networkID != b.networkID {
 		b.logger.Warnf("invalid network ID: %d, expected L2 network ID: %d", networkID, b.networkID)
 		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid network_id %d, expected L2 network_id %d", networkID, b.networkID)})
+		c.JSON(statusCode, gin.H{
+			"error": fmt.Sprintf("invalid network_id %d, expected L2 network_id %d", networkID, b.networkID),
+		})
 		return
 	}
 
@@ -1222,7 +1227,9 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		// Filter by specific GER
 		if !isValidHexHash(globalExitRootStr) {
 			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "invalid global_exit_root parameter, must be a valid 32-byte hex hash (66 characters including 0x prefix)"})
+			c.JSON(statusCode, gin.H{
+				"error": "invalid global_exit_root parameter, must be a valid 32-byte hex hash (66 characters including 0x prefix)",
+			})
 			return
 		}
 		globalExitRoot := common.HexToHash(globalExitRootStr)
@@ -1577,7 +1584,7 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 // Expected format: 0x followed by exactly 64 hex characters (total 66 chars)
 func isValidHexHash(s string) bool {
 	// Check length: 0x (2 chars) + 64 hex chars = 66 total
-	if len(s) != 66 {
+	if len(s) != hexHashLength {
 		return false
 	}
 
@@ -1588,9 +1595,9 @@ func isValidHexHash(s string) bool {
 
 	// Check that remaining characters are valid hex
 	for _, char := range s[2:] {
-		if !((char >= '0' && char <= '9') ||
-			(char >= 'a' && char <= 'f') ||
-			(char >= 'A' && char <= 'F')) {
+		if (char < '0' || char > '9') &&
+			(char < 'a' || char > 'f') &&
+			(char < 'A' || char > 'F') {
 			return false
 		}
 	}

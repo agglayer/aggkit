@@ -51,6 +51,11 @@ const (
 	setClaimTableName = "set_claim"
 )
 
+const (
+	// orderByBlockDesc is the default order by clause for block-based queries
+	orderByBlockDesc = "block_num DESC, block_pos DESC"
+)
+
 var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
@@ -590,7 +595,7 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
+	orderByClause := orderByBlockDesc
 
 	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
@@ -622,7 +627,7 @@ func (p *processor) GetUnsetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	networkIDs []uint32, globalIndex *big.Int,
 ) ([]*UnsetClaim, int, error) {
-	whereClause := p.buildUnsetClaimsFilterClause(networkIDs, globalIndex)
+	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
 	claimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -637,7 +642,7 @@ func (p *processor) GetUnsetClaimsPaged(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
+	orderByClause := orderByBlockDesc
 
 	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByClause, whereClause)
 	if err != nil {
@@ -657,7 +662,8 @@ func (p *processor) GetUnsetClaimsPaged(
 
 	unsetClaims := []*UnsetClaim{}
 	if err = meddler.ScanAll(rows, &unsetClaims); err != nil {
-		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -666,7 +672,7 @@ func (p *processor) GetUnsetClaimsPaged(
 
 // buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
 // based on the provided globalIndex (networkIDs not applicable for unset claims)
-func (p *processor) buildUnsetClaimsFilterClause(networkIDs []uint32, globalIndex *big.Int) string {
+func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
 	const clauseCapacity = 1
 	clauses := make([]string, 0, clauseCapacity)
 
@@ -735,7 +741,7 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
+	orderByClause := orderByBlockDesc
 	rows, err := p.queryPaged(
 		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
 	)
