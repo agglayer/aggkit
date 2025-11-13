@@ -34,6 +34,9 @@ type L2GERSyncer interface {
 	GetFirstGERAfterL1InfoTreeIndex(
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 	) (l2gersync.GlobalExitRootInfo, error)
+	GetRemoveGEREvents(ctx context.Context) ([]*l2gersync.RemoveGEREvent, error)
+	GetRemoveGEREventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) ([]*l2gersync.RemoveGEREvent, error)
+	GetRemoveGEREventsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*l2gersync.RemoveGEREvent, error)
 }
 
 type L1InfoTreeSyncer interface {

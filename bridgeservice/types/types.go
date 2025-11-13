@@ -351,3 +351,29 @@ type HealthCheckResponse struct {
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
 }
+
+// RemoveGEREventResponse represents a remove GER event response
+// @Description Information about a GER removal event
+type RemoveGEREventResponse struct {
+	// Unique identifier for the remove event
+	ID uint64 `json:"id" example:"1"`
+
+	// Global Exit Root hash that was removed
+	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"`
+
+	// Block number where the GER was removed
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Timestamp when the remove event was recorded in database
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// RemoveGEREventsResult contains the remove GER events and the total count
+// @Description Paginated response of remove GER events
+type RemoveGEREventsResult struct {
+	// List of remove GER events
+	RemoveGEREvents []*RemoveGEREventResponse `json:"remove_ger_events"`
+
+	// Total number of remove GER events
+	Count int `json:"count" example:"10"`
+}

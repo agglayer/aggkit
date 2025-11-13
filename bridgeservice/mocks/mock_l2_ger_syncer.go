@@ -5,7 +5,10 @@ package mocks
 import (
 	context "context"
 
+	common "github.com/ethereum/go-ethereum/common"
+
 	l2gersync "github.com/agglayer/aggkit/l2gersync"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -75,6 +78,183 @@ func (_c *L2GERSyncer_GetFirstGERAfterL1InfoTreeIndex_Call) Return(_a0 l2gersync
 }
 
 func (_c *L2GERSyncer_GetFirstGERAfterL1InfoTreeIndex_Call) RunAndReturn(run func(context.Context, uint32) (l2gersync.GlobalExitRootInfo, error)) *L2GERSyncer_GetFirstGERAfterL1InfoTreeIndex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRemoveGEREvents provides a mock function with given fields: ctx
+func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context) ([]*l2gersync.RemoveGEREvent, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRemoveGEREvents")
+	}
+
+	var r0 []*l2gersync.RemoveGEREvent
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]*l2gersync.RemoveGEREvent, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []*l2gersync.RemoveGEREvent); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*l2gersync.RemoveGEREvent)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERSyncer_GetRemoveGEREvents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemoveGEREvents'
+type L2GERSyncer_GetRemoveGEREvents_Call struct {
+	*mock.Call
+}
+
+// GetRemoveGEREvents is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *L2GERSyncer_Expecter) GetRemoveGEREvents(ctx interface{}) *L2GERSyncer_GetRemoveGEREvents_Call {
+	return &L2GERSyncer_GetRemoveGEREvents_Call{Call: _e.mock.On("GetRemoveGEREvents", ctx)}
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Run(run func(ctx context.Context)) *L2GERSyncer_GetRemoveGEREvents_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Return(_a0 []*l2gersync.RemoveGEREvent, _a1 error) *L2GERSyncer_GetRemoveGEREvents_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) RunAndReturn(run func(context.Context) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREvents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRemoveGEREventsByBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *L2GERSyncer) GetRemoveGEREventsByBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*l2gersync.RemoveGEREvent, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRemoveGEREventsByBlockRange")
+	}
+
+	var r0 []*l2gersync.RemoveGEREvent
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]*l2gersync.RemoveGEREvent, error)); ok {
+		return rf(ctx, fromBlock, toBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []*l2gersync.RemoveGEREvent); ok {
+		r0 = rf(ctx, fromBlock, toBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*l2gersync.RemoveGEREvent)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) error); ok {
+		r1 = rf(ctx, fromBlock, toBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERSyncer_GetRemoveGEREventsByBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemoveGEREventsByBlockRange'
+type L2GERSyncer_GetRemoveGEREventsByBlockRange_Call struct {
+	*mock.Call
+}
+
+// GetRemoveGEREventsByBlockRange is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fromBlock uint64
+//   - toBlock uint64
+func (_e *L2GERSyncer_Expecter) GetRemoveGEREventsByBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call {
+	return &L2GERSyncer_GetRemoveGEREventsByBlockRange_Call{Call: _e.mock.On("GetRemoveGEREventsByBlockRange", ctx, fromBlock, toBlock)}
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
+	})
+	return _c
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call) Return(_a0 []*l2gersync.RemoveGEREvent, _a1 error) *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREventsByBlockRange_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRemoveGEREventsByGER provides a mock function with given fields: ctx, globalExitRoot
+func (_m *L2GERSyncer) GetRemoveGEREventsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*l2gersync.RemoveGEREvent, error) {
+	ret := _m.Called(ctx, globalExitRoot)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRemoveGEREventsByGER")
+	}
+
+	var r0 []*l2gersync.RemoveGEREvent
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) ([]*l2gersync.RemoveGEREvent, error)); ok {
+		return rf(ctx, globalExitRoot)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) []*l2gersync.RemoveGEREvent); ok {
+		r0 = rf(ctx, globalExitRoot)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*l2gersync.RemoveGEREvent)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
+		r1 = rf(ctx, globalExitRoot)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERSyncer_GetRemoveGEREventsByGER_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRemoveGEREventsByGER'
+type L2GERSyncer_GetRemoveGEREventsByGER_Call struct {
+	*mock.Call
+}
+
+// GetRemoveGEREventsByGER is a helper method to define mock.On call
+//   - ctx context.Context
+//   - globalExitRoot common.Hash
+func (_e *L2GERSyncer_Expecter) GetRemoveGEREventsByGER(ctx interface{}, globalExitRoot interface{}) *L2GERSyncer_GetRemoveGEREventsByGER_Call {
+	return &L2GERSyncer_GetRemoveGEREventsByGER_Call{Call: _e.mock.On("GetRemoveGEREventsByGER", ctx, globalExitRoot)}
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREventsByGER_Call) Run(run func(ctx context.Context, globalExitRoot common.Hash)) *L2GERSyncer_GetRemoveGEREventsByGER_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREventsByGER_Call) Return(_a0 []*l2gersync.RemoveGEREvent, _a1 error) *L2GERSyncer_GetRemoveGEREventsByGER_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERSyncer_GetRemoveGEREventsByGER_Call) RunAndReturn(run func(context.Context, common.Hash) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREventsByGER_Call {
 	_c.Call.Return(run)
 	return _c
 }

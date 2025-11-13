@@ -23,6 +23,7 @@ const (
 	GetClaimProofReq             = "claim_proof"
 	GetLastReorgEventReq         = "last_reorg_event"
 	GetSyncStatusReq             = "get_sync_status"
+	GetRemoveGEREventsReq        = "get_remove_ger_events"
 	GetHealthCheckReq            = "health_check"
 )
 

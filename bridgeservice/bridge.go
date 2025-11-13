@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit"
@@ -30,8 +31,10 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
 	ginswagger "github.com/swaggo/gin-swagger"
@@ -198,6 +201,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
+		bridgeGroup.GET("/remove-ger-events", b.GetRemoveGEREventsHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -1055,6 +1059,121 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, reorgEvent)
 }
 
+// GetRemoveGEREventsHandler retrieves remove GER events.
+//
+// @Summary Get remove GER events
+// @Description Returns a list of remove GER events, optionally filtered by block range or specific GER
+// @Tags ger-events
+// @Param from_block query uint64 false "Start block number for filtering"
+// @Param to_block query uint64 false "End block number for filtering"
+// @Param global_exit_root query string false "Filter by specific Global Exit Root hash"
+// @Produce json
+// @Success 200 {object} types.RemoveGEREventsResult "List of remove GER events"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /remove-ger-events [get]
+func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
+	b.logger.Debugf("GetRemoveGEREvents request received")
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetRemoveGEREventsReq, statusCode, startTime)
+	}()
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	// Check if L2GERSyncer is available
+	if b.injectedGERs == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": "L2 GER syncer is not available"})
+		return
+	}
+
+	// Parse query parameters
+	fromBlockStr := c.Query("from_block")
+	toBlockStr := c.Query("to_block")
+	globalExitRootStr := c.Query("global_exit_root")
+
+	var removeEvents []*l2gersync.RemoveGEREvent
+	var err error
+
+	// Determine which query method to use based on parameters
+	switch {
+	case globalExitRootStr != "":
+		// Filter by specific GER
+		if !isValidHexHash(globalExitRootStr) {
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": "invalid global_exit_root parameter, must be a valid 32-byte hex hash (66 characters including 0x prefix)"})
+			return
+		}
+		globalExitRoot := common.HexToHash(globalExitRootStr)
+		removeEvents, err = b.injectedGERs.GetRemoveGEREventsByGER(ctx, globalExitRoot)
+
+	case fromBlockStr != "" || toBlockStr != "":
+		// Filter by block range
+		fromBlock := uint64(0)
+		toBlock := ^uint64(0) // Max uint64
+
+		if fromBlockStr != "" {
+			fromBlock, err = strconv.ParseUint(fromBlockStr, 10, 64)
+			if err != nil {
+				statusCode = http.StatusBadRequest
+				c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
+				return
+			}
+		}
+
+		if toBlockStr != "" {
+			toBlock, err = strconv.ParseUint(toBlockStr, 10, 64)
+			if err != nil {
+				statusCode = http.StatusBadRequest
+				c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
+				return
+			}
+		}
+
+		if fromBlock > toBlock {
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
+			return
+		}
+
+		removeEvents, err = b.injectedGERs.GetRemoveGEREventsByBlockRange(ctx, fromBlock, toBlock)
+
+	default:
+		// Get all remove events
+		removeEvents, err = b.injectedGERs.GetRemoveGEREvents(ctx)
+	}
+
+	if err != nil {
+		b.logger.Errorf("failed to get remove GER events: %v", err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get remove GER events: %s", err)})
+		return
+	}
+
+	// Convert to response format
+	responseEvents := make([]*types.RemoveGEREventResponse, len(removeEvents))
+	for i, event := range removeEvents {
+		responseEvents[i] = &types.RemoveGEREventResponse{
+			ID:             event.ID,
+			GlobalExitRoot: types.Hash(event.GlobalExitRoot.Hex()),
+			BlockNum:       event.BlockNum,
+			CreatedAt:      event.CreatedAt,
+		}
+	}
+
+	result := types.RemoveGEREventsResult{
+		RemoveGEREvents: responseEvents,
+		Count:           len(responseEvents),
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // populateNetworkSyncInfo populates sync information for a network if it's active
 func (b *BridgeService) populateNetworkSyncInfo(
 	ctx context.Context,
@@ -1336,4 +1455,29 @@ func (b *BridgeService) setupRequest(c *gin.Context) (context.Context, context.C
 func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 	metrics.IncTotalRequestCounter(handlerID, strconv.Itoa(statusCode))
 	metrics.ObserveRequestLatencyHistogram(handlerID, startTime)
+}
+
+// isValidHexHash validates that a string is a valid 32-byte hex hash
+// Expected format: 0x followed by exactly 64 hex characters (total 66 chars)
+func isValidHexHash(s string) bool {
+	// Check length: 0x (2 chars) + 64 hex chars = 66 total
+	if len(s) != 66 {
+		return false
+	}
+
+	// Check 0x prefix
+	if !strings.HasPrefix(s, "0x") {
+		return false
+	}
+
+	// Check that remaining characters are valid hex
+	for _, char := range s[2:] {
+		if !((char >= '0' && char <= '9') ||
+			(char >= 'a' && char <= 'f') ||
+			(char >= 'A' && char <= 'F')) {
+			return false
+		}
+	}
+
+	return true
 }
