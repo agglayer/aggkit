@@ -104,7 +104,6 @@ type L2BridgeSyncer interface {
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
 	SubscribeToSync(subscriberID string) <-chan sync.Block
-	CheckUnsetClaim(globalIndex *big.Int) (*bridgesync.UnsetClaim, error)
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -119,7 +118,6 @@ type BridgeQuerier interface {
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 	GetUnsetClaimsForBlockRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
-	CheckUnsetClaim(globalIndex *big.Int) (*bridgesync.UnsetClaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement

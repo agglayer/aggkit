@@ -573,7 +573,7 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 //   - error: Error if GER finalization status check fails
 func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	unclaimsPending := 0
+	// unclaimsPending := 0
 	for _, c := range certParams.Claims {
 		isGERFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(
 			c.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
@@ -591,20 +591,20 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 				return nil, fmt.Errorf("error checking if GER %s exists on L1: %w", c.GlobalExitRoot.String(), err)
 			}
 			if exists {
-				if unclaimsPending == 0 {
-					// if GER exists on L1, we can adjust the certificate parameters to exclude it and all blocks after it
-					// we need to see if this GER becomes finalized or not
-					return certParams.AdjustToBlock(c.BlockNum - 1)
-				}
-				return certParams.AdjustToBlock(minEndBlock)
+				// if unclaimsPending == 0 {
+				// if GER exists on L1, we can adjust the certificate parameters to exclude it and all blocks after it
+				// we need to see if this GER becomes finalized or not
+				return certParams.AdjustToBlock(c.BlockNum - 1)
+				// }
+				// return certParams.AdjustToBlock(minEndBlock)
 			}
-			for _, unclaim := range certParams.Unclaims {
-				if unclaim.GlobalIndex.Cmp(c.GlobalIndex) == 0 {
-					unclaimsPending--
-					break
-				}
-				unclaimsPending++
-			}
+			// for _, unclaim := range certParams.Unclaims {
+			// 	if unclaim.GlobalIndex.Cmp(c.GlobalIndex) == 0 {
+			// 		unclaimsPending--
+			// 		break
+			// 	}
+			// 	unclaimsPending++
+			// }
 			// we need to rebuild the certificate with the new block range to include the unclaim
 			return nil, fmt.Errorf("we need to rebuild the certificate with the new block range")
 		}

@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -144,9 +143,4 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
 	return b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
-}
-
-// CheckUnsetClaim checks if an unset claim exists for a given global index
-func (b *bridgeDataQuerier) CheckUnsetClaim(globalIndex *big.Int) (*bridgesync.UnsetClaim, error) {
-	return b.bridgeSyncer.CheckUnsetClaim(globalIndex)
 }
