@@ -4,8 +4,6 @@ package mocks
 
 import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	bridgesync "github.com/agglayer/aggkit/bridgesync"
-
 	common "github.com/ethereum/go-ethereum/common"
 
 	context "context"
@@ -85,64 +83,6 @@ func (_c *AggsenderFlowBaser_BuildCertificate_Call) Return(_a0 *agglayertypes.Ce
 }
 
 func (_c *AggsenderFlowBaser_BuildCertificate_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams, *types.CertificateHeader, bool) (*agglayertypes.Certificate, error)) *AggsenderFlowBaser_BuildCertificate_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ConvertClaimToImportedBridgeExit provides a mock function with given fields: claim
-func (_m *AggsenderFlowBaser) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
-	ret := _m.Called(claim)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ConvertClaimToImportedBridgeExit")
-	}
-
-	var r0 *agglayertypes.ImportedBridgeExit
-	var r1 error
-	if rf, ok := ret.Get(0).(func(bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)); ok {
-		return rf(claim)
-	}
-	if rf, ok := ret.Get(0).(func(bridgesync.Claim) *agglayertypes.ImportedBridgeExit); ok {
-		r0 = rf(claim)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*agglayertypes.ImportedBridgeExit)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(bridgesync.Claim) error); ok {
-		r1 = rf(claim)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ConvertClaimToImportedBridgeExit'
-type AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call struct {
-	*mock.Call
-}
-
-// ConvertClaimToImportedBridgeExit is a helper method to define mock.On call
-//   - claim bridgesync.Claim
-func (_e *AggsenderFlowBaser_Expecter) ConvertClaimToImportedBridgeExit(claim interface{}) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
-	return &AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call{Call: _e.mock.On("ConvertClaimToImportedBridgeExit", claim)}
-}
-
-func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) Run(run func(claim bridgesync.Claim)) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(bridgesync.Claim))
-	})
-	return _c
-}
-
-func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) Return(_a0 *agglayertypes.ImportedBridgeExit, _a1 error) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) RunAndReturn(run func(bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
 	_c.Call.Return(run)
 	return _c
 }

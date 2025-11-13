@@ -17,10 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-const maxErigonBlockRange = 10000
-
 var (
-	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
 )
 
@@ -47,10 +44,7 @@ func (f *baseFlow) getImportedBridgeExitsZKEVMSupport(
 		return nil, fmt.Errorf("error getting etrog activation block: %w", err)
 	}
 	// split claims into pre-etrog and post-etrog
-	preEtrogClaims, regularClaims, err := f.splitClaims(ctx, claims, postEtrogBlockNumber)
-	if err != nil {
-		return nil, fmt.Errorf("error splitting pre-etrog claims: %w", err)
-	}
+	preEtrogClaims, regularClaims := f.splitClaims(claims, postEtrogBlockNumber)
 	preEtrogClaims = f.convertGlobalIndexPreEtrog(preEtrogClaims)
 	preEtrogImportedBridgeExits, err := f.getPreEtrogImportedBridgeExits(ctx, preEtrogClaims, rootFromWhichToProve, regularClaims[0])
 	if err != nil {
@@ -64,7 +58,6 @@ func (f *baseFlow) getImportedBridgeExitsZKEVMSupport(
 	// combine both slices
 	importedBridgeExits = append(preEtrogImportedBridgeExits, importedBridgeExits...)
 	return importedBridgeExits, nil
-
 }
 
 func (f *baseFlow) convertGlobalIndexPreEtrog(claims []bridgesync.Claim) []bridgesync.Claim {
@@ -83,7 +76,7 @@ func (f *baseFlow) getPreEtrogImportedBridgeExits(
 	rootFromWhichToProve common.Hash,
 	imperson bridgesync.Claim,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	var importedBridgeExits []*agglayertypes.ImportedBridgeExit
+	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExit, 0, len(claims))
 	for _, claim := range claims {
 		bridgeExit, err := f.convertToPreEtrogImportedBridgeExit(ctx, claim, rootFromWhichToProve, imperson)
 		if err != nil {
@@ -144,7 +137,7 @@ func (f *baseFlow) GetEtrogActivationBlock(ctx context.Context, claims []bridges
 		// We already known which block is it
 		return f.zkEVMStatus.etrogActivationBlock, nil
 	}
-	if claims == nil || len(claims) == 0 {
+	if len(claims) == 0 {
 		return 0, fmt.Errorf("cannot deduce etrog activation block without claims")
 	}
 	fromBlock := max(claims[0].BlockNum, f.zkEVMStatus.lowerBlockTested+1)
@@ -161,6 +154,7 @@ func (f *baseFlow) GetEtrogActivationBlock(ctx context.Context, claims []bridges
 func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context, fromBlock, toBlock uint64) (uint64, error) {
 	var logs []types.Log
 	var err error
+	maxErigonBlockRange := f.zkEVMStatus.cfg.RPCFilterChunkSize
 	lastBlockNumber := uint64(0)
 	from := fromBlock
 	to := min(fromBlock+maxErigonBlockRange, toBlock)
@@ -179,7 +173,6 @@ func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context, fr
 		if len(logs) > 0 {
 			lastBlockNumber = logs[len(logs)-1].BlockNumber
 			log.Infof("Filtering logs from block %d to block %d for etrog activation block logs=%d lastBlockNumber=%d", from, to, len(logs), lastBlockNumber)
-
 		}
 		from = min(to+1, toBlock)
 		to = min(from+maxErigonBlockRange, toBlock)
@@ -193,9 +186,8 @@ func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context, fr
 	return f.zkEVMStatus.etrogActivationBlock, nil
 }
 
-func (f *baseFlow) splitClaims(ctx context.Context,
-	claims []bridgesync.Claim, etrogActivationBlock uint64,
-) (preEtrogClaims []bridgesync.Claim, regularClaims []bridgesync.Claim, err error) {
+func (f *baseFlow) splitClaims(claims []bridgesync.Claim, etrogActivationBlock uint64,
+) (preEtrogClaims []bridgesync.Claim, regularClaims []bridgesync.Claim) {
 	for _, claim := range claims {
 		if claim.BlockNum < etrogActivationBlock {
 			preEtrogClaims = append(preEtrogClaims, claim)
@@ -203,5 +195,5 @@ func (f *baseFlow) splitClaims(ctx context.Context,
 			regularClaims = append(regularClaims, claim)
 		}
 	}
-	return preEtrogClaims, regularClaims, nil
+	return preEtrogClaims, regularClaims
 }

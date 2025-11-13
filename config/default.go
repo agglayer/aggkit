@@ -258,6 +258,7 @@ RequireCommitteeMembershipCheck = false
 	[AggSender.SupportLegacyZKEVM]
 		Enabled = false
 		L2BridgeAddr = "{{polygonBridgeAddr}}"
+		RPCFilterChunkSize = 10000
 
 [Prometheus]
 Enabled = true
