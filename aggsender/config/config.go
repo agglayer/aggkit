@@ -99,7 +99,7 @@ type Config struct {
 type SupportLegacyZKEVMConfig struct {
 	Enabled            bool              `mapstructure:"Enabled"`
 	L2BridgeAddr       ethCommon.Address `mapstructure:"L2BridgeAddr"`
-	RPCFilterChunkSize uint64            `mapstructure:"FilterChunkSize"`
+	RPCFilterChunkSize uint64            `mapstructure:"RPCFilterChunkSize"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

@@ -18,6 +18,7 @@ import (
 )
 
 var (
+	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
 )
 
@@ -46,7 +47,8 @@ func (f *baseFlow) getImportedBridgeExitsZKEVMSupport(
 	// split claims into pre-etrog and post-etrog
 	preEtrogClaims, regularClaims := f.splitClaims(claims, postEtrogBlockNumber)
 	preEtrogClaims = f.convertGlobalIndexPreEtrog(preEtrogClaims)
-	preEtrogImportedBridgeExits, err := f.getPreEtrogImportedBridgeExits(ctx, preEtrogClaims, rootFromWhichToProve, regularClaims[0])
+	preEtrogImportedBridgeExits, err := f.getPreEtrogImportedBridgeExits(ctx, preEtrogClaims,
+		rootFromWhichToProve, regularClaims[0])
 	if err != nil {
 		return nil, fmt.Errorf("error getting pre-etrog imported bridge exits: %w", err)
 	}
@@ -151,11 +153,12 @@ func (f *baseFlow) GetEtrogActivationBlock(ctx context.Context, claims []bridges
 	return result, nil
 }
 
-func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context, fromBlock, toBlock uint64) (uint64, error) {
+func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context,
+	fromBlock, toBlock uint64) (uint64, error) {
 	var logs []types.Log
 	var err error
 	maxErigonBlockRange := f.zkEVMStatus.cfg.RPCFilterChunkSize
-	lastBlockNumber := uint64(0)
+	log.Infof("Getting etrog activation block from block range [%d : %d] chunk: %d", fromBlock, toBlock, maxErigonBlockRange)
 	from := fromBlock
 	to := min(fromBlock+maxErigonBlockRange, toBlock)
 	for from != toBlock {
@@ -163,27 +166,25 @@ func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context, fr
 			Addresses: []common.Address{f.zkEVMStatus.cfg.L2BridgeAddr},
 			FromBlock: big.NewInt(int64(from)),
 			ToBlock:   big.NewInt(int64(to)),
-			Topics:    [][]common.Hash{{claimEventSignaturePreEtrog}},
+			Topics:    [][]common.Hash{{claimEventSignature}},
 		}
-		log.Infof("Filtering logs from block %d to block %d for etrog activation block", from, to)
+		log.Debugf("Filtering logs from block %d to block %d for etrog activation block", from, to)
 		logs, err = f.zkEVMStatus.l2Client.FilterLogs(ctx, filterQuery)
 		if err != nil {
 			return 0, fmt.Errorf("error filtering logs to find etrog activation block: %w", err)
 		}
 		if len(logs) > 0 {
-			lastBlockNumber = logs[len(logs)-1].BlockNumber
-			log.Infof("Filtering logs from block %d to block %d for etrog activation block logs=%d lastBlockNumber=%d", from, to, len(logs), lastBlockNumber)
+			firstPostEtrogBlockNumber := logs[0].BlockNumber
+			log.Infof("Filtering logs from block %d to block %d for etrog activation "+
+				"block logs=%d firstPostEtrogBlockNumber=%d", from, to, len(logs), firstPostEtrogBlockNumber)
+			f.zkEVMStatus.etrogActivationBlock = firstPostEtrogBlockNumber
+			return f.zkEVMStatus.etrogActivationBlock, nil
 		}
 		from = min(to+1, toBlock)
 		to = min(from+maxErigonBlockRange, toBlock)
 	}
-	// If there are no logs means that all claims are post-etrog
-	if lastBlockNumber == 0 {
-		return 0, nil
-	}
-	// This is the first post-etrog block
-	f.zkEVMStatus.etrogActivationBlock = lastBlockNumber + 1
-	return f.zkEVMStatus.etrogActivationBlock, nil
+	// Not found
+	return 0, fmt.Errorf("etrog activation block not found in range [%d : %d]", fromBlock, toBlock)
 }
 
 func (f *baseFlow) splitClaims(claims []bridgesync.Claim, etrogActivationBlock uint64,
