@@ -17,10 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-var (
-	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
-	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
-)
+var claimEventSignature = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 
 type zkEVMSupportStatus struct {
 	cfg                  config.SupportLegacyZKEVMConfig
@@ -158,7 +155,8 @@ func (f *baseFlow) GetEtrogActivationBlockFromBlockRange(ctx context.Context,
 	var logs []types.Log
 	var err error
 	maxErigonBlockRange := f.zkEVMStatus.cfg.RPCFilterChunkSize
-	log.Infof("Getting etrog activation block from block range [%d : %d] chunk: %d", fromBlock, toBlock, maxErigonBlockRange)
+	log.Infof("Getting etrog activation block from block range [%d : %d] chunk: %d",
+		fromBlock, toBlock, maxErigonBlockRange)
 	from := fromBlock
 	to := min(fromBlock+maxErigonBlockRange, toBlock)
 	for from != toBlock {

@@ -130,7 +130,7 @@ func (e *EpochNotifierPerBlock) ForcePublishEpochEvent() {
 		Epoch:     e.epochNumber(currentBlock),
 		ExtraInfo: info,
 	}
-	e.GenericSubscriber.Publish(*event)
+	e.Publish(*event)
 }
 
 func (e *EpochNotifierPerBlock) startInternal(ctx context.Context, eventNewBlockChannel <-chan types.EventNewBlock) {
