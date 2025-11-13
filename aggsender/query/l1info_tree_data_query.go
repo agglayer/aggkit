@@ -198,3 +198,10 @@ func (l *L1InfoTreeDataQuerier) IsGERFinalized(
 
 	return info.L1InfoTreeIndex <= finalizedL1InfoLeafCount-1, nil
 }
+
+func (l *L1InfoTreeDataQuerier) IsGERExistsOnL1(
+	ger common.Hash,
+) (bool, error) {
+	// TODO: implement this
+	return true, nil
+}

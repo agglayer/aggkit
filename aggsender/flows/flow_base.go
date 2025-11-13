@@ -584,7 +584,26 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 			f.log.Warnf("found a non-finalized GER: %s on block: %d. "+
 				"Certificate will be resized to exclude it and all blocks after it",
 				c.GlobalExitRoot.String(), c.BlockNum)
-			return certParams.AdjustToBlock(c.BlockNum - 1)
+			// check on L1 if GER exists
+			exists, err := f.l1InfoTreeDataQuerier.IsGERExistsOnL1(c.GlobalExitRoot)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if GER %s exists on L1: %w", c.GlobalExitRoot.String(), err)
+			}
+			if exists {
+				// if GER exists on L1, we can adjust the certificate parameters to exclude it and all blocks after it
+				// we need to see if this GER becomes finalized or not
+				return certParams.AdjustToBlock(c.BlockNum - 1)
+			}
+			// if it doesnt exist, we need to check for the unset claim table if we have received an event for this claim
+			unsetClaim, err = f.l2BridgeQuerier.CheckUnsetClaim(c.GlobalIndex)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if unset claim %s exists: %w", c.GlobalIndex.String(), err)
+			}
+			if unsetClaim == nil {
+				return nil, fmt.Errorf("GER %s does not exist on L1 and unset claim %s does not exist yet, we need to wait for the event to be received", c.GlobalExitRoot.String(), c.GlobalIndex.String())
+			}
+			// we need to rebuild the certificate with the new block range
+			return nil, fmt.Errorf("we need to rebuild the certificate with the new block range")
 		}
 	}
 

@@ -162,10 +162,10 @@ type L1InfoTreeDataQuerier interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 
 	// IsGERFinalized checks if the given global exit root is finalized
-	IsGERFinalized(
-		ger common.Hash,
-		finalizedL1InfoLeafCount uint32,
-	) (bool, error)
+	IsGERFinalized(ger common.Hash, finalizedL1InfoLeafCount uint32) (bool, error)
+
+	// IsGERExistsOnL1 checks if the given global exit root exists on L1
+	IsGERExistsOnL1(ger common.Hash) (bool, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement

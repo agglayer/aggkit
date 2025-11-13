@@ -201,6 +201,7 @@ Mode = "Auto"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GlobalExitRootL1 = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
