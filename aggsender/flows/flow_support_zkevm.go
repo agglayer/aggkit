@@ -50,6 +50,9 @@ func (f *baseFlow) getImportedBridgeExitsZKEVMSupport(
 	}
 	// split claims into pre-etrog and post-etrog
 	preEtrogClaims, regularClaims := f.splitClaims(claims, postEtrogBlockNumber)
+	f.log.Infof("ZKEVM Support: etrogActivationBlock=%d preEtrogClaims=%d regularClaims=%d",
+		postEtrogBlockNumber, len(preEtrogClaims), len(regularClaims))
+	// only pre-etrog claims
 	preEtrogClaims = f.convertGlobalIndexPreEtrog(preEtrogClaims)
 	preEtrogImportedBridgeExits, err := f.getPreEtrogImportedBridgeExits(ctx, preEtrogClaims,
 		rootFromWhichToProve, regularClaims[0])
