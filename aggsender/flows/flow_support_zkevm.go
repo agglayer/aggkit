@@ -54,6 +54,17 @@ func (f *baseFlow) getImportedBridgeExitsZKEVMSupport(
 		postEtrogBlockNumber, len(preEtrogClaims), len(regularClaims))
 	// only pre-etrog claims
 	preEtrogClaims = f.convertGlobalIndexPreEtrog(preEtrogClaims)
+	// Just checking if it's synced L1bridge
+	block, err := f.zkEVMStatus.l1BridgeSyncer.GetBlockByLER(ctx, preEtrogClaims[0].MainnetExitRoot)
+	if err != nil {
+		return nil, fmt.Errorf("checking if synced l1bridge: error getting block by LER: %w", err)
+	}
+	if block == 0 {
+		return nil, fmt.Errorf("checking if synced l1bridge: block for LER %s is 0, so L1BridgeSyncer is not synced",
+			preEtrogClaims[0].MainnetExitRoot)
+	}
+	f.log.Infof("ZKEVM Support: L1BridgeSyncer is synced for LER %s at block %d",
+		preEtrogClaims[0].MainnetExitRoot, block)
 	preEtrogImportedBridgeExits, err := f.getPreEtrogImportedBridgeExits(ctx, preEtrogClaims,
 		rootFromWhichToProve, regularClaims[0])
 	if err != nil {

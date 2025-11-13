@@ -596,7 +596,7 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC},
+		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.AGGSENDER},
 		components) {
 		return nil, nil
 	}
@@ -680,7 +680,9 @@ func runBridgeSyncL1IfNeeded(
 	rollupID uint32,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE,
+		aggkitcommon.L1BRIDGESYNC,
+		aggkitcommon.AGGSENDER}, components) {
 		return nil
 	}
 
@@ -690,6 +692,7 @@ func runBridgeSyncL1IfNeeded(
 		reorgDetectorL1,
 		l1Client,
 		rollupID,
+		// False if AGGSENDER isNeeded([]string{aggkitcommon.AGGSENDER}, components)
 		true,
 	)
 	if err != nil {
