@@ -184,13 +184,13 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 			for _, hdr := range headers {
 				// Get the actual header from the network or from the cache
 				var err error
-				rd.headersCacheLock.Lock()
 
 				currentHeader, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(hdr.Num))
 				if err != nil {
 					return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
 				}
 
+				rd.headersCacheLock.Lock()
 				oldHeader, ok := rd.headersCache[hdr.Num]
 				if !ok || oldHeader == nil {
 					rd.headersCache[hdr.Num] = currentHeader
@@ -218,8 +218,8 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 					FromBlock:    hdr.Num,
 					ToBlock:      headers[len(headers)-1].Num,
 					SubscriberID: id,
-					CurrentHash:  hdr.Hash,
-					TrackedHash:  currentHeader.Hash(),
+					CurrentHash:  currentHeader.Hash(),
+					TrackedHash:  hdr.Hash,
 				}
 				if err := rd.insertReorgEvent(event); err != nil {
 					return fmt.Errorf("failed to insert reorg event: %w", err)
