@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,4 +61,17 @@ func TestNumberOfBlocks(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestEstimateSize(t *testing.T) {
+	sut := &CertificateBuildParams{
+		FromBlock: 100,
+		ToBlock:   200,
+		Bridges:   make([]bridgesync.Bridge, 50),
+		Claims:    make([]bridgesync.Claim, 150),
+	}
+
+	estimatedSize := sut.EstimatedSize()
+
+	require.Equal(t, uint(0x6bb47), estimatedSize, "Estimated size should match expected size")
 }
