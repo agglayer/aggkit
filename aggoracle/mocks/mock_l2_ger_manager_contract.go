@@ -5,7 +5,7 @@ package mocks
 import (
 	big "math/big"
 
-	agglayergerl2 "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	agglayergerl2 "github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayergerl2"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 
