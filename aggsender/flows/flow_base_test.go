@@ -1578,10 +1578,6 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger3).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger4, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger4).Return(true, nil).Once()
 			},
 			expectedToBlock: 9, // Adjusted to block 9 (10 - 1) - earliest unfinalized existent GER
 		},
@@ -1635,50 +1631,6 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 			expectedToBlock: 7, // Cut at block 7 (8 - 1) because C2 can't be included
 		},
 		{
-			name: "invalid: claim at start block (FromBlock) with unfinalized GER that exists on L1 - cannot create cert",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []bridgesync.Claim{
-					{
-						BlockNum:       1, // At start block
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []bridgesynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(true, nil).Once()
-			},
-			expectedError: "cannot create certificate: claim at block 1 (start block 1) cannot be included and no valid blocks before it",
-		},
-		{
-			name: "invalid: claim at start block (FromBlock) with unfinalized GER that doesn't exist on L1 and no unclaim - cannot create cert",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []bridgesync.Claim{
-					{
-						BlockNum:       1, // At start block
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-				},
-				Unclaims: []bridgesynctypes.Unclaim{}, // No unclaim
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
-			},
-			expectedError: "cannot create certificate: claim at block 1 (start block 1) has unfinalized GER that doesn't exist on L1 and no unclaim found",
-		},
-		{
 			name: "invalid: claim at start block without unclaim, later claim with GER on L1 - cannot create cert",
 			certParams: &types.CertificateBuildParams{
 				FromBlock:           1,
@@ -1706,6 +1658,104 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedError: "cannot create certificate: claim at block 1 (start block 1) cannot be included and no valid blocks before it",
+		},
+		{
+			name: "invalid: error checking if GER is finalized",
+			certParams: &types.CertificateBuildParams{
+				FromBlock:           1,
+				ToBlock:             20,
+				L1InfoTreeLeafCount: 10,
+				Claims: []bridgesync.Claim{
+					{
+						BlockNum:       5,
+						GlobalIndex:    globalIndex1,
+						GlobalExitRoot: ger1,
+					},
+				},
+				Unclaims: []bridgesynctypes.Unclaim{},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				// First pass: check all claims (cached results will be reused in subsequent calls)
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, errors.New("some error")).Once()
+			},
+			expectedError: "error checking if GER",
+		},
+		{
+			name: "invalid: error checking if GER exists on L1",
+			certParams: &types.CertificateBuildParams{
+				FromBlock:           1,
+				ToBlock:             20,
+				L1InfoTreeLeafCount: 10,
+				Claims: []bridgesync.Claim{
+					{
+						BlockNum:       5,
+						GlobalIndex:    globalIndex1,
+						GlobalExitRoot: ger1,
+					},
+				},
+				Unclaims: []bridgesynctypes.Unclaim{},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				// First pass: check all claims (cached results will be reused in subsequent calls)
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, errors.New("some error")).Once()
+			},
+			expectedError: "error checking if GER",
+		},
+		{
+			name: "invalid: error checking if GER is finalized for second claim",
+			certParams: &types.CertificateBuildParams{
+				FromBlock:           1,
+				ToBlock:             20,
+				L1InfoTreeLeafCount: 10,
+				Claims: []bridgesync.Claim{
+					{
+						BlockNum:       5,
+						GlobalIndex:    globalIndex1,
+						GlobalExitRoot: ger1,
+					},
+					{
+						BlockNum:       15,
+						GlobalIndex:    globalIndex2,
+						GlobalExitRoot: ger2,
+					},
+				},
+				Unclaims: []bridgesynctypes.Unclaim{},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				// First pass: check all claims (cached results will be reused in subsequent calls)
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, errors.New("some error")).Once()
+			},
+			expectedError: "error checking if GER",
+		},
+		{
+			name: "invalid: error checking if GER exists on L1 for second claim",
+			certParams: &types.CertificateBuildParams{
+				FromBlock:           1,
+				ToBlock:             20,
+				L1InfoTreeLeafCount: 10,
+				Claims: []bridgesync.Claim{
+					{
+						BlockNum:       5,
+						GlobalIndex:    globalIndex1,
+						GlobalExitRoot: ger1,
+					},
+					{
+						BlockNum:       15,
+						GlobalIndex:    globalIndex2,
+						GlobalExitRoot: ger2,
+					},
+				},
+				Unclaims: []bridgesynctypes.Unclaim{},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				// First pass: check all claims (cached results will be reused in subsequent calls)
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(false, errors.New("some error")).Once()
+			},
+			expectedError: "error checking if GER",
 		},
 	}
 
