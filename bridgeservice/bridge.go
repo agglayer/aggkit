@@ -31,7 +31,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -1218,13 +1217,11 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	toBlockStr := c.Query("to_block")
 	globalExitRootStr := c.Query("global_exit_root")
 
-	var removeEvents []*l2gersync.RemoveGEREvent
-	var err error
+	// Parse and validate parameters
+	var globalExitRoot *common.Hash
+	var fromBlock, toBlock *uint64
 
-	// Determine which query method to use based on parameters
-	switch {
-	case globalExitRootStr != "":
-		// Filter by specific GER
+	if globalExitRootStr != "" {
 		if !isValidHexHash(globalExitRootStr) {
 			statusCode = http.StatusBadRequest
 			c.JSON(statusCode, gin.H{
@@ -1232,44 +1229,38 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 			})
 			return
 		}
-		globalExitRoot := common.HexToHash(globalExitRootStr)
-		removeEvents, err = b.injectedGERs.GetRemoveGEREventsByGER(ctx, globalExitRoot)
+		ger := common.HexToHash(globalExitRootStr)
+		globalExitRoot = &ger
+	}
 
-	case fromBlockStr != "" || toBlockStr != "":
-		// Filter by block range
-		fromBlock := uint64(0)
-		toBlock := ^uint64(0) // Max uint64
-
-		if fromBlockStr != "" {
-			fromBlock, err = strconv.ParseUint(fromBlockStr, 10, 64)
-			if err != nil {
-				statusCode = http.StatusBadRequest
-				c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
-				return
-			}
-		}
-
-		if toBlockStr != "" {
-			toBlock, err = strconv.ParseUint(toBlockStr, 10, 64)
-			if err != nil {
-				statusCode = http.StatusBadRequest
-				c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
-				return
-			}
-		}
-
-		if fromBlock > toBlock {
+	if fromBlockStr != "" {
+		parsed, err := strconv.ParseUint(fromBlockStr, 10, 64)
+		if err != nil {
 			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
+			c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
 			return
 		}
-
-		removeEvents, err = b.injectedGERs.GetRemoveGEREventsByBlockRange(ctx, fromBlock, toBlock)
-
-	default:
-		// Get all remove events
-		removeEvents, err = b.injectedGERs.GetRemoveGEREvents(ctx)
+		fromBlock = &parsed
 	}
+
+	if toBlockStr != "" {
+		parsed, err := strconv.ParseUint(toBlockStr, 10, 64)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
+			return
+		}
+		toBlock = &parsed
+	}
+
+	if fromBlock != nil && toBlock != nil && *fromBlock > *toBlock {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
+		return
+	}
+
+	// Get filtered remove events using single consolidated function
+	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot, fromBlock, toBlock)
 
 	if err != nil {
 		b.logger.Errorf("failed to get remove GER events: %v", err)

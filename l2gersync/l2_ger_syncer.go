@@ -168,21 +168,11 @@ func (s *L2GERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return s.processor.GetLastProcessedBlock(ctx)
 }
 
-// GetRemoveGEREvents retrieves all remove GER events from the database
-func (s *L2GERSync) GetRemoveGEREvents(ctx context.Context) ([]*RemoveGEREvent, error) {
-	return s.processor.GetRemoveGEREvents(ctx)
-}
-
-// GetRemoveGEREventsByBlockRange retrieves remove GER events within a specific block range
-func (s *L2GERSync) GetRemoveGEREventsByBlockRange(
-	ctx context.Context, fromBlock, toBlock uint64,
+// GetRemoveGEREvents retrieves remove GER events from the database with optional filters
+func (s *L2GERSync) GetRemoveGEREvents(
+	ctx context.Context,
+	globalExitRoot *common.Hash,
+	fromBlock, toBlock *uint64,
 ) ([]*RemoveGEREvent, error) {
-	return s.processor.GetRemoveGEREventsByBlockRange(ctx, fromBlock, toBlock)
-}
-
-// GetRemoveGEREventsByGER retrieves remove GER events for a specific Global Exit Root
-func (s *L2GERSync) GetRemoveGEREventsByGER(
-	ctx context.Context, globalExitRoot common.Hash,
-) ([]*RemoveGEREvent, error) {
-	return s.processor.GetRemoveGEREventsByGER(ctx, globalExitRoot)
+	return s.processor.GetRemoveGEREvents(ctx, globalExitRoot, fromBlock, toBlock)
 }
