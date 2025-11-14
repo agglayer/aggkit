@@ -115,8 +115,7 @@ func New(
 // resolveSyncMode determines the synchronization mode based on deployed provided l2 ger manager contract
 func resolveSyncMode(ctx context.Context, address common.Address, backend bind.ContractBackend) (SyncMode, error) {
 	// Try sovereign chain ger manager
-	sovereignGERManager, err :=
-		agglayergerl2.NewAgglayergerl2(address, backend)
+	sovereignGERManager, err := agglayergerl2.NewAgglayergerl2(address, backend)
 	if err == nil {
 		updater, err := sovereignGERManager.GlobalExitRootUpdater(&bind.CallOpts{Context: ctx})
 		if err == nil {

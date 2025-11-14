@@ -219,12 +219,6 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Filter by from address",
-                        "name": "from_address",
-                        "in": "query"
-                    },
-                    {
                         "type": "boolean",
                         "description": "Whether to include full response fields (default false)",
                         "name": "include_all_fields",
