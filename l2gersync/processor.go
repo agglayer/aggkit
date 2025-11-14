@@ -234,7 +234,6 @@ func (p *processor) buildRemoveGEREventsFilterClause(
 	if toBlock != nil {
 		clauses = append(clauses, fmt.Sprintf("block_num <= $%d", argIndex))
 		args = append(args, *toBlock)
-		argIndex++
 	}
 
 	if len(clauses) > 0 {
