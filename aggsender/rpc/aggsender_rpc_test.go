@@ -16,6 +16,13 @@ func TestAggsenderRPCStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 }
+func TestAggsenderRPCTriggerCertitificate(t *testing.T) {
+	testData := newAggsenderData(t)
+	testData.mockAggsender.EXPECT().ForceTriggerCertitificate().Return()
+	res, err := testData.sut.TriggerCertitificate()
+	require.NoError(t, err)
+	require.Nil(t, res)
+}
 
 func TestAggsenderRPCGetCertificateHeaderPerHeight(t *testing.T) {
 	testData := newAggsenderData(t)

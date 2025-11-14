@@ -15,6 +15,7 @@ type AggsenderStorer interface {
 
 type AggsenderInterface interface {
 	Info() types.AggsenderInfo
+	ForceTriggerCertitificate()
 }
 
 // AggsenderRPC is the RPC interface for the aggsender
@@ -42,6 +43,14 @@ func NewAggsenderRPC(
 func (b *AggsenderRPC) Status() (interface{}, rpc.Error) {
 	info := b.aggsender.Info()
 	return info, nil
+}
+
+// TriggerCertitificate forces the publication of an epoch event to trigger certificate creation
+// curl -X POST http://localhost:5576/ "Content-Type: application/json" \
+// -d '{"method":"aggsender_triggerCertitificate", "params":[], "id":1}'
+func (b *AggsenderRPC) TriggerCertitificate() (interface{}, rpc.Error) {
+	b.aggsender.ForceTriggerCertitificate()
+	return nil, nil
 }
 
 // GetCertificateHeaderPerHeight returns the certificate header for the given height
