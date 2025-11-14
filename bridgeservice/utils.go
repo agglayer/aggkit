@@ -144,7 +144,6 @@ func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes
 		TxHash:             bridgetypes.Hash(claim.TxHash.Hex()),
 		Amount:             bridgetypes.BigIntString(claim.Amount.String()),
 		BlockNum:           claim.BlockNum,
-		FromAddress:        bridgetypes.Address(claim.FromAddress.Hex()),
 		DestinationAddress: bridgetypes.Address(claim.DestinationAddress.Hex()),
 		OriginAddress:      bridgetypes.Address(claim.OriginAddress.Hex()),
 		OriginNetwork:      claim.OriginNetwork,

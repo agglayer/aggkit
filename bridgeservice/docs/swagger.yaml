@@ -548,10 +548,6 @@ paths:
           type: integer
         name: network_ids
         type: array
-      - description: Filter by from address
-        in: query
-        name: from_address
-        type: string
       - description: Whether to include full response fields (default false)
         in: query
         name: include_all_fields

@@ -111,7 +111,6 @@ func (b *Bridge) Hash() common.Hash {
 type Claim struct {
 	BlockNum            uint64         `meddler:"block_num"`
 	BlockPos            uint64         `meddler:"block_pos"`
-	FromAddress         common.Address `meddler:"from_address,address"`
 	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
 	OriginNetwork       uint32         `meddler:"origin_network"`
@@ -130,7 +129,7 @@ type Claim struct {
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
-func (c *Claim) decodeEtrogCalldata(senderAddr common.Address, data []any) (bool, error) {
+func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
 	// Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
 	// for the relevant parts
 	// claimAsset/claimMessage(
@@ -155,24 +154,19 @@ func (c *Claim) decodeEtrogCalldata(senderAddr common.Address, data []any) (bool
 		// not the claim we're looking for
 		return false, nil
 	}
-	proofLER := [types.DefaultHeight]common.Hash{}
-	proofLERBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+
+	rawLERProof, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
 	if !ok {
-		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
+		return false, fmt.Errorf("unexpected type for rawLERProof, expected [32][32]byte got '%T'", data[0])
 	}
 
-	proofRER := [types.DefaultHeight]common.Hash{}
-	proofRERBytes, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
+	rawRERProof, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
 	if !ok {
-		return false, fmt.Errorf("unexpected type for proofRERBytes, expected [32][32]byte got '%T'", data[1])
+		return false, fmt.Errorf("unexpected type for rawRERProof, expected [32][32]byte got '%T'", data[1])
 	}
 
-	for i := range int(types.DefaultHeight) {
-		proofLER[i] = proofLERBytes[i]
-		proofRER[i] = proofRERBytes[i]
-	}
-	c.ProofLocalExitRoot = proofLER
-	c.ProofRollupExitRoot = proofRER
+	c.ProofLocalExitRoot = types.NewProof(rawLERProof)
+	c.ProofRollupExitRoot = types.NewProof(rawRERProof)
 
 	c.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
 	if !ok {
@@ -195,13 +189,12 @@ func (c *Claim) decodeEtrogCalldata(senderAddr common.Address, data []any) (bool
 	}
 
 	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
-	c.FromAddress = senderAddr
 
 	return true, nil
 }
 
 // decodePreEtrogCalldata decodes the claim calldata for pre-Etrog forks
-func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (bool, error) {
+func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	// claimMessage/claimAsset(
 	// 	0: bytes32[32] smtProof,
 	// 	1: uint32 index,
@@ -224,16 +217,12 @@ func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (b
 		return false, nil
 	}
 
-	proof := [types.DefaultHeight]common.Hash{}
-	proofBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+	rawLERProof, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
 	if !ok {
 		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
 	}
 
-	for i := range int(types.DefaultHeight) {
-		proof[i] = proofBytes[i]
-	}
-	c.ProofLocalExitRoot = proof
+	c.ProofLocalExitRoot = types.NewProof(rawLERProof)
 
 	c.MainnetExitRoot, ok = data[2].([common.HashLength]byte)
 	if !ok {
@@ -256,7 +245,6 @@ func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (b
 	}
 
 	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
-	c.FromAddress = senderAddr
 
 	return true, nil
 }
@@ -543,9 +531,9 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 
 func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
-	networkIDs []uint32, fromAddress string, globalIndex *big.Int,
+	networkIDs []uint32, globalIndex *big.Int,
 ) ([]*Claim, int, error) {
-	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress, globalIndex)
+	whereClause := p.buildClaimsFilterClause(networkIDs, globalIndex)
 	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -588,16 +576,12 @@ func (p *processor) GetClaimsPaged(
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
-// based on the provided networkIDs, fromAddress and globalIndex
-func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string, globalIndex *big.Int) string {
-	const clauseCapacity = 3
+// based on the provided networkIDs and globalIndex
+func (p *processor) buildClaimsFilterClause(networkIDs []uint32, globalIndex *big.Int) string {
+	const clauseCapacity = 2
 	clauses := make([]string, 0, clauseCapacity)
 	if len(networkIDs) > 0 {
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
-	}
-
-	if fromAddress != "" && common.IsHexAddress(fromAddress) {
-		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
 	}
 
 	if globalIndex != nil {

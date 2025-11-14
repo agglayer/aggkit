@@ -30,6 +30,15 @@ type TreeNode struct {
 
 type Proof [DefaultHeight]common.Hash
 
+// NewProof creates a proof from an array of hashes
+func NewProof(proofRaw [DefaultHeight][common.HashLength]byte) Proof {
+	var proof Proof
+	for i, currentLeaf := range proofRaw {
+		proof[i] = currentLeaf
+	}
+	return proof
+}
+
 func (r *Root) String() string {
 	return fmt.Sprintf("Root{Hash: %s, Index: %d, BlockNum: %d, BlockPosition: %d}",
 		r.Hash.Hex(), r.Index, r.BlockNum, r.BlockPosition)

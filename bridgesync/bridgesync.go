@@ -5,22 +5,35 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	gethvm "github.com/ethereum/go-ethereum/core/vm"
 )
 
-// BridgeSyncerType represents the type of bridge syncer
-type BridgeSyncerType int
+// BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
+type BridgeDeployment byte
 
 const (
-	L1BridgeSyncer BridgeSyncerType = iota
+	Unknown BridgeDeployment = iota
+	NonSovereignChain
+	SovereignChain
+)
+
+// BridgeSyncerID represents the type of bridge syncer
+type BridgeSyncerID int
+
+const (
+	L1BridgeSyncer BridgeSyncerID = iota
 	L2BridgeSyncer
 
 	// CurrentDBVersion represents the current version of the bridge syncer's database schema.
@@ -29,7 +42,7 @@ const (
 	CurrentDBVersion = 1
 )
 
-func (b BridgeSyncerType) String() string {
+func (b BridgeSyncerID) String() string {
 	return [...]string{"L1BridgeSyncer", "L2BridgeSyncer"}[b]
 }
 
@@ -109,7 +122,7 @@ func newBridgeSync(
 	blockFinality aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
-	syncerID BridgeSyncerType,
+	syncerID BridgeSyncerID,
 	networkID uint32,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
@@ -117,14 +130,14 @@ func newBridgeSync(
 
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create binding for AgglayerBridge contract: %w", err)
 	}
 
 	logger.Infof("Bridge sync %s, syncing full claims: %t", syncerID.String(), syncFullClaims)
 
 	err = sanityCheckContract(logger, cfg.BridgeAddr, agglayerBridge)
 	if err != nil {
-		logger.Errorf("sanityCheckContract(bridge: %s) fails sanity check. Err: %w",
+		logger.Errorf("bridge contract on %s address fails sanity check. Err: %w",
 			cfg.BridgeAddr.String(), err)
 		return nil, err
 	}
@@ -158,7 +171,12 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 	}
 
-	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, agglayerBridge, logger)
+	bridgeDeployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
+	}
+
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +254,54 @@ func newBridgeSync(
 	}, nil
 }
 
+type bridgeDeployment struct {
+	kind             BridgeDeployment
+	agglayerBridge   *agglayerbridge.Agglayerbridge
+	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
+}
+
+// resolveBridgeDeployment resolves which bridge contract flavor is deployed:
+// AgglayerBridge => NonSovereign bridge
+// AgglayerBridgeL2 => Sovereign bridge
+func resolveBridgeDeployment(ctx context.Context,
+	bridgeAddr common.Address, backend bind.ContractBackend) (*bridgeDeployment, error) {
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, backend)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AgglayerBridge binding (%s): %w", bridgeAddr, err)
+	}
+
+	agglayerBridgeL2, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, backend)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AgglayerBridgeL2 binding (%s): %w", bridgeAddr, err)
+	}
+
+	callOpts := &bind.CallOpts{Pending: false, Context: ctx}
+
+	// 1. Try calling BRIDGE_SOVEREIGN_VERSION — only exists on AgglayerBridgeL2
+	if _, err := agglayerBridgeL2.BRIDGESOVEREIGNVERSION(callOpts); err == nil {
+		return &bridgeDeployment{
+			kind:             SovereignChain,
+			agglayerBridge:   agglayerBridge,
+			agglayerBridgeL2: agglayerBridgeL2,
+		}, nil
+	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
+		return nil, fmt.Errorf("unexpected error querying AgglayerBridgeL2.BRIDGE_SOVEREIGN_VERSION: %w", err)
+	}
+
+	// 2. If that failed, try BRIDGE_VERSION — exists on base AgglayerBridge
+	if _, err := agglayerBridge.BRIDGEVERSION(callOpts); err == nil {
+		return &bridgeDeployment{
+			kind:             NonSovereignChain,
+			agglayerBridge:   agglayerBridge,
+			agglayerBridgeL2: agglayerBridgeL2,
+		}, nil
+	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
+		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.BRIDGE_VERSION: %w", err)
+	}
+
+	return nil, fmt.Errorf("unable to determine bridge contract type at address %s", bridgeAddr)
+}
+
 // Start starts the synchronization process
 func (s *BridgeSync) Start(ctx context.Context) {
 	s.processor.log.Info("starting bridge synchronizer")
@@ -254,12 +320,12 @@ func (s *BridgeSync) GetBridgesPaged(
 
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*Claim, int, error) {
+	page, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error) {
 	if s.processor.isHalted() {
 		s.processor.log.Error("processor is halted, cannot get claims")
 		return nil, 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {

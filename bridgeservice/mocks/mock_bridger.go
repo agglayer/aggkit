@@ -99,9 +99,9 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 	return _c
 }
 
-// GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, networkIDs, fromAddress, globalIndex
-func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*bridgesync.Claim, int, error) {
-	ret := _m.Called(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+// GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, networkIDs, globalIndex
+func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*bridgesync.Claim, int, error) {
+	ret := _m.Called(ctx, page, pageSize, networkIDs, globalIndex)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClaimsPaged")
@@ -110,25 +110,25 @@ func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uin
 	var r0 []*bridgesync.Claim
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) ([]*bridgesync.Claim, int, error)); ok {
-		return rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, *big.Int) ([]*bridgesync.Claim, int, error)); ok {
+		return rf(ctx, page, pageSize, networkIDs, globalIndex)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) []*bridgesync.Claim); ok {
-		r0 = rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, *big.Int) []*bridgesync.Claim); ok {
+		r0 = rf(ctx, page, pageSize, networkIDs, globalIndex)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*bridgesync.Claim)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) int); ok {
-		r1 = rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32, *big.Int) int); ok {
+		r1 = rf(ctx, page, pageSize, networkIDs, globalIndex)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32, string, *big.Int) error); ok {
-		r2 = rf(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32, *big.Int) error); ok {
+		r2 = rf(ctx, page, pageSize, networkIDs, globalIndex)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -146,15 +146,14 @@ type Bridger_GetClaimsPaged_Call struct {
 //   - page uint32
 //   - pageSize uint32
 //   - networkIDs []uint32
-//   - fromAddress string
 //   - globalIndex *big.Int
-func (_e *Bridger_Expecter) GetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, networkIDs interface{}, fromAddress interface{}, globalIndex interface{}) *Bridger_GetClaimsPaged_Call {
-	return &Bridger_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, page, pageSize, networkIDs, fromAddress, globalIndex)}
+func (_e *Bridger_Expecter) GetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, networkIDs interface{}, globalIndex interface{}) *Bridger_GetClaimsPaged_Call {
+	return &Bridger_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, page, pageSize, networkIDs, globalIndex)}
 }
 
-func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int)) *Bridger_GetClaimsPaged_Call {
+func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, globalIndex *big.Int)) *Bridger_GetClaimsPaged_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].([]uint32), args[4].(string), args[5].(*big.Int))
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].([]uint32), args[4].(*big.Int))
 	})
 	return _c
 }
@@ -164,7 +163,7 @@ func (_c *Bridger_GetClaimsPaged_Call) Return(_a0 []*bridgesync.Claim, _a1 int, 
 	return _c
 }
 
-func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, []uint32, string, *big.Int) ([]*bridgesync.Claim, int, error)) *Bridger_GetClaimsPaged_Call {
+func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, []uint32, *big.Int) ([]*bridgesync.Claim, int, error)) *Bridger_GetClaimsPaged_Call {
 	_c.Call.Return(run)
 	return _c
 }
