@@ -657,10 +657,10 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		unsetClaimResponses[i] = &types.UnsetClaimResponse{
 			BlockNum:                  unsetClaim.BlockNum,
 			BlockPos:                  unsetClaim.BlockPos,
-			BlockTimestamp:            unsetClaim.BlockTimestamp,
 			TxHash:                    types.Hash(unsetClaim.TxHash.Hex()),
 			GlobalIndex:               types.BigIntString(unsetClaim.GlobalIndex.String()),
 			UnsetGlobalIndexHashChain: types.Hash(unsetClaim.UnsetGlobalIndexHashChain.Hex()),
+			CreatedAt:                 unsetClaim.CreatedAt,
 		}
 	}
 

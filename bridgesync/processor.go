@@ -314,10 +314,10 @@ type RemoveLegacyToken struct {
 type UnsetClaim struct {
 	BlockNum                  uint64      `meddler:"block_num"`
 	BlockPos                  uint64      `meddler:"block_pos"`
-	BlockTimestamp            uint64      `meddler:"block_timestamp"`
 	TxHash                    common.Hash `meddler:"tx_hash,hash"`
 	GlobalIndex               *big.Int    `meddler:"global_index,bigint"`
 	UnsetGlobalIndexHashChain common.Hash `meddler:"unset_global_index_hash_chain,hash"`
+	CreatedAt                 uint64      `meddler:"created_at"`
 }
 
 // SetClaim representation of a SetClaim event,
@@ -325,10 +325,10 @@ type UnsetClaim struct {
 type SetClaim struct {
 	BlockNum            uint64      `meddler:"block_num"`
 	BlockPos            uint64      `meddler:"block_pos"`
-	BlockTimestamp      uint64      `meddler:"block_timestamp"`
 	TxHash              common.Hash `meddler:"tx_hash,hash"`
 	LeafIndex           uint32      `meddler:"leaf_index"`
 	SourceBridgeNetwork uint32      `meddler:"source_bridge_network"`
+	CreatedAt           uint64      `meddler:"created_at"`
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events

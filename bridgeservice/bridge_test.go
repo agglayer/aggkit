@@ -1202,10 +1202,10 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 			{
 				BlockNum:                  1,
 				BlockPos:                  1,
-				BlockTimestamp:            1617184800,
 				TxHash:                    common.HexToHash("0x1234567890abcdef"),
 				GlobalIndex:               big.NewInt(1000000),
 				UnsetGlobalIndexHashChain: common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"),
+				CreatedAt:                 1617184800,
 			},
 		}
 

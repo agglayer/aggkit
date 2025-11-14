@@ -337,7 +337,6 @@ func buildUnsetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) fu
 		b.Events = append(b.Events, Event{UnsetClaim: &UnsetClaim{
 			BlockNum:                  b.Num,
 			BlockPos:                  uint64(l.Index),
-			BlockTimestamp:            b.Timestamp,
 			TxHash:                    l.TxHash,
 			GlobalIndex:               globalIndex,
 			UnsetGlobalIndexHashChain: event.NewUnsetGlobalIndexHashChain,
@@ -357,7 +356,6 @@ func buildSetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func
 		b.Events = append(b.Events, Event{SetClaim: &SetClaim{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
-			BlockTimestamp:      b.Timestamp,
 			TxHash:              l.TxHash,
 			LeafIndex:           event.LeafIndex,
 			SourceBridgeNetwork: event.SourceNetwork,

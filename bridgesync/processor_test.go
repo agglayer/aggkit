@@ -2726,7 +2726,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		{
 			BlockNum:                  1,
 			BlockPos:                  0,
-			BlockTimestamp:            1617184800,
 			TxHash:                    common.HexToHash("0x123"),
 			GlobalIndex:               big.NewInt(100),
 			UnsetGlobalIndexHashChain: common.HexToHash("0xabc123"),
@@ -2734,7 +2733,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		{
 			BlockNum:                  2,
 			BlockPos:                  0,
-			BlockTimestamp:            1617184900,
 			TxHash:                    common.HexToHash("0x456"),
 			GlobalIndex:               big.NewInt(200),
 			UnsetGlobalIndexHashChain: common.HexToHash("0xdef456"),
@@ -2742,7 +2740,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		{
 			BlockNum:                  3,
 			BlockPos:                  0,
-			BlockTimestamp:            1617185000,
 			TxHash:                    common.HexToHash("0x789"),
 			GlobalIndex:               big.NewInt(100), // Same global index as first
 			UnsetGlobalIndexHashChain: common.HexToHash("0x987654"),
