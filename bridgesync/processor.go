@@ -576,9 +576,9 @@ func (p *processor) GetClaimsPaged(
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
-// based on the provided networkIDs, fromAddress and globalIndex
+// based on the provided networkIDs and globalIndex
 func (p *processor) buildClaimsFilterClause(networkIDs []uint32, globalIndex *big.Int) string {
-	const clauseCapacity = 3
+	const clauseCapacity = 2
 	clauses := make([]string, 0, clauseCapacity)
 	if len(networkIDs) > 0 {
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
