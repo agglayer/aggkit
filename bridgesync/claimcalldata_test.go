@@ -36,7 +36,7 @@ func TestClaimCalldata(t *testing.T) {
 	require.NoError(t, err)
 	claimCallerAddr, _, claimCaller, err := claimmockcaller.DeployClaimmockcaller(auth, client, bridgeAddr)
 	require.NoError(t, err)
-	claimTestAddr, _, claimTest, err := claimmocktest.DeployClaimmocktest(auth, client, bridgeAddr, claimCallerAddr)
+	_, _, claimTest, err := claimmocktest.DeployClaimmocktest(auth, client, bridgeAddr, claimCallerAddr)
 	require.NoError(t, err)
 
 	proofLocal := [tree.DefaultHeight][common.HashLength]byte{}
@@ -59,7 +59,6 @@ func TestClaimCalldata(t *testing.T) {
 		DestinationNetwork:  0,
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
-		FromAddress:         auth.From,
 	}
 	expectedClaim2 := Claim{
 		OriginNetwork:       87,
@@ -73,7 +72,6 @@ func TestClaimCalldata(t *testing.T) {
 		DestinationNetwork:  0,
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
-		FromAddress:         auth.From,
 	}
 	expectedClaim3 := Claim{
 		OriginNetwork:       69,
@@ -87,7 +85,6 @@ func TestClaimCalldata(t *testing.T) {
 		DestinationNetwork:  0,
 		Metadata:            []byte{},
 		GlobalExitRoot:      crypto.Keccak256Hash(common.HexToHash("5ca1e").Bytes(), common.HexToHash("dead").Bytes()),
-		FromAddress:         auth.From,
 	}
 	auth.GasLimit = 999999 // for some reason gas estimation fails :(
 
@@ -125,7 +122,6 @@ func TestClaimCalldata(t *testing.T) {
 	// indirect call claim asset
 	expectedClaim.IsMessage = false
 	expectedClaim.GlobalIndex = big.NewInt(422)
-	expectedClaim.FromAddress = claimCallerAddr
 	tx, err = claimCaller.ClaimAsset(
 		auth,
 		proofLocal,
@@ -176,7 +172,6 @@ func TestClaimCalldata(t *testing.T) {
 	// direct call claim message
 	expectedClaim.IsMessage = true
 	expectedClaim.GlobalIndex = big.NewInt(424)
-	expectedClaim.FromAddress = auth.From
 	tx, err = bridgeContract.ClaimMessage(
 		auth,
 		proofLocal,
@@ -205,7 +200,6 @@ func TestClaimCalldata(t *testing.T) {
 	// indirect call claim message
 	expectedClaim.IsMessage = true
 	expectedClaim.GlobalIndex = big.NewInt(425)
-	expectedClaim.FromAddress = claimCallerAddr
 	tx, err = claimCaller.ClaimMessage(
 		auth,
 		proofLocal,
@@ -272,7 +266,6 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
-	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err := encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -678,7 +671,6 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaim3.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -720,10 +712,8 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(428)
-	expectedClaim2.FromAddress = claimTestAddr
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
-	expectedClaim3.FromAddress = claimCallerAddr
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
@@ -767,7 +757,6 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(428)
-	expectedClaim2.FromAddress = claimTestAddr
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
@@ -848,7 +837,6 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(428)
-	expectedClaim2.FromAddress = claimTestAddr
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
@@ -888,7 +876,6 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
-	expectedClaim2.FromAddress = claimCallerAddr
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
@@ -965,10 +952,8 @@ func TestClaimCalldata(t *testing.T) {
 	// 1 ok 1 ok 1 ko (indirectx2, indirect, indirectx2) call claim message (same global index)
 	expectedClaim.IsMessage = true
 	expectedClaim.GlobalIndex = big.NewInt(427)
-	expectedClaim.FromAddress = claimTestAddr
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
-	expectedClaim2.FromAddress = claimTestAddr
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
@@ -1039,7 +1024,6 @@ func TestClaimCalldata(t *testing.T) {
 	// 1 ok 2 ko (indirectx2, indirect, indirectx2) call claim message (same global index)
 	expectedClaim.IsMessage = true
 	expectedClaim.GlobalIndex = big.NewInt(427)
-	expectedClaim.FromAddress = claimCallerAddr
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
@@ -1075,7 +1059,6 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
-	expectedClaim2.FromAddress = claimTestAddr
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
 	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
@@ -1123,7 +1106,6 @@ func TestClaimCalldata(t *testing.T) {
 			err = actualClaim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
-			require.Equal(t, tc.expectedClaim.FromAddress, actualClaim.FromAddress)
 		})
 	}
 }

@@ -68,14 +68,13 @@ func TestBackfillTxnSender(t *testing.T) {
 			block_num, block_pos, global_index, origin_network, origin_address,
 			destination_address, amount, proof_local_exit_root, proof_rollup_exit_root,
 			mainnet_exit_root, rollup_exit_root, global_exit_root, destination_network,
-			metadata, is_message, block_timestamp, tx_hash, from_address
+			metadata, is_message, block_timestamp, tx_hash
 		) VALUES (
 			1, 1, '1', 1, '0x1234567890123456789012345678901234567890',
 			'0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', '', '', '', '', 2,
 			'', false, 1234567890,
-			'0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			'0x2222222222222222222222222222222222222222'
+			'0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
 		)
 	`)
 	require.NoError(t, err)

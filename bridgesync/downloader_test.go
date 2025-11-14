@@ -474,11 +474,10 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 
 func TestTryDecodeClaimCalldata(t *testing.T) {
 	c := &Claim{}
-	fromAddr := common.HexToAddress("0x20")
 	logger := logger.WithFields("module", "test")
 
 	// Short input should return false, error
-	found, err := c.tryDecodeClaimCalldata(fromAddr, []byte{0x01, 0x02, 0x03}, logger)
+	found, err := c.tryDecodeClaimCalldata([]byte{0x01, 0x02, 0x03}, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "input too short: 3 bytes")
 	require.False(t, found)
@@ -486,20 +485,20 @@ func TestTryDecodeClaimCalldata(t *testing.T) {
 	// Unknown method ID should return false, nil (not error anymore)
 	input := make([]byte, methodIDLength)
 	copy(input, []byte{0xaa, 0xbb, 0xcc, 0xdd})
-	found, err = c.tryDecodeClaimCalldata(fromAddr, input, logger)
+	found, err = c.tryDecodeClaimCalldata(input, logger)
 	require.NoError(t, err) // Should not return error anymore
 	require.False(t, found)
 
 	// Test getProxiedTokensManager method ID (38b8fbbb)
 	getProxiedTokensManagerID := []byte{0x38, 0xb8, 0xfb, 0xbb}
-	found, err = c.tryDecodeClaimCalldata(fromAddr, getProxiedTokensManagerID, logger)
+	found, err = c.tryDecodeClaimCalldata(getProxiedTokensManagerID, logger)
 	require.NoError(t, err) // Should not return error
 	require.False(t, found) // Should return false (not a claim method)
 
 	// Valid method ID (simulate claimAssetEtrogMethodID)
 	copy(input, claimAssetEtrogMethodID)
 	// The rest of the input is not valid ABI, so it will error on unpack
-	found, err = c.tryDecodeClaimCalldata(fromAddr, input, logger)
+	found, err = c.tryDecodeClaimCalldata(input, logger)
 	require.Error(t, err)
 	require.False(t, found)
 }
