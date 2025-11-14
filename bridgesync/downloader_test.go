@@ -299,7 +299,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "unsetClaimEventSignature appender",
 			eventSignature: unsetClaimEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			deploymentKind: SovereignChain,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(unsetClaimEventSignature)
 				if err != nil {
@@ -325,7 +325,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "setClaimEventSignature appender",
 			eventSignature: setClaimEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			deploymentKind: SovereignChain,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(setClaimEventSignature)
 				if err != nil {
