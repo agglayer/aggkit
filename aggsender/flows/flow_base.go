@@ -706,7 +706,6 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 	}
 
 	var earliestCutBlock uint64
-	currentBlockNum := certParams.ToBlock
 
 	// Single pass through all claims to perform both checks
 	for i, claim := range certParams.Claims {
@@ -730,16 +729,7 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
 				earliestCutBlock = claim.BlockNum
 			}
-			// Continue to check other claims, but remember this error case
-			continue
-		}
-
-		// Check if this claim's unclaim is after the current block (for validation check 2)
-		if claim.BlockNum < currentBlockNum && unclaimBlock > currentBlockNum {
-			// Unclaim appears after currentBlockNum - this is a cut point
-			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
-				earliestCutBlock = claim.BlockNum
-			}
+			return earliestCutBlock, nil
 		}
 
 		// Check 2: Check if this claim's unclaim appears after any later unfinalized claim
