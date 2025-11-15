@@ -16,7 +16,7 @@ function export_ports_from_kurtosis() {
     common_export_ports_from_kurtosis
     export_portnum_from_kurtosis_or_fail op_el_rpc_port op-el-1-op-geth-op-node-001 rpc
     export_portnum_from_kurtosis_or_fail aggkit_prover_grpc_port aggkit-prover-001 grpc
-    export_portnum_from_kurtosis_or_fail op_cl_rpc_url_port op-cl-1-op-node-op-geth-001 http
+    export_portnum_from_kurtosis_or_fail op_cl_rpc_url_port op-cl-1-op-node-op-geth-001 rpc
     export op_el_rpc_url="http://localhost:${op_el_rpc_port}"
     export aggchain_proof_url="http://localhost:${aggkit_prover_grpc_port}"
     export op_cl_rpc_url="http://localhost:${op_cl_rpc_url_port}"

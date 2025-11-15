@@ -31,7 +31,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -352,7 +351,6 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		count   int
 	)
 
-	//nolint:dupl
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
@@ -414,7 +412,6 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param network_ids query []uint32 false "Filter by one or more source network IDs (maximum 5 allowed)"
-// @Param from_address query string false "Filter by from address"
 // @Param include_all_fields query bool false "Whether to include full response fields (default false)"
 // @Param global_index query uint32 false "Filter by global index"
 // @Produce json
@@ -449,8 +446,6 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid %s parameter: %s", networkIDsParam, err)})
 		return
 	}
-
-	fromAddress := c.Query(fromAddressParam)
 
 	// Parse include_all_fields parameter (default to false)
 	includeAllFieldsFlag := false
@@ -491,15 +486,14 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	b.logger.Debugf(
 		"fetching claims (network id=%d, page=%d, size=%d, "+
-			"network_ids=%v, from_address=%s, include_all_fields=%t, global_index=%d)",
-		networkID, pageNumber, pageSize, networkIDs, fromAddress, includeAllFieldsFlag, globalIndex)
+			"network_ids=%v, include_all_fields=%t, global_index=%d)",
+		networkID, pageNumber, pageSize, networkIDs, includeAllFieldsFlag, globalIndex)
 
 	var (
 		claims []*bridgesync.Claim
 		count  int
 	)
 
-	//nolint:dupl
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
@@ -509,7 +503,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 
-		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
 			statusCode = http.StatusInternalServerError
@@ -525,7 +519,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 
-		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress, globalIndex)
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
 			statusCode = http.StatusInternalServerError
@@ -657,10 +651,10 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		unsetClaimResponses[i] = &types.UnsetClaimResponse{
 			BlockNum:                  unsetClaim.BlockNum,
 			BlockPos:                  unsetClaim.BlockPos,
-			BlockTimestamp:            unsetClaim.BlockTimestamp,
 			TxHash:                    types.Hash(unsetClaim.TxHash.Hex()),
 			GlobalIndex:               types.BigIntString(unsetClaim.GlobalIndex.String()),
 			UnsetGlobalIndexHashChain: types.Hash(unsetClaim.UnsetGlobalIndexHashChain.Hex()),
+			CreatedAt:                 unsetClaim.CreatedAt,
 		}
 	}
 
@@ -1218,13 +1212,11 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	toBlockStr := c.Query("to_block")
 	globalExitRootStr := c.Query("global_exit_root")
 
-	var removeEvents []*l2gersync.RemoveGEREvent
-	var err error
+	// Parse and validate parameters
+	var globalExitRoot *common.Hash
+	var fromBlock, toBlock *uint64
 
-	// Determine which query method to use based on parameters
-	switch {
-	case globalExitRootStr != "":
-		// Filter by specific GER
+	if globalExitRootStr != "" {
 		if !isValidHexHash(globalExitRootStr) {
 			statusCode = http.StatusBadRequest
 			c.JSON(statusCode, gin.H{
@@ -1232,44 +1224,38 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 			})
 			return
 		}
-		globalExitRoot := common.HexToHash(globalExitRootStr)
-		removeEvents, err = b.injectedGERs.GetRemoveGEREventsByGER(ctx, globalExitRoot)
+		ger := common.HexToHash(globalExitRootStr)
+		globalExitRoot = &ger
+	}
 
-	case fromBlockStr != "" || toBlockStr != "":
-		// Filter by block range
-		fromBlock := uint64(0)
-		toBlock := ^uint64(0) // Max uint64
-
-		if fromBlockStr != "" {
-			fromBlock, err = strconv.ParseUint(fromBlockStr, 10, 64)
-			if err != nil {
-				statusCode = http.StatusBadRequest
-				c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
-				return
-			}
-		}
-
-		if toBlockStr != "" {
-			toBlock, err = strconv.ParseUint(toBlockStr, 10, 64)
-			if err != nil {
-				statusCode = http.StatusBadRequest
-				c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
-				return
-			}
-		}
-
-		if fromBlock > toBlock {
+	if fromBlockStr != "" {
+		parsed, err := strconv.ParseUint(fromBlockStr, 10, 64)
+		if err != nil {
 			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
+			c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
 			return
 		}
-
-		removeEvents, err = b.injectedGERs.GetRemoveGEREventsByBlockRange(ctx, fromBlock, toBlock)
-
-	default:
-		// Get all remove events
-		removeEvents, err = b.injectedGERs.GetRemoveGEREvents(ctx)
+		fromBlock = &parsed
 	}
+
+	if toBlockStr != "" {
+		parsed, err := strconv.ParseUint(toBlockStr, 10, 64)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
+			return
+		}
+		toBlock = &parsed
+	}
+
+	if fromBlock != nil && toBlock != nil && *fromBlock > *toBlock {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
+		return
+	}
+
+	// Get filtered remove events using single consolidated function
+	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot, fromBlock, toBlock)
 
 	if err != nil {
 		b.logger.Errorf("failed to get remove GER events: %v", err)

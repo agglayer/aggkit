@@ -219,12 +219,6 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Filter by from address",
-                        "name": "from_address",
-                        "in": "query"
-                    },
-                    {
                         "type": "boolean",
                         "description": "Whether to include full response fields (default false)",
                         "name": "include_all_fields",
@@ -594,7 +588,7 @@ const docTemplate = `{
         },
         "/unset-claims": {
             "get": {
-                "description": "Returns unset claims for the L2 network, paginated. Note: unset claims are only available for L2 networks, not L1.",
+                "description": "Returns unset claims for the L2 network, paginated.",
                 "produces": [
                     "application/json"
                 ],
@@ -1245,8 +1239,8 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 2
                 },
-                "block_timestamp": {
-                    "description": "Timestamp of the block containing the unset claim",
+                "created_at": {
+                    "description": "Timestamp when the unset claim was created",
                     "type": "integer",
                     "example": 1684500000
                 },
@@ -1263,7 +1257,7 @@ const docTemplate = `{
                 "unset_global_index_hash_chain": {
                     "description": "Hash chain value for unset global indexes",
                     "type": "string",
-                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                    "example": "0x1234567890abcdef"
                 }
             }
         },

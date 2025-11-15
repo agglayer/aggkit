@@ -397,9 +397,6 @@ type UnsetClaimResponse struct {
 	// Position of the unset claim event within the block
 	BlockPos uint64 `json:"block_pos" example:"2"`
 
-	// Timestamp of the block containing the unset claim
-	BlockTimestamp uint64 `json:"block_timestamp" example:"1684500000"`
-
 	// Transaction hash associated with the unset claim
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
@@ -408,4 +405,7 @@ type UnsetClaimResponse struct {
 
 	// Hash chain value for unset global indexes
 	UnsetGlobalIndexHashChain Hash `json:"unset_global_index_hash_chain" example:"0x1234567890abcdef"`
+
+	// Timestamp when the unset claim was created
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
 }

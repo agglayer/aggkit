@@ -450,8 +450,8 @@ definitions:
         description: Position of the unset claim event within the block
         example: 2
         type: integer
-      block_timestamp:
-        description: Timestamp of the block containing the unset claim
+      created_at:
+        description: Timestamp when the unset claim was created
         example: 1684500000
         type: integer
       global_index:
@@ -464,7 +464,7 @@ definitions:
         type: string
       unset_global_index_hash_chain:
         description: Hash chain value for unset global indexes
-        example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+        example: "0x1234567890abcdef"
         type: string
     type: object
   types.UnsetClaimsResult:
@@ -622,10 +622,6 @@ paths:
           type: integer
         name: network_ids
         type: array
-      - description: Filter by from address
-        in: query
-        name: from_address
-        type: string
       - description: Whether to include full response fields (default false)
         in: query
         name: include_all_fields
@@ -881,8 +877,7 @@ paths:
       - token-mappings
   /unset-claims:
     get:
-      description: 'Returns unset claims for the L2 network, paginated. Note: unset
-        claims are only available for L2 networks, not L1.'
+      description: Returns unset claims for the L2 network, paginated.
       parameters:
       - description: L2 Network ID (must match the configured L2 network, cannot be
           0/L1)

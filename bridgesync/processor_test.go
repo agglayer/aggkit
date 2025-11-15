@@ -1246,12 +1246,12 @@ func TestGetClaimsPaged(t *testing.T) {
 	num2.SetString("18446744073709551618", 10)
 
 	claims := []*Claim{
-		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
-		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
-		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
-		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
-		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
-		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, MainnetExitRoot: common.Hash{}},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, MainnetExitRoot: common.Hash{}},
+		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, MainnetExitRoot: common.Hash{}},
+		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, MainnetExitRoot: common.Hash{}},
+		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, MainnetExitRoot: common.Hash{}},
+		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, MainnetExitRoot: common.Hash{}},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
@@ -1278,7 +1278,6 @@ func TestGetClaimsPaged(t *testing.T) {
 		pageSize       uint32
 		page           uint32
 		networkIDs     []uint32
-		fromAddress    string
 		globalIndex    *big.Int
 		expectedCount  int
 		expectedClaims []*Claim
@@ -1339,19 +1338,8 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:       3,
 			page:           1,
 			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			fromAddress:    claims[0].FromAddress.String(),
 			expectedCount:  3,
 			expectedClaims: []*Claim{claims[4], claims[1], claims[0]},
-			expectedError:  "",
-		},
-		{
-			name:           "filter by network ids (all results within the same page) and from address case insensitive",
-			pageSize:       3,
-			page:           1,
-			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			fromAddress:    "0xd34aaF64b29273B7D567FCFc40544c014EEe9970",
-			expectedCount:  0,
-			expectedClaims: []*Claim{},
 			expectedError:  "",
 		},
 		{
@@ -1381,7 +1369,7 @@ func TestGetClaimsPaged(t *testing.T) {
 
 			ctx := context.Background()
 			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize,
-				tc.networkIDs, tc.fromAddress, tc.globalIndex)
+				tc.networkIDs, tc.globalIndex)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -1597,7 +1585,6 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 	originAddress := common.HexToAddress("0x0a0a")
 	amount := big.NewInt(150)
 	destinationAddr := common.HexToAddress("0x0b0b")
-	zeroAddr := common.HexToAddress("0x0")
 
 	proof := types.Proof{}
 	for i := range types.DefaultHeight {
@@ -1640,7 +1627,7 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 	claimAssetData, err := method.Inputs.Unpack(claimAssetInput[4:])
 	require.NoError(t, err)
 
-	isFound, err := actualClaim.decodePreEtrogCalldata(zeroAddr, claimAssetData)
+	isFound, err := actualClaim.decodePreEtrogCalldata(claimAssetData)
 	require.NoError(t, err)
 	require.True(t, isFound)
 
@@ -1681,7 +1668,6 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 		metadata               = []byte("mock metadata")
 		destinationNetwork     = uint32(1)
 		invalidTypePlaceholder = "invalidType"
-		zeroAddr               = common.HexToAddress("0x0")
 	)
 
 	tests := []struct {
@@ -1838,7 +1824,7 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 				Metadata:           nil,
 			}
 
-			match, err := claim.decodePreEtrogCalldata(zeroAddr, tt.data)
+			match, err := claim.decodePreEtrogCalldata(tt.data)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -1859,7 +1845,6 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 		metadata               = []byte("mock metadata")
 		destinationNetwork     = uint32(1)
 		invalidTypePlaceholder = "invalidType"
-		zeroAddr               = common.HexToAddress("0x0")
 	)
 
 	tests := []struct {
@@ -2036,7 +2021,7 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			claim := &Claim{GlobalIndex: globalIndex}
 
-			isDecoded, err := claim.decodeEtrogCalldata(zeroAddr, tt.data)
+			isDecoded, err := claim.decodeEtrogCalldata(tt.data)
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
@@ -2489,12 +2474,12 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
 
 		// Test invalid page number (page 10 with only 1 record and page size 5)
-		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, "", nil)
+		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid page number")
 
 		// Test successful case with valid page
-		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, "", nil)
+		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, claims, 1)
 		require.Equal(t, 1, count)
@@ -2665,7 +2650,6 @@ func createTestClaim(blockNum uint64, blockPos int) *Claim {
 		BlockPos:            uint64(blockPos),
 		BlockTimestamp:      1234567890,
 		TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		FromAddress:         common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		GlobalIndex:         big.NewInt(1000000000000000000),
 		OriginNetwork:       1,
 		OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
@@ -2726,7 +2710,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		{
 			BlockNum:                  1,
 			BlockPos:                  0,
-			BlockTimestamp:            1617184800,
 			TxHash:                    common.HexToHash("0x123"),
 			GlobalIndex:               big.NewInt(100),
 			UnsetGlobalIndexHashChain: common.HexToHash("0xabc123"),
@@ -2734,7 +2717,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		{
 			BlockNum:                  2,
 			BlockPos:                  0,
-			BlockTimestamp:            1617184900,
 			TxHash:                    common.HexToHash("0x456"),
 			GlobalIndex:               big.NewInt(200),
 			UnsetGlobalIndexHashChain: common.HexToHash("0xdef456"),
@@ -2742,7 +2724,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		{
 			BlockNum:                  3,
 			BlockPos:                  0,
-			BlockTimestamp:            1617185000,
 			TxHash:                    common.HexToHash("0x789"),
 			GlobalIndex:               big.NewInt(100), // Same global index as first
 			UnsetGlobalIndexHashChain: common.HexToHash("0x987654"),

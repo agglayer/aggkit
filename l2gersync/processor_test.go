@@ -342,8 +342,8 @@ func TestRemoveGEREvents(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Test GetRemoveGEREvents
-		allRemoveEvents, err := processor.GetRemoveGEREvents(ctx)
+		// Test GetRemoveGEREvents - all events (no filters)
+		allRemoveEvents, err := processor.GetRemoveGEREvents(ctx, nil, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, allRemoveEvents, 2)
 
@@ -357,21 +357,24 @@ func TestRemoveGEREvents(t *testing.T) {
 		require.Equal(t, uint64(102), allRemoveEvents[1].BlockNum)
 		require.Greater(t, allRemoveEvents[1].CreatedAt, uint64(0)) // CreatedAt should be set
 
-		// Test GetRemoveGEREventsByBlockRange
-		rangeEvents, err := processor.GetRemoveGEREventsByBlockRange(ctx, 101, 101)
+		// Test GetRemoveGEREvents by block range
+		fromBlock := uint64(101)
+		toBlock := uint64(101)
+		rangeEvents, err := processor.GetRemoveGEREvents(ctx, nil, &fromBlock, &toBlock)
 		require.NoError(t, err)
 		require.Len(t, rangeEvents, 1)
 		require.Equal(t, ger1, rangeEvents[0].GlobalExitRoot)
 
-		// Test GetRemoveGEREventsByGER
-		gerEvents, err := processor.GetRemoveGEREventsByGER(ctx, ger1)
+		// Test GetRemoveGEREvents by specific GER
+		gerEvents, err := processor.GetRemoveGEREvents(ctx, &ger1, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, gerEvents, 1)
 		require.Equal(t, ger1, gerEvents[0].GlobalExitRoot)
 		require.Equal(t, uint64(101), gerEvents[0].BlockNum)
 
 		// Test no results for non-existent GER
-		noEvents, err := processor.GetRemoveGEREventsByGER(ctx, common.HexToHash("0xnonexistent"))
+		nonExistentGER := common.HexToHash("0xnonexistent")
+		noEvents, err := processor.GetRemoveGEREvents(ctx, &nonExistentGER, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, noEvents, 0)
 	})
