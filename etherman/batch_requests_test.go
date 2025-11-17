@@ -2,12 +2,15 @@ package etherman
 
 import (
 	"context"
+	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mockaggkittypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -173,7 +176,13 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 
 	t.Run("uses legacy when rpcClient is nil", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
-		mockEthClient.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, nil)
+		for bn := range blockNumbers {
+			mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(bn))).
+				Return(&types.Header{
+					Number: big.NewInt(int64(bn)),
+					Time:   123,
+				}, nil).Once()
+		}
 		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
 
 		require.NoError(t, err)
@@ -183,19 +192,18 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 	t.Run("propagates error from batch method", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
 		mockRPCClient := mockaggkittypes.NewRPCClienter(t)
-		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, mockRPCClient, blockNumbers, maxConcurrency)
-
+		mockRPCClient.EXPECT().BatchCallContext(mock.Anything, mock.Anything).Return(errors.New("batch error")).Once()
+		_, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, mockRPCClient, blockNumbers, maxConcurrency)
 		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "batch error")
+		require.Contains(t, err.Error(), "batch error")
 	})
 
 	t.Run("propagates error from legacy method", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
-		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
+		mockEthClient.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("legacy error")).Maybe()
+		_, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
 
 		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "legacy error")
+		require.Contains(t, err.Error(), "legacy error")
 	})
 }

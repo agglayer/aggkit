@@ -323,7 +323,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	}
 	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d",
 		blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
-	blockHeaders := []*aggkittypes.BlockHeader{aggkittypes.NewBlockHeaderFromEthBlockHeader(blockHeader)}
+	blockHeaders := []*aggkittypes.BlockHeader{aggkittypes.NewBlockHeaderFromEthHeader(blockHeader)}
 	err = dh.storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, false)
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: cannot save unsafe block: %w", err)
@@ -398,7 +398,7 @@ func retrieveRPCBlockHeadersInParallel(ctx context.Context,
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			headers[blockNumber] = aggkittypes.NewBlockHeaderFromEthBlockHeader(header)
+			headers[blockNumber] = aggkittypes.NewBlockHeaderFromEthHeader(header)
 		}(blockNumber)
 	}
 	wg.Wait()
