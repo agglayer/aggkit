@@ -17,7 +17,10 @@ func (r DBRuntimeData) String() string {
 }
 func (r DBRuntimeData) IsCompatible(storage DBRuntimeData) error {
 	if r.NetworkID != storage.NetworkID {
-		return fmt.Errorf("network ID mismatch: %d != %d", r.NetworkID, storage.NetworkID)
+		return fmt.Errorf("network ID mismatch: expected: %d != storage: %d", r.NetworkID, storage.NetworkID)
+	}
+	if r.DataVersion != storage.DataVersion {
+		return fmt.Errorf("data version mismatch: expected: %d != storage: %d", r.DataVersion, storage.DataVersion)
 	}
 	return nil
 }
