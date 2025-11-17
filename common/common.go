@@ -154,8 +154,10 @@ func MapSlice[T any, R any](in []T, f func(T) R) []R {
 	return out
 }
 
+const hexBase = 16
+
 func ParseHexUint64(hexStr string) (uint64, error) {
-	bigInt, ok := new(big.Int).SetString(hexStr[2:], 16)
+	bigInt, ok := new(big.Int).SetString(hexStr[2:], hexBase)
 	if !ok {
 		return 0, fmt.Errorf("ParseHexUint64: invalid hex string %s", hexStr)
 	}

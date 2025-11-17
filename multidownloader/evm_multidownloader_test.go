@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	ethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +39,7 @@ func TestEVMMultidownloader(t *testing.T) {
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
 	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
-	ethRPCClient, err := ethrpc.DialContext(t.Context(), l1url)
+	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 
 	block, err := ethClient.BlockByNumber(t.Context(), nil) // Test connection
@@ -63,7 +62,7 @@ func TestEVMMultidownloader(t *testing.T) {
 		db, nil)
 	require.NoError(t, err)
 	require.NotNil(t, mdr)
-	mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+	err = mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 		SyncerID: "test_syncer",
 		ContractsAddr: []common.Address{
 			common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"), // GERManager
@@ -72,7 +71,7 @@ func TestEVMMultidownloader(t *testing.T) {
 		FromBlock: 5157574,
 		ToBlock:   aggkittypes.LatestBlock,
 	})
-
+	require.NoError(t, err)
 	ctx := context.TODO()
 	var l1infotree *l1infotreesync.L1InfoTreeSync
 	if runL1InfoTree == true {
@@ -141,7 +140,7 @@ func TestEVMMultidownloader(t *testing.T) {
 func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
 	t.Skip("it's a exploratory test for batch requests")
 	l1url := os.Getenv("L1URL")
-	ethClient, err := ethrpc.DialContext(t.Context(), l1url)
+	ethClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 	var blockNumber string
 	var chainID string
@@ -180,10 +179,10 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	l1url := os.Getenv("L1URL")
 	ethClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
-	ethRPCClient, err := ethrpc.DialContext(t.Context(), l1url)
+	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 
-	var blockNumbersMap map[uint64]struct{} = make(map[uint64]struct{})
+	blockNumbersMap := make(map[uint64]struct{})
 	var blockNumbersSlice []uint64
 	initialBlock := uint64(1)
 	for i := initialBlock; i < initialBlock+923; i++ {
@@ -224,7 +223,7 @@ func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) 
 func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
 	t.Run("check Addresses", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t)
-		testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 			SyncerID: "syncer1",
 			ContractsAddr: []common.Address{
 				common.HexToAddress("0x1"),
@@ -232,6 +231,7 @@ func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
 			FromBlock: 100,
 			ToBlock:   aggkittypes.LatestBlock,
 		})
+		require.NoError(t, err)
 
 		require.Equal(t, []common.Address{common.HexToAddress("0x1")}, testData.mdr.syncersConfig.Addresses(
 			aggkitcommon.NewBlockRange(100, 200),

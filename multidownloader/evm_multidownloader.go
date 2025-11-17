@@ -116,7 +116,7 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	defer dh.mutex.Unlock()
 
 	if dh.isInitialized {
-		return fmt.Errorf("Cannot add new syncer config after initialization")
+		return fmt.Errorf("registerSyncer: cannot add new syncer config after initialization")
 	}
 	dh.syncersConfig.Add(mdrtypes.NewSyncerConfig(data))
 	return nil
@@ -424,7 +424,8 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
 	dh.log.Debugf("Safe/Step:: querying blockHeaders for %d blocks", len(blocks))
-	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
+	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
+		blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot retrieve block headers (%d): %w", len(blockHeaders), err)
 	}

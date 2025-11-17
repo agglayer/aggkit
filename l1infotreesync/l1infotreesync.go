@@ -97,7 +97,7 @@ func New(
 		return nil, err
 	}
 	addressesToQuery := []common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr}
-	l1Client.RegisterSyncer(
+	err = l1Client.RegisterSyncer(
 		aggkittypes.SyncerConfig{
 			SyncerID:      "l1infotreesync",
 			ContractsAddr: addressesToQuery,
@@ -105,6 +105,9 @@ func New(
 			ToBlock:       cfg.BlockFinality,
 		},
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register l1infotreesync in multidownloader: %w", err)
+	}
 
 	downloader, err := sync.NewEVMDownloader(
 		"l1infotreesync",

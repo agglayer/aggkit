@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -56,11 +55,12 @@ func convertMapBlockRawEth(blocks map[uint64]*blockRawEth) (map[uint64]*aggkitty
 // https://www.alchemy.com/docs/reference/batch-requests
 const batchRequestLimitHTTP = 1000
 
-// RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests if rpcClient is provided
+// RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests
+// if rpcClient is provided
 func RetrieveBlockHeaders(ctx context.Context,
 	log aggkitcommon.Logger,
-	ethClient types.BaseEthereumClienter,
-	rpcClient types.RPCClienter,
+	ethClient aggkittypes.BaseEthereumClienter,
+	rpcClient aggkittypes.RPCClienter,
 	blockNumbers map[uint64]struct{},
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	if rpcClient != nil {
@@ -69,10 +69,11 @@ func RetrieveBlockHeaders(ctx context.Context,
 	return RetrieveBlockHeadersLegacy(ctx, log, ethClient, blockNumbers, maxConcurrency)
 }
 
-// RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests with concurrency control
+// RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests
+// with concurrency control
 func RetrieveBlockHeadersBatch(ctx context.Context,
 	log aggkitcommon.Logger,
-	rpcClient types.RPCClienter,
+	rpcClient aggkittypes.RPCClienter,
 	blockNumbers map[uint64]struct{},
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
@@ -86,7 +87,7 @@ func RetrieveBlockHeadersBatch(ctx context.Context,
 // this is used in simulated environments where batch requests are not supported
 func RetrieveBlockHeadersLegacy(ctx context.Context,
 	log aggkitcommon.Logger,
-	ethClient types.BaseEthereumClienter,
+	ethClient aggkittypes.BaseEthereumClienter,
 	blockNumbers map[uint64]struct{},
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
@@ -108,7 +109,7 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 // retrieveBlockHeadersInBatch retrieves block headers for the given block numbers using batch requests
 func retrieveBlockHeadersInBatch(ctx context.Context,
 	log aggkitcommon.Logger,
-	rpcClient types.RPCClienter,
+	rpcClient aggkittypes.RPCClienter,
 	blockNumbers map[uint64]struct{},
 ) (map[uint64]*aggkittypes.BlockHeader, error) {
 	if len(blockNumbers) == 0 {
@@ -206,48 +207,4 @@ func splitBlockNumbersIntoChunks(blockNumbers map[uint64]struct{}, chunkSize int
 		chunks = append(chunks, currentChunk)
 	}
 	return chunks
-}
-
-func retrieveRPCBlockHeadersInParallel(ctx context.Context,
-	logger aggkitcommon.Logger,
-	ethClient aggkittypes.BaseEthereumClienter,
-	blockNumbers map[uint64]struct{}, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
-	headers := make(map[uint64]*aggkittypes.BlockHeader)
-	errs := make([]error, 0)
-	timeTracker := aggkitcommon.NewTimeTracker()
-	timeTracker.Start()
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxConcurrency)
-	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieving block headers for blocks %d", len(blockNumbers))
-	for blockNumber := range blockNumbers {
-		wg.Add(1)
-		sem <- struct{}{} // get an slot
-		go func(blockNumber uint64) {
-			defer wg.Done()
-			defer func() { <-sem }() // free slot
-			bn := big.NewInt(int64(blockNumber))
-
-			header, err := ethClient.HeaderByNumber(ctx, bn)
-			if err != nil {
-				mu.Lock()
-				defer mu.Unlock()
-				errs = append(errs, fmt.Errorf("retrieveRPCBlockHeadersInParallel: cannot get block header for block %d: %w",
-					blockNumber, err))
-
-				return
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			headers[blockNumber] = aggkittypes.NewBlockHeaderFromEthBlockHeader(header)
-		}(blockNumber)
-	}
-	wg.Wait()
-	timeTracker.Stop()
-	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)",
-		len(blockNumbers), timeTracker.Duration().String())
-	if len(errs) > 0 {
-		return headers, fmt.Errorf("retrieveRPCBlockHeadersInParallel: errors: %v", errs)
-	}
-	return headers, nil
 }
