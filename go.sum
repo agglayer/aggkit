@@ -1,5 +1,5 @@
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251003171624-441244f9c27c.2 h1:23CS9MxO55S+gDXVpwVoa4hwKat+d8T1NPgzLTfXYpU=
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251003171624-441244f9c27c.2/go.mod h1:rp+z1JBVbnfL6GxedjchGBRkkNR0JyIrgxej27KKx60=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251112231931-386534854ef6.2 h1:LISG8+PTyy3Nwe0V5qggtCncL/4iaILN/M/rcNzYTe8=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251112231931-386534854ef6.2/go.mod h1:zaIJ+9d8aQPx68I55KzDgwL1/F0udHtNhy3bqwTEsO8=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.10-20251003171624-441244f9c27c.1 h1:a5KZLl8exodMB2arDu0Z01GyUzGZgzCtYObFWD5IkBk=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.10-20251003171624-441244f9c27c.1/go.mod h1:/HWm/smObsOmsOsLxM5r3Py0tqUvi6mAP/m2pX6Ldqk=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.10-20250923143526-220bf697ba47.1 h1:T6T0F/TU9tq+8UDVb5U9oZRiE6V0RN6HBREDwYKqdIQ=
