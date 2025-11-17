@@ -516,9 +516,6 @@ func extractSuggestedBlockRangeFromErrorMsg(msg string) *aggkitcommon.BlockRange
 	match := re.FindStringSubmatch(msg)
 	if len(match) > 1 {
 		rangeStr := match[1] // "0x852c16, 0x853273"
-		fmt.Println("Block range:", rangeStr)
-
-		// Si quieres separarlos en dos valores
 		re2 := regexp.MustCompile(`0x[0-9a-fA-F]+`)
 		blocks := re2.FindAllString(rangeStr, -1)
 		if len(blocks) == 2 { //nolint: mnd

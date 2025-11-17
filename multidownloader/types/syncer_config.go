@@ -19,7 +19,7 @@ type SyncerConfig struct {
 	ContractsAddr []common.Address
 	// Starting block
 	FromBlock uint64
-	// Taget for final block
+	// Target for final block
 	ToBlock aggkittypes.BlockNumberFinality
 }
 

@@ -42,8 +42,5 @@ func (gb *BlockHeader) String() string {
 }
 
 func NewBlockHeaderFromEthBlockHeader(ethHeader *types.Header) *BlockHeader {
-	if ethHeader == nil {
-		return nil
-	}
 	return NewBlockHeader(ethHeader.Number.Uint64(), ethHeader.Hash(), ethHeader.Time, &ethHeader.ParentHash)
 }

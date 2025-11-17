@@ -69,11 +69,11 @@ func (cfg *Config) Validate() error {
 }
 
 func (cfg *Config) String() string {
-	return "MultidownloaderConfig{" +
-		"Enabled:" + fmt.Sprintf("%t", cfg.Enabled) +
-		", BlockChunkSize:" + string(rune(cfg.BlockChunkSize)) +
-		", MaxParallelBlockHeaderRetrieval:" + string(rune(cfg.MaxParallelBlockHeaderRetrieval)) +
-		", BlockFinality:" + cfg.BlockFinality.String() +
-		", WaitPeriodToCheckCatchUp:" + cfg.WaitPeriodToCheckCatchUp.String() +
-		"}"
+	return fmt.Sprintf("MultidownloaderConfig{Enabled:%t, BlockChunkSize:%d, "+
+		"MaxParallelBlockHeaderRetrieval:%d, BlockFinality:%s, WaitPeriodToCheckCatchUp:%s}",
+		cfg.Enabled,
+		cfg.BlockChunkSize,
+		cfg.MaxParallelBlockHeaderRetrieval,
+		cfg.BlockFinality.String(),
+		cfg.WaitPeriodToCheckCatchUp.String())
 }
