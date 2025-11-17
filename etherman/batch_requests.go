@@ -105,7 +105,7 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 					return nil, fmt.Errorf("RetrieveBlockHeadersLegacy: cannot get block header for block %d: %w",
 						blockNumber, err)
 				}
-				result[blockNumber] = aggkittypes.NewBlockHeaderFromEthBlockHeader(header)
+				result[blockNumber] = aggkittypes.NewBlockHeaderFromEthHeader(header)
 			}
 			return result, nil
 		}, blockNumbers, 1, maxConcurrency)
