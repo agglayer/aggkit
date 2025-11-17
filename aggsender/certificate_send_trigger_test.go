@@ -314,6 +314,7 @@ func TestPreconfRunner_TriggerCh(t *testing.T) {
 		mockEvent3 := sync.Block{Num: 126, Events: []any{}, Hash: common.HexToHash("0x4")}
 
 		// Send multiple events
+
 		syncCh <- mockEvent1
 		syncCh <- mockEvent2
 		syncCh <- mockEvent3

@@ -201,14 +201,14 @@ func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.Certificate
 			select {
 			case <-ctx.Done():
 				r.mutex.Lock()
-				defer r.mutex.Unlock()
 				r.ch = nil
 				close(ch)
+				r.mutex.Unlock()
 				return
 			case epochEvent := <-syncSub:
 				r.mutex.Lock()
-				defer r.mutex.Unlock()
 				ch <- epochEvent
+				r.mutex.Unlock()
 			}
 		}
 	}()
