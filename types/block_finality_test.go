@@ -451,3 +451,14 @@ func TestBlockNumberFinality_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestBlockNumberFinalityEqual(t *testing.T) {
+	bn1 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	bn2 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	bn3 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 0}
+	bn4 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
+
+	require.True(t, bn1.Equal(bn2), "bn1 should be equal to bn2")
+	require.False(t, bn1.Equal(bn3), "bn1 should not be equal to bn3")
+	require.False(t, bn1.Equal(bn4), "bn1 should not be equal to bn4")
+}

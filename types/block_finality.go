@@ -200,20 +200,6 @@ func (b *BlockNumberFinality) BlockHeader(
 	return requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
 }
 
-type BlockNotifier interface {
-	BlockFinality() *BlockNumberFinality
-	GetCurrentBlockNumber() uint64
-}
-
-func (b *BlockNumberFinality) BlockNumberFromBlockNotifier(notifier BlockNotifier) uint64 {
-	if !notifier.BlockFinality().Equal(*b) {
-		panic(fmt.Sprintf("BlockNumberFinality.BlockNumberFromBlockNotifier: Block finality mismatch between %s and %s",
-			b.String(), notifier.BlockFinality().String()))
-	}
-	// Don't require offset adjustment because is included in the notifier's block number
-	return notifier.GetCurrentBlockNumber()
-}
-
 // LessFinalThan returns true if b is less strict commitment level than other.
 // In case commitment level keywords are the same, it compares the offsets.
 // finalized ≤ safe ≤ latest ≤ pending
