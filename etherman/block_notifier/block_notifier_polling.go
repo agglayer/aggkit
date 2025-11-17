@@ -7,14 +7,13 @@ import (
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	ethmantypes "github.com/agglayer/aggkit/etherman/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
 var (
-	timeNowFunc                             = time.Now
-	_           ethermantypes.BlockNotifier = (*BlockNotifierPolling)(nil)
+	timeNowFunc                           = time.Now
+	_           ethmantypes.BlockNotifier = (*BlockNotifierPolling)(nil)
 )
 
 const (

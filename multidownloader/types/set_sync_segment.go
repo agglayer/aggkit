@@ -108,7 +108,8 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 	return bn.CountBlocks()
 }
 
-func (f *SetSyncSegment) UpdateToBlock(ctx context.Context, blockNotifierGetter ethermantypes.BlockNotifierManagerInterface) {
+func (f *SetSyncSegment) UpdateToBlock(ctx context.Context,
+	blockNotifierGetter ethermantypes.BlockNotifierManagerInterface) {
 	if f == nil {
 		return
 	}
