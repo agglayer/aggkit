@@ -172,6 +172,7 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 	if c == nil {
 		return 0
 	}
+	// common.HashLength represents the size of a metadata hash in bytes
 	sizeBridges := (agglayertypes.EstimatedBridgeExitSize + common.HashLength) * float64(len(c.Bridges))
 	sizeClaims := (agglayertypes.EstimatedImportedBridgeExitSize + common.HashLength) * float64(len(c.Claims))
 

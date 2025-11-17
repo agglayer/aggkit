@@ -191,28 +191,26 @@ func (r *preconfTrigger) Setup(ctx context.Context) {
 // The returned channel will be closed when the provided context is canceled.
 func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
 	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	ch := make(chan types.CertificateTriggerEvent)
-	r.ch = ch
 
+	ch := make(chan types.CertificateTriggerEvent)
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				r.mutex.Lock()
 				r.ch = nil
-				close(ch)
 				r.mutex.Unlock()
+				close(ch)
+
 				return
 			case epochEvent := <-syncSub:
-				r.mutex.Lock()
 				ch <- epochEvent
-				r.mutex.Unlock()
 			}
 		}
 	}()
-
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.ch = ch
 	return ch
 }
 
@@ -225,5 +223,8 @@ func (r *preconfTrigger) ForceTriggerEvent() {
 	}
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	if r.ch == nil {
+		return
+	}
 	r.ch <- aggkitsync.Block{Num: blockNumber}
 }
