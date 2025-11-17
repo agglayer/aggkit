@@ -386,4 +386,5 @@ type CertificateSendTrigger interface {
 	Setup(ctx context.Context)
 	Status() string
 	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
+	ForceTriggerEvent()
 }

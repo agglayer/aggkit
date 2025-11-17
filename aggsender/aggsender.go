@@ -233,7 +233,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 }
 
 func (a *AggSender) ForceTriggerCertitificate() {
-	a.epochNotifier.ForcePublishEpochEvent()
+	a.certificateSendTrigger.ForceTriggerEvent()
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes

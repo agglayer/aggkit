@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -139,11 +140,17 @@ func (r *epochBasedTrigger) Setup(ctx context.Context) {
 	go r.epochNotifier.Start(ctx)
 }
 
+// ForceTriggerEvent forces the epoch notifier to publish an epoch event immediately.
+func (r *epochBasedTrigger) ForceTriggerEvent() {
+	r.epochNotifier.ForcePublishEpochEvent()
+}
+
 // preconfTrigger handles preconfirmation operations by listening to L2 bridge synchronization
 // and maintaining subscription state to the synchronized L2 bridge events.
 type preconfTrigger struct {
 	log          aggkitcommon.Logger
 	l2BridgeSync types.L2BridgeSyncer
+	ch           chan types.CertificateTriggerEvent
 }
 
 // newPreconfTrigger creates and initializes a new preconfTrigger instance.
@@ -182,6 +189,7 @@ func (r *preconfTrigger) Setup(ctx context.Context) {
 // The returned channel will be closed when the provided context is canceled.
 func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
 	ch := make(chan types.CertificateTriggerEvent)
+	r.ch = ch
 	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
 	go func() {
 		for {
@@ -196,4 +204,14 @@ func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.Certificate
 	}()
 
 	return ch
+}
+
+// ForceTriggerEvent forces the preconf trigger to emit a synchronization event.
+func (r *preconfTrigger) ForceTriggerEvent() {
+	blockNumber, err := r.l2BridgeSync.GetLastProcessedBlock(context.Background())
+	if err != nil {
+		r.log.Errorf("ForceTriggerEvent: Failed to get last processed block: %v", err)
+		return
+	}
+	r.ch <- sync.Block{Num: blockNumber}
 }
