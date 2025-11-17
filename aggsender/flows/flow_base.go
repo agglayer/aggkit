@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	aggkitdb "github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -585,7 +586,7 @@ func (f *baseFlow) getGERFinalizedStatus(
 
 	// Not in cache, call the querier
 	isFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(ger, l1InfoTreeLeafCount)
-	if err != nil {
+	if err != nil && err != aggkitdb.ErrNotFound {
 		cache.errors[ger] = err
 		return false, err
 	}

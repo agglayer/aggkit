@@ -198,7 +198,7 @@ func (l *L1InfoTreeDataQuerier) IsGERFinalized(
 	finalizedL1InfoLeafCount uint32) (bool, error) {
 	info, err := l.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(ger)
 	if err != nil {
-		return false, fmt.Errorf("error getting info by global exit root: %w", err)
+		return false, err
 	}
 
 	if info == nil {
