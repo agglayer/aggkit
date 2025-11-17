@@ -33,7 +33,9 @@ var (
 
 	// sovereign chain contract events
 	detailedClaimEventSignature = crypto.Keccak256Hash([]byte(
-		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)",
+		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
+			"uint256,bytes32,bytes32,uint8,uint32," +
+			"address,uint32,address,uint256,bytes)",
 	))
 	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"SetSovereignTokenAddress(uint32,address,address,bool)",

@@ -9,6 +9,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/polygonzkevmbridge"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -65,7 +66,7 @@ func TestBuildAppender(t *testing.T) {
 					return types.Log{}, err
 				}
 
-				leafType := uint8(1)
+				leafType := bridgetypes.LeafTypeAsset
 				originNetwork := uint32(10)
 				originAddress := common.HexToAddress("0x20")
 				destinationNetwork := uint32(20)
@@ -168,13 +169,14 @@ func TestBuildAppender(t *testing.T) {
 				rerProof := [treetypes.DefaultHeight]common.Hash{}
 				mainnetExitRoot := common.HexToHash("5ca1e")
 				rollupExitRoot := common.HexToHash("5ca1e1")
+				leafType := bridgetypes.LeafTypeAsset
 				originNet := uint32(6)
 				originAddress := common.HexToAddress("0x20")
 				destinationNet := uint32(7)
 				amount := big.NewInt(10)
 				metadata := []byte{}
 				data, err := event.Inputs.NonIndexed().Pack(lerProof, rerProof, mainnetExitRoot, rollupExitRoot,
-					originNet, originAddress, destinationNet, amount, metadata)
+					leafType, originNet, originAddress, destinationNet, amount, metadata)
 				if err != nil {
 					return types.Log{}, err
 				}

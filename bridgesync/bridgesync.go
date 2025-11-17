@@ -278,7 +278,7 @@ func resolveBridgeDeployment(ctx context.Context,
 
 	callOpts := &bind.CallOpts{Pending: false, Context: ctx}
 
-	// 1. Try calling BridgeManager — only exists on AgglayerBridgeL2
+	// 1. Try calling bridgeManager function — only exists on AgglayerBridgeL2
 	if _, err := agglayerBridgeL2.BridgeManager(callOpts); err == nil {
 		return &bridgeDeployment{
 			kind:             SovereignChain,
@@ -289,7 +289,7 @@ func resolveBridgeDeployment(ctx context.Context,
 		return nil, fmt.Errorf("unexpected error querying AgglayerBridgeL2.BRIDGE_SOVEREIGN_VERSION: %w", err)
 	}
 
-	// 2. If that failed, try BRIDGE_VERSION — exists on base AgglayerBridge
+	// 2. If that failed, try lastUpdatedDepositCount function — exists on base AgglayerBridge
 	if _, err := agglayerBridge.LastUpdatedDepositCount(callOpts); err == nil {
 		return &bridgeDeployment{
 			kind:             NonSovereignChain,
