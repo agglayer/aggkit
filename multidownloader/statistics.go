@@ -30,6 +30,11 @@ func (s *Statistics) FinishSyncing() {
 	defer s.mutex.Unlock()
 	s.timeTrackerTotal.Stop()
 }
+func (s *Statistics) ElapsedSyncing() time.Duration {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.timeTrackerTotal.Elapsed()
+}
 
 func (s *Statistics) LaunchedEthCall() {
 	s.mutex.Lock()

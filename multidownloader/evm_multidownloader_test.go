@@ -9,6 +9,7 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
@@ -18,15 +19,17 @@ import (
 	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
+	ethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-const runL1InfoTree = true
-const l1InfoTreeUseMultidownloader = false
+const runL1InfoTree = false
+const l1InfoTreeUseMultidownloader = true
 
 func TestEVMMultidownloader(t *testing.T) {
-	t.Skip("code to test/debug not real unittest")
+	//t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -35,9 +38,10 @@ func TestEVMMultidownloader(t *testing.T) {
 	log.Init(cfgLog)
 	l1url := os.Getenv("L1URL")
 	ethClient, err := ethclient.Dial(l1url)
-	if err != nil {
-		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", l1url, err)
-	}
+	require.NoError(t, err)
+	ethRPCClient, err := ethrpc.DialContext(t.Context(), l1url)
+	require.NoError(t, err)
+
 	block, err := ethClient.BlockByNumber(t.Context(), nil) // Test connection
 	require.NoError(t, err)
 	log.Infof("Connected to Ethereum. Current block: %d", block.Number().Uint64())
@@ -53,7 +57,9 @@ func TestEVMMultidownloader(t *testing.T) {
 		MaxParallelBlockHeaderRetrieval: 50,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
 	}
-	mdr, err := NewEVMMultidownloader(logger, cfg, "l1", ethClient, db, nil)
+	mdr, err := NewEVMMultidownloader(logger,
+		cfg, "l1", ethClient, ethRPCClient,
+		db, nil)
 	require.NoError(t, err)
 	require.NotNil(t, mdr)
 	mdr.RegisterSyncer(aggkittypes.SyncerConfig{
@@ -131,6 +137,82 @@ func TestEVMMultidownloader(t *testing.T) {
 	wg.Wait()
 }
 
+func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
+	l1url := os.Getenv("L1URL")
+	ethClient, err := ethrpc.DialContext(t.Context(), l1url)
+	require.NoError(t, err)
+	var blockNumber string
+	var chainID string
+
+	var latestBlock aggkittypes.BlockHeader
+	batch := []rpc.BatchElem{
+		{
+			Method: "eth_blockNumber",
+			Args:   []interface{}{},
+			Result: &blockNumber,
+		},
+		{
+			Method: "eth_chainId",
+			Args:   []interface{}{},
+			Result: &chainID,
+		},
+		{
+			Method: "eth_getBlockByNumber",
+			Args: []interface{}{
+				"0x37", // número de bloque en formato hex o palabra clave
+				false,  // incluir transacciones completas
+			},
+			Result: &latestBlock,
+		},
+	}
+
+	err = ethClient.BatchCallContext(t.Context(), batch)
+	require.NoError(t, err)
+
+	log.Infof("blockNumber: %s, chainID: %s", blockNumber, chainID)
+	log.Infof("latestBlock: %+v", latestBlock)
+
+}
+
+func TestDownloaderParellelvsBatch(t *testing.T) {
+	l1url := os.Getenv("L1URL")
+	ethClient, err := ethclient.Dial(l1url)
+	require.NoError(t, err)
+	ethRPCClient, err := ethrpc.DialContext(t.Context(), l1url)
+	require.NoError(t, err)
+
+	var blockNumbersMap map[uint64]struct{} = make(map[uint64]struct{})
+	var blockNumbersSlice []uint64
+	initialBlock := uint64(1)
+	for i := initialBlock; i < initialBlock+10023; i++ {
+		blockNumbersMap[i] = struct{}{}
+		blockNumbersSlice = append(blockNumbersSlice, i)
+	}
+	logger := log.WithFields("test", "test")
+
+	start := time.Now()
+	headersBatch, err := etherman.RetrieveBlockHeaders(t.Context(), logger, ethRPCClient, blockNumbersMap, 10)
+	require.NoError(t, err)
+	durationBatch := time.Since(start)
+	log.Infof("retrieveRPCBlockHeadersInBatch took %s", durationBatch.String())
+
+	start = time.Now()
+	headersParallel, err := retrieveRPCBlockHeadersInParallel(t.Context(), logger, ethClient, blockNumbersMap, 20)
+	require.NoError(t, err)
+	durationParallel := time.Since(start)
+	log.Infof("retrieveRPCBlockHeadersInParallel took %s", durationParallel.String())
+
+	require.Equal(t, len(headersParallel), len(headersBatch))
+	for _, blockNumber := range blockNumbersSlice {
+		headerP, okP := headersParallel[blockNumber]
+		headerB, okB := headersBatch[blockNumber]
+		require.True(t, okP)
+		require.True(t, okB)
+		require.Equal(t, headerP.Hash, headerB.Hash)
+	}
+
+}
+
 func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) {
 	br := extractSuggestedBlockRangeFromErrorMsg("Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273].")
 	require.NotNil(t, br)
@@ -196,7 +278,7 @@ func TestEVMMultidownloaderGetRPCServices(t *testing.T) {
 		require.NoError(t, err)
 
 		customName := "custom-name"
-		mdr, err := NewEVMMultidownloader(logger, cfg, customName, ethClient, db, nil)
+		mdr, err := NewEVMMultidownloader(logger, cfg, customName, ethClient, nil, db, nil)
 		require.NoError(t, err)
 
 		services := mdr.GetRPCServices()
@@ -225,7 +307,8 @@ func newEVMMultidownloaderTestData(t *testing.T) *testDataEVMMultidownloader {
 		DBPath: cfg.StoragePath,
 	})
 	require.NoError(t, err)
-	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, db, nil)
+	// TODO: Add mock for ethRPCClient if needed
+	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, db, nil)
 	require.NoError(t, err)
 	return &testDataEVMMultidownloader{
 		mockEthClient: ethClient,

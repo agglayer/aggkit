@@ -8,10 +8,10 @@ import (
 )
 
 type BlockHeader struct {
-	Number     uint64
-	Hash       common.Hash
-	Time       uint64
-	ParentHash *common.Hash
+	Number     uint64       `json:"number"`
+	Hash       common.Hash  `json:"hash"`
+	Time       uint64       `json:"timestamp"`
+	ParentHash *common.Hash `json:"parentHash"`
 }
 
 func NewBlockHeader(number uint64, hash common.Hash, time uint64, parentHash *common.Hash) *BlockHeader {

@@ -14,6 +14,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
+	"github.com/agglayer/aggkit/etherman"
 	ethermanblocknotifier "github.com/agglayer/aggkit/etherman/block_notifier"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
@@ -22,6 +23,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -46,10 +48,15 @@ type StorageInterface interface {
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 }
 
+type ethRPCBatcher interface {
+	BatchCallContext(ctx context.Context, b []rpc.BatchElem) error
+}
+
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
 	cfg                  Config
 	ethClient            aggkittypes.BaseEthereumClienter
+	rpcClient            ethRPCBatcher
 	storage              StorageInterface
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter
 	blockFinality        aggkittypes.BlockNumberFinality
@@ -72,6 +79,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	cfg Config,
 	name string,
 	ethClient aggkittypes.BaseEthereumClienter,
+	rpcClient ethRPCBatcher,
 	storageDB StorageInterface,
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter,
 ) (*EVMMultidownloader, error) {
@@ -98,6 +106,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	return &EVMMultidownloader{
 		log:                  log,
 		ethClient:            ethClient,
+		rpcClient:            rpcClient,
 		storage:              storageDB,
 		blockNotifierManager: blockNotifierManager,
 		cfg:                  cfg,
@@ -362,7 +371,10 @@ func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkit
 	return headers
 }
 
-func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Context,
+// TODO: remove this test function in favour of etherman.RetrieveBlockHeadersInBatch
+func retrieveRPCBlockHeadersInParallel(ctx context.Context,
+	logger aggkitcommon.Logger,
+	ethClient aggkittypes.BaseEthereumClienter,
 	blockNumbers map[uint64]struct{}, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	headers := make(map[uint64]*aggkittypes.BlockHeader)
 	errs := make([]error, 0)
@@ -371,7 +383,7 @@ func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Cont
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, maxConcurrency)
-	dh.log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieving block headers for blocks %d", len(blockNumbers))
+	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieving block headers for blocks %d", len(blockNumbers))
 	for blockNumber := range blockNumbers {
 		wg.Add(1)
 		sem <- struct{}{} // get an slot
@@ -380,7 +392,7 @@ func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Cont
 			defer func() { <-sem }() // free slot
 			bn := big.NewInt(int64(blockNumber))
 
-			header, err := dh.ethClient.HeaderByNumber(ctx, bn)
+			header, err := ethClient.HeaderByNumber(ctx, bn)
 			if err != nil {
 				mu.Lock()
 				defer mu.Unlock()
@@ -396,7 +408,7 @@ func (dh *EVMMultidownloader) retrieveRPCBlockHeadersInParallel(ctx context.Cont
 	}
 	wg.Wait()
 	timeTracker.Stop()
-	dh.log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)",
+	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)",
 		len(blockNumbers), timeTracker.Duration().String())
 	if len(errs) > 0 {
 		return headers, fmt.Errorf("retrieveRPCBlockHeadersInParallel: errors: %v", errs)
@@ -417,7 +429,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
 	dh.log.Debugf("Safe/Step:: querying blockHeaders for %d blocks", len(blocks))
-	blockHeaders, err := dh.retrieveRPCBlockHeadersInParallel(ctx, blocks, max(dh.cfg.MaxParallelBlockHeaderRetrieval, 1))
+	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.rpcClient, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot retrieve block headers (%d): %w", len(blockHeaders), err)
 	}
@@ -463,7 +475,8 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	// Update synced segments
 	dh.syncedSegments = storageSyncSegments
 	dh.pendingSync = dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
-	dh.log.Infof("Safe/Step: finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s",
+	dh.log.Infof("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
+		dh.statistics.ElapsedSyncing().String(),
 		logQueryData.BlockRange.String(),
 		len(logs),
 		len(blockHeaders),
