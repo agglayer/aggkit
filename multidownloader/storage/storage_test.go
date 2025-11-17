@@ -298,7 +298,7 @@ func TestStorage_UpdateSyncingStatusUpdate(t *testing.T) {
 		seg1.String())
 }
 
-func TestStorage_logDBRow_String(t *testing.T) {
+func TestStorage_logRow_String(t *testing.T) {
 	row := logRow{
 		Address:     exampleAddr1,
 		BlockNumber: 1500,
@@ -313,6 +313,9 @@ func TestStorage_logDBRow_String(t *testing.T) {
 		"Topics: , DataLen: 2, BlockNumber: 1500, "+
 		"TxHash: 0x856086411ae73dde934f7ec6f586b73b00d0bde1a9c32c7dfd1811b146cbd8bf, "+
 		"TxIndex: 123, Index: 34}", str)
+
+	var rowNil *logRow
+	require.Equal(t, "logRow{nil}", rowNil.String())
 }
 
 func TestStorage_BlockRow_String(t *testing.T) {
