@@ -322,7 +322,8 @@ func (a *MultidownloaderStorage) GetSyncedBlockRangePerContract(tx dbtypes.Queri
 	for _, row := range result {
 		segment, err := row.ToSyncSegment()
 		if err != nil {
-			return mdrtypes.SetSyncSegment{}, fmt.Errorf("GetSyncedBlockRangePerContract: error converting row to sync segment: %w", err)
+			return mdrtypes.SetSyncSegment{},
+				fmt.Errorf("GetSyncedBlockRangePerContract: error converting row to sync segment: %w", err)
 		}
 		setSegments.Add(segment)
 	}

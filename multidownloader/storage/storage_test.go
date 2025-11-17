@@ -200,7 +200,6 @@ func TestStorage_GetSyncedBlockRangePerContract(t *testing.T) {
 	data, err := storage.GetSyncedBlockRangePerContract(nil)
 	require.NoError(t, err)
 	require.Equal(t, "SetSyncSegment: ", data.String())
-
 }
 
 func TestStorage_UpsertSyncerConfigs(t *testing.T) {
