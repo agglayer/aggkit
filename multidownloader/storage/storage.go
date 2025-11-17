@@ -228,6 +228,7 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 	for _, addr := range query.Addrs {
 		addrs = append(addrs, addr.Hex())
 	}
+	// This is used to extend the address slice into the query
 	queryStr, args, err := sqlx.In(sqlQuery, addrs, query.BlockRange.FromBlock, query.BlockRange.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error building SQL query: %w", err)

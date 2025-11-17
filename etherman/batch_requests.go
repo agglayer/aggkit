@@ -20,6 +20,11 @@ type blockRawEth struct {
 	ParentHash string `json:"parentHash"`
 }
 
+func (b *blockRawEth) String() string {
+	return fmt.Sprintf("{Number=%s, Hash=%s, Timestamp=%s, ParentHash=%s}",
+		b.Number, b.Hash, b.Timestamp, b.ParentHash)
+}
+
 func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
 	number, err := aggkitcommon.ParseHexUint64(b.Number)
 	if err != nil {
@@ -45,7 +50,7 @@ func convertMapBlockRawEth(blocks map[uint64]*blockRawEth) (map[uint64]*aggkitty
 	for bn, bre := range blocks {
 		bh, err := bre.ToBlockHeader()
 		if err != nil {
-			return nil, fmt.Errorf("convert: converting block number %d: %w", bn, err)
+			return nil, fmt.Errorf("convert: converting block number %d (%s): %w", bn, bre.String(), err)
 		}
 		result[bn] = bh
 	}
