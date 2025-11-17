@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -107,7 +108,7 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 	return bn.CountBlocks()
 }
 
-func (f *SetSyncSegment) UpdateToBlock(ctx context.Context, blockNotifierGetter BlockNotifierManagerGetter) {
+func (f *SetSyncSegment) UpdateToBlock(ctx context.Context, blockNotifierGetter ethermantypes.BlockNotifierManagerInterface) {
 	if f == nil {
 		return
 	}

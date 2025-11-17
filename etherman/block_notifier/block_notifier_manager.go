@@ -18,6 +18,8 @@ type BlockNotifierManager struct {
 	logger          aggkitcommon.Logger
 }
 
+var _ ethermantypes.BlockNotifierManagerInterface = (*BlockNotifierManager)(nil)
+
 func NewBlockNotifierManager(logger aggkitcommon.Logger,
 	constructorFunc func(aggkittypes.BlockNumberFinality) (ethermantypes.BlockNotifier, error)) *BlockNotifierManager {
 	return &BlockNotifierManager{

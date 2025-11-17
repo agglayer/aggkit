@@ -53,7 +53,7 @@ type EVMMultidownloader struct {
 	ethClient            aggkittypes.BaseEthereumClienter
 	rpcClient            aggkittypes.RPCClienter
 	storage              StorageInterface
-	blockNotifierManager mdrtypes.BlockNotifierManagerGetter
+	blockNotifierManager ethermantypes.BlockNotifierManagerInterface
 	blockFinality        aggkittypes.BlockNumberFinality
 	name                 string
 	syncersConfig        mdrtypes.SetSyncerConfig
@@ -76,7 +76,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
 	storageDB StorageInterface,
-	blockNotifierManager mdrtypes.BlockNotifierManagerGetter,
+	blockNotifierManager ethermantypes.BlockNotifierManagerInterface,
 ) (*EVMMultidownloader, error) {
 	if blockNotifierManager == nil {
 		blockNotifierManager = ethermanblocknotifier.NewBlockNotifierManager(log,
