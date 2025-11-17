@@ -162,7 +162,6 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 					hash := common.BytesToHash([]byte{byte(idx + 1)})
 					block.Hash = hash.Hex()
 					block.Timestamp = "0x123"
-
 				}
 			}).
 			Return(nil).Once()
@@ -170,7 +169,6 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, len(blockNumbers), len(result))
-
 	})
 
 	t.Run("uses legacy when rpcClient is nil", func(t *testing.T) {
