@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	ethmanmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -442,5 +443,48 @@ func TestEpochBasedRunner_TriggerCh(t *testing.T) {
 		require.Equal(t, mockEvent1, receivedEvents[0])
 		require.Equal(t, mockEvent2, receivedEvents[1])
 		require.Equal(t, mockEvent3, receivedEvents[2])
+	})
+}
+
+func TestForceTriggerEvent(t *testing.T) {
+	t.Run("epochBasedTrigger calls ForcePublishEpochEvent", func(t *testing.T) {
+
+		mockBlockNotifier := mocks.NewBlockNotifier(t)
+		logger := log.WithFields("test", "test")
+		mockEpochNotifier, err := NewEpochNotifierPerBlock(
+			mockBlockNotifier,
+			logger,
+			ConfigEpochNotifierPerBlock{
+				StartingEpochBlock:          1000,
+				NumBlockPerEpoch:            100,
+				EpochNotificationPercentage: 80.0,
+			},
+			nil,
+		)
+		require.NoError(t, err)
+		runner := &epochBasedTrigger{
+			epochNotifier: mockEpochNotifier,
+			blockNotifier: mockBlockNotifier,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		triggerCh := runner.TriggerCh(ctx)
+		mockBlockNotifier.EXPECT().GetCurrentBlockNumber().Return(uint64(1100)).Times(1)
+		runner.ForceTriggerEvent()
+
+		// Verify all events are forwarded
+		receivedEvents := make([]types.CertificateTriggerEvent, 0, 1)
+		for i := 0; i < 1; i++ {
+			select {
+			case event := <-triggerCh:
+				receivedEvents = append(receivedEvents, event)
+			case <-time.After(1 * time.Second):
+				t.Fatalf("Expected event was not received after 1 sec")
+			}
+		}
+
+		require.Len(t, receivedEvents, 1)
 	})
 }
