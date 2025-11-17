@@ -3,6 +3,8 @@ package common
 import (
 	"strconv"
 	"time"
+
+	"github.com/agglayer/aggkit/log"
 )
 
 type TimeTracker struct {
@@ -29,14 +31,16 @@ func NewTimeTracker() *TimeTracker {
 
 func (t *TimeTracker) Elapsed() time.Duration {
 	if t.start.IsZero() {
-		panic("TimeTracker: Elapsed called before Start")
+		log.Error("TimeTracker: Elapsed called before Start")
+		return 0
 	}
 	return time.Since(t.start)
 }
 
 func (t *TimeTracker) Duration() time.Duration {
 	if t.start.IsZero() {
-		panic("TimeTracker: Duration called before Start")
+		log.Error("TimeTracker: Duration called before Start")
+		return 0
 	}
 	return t.end.Sub(t.start)
 }

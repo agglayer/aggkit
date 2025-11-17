@@ -15,7 +15,9 @@ type SyncSegment struct {
 	RequiredBlockHeader bool
 }
 
-func NewSyncSegment(contractAddr common.Address, blockRange aggkitcommon.BlockRange, targetToBlock aggkittypes.BlockNumberFinality,
+func NewSyncSegment(contractAddr common.Address,
+	blockRange aggkitcommon.BlockRange,
+	targetToBlock aggkittypes.BlockNumberFinality,
 	requiredBlockHeader bool) SyncSegment {
 	return SyncSegment{
 		ContractAddr:        contractAddr,

@@ -52,7 +52,6 @@ func TestDBRuntimeDataIsCompatible(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestDBRuntimeDataString(t *testing.T) {
