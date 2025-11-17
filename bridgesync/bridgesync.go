@@ -320,12 +320,12 @@ func (s *BridgeSync) GetBridgesPaged(
 
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, fromAddress string, globalIndex *big.Int) ([]*Claim, int, error) {
+	page, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error) {
 	if s.processor.isHalted() {
 		s.processor.log.Error("processor is halted, cannot get claims")
 		return nil, 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress, globalIndex)
+	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
