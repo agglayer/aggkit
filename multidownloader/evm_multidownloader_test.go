@@ -29,7 +29,7 @@ const runL1InfoTree = false
 const l1InfoTreeUseMultidownloader = true
 
 func TestEVMMultidownloader(t *testing.T) {
-	//t.Skip("code to test/debug not real unittest")
+	t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -37,8 +37,9 @@ func TestEVMMultidownloader(t *testing.T) {
 	}
 	log.Init(cfgLog)
 	l1url := os.Getenv("L1URL")
-	ethClient, err := ethclient.Dial(l1url)
+	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
+	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
 	ethRPCClient, err := ethrpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 
@@ -138,6 +139,7 @@ func TestEVMMultidownloader(t *testing.T) {
 }
 
 func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
+	t.Skip("it's a exploratory test for batch requests")
 	l1url := os.Getenv("L1URL")
 	ethClient, err := ethrpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
@@ -171,10 +173,10 @@ func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
 
 	log.Infof("blockNumber: %s, chainID: %s", blockNumber, chainID)
 	log.Infof("latestBlock: %+v", latestBlock)
-
 }
 
 func TestDownloaderParellelvsBatch(t *testing.T) {
+	t.Skip("it's a benchmarking test")
 	l1url := os.Getenv("L1URL")
 	ethClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
@@ -184,23 +186,23 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	var blockNumbersMap map[uint64]struct{} = make(map[uint64]struct{})
 	var blockNumbersSlice []uint64
 	initialBlock := uint64(1)
-	for i := initialBlock; i < initialBlock+10023; i++ {
+	for i := initialBlock; i < initialBlock+923; i++ {
 		blockNumbersMap[i] = struct{}{}
 		blockNumbersSlice = append(blockNumbersSlice, i)
 	}
 	logger := log.WithFields("test", "test")
 
 	start := time.Now()
-	headersBatch, err := etherman.RetrieveBlockHeaders(t.Context(), logger, ethRPCClient, blockNumbersMap, 10)
+	headersBatch, err := etherman.RetrieveBlockHeaders(t.Context(), logger, nil, ethRPCClient, blockNumbersMap, 10)
 	require.NoError(t, err)
 	durationBatch := time.Since(start)
-	log.Infof("retrieveRPCBlockHeadersInBatch took %s", durationBatch.String())
+	log.Infof("BatchMode took %s", durationBatch.String())
 
 	start = time.Now()
 	headersParallel, err := retrieveRPCBlockHeadersInParallel(t.Context(), logger, ethClient, blockNumbersMap, 20)
 	require.NoError(t, err)
 	durationParallel := time.Since(start)
-	log.Infof("retrieveRPCBlockHeadersInParallel took %s", durationParallel.String())
+	log.Infof("Parallel RPC took %s", durationParallel.String())
 
 	require.Equal(t, len(headersParallel), len(headersBatch))
 	for _, blockNumber := range blockNumbersSlice {
@@ -210,7 +212,6 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 		require.True(t, okB)
 		require.Equal(t, headerP.Hash, headerB.Hash)
 	}
-
 }
 
 func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) {

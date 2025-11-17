@@ -7,15 +7,11 @@ import (
 	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 )
-
-// This interface is implemented by rpc.Dial("http://localhost:8545")
-type EthRPCBatcher interface {
-	BatchCallContext(ctx context.Context, b []rpc.BatchElem) error
-}
 
 // blockRawEth is eth_getBlockByNumber result structure
 type blockRawEth struct {
@@ -60,22 +56,59 @@ func convertMapBlockRawEth(blocks map[uint64]*blockRawEth) (map[uint64]*aggkitty
 // https://www.alchemy.com/docs/reference/batch-requests
 const batchRequestLimitHTTP = 1000
 
+// RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests if rpcClient is provided
 func RetrieveBlockHeaders(ctx context.Context,
 	log aggkitcommon.Logger,
-	rpcClient EthRPCBatcher,
+	ethClient types.BaseEthereumClienter,
+	rpcClient types.RPCClienter,
 	blockNumbers map[uint64]struct{},
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
-	return retrieveBlockHeadersInBatchParallel(ctx,
+	if rpcClient != nil {
+		return RetrieveBlockHeadersBatch(ctx, log, rpcClient, blockNumbers, maxConcurrency)
+	}
+	return RetrieveBlockHeadersLegacy(ctx, log, ethClient, blockNumbers, maxConcurrency)
+}
+
+// RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests with concurrency control
+func RetrieveBlockHeadersBatch(ctx context.Context,
+	log aggkitcommon.Logger,
+	rpcClient types.RPCClienter,
+	blockNumbers map[uint64]struct{},
+	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	return retrieveBlockHeadersInBatchParallel(
 		log,
-		rpcClient,
 		func(blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
-			return RetrieveBlockHeadersInBatch(ctx, log, rpcClient, blocks)
+			return retrieveBlockHeadersInBatch(ctx, log, rpcClient, blocks)
 		}, blockNumbers, batchRequestLimitHTTP, maxConcurrency)
 }
 
-func RetrieveBlockHeadersInBatch(ctx context.Context,
+// RetrieveBlockHeadersLegacy retrieves block headers for the given block numbers using individual requests
+// this is used in simulated environments where batch requests are not supported
+func RetrieveBlockHeadersLegacy(ctx context.Context,
 	log aggkitcommon.Logger,
-	rpcClient EthRPCBatcher,
+	ethClient types.BaseEthereumClienter,
+	blockNumbers map[uint64]struct{},
+	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	return retrieveBlockHeadersInBatchParallel(
+		log,
+		func(blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
+			result := make(map[uint64]*aggkittypes.BlockHeader, len(blocks))
+			for blockNumber := range blocks {
+				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
+				if err != nil {
+					return nil, fmt.Errorf("RetrieveBlockHeadersLegacy: cannot get block header for block %d: %w",
+						blockNumber, err)
+				}
+				result[blockNumber] = aggkittypes.NewBlockHeaderFromEthBlockHeader(header)
+			}
+			return result, nil
+		}, blockNumbers, 1, maxConcurrency)
+}
+
+// retrieveBlockHeadersInBatch retrieves block headers for the given block numbers using batch requests
+func retrieveBlockHeadersInBatch(ctx context.Context,
+	log aggkitcommon.Logger,
+	rpcClient types.RPCClienter,
 	blockNumbers map[uint64]struct{},
 ) (map[uint64]*aggkittypes.BlockHeader, error) {
 	if len(blockNumbers) == 0 {
@@ -111,9 +144,10 @@ func RetrieveBlockHeadersInBatch(ctx context.Context,
 		len(blockNumbers), timeTracker.Duration().String())
 	return convertMapBlockRawEth(headers)
 }
-func retrieveBlockHeadersInBatchParallel(ctx context.Context,
+
+// retrieveBlockHeadersInBatchParallel split request into chuncks and execute it in parallel
+func retrieveBlockHeadersInBatchParallel(
 	logger aggkitcommon.Logger,
-	rpcClient EthRPCBatcher,
 	funcRetrieval func(map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error),
 	blockNumbers map[uint64]struct{},
 	chunckSize, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
@@ -143,7 +177,6 @@ func retrieveBlockHeadersInBatchParallel(ctx context.Context,
 			for blockNumber, header := range headers {
 				results[blockNumber] = header
 			}
-
 		}(chunck)
 	}
 	wg.Wait()

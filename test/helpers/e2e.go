@@ -163,6 +163,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			multidownloader.NewConfigDefault("l1", t.TempDir()),
 			"testMD",
 			l1Client.Client(),
+			nil, // RPC client is not simulated
 			nil,
 			nil,
 		)

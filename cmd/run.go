@@ -34,6 +34,7 @@ import (
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	ethermanquierier "github.com/agglayer/aggkit/etherman/querier"
 	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
@@ -272,7 +273,7 @@ func createAggSenderValidator(ctx context.Context,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier,
+	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
 	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
@@ -367,7 +368,7 @@ func createAggSender(
 }
 
 func createAggoracle(
-	rollupDataQuerier *etherman.RollupDataQuerier,
+	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
 	cfg config.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
@@ -614,7 +615,7 @@ func runReorgDetectorL1IfNeeded(
 func runL1MultiDownloaderIfNeeded(
 	_ context.Context,
 	_ []string,
-	l1Client aggkittypes.BaseEthereumClienter,
+	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
 ) (aggkittypes.MultiDownloader, error) {
 	// The requirements are the same as L1Client
@@ -631,9 +632,10 @@ func runL1MultiDownloaderIfNeeded(
 		logger,
 		cfg,
 		"l1",
-		l1Client,
-		nil, // storage
-		nil, // blockNotifierManager
+		l1Client, // ethClient
+		l1Client, // rpcClient
+		nil,      // storage
+		nil,      // blockNotifierManager
 	)
 }
 
@@ -876,7 +878,7 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
 func createRollupDataQuerier(ctx context.Context,
 	cfg ethermanconfig.L1NetworkConfig,
-) (*etherman.RollupDataQuerier, error) {
+) (*ethermanquierier.RollupDataQuerier, error) {
 	retryHandler, err := cfg.RPC.NewRetryHandler()
 	if err != nil {
 		log.Fatalf("failed to create retry handler: %w", err)
@@ -886,9 +888,9 @@ func createRollupDataQuerier(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}
-	return etherman.NewRollupDataQuerier(ctx, cfg, ethClient,
+	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, ethClient,
 		func(rollupManagerAddr common.Address,
-			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
+			client aggkittypes.BaseEthereumClienter) (ethermanquierier.RollupManagerContract, error) {
 			return agglayermanager.NewAgglayermanager(rollupManagerAddr, client)
 		})
 }

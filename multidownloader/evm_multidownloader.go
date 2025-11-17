@@ -23,7 +23,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rpc"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -48,15 +47,11 @@ type StorageInterface interface {
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 }
 
-type ethRPCBatcher interface {
-	BatchCallContext(ctx context.Context, b []rpc.BatchElem) error
-}
-
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
 	cfg                  Config
 	ethClient            aggkittypes.BaseEthereumClienter
-	rpcClient            ethRPCBatcher
+	rpcClient            aggkittypes.RPCClienter
 	storage              StorageInterface
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter
 	blockFinality        aggkittypes.BlockNumberFinality
@@ -79,7 +74,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	cfg Config,
 	name string,
 	ethClient aggkittypes.BaseEthereumClienter,
-	rpcClient ethRPCBatcher,
+	rpcClient aggkittypes.RPCClienter,
 	storageDB StorageInterface,
 	blockNotifierManager mdrtypes.BlockNotifierManagerGetter,
 ) (*EVMMultidownloader, error) {
@@ -429,7 +424,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
 	dh.log.Debugf("Safe/Step:: querying blockHeaders for %d blocks", len(blocks))
-	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.rpcClient, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
+	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot retrieve block headers (%d): %w", len(blockHeaders), err)
 	}

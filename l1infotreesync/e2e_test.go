@@ -89,6 +89,7 @@ func TestE2E(t *testing.T) {
 			cfgMD,
 			"testMD",
 			client.Client(),
+			nil, // rpcClient
 			nil,
 			nil,
 		)
@@ -172,6 +173,7 @@ func TestWithReorgs(t *testing.T) {
 			cfgMD,
 			"testMD",
 			client.Client(),
+			nil, // rpcClient
 			nil,
 			nil,
 		)
@@ -323,6 +325,7 @@ func TestStressAndReorgs(t *testing.T) {
 			cfgMD,
 			"testMD",
 			client.Client(),
+			nil, // rpcClient
 			nil,
 			nil,
 		)
