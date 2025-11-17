@@ -446,45 +446,69 @@ func TestEpochBasedRunner_TriggerCh(t *testing.T) {
 	})
 }
 
-func TestForceTriggerEvent(t *testing.T) {
-	t.Run("epochBasedTrigger calls ForcePublishEpochEvent", func(t *testing.T) {
+func TestEpochBasedTriggerForceTriggerEvent(t *testing.T) {
+	mockBlockNotifier := mocks.NewBlockNotifier(t)
+	logger := log.WithFields("test", "test")
+	mockEpochNotifier, err := NewEpochNotifierPerBlock(
+		mockBlockNotifier,
+		logger,
+		ConfigEpochNotifierPerBlock{
+			StartingEpochBlock:          1000,
+			NumBlockPerEpoch:            100,
+			EpochNotificationPercentage: 80.0,
+		},
+		nil,
+	)
+	require.NoError(t, err)
+	runner := &epochBasedTrigger{
+		epochNotifier: mockEpochNotifier,
+		blockNotifier: mockBlockNotifier,
+	}
 
-		mockBlockNotifier := mocks.NewBlockNotifier(t)
-		logger := log.WithFields("test", "test")
-		mockEpochNotifier, err := NewEpochNotifierPerBlock(
-			mockBlockNotifier,
-			logger,
-			ConfigEpochNotifierPerBlock{
-				StartingEpochBlock:          1000,
-				NumBlockPerEpoch:            100,
-				EpochNotificationPercentage: 80.0,
-			},
-			nil,
-		)
-		require.NoError(t, err)
-		runner := &epochBasedTrigger{
-			epochNotifier: mockEpochNotifier,
-			blockNotifier: mockBlockNotifier,
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	triggerCh := runner.TriggerCh(ctx)
+	mockBlockNotifier.EXPECT().GetCurrentBlockNumber().Return(uint64(1100)).Times(1)
+	runner.ForceTriggerEvent()
+
+	// Verify all events are forwarded
+	receivedEvents := make([]types.CertificateTriggerEvent, 0, 1)
+	for i := 0; i < 1; i++ {
+		select {
+		case event := <-triggerCh:
+			receivedEvents = append(receivedEvents, event)
+		case <-time.After(1 * time.Second):
+			t.Fatalf("Expected event was not received after 1 sec")
 		}
+	}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	require.Len(t, receivedEvents, 1)
+}
 
-		triggerCh := runner.TriggerCh(ctx)
-		mockBlockNotifier.EXPECT().GetCurrentBlockNumber().Return(uint64(1100)).Times(1)
-		runner.ForceTriggerEvent()
+func TestPreconfTriggerForceTriggerEvent(t *testing.T) {
+	logger := log.WithFields("test", "test")
+	mockL2BridgeSync := mocks.NewL2BridgeSyncer(t)
 
-		// Verify all events are forwarded
-		receivedEvents := make([]types.CertificateTriggerEvent, 0, 1)
-		for i := 0; i < 1; i++ {
-			select {
-			case event := <-triggerCh:
-				receivedEvents = append(receivedEvents, event)
-			case <-time.After(1 * time.Second):
-				t.Fatalf("Expected event was not received after 1 sec")
-			}
-		}
+	// Create a mock subscription channel
+	syncCh := make(chan sync.Block, 3)
+	mockL2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(syncCh)
+	mockL2BridgeSync.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(12345), nil).Once()
+	sut := newPreconfTrigger(
+		logger,
+		mockL2BridgeSync,
+	)
 
-		require.Len(t, receivedEvents, 1)
-	})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	triggerCh := sut.TriggerCh(ctx)
+	go sut.ForceTriggerEvent()
+
+	select {
+	case event := <-triggerCh:
+		t.Logf("Received event: %+v", event)
+		break
+	case <-ctx.Done():
+		t.Fatalf("Expected event was not received after 1 sec")
+	}
 }

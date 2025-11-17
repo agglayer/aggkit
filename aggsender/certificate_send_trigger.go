@@ -3,13 +3,14 @@ package aggsender
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/sync"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -150,6 +151,7 @@ func (r *epochBasedTrigger) ForceTriggerEvent() {
 type preconfTrigger struct {
 	log          aggkitcommon.Logger
 	l2BridgeSync types.L2BridgeSyncer
+	mutex        sync.Mutex
 	ch           chan types.CertificateTriggerEvent
 }
 
@@ -188,16 +190,24 @@ func (r *preconfTrigger) Setup(ctx context.Context) {
 // notifications. Each value is a sync.Block (which implements CertificateTriggerEvent).
 // The returned channel will be closed when the provided context is canceled.
 func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
+	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 	ch := make(chan types.CertificateTriggerEvent)
 	r.ch = ch
-	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
+
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+				r.mutex.Lock()
+				defer r.mutex.Unlock()
+				r.ch = nil
 				close(ch)
 				return
 			case epochEvent := <-syncSub:
+				r.mutex.Lock()
+				defer r.mutex.Unlock()
 				ch <- epochEvent
 			}
 		}
@@ -213,5 +223,7 @@ func (r *preconfTrigger) ForceTriggerEvent() {
 		r.log.Errorf("ForceTriggerEvent: Failed to get last processed block: %v", err)
 		return
 	}
-	r.ch <- sync.Block{Num: blockNumber}
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.ch <- aggkitsync.Block{Num: blockNumber}
 }
