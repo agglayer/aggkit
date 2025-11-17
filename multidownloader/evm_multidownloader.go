@@ -37,7 +37,7 @@ type StorageInterface interface {
 	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader,
 		logs []types.Log, isFinal bool) error
 	GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error)
-	UpdateSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error
+	UpsertSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error
 	UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, error)
 
@@ -238,7 +238,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	err = dh.storage.UpdateSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
+	err = dh.storage.UpsertSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
 	if err != nil {
 		return err
 	}

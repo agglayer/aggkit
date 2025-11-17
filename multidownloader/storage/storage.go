@@ -32,7 +32,7 @@ type MultidownloaderStorage struct {
 	mutex sync.RWMutex
 }
 
-type logDBRow struct {
+type logRow struct {
 	Address     common.Address `meddler:"address,address"`
 	Topics      string         `meddler:"topics"`
 	Data        []byte         `meddler: "data"`
@@ -42,19 +42,19 @@ type logDBRow struct {
 	Index       uint           `meddler:"log_index"`
 }
 
-func (l *logDBRow) String() string {
+func (l *logRow) String() string {
 	if l == nil {
-		return "logDBRow{nil}"
+		return "logRow{nil}"
 	}
-	return fmt.Sprintf("logDBRow{Address: %s, Topics: %s, DataLen: %d, BlockNumber: %d, "+
+	return fmt.Sprintf("logRow{Address: %s, Topics: %s, DataLen: %d, BlockNumber: %d, "+
 		"TxHash: %s, TxIndex: %d, Index: %d}",
 		l.Address.Hex(), l.Topics, len(l.Data), l.BlockNumber, l.TxHash.Hex(), l.TxIndex, l.Index)
 }
 
-func NewLogDBRowsFromEthLogs(logs []types.Log) []*logDBRow {
-	rows := make([]*logDBRow, 0, len(logs))
+func NewLogRowsFromEthLogs(logs []types.Log) []*logRow {
+	rows := make([]*logRow, 0, len(logs))
 	for _, log := range logs {
-		row := NewLogDBRowFromEthLog(log)
+		row := NewLogRowFromEthLog(log)
 		rows = append(rows, row)
 	}
 	return rows
@@ -69,13 +69,13 @@ type syncStatusRow struct {
 	SyncersIDs      string         `meddler:"syncers_id"`
 }
 
-func NewLogDBRowFromEthLog(log types.Log) *logDBRow {
+func NewLogRowFromEthLog(log types.Log) *logRow {
 	topicsJSON, err := json.Marshal(log.Topics)
 	if err != nil {
 		// If marshaling fails, fallback to empty string or handle error as needed
 		topicsJSON = []byte("[]")
 	}
-	return &logDBRow{
+	return &logRow{
 		Address:     log.Address,
 		Topics:      string(topicsJSON),
 		Data:        log.Data,
@@ -122,15 +122,6 @@ func NewBlockRowFromEthLog(log types.Log, isFinal bool) *BlockRow {
 	}
 }
 
-func newBlockRowFromEthBlock(ethBlock *types.Header, isFinal bool) *BlockRow {
-	return &BlockRow{
-		BlockNumber:     ethBlock.Number.Uint64(),
-		BlockHash:       ethBlock.Hash(),
-		BlockTimestamp:  ethBlock.Time,
-		BlockParentHash: &ethBlock.ParentHash,
-		IsFinal:         isFinal,
-	}
-}
 func newBlockRowFromAggkitBlock(block *aggkittypes.BlockHeader, isFinal bool) *BlockRow {
 	return &BlockRow{
 		BlockNumber:     block.Number,
@@ -147,14 +138,6 @@ func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*BlockRow {
 		if _, exists := blockMap[log.BlockNumber]; !exists {
 			blockMap[log.BlockNumber] = NewBlockRowFromEthLog(log, isFinal)
 		}
-	}
-	return blockMap
-}
-
-func NewBlockRowsFromEthBlock(blockHeaders []*types.Header) map[uint64]*BlockRow {
-	blockMap := make(map[uint64]*BlockRow)
-	for _, header := range blockHeaders {
-		blockMap[header.Number.Uint64()] = newBlockRowFromEthBlock(header, false)
 	}
 	return blockMap
 }
@@ -260,16 +243,16 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 
 // tx dbtypes.Txer
 func (a *MultidownloaderStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFinal bool) error {
-	return a.saveLogsAndBlocks(tx, NewBlockRowsFromLogs(logs, isFinal), NewLogDBRowsFromEthLogs(logs))
+	return a.saveLogsAndBlocks(tx, NewBlockRowsFromLogs(logs, isFinal), NewLogRowsFromEthLogs(logs))
 }
 
 func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier,
 	blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error {
-	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders, isFinal), NewLogDBRowsFromEthLogs(logs))
+	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders, isFinal), NewLogRowsFromEthLogs(logs))
 }
 
 func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
-	blockRows map[uint64]*BlockRow, logRows []*logDBRow) error {
+	blockRows map[uint64]*BlockRow, logRows []*logRow) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -299,7 +282,7 @@ func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows
 	return nil
 }
 
-func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*logDBRow) error {
+func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*logRow) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -311,36 +294,17 @@ func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*
 	return nil
 }
 
-/*
-	func (a *MultidownloaderStorage) SaveUnsafeBlock(tx dbtypes.Querier, block *types.Header, logs []types.Log) error {
-		if tx == nil {
-			tx = a.db
-		}
-		a.mutex.Lock()
-		defer a.mutex.Unlock()
-		blockRow := newBlockRowFromEthBlock(block, false)
-		if err := meddler.Insert(tx, "block", blockRow); err != nil {
-			return fmt.Errorf("SaveUnsafeBlock: error inserting unsafe block: %w", err)
-		}
-
-		for _, log := range logs {
-			if log.BlockHash != block.Hash() {
-				return fmt.Errorf("SaveUnsafeBlock: log block hash %s does not match header block hash %s",
-					log.BlockHash.Hex(), block.Hash().Hex())
-			}
-			log := NewLogDBRowFromEthLog(log)
-			if err := meddler.Insert(tx, "logs", log); err != nil {
-				return fmt.Errorf("SaveUnsafeBlock: error inserting eth log: %w", err)
-			}
-		}
-		return nil
+func (r *syncStatusRow) ToSyncSegment() (mdrtypes.SyncSegment, error) {
+	targetToBlock, err := aggkittypes.NewBlockNumberFinality(r.TargetToBlock)
+	if err != nil {
+		return mdrtypes.SyncSegment{}, fmt.Errorf("ToSyncSegment: error parsing target to block finality (%s): %w",
+			r.TargetToBlock, err)
 	}
-*/
-func (r *syncStatusRow) ToSyncSegment() mdrtypes.SyncSegment {
 	return mdrtypes.SyncSegment{
-		ContractAddr: r.Address,
-		BlockRange:   aggkitcommon.NewBlockRange(r.SyncedFromBlock, r.SyncedToBlock),
-	}
+		ContractAddr:  r.Address,
+		TargetToBlock: targetToBlock,
+		BlockRange:    aggkitcommon.NewBlockRange(r.SyncedFromBlock, r.SyncedToBlock),
+	}, nil
 }
 
 func (a *MultidownloaderStorage) GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error) {
@@ -356,11 +320,16 @@ func (a *MultidownloaderStorage) GetSyncedBlockRangePerContract(tx dbtypes.Queri
 	}
 	setSegments := mdrtypes.NewSetSyncSegment()
 	for _, row := range result {
-		setSegments.Add(row.ToSyncSegment())
+		segment, err := row.ToSyncSegment()
+		if err != nil {
+			return mdrtypes.SetSyncSegment{}, fmt.Errorf("GetSyncedBlockRangePerContract: error converting row to sync segment: %w", err)
+		}
+		setSegments.Add(segment)
 	}
 	return setSegments, nil
 }
 
+// UpdateSyncingStatus updates the syncing status after executing a log query
 func (a *MultidownloaderStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error {
 	if tx == nil {
 		tx = a.db
@@ -380,15 +349,22 @@ func (a *MultidownloaderStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuer
 			synced_to_block = MAX(synced_to_block, ?)
 		WHERE contract_address = ?;
 		`
-		_, err := tx.Exec(query, from, from, from, logQuery.BlockRange.ToBlock, addr.Hex())
+		result, err := tx.Exec(query, from, from, from, logQuery.BlockRange.ToBlock, addr.Hex())
 		if err != nil {
 			return fmt.Errorf("error updating sync status: %w", err)
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("error getting rows affected when updating sync status: %w", err)
+		}
+		if rowsAffected == 0 {
+			return fmt.Errorf("no rows affected when updating sync status for contract %s", addr.Hex())
 		}
 	}
 	return nil
 }
 
-func (a *MultidownloaderStorage) UpdateSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error {
+func (a *MultidownloaderStorage) UpsertSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error {
 	if tx == nil {
 		tx = a.db
 	}

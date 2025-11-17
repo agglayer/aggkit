@@ -4,6 +4,7 @@ import (
 	"path"
 	"testing"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -141,6 +142,191 @@ func TestStorage_GetLogs(t *testing.T) {
 	readLogs, err = storage.GetEthLogs(nil, mdrtypes.NewLogQuery(1000, 2000, []common.Address{exampleAddr1, exampleAddr2}))
 	require.NoError(t, err, "cannot get logs")
 	require.Len(t, readLogs, 4, "expected 3 logs for both addresses")
+}
+
+func TestStorage_SaveEthLogsWithHeaders(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	tx, err := storage.NewTx(t.Context())
+	require.NoError(t, err)
+	blockHeaders := []*aggkittypes.BlockHeader{
+		aggkittypes.NewBlockHeader(2000, exampleTestHash[3], 1630001000, nil),
+		aggkittypes.NewBlockHeader(2001, exampleTestHash[4], 1630001060, &exampleTestHash[3]),
+	}
+	logs := []types.Log{
+		{
+			Address:        exampleAddr1,
+			BlockNumber:    2000,
+			BlockHash:      exampleTestHash[3],
+			BlockTimestamp: 1630001000,
+			Topics: []common.Hash{
+				exampleTestHash[0],
+			},
+		},
+		{
+			Address:        exampleAddr2,
+			BlockNumber:    2001,
+			BlockHash:      exampleTestHash[4],
+			BlockTimestamp: 1630001060,
+			Topics: []common.Hash{
+				exampleTestHash[1],
+			},
+		},
+	}
+	err = storage.SaveEthLogsWithHeaders(tx,
+		blockHeaders,
+		logs,
+		true)
+	require.NoError(t, err)
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	block1, err := storage.GetBlockHeaderByNumber(nil, blockHeaders[0].Number)
+	require.NoError(t, err)
+	require.Equal(t, blockHeaders[0], block1)
+
+	block2, err := storage.GetBlockHeaderByNumber(nil, blockHeaders[1].Number)
+	require.NoError(t, err)
+	require.Equal(t, blockHeaders[1], block2)
+
+	readLogs, err := storage.GetEthLogs(nil, mdrtypes.NewLogQuery(2000, 2001, []common.Address{exampleAddr1, exampleAddr2}))
+	require.NoError(t, err)
+	require.Len(t, readLogs, 2)
+	require.Equal(t, logs[0], readLogs[0])
+	require.Equal(t, logs[1], readLogs[1])
+}
+
+func TestStorage_GetSyncedBlockRangePerContract(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	data, err := storage.GetSyncedBlockRangePerContract(nil)
+	require.NoError(t, err)
+	require.Equal(t, "SetSyncSegment: ", data.String())
+
+}
+
+func TestStorage_UpsertSyncerConfigs(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	configs := []mdrtypes.ContractConfig{
+		{
+			Address:   exampleAddr1,
+			FromBlock: 1000,
+			ToBlock:   aggkittypes.FinalizedBlock,
+		},
+		{
+			Address:   exampleAddr2,
+			FromBlock: 2000,
+			ToBlock:   aggkittypes.LatestBlock,
+		},
+	}
+	err := storage.UpsertSyncerConfigs(nil, configs)
+	require.NoError(t, err)
+
+	// Upsert again with different start block
+	configsUpdated := []mdrtypes.ContractConfig{
+		{
+			Address:   exampleAddr1,
+			FromBlock: 1300,
+			ToBlock:   aggkittypes.FinalizedBlock,
+		},
+		{
+			Address:   exampleAddr2,
+			FromBlock: 1600,
+			ToBlock:   aggkittypes.FinalizedBlock,
+		},
+	}
+	err = storage.UpsertSyncerConfigs(nil, configsUpdated)
+	require.NoError(t, err)
+
+	syncSegments, err := storage.GetSyncedBlockRangePerContract(nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(syncSegments.GetAddressesForBlockRange(
+		aggkitcommon.NewBlockRange(0, 10000),
+	)))
+	seg1 := syncSegments.GetByContract(exampleAddr1)
+	require.NotNil(t, seg1)
+	require.Equal(t, aggkittypes.FinalizedBlock, seg1.TargetToBlock)
+
+	seg2 := syncSegments.GetByContract(exampleAddr2)
+	require.NotNil(t, seg2)
+	require.Equal(t, aggkittypes.FinalizedBlock, seg2.TargetToBlock)
+}
+
+func TestStorage_UpdateSyncingStatus_ErrorNoUpdate(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	logQuery := &mdrtypes.LogQuery{
+		Addrs:      []common.Address{exampleAddr1},
+		BlockRange: aggkitcommon.NewBlockRange(1000, 2000),
+	}
+	err := storage.UpdateSyncingStatus(nil, logQuery)
+	require.Error(t, err)
+}
+
+func TestStorage_UpdateSyncingStatusUpdate(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	configs := []mdrtypes.ContractConfig{
+		{
+			Address:   exampleAddr1,
+			FromBlock: 1100,
+			ToBlock:   aggkittypes.FinalizedBlock,
+		},
+		{
+			Address:   exampleAddr2,
+			FromBlock: 3000,
+			ToBlock:   aggkittypes.LatestBlock,
+		},
+	}
+	err := storage.UpsertSyncerConfigs(nil, configs)
+	require.NoError(t, err)
+
+	logQuery := &mdrtypes.LogQuery{
+		Addrs:      []common.Address{exampleAddr1},
+		BlockRange: aggkitcommon.NewBlockRange(1000, 2000),
+	}
+	err = storage.UpdateSyncingStatus(nil, logQuery)
+	require.NoError(t, err)
+
+	logQuery = &mdrtypes.LogQuery{
+		Addrs:      []common.Address{exampleAddr1},
+		BlockRange: aggkitcommon.NewBlockRange(800, 1300),
+	}
+	err = storage.UpdateSyncingStatus(nil, logQuery)
+	require.NoError(t, err)
+
+	syncSegments, err := storage.GetSyncedBlockRangePerContract(nil)
+	require.NoError(t, err)
+	seg1 := syncSegments.GetByContract(exampleAddr1)
+	require.Equal(t, "SyncSegment{ contracts:0x2968D6d736178f8FE7393CC33C87f29D9C287e78 range:From: 800, To: 2000 (1201) blockHeader:false}",
+		seg1.String())
+}
+
+func TestStorage_logDBRow_String(t *testing.T) {
+	row := logRow{
+		Address:     exampleAddr1,
+		BlockNumber: 1500,
+		Topics:      "",
+		Data:        []byte{0x01, 0x02},
+		TxHash:      exampleTestHash[4],
+		TxIndex:     123,
+		Index:       34,
+	}
+	str := row.String()
+	require.Equal(t, "logRow{Address: 0x2968D6d736178f8FE7393CC33C87f29D9C287e78, "+
+		"Topics: , DataLen: 2, BlockNumber: 1500, "+
+		"TxHash: 0x856086411ae73dde934f7ec6f586b73b00d0bde1a9c32c7dfd1811b146cbd8bf, "+
+		"TxIndex: 123, Index: 34}", str)
+}
+
+func TestStorage_BlockRow_String(t *testing.T) {
+	row := BlockRow{
+		BlockNumber:     1234,
+		BlockHash:       exampleTestHash[0],
+		BlockTimestamp:  5678,
+		BlockParentHash: &exampleTestHash[1],
+		IsFinal:         true,
+	}
+	str := row.String()
+	require.Equal(t, "BlockRow{BlockNumber: 1234, "+
+		"BlockHash: 0xabcdeffedcba1234567890abcdef1234567890abcdef1234567890abcdef1234, BlockTimestamp: 5678, "+
+		"BlockParentHash: 0x001234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd, IsFinal: true}", str)
 }
 
 func newStorageForTest(t *testing.T, dbFileFullPath *string) *MultidownloaderStorage {
