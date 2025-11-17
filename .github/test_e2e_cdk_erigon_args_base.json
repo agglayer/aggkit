@@ -14,7 +14,7 @@
     "aggkit_components": "aggsender",
     "aggkit_image": "aggkit:local",
     "agglayer_image": "ghcr.io/agglayer/agglayer:0.4.0-rc.18",
-    "agglayer_contracts_image": "jhkimqd/agglayer-contracts:v0.0.0-rc.0.fix.1.create.genesis-fork.12",
+    "agglayer_contracts_image": "stefanethernal/agglayer-contracts:v12.1.6", 
     "agglayer_prover_primary_prover": "mock-prover",
     "zkevm_use_real_verifier": false,
     "sp1_prover_key": "",
