@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/polygonzkevmbridge"
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -82,11 +83,12 @@ func buildAppender(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
-	appender[claimEventSignature] = buildClaimEventHandler(
-		bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims,
-		bridgeDeployment.kind, logger)
+	switch bridgeDeployment.kind {
+	case NonSovereignChain:
+		appender[claimEventSignature] = buildClaimEventHandler(
+			bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
 
-	if bridgeDeployment.kind == SovereignChain {
+	case SovereignChain:
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
@@ -138,7 +140,7 @@ func buildBridgeEventHandler(
 // buildClaimEventHandler creates a handler for the Claim event log.
 func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool,
-	bridgeDeployment BridgeDeployment, logger *logger.Logger,
+	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
@@ -174,13 +176,6 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			}
 		}
 
-		// TODO: The DetailedClaimEvent is for now emitted only for claimAsset function
-		// Skip its insertion, since it will be handled through DetailedClaimEvent handler
-		// https://github.com/agglayer/aggkit/blob/02b5493dfdc130281155dd2783a6a476212747f1/bridgesync/downloader.go#L191-L226
-		if bridgeDeployment == SovereignChain && !claim.IsMessage {
-			return nil
-		}
-
 		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
@@ -212,9 +207,7 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			ProofLocalExitRoot:  treetypes.NewProof(claimEvent.SmtProofLocalExitRoot),
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
-			// TODO: Populate once leafType is provided by the DetailedClaimEvent
-			// (https://github.com/agglayer/agglayer-contracts/pull/568)
-			IsMessage: false,
+			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
