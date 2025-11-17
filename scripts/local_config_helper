@@ -288,7 +288,7 @@ function common_aggsender_committee_override_urls(){
     done
     if [ ! -z "$aggsender_committee_override_urls" ]; then
         # Remove last ',' and add the {}
-        aggsender_committee_override_urls="{ ${aggsender_committee_override_urls::-1} }"
+        aggsender_committee_override_urls="{ ${aggsender_committee_override_urls%,} }"
     else
         aggsender_committee_override_urls="{}"
     fi
