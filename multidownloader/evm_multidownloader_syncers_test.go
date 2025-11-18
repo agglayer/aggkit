@@ -21,6 +21,35 @@ var (
 	addr1             = common.HexToAddress("0x1111111111111111111111111111111111111111")
 )
 
+func TestEVMMultidownloader_ChainID(t *testing.T) {
+	t.Run("ChainID returns chain ID from eth client", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		expectedChainID := big.NewInt(137)
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).
+			Return(expectedChainID, nil)
+
+		// Test
+		result, err := testData.mdr.ChainID(context.Background())
+
+		// Assertions
+		require.NoError(t, err)
+		require.Equal(t, expectedChainID.Uint64(), result)
+	})
+	t.Run("ChainID returns error from eth client", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, true)
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).
+			Return(nil, errors.New("eth client error"))
+
+		// Test
+		result, err := testData.mdr.ChainID(context.Background())
+
+		// Assertions
+		require.Error(t, err)
+		require.Equal(t, uint64(0), result)
+	})
+}
+
 func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 	t.Run("negative block number returns error", func(t *testing.T) {
 		// Setup
@@ -168,103 +197,7 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 	})
 }
 
-/*
-		t.Run("logs available immediately, returns logs successfully", func(t *testing.T) {
-			// Setup
-			testData := newEVMMultidownloaderTestData(t, true)
-
-			query := ethereum.FilterQuery{
-				FromBlock: big.NewInt(100),
-				ToBlock:   big.NewInt(200),
-			}
-
-			expectedLogs := []types.Log{
-				{
-					BlockNumber: 150,
-					TxHash:      [32]byte{1, 2, 3},
-				},
-				{
-					BlockNumber: 175,
-					TxHash:      [32]byte{4, 5, 6},
-				},
-			}
-
-			// Mock IsAvailable to return true (logs are available)
-			testData.mdr.isAvailableFunc = func(logQuery interface{}) bool {
-				return true
-			}
-
-			testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
-				Return(expectedLogs, nil)
-
-			// Test
-			result, err := testData.mdr.FilterLogs(context.Background(), query)
-
-			// Assertions
-			require.NoError(t, err)
-			require.Equal(t, expectedLogs, result)
-		})
-
-		t.Run("logs not available initially, waits then returns logs", func(t *testing.T) {
-			// Setup
-			testData := newEVMMultidownloaderTestData(t, true)
-
-			query := ethereum.FilterQuery{
-				FromBlock: big.NewInt(100),
-				ToBlock:   big.NewInt(200),
-			}
-
-			expectedLogs := []types.Log{
-				{
-					BlockNumber: 150,
-					TxHash:      [32]byte{1, 2, 3},
-				},
-			}
-
-			// Mock IsAvailable to return false first, then true
-			callCount := 0
-			testData.mdr.isAvailableFunc = func(logQuery interface{}) bool {
-				callCount++
-				return callCount > 1
-			}
-
-			testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
-				Return(expectedLogs, nil)
-
-			// Test
-			result, err := testData.mdr.FilterLogs(context.Background(), query)
-
-			// Assertions
-			require.NoError(t, err)
-			require.Equal(t, expectedLogs, result)
-			require.Greater(t, callCount, 1, "Should have called IsAvailable multiple times")
-		})
-
-		t.Run("empty logs returned successfully", func(t *testing.T) {
-			// Setup
-			testData := newEVMMultidownloaderTestData(t, true)
-
-			query := ethereum.FilterQuery{
-				FromBlock: big.NewInt(100),
-				ToBlock:   big.NewInt(200),
-			}
-
-			// Mock IsAvailable to return true (logs are available)
-			testData.mdr.isAvailableFunc = func(logQuery interface{}) bool {
-				return true
-			}
-
-			testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
-				Return([]types.Log{}, nil)
-
-			// Test
-			result, err := testData.mdr.FilterLogs(context.Background(), query)
-
-			// Assertions
-			require.NoError(t, err)
-			require.NotNil(t, result)
-			require.Len(t, result, 0)
-		})
-
+func TestEVMMultidownloader_EthClient(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, true)
+	require.Equal(t, testData.mockEthClient, testData.mdr.EthClient())
 }
-*/
