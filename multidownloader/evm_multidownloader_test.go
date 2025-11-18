@@ -289,6 +289,21 @@ func TestEVMMultidownloaderGetRPCServices(t *testing.T) {
 	})
 }
 
+/*
+func TestEVMMultidownloader_Start(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t)
+	testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil).Maybe()
+	err := testData.mdr.Initialize(t.Context())
+	require.NoError(t, err)
+
+	start := time.Now()
+	err = testData.mdr.Start(t.Context())
+	duration := time.Since(start)
+	log.Infof("Multidownloader Start took %s", duration.String())
+	require.NoError(t, err)
+}
+*/
+
 type testDataEVMMultidownloader struct {
 	mockEthClient *mocktypes.BaseEthereumClienter
 	mdr           *EVMMultidownloader

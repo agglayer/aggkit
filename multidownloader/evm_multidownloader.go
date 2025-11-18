@@ -39,7 +39,8 @@ type StorageInterface interface {
 	GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error)
 	UpsertSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error
 	UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error
-	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, error)
+	// GetBlockHeaderByNumber retrieves a block header and if it's final
+	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
 
 	GetBlockHeaderNotFinal(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error)
 	UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error

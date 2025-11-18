@@ -70,7 +70,7 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: negative block number not supported=%s", number.String())
 	}
 
-	block, err := dh.storage.GetBlockHeaderByNumber(nil, number.Uint64())
+	block, _, err := dh.storage.GetBlockHeaderByNumber(nil, number.Uint64())
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get BlockHeader number=%d: %w",
 			number.Uint64(), err)

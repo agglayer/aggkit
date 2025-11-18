@@ -41,31 +41,33 @@ func TestStorage_Exploratory(t *testing.T) {
 	for i, lg := range logs {
 		log.Infof("Log %d: %+v", i, lg)
 	}
-	block, err := storage.GetBlockHeaderByNumber(nil, 5157912)
+	block, isFinal, err := storage.GetBlockHeaderByNumber(nil, 5157912)
 	require.NoError(t, err)
 	require.NotNil(t, block, "expected non-nil block")
+	require.True(t, isFinal, "expected block to be final")
 	log.Infof("Retrieved block: %+v", block)
 }
 
 func TestStorage_GetBlock(t *testing.T) {
 	storage := newStorageForTest(t, nil)
 	// BlockBase not present
-	blockHeader, err := storage.GetBlockHeaderByNumber(nil, 1234)
+	blockHeader, _, err := storage.GetBlockHeaderByNumber(nil, 1234)
 	require.NoError(t, err, "cannot get BlockHeader")
 	require.Nil(t, blockHeader, "expected nil BlockHeader")
 	block := aggkittypes.NewBlockHeader(1234, exampleTestHash[0], 5678, &exampleTestHash[1])
 	err = storage.SaveBlockAggkitBlock(nil, block, true)
 	require.NoError(t, err, "cannot insert BlockHeader")
 	// Get and verify block
-	readBlock, err := storage.GetBlockHeaderByNumber(nil, 1234)
+	readBlock, isFinal, err := storage.GetBlockHeaderByNumber(nil, 1234)
 	require.NoError(t, err, "cannot get BlockHeader")
 	require.NotNil(t, readBlock, "expected non-nil BlockHeader")
 	require.Equal(t, block, readBlock, "BlockHeader mismatch")
+	require.True(t, isFinal, "expected block to be final")
 
 	blockNilParentHash := aggkittypes.NewBlockHeader(1235, exampleTestHash[0], 5678, nil)
 	err = storage.SaveBlockAggkitBlock(nil, blockNilParentHash, true)
 	require.NoError(t, err, "cannot get BlockHeader")
-	readBlock, err = storage.GetBlockHeaderByNumber(nil, blockNilParentHash.Number)
+	readBlock, _, err = storage.GetBlockHeaderByNumber(nil, blockNilParentHash.Number)
 	require.NoError(t, err, "cannot get BlockHeader")
 	require.Equal(t, blockNilParentHash, readBlock, "BlockHeader mismatch")
 }
@@ -180,11 +182,11 @@ func TestStorage_SaveEthLogsWithHeaders(t *testing.T) {
 	err = tx.Commit()
 	require.NoError(t, err)
 
-	block1, err := storage.GetBlockHeaderByNumber(nil, blockHeaders[0].Number)
+	block1, _, err := storage.GetBlockHeaderByNumber(nil, blockHeaders[0].Number)
 	require.NoError(t, err)
 	require.Equal(t, blockHeaders[0], block1)
 
-	block2, err := storage.GetBlockHeaderByNumber(nil, blockHeaders[1].Number)
+	block2, _, err := storage.GetBlockHeaderByNumber(nil, blockHeaders[1].Number)
 	require.NoError(t, err)
 	require.Equal(t, blockHeaders[1], block2)
 
@@ -295,6 +297,28 @@ func TestStorage_UpdateSyncingStatusUpdate(t *testing.T) {
 	seg1 := syncSegments.GetByContract(exampleAddr1)
 	require.Equal(t, "SyncSegment{ contracts:0x2968D6d736178f8FE7393CC33C87f29D9C287e78 range:From: 800, To: 2000 (1201) blockHeader:false}",
 		seg1.String())
+}
+
+func TestStorage_UpdateIsFinal(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	block := aggkittypes.NewBlockHeader(4000, exampleTestHash[5], 1630002000, nil)
+	err := storage.SaveBlockAggkitBlock(nil, block, false)
+	require.NoError(t, err, "cannot insert BlockHeader")
+
+	readBlock, isFinal, err := storage.GetBlockHeaderByNumber(nil, block.Number)
+	require.NoError(t, err, "cannot get BlockHeader")
+	require.NotNil(t, readBlock, "expected non-nil BlockHeader")
+	require.Equal(t, block, readBlock, "BlockHeader mismatch")
+	require.False(t, isFinal, "expected block to not be final")
+
+	err = storage.UpdateIsFinal(nil, []uint64{block.Number})
+	require.NoError(t, err, "cannot update IsFinal")
+
+	readBlock, isFinal, err = storage.GetBlockHeaderByNumber(nil, block.Number)
+	require.NoError(t, err, "cannot get BlockHeader")
+	require.NotNil(t, readBlock, "expected non-nil BlockHeader")
+	require.Equal(t, block, readBlock, "BlockHeader mismatch")
+	require.True(t, isFinal, "expected block to be final")
 }
 
 func TestStorage_logRow_String(t *testing.T) {

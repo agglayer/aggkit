@@ -7,8 +7,50 @@ import (
 
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/jmoiron/sqlx"
 	"github.com/russross/meddler"
 )
+
+type Blocks struct {
+	Headers  map[uint64]*aggkittypes.BlockHeader
+	AreFinal map[uint64]bool
+}
+
+func NewBlocks() Blocks {
+	return Blocks{
+		Headers:  make(map[uint64]*aggkittypes.BlockHeader),
+		AreFinal: make(map[uint64]bool),
+	}
+}
+
+func (b *Blocks) Add(header *aggkittypes.BlockHeader, isFinal bool) {
+	b.Headers[header.Number] = header
+	b.AreFinal[header.Number] = isFinal
+}
+
+func (b *Blocks) Get(number uint64) (*aggkittypes.BlockHeader, bool, error) {
+	header, exists := b.Headers[number]
+	if !exists {
+		return nil, false, fmt.Errorf("db.blocks.header: block header not found for number %d", number)
+	}
+	isFinal, exists := b.AreFinal[number]
+	if !exists {
+		return nil, false, fmt.Errorf("db.blocks.header: block finality not found for number %d", number)
+	}
+	return header, isFinal, nil
+}
+
+func (b *Blocks) ListHeaders() []*aggkittypes.BlockHeader {
+	headers := make([]*aggkittypes.BlockHeader, 0, len(b.Headers))
+	for _, header := range b.Headers {
+		headers = append(headers, header)
+	}
+	return headers
+}
+
+func (b *Blocks) IsEmpty() bool {
+	return len(b.Headers) == 0
+}
 
 func (a *MultidownloaderStorage) SaveBlockAggkitBlock(tx dbtypes.Querier,
 	header *aggkittypes.BlockHeader, isFinal bool) error {
@@ -26,15 +68,21 @@ func (a *MultidownloaderStorage) UpdateIsFinal(tx dbtypes.Querier, blockNumbers 
 	}
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
+
 	query := "UPDATE block SET is_final = 1 WHERE block_number IN (?)"
-	_, err := tx.Exec(query, blockNumbers)
+	queryStr, args, err := sqlx.In(query, blockNumbers)
+	if err != nil {
+		return fmt.Errorf("error building SQL query: %w", err)
+	}
+
+	_, err = tx.Exec(queryStr, args...)
 	if err != nil {
 		return fmt.Errorf("UpdateIsFinal: error updating block bases: %w", err)
 	}
 	return nil
 }
 func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
-	blockNumber uint64) (*aggkittypes.BlockHeader, error) {
+	blockNumber uint64) (*aggkittypes.BlockHeader, bool, error) {
 	if tx == nil {
 		tx = a.db
 	}
@@ -42,12 +90,16 @@ func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
 	defer a.mutex.RUnlock()
 	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM block WHERE block_number = ?", blockNumber)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if len(blocks) == 0 {
-		return nil, nil
+	if blocks.IsEmpty() {
+		return nil, false, nil
 	}
-	return blocks[0], nil
+	header, isFinal, err := blocks.Get(blockNumber)
+	if err != nil {
+		return nil, false, err
+	}
+	return header, isFinal, nil
 }
 
 func (a *MultidownloaderStorage) GetBlockHeaderNotFinal(tx dbtypes.Querier,
@@ -57,24 +109,25 @@ func (a *MultidownloaderStorage) GetBlockHeaderNotFinal(tx dbtypes.Querier,
 	}
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
-	return a.getBlockHeadersNoMutex(tx, "SELECT * FROM block WHERE is_final = 0 AND block_number = ? "+
+	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM block WHERE is_final = 0 AND block_number = ? "+
 		"ORDER BY block_number ASC", finalizedBlockNumber)
+	return blocks.ListHeaders(), err
 }
 
 func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
-	query string, args ...interface{}) ([]*aggkittypes.BlockHeader, error) {
+	query string, args ...interface{}) (Blocks, error) {
 	if tx == nil {
 		tx = a.db
 	}
+	result := NewBlocks()
 	var blocks []*BlockRow
 	err := meddler.QueryAll(tx, &blocks, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return result, nil
 		}
-		return nil, fmt.Errorf("GetBlockHeaderByNumber: error querying block by number: %w", err)
+		return result, fmt.Errorf("GetBlockHeaderByNumber: error querying block by number: %w", err)
 	}
-	result := make([]*aggkittypes.BlockHeader, 0, len(blocks))
 
 	for _, block := range blocks {
 		blockResult := &aggkittypes.BlockHeader{
@@ -83,7 +136,7 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
 			Time:       block.BlockTimestamp,
 			Hash:       block.BlockHash,
 		}
-		result = append(result, blockResult)
+		result.Add(blockResult, block.IsFinal)
 	}
 	return result, nil
 }
