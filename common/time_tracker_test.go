@@ -44,6 +44,17 @@ func TestTimeTracker_ElapsedBeforeStart(t *testing.T) {
 	require.Equal(t, time.Duration(0), elapsed)
 }
 
+func TestTimeTracker_ElapsedAfterStop(t *testing.T) {
+	tracker := NewTimeTracker()
+	time.Sleep(1 * time.Millisecond)
+	tracker.Stop()
+	elapsed := tracker.Elapsed()
+	time.Sleep(1 * time.Millisecond)
+	elapsed2 := tracker.Elapsed()
+
+	require.Equal(t, elapsed, elapsed2)
+}
+
 func TestTimeTracker_Duration(t *testing.T) {
 	tracker := NewTimeTracker()
 

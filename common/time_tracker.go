@@ -29,14 +29,20 @@ func NewTimeTracker() *TimeTracker {
 	}
 }
 
+// Elapsed returns the elapsed time since Start was called
 func (t *TimeTracker) Elapsed() time.Duration {
 	if t.start.IsZero() {
 		log.Error("TimeTracker: Elapsed called before Start")
 		return 0
 	}
+	// If the tracker is stopped returns last duration
+	if !t.end.IsZero() {
+		return t.Duration()
+	}
 	return time.Since(t.start)
 }
 
+// Duration returns the duration between Start and Stop (must be stopeed)
 func (t *TimeTracker) Duration() time.Duration {
 	if t.start.IsZero() {
 		log.Error("TimeTracker: Duration called before Start")

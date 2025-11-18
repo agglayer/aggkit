@@ -27,11 +27,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const runL1InfoTree = false
+const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = true
 
 func TestEVMMultidownloader(t *testing.T) {
-	t.Skip("code to test/debug not real unittest")
+	//t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -59,6 +59,7 @@ func TestEVMMultidownloader(t *testing.T) {
 		BlockChunkSize:                  5000,
 		MaxParallelBlockHeaderRetrieval: 50,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
+		WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
 	}
 	mdr, err := NewEVMMultidownloader(logger,
 		cfg, "l1", ethClient, ethRPCClient,

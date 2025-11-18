@@ -69,6 +69,9 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 			})
 	}
 	var err error
+	if err = cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid Multidownloader (%s) config: %w", name, err)
+	}
 	if storageDB == nil {
 		storageDB, err = storage.NewMultidownloaderStorage(log,
 			storage.MultidownloaderStorageConfig{
