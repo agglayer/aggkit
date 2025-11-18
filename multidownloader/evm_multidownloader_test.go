@@ -201,7 +201,7 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	log.Infof("BatchMode took %s", durationBatch.String())
 
 	start = time.Now()
-	headersParallel, err := retrieveRPCBlockHeadersInParallel(t.Context(), logger, ethClient, blockNumbersMap, 20)
+	headersParallel, err := etherman.RetrieveBlockHeaders(t.Context(), logger, ethClient, nil, blockNumbersMap, 20)
 	require.NoError(t, err)
 	durationParallel := time.Since(start)
 	log.Infof("Parallel RPC took %s", durationParallel.String())

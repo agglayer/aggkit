@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,7 +20,6 @@ import (
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 )
@@ -173,11 +171,11 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	err = dh.Sync(ctx, dh.StepUnsafe, "unsafe")
-	if err != nil {
-		return err
-	}
+	// TODO: Implement unsafe mode syncing
+	// err = dh.Sync(ctx, dh.StepUnsafe, "unsafe")
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -269,75 +267,76 @@ func (dh *EVMMultidownloader) Sync(ctx context.Context,
 	return nil
 }
 
-func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
-	err := dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
-	}
-	if dh.pendingSync.Finished() {
-		return true, nil
-	}
-	committed := false
-	tx, err := dh.storage.NewTx(ctx)
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot create new tx: %w", err)
-	}
-	defer func() {
-		if !committed {
-			dh.log.Debugf("Unsafe/Step: rolling back tx")
-			if err := tx.Rollback(); err != nil {
-				dh.log.Errorf("Unsafe/Step: error rolling back tx: %v", err)
-			}
-		}
-	}()
+// TODO: Implement unsafe mode syncing
+// func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
+// 	err := dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
+// 	}
+// 	if dh.pendingSync.Finished() {
+// 		return true, nil
+// 	}
+// 	committed := false
+// 	tx, err := dh.storage.NewTx(ctx)
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot create new tx: %w", err)
+// 	}
+// 	defer func() {
+// 		if !committed {
+// 			dh.log.Debugf("Unsafe/Step: rolling back tx")
+// 			if err := tx.Rollback(); err != nil {
+// 				dh.log.Errorf("Unsafe/Step: error rolling back tx: %v", err)
+// 			}
+// 		}
+// 	}()
 
-	logQueryData, err := dh.pendingSync.NextQuery(1, 0)
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot get next query: %w", err)
-	}
-	if logQueryData.BlockRange.CountBlocks() != 1 {
-		return false, fmt.Errorf("Unsafe/Step: invalid block range for Step: %s", logQueryData.BlockRange.String())
-	}
-	blockHeader, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(logQueryData.BlockRange.ToBlock)))
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot get block header for block %d: %w",
-			logQueryData.BlockRange.ToBlock, err)
-	}
-	blockHash := blockHeader.Hash()
-	rpcFilter := ethereum.FilterQuery{
-		Addresses: logQueryData.Addrs,
-		BlockHash: &blockHash,
-	}
+// 	logQueryData, err := dh.pendingSync.NextQuery(1, 0)
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot get next query: %w", err)
+// 	}
+// 	if logQueryData.BlockRange.CountBlocks() != 1 {
+// 		return false, fmt.Errorf("Unsafe/Step: invalid block range for Step: %s", logQueryData.BlockRange.String())
+// 	}
+// 	blockHeader, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(logQueryData.BlockRange.ToBlock)))
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot get block header for block %d: %w",
+// 			logQueryData.BlockRange.ToBlock, err)
+// 	}
+// 	blockHash := blockHeader.Hash()
+// 	rpcFilter := ethereum.FilterQuery{
+// 		Addresses: logQueryData.Addrs,
+// 		BlockHash: &blockHash,
+// 	}
 
-	logs, err := dh.ethClient.FilterLogs(ctx, rpcFilter)
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: ethClient.FilterLogs: %w", err)
-	}
-	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d",
-		blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
-	blockHeaders := []*aggkittypes.BlockHeader{aggkittypes.NewBlockHeaderFromEthHeader(blockHeader)}
-	err = dh.storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, false)
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot save unsafe block: %w", err)
-	}
-	newSyncing := dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
-	if err = dh.storage.UpdateSyncingStatus(tx, logQueryData); err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot update syncing status: %w", err)
-	}
-	committed = true
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot commit tx: %w", err)
-	}
-	dh.pendingSync = newSyncing
-	dh.log.Debugf("Unsafe/Step: finished block=%d syncing=%s",
-		blockHeader.Number.Uint64(),
-		dh.pendingSync.String())
-	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
-	if err != nil {
-		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
-	}
-	return dh.pendingSync.Finished(), nil
-}
+// 	logs, err := dh.ethClient.FilterLogs(ctx, rpcFilter)
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: ethClient.FilterLogs: %w", err)
+// 	}
+// 	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d",
+// 		blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
+// 	blockHeaders := []*aggkittypes.BlockHeader{aggkittypes.NewBlockHeaderFromEthHeader(blockHeader)}
+// 	err = dh.storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, false)
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot save unsafe block: %w", err)
+// 	}
+// 	newSyncing := dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
+// 	if err = dh.storage.UpdateSyncingStatus(tx, logQueryData); err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot update syncing status: %w", err)
+// 	}
+// 	committed = true
+// 	if err := tx.Commit(); err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot commit tx: %w", err)
+// 	}
+// 	dh.pendingSync = newSyncing
+// 	dh.log.Debugf("Unsafe/Step: finished block=%d syncing=%s",
+// 		blockHeader.Number.Uint64(),
+// 		dh.pendingSync.String())
+// 	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+// 	if err != nil {
+// 		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
+// 	}
+// 	return dh.pendingSync.Finished(), nil
+// }
 
 func getBlockNumbers(logs []types.Log) map[uint64]struct{} {
 	blockNumbers := make(map[uint64]struct{})
@@ -359,51 +358,6 @@ func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkit
 		headers = append(headers, header)
 	}
 	return headers
-}
-
-// TODO: remove this test function in favour of etherman.RetrieveBlockHeadersInBatch
-func retrieveRPCBlockHeadersInParallel(ctx context.Context,
-	logger aggkitcommon.Logger,
-	ethClient aggkittypes.BaseEthereumClienter,
-	blockNumbers map[uint64]struct{}, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
-	headers := make(map[uint64]*aggkittypes.BlockHeader)
-	errs := make([]error, 0)
-	timeTracker := aggkitcommon.NewTimeTracker()
-	timeTracker.Start()
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxConcurrency)
-	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieving block headers for blocks %d", len(blockNumbers))
-	for blockNumber := range blockNumbers {
-		wg.Add(1)
-		sem <- struct{}{} // get an slot
-		go func(blockNumber uint64) {
-			defer wg.Done()
-			defer func() { <-sem }() // free slot
-			bn := big.NewInt(int64(blockNumber))
-
-			header, err := ethClient.HeaderByNumber(ctx, bn)
-			if err != nil {
-				mu.Lock()
-				defer mu.Unlock()
-				errs = append(errs, fmt.Errorf("retrieveRPCBlockHeadersInParallel: cannot get block header for block %d: %w",
-					blockNumber, err))
-
-				return
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			headers[blockNumber] = aggkittypes.NewBlockHeaderFromEthHeader(header)
-		}(blockNumber)
-	}
-	wg.Wait()
-	timeTracker.Stop()
-	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d in %s (elapsed)",
-		len(blockNumbers), timeTracker.Duration().String())
-	if len(errs) > 0 {
-		return headers, fmt.Errorf("retrieveRPCBlockHeadersInParallel: errors: %v", errs)
-	}
-	return headers, nil
 }
 
 func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
