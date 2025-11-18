@@ -143,3 +143,7 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  github.com/agglayer/aggkit/multidownloader/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true      

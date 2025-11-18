@@ -30,30 +30,12 @@ const safeMode = true
 
 // const unsafeMode = false
 
-type StorageInterface interface {
-	dbtypes.KeyValueStorager
-	// GetSyncedBlockRangePerContract It returns the synced block range stored in DB
-	GetSyncedBlockRangePerContract(tx dbtypes.Querier) (mdrtypes.SetSyncSegment, error)
-	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader,
-		logs []types.Log, isFinal bool) error
-	GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error)
-	UpsertSyncerConfigs(tx dbtypes.Querier, configs []mdrtypes.ContractConfig) error
-	UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error
-	// GetBlockHeaderByNumber retrieves a block header and if it's final
-	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
-
-	GetBlockHeaderNotFinal(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error)
-	UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error
-
-	NewTx(ctx context.Context) (dbtypes.Txer, error)
-}
-
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
 	cfg                  Config
 	ethClient            aggkittypes.BaseEthereumClienter
 	rpcClient            aggkittypes.RPCClienter
-	storage              StorageInterface
+	storage              mdrtypes.Storager
 	blockNotifierManager ethermantypes.BlockNotifierManagerInterface
 	blockFinality        aggkittypes.BlockNumberFinality
 	name                 string
@@ -76,7 +58,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	name string,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
-	storageDB StorageInterface,
+	storageDB mdrtypes.Storager,
 	blockNotifierManager ethermantypes.BlockNotifierManagerInterface,
 ) (*EVMMultidownloader, error) {
 	if blockNotifierManager == nil {
@@ -233,7 +215,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	if dh.isInitialized {
-		return nil
+		return fmt.Errorf("initialize: already initialized")
 	}
 	err := dh.CheckDatabase(ctx)
 	if err != nil {

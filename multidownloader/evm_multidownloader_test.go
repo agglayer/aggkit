@@ -2,6 +2,7 @@ package multidownloader
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -13,6 +14,8 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -222,7 +225,7 @@ func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) 
 
 func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
 	t.Run("check Addresses", func(t *testing.T) {
-		testData := newEVMMultidownloaderTestData(t)
+		testData := newEVMMultidownloaderTestData(t, false)
 		err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 			SyncerID: "syncer1",
 			ContractsAddr: []common.Address{
@@ -239,7 +242,7 @@ func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
 	})
 
 	t.Run("try to add after initialize", func(t *testing.T) {
-		testData := newEVMMultidownloaderTestData(t)
+		testData := newEVMMultidownloaderTestData(t, false)
 		testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
 		err := testData.mdr.Initialize(t.Context())
 		require.NoError(t, err)
@@ -250,9 +253,9 @@ func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
 	})
 }
 
-func TestEVMMultidownloaderGetRPCServices(t *testing.T) {
+func TestEVMMultidownloader_GetRPCServices(t *testing.T) {
 	t.Run("returns correct RPC service", func(t *testing.T) {
-		testData := newEVMMultidownloaderTestData(t)
+		testData := newEVMMultidownloaderTestData(t, false)
 
 		services := testData.mdr.GetRPCServices()
 
@@ -288,6 +291,34 @@ func TestEVMMultidownloaderGetRPCServices(t *testing.T) {
 		require.Equal(t, "multidownloader-"+customName, services[0].Name)
 	})
 }
+func TestEVMMultidownloader_Initialize(t *testing.T) {
+	t.Run("successful initialization", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+		err := testData.mdr.Initialize(t.Context())
+		require.NoError(t, err)
+	})
+
+	t.Run("failed initialization due to ChainID error", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(nil, fmt.Errorf("chain ID error"))
+		err := testData.mdr.Initialize(t.Context())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "chain ID error")
+	})
+	t.Run("double initialization", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+		err := testData.mdr.Initialize(t.Context())
+		require.NoError(t, err)
+
+		// Second initialization should fail
+		err = testData.mdr.Initialize(t.Context())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "already initialized")
+	})
+
+}
 
 /*
 func TestEVMMultidownloader_Start(t *testing.T) {
@@ -307,10 +338,12 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 type testDataEVMMultidownloader struct {
 	mockEthClient *mocktypes.BaseEthereumClienter
 	mdr           *EVMMultidownloader
-	db            *storage.MultidownloaderStorage
+	realDB        *storage.MultidownloaderStorage
+	mockDB        *mockmdrtypes.Storager
+	useDB         mdrtypes.Storager
 }
 
-func newEVMMultidownloaderTestData(t *testing.T) *testDataEVMMultidownloader {
+func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMMultidownloader {
 	t.Helper()
 	logger := log.WithFields("test", "evm_multidownloader_test")
 	cfg := Config{
@@ -319,16 +352,28 @@ func newEVMMultidownloaderTestData(t *testing.T) *testDataEVMMultidownloader {
 		BlockFinality:                   aggkittypes.FinalizedBlock,
 	}
 	ethClient := mocktypes.NewBaseEthereumClienter(t)
-	db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
-		DBPath: cfg.StoragePath,
-	})
-	require.NoError(t, err)
+	var mockDB *mockmdrtypes.Storager
+	var realDB *storage.MultidownloaderStorage
+	var useDB mdrtypes.Storager
+	var err error
+	if mockStorage {
+		mockDB = mockmdrtypes.NewStorager(t)
+		useDB = mockDB
+	} else {
+		realDB, err = storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
+			DBPath: cfg.StoragePath,
+		})
+		require.NoError(t, err)
+		useDB = realDB
+	}
 	// TODO: Add mock for ethRPCClient if needed
-	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, db, nil)
+	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, nil)
 	require.NoError(t, err)
 	return &testDataEVMMultidownloader{
 		mockEthClient: ethClient,
 		mdr:           mdr,
-		db:            db,
+		realDB:        realDB,
+		mockDB:        mockDB,
+		useDB:         useDB,
 	}
 }

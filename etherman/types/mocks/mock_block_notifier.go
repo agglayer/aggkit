@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	etherman "github.com/agglayer/aggkit/etherman/types"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/agglayer/aggkit/types"
@@ -239,19 +239,19 @@ func (_c *BlockNotifier_String_Call) RunAndReturn(run func() string) *BlockNotif
 }
 
 // Subscribe provides a mock function with given fields: id
-func (_m *BlockNotifier) Subscribe(id string) <-chan etherman.EventNewBlock {
+func (_m *BlockNotifier) Subscribe(id string) <-chan ethermantypes.EventNewBlock {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Subscribe")
 	}
 
-	var r0 <-chan etherman.EventNewBlock
-	if rf, ok := ret.Get(0).(func(string) <-chan etherman.EventNewBlock); ok {
+	var r0 <-chan ethermantypes.EventNewBlock
+	if rf, ok := ret.Get(0).(func(string) <-chan ethermantypes.EventNewBlock); ok {
 		r0 = rf(id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan etherman.EventNewBlock)
+			r0 = ret.Get(0).(<-chan ethermantypes.EventNewBlock)
 		}
 	}
 
@@ -276,12 +276,12 @@ func (_c *BlockNotifier_Subscribe_Call) Run(run func(id string)) *BlockNotifier_
 	return _c
 }
 
-func (_c *BlockNotifier_Subscribe_Call) Return(_a0 <-chan etherman.EventNewBlock) *BlockNotifier_Subscribe_Call {
+func (_c *BlockNotifier_Subscribe_Call) Return(_a0 <-chan ethermantypes.EventNewBlock) *BlockNotifier_Subscribe_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *BlockNotifier_Subscribe_Call) RunAndReturn(run func(string) <-chan etherman.EventNewBlock) *BlockNotifier_Subscribe_Call {
+func (_c *BlockNotifier_Subscribe_Call) RunAndReturn(run func(string) <-chan ethermantypes.EventNewBlock) *BlockNotifier_Subscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }
