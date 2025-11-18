@@ -11,6 +11,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
+	mockethermantypes "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
@@ -337,11 +338,12 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 */
 
 type testDataEVMMultidownloader struct {
-	mockEthClient *mocktypes.BaseEthereumClienter
-	mdr           *EVMMultidownloader
-	realStorage   *storage.MultidownloaderStorage
-	mockStorage   *mockmdrtypes.Storager
-	usedStorage   mdrtypes.Storager
+	mockEthClient            *mocktypes.BaseEthereumClienter
+	mdr                      *EVMMultidownloader
+	realStorage              *storage.MultidownloaderStorage
+	mockStorage              *mockmdrtypes.Storager
+	usedStorage              mdrtypes.Storager
+	mockBlockNotifierManager *mockethermantypes.BlockNotifierManager
 }
 
 func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMMultidownloader {
@@ -354,6 +356,7 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
 	}
 	ethClient := mocktypes.NewBaseEthereumClienter(t)
+	mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
 	var mockDB *mockmdrtypes.Storager
 	var realDB *storage.MultidownloaderStorage
 	var useDB mdrtypes.Storager
@@ -369,13 +372,14 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		useDB = realDB
 	}
 	// TODO: Add mock for ethRPCClient if needed
-	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, nil)
+	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, mockBlockNotifierManager)
 	require.NoError(t, err)
 	return &testDataEVMMultidownloader{
-		mockEthClient: ethClient,
-		mdr:           mdr,
-		realStorage:   realDB,
-		mockStorage:   mockDB,
-		usedStorage:   useDB,
+		mockEthClient:            ethClient,
+		mdr:                      mdr,
+		realStorage:              realDB,
+		mockStorage:              mockDB,
+		usedStorage:              useDB,
+		mockBlockNotifierManager: mockBlockNotifierManager,
 	}
 }

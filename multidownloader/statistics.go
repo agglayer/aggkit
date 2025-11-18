@@ -36,12 +36,6 @@ func (s *Statistics) ElapsedSyncing() time.Duration {
 	return s.timeTrackerTotal.Elapsed()
 }
 
-func (s *Statistics) LaunchedEthCall() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.timeTrackerEthCalls.Start()
-}
-
 func (s *Statistics) StartDBOperation() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -52,6 +46,22 @@ func (s *Statistics) FinishDBOperation(_ error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.timeTrackerDB.Stop()
+}
+
+func (s *Statistics) LaunchedEthCall() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.timeTrackerEthCalls.Start()
+}
+
+func (s *Statistics) FinishEthCall(err error, numLogs uint64, numBlocks uint64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.timeTrackerEthCalls.Stop()
+	if err == nil {
+		s.totalLogsSynced += numLogs
+		s.totalBlocksSynced += numBlocks
+	}
 }
 
 func (s *Statistics) ETA(pendingBlocks uint64) time.Duration {
@@ -65,23 +75,13 @@ func (s *Statistics) ETA(pendingBlocks uint64) time.Duration {
 	return estimatedPendingTime
 }
 
-func (s *Statistics) FinishEthCall(err error, numLogs uint64, numBlocks uint64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.timeTrackerEthCalls.Stop()
-	if err == nil {
-		s.totalLogsSynced += numLogs
-		s.totalBlocksSynced += numBlocks
-	}
-}
-
 func (s *Statistics) Show(logFunc func(format string, args ...interface{}), iteration int) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	logFunc("[%d]Historical/Step: time Total=%s", iteration, s.timeTrackerTotal.String())
+	logFunc("[%d]⏱️ Statistics: time Total=%s", iteration, s.timeTrackerTotal.String())
 	logFunc("-----------------------------------------------------------------------")
-	logFunc("[%d]Historical/Step: time EthCalls=%s", iteration, s.timeTrackerEthCalls.String())
-	logFunc("[%d]Historical/Step: time Database=%s", iteration, s.timeTrackerDB.String())
-	logFunc("[%d]Historical/Step: totalLogsSynced=%d", iteration, s.totalLogsSynced)
-	logFunc("[%d]Historical/Step: totalBlocksSynced=%d", iteration, s.totalBlocksSynced)
+	logFunc("[%d]⏱️ Statistics: time EthCalls=%s", iteration, s.timeTrackerEthCalls.String())
+	logFunc("[%d]⏱️ Statistics: time Database=%s", iteration, s.timeTrackerDB.String())
+	logFunc("[%d]🏷️ Statistics: totalLogsSynced=%d", iteration, s.totalLogsSynced)
+	logFunc("[%d]🏷️ Statistics: totalBlocksSynced=%d", iteration, s.totalBlocksSynced)
 }

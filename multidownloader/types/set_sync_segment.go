@@ -153,7 +153,7 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 
 // UpdateToBlock updates the ToBlock to real blockNumber
 func (f *SetSyncSegment) UpdateToBlock(ctx context.Context,
-	blockNotifierGetter ethermantypes.BlockNotifierManagerInterface) error {
+	blockNotifierGetter ethermantypes.BlockNotifierManager) error {
 	if f == nil {
 		return nil
 	}

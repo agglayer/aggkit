@@ -6,6 +6,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
-type BlockNotifierManagerInterface interface {
+type BlockNotifierManager interface {
 	GetBlockNotifier(ctx context.Context, finality aggkittypes.BlockNumberFinality) (BlockNotifier, error)
+	GetCurrentBlockNumber(ctx context.Context, finality aggkittypes.BlockNumberFinality) (uint64, error)
 }

@@ -29,6 +29,17 @@ func NewTimeTracker() *TimeTracker {
 	}
 }
 
+func NewTimeTrackerValues(start, end time.Time, times uint32) *TimeTracker {
+	tracker := &TimeTracker{
+		start: start,
+		end:   end,
+	}
+	tracker.lastDuration = end.Sub(start)
+	tracker.accumulated = tracker.lastDuration
+	tracker.times = times
+	return tracker
+}
+
 // Elapsed returns the elapsed time since Start was called
 func (t *TimeTracker) Elapsed() time.Duration {
 	if t.start.IsZero() {

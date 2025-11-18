@@ -18,7 +18,7 @@ type BlockNotifierManager struct {
 	logger          aggkitcommon.Logger
 }
 
-var _ ethermantypes.BlockNotifierManagerInterface = (*BlockNotifierManager)(nil)
+var _ ethermantypes.BlockNotifierManager = (*BlockNotifierManager)(nil)
 
 func NewBlockNotifierManager(logger aggkitcommon.Logger,
 	constructorFunc func(aggkittypes.BlockNumberFinality) (ethermantypes.BlockNotifier, error)) *BlockNotifierManager {
@@ -54,4 +54,12 @@ func (bnm *BlockNotifierManager) GetBlockNotifier(ctx context.Context,
 		return bn, nil
 	}
 	return bn, nil
+}
+func (bnm *BlockNotifierManager) GetCurrentBlockNumber(ctx context.Context,
+	blockFinality aggkittypes.BlockNumberFinality) (uint64, error) {
+	bn, err := bnm.GetBlockNotifier(ctx, blockFinality)
+	if err != nil {
+		return 0, err
+	}
+	return bn.GetCurrentBlockNumber(), nil
 }

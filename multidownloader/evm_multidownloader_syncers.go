@@ -25,17 +25,13 @@ func (dh *EVMMultidownloader) ChainID(ctx context.Context) (uint64, error) {
 // BlockNumber gets the block number for the given 'block name'
 func (dh *EVMMultidownloader) BlockNumber(ctx context.Context,
 	finality aggkittypes.BlockNumberFinality) (uint64, error) {
-	bn, err := dh.blockNotifierManager.GetBlockNotifier(ctx, finality)
-	if err != nil {
-		return 0, fmt.Errorf("EVMMultidownloader.BlockNumber: cannot get BlockNotifier: %w", err)
-	}
-	return bn.GetCurrentBlockNumber(), nil
+	return dh.blockNotifierManager.GetCurrentBlockNumber(ctx, finality)
 }
 
 // BlockHeader gets the block header for the given 'block name'
 func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 	finality aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
-	number, err := dh.BlockNumber(ctx, finality)
+	number, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, finality)
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get block number for finality=%s: %w",
 			finality.String(), err)

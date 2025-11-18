@@ -18,6 +18,19 @@ func TestNewTimeTracker(t *testing.T) {
 	require.Equal(t, time.Duration(0), tracker.accumulated)
 }
 
+func TestNewTimeTrackerValues(t *testing.T) {
+	now := time.Now()
+	later := now.Add(2 * time.Second)
+	tracker := NewTimeTrackerValues(now, later, 3)
+
+	require.NotNil(t, tracker)
+	require.Equal(t, now, tracker.start)
+	require.Equal(t, later, tracker.end)
+	require.Equal(t, uint32(3), tracker.times)
+	require.Equal(t, 2*time.Second, tracker.lastDuration)
+	require.Equal(t, 2*time.Second, tracker.accumulated)
+}
+
 func TestTimeTracker_String(t *testing.T) {
 	tracker := NewTimeTracker()
 	tracker.Stop()

@@ -50,6 +50,23 @@ func TestEVMMultidownloader_ChainID(t *testing.T) {
 	})
 }
 
+func TestEVMMultidownloader_BlockNumber(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, true)
+	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
+		Return(uint64(123456), nil)
+	num, err := testData.mdr.BlockNumber(t.Context(), aggkittypes.LatestBlock)
+	require.NoError(t, err)
+	require.Equal(t, uint64(123456), num)
+}
+func TestEVMMultidownloader_BlockHeader(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, true)
+	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
+		Return(uint64(123456), nil)
+	num, err := testData.mdr.BlockHeader(t.Context(), aggkittypes.LatestBlock)
+	require.NoError(t, err)
+	require.Equal(t, uint64(123456), num)
+}
+
 func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 	t.Run("negative block number returns error", func(t *testing.T) {
 		// Setup
