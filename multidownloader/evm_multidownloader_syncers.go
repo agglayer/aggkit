@@ -36,7 +36,12 @@ func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get block number for finality=%s: %w",
 			finality.String(), err)
 	}
-	return dh.HeaderByNumber(ctx, big.NewInt(int64(number)))
+	header, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(number)))
+	if err != nil {
+		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get header for block number=%d: %w",
+			number, err)
+	}
+	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
 }
 
 // FilterLogs filters the logs. It get it from storage or waits until they are available

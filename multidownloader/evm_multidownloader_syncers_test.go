@@ -62,9 +62,13 @@ func TestEVMMultidownloader_BlockHeader(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, true)
 	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
 		Return(uint64(123456), nil)
-	num, err := testData.mdr.BlockHeader(t.Context(), aggkittypes.LatestBlock)
+	testData.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(123456)).
+		Return(&types.Header{
+			Number: big.NewInt(123456),
+		}, nil)
+	header, err := testData.mdr.BlockHeader(t.Context(), aggkittypes.LatestBlock)
 	require.NoError(t, err)
-	require.Equal(t, uint64(123456), num)
+	require.Equal(t, uint64(123456), header.Number)
 }
 
 func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
