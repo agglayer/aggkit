@@ -1347,18 +1347,6 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		require.Contains(t, w.Body.String(), "invalid global_exit_root parameter")
 	})
 
-	t.Run("GetRemoveGEREvents invalid from_block", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		queryParams := url.Values{}
-		queryParams.Set("from_block", "invalid")
-
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/remove-ger-events?%s", BridgeV1Prefix, queryParams.Encode()), nil)
-		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), "invalid from_block parameter")
-	})
-
 	t.Run("GetRemoveGEREvents service failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 

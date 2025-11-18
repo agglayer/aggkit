@@ -345,6 +345,10 @@ definitions:
         description: Block number where the GER was removed
         example: 1234
         type: integer
+      block_pos:
+        description: Position of the event within the block
+        example: 0
+        type: integer
       created_at:
         description: Timestamp when the remove event was recorded in database
         example: 1684500000
@@ -353,10 +357,6 @@ definitions:
         description: Global Exit Root hash that was removed
         example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
         type: string
-      id:
-        description: Unique identifier for the remove event
-        example: 1
-        type: integer
     type: object
   types.RemoveGEREventsResult:
     description: Paginated response of remove GER events
@@ -780,17 +780,9 @@ paths:
       - legacy-token-migrations
   /remove-ger-events:
     get:
-      description: Returns a list of remove GER events, optionally filtered by block
-        range or specific GER
+      description: Returns a list of remove GER events, optionally filtered by specific
+        GER.
       parameters:
-      - description: Start block number for filtering
-        in: query
-        name: from_block
-        type: integer
-      - description: End block number for filtering
-        in: query
-        name: to_block
-        type: integer
       - description: Filter by specific Global Exit Root hash
         in: query
         name: global_exit_root

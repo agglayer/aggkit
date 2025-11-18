@@ -445,7 +445,7 @@ const docTemplate = `{
         },
         "/remove-ger-events": {
             "get": {
-                "description": "Returns a list of remove GER events, optionally filtered by block range or specific GER",
+                "description": "Returns a list of remove GER events, optionally filtered by specific GER.",
                 "produces": [
                     "application/json"
                 ],
@@ -454,18 +454,6 @@ const docTemplate = `{
                 ],
                 "summary": "Get remove GER events",
                 "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Start block number for filtering",
-                        "name": "from_block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "End block number for filtering",
-                        "name": "to_block",
-                        "in": "query"
-                    },
                     {
                         "type": "string",
                         "description": "Filter by specific Global Exit Root hash",
@@ -1097,6 +1085,11 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1234
                 },
+                "block_pos": {
+                    "description": "Position of the event within the block",
+                    "type": "integer",
+                    "example": 0
+                },
                 "created_at": {
                     "description": "Timestamp when the remove event was recorded in database",
                     "type": "integer",
@@ -1106,11 +1099,6 @@ const docTemplate = `{
                     "description": "Global Exit Root hash that was removed",
                     "type": "string",
                     "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
-                },
-                "id": {
-                    "description": "Unique identifier for the remove event",
-                    "type": "integer",
-                    "example": 1
                 }
             }
         },

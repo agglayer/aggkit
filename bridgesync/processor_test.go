@@ -2794,7 +2794,7 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 			globalIndex:         nil,
 			expectedCount:       0,
 			expectedUnsetClaims: []*UnsetClaim{},
-			expectedError:       "invalid page number for given page size and total number of unset claims",
+			expectedError:       "invalid page number for given page size and total number of unset_claim",
 		},
 	}
 
