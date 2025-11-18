@@ -441,9 +441,12 @@ func (dh *EVMMultidownloader) updateSyncedSegments(ctx context.Context,
 	defer dh.mutex.Unlock()
 	// Update synced segments (memory status of syncing)
 	dh.syncedSegments = storageSyncSegments
-	dh.pendingSync = dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
+	err := dh.pendingSync.RemoveLogQuerySegment(logQueryData)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot remove log query segment from pendingSync: %w", err)
+	}
 
-	err := dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot update ToBlock in pendingSync: %w", err)
 	}

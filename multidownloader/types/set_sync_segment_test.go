@@ -281,14 +281,73 @@ func TestSetSyncSegment_UpdateBlockRange(t *testing.T) {
 	})
 }
 
-func TestSetSyncSegment_UpdateSyncingAfterDoingQuery(t *testing.T) {
+func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 	t.Run("nil set or query", func(t *testing.T) {
 		var set *SetSyncSegment
-		result := set.UpdateSyncingAfterDoingQuery(nil)
-		require.Nil(t, result)
+		require.NoError(t, set.RemoveLogQuerySegment(nil))
 
 		validSet := NewSetSyncSegment()
-		result = validSet.UpdateSyncingAfterDoingQuery(nil)
-		require.Equal(t, &validSet, result)
+		require.NoError(t, validSet.RemoveLogQuerySegment(nil))
+		// Should not panic
+	})
+
+	t.Run("remove partial segment", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
+		}
+		set.Add(segment)
+
+		logQuery := &LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 30),
+		}
+
+		err := set.RemoveLogQuerySegment(logQuery)
+		require.NoError(t, err)
+		res := set.GetByContract(addr)
+		require.NotNil(t, res)
+		require.Equal(t, uint64(31), res.BlockRange.FromBlock)
+		require.Equal(t, uint64(100), res.BlockRange.ToBlock)
+	})
+
+	t.Run("remove totally a  segment", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
+		}
+		set.Add(segment)
+
+		logQuery := &LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 200),
+		}
+
+		err := set.RemoveLogQuerySegment(logQuery)
+		require.NoError(t, err)
+		res := set.GetByContract(addr)
+		require.Nil(t, res)
+	})
+
+	t.Run("bad removed segment (middle segment)", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
+		}
+		set.Add(segment)
+
+		logQuery := &LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(10, 20),
+		}
+
+		err := set.RemoveLogQuerySegment(logQuery)
+		require.Error(t, err)
 	})
 }

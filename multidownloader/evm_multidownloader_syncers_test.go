@@ -138,12 +138,13 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
 
-		testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 			SyncerID:      "test_syncer",
 			ContractsAddr: []common.Address{addr1},
 			FromBlock:     100,
 			ToBlock:       aggkittypes.LatestBlock,
 		})
+		require.NoError(t, err)
 
 		query := ethereum.FilterQuery{
 			Addresses: []common.Address{addr1},
@@ -152,7 +153,8 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 		}
 		mdQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
 		// It updated the syncedSegments with the new one to be available
-		testData.mdr.syncedSegments = *testData.mdr.syncedSegments.UpdateSyncingAfterDoingQuery(&mdQuery)
+		err = testData.mdr.syncedSegments.RemoveLogQuerySegment(&mdQuery)
+		require.NoError(t, err)
 		testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
 			Return(nil, errStorageExample)
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)

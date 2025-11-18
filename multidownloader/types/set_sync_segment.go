@@ -3,7 +3,6 @@ package types
 import (
 	"context"
 	"fmt"
-	"log"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
@@ -252,13 +251,15 @@ func (f *SetSyncSegment) UpdateBlockRange(segment *SyncSegment, newBlockRange ag
 	}
 }
 
-func (f *SetSyncSegment) UpdateSyncingAfterDoingQuery(logQuery *LogQuery) *SetSyncSegment {
+// RemoveLogQuerySegment removes the block ranges defined in the logQuery from the current SetSyncSegment
+// This is used to update the pendingSync after doing a FilterLogs query
+func (f *SetSyncSegment) RemoveLogQuerySegment(logQuery *LogQuery) error {
 	if f == nil || logQuery == nil {
-		return f
+		return nil
 	}
 	newSegments := f.Clone()
 	for _, addr := range logQuery.Addrs {
-		segment := f.GetByContract(addr)
+		segment := newSegments.GetByContract(addr)
 		if segment != nil {
 			brs := segment.BlockRange.Subtract(logQuery.BlockRange)
 			switch len(brs) {
@@ -267,15 +268,11 @@ func (f *SetSyncSegment) UpdateSyncingAfterDoingQuery(logQuery *LogQuery) *SetSy
 			case 1:
 				newSegments.UpdateBlockRange(segment, brs[0])
 			default:
-				log.Fatal("Not supported")
+				return fmt.Errorf("setSyncSegment.RemoveLogQuerySegment: cannot split segment for %s into multiple ranges  %+v",
+					logQuery.String(), brs)
 			}
-		} else {
-			// If the segment does not exist, just add it
-			newSegments.Add(SyncSegment{
-				ContractAddr: addr,
-				BlockRange:   logQuery.BlockRange,
-			})
 		}
 	}
-	return newSegments
+	f.segments = newSegments.segments
+	return nil
 }

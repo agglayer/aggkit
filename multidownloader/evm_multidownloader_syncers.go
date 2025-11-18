@@ -54,7 +54,9 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 		select {
 		case <-time.After(dh.cfg.WaitPeriodToCheckCatchUp.Duration):
 		case <-ctx.Done():
-			return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: context done while waiting for logs to be available: %w", ctx.Err())
+			return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: "+
+				"context done while waiting for logs %s to be available: %w",
+				logQuery.String(), ctx.Err())
 		}
 	}
 	logs, err := dh.storage.GetEthLogs(nil, logQuery)
