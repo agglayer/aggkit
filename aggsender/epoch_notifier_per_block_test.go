@@ -205,6 +205,18 @@ func TestBlockBeforeEpoch(t *testing.T) {
 	require.Equal(t, uint64(114), newStatus.lastBlockSeen)
 }
 
+func TestForcePublishEpochEvent(t *testing.T) {
+	testData := newNotifierPerBlockTestData(t, nil)
+	ch := testData.sut.Subscribe("test")
+	testData.blockNotifierMock.EXPECT().GetCurrentBlockNumber().Return(uint64(145))
+	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(make(chan types.EventNewBlock))
+	testData.sut.StartAsync(testData.ctx)
+	testData.sut.ForcePublishEpochEvent()
+	epochEvent := <-ch
+	require.Equal(t, uint64(15), epochEvent.Epoch)
+	testData.ctx.Done()
+}
+
 func TestGetEpochStatus(t *testing.T) {
 	testData := newNotifierPerBlockTestData(t, nil)
 	testData.blockNotifierMock.EXPECT().GetCurrentBlockNumber().Return(uint64(105))

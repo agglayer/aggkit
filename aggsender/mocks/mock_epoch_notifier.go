@@ -22,6 +22,38 @@ func (_m *EpochNotifier) EXPECT() *EpochNotifier_Expecter {
 	return &EpochNotifier_Expecter{mock: &_m.Mock}
 }
 
+// ForcePublishEpochEvent provides a mock function with no fields
+func (_m *EpochNotifier) ForcePublishEpochEvent() {
+	_m.Called()
+}
+
+// EpochNotifier_ForcePublishEpochEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ForcePublishEpochEvent'
+type EpochNotifier_ForcePublishEpochEvent_Call struct {
+	*mock.Call
+}
+
+// ForcePublishEpochEvent is a helper method to define mock.On call
+func (_e *EpochNotifier_Expecter) ForcePublishEpochEvent() *EpochNotifier_ForcePublishEpochEvent_Call {
+	return &EpochNotifier_ForcePublishEpochEvent_Call{Call: _e.mock.On("ForcePublishEpochEvent")}
+}
+
+func (_c *EpochNotifier_ForcePublishEpochEvent_Call) Run(run func()) *EpochNotifier_ForcePublishEpochEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *EpochNotifier_ForcePublishEpochEvent_Call) Return() *EpochNotifier_ForcePublishEpochEvent_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *EpochNotifier_ForcePublishEpochEvent_Call) RunAndReturn(run func()) *EpochNotifier_ForcePublishEpochEvent_Call {
+	_c.Run(run)
+	return _c
+}
+
 // GetEpochStatus provides a mock function with no fields
 func (_m *EpochNotifier) GetEpochStatus() types.EpochStatus {
 	ret := _m.Called()

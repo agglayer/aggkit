@@ -334,3 +334,16 @@ func TestAdjustToBlock(t *testing.T) {
 		})
 	}
 }
+
+func TestEstimateSize(t *testing.T) {
+	sut := &CertificateBuildParams{
+		FromBlock: 100,
+		ToBlock:   200,
+		Bridges:   make([]bridgesync.Bridge, 50),
+		Claims:    make([]bridgesync.Claim, 150),
+	}
+
+	estimatedSize := sut.EstimatedSize()
+
+	require.Equal(t, uint(0x6bb47), estimatedSize, "Estimated size should match expected size")
+}
