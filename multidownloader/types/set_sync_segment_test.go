@@ -284,10 +284,10 @@ func TestSetSyncSegment_UpdateBlockRange(t *testing.T) {
 func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 	t.Run("nil set or query", func(t *testing.T) {
 		var set *SetSyncSegment
-		require.NoError(t, set.RemoveLogQuerySegment(nil))
+		require.NoError(t, set.ReduceSegments(nil))
 
 		validSet := NewSetSyncSegment()
-		require.NoError(t, validSet.RemoveLogQuerySegment(nil))
+		require.NoError(t, validSet.ReduceSegments(nil))
 		// Should not panic
 	})
 
@@ -305,7 +305,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 			BlockRange: aggkitcommon.NewBlockRange(1, 30),
 		}
 
-		err := set.RemoveLogQuerySegment(logQuery)
+		err := set.ReduceSegments(logQuery)
 		require.NoError(t, err)
 		res := set.GetByContract(addr)
 		require.NotNil(t, res)
@@ -327,7 +327,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 			BlockRange: aggkitcommon.NewBlockRange(1, 200),
 		}
 
-		err := set.RemoveLogQuerySegment(logQuery)
+		err := set.ReduceSegments(logQuery)
 		require.NoError(t, err)
 		res := set.GetByContract(addr)
 		require.Nil(t, res)
@@ -347,7 +347,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 			BlockRange: aggkitcommon.NewBlockRange(10, 20),
 		}
 
-		err := set.RemoveLogQuerySegment(logQuery)
+		err := set.ReduceSegments(logQuery)
 		require.Error(t, err)
 	})
 }

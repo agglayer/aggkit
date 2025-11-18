@@ -15,9 +15,8 @@ type Storager interface {
 	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader,
 		logs []types.Log, isFinal bool) error
 	GetEthLogs(tx dbtypes.Querier, query LogQuery) ([]types.Log, error)
+	UpdateSyncedStatus(tx dbtypes.Querier, segments []SyncSegment) error
 	UpsertSyncerConfigs(tx dbtypes.Querier, configs []ContractConfig) error
-	UpdateSyncingStatus(tx dbtypes.Querier, logQuery *LogQuery) error
-	// GetBlockHeaderByNumber retrieves a block header and if it's final
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
 
 	GetBlockHeaderNotFinal(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error)

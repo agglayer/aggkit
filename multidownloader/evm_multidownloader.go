@@ -41,7 +41,7 @@ type EVMMultidownloader struct {
 
 	mutex         sync.Mutex
 	isInitialized bool
-	// These are the real segments that we are pendingSync
+	// These are the  segments that we need to sync
 	pendingSync *mdrtypes.SetSyncSegment
 	// These are the segments that we have already synced
 	// when a syncer do a `FilterLogs`is used to check what is already synced
@@ -400,27 +400,26 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot save eth logs: %w", err)
 	}
-
-	if err = dh.storage.UpdateSyncingStatus(tx, logQueryData); err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot update syncing status: %w", err)
-	}
-	storageSyncSegments, err := dh.storage.GetSyncedBlockRangePerContract(tx)
+	// Extend synced segments in memory (not set in object until commit is successful)
+	newSynedSegments := dh.syncedSegments.Clone()
+	err = newSynedSegments.ExtendSegments(logQueryData)
 	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot get synced block range per contract: %w", err)
+		return false, fmt.Errorf("Safe/Step: cannot extend synced segments: %w", err)
 	}
-	// This is a sanity check, syncedSegments have not been updated yet
-	// so must say that the logQueryData is not available
-	if dh.IsAvailable(*logQueryData) {
-		dh.log.Warnf("logQueryData (%s) should not be available after doing the query",
-			logQueryData.String())
+	// Update synced segments in storage
+	err = dh.storage.UpdateSyncedStatus(tx, newSynedSegments.SegmentsByContract(logQueryData.Addrs))
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot update synced segments in storage: %w", err)
 	}
+
 	committed = true
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot commit tx: %w", err)
 	}
-
 	dh.statistics.FinishDBOperation(nil)
-	finished, err := dh.updateSyncedSegments(ctx, storageSyncSegments, logQueryData)
+	// Update in-memory synced segments (after valid commit)
+	dh.syncedSegments = *newSynedSegments
+	finished, err := dh.updateSyncedSegments(ctx, logQueryData)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot update synced segments: %w", err)
 	}
@@ -435,13 +434,12 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 }
 
 func (dh *EVMMultidownloader) updateSyncedSegments(ctx context.Context,
-	storageSyncSegments mdrtypes.SetSyncSegment,
 	logQueryData *mdrtypes.LogQuery) (bool, error) {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	// Update synced segments (memory status of syncing)
-	dh.syncedSegments = storageSyncSegments
-	err := dh.pendingSync.RemoveLogQuerySegment(logQueryData)
+
+	err := dh.pendingSync.ReduceSegments(logQueryData)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot remove log query segment from pendingSync: %w", err)
 	}

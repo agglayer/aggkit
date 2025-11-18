@@ -530,17 +530,17 @@ func (_c *Storager_UpdateIsFinal_Call) RunAndReturn(run func(types.Querier, []ui
 	return _c
 }
 
-// UpdateSyncingStatus provides a mock function with given fields: tx, logQuery
-func (_m *Storager) UpdateSyncingStatus(tx types.Querier, logQuery *multidownloadertypes.LogQuery) error {
-	ret := _m.Called(tx, logQuery)
+// UpdateSyncedStatus provides a mock function with given fields: tx, segments
+func (_m *Storager) UpdateSyncedStatus(tx types.Querier, segments []multidownloadertypes.SyncSegment) error {
+	ret := _m.Called(tx, segments)
 
 	if len(ret) == 0 {
-		panic("no return value specified for UpdateSyncingStatus")
+		panic("no return value specified for UpdateSyncedStatus")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.Querier, *multidownloadertypes.LogQuery) error); ok {
-		r0 = rf(tx, logQuery)
+	if rf, ok := ret.Get(0).(func(types.Querier, []multidownloadertypes.SyncSegment) error); ok {
+		r0 = rf(tx, segments)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -548,31 +548,31 @@ func (_m *Storager) UpdateSyncingStatus(tx types.Querier, logQuery *multidownloa
 	return r0
 }
 
-// Storager_UpdateSyncingStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSyncingStatus'
-type Storager_UpdateSyncingStatus_Call struct {
+// Storager_UpdateSyncedStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSyncedStatus'
+type Storager_UpdateSyncedStatus_Call struct {
 	*mock.Call
 }
 
-// UpdateSyncingStatus is a helper method to define mock.On call
+// UpdateSyncedStatus is a helper method to define mock.On call
 //   - tx types.Querier
-//   - logQuery *multidownloadertypes.LogQuery
-func (_e *Storager_Expecter) UpdateSyncingStatus(tx interface{}, logQuery interface{}) *Storager_UpdateSyncingStatus_Call {
-	return &Storager_UpdateSyncingStatus_Call{Call: _e.mock.On("UpdateSyncingStatus", tx, logQuery)}
+//   - segments []multidownloadertypes.SyncSegment
+func (_e *Storager_Expecter) UpdateSyncedStatus(tx interface{}, segments interface{}) *Storager_UpdateSyncedStatus_Call {
+	return &Storager_UpdateSyncedStatus_Call{Call: _e.mock.On("UpdateSyncedStatus", tx, segments)}
 }
 
-func (_c *Storager_UpdateSyncingStatus_Call) Run(run func(tx types.Querier, logQuery *multidownloadertypes.LogQuery)) *Storager_UpdateSyncingStatus_Call {
+func (_c *Storager_UpdateSyncedStatus_Call) Run(run func(tx types.Querier, segments []multidownloadertypes.SyncSegment)) *Storager_UpdateSyncedStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.Querier), args[1].(*multidownloadertypes.LogQuery))
+		run(args[0].(types.Querier), args[1].([]multidownloadertypes.SyncSegment))
 	})
 	return _c
 }
 
-func (_c *Storager_UpdateSyncingStatus_Call) Return(_a0 error) *Storager_UpdateSyncingStatus_Call {
+func (_c *Storager_UpdateSyncedStatus_Call) Return(_a0 error) *Storager_UpdateSyncedStatus_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *Storager_UpdateSyncingStatus_Call) RunAndReturn(run func(types.Querier, *multidownloadertypes.LogQuery) error) *Storager_UpdateSyncingStatus_Call {
+func (_c *Storager_UpdateSyncedStatus_Call) RunAndReturn(run func(types.Querier, []multidownloadertypes.SyncSegment) error) *Storager_UpdateSyncedStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }

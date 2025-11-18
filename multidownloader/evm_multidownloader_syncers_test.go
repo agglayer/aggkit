@@ -153,7 +153,7 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 		}
 		mdQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
 		// It updated the syncedSegments with the new one to be available
-		err = testData.mdr.syncedSegments.RemoveLogQuerySegment(&mdQuery)
+		err = testData.mdr.syncedSegments.ExtendSegments(&mdQuery)
 		require.NoError(t, err)
 		testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
 			Return(nil, errStorageExample)

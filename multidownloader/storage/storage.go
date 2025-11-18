@@ -330,36 +330,36 @@ func (a *MultidownloaderStorage) GetSyncedBlockRangePerContract(tx dbtypes.Queri
 	return setSegments, nil
 }
 
-// UpdateSyncingStatus updates the syncing status after executing a log query
-func (a *MultidownloaderStorage) UpdateSyncingStatus(tx dbtypes.Querier, logQuery *mdrtypes.LogQuery) error {
+func (a *MultidownloaderStorage) UpdateSyncedStatus(tx dbtypes.Querier,
+	segments []mdrtypes.SyncSegment) error {
 	if tx == nil {
 		tx = a.db
 	}
+	query := `
+	UPDATE sync_status SET
+		synced_from_block = ?,
+		synced_to_block = ?
+	WHERE contract_address = ?;
+	`
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	// This set synced_from_block to first query if zero or if it's lower than current
-	from := logQuery.BlockRange.FromBlock
-	for _, addr := range logQuery.Addrs {
-		query := `
-		UPDATE sync_status SET
-			synced_from_block = CASE
-            WHEN synced_from_block = 0 THEN ?
-            WHEN ? < synced_from_block THEN ?
-            ELSE synced_from_block
-        END,
-			synced_to_block = MAX(synced_to_block, ?)
-		WHERE contract_address = ?;
-		`
-		result, err := tx.Exec(query, from, from, from, logQuery.BlockRange.ToBlock, addr.Hex())
+	for _, segment := range segments {
+		result, err := tx.Exec(query, segment.BlockRange.FromBlock,
+			segment.BlockRange.ToBlock, segment.ContractAddr.Hex())
 		if err != nil {
-			return fmt.Errorf("error updating sync status: %w", err)
+			return fmt.Errorf("error updating synced blocks for contract %s: %w",
+				segment.ContractAddr.Hex(), err)
+		}
+		if err != nil {
+			return fmt.Errorf("error updating %s sync status: %w", segment.String(), err)
 		}
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("error getting rows affected when updating sync status: %w", err)
+			return fmt.Errorf("error getting rows affected for contract %s: %w",
+				segment.ContractAddr.Hex(), err)
 		}
 		if rowsAffected == 0 {
-			return fmt.Errorf("no rows affected when updating sync status for contract %s", addr.Hex())
+			return fmt.Errorf("no rows updated for contract %s", segment.ContractAddr.Hex())
 		}
 	}
 	return nil

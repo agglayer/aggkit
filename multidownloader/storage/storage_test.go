@@ -251,52 +251,52 @@ func TestStorage_UpsertSyncerConfigs(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, seg2.TargetToBlock)
 }
 
-func TestStorage_UpdateSyncingStatus_ErrorNoUpdate(t *testing.T) {
+func TestStorage_UpdateSyncedStatus(t *testing.T) {
 	storage := newStorageForTest(t, nil)
-	logQuery := &mdrtypes.LogQuery{
-		Addrs:      []common.Address{exampleAddr1},
-		BlockRange: aggkitcommon.NewBlockRange(1000, 2000),
+	segments := []mdrtypes.SyncSegment{
+		mdrtypes.NewSyncSegment(
+			exampleAddr1,
+			aggkitcommon.NewBlockRange(1000, 2000),
+			aggkittypes.FinalizedBlock,
+			true,
+		),
+		mdrtypes.NewSyncSegment(
+			exampleAddr2,
+			aggkitcommon.NewBlockRange(1500, 2500),
+			aggkittypes.LatestBlock,
+			false,
+		),
 	}
-	err := storage.UpdateSyncingStatus(nil, logQuery)
-	require.Error(t, err)
-}
-
-func TestStorage_UpdateSyncingStatusUpdate(t *testing.T) {
-	storage := newStorageForTest(t, nil)
-	configs := []mdrtypes.ContractConfig{
+	err := storage.UpsertSyncerConfigs(nil, []mdrtypes.ContractConfig{
 		{
 			Address:   exampleAddr1,
-			FromBlock: 1100,
+			FromBlock: 1000,
 			ToBlock:   aggkittypes.FinalizedBlock,
 		},
 		{
 			Address:   exampleAddr2,
-			FromBlock: 3000,
+			FromBlock: 1500,
 			ToBlock:   aggkittypes.LatestBlock,
 		},
-	}
-	err := storage.UpsertSyncerConfigs(nil, configs)
+	})
+	require.NoError(t, err)
+	err = storage.UpdateSyncedStatus(nil, segments)
 	require.NoError(t, err)
 
-	logQuery := &mdrtypes.LogQuery{
-		Addrs:      []common.Address{exampleAddr1},
-		BlockRange: aggkitcommon.NewBlockRange(1000, 2000),
-	}
-	err = storage.UpdateSyncingStatus(nil, logQuery)
+	syncedSegments, err := storage.GetSyncedBlockRangePerContract(nil)
 	require.NoError(t, err)
+	require.Equal(t, 2, len(syncedSegments.GetAddressesForBlockRange(
+		aggkitcommon.NewBlockRange(0, 3000),
+	)))
+	seg1 := syncedSegments.GetByContract(exampleAddr1)
+	require.NotNil(t, seg1)
+	require.Equal(t, aggkitcommon.NewBlockRange(1000, 2000), seg1.BlockRange)
+	require.Equal(t, aggkittypes.FinalizedBlock, seg1.TargetToBlock)
 
-	logQuery = &mdrtypes.LogQuery{
-		Addrs:      []common.Address{exampleAddr1},
-		BlockRange: aggkitcommon.NewBlockRange(800, 1300),
-	}
-	err = storage.UpdateSyncingStatus(nil, logQuery)
-	require.NoError(t, err)
-
-	syncSegments, err := storage.GetSyncedBlockRangePerContract(nil)
-	require.NoError(t, err)
-	seg1 := syncSegments.GetByContract(exampleAddr1)
-	require.Equal(t, "SyncSegment{ contracts:0x2968D6d736178f8FE7393CC33C87f29D9C287e78 range:From: 800, To: 2000 (1201) blockHeader:false}",
-		seg1.String())
+	seg2 := syncedSegments.GetByContract(exampleAddr2)
+	require.NotNil(t, seg2)
+	require.Equal(t, aggkitcommon.NewBlockRange(1500, 2500), seg2.BlockRange)
+	require.Equal(t, aggkittypes.LatestBlock, seg2.TargetToBlock)
 }
 
 func TestStorage_UpdateIsFinal(t *testing.T) {

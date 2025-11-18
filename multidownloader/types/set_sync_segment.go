@@ -251,9 +251,9 @@ func (f *SetSyncSegment) UpdateBlockRange(segment *SyncSegment, newBlockRange ag
 	}
 }
 
-// RemoveLogQuerySegment removes the block ranges defined in the logQuery from the current SetSyncSegment
+// ReduceSegments removes the block ranges defined in the logQuery from the current SetSyncSegment
 // This is used to update the pendingSync after doing a FilterLogs query
-func (f *SetSyncSegment) RemoveLogQuerySegment(logQuery *LogQuery) error {
+func (f *SetSyncSegment) ReduceSegments(logQuery *LogQuery) error {
 	if f == nil || logQuery == nil {
 		return nil
 	}
@@ -275,4 +275,39 @@ func (f *SetSyncSegment) RemoveLogQuerySegment(logQuery *LogQuery) error {
 	}
 	f.segments = newSegments.segments
 	return nil
+}
+
+// ExtendSegments extends the current SetSyncSegment with the block ranges defined in the logQuery
+// that is used to update the syncedSegments after doing a FilterLogs query
+func (f *SetSyncSegment) ExtendSegments(logQuery *LogQuery) error {
+	if f == nil || logQuery == nil {
+		return nil
+	}
+	newSegments := f.Clone()
+	for _, addr := range logQuery.Addrs {
+		segment := newSegments.GetByContract(addr)
+		if segment != nil {
+			mergedRange := segment.BlockRange.Merge(logQuery.BlockRange)
+			newSegments.UpdateBlockRange(segment, mergedRange)
+		} else {
+			newSegments.Add(SyncSegment{
+				ContractAddr: addr,
+				BlockRange:   logQuery.BlockRange,
+			})
+		}
+	}
+	f.segments = newSegments.segments
+	return nil
+}
+
+// SegmentsByContract returns segments for the given contract addresses
+func (s *SetSyncSegment) SegmentsByContract(addrs []common.Address) []SyncSegment {
+	result := make([]SyncSegment, 0, len(addrs))
+	for _, addr := range addrs {
+		segment := s.GetByContract(addr)
+		if segment != nil {
+			result = append(result, *segment)
+		}
+	}
+	return result
 }
