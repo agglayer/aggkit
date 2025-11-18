@@ -1210,11 +1210,10 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		}
 
 		bridgeMocks.bridgeL2.EXPECT().
-			GetUnsetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetUnsetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(expectedUnsetClaims, len(expectedUnsetClaims), nil)
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
@@ -1232,28 +1231,13 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		require.Equal(t, expectedUnsetClaims[0].GlobalIndex.String(), string(response.UnsetClaims[0].GlobalIndex))
 	})
 
-	t.Run("GetUnsetClaims for L1 network should fail", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
-		queryParams.Set(pageNumberParam, "1")
-		queryParams.Set(pageSizeParam, "10")
-
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
-		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), "unset claims are only available for L2 networks, not L1")
-	})
-
 	t.Run("GetUnsetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
-			GetUnsetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			GetUnsetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
@@ -1268,7 +1252,6 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		bridgeMocks.bridge.bridgeL2 = nil
 
 		queryParams := url.Values{}
-		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 

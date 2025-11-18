@@ -588,7 +588,7 @@ const docTemplate = `{
         },
         "/unset-claims": {
             "get": {
-                "description": "Returns unset claims for the L2 network, paginated.",
+                "description": "Returns unset claims for the configured L2 network, paginated.",
                 "produces": [
                     "application/json"
                 ],
@@ -597,13 +597,6 @@ const docTemplate = `{
                 ],
                 "summary": "Get unset claims",
                 "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "L2 Network ID (must match the configured L2 network, cannot be 0/L1)",
-                        "name": "network_id",
-                        "in": "query",
-                        "required": true
-                    },
                     {
                         "type": "integer",
                         "description": "Page number",
@@ -631,7 +624,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request - Invalid network_id or L1 network not supported",
+                        "description": "Bad Request - Invalid parameters",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }

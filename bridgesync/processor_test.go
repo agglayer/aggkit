@@ -2803,7 +2803,7 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			unsetClaims, count, err := p.GetUnsetClaimsPaged(ctx, tc.page, tc.pageSize, nil, tc.globalIndex)
+			unsetClaims, count, err := p.GetUnsetClaimsPaged(ctx, tc.page, tc.pageSize, tc.globalIndex)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)

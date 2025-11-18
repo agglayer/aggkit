@@ -548,36 +548,27 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 }
 
 // @Summary Get unset claims
-// @Description Returns unset claims for the L2 network, paginated.
+// @Description Returns unset claims for the configured L2 network, paginated.
 // Note: unset claims are only available for L2 networks, not L1.
 // @Tags unset-claims
-// @Param network_id query int true "L2 Network ID (must match the configured L2 network, cannot be 0/L1)"
 // @Param page_number query int false "Page number"
 // @Param page_size query int false "Page size"
 // @Param global_index query string false "Filter by global index"
 // @Produce json
 // @Success 200 {object} types.UnsetClaimsResult
-// @Failure 400 {object} types.ErrorResponse "Bad Request - Invalid network_id or L1 network not supported"
+// @Failure 400 {object} types.ErrorResponse "Bad Request - Invalid parameters"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable - L2 bridge syncer not available"
 // @Router /unset-claims [get]
 func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
-	b.logger.Debugf("GetUnsetClaims request received (network id=%s, page number=%s, page size=%s, global_index=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(globalIndexParam))
+	b.logger.Debugf("GetUnsetClaims request received (page number=%s, page size=%s, global_index=%s)",
+		c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(globalIndexParam))
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
 	defer func() {
 		reportMetrics(metrics.GetUnsetClaimsReq, statusCode, startTime)
 	}()
-
-	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
-	if err != nil {
-		b.logger.Warnf(errNetworkID, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
-		return
-	}
 
 	globalIndexRaw := c.Query(globalIndexParam)
 	var (
@@ -604,30 +595,13 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 	}
 	defer cancel()
 
-	b.logger.Debugf("fetching unset claims (network id=%d, page=%d, size=%d, global_index=%v)",
-		networkID, pageNumber, pageSize, globalIndex)
+	b.logger.Debugf("fetching unset claims for L2 network (network id=%d, page=%d, size=%d, global_index=%v)",
+		b.networkID, pageNumber, pageSize, globalIndex)
 
 	var (
 		unsetClaims []*bridgesync.UnsetClaim
 		count       int
 	)
-
-	// Unset claims are only available for L2 networks, not L1
-	if networkID == mainnetNetworkID {
-		b.logger.Warnf("unset claims are not available for L1 network (network_id=0)")
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": "unset claims are only available for L2 networks, not L1"})
-		return
-	}
-
-	if networkID != b.networkID {
-		b.logger.Warnf("invalid network ID: %d, expected L2 network ID: %d", networkID, b.networkID)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{
-			"error": fmt.Sprintf("invalid network_id %d, expected L2 network_id %d", networkID, b.networkID),
-		})
-		return
-	}
 
 	if b.bridgeL2 == nil {
 		statusCode = http.StatusServiceUnavailable
@@ -636,12 +610,12 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, nil, globalIndex)
+	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
 	if err != nil {
-		b.logger.Warnf("failed to get unset claims for L2 network (ID=%d): %v", networkID, err)
+		b.logger.Warnf("failed to get unset claims for L2 network (ID=%d): %v", b.networkID, err)
 		statusCode = http.StatusInternalServerError
 		c.JSON(statusCode,
-			gin.H{"error": fmt.Sprintf("failed to get unset claims for the L2 network (ID=%d), error: %s", networkID, err)})
+			gin.H{"error": fmt.Sprintf("failed to get unset claims for the L2 network (ID=%d), error: %s", b.networkID, err)})
 		return
 	}
 
@@ -1280,7 +1254,7 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		Count:           len(responseEvents),
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(statusCode, result)
 }
 
 // populateNetworkSyncInfo populates sync information for a network if it's active
