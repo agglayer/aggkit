@@ -102,8 +102,10 @@ func TestSetSyncSegment_GetByContract(t *testing.T) {
 func TestSetSyncSegment_Subtract(t *testing.T) {
 	t.Run("nil segments", func(t *testing.T) {
 		set := NewSetSyncSegment()
-		result := set.SubtractSegments(nil)
-		require.Equal(t, &set, result)
+		setCopy := set.Clone()
+		err := set.SubtractSegments(nil)
+		require.NoError(t, err)
+		require.Equal(t, *setCopy, set)
 	})
 
 	t.Run("subtract segments", func(t *testing.T) {
