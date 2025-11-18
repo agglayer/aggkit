@@ -3,7 +3,6 @@ package aggsender
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/config"
@@ -151,7 +150,6 @@ func (r *epochBasedTrigger) ForceTriggerEvent() {
 type preconfTrigger struct {
 	log          aggkitcommon.Logger
 	l2BridgeSync types.L2BridgeSyncer
-	mutex        sync.Mutex
 	ch           chan types.CertificateTriggerEvent
 }
 
@@ -193,13 +191,13 @@ func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.Certificate
 	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
 
 	ch := make(chan types.CertificateTriggerEvent)
+	r.ch = ch
+
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				r.mutex.Lock()
 				r.ch = nil
-				r.mutex.Unlock()
 				close(ch)
 
 				return
@@ -208,9 +206,7 @@ func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.Certificate
 			}
 		}
 	}()
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	r.ch = ch
+
 	return ch
 }
 
@@ -221,8 +217,6 @@ func (r *preconfTrigger) ForceTriggerEvent() {
 		r.log.Errorf("ForceTriggerEvent: Failed to get last processed block: %v", err)
 		return
 	}
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
 	if r.ch == nil {
 		return
 	}
