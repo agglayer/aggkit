@@ -217,21 +217,27 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	if dh.isInitialized {
 		return fmt.Errorf("initialize: already initialized")
 	}
+	// Check DB compatibility
 	err := dh.CheckDatabase(ctx)
 	if err != nil {
 		return err
 	}
+	// Save syncer configs to storage, it override previous ones but keep
+	// the synced segments
 	err = dh.storage.UpsertSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
 	if err != nil {
 		return err
 	}
-	// Get required segments from syncer config
+	// Get synced segments per contract
 	syncSegments, err := dh.syncersConfig.SyncSegments()
 	if err != nil {
 		return err
 	}
-
-	syncSegments.UpdateToBlock(ctx, dh.blockNotifierManager)
+	// Update TargetToBlock from name to real block numbers
+	err = syncSegments.UpdateToBlock(ctx, dh.blockNotifierManager)
+	if err != nil {
+		return fmt.Errorf("Initialize: cannot update TargetToBlock in sync segments: %w", err)
+	}
 	// Get synced segments from storage
 	storageSyncSegments, err := dh.storage.GetSyncedBlockRangePerContract(nil)
 	if err != nil {
@@ -264,7 +270,10 @@ func (dh *EVMMultidownloader) Sync(ctx context.Context,
 }
 
 func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
-	dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	err := dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	if err != nil {
+		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
+	}
 	if dh.pendingSync.Finished() {
 		return true, nil
 	}
@@ -323,7 +332,10 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	dh.log.Debugf("Unsafe/Step: finished block=%d syncing=%s",
 		blockHeader.Number.Uint64(),
 		dh.pendingSync.String())
-	dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	if err != nil {
+		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
+	}
 	return dh.pendingSync.Finished(), nil
 }
 
@@ -462,7 +474,10 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		dh.pendingSync.TotalBlocks(),
 		dh.statistics.ETA(dh.pendingSync.TotalBlocks()))
 
-	dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot update ToBlock in pendingSync: %w", err)
+	}
 	return dh.pendingSync.Finished(), nil
 }
 

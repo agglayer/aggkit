@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/big"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -20,6 +18,7 @@ type SetSyncSegment struct {
 	segments []*SyncSegment
 }
 
+// String returns a string representation of the SetSyncSegment
 func (s *SetSyncSegment) String() string {
 	result := "SetSyncSegment: "
 	for i, segment := range s.segments {
@@ -28,12 +27,14 @@ func (s *SetSyncSegment) String() string {
 	return result
 }
 
+// NewSetSyncSegment creates a new empty SetSyncSegment
 func NewSetSyncSegment() SetSyncSegment {
 	return SetSyncSegment{
 		segments: []*SyncSegment{},
 	}
 }
 
+// Segments returns all SyncSegments in the SetSyncSegment
 func (s *SetSyncSegment) Segments() []SyncSegment {
 	result := make([]SyncSegment, 0, len(s.segments))
 	for _, segment := range s.segments {
@@ -42,6 +43,8 @@ func (s *SetSyncSegment) Segments() []SyncSegment {
 	return result
 }
 
+// Add adds a new SyncSegment to the SetSyncSegment, merging block ranges
+// if the contract address already exists
 func (s *SetSyncSegment) Add(segment SyncSegment) {
 	// Check if exists
 	current := s.GetByContract(segment.ContractAddr)
@@ -68,6 +71,7 @@ func (s *SetSyncSegment) Replace(segment *SyncSegment) {
 	}
 }
 
+// GetByContract returns the SyncSegment for the given contract address
 func (s *SetSyncSegment) GetByContract(addr common.Address) *SyncSegment {
 	if s == nil {
 		return nil
@@ -104,6 +108,7 @@ func (f *SetSyncSegment) Subtract(segments *SetSyncSegment) *SetSyncSegment {
 	return &result
 }
 
+// TotalBlocks returns the total number pending to synchronize
 func (f *SetSyncSegment) TotalBlocks() uint64 {
 	if f == nil {
 		return 0
@@ -122,21 +127,25 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 	return bn.CountBlocks()
 }
 
+// UpdateToBlock updates the ToBlock to real blockNumber
 func (f *SetSyncSegment) UpdateToBlock(ctx context.Context,
-	blockNotifierGetter ethermantypes.BlockNotifierManagerInterface) {
+	blockNotifierGetter ethermantypes.BlockNotifierManagerInterface) error {
 	if f == nil {
-		return
+		return nil
 	}
 	for _, segment := range f.segments {
 		bn, err := blockNotifierGetter.GetBlockNotifier(ctx, segment.TargetToBlock)
 		if err != nil {
-			log.Fatalf("Error getting BlockNotifier for finality=%s: %v", segment.TargetToBlock.String(), err)
+			return fmt.Errorf("setSyncSegment.UpdateToBlock: error getting BlockNotifier for finality=%s: %w",
+				segment.TargetToBlock.String(), err)
 		}
 		currentBlock := bn.GetCurrentBlockNumber()
 		segment.UpdateToBlock(currentBlock)
 	}
+	return nil
 }
 
+// IsAvailable checks if the required LogQuery data is already synced
 func (f *SetSyncSegment) IsAvailable(query LogQuery) bool {
 	if f == nil {
 		return false
@@ -150,40 +159,8 @@ func (f *SetSyncSegment) IsAvailable(query LogQuery) bool {
 	return true
 }
 
-type LogQuery struct {
-	Addrs      []common.Address
-	BlockRange aggkitcommon.BlockRange
-}
-
-func NewLogQuery(fromBlock uint64, toBlock uint64, addrs []common.Address) LogQuery {
-	return LogQuery{
-		Addrs:      addrs,
-		BlockRange: aggkitcommon.NewBlockRange(fromBlock, toBlock),
-	}
-}
-
-func NewLogQueryFromEthereumFilter(query ethereum.FilterQuery) LogQuery {
-	return LogQuery{
-		Addrs:      query.Addresses,
-		BlockRange: aggkitcommon.NewBlockRange(query.FromBlock.Uint64(), query.ToBlock.Uint64()),
-	}
-}
-
-func (l *LogQuery) String() string {
-	if l == nil {
-		return "LogQuery: <nil>"
-	}
-	return fmt.Sprintf("LogQuery: addrs=%v, blockRange=%s", l.Addrs, l.BlockRange.String())
-}
-
-func (l *LogQuery) ToRPCFilterQuery() ethereum.FilterQuery {
-	return ethereum.FilterQuery{
-		Addresses: l.Addrs,
-		FromBlock: new(big.Int).SetUint64(l.BlockRange.FromBlock),
-		ToBlock:   new(big.Int).SetUint64(l.BlockRange.ToBlock),
-	}
-}
-
+// NextQuery generates the next LogQuery to sync based on the lowest FromBlock pending
+// to synchronize
 func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uint64) (*LogQuery, error) {
 	if f == nil || len(f.segments) == 0 {
 		return nil, ErrFinished
