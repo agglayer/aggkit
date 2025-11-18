@@ -14,7 +14,7 @@ import (
 
 // AdaptEthClientToMultidownloader adapts a BaseEthereumClienter
 // to the MultiDownloader interface (aggkittypes.MultiDownloader)
-// This is a scafolding for migrate progressively the syncers to use MultiDownloader
+// This is a scaffolding for migrate progressively the syncers to use MultiDownloader
 // meanwhile with this adapted can keep using a regular eth client
 type AdaptEthClientToMultidownloader struct {
 	ethClient aggkittypes.BaseEthereumClienter

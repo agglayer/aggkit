@@ -395,7 +395,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 			}
 		}
 	}()
-	defer dh.statistics.FinishDBOperation(errors.New("fails"))
+	defer dh.statistics.FinishDBOperation(nil)
 	err = dh.storage.SaveEthLogsWithHeaders(tx, mapBlockHeadersToList(blockHeaders), logs, true)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot save eth logs: %w", err)
@@ -408,8 +408,11 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot get synced block range per contract: %w", err)
 	}
+	// This is a sanity check, syncedSegments have not been updated yet
+	// so must say that the logQueryData is not available
 	if dh.IsAvailable(*logQueryData) {
-		panic("logQueryData should not be available after doing the query")
+		dh.log.Warnf("logQueryData (%s) should not be available after doing the query",
+			logQueryData.String())
 	}
 	committed = true
 	if err := tx.Commit(); err != nil {
@@ -417,12 +420,10 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	}
 
 	dh.statistics.FinishDBOperation(nil)
-
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
-	// Update synced segments
-	dh.syncedSegments = storageSyncSegments
-	dh.pendingSync = dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
+	finished, err := dh.updateSyncedSegments(ctx, storageSyncSegments, logQueryData)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot update synced segments: %w", err)
+	}
 	dh.log.Infof("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
 		dh.statistics.ElapsedSyncing().String(),
 		logQueryData.BlockRange.String(),
@@ -430,8 +431,19 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		len(blockHeaders),
 		dh.pendingSync.TotalBlocks(),
 		dh.statistics.ETA(dh.pendingSync.TotalBlocks()))
+	return finished, nil
+}
 
-	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
+func (dh *EVMMultidownloader) updateSyncedSegments(ctx context.Context,
+	storageSyncSegments mdrtypes.SetSyncSegment,
+	logQueryData *mdrtypes.LogQuery) (bool, error) {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+	// Update synced segments (memory status of syncing)
+	dh.syncedSegments = storageSyncSegments
+	dh.pendingSync = dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
+
+	err := dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot update ToBlock in pendingSync: %w", err)
 	}

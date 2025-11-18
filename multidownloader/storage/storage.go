@@ -35,7 +35,7 @@ type MultidownloaderStorage struct {
 type logRow struct {
 	Address     common.Address `meddler:"address,address"`
 	Topics      string         `meddler:"topics"`
-	Data        []byte         `meddler: "data"`
+	Data        []byte         `meddler:"data"`
 	BlockNumber uint64         `meddler:"block_number"`
 	TxHash      common.Hash    `meddler:"tx_hash,hash"`
 	TxIndex     uint           `meddler:"tx_index"`
