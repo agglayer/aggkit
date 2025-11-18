@@ -37,7 +37,7 @@ type L2GERSyncer interface {
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 	) (l2gersync.GlobalExitRootInfo, error)
 	GetRemoveGEREvents(
-		ctx context.Context, globalExitRoot *common.Hash, fromBlock, toBlock *uint64,
+		ctx context.Context, globalExitRoot *common.Hash,
 	) ([]*l2gersync.RemoveGEREvent, error)
 }
 

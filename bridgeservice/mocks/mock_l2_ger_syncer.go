@@ -82,9 +82,9 @@ func (_c *L2GERSyncer_GetFirstGERAfterL1InfoTreeIndex_Call) RunAndReturn(run fun
 	return _c
 }
 
-// GetRemoveGEREvents provides a mock function with given fields: ctx, globalExitRoot, fromBlock, toBlock
-func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context, globalExitRoot *common.Hash, fromBlock *uint64, toBlock *uint64) ([]*l2gersync.RemoveGEREvent, error) {
-	ret := _m.Called(ctx, globalExitRoot, fromBlock, toBlock)
+// GetRemoveGEREvents provides a mock function with given fields: ctx, globalExitRoot
+func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context, globalExitRoot *common.Hash) ([]*l2gersync.RemoveGEREvent, error) {
+	ret := _m.Called(ctx, globalExitRoot)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRemoveGEREvents")
@@ -92,19 +92,19 @@ func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context, globalExitRoot *c
 
 	var r0 []*l2gersync.RemoveGEREvent
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, *uint64, *uint64) ([]*l2gersync.RemoveGEREvent, error)); ok {
-		return rf(ctx, globalExitRoot, fromBlock, toBlock)
+	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash) ([]*l2gersync.RemoveGEREvent, error)); ok {
+		return rf(ctx, globalExitRoot)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, *uint64, *uint64) []*l2gersync.RemoveGEREvent); ok {
-		r0 = rf(ctx, globalExitRoot, fromBlock, toBlock)
+	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash) []*l2gersync.RemoveGEREvent); ok {
+		r0 = rf(ctx, globalExitRoot)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*l2gersync.RemoveGEREvent)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *common.Hash, *uint64, *uint64) error); ok {
-		r1 = rf(ctx, globalExitRoot, fromBlock, toBlock)
+	if rf, ok := ret.Get(1).(func(context.Context, *common.Hash) error); ok {
+		r1 = rf(ctx, globalExitRoot)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -120,15 +120,13 @@ type L2GERSyncer_GetRemoveGEREvents_Call struct {
 // GetRemoveGEREvents is a helper method to define mock.On call
 //   - ctx context.Context
 //   - globalExitRoot *common.Hash
-//   - fromBlock *uint64
-//   - toBlock *uint64
-func (_e *L2GERSyncer_Expecter) GetRemoveGEREvents(ctx interface{}, globalExitRoot interface{}, fromBlock interface{}, toBlock interface{}) *L2GERSyncer_GetRemoveGEREvents_Call {
-	return &L2GERSyncer_GetRemoveGEREvents_Call{Call: _e.mock.On("GetRemoveGEREvents", ctx, globalExitRoot, fromBlock, toBlock)}
+func (_e *L2GERSyncer_Expecter) GetRemoveGEREvents(ctx interface{}, globalExitRoot interface{}) *L2GERSyncer_GetRemoveGEREvents_Call {
+	return &L2GERSyncer_GetRemoveGEREvents_Call{Call: _e.mock.On("GetRemoveGEREvents", ctx, globalExitRoot)}
 }
 
-func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Run(run func(ctx context.Context, globalExitRoot *common.Hash, fromBlock *uint64, toBlock *uint64)) *L2GERSyncer_GetRemoveGEREvents_Call {
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Run(run func(ctx context.Context, globalExitRoot *common.Hash)) *L2GERSyncer_GetRemoveGEREvents_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*common.Hash), args[2].(*uint64), args[3].(*uint64))
+		run(args[0].(context.Context), args[1].(*common.Hash))
 	})
 	return _c
 }
@@ -138,7 +136,7 @@ func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Return(_a0 []*l2gersync.RemoveGER
 	return _c
 }
 
-func (_c *L2GERSyncer_GetRemoveGEREvents_Call) RunAndReturn(run func(context.Context, *common.Hash, *uint64, *uint64) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREvents_Call {
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) RunAndReturn(run func(context.Context, *common.Hash) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREvents_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/db"
@@ -195,52 +194,29 @@ func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 }
 
 // GetRemoveGEREvents retrieves remove GER events from the database with optional filters
+// When no globalExitRoot filter is provided, returns the 50 most recent remove GER events
+// When globalExitRoot filter is provided, returns all matching events for that GER
 func (p *processor) GetRemoveGEREvents(
 	ctx context.Context,
 	globalExitRoot *ethcommon.Hash,
-	fromBlock, toBlock *uint64,
 ) ([]*RemoveGEREvent, error) {
 	var events []*RemoveGEREvent
+	var query string
+	var args []interface{}
 
-	whereClause, args := p.buildRemoveGEREventsFilterClause(globalExitRoot, fromBlock, toBlock)
-	query := "SELECT * FROM remove_ger_events" + whereClause + " ORDER BY block_num, block_pos"
+	// Check if no filters are provided - return 50 most recent events
+	if globalExitRoot == nil {
+		query = "SELECT * FROM remove_ger_events ORDER BY block_num DESC, block_pos DESC LIMIT 50"
+	} else {
+		// Filter by global exit root only
+		query = "SELECT * FROM remove_ger_events WHERE global_exit_root = $1 ORDER BY block_num, block_pos"
+		args = []interface{}{globalExitRoot.Hex()}
+	}
 
 	if err := meddler.QueryAll(p.database, &events, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to query remove GER events: %w", err)
 	}
 	return events, nil
-}
-
-// buildRemoveGEREventsFilterClause builds the WHERE clause and parameters for remove GER events filtering
-func (p *processor) buildRemoveGEREventsFilterClause(
-	globalExitRoot *ethcommon.Hash,
-	fromBlock, toBlock *uint64,
-) (string, []interface{}) {
-	var clauses []string
-	var args []interface{}
-	argIndex := 1
-
-	if globalExitRoot != nil {
-		clauses = append(clauses, fmt.Sprintf("global_exit_root = $%d", argIndex))
-		args = append(args, globalExitRoot.Hex())
-		argIndex++
-	}
-
-	if fromBlock != nil {
-		clauses = append(clauses, fmt.Sprintf("block_num >= $%d", argIndex))
-		args = append(args, *fromBlock)
-		argIndex++
-	}
-
-	if toBlock != nil {
-		clauses = append(clauses, fmt.Sprintf("block_num <= $%d", argIndex))
-		args = append(args, *toBlock)
-	}
-
-	if len(clauses) > 0 {
-		return " WHERE " + strings.Join(clauses, " AND "), args
-	}
-	return "", args
 }
 
 // Reorg removes all blocks and associated data starting from a specific block number from l2 ger sync database

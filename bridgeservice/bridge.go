@@ -1152,10 +1152,8 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 // GetRemoveGEREventsHandler retrieves remove GER events.
 //
 // @Summary Get remove GER events
-// @Description Returns a list of remove GER events, optionally filtered by block range or specific GER
+// @Description Returns a list of remove GER events, optionally filtered by specific GER. When no filter is provided, returns the 50 most recent events.
 // @Tags ger-events
-// @Param from_block query uint64 false "Start block number for filtering"
-// @Param to_block query uint64 false "End block number for filtering"
 // @Param global_exit_root query string false "Filter by specific Global Exit Root hash"
 // @Produce json
 // @Success 200 {object} types.RemoveGEREventsResult "List of remove GER events"
@@ -1183,13 +1181,10 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	}
 
 	// Parse query parameters
-	fromBlockStr := c.Query("from_block")
-	toBlockStr := c.Query("to_block")
 	globalExitRootStr := c.Query("global_exit_root")
 
 	// Parse and validate parameters
 	var globalExitRoot *common.Hash
-	var fromBlock, toBlock *uint64
 
 	if globalExitRootStr != "" {
 		if !isValidHexHash(globalExitRootStr) {
@@ -1203,34 +1198,8 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		globalExitRoot = &ger
 	}
 
-	if fromBlockStr != "" {
-		parsed, err := strconv.ParseUint(fromBlockStr, 10, 64)
-		if err != nil {
-			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
-			return
-		}
-		fromBlock = &parsed
-	}
-
-	if toBlockStr != "" {
-		parsed, err := strconv.ParseUint(toBlockStr, 10, 64)
-		if err != nil {
-			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
-			return
-		}
-		toBlock = &parsed
-	}
-
-	if fromBlock != nil && toBlock != nil && *fromBlock > *toBlock {
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
-		return
-	}
-
 	// Get filtered remove events using single consolidated function
-	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot, fromBlock, toBlock)
+	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot)
 
 	if err != nil {
 		b.logger.Errorf("failed to get remove GER events: %v", err)
