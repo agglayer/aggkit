@@ -31,7 +31,7 @@ const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = true
 
 func TestEVMMultidownloader(t *testing.T) {
-	// t.Skip("code to test/debug not real unittest")
+	t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -275,6 +275,7 @@ func TestEVMMultidownloader_GetRPCServices(t *testing.T) {
 			BlockChunkSize:                  5000,
 			MaxParallelBlockHeaderRetrieval: 50,
 			BlockFinality:                   aggkittypes.FinalizedBlock,
+			WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
 		}
 		ethClient := mocktypes.NewBaseEthereumClienter(t)
 		db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
@@ -350,6 +351,7 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		BlockChunkSize:                  5000,
 		MaxParallelBlockHeaderRetrieval: 50,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
+		WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
 	}
 	ethClient := mocktypes.NewBaseEthereumClienter(t)
 	var mockDB *mockmdrtypes.Storager
