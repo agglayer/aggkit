@@ -1385,7 +1385,6 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "L2 GER syncer is not available", response["error"])
 	})
-
 }
 
 func TestIsValidHexHash(t *testing.T) {
