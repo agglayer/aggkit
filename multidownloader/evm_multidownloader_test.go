@@ -339,9 +339,9 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 type testDataEVMMultidownloader struct {
 	mockEthClient *mocktypes.BaseEthereumClienter
 	mdr           *EVMMultidownloader
-	realDB        *storage.MultidownloaderStorage
-	mockDB        *mockmdrtypes.Storager
-	useDB         mdrtypes.Storager
+	realStorage   *storage.MultidownloaderStorage
+	mockStorage   *mockmdrtypes.Storager
+	usedStorage   mdrtypes.Storager
 }
 
 func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMMultidownloader {
@@ -374,8 +374,8 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 	return &testDataEVMMultidownloader{
 		mockEthClient: ethClient,
 		mdr:           mdr,
-		realDB:        realDB,
-		mockDB:        mockDB,
-		useDB:         useDB,
+		realStorage:   realDB,
+		mockStorage:   mockDB,
+		usedStorage:   useDB,
 	}
 }
