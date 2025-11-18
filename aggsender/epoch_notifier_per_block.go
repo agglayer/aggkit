@@ -134,7 +134,6 @@ func (e *EpochNotifierPerBlock) ForcePublishEpochEvent() {
 	e.Publish(*event)
 }
 
-func (e *EpochNotifierPerBlock) startInternal(ctx context.Context, eventNewBlockChannel <-chan types.EventNewBlock) {
 func (e *EpochNotifierPerBlock) startInternal(ctx context.Context,
 	eventNewBlockChannel <-chan ethermantypes.EventNewBlock) {
 	status := internalStatus{

@@ -449,7 +449,7 @@ func TestEpochBasedRunner_TriggerCh(t *testing.T) {
 }
 
 func TestEpochBasedTriggerForceTriggerEvent(t *testing.T) {
-	mockBlockNotifier := mocks.NewBlockNotifier(t)
+	mockBlockNotifier := ethermantypesmocks.NewBlockNotifier(t)
 	logger := log.WithFields("test", "test")
 	mockEpochNotifier, err := NewEpochNotifierPerBlock(
 		mockBlockNotifier,

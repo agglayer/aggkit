@@ -7,21 +7,18 @@ import (
 	"testing"
 
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	storageErr = errors.New("storage error")
-	hash1      = common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
-	hash2      = common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
+	errStorageExample = errors.New("storage error")
+	// hash1             = common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
+	// hash2             = common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
 )
 
 func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
-
 	t.Run("negative block number returns error", func(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
@@ -39,7 +36,7 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(123)).
-			Return(nil, false, storageErr)
+			Return(nil, false, errStorageExample)
 
 		// Test
 		result, err := testData.mdr.HeaderByNumber(context.Background(), big.NewInt(123))
@@ -48,7 +45,7 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		require.Nil(t, result)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot get BlockHeader number=123")
-		require.ErrorIs(t, err, storageErr)
+		require.ErrorIs(t, err, errStorageExample)
 	})
 
 	t.Run("block found in storage returns block", func(t *testing.T) {
@@ -112,7 +109,8 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		require.Equal(t, uint64(123), result.Number)
 	})
 }
-	/*
+
+/*
 func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 	t.Run("storage error returns error", func(t *testing.T) {
 		// Setup
@@ -238,5 +236,6 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 			require.NotNil(t, result)
 			require.Len(t, result, 0)
 		})
-	*/
+
 }
+*/

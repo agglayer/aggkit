@@ -209,7 +209,7 @@ func TestForcePublishEpochEvent(t *testing.T) {
 	testData := newNotifierPerBlockTestData(t, nil)
 	ch := testData.sut.Subscribe("test")
 	testData.blockNotifierMock.EXPECT().GetCurrentBlockNumber().Return(uint64(145))
-	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(make(chan types.EventNewBlock))
+	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(make(chan ethermantypes.EventNewBlock))
 	testData.sut.StartAsync(testData.ctx)
 	testData.sut.ForcePublishEpochEvent()
 	epochEvent := <-ch
