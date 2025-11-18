@@ -349,13 +349,13 @@ func TestRemoveGEREvents(t *testing.T) {
 		// Verify first remove event
 		require.Equal(t, ger1, allRemoveEvents[0].GlobalExitRoot)
 		require.Equal(t, uint64(101), allRemoveEvents[0].BlockNum)
-		require.Equal(t, uint64(1), allRemoveEvents[0].BlockPos) // Block position from removeEvent1
+		require.Equal(t, uint64(1), allRemoveEvents[0].BlockPos)    // Block position from removeEvent1
 		require.Greater(t, allRemoveEvents[0].CreatedAt, uint64(0)) // CreatedAt should be set
 
 		// Verify second remove event
 		require.Equal(t, ger2, allRemoveEvents[1].GlobalExitRoot)
 		require.Equal(t, uint64(102), allRemoveEvents[1].BlockNum)
-		require.Equal(t, uint64(0), allRemoveEvents[1].BlockPos) // Block position from removeEvent2
+		require.Equal(t, uint64(0), allRemoveEvents[1].BlockPos)    // Block position from removeEvent2
 		require.Greater(t, allRemoveEvents[1].CreatedAt, uint64(0)) // CreatedAt should be set
 
 		// Test GetRemoveGEREvents by block range
