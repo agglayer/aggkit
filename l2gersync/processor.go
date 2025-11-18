@@ -35,9 +35,9 @@ type GlobalExitRootInfo struct {
 
 // RemoveGEREvent represents a remove GER event stored in the database
 type RemoveGEREvent struct {
-	ID             uint64         `meddler:"id,pk"`
 	GlobalExitRoot ethcommon.Hash `meddler:"global_exit_root,hash"`
 	BlockNum       uint64         `meddler:"block_num"`
+	BlockPos       uint64         `meddler:"block_pos"`
 	CreatedAt      uint64         `meddler:"created_at"`
 }
 
@@ -153,11 +153,12 @@ func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo,
 		removeEvent := &RemoveGEREvent{
 			GlobalExitRoot: gerInfo.GlobalExitRoot,
 			BlockNum:       gerInfo.BlockNum,
+			BlockPos:       *gerInfo.BlockPosition,
 			CreatedAt:      uint64(time.Now().Unix()),
 		}
 		if err := meddler.Insert(tx, "remove_ger_events", removeEvent); err != nil {
-			return fmt.Errorf("failed to insert remove GER event (value=%x, block=%d): %w",
-				gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
+			return fmt.Errorf("failed to insert remove GER event (value=%x, block=%d, pos=%d): %w",
+				gerInfo.GlobalExitRoot, gerInfo.BlockNum, *gerInfo.BlockPosition, err)
 		}
 	}
 
@@ -202,7 +203,7 @@ func (p *processor) GetRemoveGEREvents(
 	var events []*RemoveGEREvent
 
 	whereClause, args := p.buildRemoveGEREventsFilterClause(globalExitRoot, fromBlock, toBlock)
-	query := "SELECT * FROM remove_ger_events" + whereClause + " ORDER BY block_num, created_at"
+	query := "SELECT * FROM remove_ger_events" + whereClause + " ORDER BY block_num, block_pos"
 
 	if err := meddler.QueryAll(p.database, &events, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to query remove GER events: %w", err)

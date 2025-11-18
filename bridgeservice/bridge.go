@@ -1243,9 +1243,9 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	responseEvents := make([]*types.RemoveGEREventResponse, len(removeEvents))
 	for i, event := range removeEvents {
 		responseEvents[i] = &types.RemoveGEREventResponse{
-			ID:             event.ID,
 			GlobalExitRoot: types.Hash(event.GlobalExitRoot.Hex()),
 			BlockNum:       event.BlockNum,
+			BlockPos:       event.BlockPos,
 			CreatedAt:      event.CreatedAt,
 		}
 	}

@@ -1272,15 +1272,15 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             1,
 				GlobalExitRoot: common.HexToHash("0xabc123"),
 				BlockNum:       100,
+				BlockPos:       0,
 				CreatedAt:      1617184800,
 			},
 			{
-				ID:             2,
 				GlobalExitRoot: common.HexToHash("0xdef456"),
 				BlockNum:       101,
+				BlockPos:       1,
 				CreatedAt:      1617184900,
 			},
 		}
@@ -1299,7 +1299,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		require.Equal(t, len(expectedEvents), response.Count)
 		require.Len(t, response.RemoveGEREvents, len(expectedEvents))
-		require.Equal(t, expectedEvents[0].ID, response.RemoveGEREvents[0].ID)
+		require.Equal(t, expectedEvents[0].BlockPos, response.RemoveGEREvents[0].BlockPos)
 		require.Equal(t, expectedEvents[0].GlobalExitRoot.Hex(), string(response.RemoveGEREvents[0].GlobalExitRoot))
 	})
 
@@ -1309,9 +1309,9 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             5,
 				GlobalExitRoot: targetGER,
 				BlockNum:       200,
+				BlockPos:       0,
 				CreatedAt:      1617185000,
 			},
 		}
@@ -1341,9 +1341,9 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             3,
 				GlobalExitRoot: common.HexToHash("0x123abc"),
 				BlockNum:       150,
+				BlockPos:       0,
 				CreatedAt:      1617185100,
 			},
 		}
@@ -1439,7 +1439,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             1,
+				BlockPos:       0,
 				GlobalExitRoot: common.HexToHash("0xabc123"),
 				BlockNum:       150,
 				CreatedAt:      1617185000,
@@ -1470,7 +1470,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             1,
+				BlockPos:       0,
 				GlobalExitRoot: common.HexToHash("0xabc123"),
 				BlockNum:       50,
 				CreatedAt:      1617185000,
@@ -1501,7 +1501,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             1,
+				BlockPos:       0,
 				GlobalExitRoot: common.HexToHash("0xabc123"),
 				BlockNum:       100,
 				CreatedAt:      1617185000,
@@ -1534,7 +1534,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             1,
+				BlockPos:       0,
 				GlobalExitRoot: targetGER,
 				BlockNum:       150,
 				CreatedAt:      1617185000,
@@ -1566,7 +1566,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 
 		expectedEvents := []*l2gersync.RemoveGEREvent{
 			{
-				ID:             1,
+				BlockPos:       0,
 				GlobalExitRoot: common.HexToHash("0xabc123"),
 				BlockNum:       0,
 				CreatedAt:      1617185000,
