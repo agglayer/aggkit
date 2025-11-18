@@ -269,6 +269,12 @@ func (f *SetSyncSegment) UpdateSyncingAfterDoingQuery(logQuery *LogQuery) *SetSy
 			default:
 				log.Fatal("Not supported")
 			}
+		} else {
+			// If the segment does not exist, just add it
+			newSegments.Add(SyncSegment{
+				ContractAddr: addr,
+				BlockRange:   logQuery.BlockRange,
+			})
 		}
 	}
 	return newSegments

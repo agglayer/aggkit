@@ -5,8 +5,12 @@ import (
 	"errors"
 	"math/big"
 	"testing"
+	"time"
 
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -14,8 +18,7 @@ import (
 
 var (
 	errStorageExample = errors.New("storage error")
-	// hash1             = common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
-	// hash2             = common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
+	addr1             = common.HexToAddress("0x1111111111111111111111111111111111111111")
 )
 
 func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
@@ -110,36 +113,60 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 	})
 }
 
-/*
 func TestEVMMultidownloader_FilterLogs(t *testing.T) {
-	t.Run("storage error returns error", func(t *testing.T) {
+	t.Run("FilterLogs context canceled waiting to catch up", func(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
 
 		query := ethereum.FilterQuery{
-			Addresses: []common.Address{hash1},
+			Addresses: []common.Address{addr1},
 			FromBlock: big.NewInt(100),
 			ToBlock:   big.NewInt(200),
 		}
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
 
-		// Mock IsAvailable to return true (logs are available)
-		testData.mdr.isAvailableFunc = func(logQuery interface{}) bool {
-			return true
-		}
-
-		testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
-			Return(nil, storageErr)
-
-		// Test
-		result, err := testData.mdr.FilterLogs(t.Context(), query)
+		result, err := testData.mdr.FilterLogs(ctx, query)
 
 		// Assertions
 		require.Nil(t, result)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "cannot get logs")
-		require.ErrorIs(t, err, storageErr)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 
+	t.Run("FilterLogs storage GetEthLogs error", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+
+		testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID:      "test_syncer",
+			ContractsAddr: []common.Address{addr1},
+			FromBlock:     100,
+			ToBlock:       aggkittypes.LatestBlock,
+		})
+
+		query := ethereum.FilterQuery{
+			Addresses: []common.Address{addr1},
+			FromBlock: big.NewInt(100),
+			ToBlock:   big.NewInt(200),
+		}
+		mdQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
+		// It updated the syncedSegments with the new one to be available
+		testData.mdr.syncedSegments = *testData.mdr.syncedSegments.UpdateSyncingAfterDoingQuery(&mdQuery)
+		testData.mockStorage.EXPECT().GetEthLogs(mock.Anything, mock.Anything).
+			Return(nil, errStorageExample)
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+		result, err := testData.mdr.FilterLogs(ctx, query)
+
+		// Assertions
+		require.Nil(t, result)
+		require.Error(t, err)
+		require.ErrorIs(t, err, errStorageExample)
+	})
+}
+
+/*
 		t.Run("logs available immediately, returns logs successfully", func(t *testing.T) {
 			// Setup
 			testData := newEVMMultidownloaderTestData(t, true)

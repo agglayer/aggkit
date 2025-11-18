@@ -51,7 +51,11 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 	for !dh.IsAvailable(logQuery) {
 		dh.log.Infof("EVMMultidownloader.FilterLogs: waiting %s for logs to be available: %s",
 			dh.cfg.WaitPeriodToCheckCatchUp.String(), logQuery.String())
-		time.Sleep(dh.cfg.WaitPeriodToCheckCatchUp.Duration)
+		select {
+		case <-time.After(dh.cfg.WaitPeriodToCheckCatchUp.Duration):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: context done while waiting for logs to be available: %w", ctx.Err())
+		}
 	}
 	logs, err := dh.storage.GetEthLogs(nil, logQuery)
 	if err != nil {
