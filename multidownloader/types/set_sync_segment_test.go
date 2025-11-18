@@ -102,7 +102,7 @@ func TestSetSyncSegment_GetByContract(t *testing.T) {
 func TestSetSyncSegment_Subtract(t *testing.T) {
 	t.Run("nil segments", func(t *testing.T) {
 		set := NewSetSyncSegment()
-		result := set.Subtract(nil)
+		result := set.SubtractSegments(nil)
 		require.Equal(t, &set, result)
 	})
 
@@ -123,7 +123,7 @@ func TestSetSyncSegment_Subtract(t *testing.T) {
 		set1.Add(segment1)
 		set2.Add(segment2)
 
-		result := set1.Subtract(&set2)
+		result := set1.SubtractSegments(&set2)
 		require.NotNil(t, result)
 	})
 }
@@ -284,10 +284,10 @@ func TestSetSyncSegment_UpdateBlockRange(t *testing.T) {
 func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 	t.Run("nil set or query", func(t *testing.T) {
 		var set *SetSyncSegment
-		require.NoError(t, set.ReduceSegments(nil))
+		require.NoError(t, set.SubtractLogQuery(nil))
 
 		validSet := NewSetSyncSegment()
-		require.NoError(t, validSet.ReduceSegments(nil))
+		require.NoError(t, validSet.SubtractLogQuery(nil))
 		// Should not panic
 	})
 
@@ -305,7 +305,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 			BlockRange: aggkitcommon.NewBlockRange(1, 30),
 		}
 
-		err := set.ReduceSegments(logQuery)
+		err := set.SubtractLogQuery(logQuery)
 		require.NoError(t, err)
 		res := set.GetByContract(addr)
 		require.NotNil(t, res)
@@ -327,7 +327,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 			BlockRange: aggkitcommon.NewBlockRange(1, 200),
 		}
 
-		err := set.ReduceSegments(logQuery)
+		err := set.SubtractLogQuery(logQuery)
 		require.NoError(t, err)
 		res := set.GetByContract(addr)
 		require.Nil(t, res)
@@ -335,7 +335,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 
 	t.Run("bad removed segment (middle segment)", func(t *testing.T) {
 		set := NewSetSyncSegment()
-		addr := common.HexToAddress("0x123")
+		addr := common.HexToAddress("0x123124543423")
 		segment := SyncSegment{
 			ContractAddr: addr,
 			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
@@ -347,7 +347,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 			BlockRange: aggkitcommon.NewBlockRange(10, 20),
 		}
 
-		err := set.ReduceSegments(logQuery)
+		err := set.SubtractLogQuery(logQuery)
 		require.Error(t, err)
 	})
 }

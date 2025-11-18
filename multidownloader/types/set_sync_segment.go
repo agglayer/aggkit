@@ -33,6 +33,19 @@ func NewSetSyncSegment() SetSyncSegment {
 	}
 }
 
+// NewSetSyncSegmentFromLogQuery creates a new SetSyncSegment from a LogQuery
+func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) SetSyncSegment {
+	set := NewSetSyncSegment()
+	for _, addr := range logQuery.Addrs {
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   logQuery.BlockRange,
+		}
+		set.Add(segment)
+	}
+	return set
+}
+
 // Segments returns all SyncSegments in the SetSyncSegment
 func (s *SetSyncSegment) Segments() []SyncSegment {
 	result := make([]SyncSegment, 0, len(s.segments))
@@ -83,28 +96,40 @@ func (s *SetSyncSegment) GetByContract(addr common.Address) *SyncSegment {
 	return nil
 }
 
-// Subtract removes the block ranges defined in segments from the current SetSyncSegment
+// SubtractSegments removes the block ranges defined in segments from the current SetSyncSegment
 // This is the pending data to synchronize
-func (f *SetSyncSegment) Subtract(segments *SetSyncSegment) *SetSyncSegment {
-	result := NewSetSyncSegment()
-	if segments == nil {
-		return f
+func (f *SetSyncSegment) SubtractSegments(segments *SetSyncSegment) error {
+	if f == nil || segments == nil {
+		return nil
 	}
-
-	for _, current := range f.segments {
-		toSub := segments.GetByContract(current.ContractAddr)
-		if toSub != nil {
-			blockRanges := current.BlockRange.Subtract(toSub.BlockRange)
-			// Add as many segments as blockRange generated (0, 1 or 2)
-			for _, br := range blockRanges {
-				result.Add(current.NewBlockRange(br))
+	newSegments := f.Clone()
+	for _, segment := range segments.Segments() {
+		previousSegment := newSegments.GetByContract(segment.ContractAddr)
+		if previousSegment != nil {
+			brs := previousSegment.BlockRange.Subtract(segment.BlockRange)
+			switch len(brs) {
+			case 0:
+				newSegments.Remove(previousSegment)
+			case 1:
+				newSegments.UpdateBlockRange(previousSegment, brs[0])
+			default:
+				return fmt.Errorf("setSyncSegment.SubtractSegments: cannot split segment for %s into multiple ranges  %+v",
+					segment.String(), brs)
 			}
-		} else {
-			// Keep current
-			result.Add(*current)
 		}
 	}
-	return &result
+	f.segments = newSegments.segments
+	return nil
+}
+
+// SubtractLogQuery removes the block ranges defined in the logQuery from the current SetSyncSegment
+// This is used to update the pendingSync after doing a FilterLogs query
+func (f *SetSyncSegment) SubtractLogQuery(logQuery *LogQuery) error {
+	if logQuery == nil {
+		return nil
+	}
+	newSegments := NewSetSyncSegmentFromLogQuery(logQuery)
+	return f.SubtractSegments(&newSegments)
 }
 
 // TotalBlocks returns the total number pending to synchronize
@@ -249,32 +274,6 @@ func (f *SetSyncSegment) UpdateBlockRange(segment *SyncSegment, newBlockRange ag
 			return
 		}
 	}
-}
-
-// ReduceSegments removes the block ranges defined in the logQuery from the current SetSyncSegment
-// This is used to update the pendingSync after doing a FilterLogs query
-func (f *SetSyncSegment) ReduceSegments(logQuery *LogQuery) error {
-	if f == nil || logQuery == nil {
-		return nil
-	}
-	newSegments := f.Clone()
-	for _, addr := range logQuery.Addrs {
-		segment := newSegments.GetByContract(addr)
-		if segment != nil {
-			brs := segment.BlockRange.Subtract(logQuery.BlockRange)
-			switch len(brs) {
-			case 0:
-				newSegments.Remove(segment)
-			case 1:
-				newSegments.UpdateBlockRange(segment, brs[0])
-			default:
-				return fmt.Errorf("setSyncSegment.RemoveLogQuerySegment: cannot split segment for %s into multiple ranges  %+v",
-					logQuery.String(), brs)
-			}
-		}
-	}
-	f.segments = newSegments.segments
-	return nil
 }
 
 // ExtendSegments extends the current SetSyncSegment with the block ranges defined in the logQuery

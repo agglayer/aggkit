@@ -245,7 +245,11 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 		return err
 	}
 	// What is pending to download?
-	dh.pendingSync = syncSegments.Subtract(&storageSyncSegments)
+	dh.pendingSync = syncSegments.Clone()
+	err = dh.pendingSync.SubtractSegments(&storageSyncSegments)
+	if err != nil {
+		return fmt.Errorf("Initialize: cannot calculate pendingSync: %w", err)
+	}
 	dh.syncedSegments = storageSyncSegments
 	dh.isInitialized = true
 	return nil
@@ -439,7 +443,7 @@ func (dh *EVMMultidownloader) updateSyncedSegments(ctx context.Context,
 	defer dh.mutex.Unlock()
 	// Update synced segments (memory status of syncing)
 
-	err := dh.pendingSync.ReduceSegments(logQueryData)
+	err := dh.pendingSync.SubtractLogQuery(logQueryData)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot remove log query segment from pendingSync: %w", err)
 	}
