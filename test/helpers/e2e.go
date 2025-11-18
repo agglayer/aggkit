@@ -169,7 +169,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = aggkitsync.NewAdaptEthClient(l1Client.Client())
+		multidownloaderClient = aggkitsync.NewAdapterEthClientToMultidownloader(l1Client.Client())
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,

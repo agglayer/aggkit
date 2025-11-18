@@ -624,7 +624,7 @@ func runL1MultiDownloaderIfNeeded(
 	}
 	// If it's disable I create a direct eth client
 	if !cfg.Enabled {
-		return aggkitsync.NewAdaptEthClient(l1Client), nil
+		return aggkitsync.NewAdapterEthClientToMultidownloader(l1Client), nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 

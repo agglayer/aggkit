@@ -84,7 +84,7 @@ func TestEVMMultidownloader(t *testing.T) {
 			multidownloader = mdr
 			dbPath = "/tmp/l1infotree_md.sqlite"
 		} else {
-			multidownloader = aggkitsync.NewAdaptEthClient(ethClient)
+			multidownloader = aggkitsync.NewAdapterEthClientToMultidownloader(ethClient)
 			dbPath = "/tmp/l1infotree_eth.sqlite"
 		}
 		reorgDetector, err := reorgdetector.New(ethClient, reorgdetector.Config{

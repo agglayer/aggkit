@@ -95,7 +95,7 @@ func TestE2E(t *testing.T) {
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = sync.NewAdaptEthClient(client.Client())
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
 	}
 
 	cfg := l1infotreesync.Config{
@@ -179,7 +179,7 @@ func TestWithReorgs(t *testing.T) {
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = sync.NewAdaptEthClient(client.Client())
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
 	}
 
 	cfg := l1infotreesync.Config{
@@ -331,7 +331,7 @@ func TestStressAndReorgs(t *testing.T) {
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = sync.NewAdaptEthClient(client.Client())
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
 	}
 
 	cfg := l1infotreesync.Config{
