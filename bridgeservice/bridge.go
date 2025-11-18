@@ -14,6 +14,7 @@ package bridgeservice
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -1543,24 +1544,9 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 // isValidHexHash validates that a string is a valid 32-byte hex hash
 // Expected format: 0x followed by exactly 64 hex characters (total 66 chars)
 func isValidHexHash(s string) bool {
-	// Check length: 0x (2 chars) + 64 hex chars = 66 total
-	if len(s) != hexHashLength {
+	if len(s) != hexHashLength || !strings.HasPrefix(s, "0x") {
 		return false
 	}
-
-	// Check 0x prefix
-	if !strings.HasPrefix(s, "0x") {
-		return false
-	}
-
-	// Check that remaining characters are valid hex
-	for _, char := range s[2:] {
-		if (char < '0' || char > '9') &&
-			(char < 'a' || char > 'f') &&
-			(char < 'A' || char > 'F') {
-			return false
-		}
-	}
-
-	return true
+	_, err := hex.DecodeString(s[2:])
+	return err == nil
 }
