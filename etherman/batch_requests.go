@@ -10,6 +10,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
+	"golang.org/x/sync/errgroup"
 )
 
 // blockRawEth is eth_getBlockByNumber result structure
@@ -82,8 +83,9 @@ func RetrieveBlockHeadersBatch(ctx context.Context,
 	blockNumbers map[uint64]struct{},
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
+		ctx,
 		log,
-		func(blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
+		func(ctx context.Context, blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
 			return retrieveBlockHeadersInBatch(ctx, log, rpcClient, blocks)
 		}, blockNumbers, batchRequestLimitHTTP, maxConcurrency)
 }
@@ -96,8 +98,9 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 	blockNumbers map[uint64]struct{},
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
+		ctx,
 		log,
-		func(blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
+		func(ctx context.Context, blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
 			result := make(map[uint64]*aggkittypes.BlockHeader, len(blocks))
 			for blockNumber := range blocks {
 				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
@@ -153,45 +156,35 @@ func retrieveBlockHeadersInBatch(ctx context.Context,
 
 // retrieveBlockHeadersInBatchParallel split request into chuncks and execute it in parallel
 func retrieveBlockHeadersInBatchParallel(
+	ctx context.Context,
 	logger aggkitcommon.Logger,
-	funcRetrieval func(map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error),
+	funcRetrieval func(context.Context, map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error),
 	blockNumbers map[uint64]struct{},
 	chunckSize, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
-	results := make(map[uint64]*aggkittypes.BlockHeader)
-	errs := make([]error, 0)
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxConcurrency)
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
 	chuncks := splitBlockNumbersIntoChunks(blockNumbers, chunckSize)
+	results := make(map[uint64]*aggkittypes.BlockHeader)
 	for _, chunck := range chuncks {
-		wg.Add(1)
-		sem <- struct{}{} // get an slot
-		go func(map[uint64]struct{}) {
-			defer wg.Done()
-			defer func() { <-sem }() // free slot
-			headers, err := funcRetrieval(chunck)
+		g.Go(func() error {
+			headers, err := funcRetrieval(ctx, chunck)
 			if err != nil {
-				mu.Lock()
-				defer mu.Unlock()
-				errs = append(errs, fmt.Errorf("RetrieveBlockHeadersInBatchParallel:  %w",
-					err))
-
-				return
+				return fmt.Errorf("RetrieveBlockHeadersInBatchParallel:  %w", err)
 			}
 			mu.Lock()
 			defer mu.Unlock()
 			for blockNumber, header := range headers {
 				results[blockNumber] = header
 			}
-		}(chunck)
+			return nil
+		})
 	}
-	wg.Wait()
-
+	if err := g.Wait(); err != nil {
+		return results, err
+	}
 	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d",
 		len(blockNumbers))
-	if len(errs) > 0 {
-		return results, fmt.Errorf("retrieveRPCBlockHeadersInParallel: errors: %v", errs)
-	}
 	return results, nil
 }
 
