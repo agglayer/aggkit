@@ -207,3 +207,68 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 		require.Contains(t, err.Error(), "legacy error")
 	})
 }
+
+func TestSplitBlockNumbersIntoChunks(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []uint64
+		chunkSize int
+		expected  [][]uint64
+	}{
+
+		{
+			name:      "single chunk",
+			input:     []uint64{1, 2, 3},
+			chunkSize: 5,
+			expected: [][]uint64{
+				{1, 2, 3},
+			},
+		},
+		{
+			name:      "single exact chunk",
+			input:     []uint64{1, 2, 3},
+			chunkSize: 3,
+			expected: [][]uint64{
+				{1, 2, 3},
+			},
+		},
+		{
+			name:      "single exact chunk",
+			input:     []uint64{1, 2, 3, 4},
+			chunkSize: 3,
+			expected: [][]uint64{
+				{1, 2, 3},
+				{4},
+			},
+		},
+		{
+			name:      "empty input",
+			input:     []uint64{},
+			chunkSize: 3,
+			expected:  [][]uint64{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blockMap := make(map[uint64]struct{})
+			for _, bn := range tt.input {
+				blockMap[bn] = struct{}{}
+			}
+			chunks := splitBlockNumbersIntoChunks(blockMap, tt.chunkSize)
+
+			var result [][]uint64
+			for _, chunk := range chunks {
+				var chunkList []uint64
+				for bn := range chunk {
+					chunkList = append(chunkList, bn)
+				}
+				result = append(result, chunkList)
+			}
+
+			assert.Equal(t, len(tt.expected), len(result), "Number of chunks should match: "+tt.name)
+			for i := range tt.expected {
+				assert.ElementsMatch(t, tt.expected[i], result[i], "Chunk %d should match:", i, tt.name)
+			}
+		})
+	}
+}

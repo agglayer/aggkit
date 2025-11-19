@@ -196,20 +196,19 @@ func retrieveBlockHeadersInBatchParallel(
 }
 
 func splitBlockNumbersIntoChunks(blockNumbers map[uint64]struct{}, chunkSize int) []map[uint64]struct{} {
-	chunks := make([]map[uint64]struct{}, 0)
+	chunks := make([]map[uint64]struct{}, (len(blockNumbers)+chunkSize-1)/chunkSize)
 	currentChunk := make(map[uint64]struct{})
-	count := 0
+	idx := 0
 	for bn := range blockNumbers {
 		currentChunk[bn] = struct{}{}
-		count++
-		if count >= chunkSize {
-			chunks = append(chunks, currentChunk)
+		if len(currentChunk) >= chunkSize {
+			chunks[idx] = currentChunk
+			idx++
 			currentChunk = make(map[uint64]struct{})
-			count = 0
 		}
 	}
 	if len(currentChunk) > 0 {
-		chunks = append(chunks, currentChunk)
+		chunks[idx] = currentChunk
 	}
 	return chunks
 }
