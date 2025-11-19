@@ -334,10 +334,8 @@ func TestBuildAppender(t *testing.T) {
 					return types.Log{}, err
 				}
 
-				leafIndex := uint32(42)
-				sourceNetwork := uint32(15)
-
-				data, err := event.Inputs.Pack(leafIndex, sourceNetwork)
+				globalIndexBytes := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+				data, err := event.Inputs.Pack(globalIndexBytes)
 				if err != nil {
 					return types.Log{}, err
 				}

@@ -311,12 +311,11 @@ type UnsetClaim struct {
 // SetClaim representation of a SetClaim event,
 // that is emitted by the bridge contract when a claim is set.
 type SetClaim struct {
-	BlockNum            uint64      `meddler:"block_num"`
-	BlockPos            uint64      `meddler:"block_pos"`
-	TxHash              common.Hash `meddler:"tx_hash,hash"`
-	LeafIndex           uint32      `meddler:"leaf_index"`
-	SourceBridgeNetwork uint32      `meddler:"source_bridge_network"`
-	CreatedAt           uint64      `meddler:"created_at"`
+	BlockNum    uint64      `meddler:"block_num"`
+	BlockPos    uint64      `meddler:"block_pos"`
+	TxHash      common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
+	CreatedAt   uint64      `meddler:"created_at"`
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events

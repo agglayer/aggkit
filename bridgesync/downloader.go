@@ -50,7 +50,7 @@ var (
 		"UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)",
 	))
 	setClaimEventSignature = crypto.Keccak256Hash([]byte(
-		"SetClaim(uint32,uint32)",
+		"SetClaim(bytes32)",
 	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
@@ -391,12 +391,14 @@ func buildSetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func
 			return fmt.Errorf("error parsing SetClaim event log %+v: %w", l, err)
 		}
 
+		// Convert bytes32 to big.Int
+		globalIndex := new(big.Int).SetBytes(event.GlobalIndex[:])
+
 		b.Events = append(b.Events, Event{SetClaim: &SetClaim{
-			BlockNum:            b.Num,
-			BlockPos:            uint64(l.Index),
-			TxHash:              l.TxHash,
-			LeafIndex:           event.LeafIndex,
-			SourceBridgeNetwork: event.SourceNetwork,
+			BlockNum:    b.Num,
+			BlockPos:    uint64(l.Index),
+			TxHash:      l.TxHash,
+			GlobalIndex: globalIndex,
 		}})
 		return nil
 	}
