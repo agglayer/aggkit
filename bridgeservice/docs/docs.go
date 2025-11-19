@@ -459,6 +459,12 @@ const docTemplate = `{
                         "description": "Filter by specific Global Exit Root hash",
                         "name": "global_exit_root",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of events to return (default: 50)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {

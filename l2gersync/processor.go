@@ -194,11 +194,12 @@ func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 }
 
 // GetRemoveGEREvents retrieves remove GER events from the database with optional filters
-// When no globalExitRoot filter is provided, returns the 50 most recent remove GER events
-// When globalExitRoot filter is provided, returns all matching events for that GER
+// Returns remove GER events limited by the limit parameter
+// If globalExitRoot is provided, filters by that GER as well
 func (p *processor) GetRemoveGEREvents(
 	ctx context.Context,
 	globalExitRoot *ethcommon.Hash,
+	limit uint32,
 ) ([]*RemoveGEREvent, error) {
 	var (
 		events []*RemoveGEREvent
@@ -206,13 +207,15 @@ func (p *processor) GetRemoveGEREvents(
 		args   []interface{}
 	)
 
-	// Check if no filters are provided - return 50 most recent events
+	// Build query based on whether globalExitRoot filter is provided
 	if globalExitRoot == nil {
-		query = "SELECT * FROM remove_ger_events ORDER BY block_num DESC, block_pos DESC LIMIT 50"
+		// No filter - return most recent events with limit
+		query = "SELECT * FROM remove_ger_events ORDER BY block_num DESC, block_pos DESC LIMIT $1"
+		args = []interface{}{limit}
 	} else {
-		// Filter by global exit root only
-		query = "SELECT * FROM remove_ger_events WHERE global_exit_root = $1 ORDER BY block_num, block_pos"
-		args = []interface{}{globalExitRoot.Hex()}
+		// Filter by global exit root and apply limit
+		query = "SELECT * FROM remove_ger_events WHERE global_exit_root = $1 ORDER BY block_num DESC, block_pos DESC LIMIT $2"
+		args = []interface{}{globalExitRoot.Hex(), limit}
 	}
 
 	if err := meddler.QueryAll(p.database, &events, query, args...); err != nil {

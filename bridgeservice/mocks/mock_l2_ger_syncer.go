@@ -82,9 +82,9 @@ func (_c *L2GERSyncer_GetFirstGERAfterL1InfoTreeIndex_Call) RunAndReturn(run fun
 	return _c
 }
 
-// GetRemoveGEREvents provides a mock function with given fields: ctx, globalExitRoot
-func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context, globalExitRoot *common.Hash) ([]*l2gersync.RemoveGEREvent, error) {
-	ret := _m.Called(ctx, globalExitRoot)
+// GetRemoveGEREvents provides a mock function with given fields: ctx, globalExitRoot, limit
+func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context, globalExitRoot *common.Hash, limit uint32) ([]*l2gersync.RemoveGEREvent, error) {
+	ret := _m.Called(ctx, globalExitRoot, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRemoveGEREvents")
@@ -92,19 +92,19 @@ func (_m *L2GERSyncer) GetRemoveGEREvents(ctx context.Context, globalExitRoot *c
 
 	var r0 []*l2gersync.RemoveGEREvent
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash) ([]*l2gersync.RemoveGEREvent, error)); ok {
-		return rf(ctx, globalExitRoot)
+	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, uint32) ([]*l2gersync.RemoveGEREvent, error)); ok {
+		return rf(ctx, globalExitRoot, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash) []*l2gersync.RemoveGEREvent); ok {
-		r0 = rf(ctx, globalExitRoot)
+	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, uint32) []*l2gersync.RemoveGEREvent); ok {
+		r0 = rf(ctx, globalExitRoot, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*l2gersync.RemoveGEREvent)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *common.Hash) error); ok {
-		r1 = rf(ctx, globalExitRoot)
+	if rf, ok := ret.Get(1).(func(context.Context, *common.Hash, uint32) error); ok {
+		r1 = rf(ctx, globalExitRoot, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -120,13 +120,14 @@ type L2GERSyncer_GetRemoveGEREvents_Call struct {
 // GetRemoveGEREvents is a helper method to define mock.On call
 //   - ctx context.Context
 //   - globalExitRoot *common.Hash
-func (_e *L2GERSyncer_Expecter) GetRemoveGEREvents(ctx interface{}, globalExitRoot interface{}) *L2GERSyncer_GetRemoveGEREvents_Call {
-	return &L2GERSyncer_GetRemoveGEREvents_Call{Call: _e.mock.On("GetRemoveGEREvents", ctx, globalExitRoot)}
+//   - limit uint32
+func (_e *L2GERSyncer_Expecter) GetRemoveGEREvents(ctx interface{}, globalExitRoot interface{}, limit interface{}) *L2GERSyncer_GetRemoveGEREvents_Call {
+	return &L2GERSyncer_GetRemoveGEREvents_Call{Call: _e.mock.On("GetRemoveGEREvents", ctx, globalExitRoot, limit)}
 }
 
-func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Run(run func(ctx context.Context, globalExitRoot *common.Hash)) *L2GERSyncer_GetRemoveGEREvents_Call {
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Run(run func(ctx context.Context, globalExitRoot *common.Hash, limit uint32)) *L2GERSyncer_GetRemoveGEREvents_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*common.Hash))
+		run(args[0].(context.Context), args[1].(*common.Hash), args[2].(uint32))
 	})
 	return _c
 }
@@ -136,7 +137,7 @@ func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Return(_a0 []*l2gersync.RemoveGER
 	return _c
 }
 
-func (_c *L2GERSyncer_GetRemoveGEREvents_Call) RunAndReturn(run func(context.Context, *common.Hash) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREvents_Call {
+func (_c *L2GERSyncer_GetRemoveGEREvents_Call) RunAndReturn(run func(context.Context, *common.Hash, uint32) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREvents_Call {
 	_c.Call.Return(run)
 	return _c
 }

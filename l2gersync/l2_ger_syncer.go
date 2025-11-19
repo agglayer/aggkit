@@ -171,6 +171,7 @@ func (s *L2GERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 func (s *L2GERSync) GetRemoveGEREvents(
 	ctx context.Context,
 	globalExitRoot *common.Hash,
+	limit uint32,
 ) ([]*RemoveGEREvent, error) {
-	return s.processor.GetRemoveGEREvents(ctx, globalExitRoot)
+	return s.processor.GetRemoveGEREvents(ctx, globalExitRoot, limit)
 }

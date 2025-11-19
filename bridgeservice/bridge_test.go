@@ -1286,7 +1286,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		}
 
 		bridgeMocks.injectedGERs.EXPECT().
-			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil)).
+			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(50)).
 			Return(expectedEvents, nil)
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
@@ -1317,7 +1317,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		}
 
 		bridgeMocks.injectedGERs.EXPECT().
-			GetRemoveGEREvents(mock.Anything, &targetGER).
+			GetRemoveGEREvents(mock.Anything, &targetGER, mock.AnythingOfType("uint32")).
 			Return(expectedEvents, nil)
 
 		queryParams := url.Values{}
@@ -1351,7 +1351,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		bridgeMocks.injectedGERs.EXPECT().
-			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil)).
+			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(50)).
 			Return(nil, errors.New("database error"))
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
@@ -1372,6 +1372,49 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		require.Equal(t, "L2 GER syncer is not available", response["error"])
+	})
+
+	t.Run("GetRemoveGEREvents with custom limit", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedEvents := []*l2gersync.RemoveGEREvent{
+			{
+				GlobalExitRoot: common.HexToHash("0xabc123"),
+				BlockNum:       100,
+				BlockPos:       0,
+				CreatedAt:      1617184800,
+			},
+		}
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(10)).
+			Return(expectedEvents, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set("limit", "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.RemoveGEREventsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedEvents), response.Count)
+		require.Len(t, response.RemoveGEREvents, len(expectedEvents))
+	})
+
+	t.Run("GetRemoveGEREvents with invalid limit", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set("limit", "0")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "limit must be greater than 0")
 	})
 }
 

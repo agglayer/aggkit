@@ -41,8 +41,8 @@ import (
 )
 
 const (
-	// hexHashLength is the expected length of a hex-encoded 32-byte hash including 0x prefix
-	hexHashLength = 66
+	// hexHashLengthWithoutPrefix is the expected length of a hex-encoded 32-byte hash without 0x prefix
+	hexHashLengthWithoutPrefix = 64
 	// BridgeV1Prefix is the url prefix for the bridge service
 	BridgeV1Prefix = "/bridge/v1"
 
@@ -56,6 +56,9 @@ const (
 	leafIndexParam       = "leaf_index"
 	includeAllFields     = "include_all_fields"
 	globalIndexParam     = "global_index"
+	limitParam           = "limit"
+	// DefaultRemoveGERLimit is the default number of remove GER events to return when no limit is specified
+	DefaultRemoveGERLimit = uint32(50)
 
 	// mainnetNetworkID is the network ID of L1 network
 	mainnetNetworkID    = 0
@@ -1153,9 +1156,10 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 //
 // @Summary Get remove GER events
 // @Description Returns a list of remove GER events, optionally filtered by specific GER.
-// When no filter is provided, returns the 50 most recent events.
+// Results are limited by the limit parameter (default 50). If global_exit_root is provided, filters by that GER as well.
 // @Tags ger-events
 // @Param global_exit_root query string false "Filter by specific Global Exit Root hash"
+// @Param limit query int false "Maximum number of events to return (default: 50)"
 // @Produce json
 // @Success 200 {object} types.RemoveGEREventsResult "List of remove GER events"
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -1191,7 +1195,7 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		if !isValidHexHash(globalExitRootStr) {
 			statusCode = http.StatusBadRequest
 			c.JSON(statusCode, gin.H{
-				"error": "invalid global_exit_root parameter, must be a valid 32-byte hex hash (66 characters including 0x prefix)",
+				"error": "invalid global_exit_root parameter, must be a valid hex hash",
 			})
 			return
 		}
@@ -1199,8 +1203,23 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		globalExitRoot = &ger
 	}
 
+	// Parse limit parameter (defaults to 50 if not provided)
+	limit, err := parseUintQuery(c, limitParam, false, DefaultRemoveGERLimit)
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate limit (must be positive)
+	if limit == 0 {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "limit must be greater than 0"})
+		return
+	}
+
 	// Get filtered remove events using single consolidated function
-	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot)
+	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot, limit)
 	if err != nil {
 		b.logger.Errorf("failed to get remove GER events: %v", err)
 		statusCode = http.StatusInternalServerError
@@ -1511,11 +1530,17 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 }
 
 // isValidHexHash validates that a string is a valid 32-byte hex hash
-// Expected format: 0x followed by exactly 64 hex characters (total 66 chars)
+// Accepts both formats: with 0x prefix (66 chars) or without prefix (64 chars)
 func isValidHexHash(s string) bool {
-	if len(s) != hexHashLength || !strings.HasPrefix(s, "0x") {
+	hashStr := s
+	if strings.HasPrefix(s, "0x") {
+		hashStr = s[2:]
+	}
+
+	// Check length: should be 64 hex characters (32 bytes)
+	if len(hashStr) != hexHashLengthWithoutPrefix {
 		return false
 	}
-	_, err := hex.DecodeString(s[2:])
+	_, err := hex.DecodeString(hashStr)
 	return err == nil
 }

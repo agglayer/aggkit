@@ -787,6 +787,10 @@ paths:
         in: query
         name: global_exit_root
         type: string
+      - description: 'Maximum number of events to return (default: 50)'
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
