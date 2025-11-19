@@ -11,7 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -45,7 +45,7 @@ func TestBuildCertificate(t *testing.T) {
 			name: "Valid certificate with bridges and claims",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayertypes.LeafTypeAsset.Uint8(),
+					LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -85,7 +85,7 @@ func TestBuildCertificate(t *testing.T) {
 				NewLocalExitRoot:  common.HexToHash("0x789"),
 				BridgeExits: []*agglayertypes.BridgeExit{
 					{
-						LeafType: agglayertypes.LeafTypeAsset,
+						LeafType: bridgetypes.LeafTypeAsset,
 						TokenInfo: &agglayertypes.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x123"),
@@ -99,7 +99,7 @@ func TestBuildCertificate(t *testing.T) {
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
 					{
 						BridgeExit: &agglayertypes.BridgeExit{
-							LeafType: agglayertypes.LeafTypeAsset,
+							LeafType: bridgetypes.LeafTypeAsset,
 							TokenInfo: &agglayertypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x1234"),
@@ -169,7 +169,7 @@ func TestBuildCertificate(t *testing.T) {
 			name: "Error getting imported bridge exits",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayertypes.LeafTypeAsset.Uint8(),
+					LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -325,7 +325,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 			},
 			expectedParams: nil,
 		},
@@ -340,7 +340,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(true, nil).Once()
 			},
 			expectedParams: nil,
@@ -356,7 +356,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 10}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(false, errors.New("some error")).Once()
 			},
 			expectedParams: nil,
@@ -389,7 +389,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						RollupExitRoot:  rer2,
 						MainnetExitRoot: mer2,
 					}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(1)).Return(true, nil).Once()
@@ -411,7 +411,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					},
 				},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []bridgetypes.Unclaim{},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
 			},
@@ -434,7 +434,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						RollupExitRoot:  rer,
 						MainnetExitRoot: mer,
 					}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
@@ -454,7 +454,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: common.HexToHash("0x2"),
 						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []bridgetypes.Unclaim{},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
 			},
@@ -470,7 +470,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
 					[]bridgesync.Bridge{{}}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(true, nil).Once()
 			},
 			expectedError: "GER mismatch",
@@ -502,7 +502,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						RollupExitRoot:  rer,
 						MainnetExitRoot: mer,
 					}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
@@ -521,7 +521,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: common.HexToHash("0x2"),
 						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []bridgetypes.Unclaim{},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
 			},

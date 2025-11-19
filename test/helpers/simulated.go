@@ -7,8 +7,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayermanager"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -108,7 +108,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		return err
 	}
 
-	_, err = bridgeProxyContract.Initialize0(
+	_, err = bridgeProxyContract.Initialize(
 		s.UserAuth,
 		networkID,
 		common.Address{}, // gasTokenAddressMainnet

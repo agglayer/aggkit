@@ -172,17 +172,9 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 	if c == nil {
 		return 0
 	}
-	sizeBridges := float64(0)
-	for _, bridge := range c.Bridges {
-		sizeBridges += agglayertypes.EstimatedBridgeExitSize
-		sizeBridges += float64(len(bridge.Metadata))
-	}
-
-	sizeClaims := float64(0)
-	for _, claim := range c.Claims {
-		sizeClaims += agglayertypes.EstimatedImportedBridgeExitSize
-		sizeClaims += float64(len(claim.Metadata))
-	}
+	// common.HashLength represents the size of a metadata hash in bytes
+	sizeBridges := (agglayertypes.EstimatedBridgeExitSize + common.HashLength) * float64(len(c.Bridges))
+	sizeClaims := (agglayertypes.EstimatedImportedBridgeExitSize + common.HashLength) * float64(len(c.Claims))
 
 	sizeAggchainData := float64(0)
 	switch c.CertificateType {

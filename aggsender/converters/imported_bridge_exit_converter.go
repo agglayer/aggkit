@@ -7,6 +7,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -49,9 +50,9 @@ func ConvertToImportedBridgeExitWithoutClaimData(
 // Returns:
 //   - *agglayertypes.BridgeExit: The constructed bridge exit object with core claim data.
 func ConvertBridgeExitFromClaim(claim bridgesync.Claim) *agglayertypes.BridgeExit {
-	leafType := agglayertypes.LeafTypeAsset
+	leafType := bridgetypes.LeafTypeAsset
 	if claim.IsMessage {
-		leafType = agglayertypes.LeafTypeMessage
+		leafType = bridgetypes.LeafTypeMessage
 	}
 	metaData := convertBridgeMetadata(claim.Metadata)
 

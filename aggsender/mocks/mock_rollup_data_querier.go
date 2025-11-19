@@ -5,7 +5,7 @@ package mocks
 import (
 	big "math/big"
 
-	agglayermanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	agglayermanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayermanager"
 
 	mock "github.com/stretchr/testify/mock"
 )

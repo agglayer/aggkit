@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -18,7 +19,7 @@ func createTestImportedBridgeExitWithBlockNumber(t *testing.T) []*agglayer.Impor
 			BlockNumber: 170,
 			ImportedBridgeExit: &agglayer.ImportedBridgeExit{
 				BridgeExit: &agglayer.BridgeExit{
-					LeafType: agglayer.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayer.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
