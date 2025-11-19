@@ -200,9 +200,11 @@ func (p *processor) GetRemoveGEREvents(
 	ctx context.Context,
 	globalExitRoot *ethcommon.Hash,
 ) ([]*RemoveGEREvent, error) {
-	var events []*RemoveGEREvent
-	var query string
-	var args []interface{}
+	var (
+		events []*RemoveGEREvent
+		query  string
+		args   []interface{}
+	)
 
 	// Check if no filters are provided - return 50 most recent events
 	if globalExitRoot == nil {

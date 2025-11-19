@@ -443,7 +443,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/remove-ger-events": {
+        "/removed-gers": {
             "get": {
                 "description": "Returns a list of remove GER events, optionally filtered by specific GER.",
                 "produces": [

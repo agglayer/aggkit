@@ -204,7 +204,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
-		bridgeGroup.GET("/remove-ger-events", b.GetRemoveGEREventsHandler)
+		bridgeGroup.GET("/removed-gers", b.GetRemoveGEREventsHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -1161,7 +1161,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
-// @Router /remove-ger-events [get]
+// @Router /removed-gers [get]
 func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	b.logger.Debugf("GetRemoveGEREvents request received")
 
@@ -1201,7 +1201,6 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 
 	// Get filtered remove events using single consolidated function
 	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot)
-
 	if err != nil {
 		b.logger.Errorf("failed to get remove GER events: %v", err)
 		statusCode = http.StatusInternalServerError

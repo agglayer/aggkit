@@ -1290,7 +1290,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 			Return(expectedEvents, nil)
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/remove-ger-events", BridgeV1Prefix), nil)
+			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.RemoveGEREventsResult
@@ -1324,7 +1324,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		queryParams.Set("global_exit_root", targetGER.Hex())
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/remove-ger-events?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.RemoveGEREventsResult
@@ -1342,7 +1342,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		queryParams.Set("global_exit_root", "invalid_hash")
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/remove-ger-events?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid global_exit_root parameter")
 	})
@@ -1355,7 +1355,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 			Return(nil, errors.New("database error"))
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/remove-ger-events", BridgeV1Prefix), nil)
+			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get remove GER events")
 	})
@@ -1365,7 +1365,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		bridgeMocks.bridge.injectedGERs = nil
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
-			fmt.Sprintf("%s/remove-ger-events", BridgeV1Prefix), nil)
+			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
 		var response gin.H
