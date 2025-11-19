@@ -348,12 +348,17 @@ func (dh *EVMMultidownloader) sync(ctx context.Context,
 // 	return dh.pendingSync.Finished(), nil
 // }
 
-func getBlockNumbers(logs []types.Log) map[uint64]struct{} {
+func getBlockNumbers(logs []types.Log) []uint64 {
 	blockNumbers := make(map[uint64]struct{})
+	result := make([]uint64, 0)
 	for _, lg := range logs {
+		if _, exists := blockNumbers[lg.BlockNumber]; exists {
+			continue
+		}
 		blockNumbers[lg.BlockNumber] = struct{}{}
+		result = append(result, lg.BlockNumber)
 	}
-	return blockNumbers
+	return result
 }
 
 func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {

@@ -46,18 +46,6 @@ func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
 	}, nil
 }
 
-func convertMapBlockRawEth(blocks map[uint64]*blockRawEth) (map[uint64]*aggkittypes.BlockHeader, error) {
-	result := make(map[uint64]*aggkittypes.BlockHeader)
-	for bn, bre := range blocks {
-		bh, err := bre.ToBlockHeader()
-		if err != nil {
-			return nil, fmt.Errorf("convert: converting block number %d (%s): %w", bn, bre.String(), err)
-		}
-		result[bn] = bh
-	}
-	return result, nil
-}
-
 // https://www.alchemy.com/docs/reference/batch-requests
 const batchRequestLimitHTTP = 1000
 
@@ -67,7 +55,7 @@ func RetrieveBlockHeaders(ctx context.Context,
 	log aggkitcommon.Logger,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
-	blockNumbers map[uint64]struct{},
+	blockNumbers []uint64,
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	if rpcClient != nil {
 		return RetrieveBlockHeadersBatch(ctx, log, rpcClient, blockNumbers, maxConcurrency)
@@ -80,12 +68,12 @@ func RetrieveBlockHeaders(ctx context.Context,
 func RetrieveBlockHeadersBatch(ctx context.Context,
 	log aggkitcommon.Logger,
 	rpcClient aggkittypes.RPCClienter,
-	blockNumbers map[uint64]struct{},
+	blockNumbers []uint64,
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
 		ctx,
 		log,
-		func(ctx context.Context, blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
+		func(ctx context.Context, blocks []uint64) ([]*aggkittypes.BlockHeader, error) {
 			return retrieveBlockHeadersInBatch(ctx, log, rpcClient, blocks)
 		}, blockNumbers, batchRequestLimitHTTP, maxConcurrency)
 }
@@ -95,20 +83,20 @@ func RetrieveBlockHeadersBatch(ctx context.Context,
 func RetrieveBlockHeadersLegacy(ctx context.Context,
 	log aggkitcommon.Logger,
 	ethClient aggkittypes.BaseEthereumClienter,
-	blockNumbers map[uint64]struct{},
+	blockNumbers []uint64,
 	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
 		ctx,
 		log,
-		func(ctx context.Context, blocks map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error) {
-			result := make(map[uint64]*aggkittypes.BlockHeader, len(blocks))
-			for blockNumber := range blocks {
+		func(ctx context.Context, blocks []uint64) ([]*aggkittypes.BlockHeader, error) {
+			result := make([]*aggkittypes.BlockHeader, len(blocks))
+			for i, blockNumber := range blocks {
 				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
 				if err != nil {
 					return nil, fmt.Errorf("RetrieveBlockHeadersLegacy: cannot get block header for block %d: %w",
 						blockNumber, err)
 				}
-				result[blockNumber] = aggkittypes.NewBlockHeaderFromEthHeader(header)
+				result[i] = aggkittypes.NewBlockHeaderFromEthHeader(header)
 			}
 			return result, nil
 		}, blockNumbers, 1, maxConcurrency)
@@ -118,22 +106,22 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 func retrieveBlockHeadersInBatch(ctx context.Context,
 	log aggkitcommon.Logger,
 	rpcClient aggkittypes.RPCClienter,
-	blockNumbers map[uint64]struct{},
-) (map[uint64]*aggkittypes.BlockHeader, error) {
+	blockNumbers []uint64,
+) ([]*aggkittypes.BlockHeader, error) {
 	if len(blockNumbers) == 0 {
-		return make(map[uint64]*aggkittypes.BlockHeader), nil
+		return make([]*aggkittypes.BlockHeader, 0), nil
 	}
-	headers := make(map[uint64]*blockRawEth)
+	headers := make([]*blockRawEth, len(blockNumbers))
 	timeTracker := aggkitcommon.NewTimeTracker()
 	timeTracker.Start()
 	batch := make([]rpc.BatchElem, 0, len(blockNumbers))
-	for blockNumber := range blockNumbers {
-		headers[blockNumber] = &blockRawEth{}
+	for idx, blockNumber := range blockNumbers {
+		headers[idx] = &blockRawEth{}
 		bn := fmt.Sprintf("0x%x", blockNumber)
 		batch = append(batch, rpc.BatchElem{
 			Method: "eth_getBlockByNumber",
 			Args:   []interface{}{bn, false},
-			Result: headers[blockNumber],
+			Result: headers[idx],
 		})
 	}
 
@@ -151,15 +139,15 @@ func retrieveBlockHeadersInBatch(ctx context.Context,
 	}
 	log.Debugf("retrieveRPCBlockHeadersInBatch: Retrieved block headers for blocks %d in %s (elapsed)",
 		len(blockNumbers), timeTracker.Duration().String())
-	return convertMapBlockRawEth(headers)
+	return convertSliceBlockRawEth(headers)
 }
 
 // retrieveBlockHeadersInBatchParallel split request into chuncks and execute it in parallel
 func retrieveBlockHeadersInBatchParallel(
 	ctx context.Context,
 	logger aggkitcommon.Logger,
-	funcRetrieval func(context.Context, map[uint64]struct{}) (map[uint64]*aggkittypes.BlockHeader, error),
-	blockNumbers map[uint64]struct{},
+	funcRetrieval func(context.Context, []uint64) ([]*aggkittypes.BlockHeader, error),
+	blockNumbers []uint64,
 	chunckSize, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
 	var mu sync.Mutex
 	g, ctx := errgroup.WithContext(ctx)
@@ -174,8 +162,8 @@ func retrieveBlockHeadersInBatchParallel(
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			for blockNumber, header := range headers {
-				results[blockNumber] = header
+			for _, header := range headers {
+				results[header.Number] = header
 			}
 			return nil
 		})
@@ -188,20 +176,32 @@ func retrieveBlockHeadersInBatchParallel(
 	return results, nil
 }
 
-func splitBlockNumbersIntoChunks(blockNumbers map[uint64]struct{}, chunkSize int) []map[uint64]struct{} {
-	chunks := make([]map[uint64]struct{}, (len(blockNumbers)+chunkSize-1)/chunkSize)
-	currentChunk := make(map[uint64]struct{})
+func splitBlockNumbersIntoChunks(blockNumbers []uint64, chunkSize int) [][]uint64 {
+	chunks := make([][]uint64, (len(blockNumbers)+chunkSize-1)/chunkSize)
+	currentChunk := make([]uint64, 0, chunkSize)
 	idx := 0
-	for bn := range blockNumbers {
-		currentChunk[bn] = struct{}{}
+	for _, bn := range blockNumbers {
+		currentChunk = append(currentChunk, bn)
 		if len(currentChunk) >= chunkSize {
 			chunks[idx] = currentChunk
 			idx++
-			currentChunk = make(map[uint64]struct{})
+			currentChunk = make([]uint64, 0, chunkSize)
 		}
 	}
 	if len(currentChunk) > 0 {
 		chunks[idx] = currentChunk
 	}
 	return chunks
+}
+
+func convertSliceBlockRawEth(blocks []*blockRawEth) ([]*aggkittypes.BlockHeader, error) {
+	result := make([]*aggkittypes.BlockHeader, 0, len(blocks))
+	for idx, blockRawEth := range blocks {
+		bh, err := blockRawEth.ToBlockHeader()
+		if err != nil {
+			return nil, fmt.Errorf("convert: converting block number %d (%s): %w", idx, blocks[idx].String(), err)
+		}
+		result = append(result, bh)
+	}
+	return result, nil
 }

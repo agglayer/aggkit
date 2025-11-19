@@ -20,28 +20,28 @@ import (
 func TestConvertMapBlockRawEth(t *testing.T) {
 	tests := []struct {
 		name          string
-		blocks        map[uint64]*blockRawEth
-		expected      map[uint64]*aggkittypes.BlockHeader
+		blocks        []*blockRawEth
+		expected      []*aggkittypes.BlockHeader
 		expectedError bool
 	}{
 		{
 			name:          "empty map",
-			blocks:        map[uint64]*blockRawEth{},
-			expected:      map[uint64]*aggkittypes.BlockHeader{},
+			blocks:        []*blockRawEth{},
+			expected:      []*aggkittypes.BlockHeader{},
 			expectedError: false,
 		},
 		{
 			name: "single valid block",
-			blocks: map[uint64]*blockRawEth{
-				123: {
+			blocks: []*blockRawEth{
+				{
 					Number:     "0x7b",
 					Hash:       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 					Timestamp:  "0x5f5e100",
 					ParentHash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 				},
 			},
-			expected: map[uint64]*aggkittypes.BlockHeader{
-				123: {
+			expected: []*aggkittypes.BlockHeader{
+				{
 					Number: 123,
 					Hash:   common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 					Time:   100000000,
@@ -55,22 +55,22 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 		},
 		{
 			name: "multiple valid blocks",
-			blocks: map[uint64]*blockRawEth{
-				100: {
+			blocks: []*blockRawEth{
+				{
 					Number:     "0x64",
 					Hash:       "0x1111111111111111111111111111111111111111111111111111111111111111",
 					Timestamp:  "0x1000",
 					ParentHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
 				},
-				200: {
+				{
 					Number:     "0xc8",
 					Hash:       "0x3333333333333333333333333333333333333333333333333333333333333333",
 					Timestamp:  "0x2000",
 					ParentHash: "0x4444444444444444444444444444444444444444444444444444444444444444",
 				},
 			},
-			expected: map[uint64]*aggkittypes.BlockHeader{
-				100: {
+			expected: []*aggkittypes.BlockHeader{
+				{
 					Number: 100,
 					Hash:   common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 					Time:   4096,
@@ -79,7 +79,7 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 						return &h
 					}(),
 				},
-				200: {
+				{
 					Number: 200,
 					Hash:   common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
 					Time:   8192,
@@ -93,8 +93,8 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 		},
 		{
 			name: "invalid block number format",
-			blocks: map[uint64]*blockRawEth{
-				123: {
+			blocks: []*blockRawEth{
+				{
 					Number:     "invalid",
 					Hash:       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 					Timestamp:  "0x5f5e100",
@@ -106,8 +106,8 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 		},
 		{
 			name: "invalid timestamp format",
-			blocks: map[uint64]*blockRawEth{
-				123: {
+			blocks: []*blockRawEth{
+				{
 					Number:     "0x7b",
 					Hash:       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 					Timestamp:  "invalid",
@@ -121,7 +121,7 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := convertMapBlockRawEth(tt.blocks)
+			result, err := convertSliceBlockRawEth(tt.blocks)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -129,9 +129,8 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, len(tt.expected), len(result))
-				for blockNum, expectedHeader := range tt.expected {
-					actualHeader, exists := result[blockNum]
-					require.True(t, exists, "Block number %d should exist in result", blockNum)
+				for i, expectedHeader := range tt.expected {
+					actualHeader := result[i]
 					assert.Equal(t, expectedHeader.Number, actualHeader.Number)
 					assert.Equal(t, expectedHeader.Hash, actualHeader.Hash)
 					assert.Equal(t, expectedHeader.Time, actualHeader.Time)
@@ -144,9 +143,9 @@ func TestConvertMapBlockRawEth(t *testing.T) {
 func TestRetrieveBlockHeaders(t *testing.T) {
 	ctx := t.Context()
 	logger := log.WithFields("test", "test")
-	blockNumbers := map[uint64]struct{}{
-		100: {},
-		200: {},
+	blockNumbers := []uint64{
+		100,
+		200,
 	}
 	maxConcurrency := 5
 
@@ -176,7 +175,7 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 
 	t.Run("uses legacy when rpcClient is nil", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
-		for bn := range blockNumbers {
+		for _, bn := range blockNumbers {
 			mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(bn))).
 				Return(&types.Header{
 					Number: big.NewInt(int64(bn)),
@@ -207,6 +206,66 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 		require.Contains(t, err.Error(), "legacy error")
 	})
 }
+func TestRetrieveBlockHeadersLegacy(t *testing.T) {
+	ctx := t.Context()
+	logger := log.WithFields("test", "test")
+	blockNumbers := []uint64{
+		100,
+		200,
+		400,
+		500,
+	}
+	maxConcurrency := 1
+
+	t.Run("successful retrieval", func(t *testing.T) {
+		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
+		for _, bn := range blockNumbers {
+			mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(bn))).
+				Return(&types.Header{
+					Number: big.NewInt(int64(bn)),
+					Time:   123,
+				}, nil).Once()
+		}
+		result, err := RetrieveBlockHeadersLegacy(ctx, logger, mockEthClient, blockNumbers, maxConcurrency)
+
+		require.NoError(t, err)
+		assert.Equal(t, len(blockNumbers), len(result))
+	})
+}
+
+func TestRetrieveBlockHeadersInBatchParallel(t *testing.T) {
+	ctx := t.Context()
+	logger := log.WithFields("test", "test")
+	blockNumbers := []uint64{
+		100,
+		200,
+		300,
+		400,
+	}
+	maxConcurrency := 1
+
+	result, err := retrieveBlockHeadersInBatchParallel(
+		ctx,
+		logger,
+		func(ctx context.Context, blocks []uint64) ([]*aggkittypes.BlockHeader, error) {
+			t.Logf("Retrieving blocks in batch: %v", blocks)
+			headers := make([]*aggkittypes.BlockHeader, len(blocks))
+			for i, bn := range blocks {
+				headers[i] = &aggkittypes.BlockHeader{
+					Number: bn,
+				}
+			}
+			return headers, nil
+		}, blockNumbers, 2, maxConcurrency)
+
+	require.NoError(t, err)
+	assert.Equal(t, len(blockNumbers), len(result))
+	for _, bn := range blockNumbers {
+		header, exists := result[bn]
+		require.True(t, exists)
+		assert.Equal(t, bn, header.Number)
+	}
+}
 
 func TestSplitBlockNumbersIntoChunks(t *testing.T) {
 	tests := []struct {
@@ -233,7 +292,7 @@ func TestSplitBlockNumbersIntoChunks(t *testing.T) {
 			},
 		},
 		{
-			name:      "single exact chunk",
+			name:      "double chunk",
 			input:     []uint64{1, 2, 3, 4},
 			chunkSize: 3,
 			expected: [][]uint64{
@@ -250,18 +309,13 @@ func TestSplitBlockNumbersIntoChunks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			blockMap := make(map[uint64]struct{})
-			for _, bn := range tt.input {
-				blockMap[bn] = struct{}{}
-			}
+			blockMap := tt.input
 			chunks := splitBlockNumbersIntoChunks(blockMap, tt.chunkSize)
 
 			var result [][]uint64
 			for _, chunk := range chunks {
 				var chunkList []uint64
-				for bn := range chunk {
-					chunkList = append(chunkList, bn)
-				}
+				chunkList = append(chunkList, chunk...)
 				result = append(result, chunkList)
 			}
 

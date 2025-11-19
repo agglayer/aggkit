@@ -188,11 +188,11 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 
-	blockNumbersMap := make(map[uint64]struct{})
+	blockNumbersMap := make([]uint64, 0)
 	var blockNumbersSlice []uint64
 	initialBlock := uint64(1)
 	for i := initialBlock; i < initialBlock+923; i++ {
-		blockNumbersMap[i] = struct{}{}
+		blockNumbersMap = append(blockNumbersMap, i)
 		blockNumbersSlice = append(blockNumbersSlice, i)
 	}
 	logger := log.WithFields("test", "test")
@@ -341,6 +341,10 @@ func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	finished, err := testData.mdr.StepSafe(t.Context())
+	require.NoError(t, err)
+	require.True(t, finished)
+
+	err = testData.mdr.sync(t.Context(), testData.mdr.StepSafe, "safe")
 	require.NoError(t, err)
 	require.True(t, finished)
 }
