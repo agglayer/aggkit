@@ -471,25 +471,6 @@ func (dh *EVMMultidownloader) storeData(
 		return fmt.Errorf("Safe/Step: cannot commit tx: %w", err)
 	}
 	return nil
-
-}
-
-func (dh *EVMMultidownloader) updateSyncedSegments(ctx context.Context,
-	logQueryData *mdrtypes.LogQuery) (bool, error) {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
-	// Update synced segments (memory status of syncing)
-
-	err := dh.pendingSync.SubtractLogQuery(logQueryData)
-	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot remove log query segment from pendingSync: %w", err)
-	}
-
-	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
-	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot update ToBlock in pendingSync: %w", err)
-	}
-	return dh.pendingSync.Finished(), nil
 }
 
 func ethGetExtendendError(err error) string {
