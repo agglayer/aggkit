@@ -1191,6 +1191,255 @@ func TestGetClaimsHandler(t *testing.T) {
 	})
 }
 
+func TestGetUnsetClaimsHandler(t *testing.T) {
+	t.Run("GetUnsetClaims for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedUnsetClaims := []*bridgesync.UnsetClaim{
+			{
+				BlockNum:                  1,
+				BlockPos:                  1,
+				TxHash:                    common.HexToHash("0x1234567890abcdef"),
+				GlobalIndex:               big.NewInt(1000000),
+				UnsetGlobalIndexHashChain: common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"),
+				CreatedAt:                 1617184800,
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetUnsetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
+			Return(expectedUnsetClaims, len(expectedUnsetClaims), nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.UnsetClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedUnsetClaims), response.Count)
+		require.Len(t, response.UnsetClaims, len(expectedUnsetClaims))
+		require.Equal(t, expectedUnsetClaims[0].BlockNum, response.UnsetClaims[0].BlockNum)
+		require.Equal(t, expectedUnsetClaims[0].GlobalIndex.String(), string(response.UnsetClaims[0].GlobalIndex))
+	})
+
+	t.Run("GetUnsetClaims for L2 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL2.EXPECT().
+			GetUnsetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(barErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get unset claims for the L2 network (ID=%d)", l2NetworkID))
+	})
+
+	t.Run("GetUnsetClaims with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
+	})
+}
+
+func TestGetRemoveGEREventsHandler(t *testing.T) {
+	t.Run("GetRemoveGEREvents - get all events", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedEvents := []*l2gersync.RemoveGEREvent{
+			{
+				GlobalExitRoot: common.HexToHash("0xabc123"),
+				BlockNum:       100,
+				BlockPos:       0,
+				CreatedAt:      1617184800,
+			},
+			{
+				GlobalExitRoot: common.HexToHash("0xdef456"),
+				BlockNum:       101,
+				BlockPos:       1,
+				CreatedAt:      1617184900,
+			},
+		}
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(50)).
+			Return(expectedEvents, nil)
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.RemoveGEREventsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedEvents), response.Count)
+		require.Len(t, response.RemoveGEREvents, len(expectedEvents))
+		require.Equal(t, expectedEvents[0].BlockPos, response.RemoveGEREvents[0].BlockPos)
+		require.Equal(t, expectedEvents[0].GlobalExitRoot.Hex(), string(response.RemoveGEREvents[0].GlobalExitRoot))
+	})
+
+	t.Run("GetRemoveGEREvents by global_exit_root", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		targetGER := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+
+		expectedEvents := []*l2gersync.RemoveGEREvent{
+			{
+				GlobalExitRoot: targetGER,
+				BlockNum:       200,
+				BlockPos:       0,
+				CreatedAt:      1617185000,
+			},
+		}
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetRemoveGEREvents(mock.Anything, &targetGER, mock.AnythingOfType("uint32")).
+			Return(expectedEvents, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set("global_exit_root", targetGER.Hex())
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.RemoveGEREventsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, response.Count)
+		require.Equal(t, targetGER.Hex(), string(response.RemoveGEREvents[0].GlobalExitRoot))
+	})
+
+	t.Run("GetRemoveGEREvents invalid global_exit_root", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set("global_exit_root", "invalid_hash")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "invalid global_exit_root parameter")
+	})
+
+	t.Run("GetRemoveGEREvents service failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(50)).
+			Return(nil, errors.New("database error"))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "failed to get remove GER events")
+	})
+
+	t.Run("GetRemoveGEREvents with nil injectedGERs", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.injectedGERs = nil
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 GER syncer is not available", response["error"])
+	})
+
+	t.Run("GetRemoveGEREvents with custom limit", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedEvents := []*l2gersync.RemoveGEREvent{
+			{
+				GlobalExitRoot: common.HexToHash("0xabc123"),
+				BlockNum:       100,
+				BlockPos:       0,
+				CreatedAt:      1617184800,
+			},
+		}
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(10)).
+			Return(expectedEvents, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set("limit", "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.RemoveGEREventsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedEvents), response.Count)
+		require.Len(t, response.RemoveGEREvents, len(expectedEvents))
+	})
+
+	t.Run("GetRemoveGEREvents with invalid limit", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set("limit", "0")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "limit must be greater than 0")
+	})
+}
+
+func TestIsValidHexHash(t *testing.T) {
+	t.Run("valid hex hash with 0x prefix", func(t *testing.T) {
+		validHash := "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+		require.True(t, isValidHexHash(validHash))
+	})
+
+	t.Run("invalid length", func(t *testing.T) {
+		shortHash := "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d7"
+		require.False(t, isValidHexHash(shortHash))
+	})
+
+	t.Run("valid hex hash without 0x prefix", func(t *testing.T) {
+		noPrefix := "27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+		require.True(t, isValidHexHash(noPrefix))
+	})
+
+	t.Run("invalid hex characters", func(t *testing.T) {
+		invalidChars := "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d75g"
+		require.False(t, isValidHexHash(invalidChars))
+	})
+}
+
 func TestGetTokenMappingsHandler(t *testing.T) {
 	t.Run("GetTokenMappingsHandler for L1 network", func(t *testing.T) {
 		page := uint32(1)

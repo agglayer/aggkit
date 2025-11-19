@@ -298,6 +298,55 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
+		{
+			name:           "unsetClaimEventSignature appender",
+			eventSignature: unsetClaimEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(unsetClaimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				unsetGlobalIndex := [32]byte{}
+				copy(unsetGlobalIndex[:], big.NewInt(12345).Bytes())
+				newUnsetGlobalIndexHashChain := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+
+				data, err := event.Inputs.Pack(unsetGlobalIndex, newUnsetGlobalIndexHashChain)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{unsetClaimEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
+			name:           "setClaimEventSignature appender",
+			eventSignature: setClaimEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(setClaimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				globalIndexBytes := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+				data, err := event.Inputs.Pack(globalIndexBytes)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{setClaimEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -43,6 +43,17 @@ const (
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
+
+	// unsetClaimTableName is the name of the table that stores unset claim events
+	unsetClaimTableName = "unset_claim"
+
+	// setClaimTableName is the name of the table that stores set claim events
+	setClaimTableName = "set_claim"
+)
+
+const (
+	// orderByBlockDesc is the default order by clause for block-based queries
+	orderByBlockDesc = "block_num DESC, block_pos DESC"
 )
 
 var (
@@ -286,6 +297,27 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+// UnsetClaim representation of an UpdatedUnsetGlobalIndexHashChain event,
+// that is emitted by the bridge contract when a claim is unset.
+type UnsetClaim struct {
+	BlockNum                  uint64      `meddler:"block_num"`
+	BlockPos                  uint64      `meddler:"block_pos"`
+	TxHash                    common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex               *big.Int    `meddler:"global_index,bigint"`
+	UnsetGlobalIndexHashChain common.Hash `meddler:"unset_global_index_hash_chain,hash"`
+	CreatedAt                 uint64      `meddler:"created_at"`
+}
+
+// SetClaim representation of a SetClaim event,
+// that is emitted by the bridge contract when a claim is set.
+type SetClaim struct {
+	BlockNum    uint64      `meddler:"block_num"`
+	BlockPos    uint64      `meddler:"block_pos"`
+	TxHash      common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
+	CreatedAt   uint64      `meddler:"created_at"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -293,6 +325,8 @@ type Event struct {
 	TokenMapping         *TokenMapping
 	LegacyTokenMigration *LegacyTokenMigration
 	RemoveLegacyToken    *RemoveLegacyToken
+	UnsetClaim           *UnsetClaim
+	SetClaim             *SetClaim
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -548,9 +582,7 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
-
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByBlockDesc, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -573,6 +605,71 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	return claims, claimsCount, nil
+}
+
+// GetUnsetClaimsPaged returns a paginated list of unset claims
+func (p *processor) GetUnsetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+	globalIndex *big.Int,
+) ([]*UnsetClaim, int, error) {
+	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
+	claimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if claimsCount == 0 {
+		return []*UnsetClaim{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, unsetClaimTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByBlockDesc, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, claimsCount, nil
+		}
+		p.log.Errorf("GetUnsetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	unsetClaims := []*UnsetClaim{}
+	if err = meddler.ScanAll(rows, &unsetClaims); err != nil {
+		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return unsetClaims, claimsCount, nil
+}
+
+// buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
+// based on the provided globalIndex (networkIDs not applicable for unset claims)
+func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
+	const clauseCapacity = 1
+	clauses := make([]string, 0, clauseCapacity)
+
+	// Note: networkIDs filtering is not applicable for unset claims as they don't have network fields
+	// Unset claims only have global_index, block info, and hash chain
+
+	if globalIndex != nil {
+		clauses = append(clauses, fmt.Sprintf("global_index = '%s'", globalIndex.String()))
+	}
+
+	if len(clauses) > 0 {
+		return " WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
@@ -623,9 +720,8 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
 	rows, err := p.queryPaged(
-		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
+		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByBlockDesc, whereClause,
 	)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -863,6 +959,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
 			if err != nil {
 				p.log.Errorf("failed to remove legacy token at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.UnsetClaim != nil {
+			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
+				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.SetClaim != nil {
+			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
+				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
