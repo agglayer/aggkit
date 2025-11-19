@@ -66,8 +66,7 @@ func (s *SetSyncSegment) Add(segment SyncSegment) {
 		return
 	}
 	// Merge syncers
-	current.BlockRange = current.BlockRange.Merge(segment.BlockRange)
-	s.Replace(current)
+	s.UpdateBlockRange(current, current.BlockRange.Merge(segment.BlockRange))
 }
 
 // Replace replaces an existing segment with the provided one instead of merging
@@ -276,26 +275,18 @@ func (f *SetSyncSegment) UpdateBlockRange(segment *SyncSegment, newBlockRange ag
 	}
 }
 
-// ExtendSegments extends the current SetSyncSegment with the block ranges defined in the logQuery
-// that is used to update the syncedSegments after doing a FilterLogs query
-func (f *SetSyncSegment) ExtendSegments(logQuery *LogQuery) error {
+// AddLogQuery adds all segments from the LogQuery to the SetSyncSegment
+// used to update the syncedSegments after a successful FilterLogs
+func (f *SetSyncSegment) AddLogQuery(logQuery *LogQuery) error {
 	if f == nil || logQuery == nil {
 		return nil
 	}
-	newSegments := f.Clone()
 	for _, addr := range logQuery.Addrs {
-		segment := newSegments.GetByContract(addr)
-		if segment != nil {
-			mergedRange := segment.BlockRange.Merge(logQuery.BlockRange)
-			newSegments.UpdateBlockRange(segment, mergedRange)
-		} else {
-			newSegments.Add(SyncSegment{
-				ContractAddr: addr,
-				BlockRange:   logQuery.BlockRange,
-			})
-		}
+		f.Add(SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   logQuery.BlockRange,
+		})
 	}
-	f.segments = newSegments.segments
 	return nil
 }
 

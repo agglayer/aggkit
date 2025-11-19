@@ -170,7 +170,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	// 	return err
 	// }
 
-	err = dh.Sync(ctx, dh.StepSafe, "safe")
+	err = dh.sync(ctx, dh.StepSafe, "safe")
 	if err != nil {
 		return err
 	}
@@ -212,6 +212,9 @@ func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Initialize initializes the multidownloader, in this point all syncer
+// must be registered and it will prepare the pendingSync segments
 func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
@@ -255,7 +258,8 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (dh *EVMMultidownloader) Sync(ctx context.Context,
+// sync it's an internal function that executes the given stepFunc until it returns done=true or error
+func (dh *EVMMultidownloader) sync(ctx context.Context,
 	stepFunc func(ctx context.Context) (bool, error), name string) error {
 	dh.statistics.StartSyncing()
 
@@ -367,9 +371,9 @@ func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkit
 	return headers
 }
 
+// StepSafe performs a safe step syncing logs and block headers from historical data
 func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
-	// TODO: Rename filterLogsAdaptingBlockRange
-	logs, logQueryData, err := dh.filterLogsAdaptingBlockRange(ctx)
+	logs, logQueryData, err := dh.requestLogs(ctx)
 	if err != nil {
 		if errors.Is(err, mdrtypes.ErrFinished) {
 			return true, nil
@@ -385,11 +389,62 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot retrieve block headers (%d): %w", len(blockHeaders), err)
 	}
-	dh.statistics.StartDBOperation()
+
+	// Calculate new state (not set in memory until commit is successful)
+	dh.mutex.Lock()
+	newSyncedSegments := dh.syncedSegments.Clone()
+	newPendingSegments := dh.pendingSync.Clone()
+	dh.mutex.Unlock()
+	// Update synced segments
+	err = newSyncedSegments.AddLogQuery(logQueryData)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot extend synced segments: %w", err)
+	}
+	// from pending blocks remove current query
+	err = newPendingSegments.SubtractLogQuery(logQueryData)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot subtract log query from pending segments: %w", err)
+	}
+	// Update ToBlock in pending segments to be able to calculate if finished
+	err = newPendingSegments.UpdateToBlock(ctx, dh.blockNotifierManager)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot update ToBlock in pendingSync: %w", err)
+	}
+	// Store data in storage
+	err = dh.storeData(ctx, logs, blockHeaders,
+		newSyncedSegments.SegmentsByContract(logQueryData.Addrs), true)
+	if err != nil {
+		return false, fmt.Errorf("Safe/Step: cannot store data: %w", err)
+	}
+	// Update in-memory synced segments (after valid commit)
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+	dh.syncedSegments = *newSyncedSegments
+	dh.pendingSync = newPendingSegments
+	finished := dh.pendingSync.Finished()
+	dh.log.Infof("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
+		dh.statistics.ElapsedSyncing().String(),
+		logQueryData.BlockRange.String(),
+		len(logs),
+		len(blockHeaders),
+		dh.pendingSync.TotalBlocks(),
+		dh.statistics.ETA(dh.pendingSync.TotalBlocks()))
+	return finished, nil
+}
+func (dh *EVMMultidownloader) storeData(
+	ctx context.Context,
+	logs []types.Log, blocks map[uint64]*aggkittypes.BlockHeader,
+	updatedSegments []mdrtypes.SyncSegment,
+	isFinal bool) error {
+	var err error
 	committed := false
+	dh.statistics.StartDBOperation()
+	defer func() {
+		dh.statistics.FinishDBOperation(err)
+	}()
 	tx, err := dh.storage.NewTx(ctx)
 	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot create new tx: %w", err)
+		return fmt.Errorf("Safe/Step: cannot create new tx: %w", err)
 	}
 	defer func() {
 		if !committed {
@@ -399,42 +454,24 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 			}
 		}
 	}()
-	defer dh.statistics.FinishDBOperation(nil)
-	err = dh.storage.SaveEthLogsWithHeaders(tx, mapBlockHeadersToList(blockHeaders), logs, true)
+	// Save logs and block headers
+	err = dh.storage.SaveEthLogsWithHeaders(tx, mapBlockHeadersToList(blocks), logs, isFinal)
 	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot save eth logs: %w", err)
-	}
-	// Extend synced segments in memory (not set in object until commit is successful)
-	newSynedSegments := dh.syncedSegments.Clone()
-	err = newSynedSegments.ExtendSegments(logQueryData)
-	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot extend synced segments: %w", err)
+		return fmt.Errorf("Safe/Step: cannot save eth logs: %w", err)
 	}
 	// Update synced segments in storage
-	err = dh.storage.UpdateSyncedStatus(tx, newSynedSegments.SegmentsByContract(logQueryData.Addrs))
+	err = dh.storage.UpdateSyncedStatus(tx, updatedSegments)
 	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot update synced segments in storage: %w", err)
+		return fmt.Errorf("Safe/Step: cannot update synced segments +%v in storage: %w",
+			updatedSegments,
+			err)
 	}
-
 	committed = true
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot commit tx: %w", err)
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("Safe/Step: cannot commit tx: %w", err)
 	}
-	dh.statistics.FinishDBOperation(nil)
-	// Update in-memory synced segments (after valid commit)
-	dh.syncedSegments = *newSynedSegments
-	finished, err := dh.updateSyncedSegments(ctx, logQueryData)
-	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot update synced segments: %w", err)
-	}
-	dh.log.Infof("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
-		dh.statistics.ElapsedSyncing().String(),
-		logQueryData.BlockRange.String(),
-		len(logs),
-		len(blockHeaders),
-		dh.pendingSync.TotalBlocks(),
-		dh.statistics.ETA(dh.pendingSync.TotalBlocks()))
-	return finished, nil
+	return nil
+
 }
 
 func (dh *EVMMultidownloader) updateSyncedSegments(ctx context.Context,
@@ -530,7 +567,7 @@ func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32, s
 	return logQueryData, nil
 }
 
-func (dh *EVMMultidownloader) filterLogsAdaptingBlockRange(
+func (dh *EVMMultidownloader) requestLogs(
 	ctx context.Context) ([]types.Log, *mdrtypes.LogQuery, error) {
 	initialsyncBlockChunkSize := dh.cfg.BlockChunkSize
 	try := 0
