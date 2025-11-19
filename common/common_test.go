@@ -450,7 +450,7 @@ func TestParseUint64Hex(t *testing.T) {
 
 			if tt.expectError {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "ParseHexUint64: invalid hex string")
+				require.Contains(t, err.Error(), "invalid hex string "+tt.input)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)
