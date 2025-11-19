@@ -2,7 +2,6 @@ package types_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/big"
 	"testing"
@@ -16,8 +15,55 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	blockFinalityEmpty      *aggkittypes.BlockNumberFinality
+	blockFinalityCreated    = aggkittypes.BlockNumberFinality{}
+	BlockFinalitySafeOffset = aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+)
+
 type configTest struct {
 	BlockFinality aggkittypes.BlockNumberFinality `mapstructure:"BlockFinality"`
+}
+
+func TestBlockNumberFinality_String(t *testing.T) {
+	require.Equal(t, "nil", blockFinalityEmpty.String())
+	latest, err := aggkittypes.NewBlockNumberFinality("latestBlock")
+	require.NoError(t, err)
+	require.Equal(t, "LatestBlock", latest.String())
+	latest.Offset = -5
+	require.Equal(t, "LatestBlock/-5", latest.String())
+}
+
+func TestBlockNumberFinality_Equal(t *testing.T) {
+	bn1 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	bn2 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	bn3 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 0}
+	bn4 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
+	require.False(t, blockFinalityEmpty.Equal(bn1), "bn1 should not be equal to empty finality")
+	require.True(t, bn1.Equal(bn2), "bn1 should be equal to bn2")
+	require.False(t, bn1.Equal(bn3), "bn1 should not be equal to bn3")
+	require.False(t, bn1.Equal(bn4), "bn1 should not be equal to bn4")
+}
+
+func TestBlockNumberFinality_IsEmpty(t *testing.T) {
+	require.True(t, blockFinalityEmpty.IsEmpty(), "empty finality should be empty")
+	bn1 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	require.False(t, bn1.IsEmpty(), "bn1 should not be empty")
+	require.True(t, blockFinalityCreated.IsEmpty(), "empty finality should be empty")
+}
+
+func TestBlockNumberFinality_IsFinalized(t *testing.T) {
+	require.True(t, aggkittypes.FinalizedBlock.IsFinalized(), "FinalizedBlock should be finalized")
+	require.False(t, aggkittypes.SafeBlock.IsFinalized(), "SafeBlock should not be finalized")
+	require.False(t, blockFinalityEmpty.IsFinalized())
+	require.False(t, blockFinalityCreated.IsFinalized())
+}
+func TestBlockNumberFinality_IsSafe(t *testing.T) {
+	require.False(t, aggkittypes.FinalizedBlock.IsSafe(), "FinalizedBlock should not be safe")
+	require.True(t, aggkittypes.SafeBlock.IsSafe(), "SafeBlock should be safe")
+	require.False(t, blockFinalityEmpty.IsSafe())
+	require.False(t, blockFinalityCreated.IsSafe())
+	require.True(t, BlockFinalitySafeOffset.IsSafe())
 }
 
 func TestBlockNumberFinalityReadFromConfigFile(t *testing.T) {
@@ -147,6 +193,18 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 				Offset: -5,
 			},
 			isLessFinal: true,
+		},
+		{
+			name: "finalized is not LessFinalThan safe",
+			firstFinality: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Finalized,
+				Offset: 0,
+			},
+			secondFinality: aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Safe,
+				Offset: 0,
+			},
+			isLessFinal: false,
 		},
 	}
 
@@ -288,9 +346,22 @@ func TestBlockNumberFinalityJSONSchema(t *testing.T) {
 	require.Equal(t, "string", schema.Type)
 	require.Equal(t, "BlockNumberFinality", schema.Title)
 }
+func TestBlockNumberFinality_BlockNumber(t *testing.T) {
+	ctx := t.Context()
+	mockClient := mocks.NewBaseEthereumClienter(t)
+	finalizedHeader := &types.Header{Number: big.NewInt(100)}
+	mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Maybe()
+	_, err := blockFinalityEmpty.BlockNumber(ctx, mockClient)
+	require.Error(t, err)
+	_, err = blockFinalityCreated.BlockNumber(ctx, mockClient)
+	require.Error(t, err)
+	number, err := aggkittypes.FinalizedBlock.BlockNumber(ctx, mockClient)
+	require.NoError(t, err)
+	require.Equal(t, finalizedHeader.Number.Uint64(), number)
+}
 
 func TestBlockNumberFinality_BlockHeader(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("Success with offset", func(t *testing.T) {
 		mockClient := mocks.NewBaseEthereumClienter(t)
@@ -458,6 +529,7 @@ func TestBlockNumberFinalityEqual(t *testing.T) {
 	bn3 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 0}
 	bn4 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
 
+	require.False(t, blockFinalityEmpty.Equal(bn1), "bn1 should not be equal to empty finality")
 	require.True(t, bn1.Equal(bn2), "bn1 should be equal to bn2")
 	require.False(t, bn1.Equal(bn3), "bn1 should not be equal to bn3")
 	require.False(t, bn1.Equal(bn4), "bn1 should not be equal to bn4")
