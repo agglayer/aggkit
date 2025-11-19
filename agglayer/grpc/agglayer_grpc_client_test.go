@@ -15,6 +15,7 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
@@ -47,7 +48,7 @@ func TestAgglayerGRPCCLientExploratory(t *testing.T) {
 	// 100000 iteration produces a transaction of 12800188 bytes
 	for i := 0; i < 100000; i++ {
 		certificate.BridgeExits = append(certificate.BridgeExits, &types.BridgeExit{
-			LeafType: types.LeafTypeAsset,
+			LeafType: bridgetypes.LeafTypeAsset,
 			TokenInfo: &types.TokenInfo{
 				OriginNetwork:      0,
 				OriginTokenAddress: common.HexToAddress("0xbeef"),
@@ -454,22 +455,22 @@ func TestLeafTypeToProto(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    types.LeafType
+		input    bridgetypes.LeafType
 		expected v1types.LeafType
 	}{
 		{
 			name:     "LeafTypeAsset",
-			input:    types.LeafTypeAsset,
+			input:    bridgetypes.LeafTypeAsset,
 			expected: v1types.LeafType_LEAF_TYPE_TRANSFER,
 		},
 		{
 			name:     "LeafTypeMessage",
-			input:    types.LeafTypeMessage,
+			input:    bridgetypes.LeafTypeMessage,
 			expected: v1types.LeafType_LEAF_TYPE_MESSAGE,
 		},
 		{
 			name:     "Default case",
-			input:    types.LeafType(99), // some undefined leaf type
+			input:    bridgetypes.LeafType(99), // some undefined leaf type
 			expected: v1types.LeafType_LEAF_TYPE_UNSPECIFIED,
 		},
 	}
