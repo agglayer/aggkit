@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/agglayer/aggkit/config/types"
@@ -155,15 +156,33 @@ func MapSlice[T any, R any](in []T, f func(T) R) []R {
 	return out
 }
 
-const hexBase = 16
+const (
+	hexBase = 16
+	decBase = 10
+)
 
-func ParseHexUint64(hexStr string) (uint64, error) {
-	if len(hexStr) < 2 || strings.ToLower(hexStr[0:2]) != "0x" {
-		return 0, fmt.Errorf("ParseHexUint64: invalid hex string %s", hexStr)
+func IsHex(s string) bool {
+	return len(s) > 2 && (strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X"))
+}
+
+func ParseUint64Hex(hexStr string) (uint64, error) {
+	if !IsHex(hexStr) {
+		return 0, fmt.Errorf("ParseUint64Hex: invalid hex string %s", hexStr)
 	}
 	bigInt, ok := new(big.Int).SetString(hexStr[2:], hexBase)
 	if !ok {
-		return 0, fmt.Errorf("ParseHexUint64: invalid hex string %s", hexStr)
+		return 0, fmt.Errorf("ParseUint64Hex: invalid hex string %s", hexStr)
 	}
 	return bigInt.Uint64(), nil
+}
+
+func ParseUint64HexOrDecimal(str string) (uint64, error) {
+	if IsHex(str) {
+		return ParseUint64Hex(str)
+	}
+	num, err := strconv.ParseUint(str, decBase, 64)
+	if err != nil {
+		return 0, fmt.Errorf("ParseUint64HexOrDecimal: invalid decimal string %s: %w", str, err)
+	}
+	return num, nil
 }

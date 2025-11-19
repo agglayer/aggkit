@@ -56,7 +56,9 @@ func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	if subscriber == nil {
 		subscriber = aggkitcommon.NewGenericSubscriber[ethmantypes.EventNewBlock]()
 	}
-
+	if config.BlockFinalityType.IsEmpty() {
+		return nil, fmt.Errorf("BlockFinalityType cannot be empty")
+	}
 	return &BlockNotifierPolling{
 		ethClient:     ethClient,
 		blockFinality: config.BlockFinalityType,

@@ -65,6 +65,14 @@ func TestConfig_Validate(t *testing.T) {
 			expectError: true,
 			errorMsg:    "MultidownloaderConfig.WaitPeriodToCheckCatchUp",
 		},
+		{
+			name: "BlockFinality.IsEmpty",
+			modifyConfig: func(cfg *Config) {
+				cfg.BlockFinality = aggkittypes.BlockNumberFinality{}
+			},
+			expectError: true,
+			errorMsg:    "MultidownloaderConfig.BlockFinality",
+		},
 	}
 
 	for _, tt := range tests {

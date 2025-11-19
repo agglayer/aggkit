@@ -359,7 +359,7 @@ func TestUint64ToLittleEndianBytes(t *testing.T) {
 		})
 	}
 }
-func TestParseHexUint64(t *testing.T) {
+func TestParseUint64Hex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -446,11 +446,65 @@ func TestParseHexUint64(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := ParseHexUint64(tt.input)
+			result, err := ParseUint64Hex(tt.input)
 
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "ParseHexUint64: invalid hex string")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseUint64HexOrDecimal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		input       string
+		expected    uint64
+		expectError bool
+	}{
+		{
+			name:     "Valid hex string",
+			input:    "0x1A",
+			expected: 26,
+		},
+		{
+			name:     "Valid decimal string",
+			input:    "42",
+			expected: 42,
+		},
+		{
+			name:        "Invalid hex string",
+			input:       "0xGHI",
+			expectError: true,
+		},
+		{
+			name:        "Invalid decimal string",
+			input:       "12AB34",
+			expectError: true,
+		},
+		{
+			name:        "Empty string",
+			input:       "",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := ParseUint64HexOrDecimal(tt.input)
+
+			if tt.expectError {
+				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)

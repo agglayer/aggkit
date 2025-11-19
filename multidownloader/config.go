@@ -65,6 +65,9 @@ func (cfg *Config) Validate() error {
 	if cfg.WaitPeriodToCheckCatchUp.Duration <= 0 {
 		return ErrInvalidWaitPeriodToCheckCatchUp
 	}
+	if cfg.BlockFinality.IsEmpty() {
+		return fmt.Errorf("MultidownloaderConfig.BlockFinality: block finality cannot be empty")
+	}
 	return nil
 }
 

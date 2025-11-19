@@ -157,12 +157,11 @@ func (f *SetSyncSegment) UpdateToBlock(ctx context.Context,
 		return nil
 	}
 	for _, segment := range f.segments {
-		bn, err := blockNotifierGetter.GetBlockNotifier(ctx, segment.TargetToBlock)
+		currentBlock, err := blockNotifierGetter.GetCurrentBlockNumber(ctx, segment.TargetToBlock)
 		if err != nil {
 			return fmt.Errorf("setSyncSegment.UpdateToBlock: error getting BlockNotifier for finality=%s: %w",
 				segment.TargetToBlock.String(), err)
 		}
-		currentBlock := bn.GetCurrentBlockNumber()
 		segment.UpdateToBlock(currentBlock)
 	}
 	return nil

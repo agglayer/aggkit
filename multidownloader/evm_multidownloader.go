@@ -35,7 +35,6 @@ type EVMMultidownloader struct {
 	rpcClient            aggkittypes.RPCClienter
 	storage              mdrtypes.Storager
 	blockNotifierManager ethermantypes.BlockNotifierManager
-	blockFinality        aggkittypes.BlockNumberFinality
 	name                 string
 	syncersConfig        mdrtypes.SetSyncerConfig
 
@@ -521,7 +520,7 @@ func extractSuggestedBlockRangeFromErrorMsg(msg string) *aggkitcommon.BlockRange
 }
 
 func (dh *EVMMultidownloader) getFinalizedBlockNumber(ctx context.Context) (uint64, error) {
-	bn, err := dh.blockNotifierManager.GetBlockNotifier(ctx, dh.blockFinality)
+	bn, err := dh.blockNotifierManager.GetBlockNotifier(ctx, dh.cfg.BlockFinality)
 	if err != nil {
 		return 0, fmt.Errorf("Safe/Step: cannot get finalized BlockNotifier: %w", err)
 	}

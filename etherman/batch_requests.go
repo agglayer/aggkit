@@ -26,11 +26,11 @@ func (b *blockRawEth) String() string {
 }
 
 func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
-	number, err := aggkitcommon.ParseHexUint64(b.Number)
+	number, err := aggkitcommon.ParseUint64HexOrDecimal(b.Number)
 	if err != nil {
 		return nil, fmt.Errorf("blockRawEth.ToBlockHeader: parsing block number %s: %w", b.Number, err)
 	}
-	timeStamp, err := aggkitcommon.ParseHexUint64(b.Timestamp)
+	timeStamp, err := aggkitcommon.ParseUint64HexOrDecimal(b.Timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("blockRawEth.ToBlockHeader: parsing timestamp %s: %w", b.Timestamp, err)
 	}
