@@ -108,9 +108,6 @@ func (b *BlockNotifierPolling) Start(ctx context.Context) {
 		}
 	}
 }
-func (b *BlockNotifierPolling) BlockFinality() aggkittypes.BlockNumberFinality {
-	return b.blockFinality
-}
 
 func (b *BlockNotifierPolling) GetCurrentBlockNumber() uint64 {
 	status := b.getGlobalStatus()
