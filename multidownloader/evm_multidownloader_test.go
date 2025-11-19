@@ -22,6 +22,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
@@ -225,7 +226,7 @@ func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) 
 	require.Equal(t, uint64(8729203), br.ToBlock)
 }
 
-func TestEVMMultidownloaderRegisterSyncer(t *testing.T) {
+func TestEVMMultidownloader_RegisterSyncer(t *testing.T) {
 	t.Run("check Addresses", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, false)
 		err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
@@ -320,6 +321,28 @@ func TestEVMMultidownloader_Initialize(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "already initialized")
 	})
+}
+func TestEVMMultidownloader_StepSafe(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, false)
+	testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+	err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		SyncerID: "syncer1",
+		ContractsAddr: []common.Address{
+			common.HexToAddress("0x1"),
+		},
+		FromBlock: 100,
+		ToBlock:   aggkittypes.FinalizedBlock,
+	})
+	require.NoError(t, err)
+	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+		Return(uint64(150), nil).Maybe()
+	testData.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Maybe()
+	err = testData.mdr.Initialize(t.Context())
+	require.NoError(t, err)
+
+	finished, err := testData.mdr.StepSafe(t.Context())
+	require.NoError(t, err)
+	require.True(t, finished)
 }
 
 /*

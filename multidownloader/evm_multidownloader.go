@@ -520,11 +520,12 @@ func extractSuggestedBlockRangeFromErrorMsg(msg string) *aggkitcommon.BlockRange
 }
 
 func (dh *EVMMultidownloader) getFinalizedBlockNumber(ctx context.Context) (uint64, error) {
-	bn, err := dh.blockNotifierManager.GetBlockNotifier(ctx, dh.cfg.BlockFinality)
+	bn, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, dh.cfg.BlockFinality)
 	if err != nil {
-		return 0, fmt.Errorf("Safe/Step: cannot get finalized BlockNotifier: %w", err)
+		return 0, fmt.Errorf("Safe/Step: cannot get finalized block (%s): %w",
+			dh.cfg.BlockFinality.String(), err)
 	}
-	return bn.GetCurrentBlockNumber(), nil
+	return bn, nil
 }
 
 func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32, safe bool) (*mdrtypes.LogQuery, error) {
