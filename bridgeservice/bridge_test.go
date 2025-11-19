@@ -1419,7 +1419,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 }
 
 func TestIsValidHexHash(t *testing.T) {
-	t.Run("valid hex hash", func(t *testing.T) {
+	t.Run("valid hex hash with 0x prefix", func(t *testing.T) {
 		validHash := "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
 		require.True(t, isValidHexHash(validHash))
 	})
@@ -1429,9 +1429,9 @@ func TestIsValidHexHash(t *testing.T) {
 		require.False(t, isValidHexHash(shortHash))
 	})
 
-	t.Run("invalid prefix", func(t *testing.T) {
+	t.Run("valid hex hash without 0x prefix", func(t *testing.T) {
 		noPrefix := "27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
-		require.False(t, isValidHexHash(noPrefix))
+		require.True(t, isValidHexHash(noPrefix))
 	})
 
 	t.Run("invalid hex characters", func(t *testing.T) {

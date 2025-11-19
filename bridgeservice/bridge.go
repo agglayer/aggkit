@@ -1156,7 +1156,8 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 //
 // @Summary Get remove GER events
 // @Description Returns a list of remove GER events, optionally filtered by specific GER.
-// Results are limited by the limit parameter (default 50). If global_exit_root is provided, filters by that GER as well.
+// Results are limited by the limit parameter (default 50). If global_exit_root is provided,
+// filters by that GER as well.
 // @Tags ger-events
 // @Param global_exit_root query string false "Filter by specific Global Exit Root hash"
 // @Param limit query int false "Maximum number of events to return (default: 50)"
