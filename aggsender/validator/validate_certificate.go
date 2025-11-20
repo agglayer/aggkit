@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -19,37 +18,44 @@ var (
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
-type L1InfoTreeRootByLeafQuerier interface {
-	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
-	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
-}
-
 // CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
 	flow                  types.AggsenderVerifierFlow
-	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 	certQuerier           types.CertificateQuerier
 	lerQuerier            types.LERQuerier
+
+	l1GERQuerier types.L1GERQuerier
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
 	flow types.AggsenderVerifierFlow,
-	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
 	certQuerier types.CertificateQuerier,
-	lerQuerier types.LERQuerier) *CertificateValidator {
+	lerQuerier types.LERQuerier,
+	l1GERQuerier types.L1GERQuerier) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
 		flow:                  flow,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		certQuerier:           certQuerier,
 		lerQuerier:            lerQuerier,
+		l1GERQuerier:          l1GERQuerier,
 	}
 }
 
 // ValidateGER validates the GlobalExitRoot that needs to be injected.
 func (a *CertificateValidator) ValidateGER(ctx context.Context, ger common.Hash) error {
-	// TODO : implement GER validation logic for local validator
+	doesExist, err := a.l1GERQuerier.DoesGERExistOnContract(ctx, ger)
+	if err != nil {
+		return fmt.Errorf("error checking GER existence on contract for GER %s: %w", ger.String(), err)
+	}
+
+	if !doesExist {
+		return fmt.Errorf("global exit root %s does not exist on L1 GER contract", ger.String())
+	}
+
 	return nil
 }
 

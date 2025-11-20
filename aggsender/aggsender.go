@@ -182,6 +182,13 @@ func newAggsender(
 		return nil, fmt.Errorf("error creating verifier flow: %w", err)
 	}
 
+	l1GERQuerier, err := query.NewL1GERDataQuerier(
+		cfg.GlobalExitRootL1Addr, aggkittypes.LatestBlock, l1Client, // TODO configurable finality
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating L1GER data querier: %w", err)
+	}
+
 	localValidator := validator.NewLocalValidator(
 		logger,
 		storage,
@@ -191,6 +198,7 @@ func newAggsender(
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			certQuerier,
 			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+			l1GERQuerier,
 		),
 	)
 

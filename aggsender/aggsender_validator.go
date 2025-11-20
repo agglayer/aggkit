@@ -30,14 +30,15 @@ func NewAggsenderValidator(ctx context.Context,
 	logger aggkitcommon.Logger,
 	cfg validator.Config,
 	flow types.AggsenderVerifierFlow,
-	l1InfoTreeDataQuerier validator.L1InfoTreeRootByLeafQuerier,
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
 	aggLayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	certQuerier types.CertificateQuerier,
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 	lerQuerier types.LERQuerier,
+	l1GERQuerier types.L1GERQuerier,
 	signer signertypes.Signer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
-		logger, flow, l1InfoTreeDataQuerier, certQuerier, lerQuerier)
+		logger, flow, l1InfoTreeDataQuerier, certQuerier, lerQuerier, l1GERQuerier)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)
 	if err != nil {
 		return nil, err

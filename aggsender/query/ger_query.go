@@ -3,25 +3,29 @@ package query
 import (
 	"context"
 	"fmt"
+	"math/big"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var _ types.GERQuerier = (*gerDataQuerier)(nil)
+var _ types.L2GERQuerier = (*l2GERDataQuerier)(nil)
 
-// gerDataQuerier is a struct that holds the logic to query the GER (Global Exit Root) data
-type gerDataQuerier struct {
+// l2GERDataQuerier is a struct that holds the logic to query the GER (Global Exit Root) data
+type l2GERDataQuerier struct {
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier
 	chainGERReader    types.ChainGERReader
 }
 
-// NewGERDataQuerier returns a new instance of the GERQuerier
-func NewGERDataQuerier(
+// NewL2GERDataQuerier returns a new instance of the GERQuerier for L2 chains
+func NewL2GERDataQuerier(
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
-	chainGERReader types.ChainGERReader) types.GERQuerier {
-	return &gerDataQuerier{
+	chainGERReader types.ChainGERReader) types.L2GERQuerier {
+	return &l2GERDataQuerier{
 		l1InfoTreeQuerier: l1InfoTreeQuerier,
 		chainGERReader:    chainGERReader,
 	}
@@ -44,7 +48,7 @@ func NewGERDataQuerier(
 // Errors:
 //   - Returns an error if there is an issue querying the chain for injected GERs.
 //   - Returns an error if there is an issue generating proofs for any GER.
-func (g *gerDataQuerier) GetInjectedGERsProofs(
+func (g *l2GERDataQuerier) GetInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRootHash common.Hash,
 	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {
@@ -89,7 +93,7 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 }
 
 // GetRemovedGERsForRange returns the removed GlobalExitRoots for the given block range
-func (g *gerDataQuerier) GetRemovedGERsForRange(ctx context.Context,
+func (g *l2GERDataQuerier) GetRemovedGERsForRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	removedGERs, err := g.chainGERReader.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
@@ -97,4 +101,52 @@ func (g *gerDataQuerier) GetRemovedGERsForRange(ctx context.Context,
 			fromBlock, toBlock, err)
 	}
 	return removedGERs, nil
+}
+
+var _ types.L1GERQuerier = (*l1GERDataQuerier)(nil)
+
+// l1GERDataQuerier is a struct that holds the logic to query the L1 GER (Global Exit Root) data
+type l1GERDataQuerier struct {
+	blockFinality aggkittypes.BlockNumberFinality
+	agglayerGER   types.AgglayerGER
+	l1Client      aggkittypes.BaseEthereumClienter
+}
+
+// NewL1GERDataQuerier returns a new instance of the L1GERDataQuerier
+func NewL1GERDataQuerier(
+	l1AgglayerGERAddr common.Address,
+	blockFinality aggkittypes.BlockNumberFinality,
+	l1Client aggkittypes.BaseEthereumClienter,
+) (types.L1GERQuerier, error) {
+	agglayerGER, err := agglayerger.NewAgglayerger(l1AgglayerGERAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize L1 GER manager contract: %v", err)
+	}
+
+	return &l1GERDataQuerier{
+		l1Client:      l1Client,
+		agglayerGER:   agglayerGER,
+		blockFinality: blockFinality,
+	}, nil
+}
+
+// DoesGERExistOnContract checks if the given GER exists on the Agglayer GER contract
+func (g *l1GERDataQuerier) DoesGERExistOnContract(ctx context.Context, ger common.Hash) (bool, error) {
+	blockNum, err := g.blockFinality.BlockNumber(ctx, g.l1Client) // TODO - maybe get the header and use block hash instead?
+	if err != nil {
+		return false, fmt.Errorf("error getting block number for finality %s: %w", g.blockFinality.String(), err)
+	}
+
+	timestamp, err := g.agglayerGER.GlobalExitRootMap(
+		&bind.CallOpts{
+			Context:     ctx,
+			BlockNumber: new(big.Int).SetUint64(blockNum),
+		},
+		ger,
+	)
+	if err != nil {
+		return false, fmt.Errorf("error querying GER existence on contract: %w", err)
+	}
+
+	return timestamp.Cmp(common.Big0) != 0, nil
 }

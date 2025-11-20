@@ -111,7 +111,7 @@ func NewAggchainProofGenerationTool(
 		l1InfoTreeQuerier,
 		nil, // optimistic signer is not used in the tool, so we pass nil
 		baseFlow,
-		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
+		query.NewL2GERDataQuerier(l1InfoTreeQuerier, l2GERReader),
 		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader),
 	)
 

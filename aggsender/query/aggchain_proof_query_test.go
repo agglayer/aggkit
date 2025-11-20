@@ -251,7 +251,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 		mockFn func(
 			*mocks.AggchainProofClientInterface,
 			*mocks.L1InfoTreeDataQuerier,
-			*mocks.GERQuerier,
+			*mocks.L2GERQuerier,
 			*mocks.BridgeQuerier)
 		lastProvenBlock uint64
 		buildParams     *types.CertificateBuildParams
@@ -264,7 +264,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 1, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1")},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier,
+				gerQuerier *mocks.L2GERQuerier,
 				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x1"), uint32(1)).Return(treetypes.Proof{}, nil, errors.New("some error"))
 			},
@@ -276,7 +276,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"), ToBlock: 200, Claims: []bridgesync.Claim{{}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier,
+				gerQuerier *mocks.L2GERQuerier,
 				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x1"), uint32(2)).Return(
 					treetypes.Proof{},
@@ -292,7 +292,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier,
+				gerQuerier *mocks.L2GERQuerier,
 				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x123"), uint32(2)).Return(
 					treetypes.Proof{},
@@ -311,7 +311,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier,
+				gerQuerier *mocks.L2GERQuerier,
 				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx, common.HexToHash("0x123"), uint32(2)).Return(
 					treetypes.Proof{},
@@ -342,7 +342,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 
 			aggchainProofClient := mocks.NewAggchainProofClientInterface(t)
 			l1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			gerQuerier := mocks.NewGERQuerier(t)
+			gerQuerier := mocks.NewL2GERQuerier(t)
 			bridgeQuerier := mocks.NewBridgeQuerier(t)
 			if tc.mockFn != nil {
 				tc.mockFn(aggchainProofClient, l1InfoTreeDataQuerier, gerQuerier, bridgeQuerier)

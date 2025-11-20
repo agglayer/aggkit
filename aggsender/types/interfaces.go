@@ -168,14 +168,24 @@ type L1InfoTreeDataQuerier interface {
 	) (bool, error)
 }
 
-// GERQuerier is an interface defining functions that an GERQuerier should implement
-type GERQuerier interface {
+// L2GERQuerier is an interface defining functions that an L2GERQuerier should implement
+type L2GERQuerier interface {
 	GetInjectedGERsProofs(
 		ctx context.Context,
 		finalizedL1InfoTreeRootHash common.Hash,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
 	GetRemovedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
+}
+
+// L1GERQuerier is an interface defining functions that an L1GERQuerier should implement
+type L1GERQuerier interface {
+	DoesGERExistOnContract(ctx context.Context, ger common.Hash) (bool, error)
+}
+
+// AgglayerGER is an interface defining functions that an AgglayerGER should implement
+type AgglayerGER interface {
+	GlobalExitRootMap(opts *bind.CallOpts, ger [common.HashLength]byte) (*big.Int, error)
 }
 
 // Logger is an interface that defines the methods to log messages

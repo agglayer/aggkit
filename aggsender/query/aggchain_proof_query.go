@@ -32,7 +32,7 @@ type aggchainProofQuery struct {
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 	lerQuerier            types.LocalExitRootQuery
 	optimisticSigner      types.OptimisticSigner
-	gerQuerier            types.GERQuerier
+	gerQuerier            types.L2GERQuerier
 	bridgeQuerier         types.BridgeQuerier
 }
 
@@ -43,7 +43,7 @@ func NewAggchainProofQuery(
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
 	optimisticSigner types.OptimisticSigner,
 	lerQuerier types.LocalExitRootQuery,
-	gerQuerier types.GERQuerier,
+	gerQuerier types.L2GERQuerier,
 	bridgeQuerier types.BridgeQuerier,
 ) *aggchainProofQuery {
 	return &aggchainProofQuery{

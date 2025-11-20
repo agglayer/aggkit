@@ -94,7 +94,7 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 
 			mockGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			gerQuerier := NewGERDataQuerier(mockL1InfoTreeQuery, mockGERReader)
+			gerQuerier := NewL2GERDataQuerier(mockL1InfoTreeQuery, mockGERReader)
 
 			tc.mockFn(mockGERReader, mockL1InfoTreeQuery)
 
@@ -204,7 +204,7 @@ func Test_GetRemovedGERsForRange(t *testing.T) {
 
 			mockGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			gerQuerier := NewGERDataQuerier(mockL1InfoTreeQuery, mockGERReader)
+			gerQuerier := NewL2GERDataQuerier(mockL1InfoTreeQuery, mockGERReader)
 
 			tc.mockFn(mockGERReader)
 

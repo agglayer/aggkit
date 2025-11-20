@@ -8,6 +8,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -46,14 +47,18 @@ type Config struct {
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
 	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
+	// GERValidateConfig contains the configuration for the validation of GlobalExitRoots
+	GERValidateConfig GERValidateConfig `mapstructure:"GERValidateConfig"`
 }
 
+// PPConfig contains specific configuration for Pessimistic Proof mode
 type PPConfig struct {
 	// RequireOneBridgeInPPCertificate is a flag to force the validator to have at least one bridge exit
 	// for the Pessimistic Proof certificates
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
 }
 
+// FEPConfig contains specific configuration for FEP (AggchainProof) mode
 type FEPConfig struct {
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
@@ -64,11 +69,36 @@ type FEPConfig struct {
 	OpNodeURL string `mapstructure:"OpNodeURL"`
 }
 
+// LerQuerierConfig contains the configuration for the LER querier
 type LerQuerierConfig struct {
 	// RollupManagerAddr is the address of the RollupManager contract on L1
 	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
+}
+
+// GERValidateConfig contains the configuration for validating GlobalExitRoots
+type GERValidateConfig struct {
+	// GlobalExitRootL1Addr is the address of the GlobalExitRootManager contract on l1 chain
+	GlobalExitRootL1Addr ethCommon.Address `mapstructure:"GlobalExitRootL1"`
+	// BlockFinality indicates the finality of the blocks that will be used to validate the GERs
+	// Possible values: PendingBlock, LatestBlock, SafeBlock, FinalizedBlock, EarliestBlock
+	// (with an optional offset, e.g. SafeBlock/-5)
+	// See also: aggkittypes.BlockNumberFinality
+	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+}
+
+// Validate checks if the GERValidateConfig is valid
+func (g GERValidateConfig) Validate() error {
+	if err := g.BlockFinality.Validate(); err != nil {
+		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
+	}
+
+	if g.GlobalExitRootL1Addr == aggkitcommon.ZeroAddress {
+		return fmt.Errorf("GlobalExitRootL1Addr must be set")
+	}
+
+	return nil
 }
 
 // Validate checks if the configuration is valid
@@ -86,6 +116,10 @@ func (c *Config) Validate() error {
 
 	if err := c.AgglayerClient.Validate(); err != nil {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	if err := c.GERValidateConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid GER validation config: %w", err)
 	}
 
 	return nil

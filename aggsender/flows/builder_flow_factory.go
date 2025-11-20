@@ -114,7 +114,7 @@ func NewBuilderFlow(
 			commonFlowComponents.L1InfoTreeDataQuerier,
 			optimisticSigner,
 			commonFlowComponents.BaseFlow,
-			query.NewGERDataQuerier(commonFlowComponents.L1InfoTreeDataQuerier, l2GERReader),
+			query.NewL2GERDataQuerier(commonFlowComponents.L1InfoTreeDataQuerier, l2GERReader),
 			commonFlowComponents.L2BridgeQuerier,
 		)
 

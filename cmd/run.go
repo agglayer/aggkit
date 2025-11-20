@@ -332,6 +332,15 @@ func createAggSenderValidator(ctx context.Context,
 		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
 	}
 
+	l1GERQuerier, err := query.NewL1GERDataQuerier(
+		cfg.GERValidateConfig.GlobalExitRootL1Addr,
+		cfg.GERValidateConfig.BlockFinality,
+		l1Client,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating L1GER data querier: %w", err)
+	}
+
 	return aggsender.NewAggsenderValidator(
 		ctx, logger, cfg, flow,
 		flowParams.L1InfoTreeDataQuerier,
@@ -339,6 +348,7 @@ func createAggSenderValidator(ctx context.Context,
 		certQuerier,
 		aggchainFEPQuerier,
 		flowParams.LERQuerier,
+		l1GERQuerier,
 		flowParams.Signer,
 	)
 }
