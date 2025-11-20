@@ -36,9 +36,11 @@ type Config struct {
 	WaitPeriodToCheckCatchUp types.Duration
 }
 
-const defaultBlockChunkSize = 10000
-const defaultMaxParallelBlockHeaderRetrieval = 30
-const defaultWaitPeriodToCheckCatchUp = time.Second * 10
+const (
+	defaultBlockChunkSize                  = 10000
+	defaultMaxParallelBlockHeaderRetrieval = 30
+	defaultWaitPeriodToCheckCatchUp        = time.Second * 10
+)
 
 func NewConfigDefault(name string, basePathDB string) Config {
 	if basePathDB == "" {

@@ -98,10 +98,15 @@ func start(cliCtx *cli.Context) error {
 			log.Fatal("Error from ReorgDetectorL2: ", err)
 		}
 	}()
-	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components, l1Client, cfg.L1Multidownloader)
+	var rpcServices []jRPC.Service
+	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components, l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}
+	if l1mdServices != nil {
+		rpcServices = append(rpcServices, l1mdServices...)
+	}
+
 	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
@@ -113,7 +118,7 @@ func start(cliCtx *cli.Context) error {
 
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
-	var rpcServices []jRPC.Service
+
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1, l1Client, l1MultiDownloader)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
@@ -617,18 +622,18 @@ func runL1MultiDownloaderIfNeeded(
 	_ []string,
 	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
-) (aggkittypes.MultiDownloader, error) {
+) (aggkittypes.MultiDownloader, []jRPC.Service, error) {
 	// The requirements are the same as L1Client
 	if l1Client == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	// If it's disable I create a direct eth client
+	// If it's disable It creates a direct eth client
 	if !cfg.Enabled {
-		return aggkitsync.NewAdapterEthClientToMultidownloader(l1Client), nil
+		return aggkitsync.NewAdapterEthClientToMultidownloader(l1Client), nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 
-	return multidownloader.NewEVMMultidownloader(
+	downloader, err := multidownloader.NewEVMMultidownloader(
 		logger,
 		cfg,
 		"l1",
@@ -637,6 +642,11 @@ func runL1MultiDownloaderIfNeeded(
 		nil,      // storage
 		nil,      // blockNotifierManager
 	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create L1 MultiDownloader: %w", err)
+	}
+	rpcServices := downloader.GetRPCServices()
+	return downloader, rpcServices, nil
 }
 
 func runReorgDetectorL2IfNeeded(
