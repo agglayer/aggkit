@@ -97,7 +97,7 @@ func (b BlockRange) Merge(other BlockRange) BlockRange {
 	)
 }
 
-// Subtract a BlockRanges
+// Subtract two BlockRanges
 // A----(C---D)----B -> [A-C-1] , [D+1 - B]
 // A----B (C---D) -> [A-B]
 // (C---D) A----B -> [A-B]
