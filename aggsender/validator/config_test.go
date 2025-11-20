@@ -8,6 +8,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -24,6 +25,10 @@ func TestValidatorConfigValidate(t *testing.T) {
 			name: "Valid PessimisticProof mode",
 			config: Config{
 				Mode: aggsendertypes.PessimisticProofMode,
+				GERValidateConfig: GERValidateConfig{
+					GlobalExitRootL1Addr: common.HexToAddress("0x2"),
+					BlockFinality:        aggkittypes.FinalizedBlock,
+				},
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -37,11 +42,48 @@ func TestValidatorConfigValidate(t *testing.T) {
 				FEPConfig: FEPConfig{
 					SovereignRollupAddr: common.HexToAddress("0x1"),
 				},
+				GERValidateConfig: GERValidateConfig{
+					GlobalExitRootL1Addr: common.HexToAddress("0x2"),
+					BlockFinality:        aggkittypes.FinalizedBlock,
+				},
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
 			},
+		},
+		{
+			name: "Invalid GERValidateConfig - zero address",
+			config: Config{
+				Mode: aggsendertypes.PessimisticProofMode,
+				GERValidateConfig: GERValidateConfig{
+					GlobalExitRootL1Addr: common.HexToAddress("0x0"), // Zero address
+					BlockFinality:        aggkittypes.FinalizedBlock,
+				},
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
+					URL:               "http://localhost:9090",
+					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				}},
+			},
+			expectedErr: "GlobalExitRootL1Addr must be set",
+		},
+		{
+			name: "Invalid GERValidateConfig - block finality non valid",
+			config: Config{
+				Mode: aggsendertypes.PessimisticProofMode,
+				GERValidateConfig: GERValidateConfig{
+					GlobalExitRootL1Addr: common.HexToAddress("0x2"),
+					BlockFinality: aggkittypes.BlockNumberFinality{
+						Block:  aggkittypes.Finalized,
+						Offset: aggkittypes.MaxPositiveOffsetFinalized + 1, // Invalid offset
+					},
+				},
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
+					URL:               "http://localhost:9090",
+					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				}},
+			},
+			expectedErr: "invalid BlockFinality configuration",
 		},
 		{
 			name: "Invalid AggchainProof mode",

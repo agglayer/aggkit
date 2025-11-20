@@ -3,14 +3,21 @@ package query
 import (
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,7 +95,6 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -198,7 +204,6 @@ func Test_GetRemovedGERsForRange(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -217,6 +222,171 @@ func Test_GetRemovedGERsForRange(t *testing.T) {
 			}
 
 			mockGERReader.AssertExpectations(t)
+		})
+	}
+}
+
+func Test_NewL1GERDataQuerier(t *testing.T) {
+	t.Run("error initializing L1 GER manager contract", func(t *testing.T) {
+		createAgglayerGERL1func = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (types.AgglayerGER, error) {
+			return nil, errors.New("some error")
+		}
+
+		_, err := NewL1GERDataQuerier(
+			common.HexToAddress("0x1"),
+			aggkittypes.FinalizedBlock,
+			aggkittypesmocks.NewBaseEthereumClienter(t),
+		)
+		require.ErrorContains(t, err, "failed to initialize L1 GER manager contract: some error")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		createAgglayerGERL1func = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (types.AgglayerGER, error) {
+			return mocks.NewAgglayerGER(t), nil
+		}
+
+		gerQuerier, err := NewL1GERDataQuerier(
+			common.HexToAddress("0x1"),
+			aggkittypes.FinalizedBlock,
+			aggkittypesmocks.NewBaseEthereumClienter(t),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, gerQuerier)
+	})
+}
+
+func Test_L1GERDataQuerier_DoesGERExistOnContract(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		ger           common.Hash
+		blockFinality *aggkittypes.BlockNumberFinality
+		mockFn        func(*mocks.AgglayerGER, *aggkittypesmocks.BaseEthereumClienter)
+		expectedExist bool
+		expectedError string
+	}{
+		{
+			name: "error getting block number for finality",
+			ger:  common.HexToHash("0x1"),
+			mockFn: func(mockAgglayerGER *mocks.AgglayerGER, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
+				mockL1Client.EXPECT().HeaderByNumber(
+					t.Context(),
+					big.NewInt(int64(aggkittypes.Finalized)),
+				).Return(nil, errors.New("some error"))
+			},
+			expectedError: "error getting block number for finality FinalizedBlock: some error",
+		},
+		{
+			name: "error querying GER existence on contract",
+			ger:  common.HexToHash("0x1"),
+			mockFn: func(mockAgglayerGER *mocks.AgglayerGER, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
+				mockL1Client.EXPECT().HeaderByNumber(
+					t.Context(),
+					big.NewInt(int64(aggkittypes.Finalized)),
+				).Return(&ethtypes.Header{Number: big.NewInt(100)}, nil)
+				mockAgglayerGER.EXPECT().GlobalExitRootMap(
+					&bind.CallOpts{
+						Context:     t.Context(),
+						BlockNumber: big.NewInt(100),
+					},
+					mock.Anything,
+				).Return(nil, errors.New("some error"))
+			},
+			expectedError: "error querying GER existence on contract: some error",
+		},
+		{
+			name: "GER does not exist",
+			ger:  common.HexToHash("0x1"),
+			mockFn: func(mockAgglayerGER *mocks.AgglayerGER, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
+				mockL1Client.EXPECT().HeaderByNumber(
+					t.Context(),
+					big.NewInt(int64(aggkittypes.Finalized)),
+				).Return(&ethtypes.Header{Number: big.NewInt(100)}, nil)
+				mockAgglayerGER.EXPECT().GlobalExitRootMap(
+					&bind.CallOpts{
+						Context:     t.Context(),
+						BlockNumber: big.NewInt(100),
+					},
+					mock.Anything,
+				).Return(common.Big0, nil)
+			},
+			expectedExist: false,
+		},
+		{
+			name: "GER exists",
+			ger:  common.HexToHash("0x1"),
+			mockFn: func(mockAgglayerGER *mocks.AgglayerGER, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
+				mockL1Client.EXPECT().HeaderByNumber(
+					t.Context(),
+					big.NewInt(int64(aggkittypes.Finalized)),
+				).Return(&ethtypes.Header{Number: big.NewInt(100)}, nil)
+				mockAgglayerGER.EXPECT().GlobalExitRootMap(
+					&bind.CallOpts{
+						Context:     t.Context(),
+						BlockNumber: big.NewInt(100),
+					},
+					mock.Anything,
+				).Return(big.NewInt(12345), nil)
+			},
+			expectedExist: true,
+		},
+		{
+			name: "GER exists with block finality with offset",
+			ger:  common.HexToHash("0x1"),
+			blockFinality: &aggkittypes.BlockNumberFinality{
+				Block:  aggkittypes.Latest,
+				Offset: -6,
+			},
+			mockFn: func(mockAgglayerGER *mocks.AgglayerGER, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
+				mockL1Client.EXPECT().HeaderByNumber(
+					t.Context(),
+					(*big.Int)(nil),
+				).Return(&ethtypes.Header{Number: big.NewInt(200)}, nil)
+				mockAgglayerGER.EXPECT().GlobalExitRootMap(
+					&bind.CallOpts{
+						Context:     t.Context(),
+						BlockNumber: big.NewInt(194),
+					},
+					mock.Anything,
+				).Return(big.NewInt(67890), nil)
+			},
+			expectedExist: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockAgglayerGER := mocks.NewAgglayerGER(t)
+			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+
+			blockFinality := aggkittypes.FinalizedBlock
+			if tc.blockFinality != nil {
+				blockFinality = *tc.blockFinality
+			}
+
+			gerQuerier := &l1GERDataQuerier{
+				blockFinality: blockFinality,
+				agglayerGER:   mockAgglayerGER,
+				l1Client:      mockL1Client,
+			}
+
+			if tc.mockFn != nil {
+				tc.mockFn(mockAgglayerGER, mockL1Client)
+			}
+
+			exists, err := gerQuerier.DoesGERExistOnContract(t.Context(), tc.ger)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedExist, exists)
+			}
+
+			mockAgglayerGER.AssertExpectations(t)
+			mockL1Client.AssertExpectations(t)
 		})
 	}
 }

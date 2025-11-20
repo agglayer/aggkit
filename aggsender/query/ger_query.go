@@ -13,6 +13,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+var createAgglayerGERL1func = func(gerAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (types.AgglayerGER, error) {
+	return agglayerger.NewAgglayerger(gerAddr, l1Client)
+}
+
 var _ types.L2GERQuerier = (*l2GERDataQuerier)(nil)
 
 // l2GERDataQuerier is a struct that holds the logic to query the GER (Global Exit Root) data
@@ -118,7 +122,7 @@ func NewL1GERDataQuerier(
 	blockFinality aggkittypes.BlockNumberFinality,
 	l1Client aggkittypes.BaseEthereumClienter,
 ) (types.L1GERQuerier, error) {
-	agglayerGER, err := agglayerger.NewAgglayerger(l1AgglayerGERAddr, l1Client)
+	agglayerGER, err := createAgglayerGERL1func(l1AgglayerGERAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize L1 GER manager contract: %v", err)
 	}
