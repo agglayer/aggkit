@@ -261,10 +261,19 @@ func TestRetrieveBlockHeadersInBatchParallel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, len(blockNumbers), len(result))
 	for _, bn := range blockNumbers {
-		header, exists := result[bn]
-		require.True(t, exists)
+		header := getBlockHeader(bn, result)
+		require.NotNil(t, header)
 		assert.Equal(t, bn, header.Number)
 	}
+}
+
+func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
+	for _, h := range headers {
+		if h.Number == bn {
+			return h
+		}
+	}
+	return nil
 }
 
 func TestSplitBlockNumbersIntoChunks(t *testing.T) {

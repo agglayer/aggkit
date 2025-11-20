@@ -56,7 +56,7 @@ func RetrieveBlockHeaders(ctx context.Context,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
 	blockNumbers []uint64,
-	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
 	if rpcClient != nil {
 		return RetrieveBlockHeadersBatch(ctx, log, rpcClient, blockNumbers, maxConcurrency)
 	}
@@ -69,7 +69,7 @@ func RetrieveBlockHeadersBatch(ctx context.Context,
 	log aggkitcommon.Logger,
 	rpcClient aggkittypes.RPCClienter,
 	blockNumbers []uint64,
-	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
 		ctx,
 		log,
@@ -84,7 +84,7 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 	log aggkitcommon.Logger,
 	ethClient aggkittypes.BaseEthereumClienter,
 	blockNumbers []uint64,
-	maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
 	return retrieveBlockHeadersInBatchParallel(
 		ctx,
 		log,
@@ -148,12 +148,12 @@ func retrieveBlockHeadersInBatchParallel(
 	logger aggkitcommon.Logger,
 	funcRetrieval func(context.Context, []uint64) ([]*aggkittypes.BlockHeader, error),
 	blockNumbers []uint64,
-	chunckSize, maxConcurrency int) (map[uint64]*aggkittypes.BlockHeader, error) {
+	chunckSize, maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
 	var mu sync.Mutex
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrency)
 	chuncks := splitBlockNumbersIntoChunks(blockNumbers, chunckSize)
-	results := make(map[uint64]*aggkittypes.BlockHeader)
+	results := make(map[uint64]*aggkittypes.BlockHeader, len(blockNumbers))
 	for _, chunck := range chuncks {
 		g.Go(func() error {
 			headers, err := funcRetrieval(ctx, chunck)
@@ -169,11 +169,17 @@ func retrieveBlockHeadersInBatchParallel(
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return results, err
+		return nil, err
 	}
+	// convert map to sorted slice by block number
+	finalResults := make([]*aggkittypes.BlockHeader, len(blockNumbers))
+	for idx, bn := range blockNumbers {
+		finalResults[idx] = results[bn]
+	}
+
 	logger.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved block headers for blocks %d",
 		len(blockNumbers))
-	return results, nil
+	return finalResults, nil
 }
 
 func splitBlockNumbersIntoChunks(blockNumbers []uint64, chunkSize int) [][]uint64 {

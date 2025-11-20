@@ -99,7 +99,8 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 	var rpcServices []jRPC.Service
-	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components, l1Client, cfg.L1Multidownloader)
+	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(cliCtx.Context, components,
+		l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}

@@ -374,14 +374,6 @@ func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 	return dh.syncedSegments.IsAvailable(query)
 }
 
-func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkittypes.BlockHeader {
-	headers := make([]*aggkittypes.BlockHeader, 0, len(blocks))
-	for _, header := range blocks {
-		headers = append(headers, header)
-	}
-	return headers
-}
-
 // StepSafe performs a safe step syncing logs and block headers from historical data
 func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err := ctx.Err(); err != nil {
@@ -447,7 +439,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 }
 func (dh *EVMMultidownloader) storeData(
 	ctx context.Context,
-	logs []types.Log, blocks map[uint64]*aggkittypes.BlockHeader,
+	logs []types.Log, blocks []*aggkittypes.BlockHeader,
 	updatedSegments []mdrtypes.SyncSegment,
 	isFinal bool) error {
 	var err error
@@ -469,7 +461,7 @@ func (dh *EVMMultidownloader) storeData(
 		}
 	}()
 	// Save logs and block headers
-	err = dh.storage.SaveEthLogsWithHeaders(tx, mapBlockHeadersToList(blocks), logs, isFinal)
+	err = dh.storage.SaveEthLogsWithHeaders(tx, blocks, logs, isFinal)
 	if err != nil {
 		return fmt.Errorf("Safe/Step: cannot save eth logs: %w", err)
 	}

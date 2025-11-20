@@ -33,7 +33,7 @@ const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = true
 
 func TestEVMMultidownloader(t *testing.T) {
-	//t.Skip("code to test/debug not real unittest")
+	t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -211,12 +211,21 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 
 	require.Equal(t, len(headersParallel), len(headersBatch))
 	for _, blockNumber := range blockNumbersSlice {
-		headerP, okP := headersParallel[blockNumber]
-		headerB, okB := headersBatch[blockNumber]
-		require.True(t, okP)
-		require.True(t, okB)
+		headerP := getBlockHeader(blockNumber, headersParallel)
+		headerB := getBlockHeader(blockNumber, headersBatch)
+		require.NotNil(t, headerP)
+		require.NotNil(t, headerB)
 		require.Equal(t, headerP.Hash, headerB.Hash)
 	}
+}
+
+func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
+	for _, h := range headers {
+		if h.Number == bn {
+			return h
+		}
+	}
+	return nil
 }
 
 func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) {
