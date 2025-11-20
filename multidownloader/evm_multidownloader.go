@@ -439,18 +439,15 @@ func (dh *EVMMultidownloader) requestLogs(
 			logQueryData.BlockRange = *suggestedBlockRange
 			dh.log.Warnf("Safe/Step: adjusting block range to suggested by error: %s", logQueryData.BlockRange.String())
 		}
-		rpcFilterQuery := logQueryData.ToRPCFilterQuery()
-		dh.log.Debugf("Safe/Step:: querying logs for %s",
-			logQueryData.String())
-		dh.statistics.LaunchedEthCall()
-		logs, err := dh.ethClient.FilterLogs(ctx, rpcFilterQuery)
-		dh.statistics.FinishEthCall(err, uint64(len(logs)), logQueryData.BlockRange.CountBlocks())
+
+		dh.log.Debugf("Safe/Step:: querying logs for %s", logQueryData.String())
+		logs, err := dh.requestLogsSingleTry(ctx, logQueryData)
 		if err == nil {
 			return logs, logQueryData, nil
 		}
 		if err != nil && !isEthClientErrorTooManyResults(err) {
 			return nil, nil, fmt.Errorf("Safe/Step: fails ethClient.FilterLogs(%v): %v. err: %w",
-				rpcFilterQuery, ethGetExtendendError(err), err)
+				logQueryData.String(), ethGetExtendendError(err), err)
 		}
 		suggestedBlockRange = extractSuggestedBlockRangeFromError(err)
 		if suggestedBlockRange == nil || !logQueryData.BlockRange.Overlaps(*suggestedBlockRange) {
@@ -467,6 +464,18 @@ func (dh *EVMMultidownloader) requestLogs(
 				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendendError(err))
 		}
 	}
+}
+
+func (dh *EVMMultidownloader) requestLogsSingleTry(ctx context.Context, logQueryData *mdrtypes.LogQuery) ([]types.Log, error) {
+	rpcFilterQuery := logQueryData.ToRPCFilterQuery()
+	dh.statistics.LaunchedEthCall()
+	logs, err := dh.ethClient.FilterLogs(ctx, rpcFilterQuery)
+	if err != nil {
+		dh.statistics.FinishEthCall(err, 0, 0)
+		return nil, err
+	}
+	dh.statistics.FinishEthCall(err, uint64(len(logs)), logQueryData.BlockRange.CountBlocks())
+	return logs, nil
 }
 
 func (dh *EVMMultidownloader) ShowStatistics(iteration int) {

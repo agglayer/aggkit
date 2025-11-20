@@ -42,6 +42,28 @@ type ContractConfig struct {
 	Syncers             []SyncerID
 }
 
+func NewContractConfigFromSyncerConfig(address common.Address, syncerConfig SyncerConfig) *ContractConfig {
+	return &ContractConfig{
+		Address:   address,
+		FromBlock: syncerConfig.FromBlock,
+		ToBlock:   syncerConfig.ToBlock,
+		Syncers:   []SyncerID{syncerConfig.SyncerID},
+	}
+}
+
+func (c *ContractConfig) Update(syncerConfig SyncerConfig) {
+	if syncerConfig.FromBlock < c.FromBlock {
+		c.FromBlock = syncerConfig.FromBlock
+	}
+	if syncerConfig.ToBlock.LessFinalThan(c.ToBlock) {
+		c.ToBlock = syncerConfig.ToBlock
+	}
+	if !elementMatch(c.Syncers, syncerConfig.SyncerID) {
+		c.Syncers = append(c.Syncers, syncerConfig.SyncerID)
+		sort.Strings(c.Syncers)
+	}
+}
+
 type SetSyncerConfig struct {
 	filters map[SyncerID]SyncerConfig
 }
@@ -107,38 +129,29 @@ func elementMatch(slice []SyncerID, element SyncerID) bool {
 	return false
 }
 
+// ContractConfigs combines the SyncerConfig into ContractConfig per contract address
 func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 	if f == nil || f.filters == nil {
 		return []ContractConfig{}
 	}
 	contractMap := make(map[common.Address]*ContractConfig)
-	for syncerID, filter := range f.filters {
+	for _, filter := range f.filters {
 		for _, addr := range filter.ContractsAddr {
 			cc, exists := contractMap[addr]
 			if !exists {
-				cc = &ContractConfig{
-					Address:   addr,
-					FromBlock: filter.FromBlock,
-					ToBlock:   filter.ToBlock,
-					Syncers:   []SyncerID{},
-				}
-				contractMap[addr] = cc
+				contractMap[addr] = NewContractConfigFromSyncerConfig(addr, filter)
 			} else {
 				// Update FromBlock and ToBlock if needed
-				if filter.FromBlock < cc.FromBlock {
-					cc.FromBlock = filter.FromBlock
-				}
-				if filter.ToBlock.LessFinalThan(cc.ToBlock) {
-					cc.ToBlock = filter.ToBlock
-				}
-			}
-			if !elementMatch(cc.Syncers, syncerID) {
-				cc.Syncers = append(cc.Syncers, syncerID)
-				sort.Strings(cc.Syncers)
+				cc.Update(filter)
 			}
 		}
+
 	}
-	// Convert map to slice
+	return convertContractMapToSlice(contractMap)
+}
+
+// convertContractMapToSlice converts map to slice
+func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) []ContractConfig {
 	contractConfigs := make([]ContractConfig, 0, len(contractMap))
 	for _, cc := range contractMap {
 		contractConfigs = append(contractConfigs, *cc)
