@@ -162,21 +162,11 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// dh.log.Infof("checking unsafe blocks on DB...")
-	// err = dh.MoveUnsafeToSafeIfPossible(ctx)
-	// if err != nil {
-	// 	return err
-	// }
 
 	err = dh.sync(ctx, dh.StepSafe, "safe")
 	if err != nil {
 		return err
 	}
-	// TODO: Implement unsafe mode syncing
-	// err = dh.Sync(ctx, dh.StepUnsafe, "unsafe")
-	// if err != nil {
-	// 	return err
-	// }
 
 	return nil
 }
