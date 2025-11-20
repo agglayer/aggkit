@@ -349,8 +349,8 @@ func ethGetExtendendError(err error) string {
 		return ""
 	}
 
-	jsonError, ok := err.(ethrpc.DataError) //nolint:errorlint
-	if !ok {
+	var jsonError ethrpc.DataError
+	if !errors.As(err, &jsonError) {
 		return ""
 	}
 	return fmt.Sprintf("json_data: %v", jsonError.ErrorData())
