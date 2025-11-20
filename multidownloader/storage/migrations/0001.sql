@@ -1,13 +1,13 @@
 -- +migrate Down
 DROP TABLE IF EXISTS logs;
-DROP TABLE IF EXISTS block;
-DROP TABLE IF EXISTS block_unsafe;
+DROP TABLE IF EXISTS blocks;
+DROP TABLE IF EXISTS sync_status;
 -- +migrate Up
 CREATE TABLE logs (
     address TEXT NOT NULL,                -- 
     topics TEXT NOT NULL,                 -- list of hashes in JSON
     data BLOB,                            -- 
-    block_number BIGINT NOT NULL REFERENCES block(block_number),
+    block_number BIGINT NOT NULL REFERENCES blocks(block_number),
     tx_hash TEXT NOT NULL,
     tx_index INTEGER NOT NULL,
     log_index INTEGER NOT NULL,      -- “index” is a reserved keyword
@@ -31,11 +31,4 @@ CREATE TABLE sync_status (
     synced_to_block BIGINT NOT NULL,    -- Current synced to block
     syncers_id TEXT NOT NULL,          -- Syncer identifier
     PRIMARY KEY (contract_address)
-);
-
-CREATE TABLE reorgs (
-    chain_id INTEGER NOT NULL,
-    block_number BIGINT NOT NULL,
-    block_hash TEXT NOT NULL, 
-    PRIMARY KEY (chain_id, block_number, block_hash)
 );
