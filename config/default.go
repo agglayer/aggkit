@@ -307,7 +307,7 @@ AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 	OpNodeURL = "{{OpNodeURL}}"
 [Validator.GERValidateConfig]
 	GlobalExitRootL1Addr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
-	BlockFinality = {{L1InfoTreeSync.BlockFinality}}
+	BlockFinality = "{{L1InfoTreeSync.BlockFinality}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]
