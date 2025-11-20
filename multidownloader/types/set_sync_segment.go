@@ -69,19 +69,6 @@ func (s *SetSyncSegment) Add(segment SyncSegment) {
 	s.UpdateBlockRange(current, current.BlockRange.Merge(segment.BlockRange))
 }
 
-// Replace replaces an existing segment with the provided one instead of merging
-func (s *SetSyncSegment) Replace(segment *SyncSegment) {
-	if s == nil || segment == nil {
-		return
-	}
-	for i, existing := range s.segments {
-		if existing.ContractAddr == segment.ContractAddr {
-			s.segments[i] = segment
-			return
-		}
-	}
-}
-
 // GetByContract returns the SyncSegment for the given contract address
 func (s *SetSyncSegment) GetByContract(addr common.Address) *SyncSegment {
 	if s == nil {
