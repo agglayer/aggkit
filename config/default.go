@@ -333,6 +333,6 @@ AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 	StoragePath = "{{PathRWData}}/l2_multidownloader.sqlite"
 	BlockChunkSize = 10000
 	MaxParallelBlockHeaderRetrieval = 30
-	BlockFinality = "FinalizedBlock"
+	BlockFinality = "LatestBlock"
 	WaitPeriodToCheckCatchUp = "10s"
 `
