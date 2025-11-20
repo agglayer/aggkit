@@ -104,59 +104,6 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	return nil
 }
 
-// TODO: to uncomment when implement Tip of Chain synchronization (next PR)
-// func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) error {
-// 	dh.mutex.Lock()
-// 	defer dh.mutex.Unlock()
-
-// 	finalizedBlockNumber, err := dh.getFinalizedBlockNumber(ctx)
-// 	if err != nil {
-// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get finalized block number: %w", err)
-// 	}
-
-// 	committed := false
-// 	tx, err := dh.storage.NewTx(ctx)
-// 	if err != nil {
-// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot create new tx: %w", err)
-// 	}
-// 	defer func() {
-// 		if !committed {
-// 			dh.log.Debugf("MoveUnsafeToSafeIfPossible: rolling back tx")
-// 			if err := tx.Rollback(); err != nil {
-// 				dh.log.Errorf("MoveUnsafeToSafeIfPossible: error rolling back tx: %v", err)
-// 			}
-// 		}
-// 	}()
-
-// 	blocks, err := dh.storage.GetBlockHeaderNotFinal(tx, finalizedBlockNumber)
-// 	if err != nil {
-// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
-// 	}
-// 	err = dh.detectReorgs(ctx, tx, blocks)
-// 	if err != nil {
-// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot detect reorgs: %w", err)
-// 	}
-// 	blockNumbers := make([]uint64, 0, len(blocks))
-// 	for _, block := range blocks {
-// 		blockNumbers = append(blockNumbers, block.Number)
-// 	}
-
-// 	err = dh.storage.UpdateIsFinal(tx, blockNumbers)
-// 	if err != nil {
-// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
-// 	}
-// 	committed = true
-// 	if err := tx.Commit(); err != nil {
-// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot commit tx: %w", err)
-// 	}
-// 	return nil
-// }
-// func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
-// 	tx dbtypes.Querier, blocks []*aggkittypes.BlockHeader) error {
-// 	// TODO: implement reorg detection
-// 	return nil
-// }
-
 func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	err := dh.Initialize(ctx)
 	if err != nil {
@@ -272,77 +219,6 @@ func (dh *EVMMultidownloader) sync(ctx context.Context,
 	dh.ShowStatistics(iteration)
 	return nil
 }
-
-// TODO: Implement unsafe mode syncing
-// func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
-// 	err := dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
-// 	}
-// 	if dh.pendingSync.Finished() {
-// 		return true, nil
-// 	}
-// 	committed := false
-// 	tx, err := dh.storage.NewTx(ctx)
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot create new tx: %w", err)
-// 	}
-// 	defer func() {
-// 		if !committed {
-// 			dh.log.Debugf("Unsafe/Step: rolling back tx")
-// 			if err := tx.Rollback(); err != nil {
-// 				dh.log.Errorf("Unsafe/Step: error rolling back tx: %v", err)
-// 			}
-// 		}
-// 	}()
-
-// 	logQueryData, err := dh.pendingSync.NextQuery(1, 0)
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot get next query: %w", err)
-// 	}
-// 	if logQueryData.BlockRange.CountBlocks() != 1 {
-// 		return false, fmt.Errorf("Unsafe/Step: invalid block range for Step: %s", logQueryData.BlockRange.String())
-// 	}
-// 	blockHeader, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(logQueryData.BlockRange.ToBlock)))
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot get block header for block %d: %w",
-// 			logQueryData.BlockRange.ToBlock, err)
-// 	}
-// 	blockHash := blockHeader.Hash()
-// 	rpcFilter := ethereum.FilterQuery{
-// 		Addresses: logQueryData.Addrs,
-// 		BlockHash: &blockHash,
-// 	}
-
-// 	logs, err := dh.ethClient.FilterLogs(ctx, rpcFilter)
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: ethClient.FilterLogs: %w", err)
-// 	}
-// 	dh.log.Infof("Unsafe/Step: reached block %d/%s logs len=%d",
-// 		blockHeader.Number.Uint64(), blockHeader.Hash().Hex(), len(logs))
-// 	blockHeaders := []*aggkittypes.BlockHeader{aggkittypes.NewBlockHeaderFromEthHeader(blockHeader)}
-// 	err = dh.storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, false)
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot save unsafe block: %w", err)
-// 	}
-// 	newSyncing := dh.pendingSync.UpdateSyncingAfterDoingQuery(logQueryData)
-// 	if err = dh.storage.UpdateSyncingStatus(tx, logQueryData); err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot update syncing status: %w", err)
-// 	}
-// 	committed = true
-// 	if err := tx.Commit(); err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot commit tx: %w", err)
-// 	}
-// 	dh.pendingSync = newSyncing
-// 	dh.log.Debugf("Unsafe/Step: finished block=%d syncing=%s",
-// 		blockHeader.Number.Uint64(),
-// 		dh.pendingSync.String())
-// 	err = dh.pendingSync.UpdateToBlock(ctx, dh.blockNotifierManager)
-// 	if err != nil {
-// 		return false, fmt.Errorf("Unsafe/Step: cannot update ToBlock in pendingSync: %w", err)
-// 	}
-// 	return dh.pendingSync.Finished(), nil
-// }
 
 func getBlockNumbers(logs []types.Log) []uint64 {
 	blockNumbers := make(map[uint64]struct{})
