@@ -69,7 +69,7 @@ func (a *MultidownloaderStorage) UpdateIsFinal(tx dbtypes.Querier, blockNumbers 
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
-	query := "UPDATE block SET is_final = 1 WHERE block_number IN (?)"
+	query := "UPDATE blocks SET is_final = 1 WHERE block_number IN (?)"
 	queryStr, args, err := sqlx.In(query, blockNumbers)
 	if err != nil {
 		return fmt.Errorf("error building SQL query: %w", err)
@@ -88,7 +88,7 @@ func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
 	}
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
-	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM block WHERE block_number = ?", blockNumber)
+	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE block_number = ?", blockNumber)
 	if err != nil {
 		return nil, false, err
 	}
@@ -109,7 +109,7 @@ func (a *MultidownloaderStorage) GetBlockHeaderNotFinal(tx dbtypes.Querier,
 	}
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
-	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM block WHERE is_final = 0 AND block_number = ? "+
+	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0 AND block_number = ? "+
 		"ORDER BY block_number ASC", finalizedBlockNumber)
 	return blocks.ListHeaders(), err
 }

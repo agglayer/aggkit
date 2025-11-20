@@ -158,7 +158,7 @@ func TestSetSyncSegment_TotalBlocks(t *testing.T) {
 func TestSetSyncSegment_UpdateTargetBlockToNumber(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		var set *SetSyncSegment
-		err := set.UpdateTargetBlockToNumber(nil, nil)
+		err := set.UpdateTargetBlockToNumber(t.Context(), nil)
 		require.NoError(t, err)
 	})
 

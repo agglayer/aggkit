@@ -202,7 +202,7 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 	dbRows := make([]*logAndBlockRow, 0)
 	sqlQuery := `
 	SELECT * FROM logs
-	LEFT JOIN block ON logs.block_number = block.block_number
+	LEFT JOIN blocks ON logs.block_number = blocks.block_number
 	WHERE address IN (?)
 	AND logs.block_number>=? AND logs.block_number<=?
 	ORDER BY logs.block_number ASC, log_index ASC

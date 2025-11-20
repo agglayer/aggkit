@@ -14,7 +14,7 @@ CREATE TABLE logs (
     PRIMARY KEY (address, block_number, log_index)
 );
 
-CREATE TABLE block (
+CREATE TABLE blocks (
     block_number BIGINT NOT NULL,
     block_hash TEXT NOT NULL,             
     block_timestamp INTEGER NOT NULL,
@@ -33,9 +33,9 @@ CREATE TABLE sync_status (
     PRIMARY KEY (contract_address)
 );
 
-CREATE TABLE reorg_chain (
+CREATE TABLE reorgs (
     chain_id INTEGER NOT NULL,
     block_number BIGINT NOT NULL,
-     block_hash TEXT NOT NULL, 
+    block_hash TEXT NOT NULL, 
     PRIMARY KEY (chain_id, block_number, block_hash)
 );
