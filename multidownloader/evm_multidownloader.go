@@ -267,7 +267,14 @@ func (dh *EVMMultidownloader) sync(ctx context.Context,
 	// Execute steps until done or error
 	for done, err := stepFunc(ctx); !done; done, err = stepFunc(ctx) {
 		if err != nil {
+			dh.log.Warnf("🐞🐞🐞🐞🐞 sync %s fails after %d iterations. err: %w",
+				name, iteration, err)
 			return err
+		}
+		if ctx.Err() != nil {
+			dh.log.Infof("🐞🐞🐞🐞🐞 sync %s fails after %d iterations. err: %w",
+				name, iteration, ctx.Err())
+			return ctx.Err()
 		}
 		iteration++
 	}
@@ -377,6 +384,9 @@ func mapBlockHeadersToList(blocks map[uint64]*aggkittypes.BlockHeader) []*aggkit
 
 // StepSafe performs a safe step syncing logs and block headers from historical data
 func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	logs, logQueryData, err := dh.requestLogs(ctx)
 	if err != nil {
 		if errors.Is(err, mdrtypes.ErrFinished) {
