@@ -12,7 +12,6 @@ import (
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanblocknotifier "github.com/agglayer/aggkit/etherman/block_notifier"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
@@ -105,58 +104,58 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	return nil
 }
 
-func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) error {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+// TODO: to uncomment when implement Tip of Chain synchronization (next PR)
+// func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) error {
+// 	dh.mutex.Lock()
+// 	defer dh.mutex.Unlock()
 
-	finalizedBlockNumber, err := dh.getFinalizedBlockNumber(ctx)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get finalized block number: %w", err)
-	}
+// 	finalizedBlockNumber, err := dh.getFinalizedBlockNumber(ctx)
+// 	if err != nil {
+// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get finalized block number: %w", err)
+// 	}
 
-	committed := false
-	tx, err := dh.storage.NewTx(ctx)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot create new tx: %w", err)
-	}
-	defer func() {
-		if !committed {
-			dh.log.Debugf("MoveUnsafeToSafeIfPossible: rolling back tx")
-			if err := tx.Rollback(); err != nil {
-				dh.log.Errorf("MoveUnsafeToSafeIfPossible: error rolling back tx: %v", err)
-			}
-		}
-	}()
+// 	committed := false
+// 	tx, err := dh.storage.NewTx(ctx)
+// 	if err != nil {
+// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot create new tx: %w", err)
+// 	}
+// 	defer func() {
+// 		if !committed {
+// 			dh.log.Debugf("MoveUnsafeToSafeIfPossible: rolling back tx")
+// 			if err := tx.Rollback(); err != nil {
+// 				dh.log.Errorf("MoveUnsafeToSafeIfPossible: error rolling back tx: %v", err)
+// 			}
+// 		}
+// 	}()
 
-	blocks, err := dh.storage.GetBlockHeaderNotFinal(tx, finalizedBlockNumber)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
-	}
-	err = dh.detectReorgs(ctx, tx, blocks)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot detect reorgs: %w", err)
-	}
-	blockNumbers := make([]uint64, 0, len(blocks))
-	for _, block := range blocks {
-		blockNumbers = append(blockNumbers, block.Number)
-	}
+// 	blocks, err := dh.storage.GetBlockHeaderNotFinal(tx, finalizedBlockNumber)
+// 	if err != nil {
+// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
+// 	}
+// 	err = dh.detectReorgs(ctx, tx, blocks)
+// 	if err != nil {
+// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot detect reorgs: %w", err)
+// 	}
+// 	blockNumbers := make([]uint64, 0, len(blocks))
+// 	for _, block := range blocks {
+// 		blockNumbers = append(blockNumbers, block.Number)
+// 	}
 
-	err = dh.storage.UpdateIsFinal(tx, blockNumbers)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
-	}
-	committed = true
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot commit tx: %w", err)
-	}
-	return nil
-}
-
-func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
-	tx dbtypes.Querier, blocks []*aggkittypes.BlockHeader) error {
-	// TODO: implement reorg detection
-	return nil
-}
+// 	err = dh.storage.UpdateIsFinal(tx, blockNumbers)
+// 	if err != nil {
+// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
+// 	}
+// 	committed = true
+// 	if err := tx.Commit(); err != nil {
+// 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot commit tx: %w", err)
+// 	}
+// 	return nil
+// }
+// func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
+// 	tx dbtypes.Querier, blocks []*aggkittypes.BlockHeader) error {
+// 	// TODO: implement reorg detection
+// 	return nil
+// }
 
 func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	err := dh.Initialize(ctx)

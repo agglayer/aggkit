@@ -228,6 +228,16 @@ func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.
 	return nil
 }
 
+func TestEVMMultidownloader_NewEVMMultidownloader(t *testing.T) {
+	logger := log.WithFields("test", "evm_multidownloader_test")
+	cfg := NewConfigDefault("test.sqlite", t.TempDir())
+	sut, err := NewEVMMultidownloader(logger, cfg, "test", nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, sut)
+	require.NotNil(t, sut.blockNotifierManager)
+	require.NotNil(t, sut.storage)
+}
+
 func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) {
 	br := extractSuggestedBlockRangeFromErrorMsg("Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273].")
 	require.NotNil(t, br)
