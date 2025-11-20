@@ -173,7 +173,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 		return err
 	}
 	// Update TargetToBlock from name to real block numbers
-	err = syncSegments.UpdateToBlock(ctx, dh.blockNotifierManager)
+	err = syncSegments.UpdateTargetBlockToNumber(ctx, dh.blockNotifierManager)
 	if err != nil {
 		return fmt.Errorf("Initialize: cannot update TargetToBlock in sync segments: %w", err)
 	}
@@ -277,7 +277,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("Safe/Step: cannot subtract log query from pending segments: %w", err)
 	}
 	// Update ToBlock in pending segments to be able to calculate if finished
-	err = newPendingSegments.UpdateToBlock(ctx, dh.blockNotifierManager)
+	err = newPendingSegments.UpdateTargetBlockToNumber(ctx, dh.blockNotifierManager)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot update ToBlock in pendingSync: %w", err)
 	}

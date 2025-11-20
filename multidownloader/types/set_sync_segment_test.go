@@ -4,8 +4,10 @@ import (
 	"testing"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/etherman/types/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -153,7 +155,29 @@ func TestSetSyncSegment_TotalBlocks(t *testing.T) {
 		require.Greater(t, result, uint64(0))
 	})
 }
+func TestSetSyncSegment_UpdateTargetBlockToNumber(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var set *SetSyncSegment
+		err := set.UpdateTargetBlockToNumber(nil, nil)
+		require.NoError(t, err)
+	})
 
+	t.Run("update target block", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		finality := aggkittypes.LatestBlock
+		segment := SyncSegment{
+			ContractAddr:  common.HexToAddress("0x123"),
+			BlockRange:    aggkitcommon.NewBlockRange(1, 10),
+			TargetToBlock: finality,
+		}
+		set.Add(segment)
+		mockBlockNotifierManager := mocks.NewBlockNotifierManager(t)
+
+		mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, finality).Return(uint64(150), nil).Once()
+		err := set.UpdateTargetBlockToNumber(t.Context(), mockBlockNotifierManager)
+		require.NoError(t, err)
+	})
+}
 func TestSetSyncSegment_IsAvailable(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		var set *SetSyncSegment
