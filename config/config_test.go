@@ -76,7 +76,9 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, aggsendertypes.AutoMode, cfg.Validator.Mode)
 	require.Equal(t, cfg.AggSender.StorageRetainCertificatesPolicy.String(), "retain all certificates, keep history: true")
 	require.Equal(t, multidownloader.NewConfigDefault("l1", ""), cfg.L1Multidownloader)
-	require.Equal(t, multidownloader.NewConfigDefault("l2", ""), cfg.L2Multidownloader)
+	cfgL2Multidownloader := multidownloader.NewConfigDefault("l2", "")
+	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
+	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
