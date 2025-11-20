@@ -935,9 +935,23 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Claim != nil {
-			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
-				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
+			_, unsetCount, err := p.GetUnsetClaimsPaged(ctx, 1, 1, event.Claim.GlobalIndex)
+			if err != nil {
+				p.log.Errorf("failed to get unset claims for global index %s at block %d: %v",
+					event.Claim.GlobalIndex.String(), block.Num, err)
 				return err
+			}
+
+			if unsetCount == 0 {
+				if err = meddler.Save(tx, claimTableName, event.Claim); err != nil {
+					p.log.Errorf("failed to upsert claim event at block %d: %v", block.Num, err)
+					return err
+				}
+			} else {
+				if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
+					p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
+					return err
+				}
 			}
 		}
 
