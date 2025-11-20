@@ -466,7 +466,8 @@ func (dh *EVMMultidownloader) requestLogs(
 	}
 }
 
-func (dh *EVMMultidownloader) requestLogsSingleTry(ctx context.Context, logQueryData *mdrtypes.LogQuery) ([]types.Log, error) {
+func (dh *EVMMultidownloader) requestLogsSingleTry(ctx context.Context,
+	logQueryData *mdrtypes.LogQuery) ([]types.Log, error) {
 	rpcFilterQuery := logQueryData.ToRPCFilterQuery()
 	dh.statistics.LaunchedEthCall()
 	logs, err := dh.ethClient.FilterLogs(ctx, rpcFilterQuery)

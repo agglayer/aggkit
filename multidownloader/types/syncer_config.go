@@ -145,7 +145,6 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 				cc.Update(filter)
 			}
 		}
-
 	}
 	return convertContractMapToSlice(contractMap)
 }
