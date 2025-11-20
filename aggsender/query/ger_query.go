@@ -13,7 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var createAgglayerGERL1func = func(gerAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (types.AgglayerGER, error) {
+var createAgglayerGERL1func = func(gerAddr common.Address,
+	l1Client aggkittypes.BaseEthereumClienter) (types.AgglayerGER, error) {
 	return agglayerger.NewAgglayerger(gerAddr, l1Client)
 }
 
@@ -124,7 +125,7 @@ func NewL1GERDataQuerier(
 ) (types.L1GERQuerier, error) {
 	agglayerGER, err := createAgglayerGERL1func(l1AgglayerGERAddr, l1Client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize L1 GER manager contract: %v", err)
+		return nil, fmt.Errorf("failed to initialize L1 GER manager contract: %w", err)
 	}
 
 	return &l1GERDataQuerier{
@@ -136,7 +137,8 @@ func NewL1GERDataQuerier(
 
 // DoesGERExistOnContract checks if the given GER exists on the Agglayer GER contract
 func (g *l1GERDataQuerier) DoesGERExistOnContract(ctx context.Context, ger common.Hash) (bool, error) {
-	blockNum, err := g.blockFinality.BlockNumber(ctx, g.l1Client) // TODO - maybe get the header and use block hash instead?
+	// TODO - maybe get the header and use block hash instead?
+	blockNum, err := g.blockFinality.BlockNumber(ctx, g.l1Client)
 	if err != nil {
 		return false, fmt.Errorf("error getting block number for finality %s: %w", g.blockFinality.String(), err)
 	}

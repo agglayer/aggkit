@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
@@ -66,8 +67,8 @@ func (s *ValidatorService) ValidateGER(
 ) (*v1.ValidateGERResponse, error) {
 	if req == nil || req.Ger == nil {
 		return nil, grpc.GRPCError{
-			Code:    codes.NotFound,
-			Message: "required a GlobalExitRoot",
+			Code:    codes.InvalidArgument,
+			Message: "GlobalExitRoot is required",
 		}
 	}
 
@@ -76,10 +77,16 @@ func (s *ValidatorService) ValidateGER(
 
 	err := s.validator.ValidateGER(ctx, ger)
 	if err != nil {
-		s.log.Errorf("Error signing GER: %v", err)
+		s.log.Errorf("Error validating GER: %v", err)
+
+		code := codes.Internal
+		if errors.Is(err, errGERNotExists) {
+			code = codes.NotFound
+		}
+
 		return nil, grpc.GRPCError{
-			Code:    codes.Internal,
-			Message: "Error signing GER: " + err.Error(),
+			Code:    code,
+			Message: "Error validating GER: " + err.Error(),
 		}
 	}
 

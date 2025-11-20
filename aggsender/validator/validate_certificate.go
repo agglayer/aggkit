@@ -16,6 +16,7 @@ import (
 var (
 	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
+	errGERNotExists          = errors.New("GER does not exist on L1 GER contract")
 )
 
 // CertificateValidator is a object to validate a certificate
@@ -29,6 +30,20 @@ type CertificateValidator struct {
 	l1GERQuerier types.L1GERQuerier
 }
 
+// NewAggsenderValidator creates a new CertificateValidator instance with the provided dependencies.
+// It initializes the validator with a logger, verification flow, and various data queriers
+// needed for certificate validation operations.
+//
+// Parameters:
+//   - logger: Logger instance for recording validation operations and errors
+//   - flow: AggsenderVerifierFlow that defines the verification workflow
+//   - l1InfoTreeDataQuerier: Querier for L1 info tree data
+//   - certQuerier: Querier for certificate data
+//   - lerQuerier: Querier for LER (Local Exit Root) data
+//   - l1GERQuerier: Querier for L1 GER (Global Exit Root) data
+//
+// Returns:
+//   - *CertificateValidator: A new validator instance ready for certificate validation
 func NewAggsenderValidator(logger aggkitcommon.Logger,
 	flow types.AggsenderVerifierFlow,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
@@ -53,7 +68,7 @@ func (a *CertificateValidator) ValidateGER(ctx context.Context, ger common.Hash)
 	}
 
 	if !doesExist {
-		return fmt.Errorf("global exit root %s does not exist on L1 GER contract", ger.String())
+		return fmt.Errorf("%w: %s", errGERNotExists, ger.String())
 	}
 
 	return nil
