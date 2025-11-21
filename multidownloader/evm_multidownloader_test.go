@@ -342,6 +342,7 @@ func TestEVMMultidownloader_Initialize(t *testing.T) {
 		require.Contains(t, err.Error(), "already initialized")
 	})
 }
+
 func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, false)
 	testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
