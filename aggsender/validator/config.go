@@ -88,19 +88,6 @@ type GERValidateConfig struct {
 	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 }
 
-// Validate checks if the GERValidateConfig is valid
-func (g GERValidateConfig) Validate() error {
-	if err := g.BlockFinality.Validate(); err != nil {
-		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
-	}
-
-	if g.GlobalExitRootL1Addr == aggkitcommon.ZeroAddress {
-		return fmt.Errorf("GlobalExitRootL1Addr must be set")
-	}
-
-	return nil
-}
-
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
 	err := c.Mode.Validate()
@@ -116,10 +103,6 @@ func (c *Config) Validate() error {
 
 	if err := c.AgglayerClient.Validate(); err != nil {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
-	}
-
-	if err := c.GERValidateConfig.Validate(); err != nil {
-		return fmt.Errorf("invalid GER validation config: %w", err)
 	}
 
 	return nil
