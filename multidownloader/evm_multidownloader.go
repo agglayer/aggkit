@@ -132,7 +132,7 @@ func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("Initialize: cannot get chainID: %w", err)
 	}
-	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
+	compatibilityStorageChecker := compatibility.NewCompatibilityCheck(
 		true,
 		func(ctx context.Context) (storage.DBRuntimeData, error) {
 			return storage.DBRuntimeData{NetworkID: chainID,
@@ -141,7 +141,7 @@ func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
 		compatibility.NewKeyValueToCompatibilityStorage[storage.DBRuntimeData](dh.storage, "multidownloader-"+dh.name),
 	)
 
-	err = compatibilityStoragedChecker.Check(ctx, nil)
+	err = compatibilityStorageChecker.Check(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("Initialize: compatibility check failed: %w", err)
 	}
