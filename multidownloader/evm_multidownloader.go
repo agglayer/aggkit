@@ -151,7 +151,7 @@ func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
 	return nil
 }
 
-// Initialize initializes the multidownloader, in this point all syncer
+// Initialize initializes the multidownloader. At this point all syncers
 // must be registered and it will prepare the pendingSync segments
 func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	dh.mutex.Lock()
@@ -164,7 +164,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// Save syncer configs to storage, it override previous ones but keep
+	// Save syncer configs to storage; it overrides previous ones but keeps
 	// the synced segments
 	err = dh.storage.UpsertSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
 	if err != nil {
@@ -196,7 +196,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// sync it's an internal function that executes the given stepFunc until it returns done=true or error
+// sync is an internal function that executes the given stepFunc until it returns done=true or error
 func (dh *EVMMultidownloader) sync(ctx context.Context,
 	stepFunc func(ctx context.Context) (bool, error), name string) error {
 	dh.statistics.StartSyncing()
@@ -441,33 +441,33 @@ func (dh *EVMMultidownloader) requestLogs(
 	for {
 		try++
 		logQueryData.BlockRange = *suggestedBlockRange
-		dh.log.Debugf("Safe/Step:: querying logs for %s", logQueryData.String())
+		dh.log.Debugf("Safe/Step: querying logs for %s", logQueryData.String())
 		logs, err := dh.requestLogsSingleTry(ctx, logQueryData)
 		if err == nil {
-			dh.log.Debugf("Safe/Step:: successful querying logs for %s: returned %d logs", logQueryData.String(), len(logs))
+			dh.log.Debugf("Safe/Step: successfully queried logs for %s: returned %d logs", logQueryData.String(), len(logs))
 			return logs, logQueryData, nil
 		}
-		// There are an error, if it's not "too many results" we can't do anything
+		// There is an error; if it's not "too many results" we can't do anything
 		if !isEthClientErrorTooManyResults(err) {
-			return nil, nil, fmt.Errorf("Safe/Step: fails ethClient.FilterLogs(%v): %v. err: %w",
+			return nil, nil, fmt.Errorf("Safe/Step: ethClient.FilterLogs(%v) failed: %v. err: %w",
 				logQueryData.String(), ethGetExtendedError(err), err)
 		}
 		// The error is "too many results", try to reduce the block range
 		suggestedBlockRange = extractSuggestedBlockRangeFromError(err)
-		// The suggested block range must be within the current logQueryData.BlockRange, if not
-		// means that the extraction of blockRange from error message failed
+		// The suggested block range must be within the current logQueryData.BlockRange; if not,
+		// it means that the extraction of blockRange from error message failed
 		if logQueryData.BlockRange.Overlaps(*suggestedBlockRange) {
-			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, adjusting block range %s. Err: %s",
+			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, adjusting block range to %s. Err: %s",
 				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendedError(err))
 			continue
 		}
-		// We don't have a valid suggested block range, reduce the chunk size 50%
+		// We don't have a valid suggested block range, reduce the chunk size by 50%
 		prevBlockChunkSize := currentSyncBlockChunkSize
 		currentSyncBlockChunkSize /= chunkSizeReductionFactor
 		if currentSyncBlockChunkSize < minChunkSize {
-			return nil, nil, fmt.Errorf("Safe/Step: cannot reduce block chunk size anymore")
+			return nil, nil, fmt.Errorf("Safe/Step: cannot reduce block chunk size any further")
 		}
-		dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk from %d to %d. Err: %s",
+		dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk size from %d to %d. Err: %s",
 			logQueryData.BlockRange.String(), logQueryData.Addrs, prevBlockChunkSize,
 			currentSyncBlockChunkSize, ethGetExtendedError(err))
 	}

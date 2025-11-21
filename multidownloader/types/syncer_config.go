@@ -15,11 +15,11 @@ type SyncerID = string
 type SyncerConfig struct {
 	// SyncerID is the unique identifier for the syncer
 	SyncerID SyncerID
-	// ContractAddr is list of contract addresses to sync
+	// ContractsAddr is the list of contract addresses to sync
 	ContractsAddr []common.Address
-	// Starting block
+	// FromBlock is the starting block
 	FromBlock uint64
-	// Target for final block
+	// ToBlock is the target for the final block
 	ToBlock aggkittypes.BlockNumberFinality
 }
 
@@ -32,7 +32,7 @@ func NewSyncerConfig(data aggkittypes.SyncerConfig) SyncerConfig {
 	}
 }
 
-// ContractConfig represents the configuration for a specific contract to be synced
+// ContractConfig represents the configuration for a specific contract to be synced,
 // the same as SyncerConfig but for individual contracts
 type ContractConfig struct {
 	Address             common.Address
@@ -158,7 +158,7 @@ func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) [
 	return contractConfigs
 }
 
-// Combine all filters into one, must check if the blockRange overlaps
+// Combine combines all filters into one; must check if the blockRange overlaps
 func (f *SetSyncerConfig) Combine(blockRange aggkitcommon.BlockRange) ethereum.FilterQuery {
 	// Trivial implementation
 	return ethereum.FilterQuery{
@@ -168,17 +168,17 @@ func (f *SetSyncerConfig) Combine(blockRange aggkitcommon.BlockRange) ethereum.F
 	}
 }
 
-// SyncSegments group the SetSyncerConfig into segments per contract address and blockRange
+// SyncSegments groups the SetSyncerConfig into segments per contract address and blockRange
 func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
 	segments := NewSetSyncSegment()
-	// Trivial implementation, it have to be improved to group by
+	// Trivial implementation; it needs to be improved to group by
 	// contract address and block range
 	for _, filter := range f.filters {
 		// TODO: instead of calling RPC use block_notifier_values
 		for _, addr := range filter.ContractsAddr {
 			segment := SyncSegment{
 				ContractAddr: addr,
-				// Initially set ToBlock as 0, it will be updated later
+				// Initially set ToBlock as 0; it will be updated later
 				BlockRange:    aggkitcommon.NewBlockRange(filter.FromBlock, 0),
 				TargetToBlock: filter.ToBlock,
 			}

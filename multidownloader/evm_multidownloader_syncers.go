@@ -22,13 +22,13 @@ func (dh *EVMMultidownloader) ChainID(ctx context.Context) (uint64, error) {
 	return chainID.Uint64(), nil
 }
 
-// BlockNumber gets the block number for the given 'block name'
+// BlockNumber gets the block number for the given finality type
 func (dh *EVMMultidownloader) BlockNumber(ctx context.Context,
 	finality aggkittypes.BlockNumberFinality) (uint64, error) {
 	return dh.blockNotifierManager.GetCurrentBlockNumber(ctx, finality)
 }
 
-// BlockHeader gets the block header for the given 'block name'
+// BlockHeader gets the block header for the given finality type
 func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 	finality aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
 	number, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, finality)
@@ -44,7 +44,7 @@ func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
 }
 
-// FilterLogs filters the logs. It gets it from storage or waits until they are available
+// FilterLogs filters the logs. It gets them from storage or waits until they are available
 func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	dh.log.Debugf("EVMMultidownloader.FilterLogs: received query: %+v", query)
 	defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)
@@ -74,7 +74,7 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
 	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	if number.Cmp(big.NewInt(0)) < 0 {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: negative block number not supported=%s", number.String())
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: negative block numbers are not supported=%s", number.String())
 	}
 
 	block, _, err := dh.storage.GetBlockHeaderByNumber(nil, number.Uint64())
@@ -85,12 +85,12 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 	if block != nil {
 		return block, nil
 	}
-	// This is a fallback mechanism in case the block is not found in storage (must be on storage!)
+	// This is a fallback mechanism in case the block is not found in storage (it must be in storage!)
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: block number=%d not found in storage, fetching from ethClient",
 		number.Uint64())
-	ethBlock, err := dh.ethClient.HeaderByNumber(ctx, number) // Just to comply with the interface
+	ethBlock, err := dh.ethClient.HeaderByNumber(ctx, number)
 	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: fails ethClient.HeaderByNumber(%d). Err: %w",
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: ethClient.HeaderByNumber(%d) failed. Err: %w",
 			number.Uint64(), err)
 	}
 	blockHeader := aggkittypes.NewBlockHeaderFromEthHeader(ethBlock)
