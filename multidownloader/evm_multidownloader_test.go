@@ -314,6 +314,7 @@ func TestEVMMultidownloader_GetRPCServices(t *testing.T) {
 		require.Equal(t, "multidownloader-"+customName, services[0].Name)
 	})
 }
+
 func TestEVMMultidownloader_Initialize(t *testing.T) {
 	t.Run("successful initialization", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, false)
