@@ -32,7 +32,7 @@ type Config struct {
 	MaxParallelBlockHeaderRetrieval int
 	// BlockFinality is which block consider final (typically finalizedBlock)
 	BlockFinality aggkittypes.BlockNumberFinality
-	// WaitPeriodToCheckCatchUp is the wait applied when a request is still not available to check again
+	// WaitPeriodToCheckCatchUp is the duration to wait before checking again if logs are not yet available
 	WaitPeriodToCheckCatchUp types.Duration
 }
 
