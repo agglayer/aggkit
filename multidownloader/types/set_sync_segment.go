@@ -68,7 +68,7 @@ func (s *SetSyncSegment) Add(segment SyncSegment) {
 		return
 	}
 	// Merge syncers
-	s.UpdateBlockRange(current, current.BlockRange.Merge(segment.BlockRange))
+	s.UpdateBlockRange(current, current.BlockRange.Extend(segment.BlockRange))
 }
 
 // GetByContract returns the SyncSegment for the given contract address
@@ -119,24 +119,40 @@ func (f *SetSyncSegment) SubtractLogQuery(logQuery *LogQuery) error {
 	newSegments := NewSetSyncSegmentFromLogQuery(logQuery)
 	return f.SubtractSegments(&newSegments)
 }
+func isIncluded(ranges []aggkitcommon.BlockRange, br aggkitcommon.BlockRange) bool {
+	for _, r := range ranges {
+		if r.Contains(br) {
+			return true
+		}
+	}
+	return false
+}
 
-// TotalBlocks returns the total number pending to synchronize
+// TotalBlocks returns the total number pending blocks to synchronize
 func (f *SetSyncSegment) TotalBlocks() uint64 {
-	if f == nil {
+	if f == nil || len(f.segments) == 0 {
 		return 0
 	}
-	minToBLock := ^uint64(0)
-	maxFromBlock := uint64(0)
-	for _, segment := range f.segments {
-		if segment.BlockRange.FromBlock < minToBLock {
-			minToBLock = segment.BlockRange.FromBlock
+	expanded := make([]aggkitcommon.BlockRange, 0, len(f.segments))
+	// Add first segment
+	expanded = append(expanded, f.segments[0].BlockRange)
+	for _, segment := range f.segments[1:] {
+		newExpanded := make([]aggkitcommon.BlockRange, 0, len(expanded)*2)
+		for _, br := range expanded {
+			merged := br.Merge(segment.BlockRange)
+			for _, m := range merged {
+				if !isIncluded(newExpanded, m) {
+					newExpanded = append(newExpanded, m)
+				}
+			}
 		}
-		if segment.BlockRange.ToBlock > maxFromBlock {
-			maxFromBlock = segment.BlockRange.ToBlock
-		}
+		expanded = newExpanded
 	}
-	bn := aggkitcommon.NewBlockRange(minToBLock, maxFromBlock)
-	return bn.CountBlocks()
+	total := uint64(0)
+	for _, br := range expanded {
+		total += br.CountBlocks()
+	}
+	return total
 }
 
 // UpdateTargetBlockToNumber updates the ToBlock to real blockNumber

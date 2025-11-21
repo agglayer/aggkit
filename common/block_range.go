@@ -89,8 +89,23 @@ func (b BlockRange) IsNextContigousBlock(next BlockRange) bool {
 	return b.ToBlock+1 == next.FromBlock
 }
 
-// Merge merges two BlockRanges into one encompassing BlockRange.
-func (b BlockRange) Merge(other BlockRange) BlockRange {
+// Merge merges two BlockRanges and returns a slice of BlockRanges.
+// If the two BlockRanges overlap, it returns a single BlockRange that encompasses both.
+// If they do not overlap, it returns both BlockRanges in sorted order.
+func (b BlockRange) Merge(other BlockRange) []BlockRange {
+	if b.Overlaps(other) {
+		// If overlaps, just extend it
+		return []BlockRange{b.Extend(other)}
+	}
+	// If not overlaps, return both ranges sorted
+	if b.FromBlock < other.FromBlock {
+		return []BlockRange{b, other}
+	}
+	return []BlockRange{other, b}
+}
+
+// Extend merges two BlockRanges into one encompassing BlockRange.
+func (b BlockRange) Extend(other BlockRange) BlockRange {
 	return NewBlockRange(
 		min(b.FromBlock, other.FromBlock),
 		max(b.ToBlock, other.ToBlock),

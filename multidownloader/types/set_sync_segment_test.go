@@ -149,10 +149,22 @@ func TestSetSyncSegment_TotalBlocks(t *testing.T) {
 			ContractAddr: common.HexToAddress("0x456"),
 			BlockRange:   aggkitcommon.NewBlockRange(5, 20),
 		}
+		segment3 := &SyncSegment{
+			ContractAddr: common.HexToAddress("0x457"),
+			BlockRange:   aggkitcommon.NewBlockRange(501, 510),
+		}
+		set.segments = []*SyncSegment{segment1, segment2, segment3}
+		require.Equal(t, uint64(30), set.TotalBlocks())
+		set.segments = []*SyncSegment{segment2, segment3, segment1}
+		require.Equal(t, uint64(30), set.TotalBlocks())
+		set.segments = []*SyncSegment{segment2, segment1, segment3}
+		require.Equal(t, uint64(30), set.TotalBlocks())
 
+		set.segments = []*SyncSegment{segment1}
+		require.Equal(t, uint64(10), set.TotalBlocks())
 		set.segments = []*SyncSegment{segment1, segment2}
-		result := set.TotalBlocks()
-		require.Greater(t, result, uint64(0))
+		require.Equal(t, uint64(20), set.TotalBlocks())
+
 	})
 }
 func TestSetSyncSegment_UpdateTargetBlockToNumber(t *testing.T) {

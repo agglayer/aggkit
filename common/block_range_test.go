@@ -336,3 +336,13 @@ func TestBlockRange_Cap(t *testing.T) {
 	require.Equal(t, BlockRange{10, 50}, bn.Cap(60))
 	require.Equal(t, BlockRangeZero, bn.Cap(5))
 }
+
+func TestBlockRange_Merge(t *testing.T) {
+	bn1 := NewBlockRange(10, 50)
+	bn2 := NewBlockRange(1, 30)
+	bn3 := NewBlockRange(1000, 1050)
+	require.Equal(t, []BlockRange{bn1}, bn1.Merge(bn1))
+	require.Equal(t, []BlockRange{bn1}, bn1.Merge(bn2))
+	require.Equal(t, []BlockRange{bn1}, bn2.Merge(bn1))
+	require.Equal(t, []BlockRange{bn1, bn3}, bn1.Merge(bn3))
+}
