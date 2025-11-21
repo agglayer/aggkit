@@ -42,7 +42,7 @@ type EVMMultidownloader struct {
 	// These are the  segments that we need to sync
 	pendingSync *mdrtypes.SetSyncSegment
 	// These are the segments that we have already synced
-	// when a syncer do a `FilterLogs`is used to check what is already synced
+	// when a syncer does a `FilterLogs`, it is used to check what is already synced
 	syncedSegments mdrtypes.SetSyncSegment
 	statistics     *Statistics
 }
