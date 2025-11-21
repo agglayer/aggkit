@@ -342,7 +342,8 @@ func TestBlockRange_Merge(t *testing.T) {
 	bn2 := NewBlockRange(1, 30)
 	bn3 := NewBlockRange(1000, 1050)
 	require.Equal(t, []BlockRange{bn1}, bn1.Merge(bn1))
-	require.Equal(t, []BlockRange{bn1}, bn1.Merge(bn2))
-	require.Equal(t, []BlockRange{bn1}, bn2.Merge(bn1))
+	require.Equal(t, []BlockRange{NewBlockRange(1, 50)}, bn1.Merge(bn2))
+	require.Equal(t, []BlockRange{NewBlockRange(1, 50)}, bn2.Merge(bn1))
 	require.Equal(t, []BlockRange{bn1, bn3}, bn1.Merge(bn3))
+	require.Equal(t, []BlockRange{bn1, bn3}, bn3.Merge(bn1))
 }
