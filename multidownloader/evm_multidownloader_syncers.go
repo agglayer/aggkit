@@ -44,7 +44,7 @@ func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
 }
 
-// FilterLogs filters the logs. It get it from storage or waits until they are available
+// FilterLogs filters the logs. It gets it from storage or waits until they are available
 func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	dh.log.Debugf("EVMMultidownloader.FilterLogs: received query: %+v", query)
 	defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)
