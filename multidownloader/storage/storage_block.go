@@ -102,18 +102,6 @@ func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
 	return header, isFinal, nil
 }
 
-func (a *MultidownloaderStorage) GetBlockHeaderNotFinal(tx dbtypes.Querier,
-	finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error) {
-	if tx == nil {
-		tx = a.db
-	}
-	a.mutex.RLock()
-	defer a.mutex.RUnlock()
-	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0 AND block_number = ? "+
-		"ORDER BY block_number ASC", finalizedBlockNumber)
-	return blocks.ListHeaders(), err
-}
-
 func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
 	query string, args ...interface{}) (Blocks, error) {
 	if tx == nil {

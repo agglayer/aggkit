@@ -14,6 +14,8 @@ CREATE TABLE logs (
     PRIMARY KEY (address, block_number, log_index)
 );
 
+CREATE INDEX idx_logs_block_number ON logs(block_number);
+
 CREATE TABLE blocks (
     block_number BIGINT NOT NULL,
     block_hash TEXT NOT NULL,             
@@ -32,3 +34,5 @@ CREATE TABLE sync_status (
     syncers_id TEXT NOT NULL,          -- Syncer identifier
     PRIMARY KEY (contract_address)
 );
+
+CREATE INDEX idx_l1info_leaf_position ON l1info_leaf(position);
