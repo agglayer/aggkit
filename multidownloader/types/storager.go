@@ -18,7 +18,5 @@ type Storager interface {
 	UpdateSyncedStatus(tx dbtypes.Querier, segments []SyncSegment) error
 	UpsertSyncerConfigs(tx dbtypes.Querier, configs []ContractConfig) error
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
-
-	GetBlockHeaderNotFinal(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error)
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 }
