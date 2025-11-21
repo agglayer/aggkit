@@ -253,9 +253,9 @@ func (f *SetSyncSegment) UpdateBlockRange(segment *SyncSegment, newBlockRange ag
 	if f == nil || segment == nil {
 		return
 	}
-	for i, s := range f.segments {
+	for _, s := range f.segments {
 		if s.Equal(*segment) {
-			f.segments[i].BlockRange = newBlockRange
+			s.BlockRange = newBlockRange
 			return
 		}
 	}

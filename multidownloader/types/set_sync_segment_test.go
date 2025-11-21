@@ -305,6 +305,23 @@ func TestSetSyncSegment_UpdateBlockRange(t *testing.T) {
 		validSet.UpdateBlockRange(nil, newRange)
 		// Should not panic
 	})
+
+	t.Run("update segment", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 10),
+		}
+		set.Add(segment)
+
+		newRange := aggkitcommon.NewBlockRange(5, 15)
+		set.UpdateBlockRange(&segment, newRange)
+
+		updatedSegment := set.GetByContract(addr)
+		require.NotNil(t, updatedSegment)
+		require.Equal(t, newRange, updatedSegment.BlockRange)
+	})
 }
 
 func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
