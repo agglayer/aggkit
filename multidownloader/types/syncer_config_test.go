@@ -21,7 +21,7 @@ func TestContractConfigs_EmptySet(t *testing.T) {
 func TestContractConfigs_SingleSyncerSingleContract(t *testing.T) {
 	addr := common.HexToAddress("0x1")
 	set := NewSetSyncerConfig()
-	set.Add(SyncerConfig{
+	set.Add(aggkittypes.SyncerConfig{
 		SyncerID:      "syncer1",
 		ContractsAddr: []common.Address{addr},
 		FromBlock:     10,
@@ -40,13 +40,13 @@ func TestContractConfigs_SingleSyncerSingleContract(t *testing.T) {
 func TestContractConfigs_MultipleSyncersSameContract(t *testing.T) {
 	addr := common.HexToAddress("0x2")
 	set := NewSetSyncerConfig()
-	set.Add(SyncerConfig{
+	set.Add(aggkittypes.SyncerConfig{
 		SyncerID:      "syncer1",
 		ContractsAddr: []common.Address{addr},
 		FromBlock:     15,
 		ToBlock:       aggkittypes.FinalizedBlock,
 	})
-	set.Add(SyncerConfig{
+	set.Add(aggkittypes.SyncerConfig{
 		SyncerID:      "syncer2",
 		ContractsAddr: []common.Address{addr},
 		FromBlock:     5,
@@ -68,13 +68,13 @@ func TestContractConfigs_MultipleSyncersMultipleContracts(t *testing.T) {
 	addr1 := common.HexToAddress("0x3")
 	addr2 := common.HexToAddress("0x4")
 	set := NewSetSyncerConfig()
-	set.Add(SyncerConfig{
+	set.Add(aggkittypes.SyncerConfig{
 		SyncerID:      "syncer1",
 		ContractsAddr: []common.Address{addr1, addr2},
 		FromBlock:     1,
 		ToBlock:       aggkittypes.FinalizedBlock,
 	})
-	set.Add(SyncerConfig{
+	set.Add(aggkittypes.SyncerConfig{
 		SyncerID:      "syncer2",
 		ContractsAddr: []common.Address{addr2},
 		FromBlock:     2,

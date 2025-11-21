@@ -12,26 +12,6 @@ import (
 
 type SyncerID = string
 
-type SyncerConfig struct {
-	// SyncerID is the unique identifier for the syncer
-	SyncerID SyncerID
-	// ContractsAddr is the list of contract addresses to sync
-	ContractsAddr []common.Address
-	// FromBlock is the starting block
-	FromBlock uint64
-	// ToBlock is the target for the final block
-	ToBlock aggkittypes.BlockNumberFinality
-}
-
-func NewSyncerConfig(data aggkittypes.SyncerConfig) SyncerConfig {
-	return SyncerConfig{
-		SyncerID:      data.SyncerID,
-		ContractsAddr: data.ContractsAddr,
-		FromBlock:     data.FromBlock,
-		ToBlock:       data.ToBlock,
-	}
-}
-
 // ContractConfig represents the configuration for a specific contract to be synced,
 // the same as SyncerConfig but for individual contracts
 type ContractConfig struct {
@@ -42,7 +22,8 @@ type ContractConfig struct {
 	Syncers             []SyncerID
 }
 
-func NewContractConfigFromSyncerConfig(address common.Address, syncerConfig SyncerConfig) *ContractConfig {
+func NewContractConfigFromSyncerConfig(address common.Address,
+	syncerConfig aggkittypes.SyncerConfig) *ContractConfig {
 	return &ContractConfig{
 		Address:   address,
 		FromBlock: syncerConfig.FromBlock,
@@ -51,7 +32,7 @@ func NewContractConfigFromSyncerConfig(address common.Address, syncerConfig Sync
 	}
 }
 
-func (c *ContractConfig) Update(syncerConfig SyncerConfig) {
+func (c *ContractConfig) Update(syncerConfig aggkittypes.SyncerConfig) {
 	if syncerConfig.FromBlock < c.FromBlock {
 		c.FromBlock = syncerConfig.FromBlock
 	}
@@ -65,18 +46,18 @@ func (c *ContractConfig) Update(syncerConfig SyncerConfig) {
 }
 
 type SetSyncerConfig struct {
-	filters map[SyncerID]SyncerConfig
+	filters map[SyncerID]aggkittypes.SyncerConfig
 }
 
 func NewSetSyncerConfig() SetSyncerConfig {
 	return SetSyncerConfig{
-		filters: make(map[SyncerID]SyncerConfig),
+		filters: make(map[SyncerID]aggkittypes.SyncerConfig),
 	}
 }
 
-func (f *SetSyncerConfig) Add(filter SyncerConfig) {
+func (f *SetSyncerConfig) Add(filter aggkittypes.SyncerConfig) {
 	if f.filters == nil {
-		f.filters = make(map[SyncerID]SyncerConfig)
+		f.filters = make(map[SyncerID]aggkittypes.SyncerConfig)
 	}
 	f.filters[filter.SyncerID] = filter
 }
@@ -102,22 +83,6 @@ func (f *SetSyncerConfig) Addresses(blockRange aggkitcommon.BlockRange) []common
 		}
 	}
 	return addresses
-}
-
-func (f *SetSyncerConfig) Finalities() []aggkittypes.BlockNumberFinality {
-	if f == nil || f.filters == nil {
-		return []aggkittypes.BlockNumberFinality{}
-	}
-	finalities := []aggkittypes.BlockNumberFinality{}
-	dups := map[aggkittypes.BlockNumberFinality]struct{}{}
-
-	for _, filter := range f.filters {
-		if _, exists := dups[filter.ToBlock]; !exists {
-			finalities = append(finalities, filter.ToBlock)
-			dups[filter.ToBlock] = struct{}{}
-		}
-	}
-	return finalities
 }
 
 func elementMatch(slice []SyncerID, element SyncerID) bool {

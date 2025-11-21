@@ -103,7 +103,7 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	if dh.isInitialized {
 		return fmt.Errorf("registerSyncer: cannot add new syncer config after initialization")
 	}
-	dh.syncersConfig.Add(mdrtypes.NewSyncerConfig(data))
+	dh.syncersConfig.Add(data)
 	return nil
 }
 

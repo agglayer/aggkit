@@ -9,7 +9,6 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
-// This struct is for decoupling the MultiDownloader interface from aggkittypes.SyncerConfig
 type SyncerConfig struct {
 	// SyncerID is the unique identifier for the syncer
 	SyncerID string

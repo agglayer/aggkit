@@ -83,7 +83,7 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		// Assertions
 		require.Nil(t, result)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "negative block number not supported")
+		require.Contains(t, err.Error(), "negative block numbers are not supported")
 	})
 
 	t.Run("storage error returns error", func(t *testing.T) {
@@ -137,7 +137,7 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		// Assertions
 		require.Nil(t, result)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "fails ethClient.HeaderByNumber(123)")
+		require.Contains(t, err.Error(), "ethClient.HeaderByNumber(123) failed")
 		require.ErrorIs(t, err, ethClientErr)
 	})
 
