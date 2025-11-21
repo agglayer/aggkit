@@ -30,7 +30,7 @@ type Config struct {
 	BlockChunkSize uint32
 	// MaxParallelBlockHeaderRetrieval is the maximum number of parallel RPC calls to retrieve block headers
 	MaxParallelBlockHeaderRetrieval int
-	// BlockFinality is which block consider final (typically finalizedBlock)
+	// BlockFinality is which block to consider final (typically finalizedBlock)
 	BlockFinality aggkittypes.BlockNumberFinality
 	// WaitPeriodToCheckCatchUp is the duration to wait before checking again if logs are not yet available
 	WaitPeriodToCheckCatchUp types.Duration
