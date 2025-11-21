@@ -25,8 +25,6 @@ import (
 
 const safeMode = true
 
-// const unsafeMode = false
-
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
 	cfg                  Config
@@ -422,47 +420,45 @@ func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunk uint32, sa
 
 func (dh *EVMMultidownloader) requestLogs(
 	ctx context.Context) ([]types.Log, *mdrtypes.LogQuery, error) {
-	initialsyncBlockChunkSize := dh.cfg.BlockChunkSize
+	currentSyncBlockChunkSize := dh.cfg.BlockChunkSize
 	try := 0
-	var err error
-	var logQueryData *mdrtypes.LogQuery
-	var suggestedBlockRange *aggkitcommon.BlockRange
+	logQueryData, err := dh.getNextQuery(ctx, currentSyncBlockChunkSize, safeMode)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Safe/Step: cannot get NextQuery: %w", err)
+	}
+	suggestedBlockRange := &logQueryData.BlockRange
 	for {
 		try++
-
-		if suggestedBlockRange == nil {
-			logQueryData, err = dh.getNextQuery(ctx, initialsyncBlockChunkSize, safeMode)
-			if err != nil {
-				return nil, nil, fmt.Errorf("Safe/Step: cannot get NextQuery: %w", err)
-			}
-		} else {
-			logQueryData.BlockRange = *suggestedBlockRange
-			dh.log.Warnf("Safe/Step: adjusting block range to suggested by error: %s", logQueryData.BlockRange.String())
-		}
-
+		logQueryData.BlockRange = *suggestedBlockRange
 		dh.log.Debugf("Safe/Step:: querying logs for %s", logQueryData.String())
 		logs, err := dh.requestLogsSingleTry(ctx, logQueryData)
 		if err == nil {
+			dh.log.Debugf("Safe/Step:: successful querying logs for %s: returned %d logs", logQueryData.String(), len(logs))
 			return logs, logQueryData, nil
 		}
-		if err != nil && !isEthClientErrorTooManyResults(err) {
+		// There are an error, if it's not "too many results" we can't do anything
+		if !isEthClientErrorTooManyResults(err) {
 			return nil, nil, fmt.Errorf("Safe/Step: fails ethClient.FilterLogs(%v): %v. err: %w",
 				logQueryData.String(), ethGetExtendedError(err), err)
 		}
+		// The error is "too many results", try to reduce the block range
 		suggestedBlockRange = extractSuggestedBlockRangeFromError(err)
-		if suggestedBlockRange == nil || !logQueryData.BlockRange.Overlaps(*suggestedBlockRange) {
-			prevBlockChunkSize := initialsyncBlockChunkSize
-			initialsyncBlockChunkSize /= 10
-			if initialsyncBlockChunkSize < 1 {
-				return nil, nil, fmt.Errorf("Safe/Step: cannot reduce block chunk size anymore")
-			}
-			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk from %d to %d. Err: %s",
-				logQueryData.BlockRange.String(), logQueryData.Addrs, prevBlockChunkSize,
-				initialsyncBlockChunkSize, ethGetExtendedError(err))
-		} else {
+		// The suggested block range must be within the current logQueryData.BlockRange, if not
+		// means that the extraction of blockRange from error message failed
+		if logQueryData.BlockRange.Overlaps(*suggestedBlockRange) {
 			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, adjusting block range %s. Err: %s",
 				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendedError(err))
+			continue
 		}
+		// We don't have a valid suggested block range, reduce the chunk size 50%
+		prevBlockChunkSize := currentSyncBlockChunkSize
+		currentSyncBlockChunkSize /= 10
+		if currentSyncBlockChunkSize < 1 {
+			return nil, nil, fmt.Errorf("Safe/Step: cannot reduce block chunk size anymore")
+		}
+		dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk from %d to %d. Err: %s",
+			logQueryData.BlockRange.String(), logQueryData.Addrs, prevBlockChunkSize,
+			currentSyncBlockChunkSize, ethGetExtendedError(err))
 	}
 }
 
