@@ -1,6 +1,6 @@
 package multidownloader
 
-// This is the implementations of types.MultiDownloader used by syncers
+// This is the implementation of types.MultiDownloader used by syncers
 import (
 	"context"
 	"fmt"
