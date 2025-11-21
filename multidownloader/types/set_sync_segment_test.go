@@ -70,8 +70,8 @@ func TestSetSyncSegment_Add(t *testing.T) {
 
 		set.Add(segment1)
 		set.Add(segment2)
-		res := set.GetByContract(addr)
-		require.NotNil(t, res)
+		res, exists := set.GetByContract(addr)
+		require.True(t, exists)
 		require.Equal(t, uint64(1), res.BlockRange.FromBlock)
 		require.Equal(t, uint64(15), res.BlockRange.ToBlock)
 	})
@@ -80,8 +80,8 @@ func TestSetSyncSegment_Add(t *testing.T) {
 func TestSetSyncSegment_GetByContract(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		var set *SetSyncSegment
-		result := set.GetByContract(common.HexToAddress("0x123"))
-		require.Nil(t, result)
+		_, exists := set.GetByContract(common.HexToAddress("0x123"))
+		require.False(t, exists)
 	})
 
 	t.Run("segment found", func(t *testing.T) {
@@ -90,14 +90,14 @@ func TestSetSyncSegment_GetByContract(t *testing.T) {
 		segment := NewSyncSegment(addr, aggkitcommon.NewBlockRange(1, 10),
 			aggkittypes.LatestBlock, true)
 		set.Add(segment)
-		result := set.GetByContract(addr)
-		require.NotNil(t, result)
+		_, exists := set.GetByContract(addr)
+		require.True(t, exists)
 	})
 
 	t.Run("segment not found", func(t *testing.T) {
 		set := NewSetSyncSegment()
-		result := set.GetByContract(common.HexToAddress("0x123"))
-		require.Nil(t, result)
+		_, exists := set.GetByContract(common.HexToAddress("0x123"))
+		require.False(t, exists)
 	})
 }
 
@@ -164,7 +164,6 @@ func TestSetSyncSegment_TotalBlocks(t *testing.T) {
 		require.Equal(t, uint64(10), set.TotalBlocks())
 		set.segments = []*SyncSegment{segment1, segment2}
 		require.Equal(t, uint64(20), set.TotalBlocks())
-
 	})
 }
 func TestSetSyncSegment_UpdateTargetBlockToNumber(t *testing.T) {
@@ -330,8 +329,8 @@ func TestSetSyncSegment_UpdateBlockRange(t *testing.T) {
 		newRange := aggkitcommon.NewBlockRange(5, 15)
 		set.UpdateBlockRange(&segment, newRange)
 
-		updatedSegment := set.GetByContract(addr)
-		require.NotNil(t, updatedSegment)
+		updatedSegment, exists := set.GetByContract(addr)
+		require.True(t, exists)
 		require.Equal(t, newRange, updatedSegment.BlockRange)
 	})
 }
@@ -362,8 +361,8 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 
 		err := set.SubtractLogQuery(logQuery)
 		require.NoError(t, err)
-		res := set.GetByContract(addr)
-		require.NotNil(t, res)
+		res, exists := set.GetByContract(addr)
+		require.True(t, exists)
 		require.Equal(t, uint64(31), res.BlockRange.FromBlock)
 		require.Equal(t, uint64(100), res.BlockRange.ToBlock)
 	})
@@ -384,8 +383,8 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 
 		err := set.SubtractLogQuery(logQuery)
 		require.NoError(t, err)
-		res := set.GetByContract(addr)
-		require.Nil(t, res)
+		_, exists := set.GetByContract(addr)
+		require.False(t, exists)
 	})
 
 	t.Run("bad removed segment (middle segment)", func(t *testing.T) {

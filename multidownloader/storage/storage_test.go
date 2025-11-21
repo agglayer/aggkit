@@ -242,12 +242,12 @@ func TestStorage_UpsertSyncerConfigs(t *testing.T) {
 	require.Equal(t, 2, len(syncSegments.GetAddressesForBlockRange(
 		aggkitcommon.NewBlockRange(0, 10000),
 	)))
-	seg1 := syncSegments.GetByContract(exampleAddr1)
-	require.NotNil(t, seg1)
+	seg1, exists := syncSegments.GetByContract(exampleAddr1)
+	require.True(t, exists)
 	require.Equal(t, aggkittypes.FinalizedBlock, seg1.TargetToBlock)
 
-	seg2 := syncSegments.GetByContract(exampleAddr2)
-	require.NotNil(t, seg2)
+	seg2, exists := syncSegments.GetByContract(exampleAddr2)
+	require.True(t, exists)
 	require.Equal(t, aggkittypes.FinalizedBlock, seg2.TargetToBlock)
 }
 
@@ -288,13 +288,13 @@ func TestStorage_UpdateSyncedStatus(t *testing.T) {
 	require.Equal(t, 2, len(syncedSegments.GetAddressesForBlockRange(
 		aggkitcommon.NewBlockRange(0, 3000),
 	)))
-	seg1 := syncedSegments.GetByContract(exampleAddr1)
-	require.NotNil(t, seg1)
+	seg1, exists := syncedSegments.GetByContract(exampleAddr1)
+	require.True(t, exists)
 	require.Equal(t, aggkitcommon.NewBlockRange(1000, 2000), seg1.BlockRange)
 	require.Equal(t, aggkittypes.FinalizedBlock, seg1.TargetToBlock)
 
-	seg2 := syncedSegments.GetByContract(exampleAddr2)
-	require.NotNil(t, seg2)
+	seg2, exists := syncedSegments.GetByContract(exampleAddr2)
+	require.True(t, exists)
 	require.Equal(t, aggkitcommon.NewBlockRange(1500, 2500), seg2.BlockRange)
 	require.Equal(t, aggkittypes.LatestBlock, seg2.TargetToBlock)
 }

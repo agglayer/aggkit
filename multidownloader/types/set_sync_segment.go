@@ -61,27 +61,27 @@ func (s *SetSyncSegment) Segments() []SyncSegment {
 // if the contract address already exists
 func (s *SetSyncSegment) Add(segment SyncSegment) {
 	// Check if exists
-	current := s.GetByContract(segment.ContractAddr)
-	if current == nil {
+	current, exists := s.GetByContract(segment.ContractAddr)
+	if !exists {
 		// Add new segment
 		s.segments = append(s.segments, &segment)
 		return
 	}
 	// Merge syncers
-	s.UpdateBlockRange(current, current.BlockRange.Extend(segment.BlockRange))
+	s.UpdateBlockRange(&current, current.BlockRange.Extend(segment.BlockRange))
 }
 
 // GetByContract returns the SyncSegment for the given contract address
-func (s *SetSyncSegment) GetByContract(addr common.Address) *SyncSegment {
+func (s *SetSyncSegment) GetByContract(addr common.Address) (SyncSegment, bool) {
 	if s == nil {
-		return nil
+		return SyncSegment{}, false
 	}
 	for _, segment := range s.segments {
 		if segment.ContractAddr == addr {
-			return segment.Clone()
+			return *segment, true
 		}
 	}
-	return nil
+	return SyncSegment{}, false
 }
 
 // SubtractSegments removes the block ranges defined in segments from the current SetSyncSegment
@@ -92,14 +92,14 @@ func (f *SetSyncSegment) SubtractSegments(segments *SetSyncSegment) error {
 	}
 	newSegments := f.Clone()
 	for _, segment := range segments.Segments() {
-		previousSegment := newSegments.GetByContract(segment.ContractAddr)
-		if previousSegment != nil {
+		previousSegment, exists := newSegments.GetByContract(segment.ContractAddr)
+		if exists {
 			brs := previousSegment.BlockRange.Subtract(segment.BlockRange)
 			switch len(brs) {
 			case 0:
-				newSegments.Remove(previousSegment)
+				newSegments.Remove(&previousSegment)
 			case 1:
-				newSegments.UpdateBlockRange(previousSegment, brs[0])
+				newSegments.UpdateBlockRange(&previousSegment, brs[0])
 			default:
 				return fmt.Errorf("setSyncSegment.SubtractSegments: cannot split segment for %s into multiple ranges  %+v",
 					segment.String(), brs)
@@ -137,7 +137,7 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 	// Add first segment
 	expanded = append(expanded, f.segments[0].BlockRange)
 	for _, segment := range f.segments[1:] {
-		newExpanded := make([]aggkitcommon.BlockRange, 0, len(expanded)*2)
+		newExpanded := make([]aggkitcommon.BlockRange, 0, len(expanded))
 		for _, br := range expanded {
 			merged := br.Merge(segment.BlockRange)
 			for _, m := range merged {
@@ -178,8 +178,8 @@ func (f *SetSyncSegment) IsAvailable(query LogQuery) bool {
 		return false
 	}
 	for _, addr := range query.Addrs {
-		segment := f.GetByContract(addr)
-		if segment == nil || !segment.BlockRange.Contains(query.BlockRange) {
+		segment, exists := f.GetByContract(addr)
+		if !exists || !segment.BlockRange.Contains(query.BlockRange) {
 			return false
 		}
 	}
@@ -298,9 +298,9 @@ func (f *SetSyncSegment) AddLogQuery(logQuery *LogQuery) error {
 func (s *SetSyncSegment) SegmentsByContract(addrs []common.Address) []SyncSegment {
 	result := make([]SyncSegment, 0, len(addrs))
 	for _, addr := range addrs {
-		segment := s.GetByContract(addr)
-		if segment != nil {
-			result = append(result, *segment)
+		segment, exists := s.GetByContract(addr)
+		if exists {
+			result = append(result, segment)
 		}
 	}
 	return result
