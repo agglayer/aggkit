@@ -23,7 +23,11 @@ import (
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 )
 
-const safeMode = true
+const (
+	safeMode                 = true
+	chunkSizeReductionFactor = 10
+	minChunkSize             = 1
+)
 
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
@@ -47,6 +51,7 @@ type EVMMultidownloader struct {
 
 var _ aggkittypes.MultiDownloader = (*EVMMultidownloader)(nil)
 
+// NewEVMMultidownloader creates a new EVM multidownloader instance with proper validation
 func NewEVMMultidownloader(log aggkitcommon.Logger,
 	cfg Config,
 	name string,
@@ -238,25 +243,28 @@ func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 }
 
 // StepSafe performs a safe step syncing logs and block headers from historical data
+// Returns true when syncing is complete, false if more work remains
 func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
+
+	// Get logs for next segment
 	logs, logQueryData, err := dh.requestLogs(ctx)
 	if err != nil {
 		if errors.Is(err, mdrtypes.ErrFinished) {
 			return true, nil
 		}
-		return false, fmt.Errorf("Safe/Step: cannot filter logs adapting block range: %w", err)
+		return false, fmt.Errorf("Safe/Step: failed to retrieve logs: %w", err)
 	}
-	dh.log.Debugf("Safe/Step:: logs (%d) for blockRange=%s, addrs=%v", len(logs),
+	dh.log.Debugf("Safe/Step: logs (%d) for blockRange=%s, addrs=%v", len(logs),
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
-	dh.log.Debugf("Safe/Step:: querying blockHeaders for %d blocks", len(blocks))
+	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks", len(blocks))
 	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
 		blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
-		return false, fmt.Errorf("Safe/Step: cannot retrieve block headers (%d): %w", len(blockHeaders), err)
+		return false, fmt.Errorf("Safe/Step: failed to retrieve %d block headers: %w", len(blocks), err)
 	}
 
 	// Calculate new state (not set in memory until commit is successful)
@@ -370,7 +378,10 @@ func extractSuggestedBlockRangeFromError(err error) *aggkitcommon.BlockRange {
 	return extractSuggestedBlockRangeFromErrorMsg(msg)
 }
 
+// extractSuggestedBlockRangeFromErrorMsg parses error messages to extract block range suggestions
+// Expected format: "Try with this block range [0x852c16, 0x853273]"
 func extractSuggestedBlockRangeFromErrorMsg(msg string) *aggkitcommon.BlockRange {
+	// Match content within brackets
 	re := regexp.MustCompile(`\[([^\]]+)\]`)
 	match := re.FindStringSubmatch(msg)
 	if len(match) > 1 {
@@ -452,8 +463,8 @@ func (dh *EVMMultidownloader) requestLogs(
 		}
 		// We don't have a valid suggested block range, reduce the chunk size 50%
 		prevBlockChunkSize := currentSyncBlockChunkSize
-		currentSyncBlockChunkSize /= 10
-		if currentSyncBlockChunkSize < 1 {
+		currentSyncBlockChunkSize /= chunkSizeReductionFactor
+		if currentSyncBlockChunkSize < minChunkSize {
 			return nil, nil, fmt.Errorf("Safe/Step: cannot reduce block chunk size anymore")
 		}
 		dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk from %d to %d. Err: %s",
