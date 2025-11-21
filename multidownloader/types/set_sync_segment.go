@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
@@ -19,11 +20,12 @@ type SetSyncSegment struct {
 
 // String returns a string representation of the SetSyncSegment
 func (s *SetSyncSegment) String() string {
-	result := "SetSyncSegment: "
+	var builder strings.Builder
+	builder.WriteString("SetSyncSegment: ")
 	for i, segment := range s.segments {
-		result += fmt.Sprintf("SyncSegment[%d]=%s\n", i, segment.BlockRange.String())
+		builder.WriteString(fmt.Sprintf("SyncSegment[%d]=%s\n", i, segment.BlockRange.String()))
 	}
-	return result
+	return builder.String()
 }
 
 // NewSetSyncSegment creates a new empty SetSyncSegment
