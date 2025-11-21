@@ -58,6 +58,7 @@ func TestEVMMultidownloader_BlockNumber(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(123456), num)
 }
+
 func TestEVMMultidownloader_BlockHeader(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, true)
 	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
