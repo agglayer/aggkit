@@ -943,15 +943,27 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 
 			if unsetCount == 0 {
-				if err = meddler.Save(tx, claimTableName, event.Claim); err != nil {
-					p.log.Errorf("failed to upsert claim event at block %d: %v", block.Num, err)
+				claims, err := p.GetClaimsByGlobalIndex(ctx, event.Claim.GlobalIndex)
+				if err != nil {
+					p.log.Errorf("failed to get claims for global index %d at block %d: %v",
+						event.Claim.GlobalIndex, block.Num, err)
 					return err
 				}
-			} else {
-				if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
-					p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
-					return err
+
+				if len(claims) > 0 {
+					// TODO: figure out if we need to keep those claims for history
+					_, err = tx.Exec(`DELETE FROM claim WHERE global_index = ?`, event.Claim.GlobalIndex.String())
+					if err != nil {
+						p.log.Errorf("failed to delete claims for global index %d: %v",
+							event.Claim.GlobalIndex, err)
+						return err
+					}
 				}
+			}
+
+			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
+				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
+				return err
 			}
 		}
 
