@@ -64,7 +64,7 @@ func TestContractConfigs_MultipleSyncersSameContract(t *testing.T) {
 	require.Equal(t, addr, cc.Address)
 	// FromBlock should be the minimum
 	require.Equal(t, uint64(5), cc.FromBlock)
-	// ToBlock should be the "less final" (minimum)
+	// ToBlock should be the earliest/most permissive (LatestBlock < FinalizedBlock)
 	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
 	require.Equal(t, []SyncerID{"syncer1", "syncer2"}, cc.Syncers)
 }
