@@ -311,7 +311,7 @@ func TestStorage_UpdateIsFinal(t *testing.T) {
 	require.Equal(t, block, readBlock, "BlockHeader mismatch")
 	require.False(t, isFinal, "expected block to not be final")
 
-	err = storage.UpdateIsFinal(nil, []uint64{block.Number})
+	err = storage.updateIsFinal(nil, []uint64{block.Number})
 	require.NoError(t, err, "cannot update IsFinal")
 
 	readBlock, isFinal, err = storage.GetBlockHeaderByNumber(nil, block.Number)

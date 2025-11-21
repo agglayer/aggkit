@@ -20,7 +20,5 @@ type Storager interface {
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
 
 	GetBlockHeaderNotFinal(tx dbtypes.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error)
-	UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error
-
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 }

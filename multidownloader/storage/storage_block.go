@@ -62,7 +62,7 @@ func (a *MultidownloaderStorage) saveAggkitBlock(tx dbtypes.Querier,
 	return a.saveBlocksNoMutex(tx, blockRows)
 }
 
-func (a *MultidownloaderStorage) UpdateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error {
+func (a *MultidownloaderStorage) updateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error {
 	if tx == nil {
 		tx = a.db
 	}
