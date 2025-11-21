@@ -90,7 +90,7 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 		number.Uint64())
 	ethBlock, err := dh.ethClient.HeaderByNumber(ctx, number) // Just to comply with the interface
 	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: fails ethClient.HeaderByNumber(%d). Err:  %w",
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: fails ethClient.HeaderByNumber(%d). Err: %w",
 			number.Uint64(), err)
 	}
 	blockHeader := aggkittypes.NewBlockHeaderFromEthHeader(ethBlock)
