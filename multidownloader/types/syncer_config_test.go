@@ -8,11 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Use the real BlockNumberFinality interface/type from your codebase.
-// Replace this import path with the actual one if different.
-
-// Ensure your BlockNumberFinality implementation is available for use in tests.
-
 func TestContractConfigs_EmptySet(t *testing.T) {
 	var set *SetSyncerConfig
 	configs := set.ContractConfigs()

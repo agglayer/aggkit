@@ -347,10 +347,6 @@ func (a *MultidownloaderStorage) UpdateSyncedStatus(tx dbtypes.Querier,
 		result, err := tx.Exec(query, segment.BlockRange.FromBlock,
 			segment.BlockRange.ToBlock, segment.ContractAddr.Hex())
 		if err != nil {
-			return fmt.Errorf("error updating synced blocks for contract %s: %w",
-				segment.ContractAddr.Hex(), err)
-		}
-		if err != nil {
 			return fmt.Errorf("error updating %s sync status: %w", segment.String(), err)
 		}
 		rowsAffected, err := result.RowsAffected()
