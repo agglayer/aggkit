@@ -54,7 +54,7 @@ func (b *Blocks) IsEmpty() bool {
 
 func (a *MultidownloaderStorage) SaveBlockAggkitBlock(tx dbtypes.Querier,
 	header *aggkittypes.BlockHeader, isFinal bool) error {
-	blockRows := map[uint64]*BlockRow{
+	blockRows := map[uint64]*blockRow{
 		header.Number: newBlockRowFromAggkitBlock(header, isFinal),
 	}
 	a.mutex.Lock()
@@ -120,7 +120,7 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
 		tx = a.db
 	}
 	result := NewBlocks()
-	var blocks []*BlockRow
+	var blocks []*blockRow
 	err := meddler.QueryAll(tx, &blocks, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

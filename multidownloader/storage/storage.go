@@ -89,7 +89,7 @@ func NewLogRowFromEthLog(log types.Log) *logRow {
 const SqliteBoolTrue = 1
 const SqliteBoolFalse = 0
 
-type BlockRow struct {
+type blockRow struct {
 	BlockNumber    uint64      `meddler:"block_number"`
 	BlockHash      common.Hash `meddler:"block_hash,hash"`
 	BlockTimestamp uint64      `meddler:"block_timestamp"`
@@ -98,7 +98,7 @@ type BlockRow struct {
 	IsFinal         bool         `meddler:"is_final"`
 }
 
-func (br *BlockRow) String() string {
+func (br *blockRow) String() string {
 	if br == nil {
 		return "<nil>"
 	}
@@ -112,8 +112,8 @@ func (br *BlockRow) String() string {
 		br.BlockNumber, br.BlockHash.String(), br.BlockTimestamp, blockParentHashString(br.BlockParentHash), br.IsFinal)
 }
 
-func NewBlockRowFromEthLog(log types.Log, isFinal bool) *BlockRow {
-	return &BlockRow{
+func NewBlockRowFromEthLog(log types.Log, isFinal bool) *blockRow {
+	return &blockRow{
 		BlockNumber:     log.BlockNumber,
 		BlockHash:       log.BlockHash,
 		BlockTimestamp:  log.BlockTimestamp,
@@ -122,8 +122,8 @@ func NewBlockRowFromEthLog(log types.Log, isFinal bool) *BlockRow {
 	}
 }
 
-func newBlockRowFromAggkitBlock(block *aggkittypes.BlockHeader, isFinal bool) *BlockRow {
-	return &BlockRow{
+func newBlockRowFromAggkitBlock(block *aggkittypes.BlockHeader, isFinal bool) *blockRow {
+	return &blockRow{
 		BlockNumber:     block.Number,
 		BlockHash:       block.Hash,
 		BlockTimestamp:  block.Time,
@@ -132,8 +132,8 @@ func newBlockRowFromAggkitBlock(block *aggkittypes.BlockHeader, isFinal bool) *B
 	}
 }
 
-func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*BlockRow {
-	blockMap := make(map[uint64]*BlockRow)
+func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*blockRow {
+	blockMap := make(map[uint64]*blockRow)
 	for _, log := range logs {
 		if _, exists := blockMap[log.BlockNumber]; !exists {
 			blockMap[log.BlockNumber] = NewBlockRowFromEthLog(log, isFinal)
@@ -142,8 +142,8 @@ func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*BlockRow {
 	return blockMap
 }
 
-func NewBlockRowsFromAggkitBlock(blockHeaders []*aggkittypes.BlockHeader, isFinal bool) map[uint64]*BlockRow {
-	blockMap := make(map[uint64]*BlockRow)
+func NewBlockRowsFromAggkitBlock(blockHeaders []*aggkittypes.BlockHeader, isFinal bool) map[uint64]*blockRow {
+	blockMap := make(map[uint64]*blockRow)
 	for _, header := range blockHeaders {
 		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, isFinal)
 	}
@@ -252,7 +252,7 @@ func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier,
 }
 
 func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
-	blockRows map[uint64]*BlockRow, logRows []*logRow) error {
+	blockRows map[uint64]*blockRow, logRows []*logRow) error {
 	if tx == nil {
 		tx = a.db
 	}
@@ -270,7 +270,7 @@ func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
 	return nil
 }
 
-func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows map[uint64]*BlockRow) error {
+func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows map[uint64]*blockRow) error {
 	if tx == nil {
 		tx = a.db
 	}

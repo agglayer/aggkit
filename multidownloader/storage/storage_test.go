@@ -342,7 +342,7 @@ func TestStorage_logRow_String(t *testing.T) {
 }
 
 func TestStorage_BlockRow_String(t *testing.T) {
-	row := BlockRow{
+	row := blockRow{
 		BlockNumber:     1234,
 		BlockHash:       exampleTestHash[0],
 		BlockTimestamp:  5678,
