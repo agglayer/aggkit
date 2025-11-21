@@ -55,7 +55,7 @@ func TestStorage_GetBlock(t *testing.T) {
 	require.NoError(t, err, "cannot get BlockHeader")
 	require.Nil(t, blockHeader, "expected nil BlockHeader")
 	block := aggkittypes.NewBlockHeader(1234, exampleTestHash[0], 5678, &exampleTestHash[1])
-	err = storage.SaveBlockAggkitBlock(nil, block, true)
+	err = storage.saveAggkitBlock(nil, block, true)
 	require.NoError(t, err, "cannot insert BlockHeader")
 	// Get and verify block
 	readBlock, isFinal, err := storage.GetBlockHeaderByNumber(nil, 1234)
@@ -65,7 +65,7 @@ func TestStorage_GetBlock(t *testing.T) {
 	require.True(t, isFinal, "expected block to be final")
 
 	blockNilParentHash := aggkittypes.NewBlockHeader(1235, exampleTestHash[0], 5678, nil)
-	err = storage.SaveBlockAggkitBlock(nil, blockNilParentHash, true)
+	err = storage.saveAggkitBlock(nil, blockNilParentHash, true)
 	require.NoError(t, err, "cannot get BlockHeader")
 	readBlock, _, err = storage.GetBlockHeaderByNumber(nil, blockNilParentHash.Number)
 	require.NoError(t, err, "cannot get BlockHeader")
@@ -302,7 +302,7 @@ func TestStorage_UpdateSyncedStatus(t *testing.T) {
 func TestStorage_UpdateIsFinal(t *testing.T) {
 	storage := newStorageForTest(t, nil)
 	block := aggkittypes.NewBlockHeader(4000, exampleTestHash[5], 1630002000, nil)
-	err := storage.SaveBlockAggkitBlock(nil, block, false)
+	err := storage.saveAggkitBlock(nil, block, false)
 	require.NoError(t, err, "cannot insert BlockHeader")
 
 	readBlock, isFinal, err := storage.GetBlockHeaderByNumber(nil, block.Number)

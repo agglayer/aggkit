@@ -52,7 +52,7 @@ func (b *Blocks) IsEmpty() bool {
 	return len(b.Headers) == 0
 }
 
-func (a *MultidownloaderStorage) SaveBlockAggkitBlock(tx dbtypes.Querier,
+func (a *MultidownloaderStorage) saveAggkitBlock(tx dbtypes.Querier,
 	header *aggkittypes.BlockHeader, isFinal bool) error {
 	blockRows := map[uint64]*blockRow{
 		header.Number: newBlockRowFromAggkitBlock(header, isFinal),
