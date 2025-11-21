@@ -613,16 +613,16 @@ func (p *processor) GetUnsetClaimsPaged(
 	globalIndex *big.Int,
 ) ([]*UnsetClaim, int, error) {
 	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
-	claimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
+	unclaimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if claimsCount == 0 {
+	if unclaimsCount == 0 {
 		return []*UnsetClaim{}, 0, nil
 	}
 
-	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, unsetClaimTableName)
+	offset, err := p.calculateOffset(pageNumber, pageSize, unclaimsCount, unsetClaimTableName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -632,7 +632,7 @@ func (p *processor) GetUnsetClaimsPaged(
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
 				pageNumber, pageSize)
-			return nil, claimsCount, nil
+			return nil, unclaimsCount, nil
 		}
 		p.log.Errorf("GetUnsetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
@@ -650,25 +650,16 @@ func (p *processor) GetUnsetClaimsPaged(
 		return nil, 0, err
 	}
 
-	return unsetClaims, claimsCount, nil
+	return unsetClaims, unclaimsCount, nil
 }
 
 // buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
-// based on the provided globalIndex (networkIDs not applicable for unset claims)
+// based on the provided globalIndex
 func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
-	const clauseCapacity = 1
-	clauses := make([]string, 0, clauseCapacity)
-
-	// Note: networkIDs filtering is not applicable for unset claims as they don't have network fields
-	// Unset claims only have global_index, block info, and hash chain
-
 	if globalIndex != nil {
-		clauses = append(clauses, fmt.Sprintf("global_index = '%s'", globalIndex.String()))
+		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
 	}
 
-	if len(clauses) > 0 {
-		return " WHERE " + strings.Join(clauses, " AND ")
-	}
 	return ""
 }
 
