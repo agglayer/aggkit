@@ -42,7 +42,7 @@ func (s *Statistics) StartDBOperation() {
 	s.timeTrackerDB.Start()
 }
 
-func (s *Statistics) FinishDBOperation(_ error) {
+func (s *Statistics) FinishDBOperation() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.timeTrackerDB.Stop()

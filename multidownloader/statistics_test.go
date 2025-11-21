@@ -105,7 +105,7 @@ func TestStatistics_Show(t *testing.T) {
 	sut.StartSyncing()
 
 	sut.StartDBOperation()
-	sut.FinishDBOperation(nil)
+	sut.FinishDBOperation()
 	sut.LaunchedEthCall()
 	sut.FinishEthCall(nil, 10, 100)
 	sut.FinishSyncing()

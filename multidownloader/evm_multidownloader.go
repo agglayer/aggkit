@@ -317,7 +317,7 @@ func (dh *EVMMultidownloader) storeData(
 	committed := false
 	dh.statistics.StartDBOperation()
 	defer func() {
-		dh.statistics.FinishDBOperation(err)
+		dh.statistics.FinishDBOperation()
 	}()
 	tx, err := dh.storage.NewTx(ctx)
 	if err != nil {
