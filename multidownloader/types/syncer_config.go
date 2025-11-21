@@ -1,12 +1,10 @@
 package types
 
 import (
-	"math/big"
 	"sort"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -121,16 +119,6 @@ func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) [
 		contractConfigs = append(contractConfigs, *cc)
 	}
 	return contractConfigs
-}
-
-// Combine combines all filters into one; must check if the blockRange overlaps
-func (f *SetSyncerConfig) Combine(blockRange aggkitcommon.BlockRange) ethereum.FilterQuery {
-	// Trivial implementation
-	return ethereum.FilterQuery{
-		Addresses: f.Addresses(blockRange),
-		FromBlock: new(big.Int).SetUint64(blockRange.FromBlock),
-		ToBlock:   new(big.Int).SetUint64(blockRange.ToBlock),
-	}
 }
 
 // SyncSegments groups the SetSyncerConfig into segments per contract address and blockRange
