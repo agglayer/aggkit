@@ -207,7 +207,7 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 	AND logs.block_number>=? AND logs.block_number<=?
 	ORDER BY logs.block_number ASC, log_index ASC
 	`
-	addrs := []string{}
+	addrs := make([]string, 0, len(query.Addrs))
 	for _, addr := range query.Addrs {
 		addrs = append(addrs, addr.Hex())
 	}
