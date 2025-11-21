@@ -344,7 +344,7 @@ func (dh *EVMMultidownloader) storeData(
 	return nil
 }
 
-func ethGetExtendendError(err error) string {
+func ethGetExtendedError(err error) string {
 	if err == nil {
 		return ""
 	}
@@ -360,7 +360,7 @@ func isEthClientErrorTooManyResults(err error) bool {
 		return false
 	}
 	// Example: "Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273]."
-	msg := ethGetExtendendError(err)
+	msg := ethGetExtendedError(err)
 	return strings.Contains(msg, "Response size exceeded") || strings.Contains(msg, "Query returned more than")
 }
 
@@ -368,7 +368,7 @@ func extractSuggestedBlockRangeFromError(err error) *aggkitcommon.BlockRange {
 	if !isEthClientErrorTooManyResults(err) {
 		return nil
 	}
-	msg := ethGetExtendendError(err)
+	msg := ethGetExtendedError(err)
 	return extractSuggestedBlockRangeFromErrorMsg(msg)
 }
 
@@ -400,7 +400,7 @@ func (dh *EVMMultidownloader) getFinalizedBlockNumber(ctx context.Context) (uint
 	return bn, nil
 }
 
-func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32, safe bool) (*mdrtypes.LogQuery, error) {
+func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunk uint32, safe bool) (*mdrtypes.LogQuery, error) {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	var err error
@@ -413,7 +413,7 @@ func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunck uint32, s
 	} else {
 		maxBlock = 0
 	}
-	logQueryData, err := dh.pendingSync.NextQuery(chunck, maxBlock)
+	logQueryData, err := dh.pendingSync.NextQuery(chunk, maxBlock)
 	if err != nil {
 		return nil, fmt.Errorf("getNextQuery: cannot get NextQuery: %w", err)
 	}
@@ -447,7 +447,7 @@ func (dh *EVMMultidownloader) requestLogs(
 		}
 		if err != nil && !isEthClientErrorTooManyResults(err) {
 			return nil, nil, fmt.Errorf("Safe/Step: fails ethClient.FilterLogs(%v): %v. err: %w",
-				logQueryData.String(), ethGetExtendendError(err), err)
+				logQueryData.String(), ethGetExtendedError(err), err)
 		}
 		suggestedBlockRange = extractSuggestedBlockRangeFromError(err)
 		if suggestedBlockRange == nil || !logQueryData.BlockRange.Overlaps(*suggestedBlockRange) {
@@ -458,10 +458,10 @@ func (dh *EVMMultidownloader) requestLogs(
 			}
 			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, reducing chunk from %d to %d. Err: %s",
 				logQueryData.BlockRange.String(), logQueryData.Addrs, prevBlockChunkSize,
-				initialsyncBlockChunkSize, ethGetExtendendError(err))
+				initialsyncBlockChunkSize, ethGetExtendedError(err))
 		} else {
 			dh.log.Warnf("Safe/Step: too many results for range=%s, addrs=%v, adjusting block range %s. Err: %s",
-				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendendError(err))
+				logQueryData.BlockRange.String(), logQueryData.Addrs, suggestedBlockRange.String(), ethGetExtendedError(err))
 		}
 	}
 }
