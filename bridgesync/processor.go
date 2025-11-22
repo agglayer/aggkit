@@ -299,13 +299,13 @@ type InvalidClaim struct {
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
 	// additional fields
-	Reason    string    `meddler:"reason"`
-	CreatedAt time.Time `meddler:"created_at"`
+	Reason    string `meddler:"reason"`
+	CreatedAt uint64 `meddler:"created_at"`
 }
 
 // NewInvalidClaim creates a new InvalidClaim from a Claim and a reason
-func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
-	return &InvalidClaim{
+func NewInvalidClaim(c *Claim, id int64, reason string) *InvalidClaim {
+	ic := &InvalidClaim{
 		BlockNum:            c.BlockNum,
 		BlockPos:            c.BlockPos,
 		TxHash:              c.TxHash,
@@ -324,8 +324,12 @@ func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
 		IsMessage:           c.IsMessage,
 		BlockTimestamp:      c.BlockTimestamp,
 		Reason:              reason,
-		CreatedAt:           time.Now().UTC(),
+		CreatedAt:           uint64(time.Now().UTC().Unix()),
 	}
+	if id != -1 {
+		ic.ID = id
+	}
+	return ic
 }
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
@@ -1017,10 +1021,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 						return err
 					}
 
-					invalidClaim := NewInvalidClaim(event.Claim, InvalidGERClaimCorrect.String())
-					if err = meddler.Insert(tx, invalidClaimTableName, invalidClaim); err != nil {
-						p.log.Errorf("failed to insert invalid claim for global index %d: %v", globalIndex, err)
-						return err
+					for _, existingClaim := range existingClaims {
+						invalidClaim := NewInvalidClaim(&existingClaim, -1, InvalidGERClaimCorrect.String())
+						if err = meddler.Insert(tx, invalidClaimTableName, invalidClaim); err != nil {
+							p.log.Errorf("failed to insert invalid claim for global index %d: %v", globalIndex, err)
+							return err
+						}
 					}
 				}
 			}
@@ -1082,6 +1088,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 
 	return nil
+}
+
+// getInvalidClaimsByGlobalIndex returns invalid claims by global index
+func (p *processor) getInvalidClaimsByGlobalIndex(globalIndex *big.Int) ([]*InvalidClaim, error) {
+	var results []*InvalidClaim
+	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
+		SELECT * FROM %s
+		WHERE global_index = $1
+		ORDER BY block_num ASC, block_pos ASC;
+	`, invalidClaimTableName), globalIndex.String()); err != nil {
+		return nil, fmt.Errorf("failed to query invalid claims by global index: %s: %w", globalIndex.String(), err)
+	}
+
+	return results, nil
 }
 
 // GetTotalNumberOfRecords returns the total number of records in the given table

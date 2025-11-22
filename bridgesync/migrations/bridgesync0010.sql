@@ -43,6 +43,7 @@ CREATE TABLE invalid_claim (
     metadata                BLOB,
     is_message              BOOLEAN,
     block_timestamp         INTEGER,
+    tx_hash                 VARCHAR NOT NULL,
     created_at              INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     reason                  VARCHAR NOT NULL
 );
