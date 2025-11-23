@@ -2939,3 +2939,34 @@ func TestProcessBlockWithClaims(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteClaimReason_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		reason   DeleteClaimReason
+		expected string
+	}{
+		{
+			name:     "InvalidGERClaimCorrect",
+			reason:   InvalidGERClaimCorrect,
+			expected: "invalid_ger_claim_correct",
+		},
+		{
+			name:     "UnknownReason",
+			reason:   DeleteClaimReason(999), // something outside defined range
+			expected: "unknown",
+		},
+		{
+			name:     "NegativeReason",
+			reason:   DeleteClaimReason(-1),
+			expected: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.reason.String()
+			require.Equal(t, tt.expected, got)
+		})
+	}
+}
