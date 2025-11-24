@@ -26,8 +26,9 @@ const (
 type CreationFlags uint64
 
 const (
-	FlagNone                     CreationFlags = 1 << iota // Check for correct contracts addresses
-	FlagAllowWrongContractsAddrs                           // Allow to set wrong contracts addresses
+	FlagNone                        CreationFlags = 1 << iota // Check for correct contracts addresses
+	FlagAllowWrongContractsAddrs                              // Allow to set wrong contracts addresses
+	FlagStopOnFinalizedBlockReached                           // Stop syncing when finalized block is reached
 )
 
 var (
@@ -57,7 +58,7 @@ func NewReadOnly(
 func New(
 	ctx context.Context,
 	cfg Config,
-	l1Client aggkittypes.BaseEthereumClienter,
+	l1Client aggkittypes.MultiDownloader,
 	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
 ) (*L1InfoTreeSync, error) {
@@ -73,14 +74,14 @@ func New(
 
 	parentBlockNumber := cfg.InitialBlock - 1
 	if cfg.InitialBlock > 0 && lastProcessedBlock < parentBlockNumber {
-		block, err := l1Client.BlockByNumber(ctx, new(big.Int).SetUint64(parentBlockNumber))
+		block, err := l1Client.HeaderByNumber(ctx, new(big.Int).SetUint64(parentBlockNumber))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial block %d: %w", parentBlockNumber, err)
 		}
 
 		err = processor.ProcessBlock(ctx, sync.Block{
 			Num:  parentBlockNumber,
-			Hash: block.Hash(),
+			Hash: block.Hash,
 		})
 		if err != nil {
 			return nil, err
@@ -91,10 +92,23 @@ func New(
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
 	}
 
-	appender, err := buildAppender(l1Client, cfg.GlobalExitRootAddr, cfg.RollupManagerAddr, flags)
+	appender, err := buildAppender(l1Client.EthClient(), cfg.GlobalExitRootAddr, cfg.RollupManagerAddr, flags)
 	if err != nil {
 		return nil, err
 	}
+	addressesToQuery := []common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr}
+	err = l1Client.RegisterSyncer(
+		aggkittypes.SyncerConfig{
+			SyncerID:      "l1infotreesync",
+			ContractsAddr: addressesToQuery,
+			FromBlock:     cfg.InitialBlock,
+			ToBlock:       cfg.BlockFinality,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register l1infotreesync in multidownloader: %w", err)
+	}
+
 	downloader, err := sync.NewEVMDownloader(
 		"l1infotreesync",
 		l1Client,
@@ -102,7 +116,7 @@ func New(
 		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		appender,
-		[]common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr},
+		addressesToQuery,
 		rh,
 		reorgDetector.GetFinalizedBlockType(),
 		reorgDetector, // reorgDetector
@@ -110,6 +124,9 @@ func New(
 	)
 	if err != nil {
 		return nil, err
+	}
+	if flags&FlagStopOnFinalizedBlockReached != 0 {
+		downloader.SetStopOnFinalizedBlockReachedFlag()
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,

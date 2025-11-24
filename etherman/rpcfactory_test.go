@@ -3,16 +3,16 @@ package etherman
 import (
 	"testing"
 
-	"github.com/agglayer/aggkit/config"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewRPCClient(t *testing.T) {
-	cfg := config.L2RPCClientConfig{
-		RPCClientConfig: config.RPCClientConfig{
+	cfg := ethermanconfig.L2RPCClientConfig{
+		RPCClientConfig: ethermanconfig.RPCClientConfig{
 			URL: "http://localhost:1234",
 		},
-		Mode: config.RPCModeBasic,
+		Mode: ethermanconfig.RPCModeBasic,
 		ExtraParams: map[string]any{
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
@@ -22,7 +22,7 @@ func TestNewRPCClient(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
-	cfg.Mode = config.RPCModeOp
+	cfg.Mode = ethermanconfig.RPCModeOp
 	eth, err = NewRPCClient(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
@@ -31,7 +31,7 @@ func TestNewRPCClient(t *testing.T) {
 	_, err = NewRPCClient(ctx, cfg)
 	require.ErrorContains(t, err, "no known transport for URL scheme \"noproto\"")
 
-	cfg = config.L2RPCClientConfig{}
+	cfg = ethermanconfig.L2RPCClientConfig{}
 	_, err = NewRPCClient(ctx, cfg)
 	require.ErrorContains(t, err, "invalid RPC mode")
 }

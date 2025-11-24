@@ -359,3 +359,156 @@ func TestUint64ToLittleEndianBytes(t *testing.T) {
 		})
 	}
 }
+func TestParseUint64Hex(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		input       string
+		expected    uint64
+		expectError bool
+	}{
+		{
+			name:     "Valid hex string - zero",
+			input:    "0x0",
+			expected: 0,
+		},
+		{
+			name:     "Valid hex string - small value",
+			input:    "0x1",
+			expected: 1,
+		},
+		{
+			name:     "Valid hex string - arbitrary value",
+			input:    "0x123",
+			expected: 291,
+		},
+		{
+			name:     "Valid hex string - max uint64",
+			input:    "0xffffffffffffffff",
+			expected: 18446744073709551615,
+		},
+		{
+			name:     "Valid hex string - mixed case",
+			input:    "0xAbCdEf",
+			expected: 11259375,
+		},
+		{
+			name:     "Valid hex string - uppercase",
+			input:    "0XABCDEF",
+			expected: 11259375,
+		},
+		{
+			name:        "Invalid hex string - no 0x prefix",
+			input:       "123",
+			expectError: true,
+		},
+		{
+			name:        "Invalid hex string - empty string",
+			input:       "",
+			expectError: true,
+		},
+		{
+			name:        "Invalid hex string - only 0",
+			input:       "0",
+			expectError: true,
+		},
+		{
+			name:        "Invalid hex string - only x",
+			input:       "x",
+			expectError: true,
+		},
+		{
+			name:        "Invalid hex string - 0x only",
+			input:       "0x",
+			expectError: true,
+		},
+		{
+			name:        "Invalid hex string - contains invalid characters",
+			input:       "0xzz",
+			expectError: true,
+		},
+		{
+			name:        "Invalid hex string - contains spaces",
+			input:       "0x1 2",
+			expectError: true,
+		},
+		{
+			name:     "Invalid hex string - value too large for uint64",
+			input:    "0x10000000000000000",
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := ParseUint64Hex(tt.input)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "invalid hex string "+tt.input)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseUint64HexOrDecimal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		input       string
+		expected    uint64
+		expectError bool
+	}{
+		{
+			name:     "Valid hex string",
+			input:    "0x1A",
+			expected: 26,
+		},
+		{
+			name:     "Valid decimal string",
+			input:    "42",
+			expected: 42,
+		},
+		{
+			name:        "Invalid hex string",
+			input:       "0xGHI",
+			expectError: true,
+		},
+		{
+			name:        "Invalid decimal string",
+			input:       "12AB34",
+			expectError: true,
+		},
+		{
+			name:        "Empty string",
+			input:       "",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := ParseUint64HexOrDecimal(tt.input)
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}

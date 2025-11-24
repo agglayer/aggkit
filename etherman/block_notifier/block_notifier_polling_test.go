@@ -1,4 +1,4 @@
-package aggsender
+package blocknotifier
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/aggsender/mocks"
-	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	commonmocks "github.com/agglayer/aggkit/common/mocks"
+	ethmantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -53,7 +53,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 		mockLoggerFn              func() aggkitcommon.Logger
 		expectedStatus            *blockNotifierPollingInternalStatus
 		expectedDelay             time.Duration
-		expectedEvent             *aggsendertypes.EventNewBlock
+		expectedEvent             *ethmantypes.EventNewBlock
 	}{
 		{
 			name:                      "initial->receive block",
@@ -94,7 +94,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				previousBlockTime: &period0,
 			},
 			expectedDelay: period0_80percent,
-			expectedEvent: &aggsendertypes.EventNewBlock{
+			expectedEvent: &ethmantypes.EventNewBlock{
 				BlockNumber: 101,
 			},
 		},
@@ -106,7 +106,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				previousBlockTime: &period0,
 			},
 			mockLoggerFn: func() aggkitcommon.Logger {
-				mockLogger := mocks.NewLogger(t)
+				mockLogger := commonmocks.NewLogger(t)
 				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", aggkittypes.LatestBlock.String(), uint64(100), uint64(105)).Once()
 				return mockLogger
 			},
@@ -118,7 +118,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				lastBlockTime: time1,
 			},
 			expectedDelay: time.Second,
-			expectedEvent: &aggsendertypes.EventNewBlock{
+			expectedEvent: &ethmantypes.EventNewBlock{
 				BlockNumber: 105,
 			},
 		},
@@ -136,7 +136,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				// we do not expect any warning here
 				// if the code logs a warning, it will fail the test
 				// because we didn't mock it
-				return mocks.NewLogger(t)
+				return commonmocks.NewLogger(t)
 			},
 			headerByNumberError:       false,
 			headerByNumberErrorNumber: 105,
@@ -146,7 +146,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				lastBlockTime: time1,
 			},
 			expectedDelay: time.Second,
-			expectedEvent: &aggsendertypes.EventNewBlock{
+			expectedEvent: &ethmantypes.EventNewBlock{
 				BlockNumber: 105,
 			},
 		},

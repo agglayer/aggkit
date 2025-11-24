@@ -322,4 +322,20 @@ GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 			MaxBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.MaxBackoff}}"
 			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
+
+[L1Multidownloader]
+	Enabled = false
+	StoragePath = "{{PathRWData}}/l1_multidownloader.sqlite"
+	BlockChunkSize = 10000
+	MaxParallelBlockHeaderRetrieval = 30
+	BlockFinality = "FinalizedBlock"
+	WaitPeriodToCheckCatchUp = "10s"
+
+[L2Multidownloader]
+	Enabled = false
+	StoragePath = "{{PathRWData}}/l2_multidownloader.sqlite"
+	BlockChunkSize = 10000
+	MaxParallelBlockHeaderRetrieval = 30
+	BlockFinality = "LatestBlock"
+	WaitPeriodToCheckCatchUp = "10s"
 `

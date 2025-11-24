@@ -17,7 +17,7 @@ const claimSizeFactor = 200 // Size factor for claims in bytes
 // CertificatePreBuildParams is a struct that holds the parameters to pre-build a certificate
 // basically it's used for generate CertificateBuildParams that add bridges
 type CertificatePreBuildParams struct {
-	BlockRange          BlockRange
+	BlockRange          aggkitcommon.BlockRange
 	RetryCount          int
 	CertificateType     CertificateType
 	LastSentCertificate *CertificateHeader
