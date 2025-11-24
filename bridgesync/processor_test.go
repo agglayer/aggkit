@@ -2883,10 +2883,7 @@ func TestProcessBlockWithClaims(t *testing.T) {
 
 	// Invalid claims
 	invalidClaim1 := NewInvalidClaim(claim1, InvalidGERClaimCorrect.String())
-	invalidClaim1.ID = 1
-
 	invalidClaim2 := NewInvalidClaim(claim2, InvalidGERClaimIncorrect.String())
-	invalidClaim2.ID = 2
 
 	tests := []struct {
 		name                  string

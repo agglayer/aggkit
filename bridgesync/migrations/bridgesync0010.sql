@@ -26,7 +26,6 @@ CREATE TABLE set_claim (
 );
 
 CREATE TABLE invalid_claim (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     block_num               INTEGER NOT NULL,
     block_pos               INTEGER NOT NULL,
     global_index            TEXT NOT NULL,
@@ -45,7 +44,8 @@ CREATE TABLE invalid_claim (
     block_timestamp         INTEGER,
     tx_hash                 VARCHAR NOT NULL,
     created_at              INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    reason                  VARCHAR NOT NULL
+    reason                  VARCHAR NOT NULL,
+    PRIMARY KEY (block_num, block_pos)
 );
 
 ALTER TABLE claim DROP COLUMN from_address;

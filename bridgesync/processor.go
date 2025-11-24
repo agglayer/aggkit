@@ -283,7 +283,6 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 
 type InvalidClaim struct {
 	// claim struct fields
-	ID                  int64          `meddler:"id,pk"`
 	BlockNum            uint64         `meddler:"block_num"`
 	BlockPos            uint64         `meddler:"block_pos"`
 	TxHash              common.Hash    `meddler:"tx_hash,hash"`
