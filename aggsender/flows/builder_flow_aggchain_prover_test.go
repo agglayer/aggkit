@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -817,11 +818,11 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 		{
 			name: "error generating build params from baseFlow",
 			preParams: &types.CertificatePreBuildParams{
-				BlockRange: types.NewBlockRange(1, 10),
+				BlockRange: aggkitcommon.NewBlockRange(1, 10),
 			},
 			mockFn: func(mockBaseFlow *mocks.AggsenderFlowBaser) {
 				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
-					BlockRange: types.NewBlockRange(1, 10),
+					BlockRange: aggkitcommon.NewBlockRange(1, 10),
 				}).Return(nil, errors.New("base flow error")).Once()
 			},
 			expectedError: "aggchainProverFlow - error generating build params: base flow error",
@@ -829,7 +830,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 		{
 			name: "success generating build params",
 			preParams: &types.CertificatePreBuildParams{
-				BlockRange: types.NewBlockRange(1, 10),
+				BlockRange: aggkitcommon.NewBlockRange(1, 10),
 			},
 			mockFn: func(mockBaseFlow *mocks.AggsenderFlowBaser) {
 				expectedParams := &types.CertificateBuildParams{
@@ -842,7 +843,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 					CertificateType: types.CertificateTypeFEP,
 				}
 				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
-					BlockRange: types.NewBlockRange(1, 10),
+					BlockRange: aggkitcommon.NewBlockRange(1, 10),
 				}).Return(expectedParams, nil).Once()
 				mockBaseFlow.EXPECT().VerifyBuildParams(ctx, expectedParams).Return(nil).Once()
 			},

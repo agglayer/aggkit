@@ -15,9 +15,11 @@ import (
 	validator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/common"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -239,10 +241,10 @@ type Config struct {
 	Log log.Config
 
 	// Common Config that affects all the services
-	Common CommonConfig
+	Common ethermanconfig.CommonConfig
 
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
-	L1NetworkConfig L1NetworkConfig
+	L1NetworkConfig ethermanconfig.L1NetworkConfig
 
 	// REST contains the configuration settings for the REST service in the Aggkit
 	REST common.RESTConfig
@@ -286,6 +288,12 @@ type Config struct {
 
 	// Validator is the configuration of the aggsender validator service
 	Validator validator.Config
+
+	// L1Multidownloader is the configuration of the multidownloader service for L1
+	L1Multidownloader multidownloader.Config
+
+	// L2Multidownloader is the configuration of the multidownloader service for L2
+	L2Multidownloader multidownloader.Config
 }
 
 // Load loads the configuration

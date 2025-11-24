@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agglayer/aggkit/config"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
@@ -13,9 +13,9 @@ import (
 // It supports both basic RPC mode and OPNode mode.
 // In basic mode, it simply creates a client with the given URL.
 // In OPNode mode, it creates a client that uses the OPNode client to get the finalized block.
-func NewRPCClient(ctx context.Context, cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
+func NewRPCClient(ctx context.Context, cfg ethermanconfig.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
 	switch cfg.Mode {
-	case config.RPCModeBasic:
+	case ethermanconfig.RPCModeBasic:
 		log.Debugf("Creating basic RPC client with URL %s", cfg.URL)
 		retryHandler, err := cfg.NewRetryHandler()
 		if err != nil {
@@ -26,7 +26,7 @@ func NewRPCClient(ctx context.Context, cfg config.L2RPCClientConfig) (aggkittype
 			return nil, fmt.Errorf("fails to create basic RPC client. Err: %w", err)
 		}
 		return ethClient, nil
-	case config.RPCModeOp:
+	case ethermanconfig.RPCModeOp:
 		return NewRPCClientModeOp(ctx, cfg)
 	}
 	return nil, fmt.Errorf("invalid RPC mode %s", cfg.Mode)

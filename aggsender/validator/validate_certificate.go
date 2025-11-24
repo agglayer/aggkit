@@ -214,7 +214,7 @@ func (a *CertificateValidator) getCertificatePreBuildParams(
 		return nil, fmt.Errorf("preBuildParams. failed to convert previous certificate to Aggsender format: %w", err)
 	}
 
-	blockRange := types.NewBlockRange(previousCertToBlock+1, params.LastL2BlockInCert)
+	blockRange := aggkitcommon.NewBlockRange(previousCertToBlock+1, params.LastL2BlockInCert)
 	certType := a.certQuerier.CalculateCertificateType(params.Certificate, params.LastL2BlockInCert)
 
 	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafIndex(ctx, params.Certificate.L1InfoTreeLeafCount-1)

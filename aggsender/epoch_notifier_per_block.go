@@ -7,6 +7,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 )
 
 const (
@@ -68,7 +69,7 @@ func (c *ConfigEpochNotifierPerBlock) Validate() error {
 }
 
 type EpochNotifierPerBlock struct {
-	blockNotifier types.BlockNotifier
+	blockNotifier ethermantypes.BlockNotifier
 	logger        aggkitcommon.Logger
 
 	lastStartingEpochBlock uint64
@@ -77,7 +78,7 @@ type EpochNotifierPerBlock struct {
 	aggkitcommon.PubSub[types.EpochEvent]
 }
 
-func NewEpochNotifierPerBlock(blockNotifier types.BlockNotifier,
+func NewEpochNotifierPerBlock(blockNotifier ethermantypes.BlockNotifier,
 	logger aggkitcommon.Logger,
 	config ConfigEpochNotifierPerBlock,
 	subscriber aggkitcommon.PubSub[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
@@ -133,7 +134,8 @@ func (e *EpochNotifierPerBlock) ForcePublishEpochEvent() {
 	e.Publish(*event)
 }
 
-func (e *EpochNotifierPerBlock) startInternal(ctx context.Context, eventNewBlockChannel <-chan types.EventNewBlock) {
+func (e *EpochNotifierPerBlock) startInternal(ctx context.Context,
+	eventNewBlockChannel <-chan ethermantypes.EventNewBlock) {
 	status := internalStatus{
 		lastBlockSeen:   e.Config.StartingEpochBlock,
 		waitingForEpoch: e.epochNumber(e.Config.StartingEpochBlock),
@@ -159,7 +161,7 @@ type internalStatus struct {
 }
 
 func (e *EpochNotifierPerBlock) step(status internalStatus,
-	newBlock types.EventNewBlock) (internalStatus, *types.EpochEvent) {
+	newBlock ethermantypes.EventNewBlock) (internalStatus, *types.EpochEvent) {
 	currentBlock := newBlock.BlockNumber
 	if currentBlock < e.Config.StartingEpochBlock {
 		// This is a bit strange, the first epoch is in the future

@@ -1,0 +1,66 @@
+package types
+
+import (
+	"math/big"
+	"testing"
+
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+)
+
+func TestLogQuery_NewLogQuery(t *testing.T) {
+	addrs := []common.Address{common.HexToAddress("0x123")}
+	query := NewLogQuery(1, 10, addrs)
+
+	require.Equal(t, addrs, query.Addrs)
+	require.Equal(t, uint64(1), query.BlockRange.FromBlock)
+	require.Equal(t, uint64(10), query.BlockRange.ToBlock)
+}
+
+func TestLogQuery_NewLogQueryFromEthereumFilter(t *testing.T) {
+	addrs := []common.Address{common.HexToAddress("0x123")}
+	filter := ethereum.FilterQuery{
+		Addresses: addrs,
+		FromBlock: big.NewInt(1),
+		ToBlock:   big.NewInt(10),
+	}
+
+	query := NewLogQueryFromEthereumFilter(filter)
+	require.Equal(t, addrs, query.Addrs)
+	require.Equal(t, uint64(1), query.BlockRange.FromBlock)
+	require.Equal(t, uint64(10), query.BlockRange.ToBlock)
+}
+
+func TestLogQuery_String(t *testing.T) {
+	t.Run("nil query", func(t *testing.T) {
+		var query *LogQuery
+		result := query.String()
+		require.Equal(t, "LogQuery: <nil>", result)
+	})
+
+	t.Run("valid query", func(t *testing.T) {
+		query := &LogQuery{
+			Addrs:      []common.Address{common.HexToAddress("0x123")},
+			BlockRange: aggkitcommon.NewBlockRange(1, 10),
+		}
+		result := query.String()
+		require.Contains(t, result, "LogQuery:")
+		require.Contains(t, result, "addrs=")
+		require.Contains(t, result, "blockRange=")
+	})
+}
+
+func TestLogQuery_ToRPCFilterQuery(t *testing.T) {
+	addrs := []common.Address{common.HexToAddress("0x123")}
+	query := &LogQuery{
+		Addrs:      addrs,
+		BlockRange: aggkitcommon.NewBlockRange(1, 10),
+	}
+
+	filter := query.ToRPCFilterQuery()
+	require.Equal(t, addrs, filter.Addresses)
+	require.Equal(t, big.NewInt(1), filter.FromBlock)
+	require.Equal(t, big.NewInt(10), filter.ToBlock)
+}

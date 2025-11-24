@@ -1,4 +1,4 @@
-package types
+package common
 
 import "fmt"
 
@@ -38,9 +38,9 @@ func (b BlockRange) IsEmpty() bool {
 }
 
 // String returns a string representation of the BlockRange in the format
-// "FromBlock: <from>, ToBlock: <to>".
+// "From: <from>, To: <to>".
 func (b BlockRange) String() string {
-	return fmt.Sprintf("FromBlock: %d, ToBlock: %d", b.FromBlock, b.ToBlock)
+	return fmt.Sprintf("From: %d, To: %d (%d)", b.FromBlock, b.ToBlock, b.CountBlocks())
 }
 
 // Gap returns the BlockRange representing the gap between the receiver BlockRange (b)
@@ -87,4 +87,75 @@ func getBlockMinusOne(fromBlock uint64) uint64 {
 // so the way to use this is:  previousBlockRange.IsNextContigousBlock(nextBlockRange)
 func (b BlockRange) IsNextContigousBlock(next BlockRange) bool {
 	return b.ToBlock+1 == next.FromBlock
+}
+
+// Merge merges two BlockRanges and returns a slice of BlockRanges.
+// If the two BlockRanges overlap, it returns a single BlockRange that encompasses both.
+// If they do not overlap, it returns both BlockRanges in sorted order.
+func (b BlockRange) Merge(other BlockRange) []BlockRange {
+	if b.Overlaps(other) {
+		// If overlaps, just extend it
+		return []BlockRange{b.Extend(other)}
+	}
+	// If not overlaps, return both ranges sorted
+	if b.FromBlock < other.FromBlock {
+		return []BlockRange{b, other}
+	}
+	return []BlockRange{other, b}
+}
+
+// Extend merges two BlockRanges into one encompassing BlockRange.
+func (b BlockRange) Extend(other BlockRange) BlockRange {
+	return NewBlockRange(
+		min(b.FromBlock, other.FromBlock),
+		max(b.ToBlock, other.ToBlock),
+	)
+}
+
+// Subtract two BlockRanges
+// A----(C---D)----B -> [A-C-1] , [D+1 - B]
+// A----B (C---D) -> [A-B]
+// (C---D) A----B -> [A-B]
+// A----B  C----D -> [A-B]
+// (C---A---B---D) -> []
+func (b BlockRange) Subtract(other BlockRange) []BlockRange {
+	result := []BlockRange{}
+	if !b.Overlaps(other) {
+		return []BlockRange{b}
+	}
+	if b.FromBlock < other.FromBlock {
+		result = append(result, NewBlockRange(b.FromBlock, other.FromBlock-1))
+	}
+	if b.ToBlock > other.ToBlock {
+		result = append(result, NewBlockRange(other.ToBlock+1, b.ToBlock))
+	}
+	return result
+}
+
+func (b BlockRange) Cap(maxBlockNumber uint64) BlockRange {
+	if b.FromBlock > maxBlockNumber {
+		return BlockRangeZero
+	}
+	return NewBlockRange(b.FromBlock, min(b.ToBlock, maxBlockNumber))
+}
+func (b BlockRange) Contains(other BlockRange) bool {
+	return b.FromBlock <= other.FromBlock && b.ToBlock >= other.ToBlock
+}
+
+func (b BlockRange) Overlaps(other BlockRange) bool {
+	return b.FromBlock <= other.ToBlock && other.FromBlock <= b.ToBlock
+}
+
+func (b BlockRange) Equal(other BlockRange) bool {
+	return b.FromBlock == other.FromBlock && b.ToBlock == other.ToBlock
+}
+
+func (b BlockRange) Intersect(other BlockRange) BlockRange {
+	if !b.Overlaps(other) {
+		return BlockRangeZero
+	}
+	return NewBlockRange(
+		max(b.FromBlock, other.FromBlock),
+		min(b.ToBlock, other.ToBlock),
+	)
 }
