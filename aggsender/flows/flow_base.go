@@ -586,7 +586,7 @@ func (f *baseFlow) getGERFinalizedStatus(
 
 	// Not in cache, call the querier
 	isFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(ger, l1InfoTreeLeafCount)
-	if err != nil && err != aggkitdb.ErrNotFound {
+	if err != nil && !errors.Is(err, aggkitdb.ErrNotFound) {
 		cache.errors[ger] = err
 		return false, err
 	}
@@ -666,18 +666,22 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 
 	// Validate unclaims for unfinalized GERs that don't exist on L1 in a single pass.
 	// This checks both:
-	// 1. If any claim with unfinalized GER that doesn't exist on L1 has an unclaim that appears after a later unfinalized claim
-	// 2. If any previous claims with unfinalized GERs that don't exist on L1 have their unclaims before the current block
+	// 1. If any claim with unfinalized GER that doesn't exist on L1 has an unclaim
+	//    that appears after a later unfinalized claim
+	// 2. If any previous claims with unfinalized GERs that don't exist on L1 have their
+	//    unclaims before the current block
 	cutBlock, err := f.validateUnclaimsForUnfinalizedGERs(certParams, cache)
 	if err != nil {
 		return nil, fmt.Errorf("error validating unclaims for unfinalized GERs: %w", err)
 	}
 	if cutBlock != 0 {
 		if cutBlock-1 < certParams.FromBlock {
-			return nil, fmt.Errorf("cannot create certificate: claim at block %d (start block %d) cannot be included and no valid blocks before it",
+			return nil, fmt.Errorf(
+				"cannot create certificate: claim at block %d (start block %d) cannot be included and no valid blocks before it",
 				cutBlock, certParams.FromBlock)
 		}
-		f.log.Warnf("found claim with unclaim after later unfinalized claim at block %d, cutting certificate at block %d", cutBlock, cutBlock-1)
+		f.log.Warnf("found claim with unclaim after later unfinalized claim at block %d, cutting certificate at block %d",
+			cutBlock, cutBlock-1)
 		return certParams.AdjustToBlock(cutBlock - 1)
 	}
 
