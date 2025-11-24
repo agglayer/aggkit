@@ -386,7 +386,7 @@ func TestProcessor(t *testing.T) {
 var (
 	block1 = sync.Block{
 		Num: 1,
-		Events: []interface{}{
+		Events: []any{
 			Event{Bridge: &Bridge{
 				BlockNum:           1,
 				BlockPos:           0,
@@ -437,7 +437,7 @@ var (
 	}
 	block3 = sync.Block{
 		Num: 3,
-		Events: []interface{}{
+		Events: []any{
 			Event{Bridge: &Bridge{
 				BlockNum:           3,
 				BlockPos:           0,
@@ -466,11 +466,11 @@ var (
 	}
 	block4 = sync.Block{
 		Num:    4,
-		Events: []interface{}{},
+		Events: []any{},
 	}
 	block5 = sync.Block{
 		Num: 5,
-		Events: []interface{}{
+		Events: []any{
 			Event{Claim: &Claim{
 				BlockNum:           5,
 				BlockPos:           0,
@@ -669,7 +669,7 @@ func (a *getTotalRecordsAction) execute(t *testing.T) {
 	require.Equal(t, a.expectedRecordsNum, recordsNum)
 }
 
-func eventsToBridges(events []interface{}) []Bridge {
+func eventsToBridges(events []any) []Bridge {
 	bridges := []Bridge{}
 	for _, event := range events {
 		e, ok := event.(Event)
@@ -683,7 +683,7 @@ func eventsToBridges(events []interface{}) []Bridge {
 	return bridges
 }
 
-func eventsToClaims(events []interface{}) []Claim {
+func eventsToClaims(events []any) []Claim {
 	claims := []Claim{}
 	for _, event := range events {
 		e, ok := event.(Event)
@@ -878,8 +878,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 }
 
 func TestInsertAndGetClaim(t *testing.T) {
-	path := path.Join(t.TempDir(), "aggsenderTestInsertAndGetClaim.sqlite")
-	log.Debugf("sqlite path: %s", path)
+	path := path.Join(t.TempDir(), "TestInsertAndGetClaim.sqlite")
 	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 	logger := log.WithFields("bridge-syncer", "foo")
@@ -1005,7 +1004,7 @@ func TestProcessBlockInvalidIndex(t *testing.T) {
 	require.NoError(t, err)
 	err = p.ProcessBlock(context.Background(), sync.Block{
 		Num: 0,
-		Events: []interface{}{
+		Events: []any{
 			Event{Bridge: &Bridge{DepositCount: 5}},
 		},
 	})
@@ -1415,7 +1414,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 
 		block := sync.Block{
 			Num:    uint64(i + 1),
-			Events: []interface{}{Event{TokenMapping: tokenMappingEvt}},
+			Events: []any{Event{TokenMapping: tokenMappingEvt}},
 		}
 
 		allTokenMappings = append(allTokenMappings, tokenMappingEvt)
@@ -2075,12 +2074,12 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	block1 := sync.Block{
 		Num:    1,
 		Hash:   common.HexToHash("0x1"),
-		Events: []interface{}{events[0], events[1], events[2]},
+		Events: []any{events[0], events[1], events[2]},
 	}
 	block2 := sync.Block{
 		Num:    2,
 		Hash:   common.HexToHash("0x2"),
-		Events: []interface{}{events[3]},
+		Events: []any{events[3]},
 	}
 
 	err = p.ProcessBlock(context.Background(), block1)
@@ -2442,7 +2441,7 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
+			Events: []any{
 				Event{Bridge: createTestBridge(1, 0)},
 			},
 		}
@@ -2467,8 +2466,26 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
-				Event{Claim: createTestClaim(1, 0)},
+			Events: []any{
+				Event{Claim: &Claim{
+					BlockNum:            1,
+					BlockPos:            0,
+					BlockTimestamp:      1234567890,
+					TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					GlobalIndex:         big.NewInt(1000000000000000000),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					Amount:              big.NewInt(1000000000000000000),
+					ProofLocalExitRoot:  [common.HashLength]common.Hash{},
+					ProofRollupExitRoot: [common.HashLength]common.Hash{},
+					MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					DestinationNetwork:  1,
+					Metadata:            []byte{},
+					IsMessage:           false,
+				}},
 			},
 		}
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
@@ -2492,8 +2509,17 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
-				Event{LegacyTokenMigration: createTestLegacyTokenMigration(1, 0)},
+			Events: []any{
+				Event{LegacyTokenMigration: &LegacyTokenMigration{
+					BlockNum:            1,
+					BlockPos:            0,
+					BlockTimestamp:      1234567890,
+					TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					Sender:              common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					LegacyTokenAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					UpdatedTokenAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					Amount:              big.NewInt(1000000000000000000),
+				}},
 			},
 		}
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
@@ -2517,7 +2543,7 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
+			Events: []any{
 				Event{TokenMapping: createTestTokenMapping(1, 0)},
 			},
 		}
@@ -2556,7 +2582,7 @@ func TestProcessor_DatabaseConnectionErrors(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
+			Events: []any{
 				Event{TokenMapping: createTestTokenMapping(1, 0)},
 			},
 		}
@@ -2579,7 +2605,7 @@ func TestProcessor_CalculateOffsetErrors(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
+			Events: []any{
 				Event{TokenMapping: createTestTokenMapping(1, 0)},
 			},
 		}
@@ -2598,7 +2624,7 @@ func TestProcessor_CalculateOffsetErrors(t *testing.T) {
 		testBlock := sync.Block{
 			Num:  1,
 			Hash: common.HexToHash("0x1"),
-			Events: []interface{}{
+			Events: []any{
 				Event{Bridge: createTestBridge(1, 0)},
 			},
 		}
@@ -2643,29 +2669,6 @@ func createTestBridge(blockNum uint64, blockPos int) *Bridge {
 	}
 }
 
-// createTestClaim creates a test Claim event
-func createTestClaim(blockNum uint64, blockPos int) *Claim {
-	return &Claim{
-		BlockNum:            blockNum,
-		BlockPos:            uint64(blockPos),
-		BlockTimestamp:      1234567890,
-		TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		GlobalIndex:         big.NewInt(1000000000000000000),
-		OriginNetwork:       1,
-		OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		Amount:              big.NewInt(1000000000000000000),
-		ProofLocalExitRoot:  [common.HashLength]common.Hash{},
-		ProofRollupExitRoot: [common.HashLength]common.Hash{},
-		MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		DestinationNetwork:  1,
-		Metadata:            []byte{},
-		IsMessage:           false,
-	}
-}
-
 // createTestTokenMapping creates a test TokenMapping event
 func createTestTokenMapping(blockNum uint64, blockPos int) *TokenMapping {
 	return &TokenMapping{
@@ -2682,25 +2685,10 @@ func createTestTokenMapping(blockNum uint64, blockPos int) *TokenMapping {
 	}
 }
 
-// createTestLegacyTokenMigration creates a test LegacyTokenMigration event
-func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenMigration {
-	return &LegacyTokenMigration{
-		BlockNum:            blockNum,
-		BlockPos:            uint64(blockPos),
-		BlockTimestamp:      1234567890,
-		TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		Sender:              common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		LegacyTokenAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		UpdatedTokenAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
-		Amount:              big.NewInt(1000000000000000000),
-	}
-}
-
 func TestGetUnsetClaimsPaged(t *testing.T) {
 	t.Parallel()
 
 	path := path.Join(t.TempDir(), "bridgesyncGetUnsetClaimsPaged.sqlite")
-	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
 	require.NoError(t, err)
@@ -2735,7 +2723,7 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 		block := sync.Block{
 			Num:  uint64(i + 1),
 			Hash: common.HexToHash(fmt.Sprintf("0x%d", i+1)),
-			Events: []interface{}{
+			Events: []any{
 				Event{UnsetClaim: unsetClaim},
 			},
 		}
@@ -2854,4 +2842,141 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	_, err = pShortTimeout.GetClaims(ctx, 1, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
+}
+
+func TestProcessBlockWithClaims(t *testing.T) {
+	path := path.Join(t.TempDir(), fmt.Sprintf("%s.db", t.Name()))
+	p, err := newProcessor(path, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+	require.NoError(t, err)
+
+	newClaim := func(blockNum, pos uint64, gi int64, origin string, dest string, amount int64, mer string) *Claim {
+		return &Claim{
+			BlockNum:           blockNum,
+			BlockPos:           pos,
+			GlobalIndex:        big.NewInt(gi),
+			OriginNetwork:      uint32(gi), // just distinct per test
+			OriginAddress:      common.HexToAddress(origin),
+			DestinationAddress: common.HexToAddress(dest),
+			Amount:             big.NewInt(amount),
+			MainnetExitRoot:    common.HexToHash(mer),
+		}
+	}
+
+	block := func(num uint64, events ...any) sync.Block {
+		return sync.Block{Num: num, Events: events}
+	}
+
+	// Initial claims (block 1)
+	claim1 := newClaim(1, 0, 1, "1", "1", 1, "")
+	claim2 := newClaim(1, 1, 2, "2", "2", 2, "5ca1e1")
+
+	// Replacement claim (block 2)
+	claim1Updated := newClaim(2, 0, 1, "3", "3", 10, "5ca1e")
+
+	// Unset claim for claim2 (global index 2)
+	unsetClaim2 := &UnsetClaim{
+		BlockNum:    3,
+		BlockPos:    0,
+		GlobalIndex: claim2.GlobalIndex,
+		CreatedAt:   uint64(time.Now().UTC().Unix()),
+	}
+
+	// Invalid claims
+	invalidClaim1 := NewInvalidClaim(claim1, InvalidGERClaimCorrect.String())
+	invalidClaim2 := NewInvalidClaim(claim2, InvalidGERClaimIncorrect.String())
+
+	tests := []struct {
+		name                  string
+		blocks                []sync.Block
+		expectedClaims        []*Claim
+		expectedInvalidClaims []*InvalidClaim
+	}{
+		{
+			name: "update claim with same global index",
+			blocks: []sync.Block{
+				block(1, Event{Claim: claim1}, Event{Claim: claim2}),
+				block(2, Event{Claim: claim1Updated}),
+			},
+			expectedClaims: []*Claim{
+				claim1Updated,
+				claim2,
+			},
+			expectedInvalidClaims: []*InvalidClaim{invalidClaim1},
+		},
+		{
+			name: "original claim remains in the db when unclaimed",
+			blocks: []sync.Block{
+				block(3, Event{UnsetClaim: unsetClaim2}),
+			},
+			expectedClaims: []*Claim{
+				claim1Updated,
+				claim2,
+			},
+			expectedInvalidClaims: []*InvalidClaim{
+				invalidClaim1,
+				invalidClaim2,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// process blocks
+			for _, b := range tt.blocks {
+				require.NoError(t, p.ProcessBlock(context.Background(), b))
+			}
+
+			// check final claims
+			for _, expected := range tt.expectedClaims {
+				dbClaims, err := p.GetClaimsByGlobalIndex(context.Background(), expected.GlobalIndex)
+				require.NoError(t, err)
+				require.Len(t, dbClaims, 1)
+				require.Equal(t, expected, &dbClaims[0])
+			}
+
+			// check invalid_claim rows
+			for _, expected := range tt.expectedInvalidClaims {
+				dbInvalidClaims, err := p.getInvalidClaimsByGlobalIndex(expected.GlobalIndex)
+				require.NoError(t, err)
+				require.Len(t, dbInvalidClaims, 1)
+				require.Equal(t, expected, dbInvalidClaims[0])
+			}
+		})
+	}
+}
+
+func TestDeleteClaimReason_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		reason   DeleteClaimReason
+		expected string
+	}{
+		{
+			name:     "InvalidGERClaimCorrect",
+			reason:   InvalidGERClaimCorrect,
+			expected: "invalid_ger_claim_correct",
+		},
+		{
+			name:     "InvalidGERClaimIncorrect",
+			reason:   InvalidGERClaimIncorrect,
+			expected: "invalid_ger_claim_incorrect",
+		},
+		{
+			name:     "UnknownReason",
+			reason:   DeleteClaimReason(999), // something outside defined range
+			expected: "unknown",
+		},
+		{
+			name:     "NegativeReason",
+			reason:   DeleteClaimReason(-1),
+			expected: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.reason.String()
+			require.Equal(t, tt.expected, got)
+		})
+	}
 }
