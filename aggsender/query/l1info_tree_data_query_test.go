@@ -300,7 +300,7 @@ func Test_IsGERFinalized(t *testing.T) {
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error getting info by global exit root: some error",
+			expectedError: "some error",
 		},
 		{
 			name:                     "no L1 Info tree leaf found for global exit root",
