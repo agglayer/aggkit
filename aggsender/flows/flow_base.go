@@ -354,42 +354,21 @@ func (f *baseFlow) getImportedBridgeExits(
 	unclaims []bridgesynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
+
 	// Build unclaim counts by GlobalIndex
 	unclaimCnt := make(map[string]int)
 	for _, u := range unclaims {
-		// Adjust accessor as needed:
-		//   - if GlobalIndex is uint64: key := strconv.FormatUint(u.GlobalIndex, 10)
-		//   - if it's *big.Int:         key := u.GlobalIndex.String()
-		//   - if it's a struct method:   key := u.GlobalIndex().String()
 		key := u.GlobalIndex.String()
 		unclaimCnt[key]++
 	}
 
-	// Build claim counts by GlobalIndex
-	claimCnt := make(map[string]int)
+	filteredClaims := make([]bridgesync.Claim, 0)
 	for _, c := range claims {
 		key := c.GlobalIndex.String()
-		claimCnt[key]++
-	}
-
-	// Compute how many claims should remain per index after cancelling unclaims
-	remaining := make(map[string]int, len(claimCnt))
-	for k, c := range claimCnt {
-		u := unclaimCnt[k]
-		if c > u {
-			remaining[k] = c - u
+		if unclaimCnt[key] > 0 {
+			unclaimCnt[key]--
 		} else {
-			remaining[k] = 0
-		}
-	}
-
-	// Filter claims: keep in original order, but only as many as remaining[idx]
-	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
-	for _, c := range claims {
-		key := c.GlobalIndex.String()
-		if remaining[key] > 0 {
 			filteredClaims = append(filteredClaims, c)
-			remaining[key]--
 		}
 	}
 
