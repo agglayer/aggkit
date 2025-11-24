@@ -14,6 +14,7 @@ package bridgeservice
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -40,8 +41,8 @@ import (
 )
 
 const (
-	// hexHashLength is the expected length of a hex-encoded 32-byte hash including 0x prefix
-	hexHashLength = 66
+	// hexHashLengthWithoutPrefix is the expected length of a hex-encoded 32-byte hash without 0x prefix
+	hexHashLengthWithoutPrefix = 64
 	// BridgeV1Prefix is the url prefix for the bridge service
 	BridgeV1Prefix = "/bridge/v1"
 
@@ -55,6 +56,9 @@ const (
 	leafIndexParam       = "leaf_index"
 	includeAllFields     = "include_all_fields"
 	globalIndexParam     = "global_index"
+	limitParam           = "limit"
+	// DefaultRemoveGERLimit is the default number of remove GER events to return when no limit is specified
+	DefaultRemoveGERLimit = uint32(50)
 
 	// mainnetNetworkID is the network ID of L1 network
 	mainnetNetworkID    = 0
@@ -203,7 +207,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
-		bridgeGroup.GET("/remove-ger-events", b.GetRemoveGEREventsHandler)
+		bridgeGroup.GET("/removed-gers", b.GetRemoveGEREventsHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -548,36 +552,27 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 }
 
 // @Summary Get unset claims
-// @Description Returns unset claims for the L2 network, paginated.
+// @Description Returns unset claims for the configured L2 network, paginated.
 // Note: unset claims are only available for L2 networks, not L1.
 // @Tags unset-claims
-// @Param network_id query int true "L2 Network ID (must match the configured L2 network, cannot be 0/L1)"
 // @Param page_number query int false "Page number"
 // @Param page_size query int false "Page size"
 // @Param global_index query string false "Filter by global index"
 // @Produce json
 // @Success 200 {object} types.UnsetClaimsResult
-// @Failure 400 {object} types.ErrorResponse "Bad Request - Invalid network_id or L1 network not supported"
+// @Failure 400 {object} types.ErrorResponse "Bad Request - Invalid parameters"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable - L2 bridge syncer not available"
 // @Router /unset-claims [get]
 func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
-	b.logger.Debugf("GetUnsetClaims request received (network id=%s, page number=%s, page size=%s, global_index=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(globalIndexParam))
+	b.logger.Debugf("GetUnsetClaims request received (page number=%s, page size=%s, global_index=%s)",
+		c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(globalIndexParam))
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
 	defer func() {
 		reportMetrics(metrics.GetUnsetClaimsReq, statusCode, startTime)
 	}()
-
-	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
-	if err != nil {
-		b.logger.Warnf(errNetworkID, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
-		return
-	}
 
 	globalIndexRaw := c.Query(globalIndexParam)
 	var (
@@ -604,30 +599,13 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 	}
 	defer cancel()
 
-	b.logger.Debugf("fetching unset claims (network id=%d, page=%d, size=%d, global_index=%v)",
-		networkID, pageNumber, pageSize, globalIndex)
+	b.logger.Debugf("fetching unset claims for L2 network (network id=%d, page=%d, size=%d, global_index=%v)",
+		b.networkID, pageNumber, pageSize, globalIndex)
 
 	var (
 		unsetClaims []*bridgesync.UnsetClaim
 		count       int
 	)
-
-	// Unset claims are only available for L2 networks, not L1
-	if networkID == mainnetNetworkID {
-		b.logger.Warnf("unset claims are not available for L1 network (network_id=0)")
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": "unset claims are only available for L2 networks, not L1"})
-		return
-	}
-
-	if networkID != b.networkID {
-		b.logger.Warnf("invalid network ID: %d, expected L2 network ID: %d", networkID, b.networkID)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{
-			"error": fmt.Sprintf("invalid network_id %d, expected L2 network_id %d", networkID, b.networkID),
-		})
-		return
-	}
 
 	if b.bridgeL2 == nil {
 		statusCode = http.StatusServiceUnavailable
@@ -636,12 +614,12 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, nil, globalIndex)
+	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
 	if err != nil {
-		b.logger.Warnf("failed to get unset claims for L2 network (ID=%d): %v", networkID, err)
+		b.logger.Warnf("failed to get unset claims for L2 network (ID=%d): %v", b.networkID, err)
 		statusCode = http.StatusInternalServerError
 		c.JSON(statusCode,
-			gin.H{"error": fmt.Sprintf("failed to get unset claims for the L2 network (ID=%d), error: %s", networkID, err)})
+			gin.H{"error": fmt.Sprintf("failed to get unset claims for the L2 network (ID=%d), error: %s", b.networkID, err)})
 		return
 	}
 
@@ -1177,17 +1155,18 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 // GetRemoveGEREventsHandler retrieves remove GER events.
 //
 // @Summary Get remove GER events
-// @Description Returns a list of remove GER events, optionally filtered by block range or specific GER
+// @Description Returns a list of remove GER events, optionally filtered by specific GER.
+// Results are limited by the limit parameter (default 50). If global_exit_root is provided,
+// filters by that GER as well.
 // @Tags ger-events
-// @Param from_block query uint64 false "Start block number for filtering"
-// @Param to_block query uint64 false "End block number for filtering"
 // @Param global_exit_root query string false "Filter by specific Global Exit Root hash"
+// @Param limit query int false "Maximum number of events to return (default: 50)"
 // @Produce json
 // @Success 200 {object} types.RemoveGEREventsResult "List of remove GER events"
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
-// @Router /remove-ger-events [get]
+// @Router /removed-gers [get]
 func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	b.logger.Debugf("GetRemoveGEREvents request received")
 
@@ -1208,19 +1187,16 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	}
 
 	// Parse query parameters
-	fromBlockStr := c.Query("from_block")
-	toBlockStr := c.Query("to_block")
 	globalExitRootStr := c.Query("global_exit_root")
 
 	// Parse and validate parameters
 	var globalExitRoot *common.Hash
-	var fromBlock, toBlock *uint64
 
 	if globalExitRootStr != "" {
 		if !isValidHexHash(globalExitRootStr) {
 			statusCode = http.StatusBadRequest
 			c.JSON(statusCode, gin.H{
-				"error": "invalid global_exit_root parameter, must be a valid 32-byte hex hash (66 characters including 0x prefix)",
+				"error": "invalid global_exit_root parameter, must be a valid hex hash",
 			})
 			return
 		}
@@ -1228,35 +1204,23 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		globalExitRoot = &ger
 	}
 
-	if fromBlockStr != "" {
-		parsed, err := strconv.ParseUint(fromBlockStr, 10, 64)
-		if err != nil {
-			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "invalid from_block parameter"})
-			return
-		}
-		fromBlock = &parsed
-	}
-
-	if toBlockStr != "" {
-		parsed, err := strconv.ParseUint(toBlockStr, 10, 64)
-		if err != nil {
-			statusCode = http.StatusBadRequest
-			c.JSON(statusCode, gin.H{"error": "invalid to_block parameter"})
-			return
-		}
-		toBlock = &parsed
-	}
-
-	if fromBlock != nil && toBlock != nil && *fromBlock > *toBlock {
+	// Parse limit parameter (defaults to 50 if not provided)
+	limit, err := parseUintQuery(c, limitParam, false, DefaultRemoveGERLimit)
+	if err != nil {
 		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": "from_block must be less than or equal to to_block"})
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate limit (must be positive)
+	if limit == 0 {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "limit must be greater than 0"})
 		return
 	}
 
 	// Get filtered remove events using single consolidated function
-	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot, fromBlock, toBlock)
-
+	removeEvents, err := b.injectedGERs.GetRemoveGEREvents(ctx, globalExitRoot, limit)
 	if err != nil {
 		b.logger.Errorf("failed to get remove GER events: %v", err)
 		statusCode = http.StatusInternalServerError
@@ -1268,9 +1232,9 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	responseEvents := make([]*types.RemoveGEREventResponse, len(removeEvents))
 	for i, event := range removeEvents {
 		responseEvents[i] = &types.RemoveGEREventResponse{
-			ID:             event.ID,
 			GlobalExitRoot: types.Hash(event.GlobalExitRoot.Hex()),
 			BlockNum:       event.BlockNum,
+			BlockPos:       event.BlockPos,
 			CreatedAt:      event.CreatedAt,
 		}
 	}
@@ -1280,7 +1244,7 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 		Count:           len(responseEvents),
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(statusCode, result)
 }
 
 // populateNetworkSyncInfo populates sync information for a network if it's active
@@ -1567,26 +1531,17 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 }
 
 // isValidHexHash validates that a string is a valid 32-byte hex hash
-// Expected format: 0x followed by exactly 64 hex characters (total 66 chars)
+// Accepts both formats: with 0x prefix (66 chars) or without prefix (64 chars)
 func isValidHexHash(s string) bool {
-	// Check length: 0x (2 chars) + 64 hex chars = 66 total
-	if len(s) != hexHashLength {
+	hashStr := s
+	if strings.HasPrefix(s, "0x") {
+		hashStr = s[2:]
+	}
+
+	// Check length: should be 64 hex characters (32 bytes)
+	if len(hashStr) != hexHashLengthWithoutPrefix {
 		return false
 	}
-
-	// Check 0x prefix
-	if !strings.HasPrefix(s, "0x") {
-		return false
-	}
-
-	// Check that remaining characters are valid hex
-	for _, char := range s[2:] {
-		if (char < '0' || char > '9') &&
-			(char < 'a' || char > 'f') &&
-			(char < 'A' || char > 'F') {
-			return false
-		}
-	}
-
-	return true
+	_, err := hex.DecodeString(hashStr)
+	return err == nil
 }

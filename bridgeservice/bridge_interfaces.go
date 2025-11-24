@@ -24,7 +24,7 @@ type Bridger interface {
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
 		networkIDs []uint32, globalIndex *big.Int) ([]*bridgesync.Claim, int, error)
 	GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
-		networkIDs []uint32, globalIndex *big.Int) ([]*bridgesync.UnsetClaim, int, error)
+		globalIndex *big.Int) ([]*bridgesync.UnsetClaim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
@@ -37,7 +37,7 @@ type L2GERSyncer interface {
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 	) (l2gersync.GlobalExitRootInfo, error)
 	GetRemoveGEREvents(
-		ctx context.Context, globalExitRoot *common.Hash, fromBlock, toBlock *uint64,
+		ctx context.Context, globalExitRoot *common.Hash, limit uint32,
 	) ([]*l2gersync.RemoveGEREvent, error)
 }
 

@@ -22,6 +22,38 @@ func (_m *CertificateSendTrigger) EXPECT() *CertificateSendTrigger_Expecter {
 	return &CertificateSendTrigger_Expecter{mock: &_m.Mock}
 }
 
+// ForceTriggerEvent provides a mock function with no fields
+func (_m *CertificateSendTrigger) ForceTriggerEvent() {
+	_m.Called()
+}
+
+// CertificateSendTrigger_ForceTriggerEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ForceTriggerEvent'
+type CertificateSendTrigger_ForceTriggerEvent_Call struct {
+	*mock.Call
+}
+
+// ForceTriggerEvent is a helper method to define mock.On call
+func (_e *CertificateSendTrigger_Expecter) ForceTriggerEvent() *CertificateSendTrigger_ForceTriggerEvent_Call {
+	return &CertificateSendTrigger_ForceTriggerEvent_Call{Call: _e.mock.On("ForceTriggerEvent")}
+}
+
+func (_c *CertificateSendTrigger_ForceTriggerEvent_Call) Run(run func()) *CertificateSendTrigger_ForceTriggerEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateSendTrigger_ForceTriggerEvent_Call) Return() *CertificateSendTrigger_ForceTriggerEvent_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *CertificateSendTrigger_ForceTriggerEvent_Call) RunAndReturn(run func()) *CertificateSendTrigger_ForceTriggerEvent_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Setup provides a mock function with given fields: ctx
 func (_m *CertificateSendTrigger) Setup(ctx context.Context) {
 	_m.Called(ctx)

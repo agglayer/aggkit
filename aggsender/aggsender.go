@@ -237,6 +237,10 @@ func (a *AggSender) Info() types.AggsenderInfo {
 	return res
 }
 
+func (a *AggSender) ForceTriggerCertitificate() {
+	a.certificateSendTrigger.ForceTriggerEvent()
+}
+
 // GetRPCServices returns the list of services that the RPC provider exposes
 func (a *AggSender) GetRPCServices() []jRPC.Service {
 	if !a.cfg.EnableRPC {

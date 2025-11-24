@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
@@ -2794,7 +2794,7 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 			globalIndex:         nil,
 			expectedCount:       0,
 			expectedUnsetClaims: []*UnsetClaim{},
-			expectedError:       "invalid page number for given page size and total number of unset claims",
+			expectedError:       "invalid page number for given page size and total number of unset_claim",
 		},
 	}
 
@@ -2803,7 +2803,7 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			unsetClaims, count, err := p.GetUnsetClaimsPaged(ctx, tc.page, tc.pageSize, nil, tc.globalIndex)
+			unsetClaims, count, err := p.GetUnsetClaimsPaged(ctx, tc.page, tc.pageSize, tc.globalIndex)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)

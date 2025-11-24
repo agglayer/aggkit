@@ -12,6 +12,7 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -543,11 +544,11 @@ func nullableBytesToHash(b *v1types.FixedBytes32) *common.Hash {
 }
 
 // leafTypeToProto converts a leaf type to a proto leaf type
-func leafTypeToProto(leafType types.LeafType) v1types.LeafType {
+func leafTypeToProto(leafType bridgetypes.LeafType) v1types.LeafType {
 	switch leafType {
-	case types.LeafTypeAsset:
+	case bridgetypes.LeafTypeAsset:
 		return v1types.LeafType_LEAF_TYPE_TRANSFER
-	case types.LeafTypeMessage:
+	case bridgetypes.LeafTypeMessage:
 		return v1types.LeafType_LEAF_TYPE_MESSAGE
 	default:
 		return v1types.LeafType_LEAF_TYPE_UNSPECIFIED

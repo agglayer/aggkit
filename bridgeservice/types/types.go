@@ -355,14 +355,14 @@ type HealthCheckResponse struct {
 // RemoveGEREventResponse represents a remove GER event response
 // @Description Information about a GER removal event
 type RemoveGEREventResponse struct {
-	// Unique identifier for the remove event
-	ID uint64 `json:"id" example:"1"`
-
 	// Global Exit Root hash that was removed
 	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
 
 	// Block number where the GER was removed
 	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the event within the block
+	BlockPos uint64 `json:"block_pos" example:"0"`
 
 	// Timestamp when the remove event was recorded in database
 	CreatedAt uint64 `json:"created_at" example:"1684500000"`

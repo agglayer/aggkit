@@ -23,7 +23,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
@@ -144,7 +144,7 @@ func TestExploratoryGenerateCert(t *testing.T) {
 		NewLocalExitRoot:  common.HexToHash("0x2"),
 		BridgeExits: []*agglayertypes.BridgeExit{
 			{
-				LeafType: agglayertypes.LeafTypeAsset,
+				LeafType: bridgetypes.LeafTypeAsset,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginNetwork:      1,
 					OriginTokenAddress: common.HexToAddress("0x11"),
@@ -163,7 +163,7 @@ func TestExploratoryGenerateCert(t *testing.T) {
 					LeafIndex:   11,
 				},
 				BridgeExit: &agglayertypes.BridgeExit{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x11"),
@@ -255,7 +255,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		{
 			BlockNum:           30,
 			BlockPos:           0,
-			LeafType:           agglayertypes.LeafTypeAsset.Uint8(),
+			LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
 			OriginNetwork:      1,
 			OriginAddress:      common.HexToAddress("0x1"),
 			DestinationNetwork: 2,
@@ -265,7 +265,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 			DepositCount:       1,
 		},
 	}, []bridgesync.Claim{}, nil).Once()
-	mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, uint64(11), uint64(50)).Return([]bridgesynctypes.Unclaim{}, nil).Once()
+	mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, uint64(11), uint64(50)).Return([]bridgetypes.Unclaim{}, nil).Once()
 	mockL1Querier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(common.Hash{}, nil).Once()
 	mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1)).Once()
@@ -776,7 +776,7 @@ func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridg
 		res = append(res, bridgesync.Bridge{
 			BlockNum:      blockNum[i%len(blockNum)],
 			BlockPos:      0,
-			LeafType:      agglayertypes.LeafTypeAsset.Uint8(),
+			LeafType:      bridgetypes.LeafTypeAsset.Uint8(),
 			OriginNetwork: 1,
 		})
 	}

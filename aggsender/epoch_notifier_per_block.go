@@ -123,6 +123,16 @@ func (e *EpochNotifierPerBlock) GetEpochStatus() types.EpochStatus {
 	}
 }
 
+func (e *EpochNotifierPerBlock) ForcePublishEpochEvent() {
+	currentBlock := e.blockNotifier.GetCurrentBlockNumber()
+	info := e.infoEpoch(currentBlock, e.epochNumber(currentBlock))
+	event := &types.EpochEvent{
+		Epoch:     e.epochNumber(currentBlock),
+		ExtraInfo: info,
+	}
+	e.Publish(*event)
+}
+
 func (e *EpochNotifierPerBlock) startInternal(ctx context.Context, eventNewBlockChannel <-chan types.EventNewBlock) {
 	status := internalStatus{
 		lastBlockSeen:   e.Config.StartingEpochBlock,

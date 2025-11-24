@@ -443,9 +443,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/remove-ger-events": {
+        "/removed-gers": {
             "get": {
-                "description": "Returns a list of remove GER events, optionally filtered by block range or specific GER",
+                "description": "Returns a list of remove GER events, optionally filtered by specific GER.",
                 "produces": [
                     "application/json"
                 ],
@@ -455,21 +455,15 @@ const docTemplate = `{
                 "summary": "Get remove GER events",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Start block number for filtering",
-                        "name": "from_block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "End block number for filtering",
-                        "name": "to_block",
-                        "in": "query"
-                    },
-                    {
                         "type": "string",
                         "description": "Filter by specific Global Exit Root hash",
                         "name": "global_exit_root",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of events to return (default: 50)",
+                        "name": "limit",
                         "in": "query"
                     }
                 ],
@@ -588,7 +582,7 @@ const docTemplate = `{
         },
         "/unset-claims": {
             "get": {
-                "description": "Returns unset claims for the L2 network, paginated.",
+                "description": "Returns unset claims for the configured L2 network, paginated.",
                 "produces": [
                     "application/json"
                 ],
@@ -597,13 +591,6 @@ const docTemplate = `{
                 ],
                 "summary": "Get unset claims",
                 "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "L2 Network ID (must match the configured L2 network, cannot be 0/L1)",
-                        "name": "network_id",
-                        "in": "query",
-                        "required": true
-                    },
                     {
                         "type": "integer",
                         "description": "Page number",
@@ -631,7 +618,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request - Invalid network_id or L1 network not supported",
+                        "description": "Bad Request - Invalid parameters",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -1104,6 +1091,11 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1234
                 },
+                "block_pos": {
+                    "description": "Position of the event within the block",
+                    "type": "integer",
+                    "example": 0
+                },
                 "created_at": {
                     "description": "Timestamp when the remove event was recorded in database",
                     "type": "integer",
@@ -1113,11 +1105,6 @@ const docTemplate = `{
                     "description": "Global Exit Root hash that was removed",
                     "type": "string",
                     "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
-                },
-                "id": {
-                    "description": "Unique identifier for the remove event",
-                    "type": "integer",
-                    "example": 1
                 }
             }
         },

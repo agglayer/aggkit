@@ -183,20 +183,21 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 			headers := hdrs.getSorted()
 			for _, hdr := range headers {
 				// Get the actual header from the network or from the cache
-				var err error
+				currentHeader, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(hdr.Num))
+				if err != nil {
+					return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
+				}
+
 				rd.headersCacheLock.Lock()
-				currentHeader, ok := rd.headersCache[hdr.Num]
-				if !ok || currentHeader == nil {
-					if currentHeader, err = rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(hdr.Num)); err != nil {
-						rd.headersCacheLock.Unlock()
-						return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
-					}
+				oldHeader, ok := rd.headersCache[hdr.Num]
+				if !ok || oldHeader == nil {
 					rd.headersCache[hdr.Num] = currentHeader
+					oldHeader = currentHeader
 				}
 				rd.headersCacheLock.Unlock()
 
 				// Check if the block hash matches with the actual block hash
-				if hdr.Hash == currentHeader.Hash() {
+				if hdr.Hash == oldHeader.Hash() && currentHeader.Hash() == hdr.Hash {
 					// Delete block from the tracked blocks list if it is less than or equal to the last finalized block
 					// and hashes matches. If higher than finalized block, we assume a reorg still might happen.
 					if hdr.Num <= lastFinalizedBlock.Number.Uint64() {

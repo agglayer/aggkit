@@ -311,12 +311,11 @@ type UnsetClaim struct {
 // SetClaim representation of a SetClaim event,
 // that is emitted by the bridge contract when a claim is set.
 type SetClaim struct {
-	BlockNum            uint64      `meddler:"block_num"`
-	BlockPos            uint64      `meddler:"block_pos"`
-	TxHash              common.Hash `meddler:"tx_hash,hash"`
-	LeafIndex           uint32      `meddler:"leaf_index"`
-	SourceBridgeNetwork uint32      `meddler:"source_bridge_network"`
-	CreatedAt           uint64      `meddler:"created_at"`
+	BlockNum    uint64      `meddler:"block_num"`
+	BlockPos    uint64      `meddler:"block_pos"`
+	TxHash      common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
+	CreatedAt   uint64      `meddler:"created_at"`
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
@@ -583,9 +582,7 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	orderByClause := orderByBlockDesc
-
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByBlockDesc, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -613,7 +610,7 @@ func (p *processor) GetClaimsPaged(
 // GetUnsetClaimsPaged returns a paginated list of unset claims
 func (p *processor) GetUnsetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
-	networkIDs []uint32, globalIndex *big.Int,
+	globalIndex *big.Int,
 ) ([]*UnsetClaim, int, error) {
 	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
 	claimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
@@ -625,14 +622,12 @@ func (p *processor) GetUnsetClaimsPaged(
 		return []*UnsetClaim{}, 0, nil
 	}
 
-	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, "unset claims")
+	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, unsetClaimTableName)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	orderByClause := orderByBlockDesc
-
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByBlockDesc, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -725,9 +720,8 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	orderByClause := orderByBlockDesc
 	rows, err := p.queryPaged(
-		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
+		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByBlockDesc, whereClause,
 	)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
