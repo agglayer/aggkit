@@ -13,7 +13,10 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l1infotreesync/mocks"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/reorgdetector"
+	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
 	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -25,6 +28,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+const useMultidownloaderForTests = false
 
 func newSimulatedClient(t *testing.T) (
 	*simulated.Backend,
@@ -74,6 +79,25 @@ func TestE2E(t *testing.T) {
 	mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
+	var multidownloaderClient aggkittypes.MultiDownloader
+	var err error
+	if useMultidownloaderForTests {
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.Enabled = true
+		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
+			log.WithFields("module", "multidownloader"),
+			cfgMD,
+			"testMD",
+			client.Client(),
+			nil, // rpcClient
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
+	} else {
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
+	}
+
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPath,
 		InitialBlock:                       0,
@@ -86,7 +110,7 @@ func TestE2E(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), mockReorgDetector,
+	syncer, err := l1infotreesync.New(ctx, cfg, multidownloaderClient, mockReorgDetector,
 		l1infotreesync.FlagAllowWrongContractsAddrs)
 	require.NoError(t, err)
 
@@ -140,6 +164,23 @@ func TestWithReorgs(t *testing.T) {
 	rd, err := reorgdetector.New(client.Client(), rdConfig, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
+	var multidownloaderClient aggkittypes.MultiDownloader
+	if useMultidownloaderForTests {
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.Enabled = true
+		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
+			log.WithFields("module", "multidownloader"),
+			cfgMD,
+			"testMD",
+			client.Client(),
+			nil, // rpcClient
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
+	} else {
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
+	}
 
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPathSyncer,
@@ -153,7 +194,7 @@ func TestWithReorgs(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), rd, l1infotreesync.FlagAllowWrongContractsAddrs)
+	syncer, err := l1infotreesync.New(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -275,6 +316,24 @@ func TestStressAndReorgs(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
+	var multidownloaderClient aggkittypes.MultiDownloader
+	if useMultidownloaderForTests {
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.Enabled = true
+		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
+			log.WithFields("module", "multidownloader"),
+			cfgMD,
+			"testMD",
+			client.Client(),
+			nil, // rpcClient
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
+	} else {
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
+	}
+
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPathSyncer,
 		InitialBlock:                       0,
@@ -287,7 +346,7 @@ func TestStressAndReorgs(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 100),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, client.Client(), rd, l1infotreesync.FlagAllowWrongContractsAddrs)
+	syncer, err := l1infotreesync.New(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 

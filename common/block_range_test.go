@@ -1,4 +1,4 @@
-package types
+package common
 
 import (
 	"testing"
@@ -241,4 +241,109 @@ func TestBlockRange_Greater(t *testing.T) {
 			require.Equal(t, tt.expected, got, "Greater() for %s: expected %v, got %v", tt.name, tt.expected, got)
 		})
 	}
+}
+
+func TestBlockRange_Contains(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        BlockRange
+		b        BlockRange
+		expected bool
+	}{
+		{
+			name:     "no contained",
+			a:        NewBlockRange(10, 20),
+			b:        NewBlockRange(1, 9),
+			expected: false,
+		},
+		{
+			name:     "a overlaps b but not contained",
+			a:        NewBlockRange(10, 20),
+			b:        NewBlockRange(15, 25),
+			expected: false,
+		},
+		{
+			name:     "adjacent but not contained",
+			a:        NewBlockRange(1, 5),
+			b:        NewBlockRange(6, 10),
+			expected: false,
+		},
+		{
+			name:     "identical ranges",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(5, 10),
+			expected: true,
+		},
+		{
+			name:     "contained =toBLock",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(11, 15),
+			expected: true,
+		},
+		{
+			name:     "contained =fromBLock",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(10, 14),
+			expected: true,
+		},
+		{
+			name:     "empty a, non-empty b",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(1, 10),
+			expected: false,
+		},
+		{
+			name:     "non-empty a, empty b",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(0, 0),
+			expected: false,
+		},
+		{
+			name:     "both empty",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(0, 0),
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.a.Contains(tt.b)
+			require.Equal(t, tt.expected, got, "Contains() for %s: expected %v, got %v", tt.name, tt.expected, got)
+		})
+	}
+}
+
+func TestBlockRange_Subtract(t *testing.T) {
+	bn := NewBlockRange(10, 50)
+	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Subtract(NewBlockRange(20, 30)))
+	require.Equal(t, []BlockRange{NewBlockRange(31, 50)}, bn.Subtract(NewBlockRange(1, 30)))
+	require.Equal(t, []BlockRange{NewBlockRange(10, 29)}, bn.Subtract(NewBlockRange(30, 50)))
+	require.Equal(t, []BlockRange{bn}, bn.Subtract(NewBlockRange(300, 500)))
+	require.Equal(t, []BlockRange{}, bn.Subtract(NewBlockRange(1, 500)))
+	require.Equal(t, []BlockRange{bn}, bn.Subtract(NewBlockRange(0, 0)))
+}
+func TestBlockRange_Intersect(t *testing.T) {
+	bn := NewBlockRange(10, 50)
+	require.Equal(t, BlockRange{10, 15}, bn.Intersect(NewBlockRange(5, 15)))
+	require.Equal(t, BlockRange{30, 40}, bn.Intersect(NewBlockRange(30, 40)))
+	require.Equal(t, BlockRangeZero, bn.Intersect(NewBlockRange(51, 60)))
+}
+
+func TestBlockRange_Cap(t *testing.T) {
+	bn := NewBlockRange(10, 50)
+	require.Equal(t, BlockRange{10, 40}, bn.Cap(40))
+	require.Equal(t, BlockRange{10, 50}, bn.Cap(60))
+	require.Equal(t, BlockRangeZero, bn.Cap(5))
+}
+
+func TestBlockRange_Merge(t *testing.T) {
+	bn1 := NewBlockRange(10, 50)
+	bn2 := NewBlockRange(1, 30)
+	bn3 := NewBlockRange(1000, 1050)
+	require.Equal(t, []BlockRange{bn1}, bn1.Merge(bn1))
+	require.Equal(t, []BlockRange{NewBlockRange(1, 50)}, bn1.Merge(bn2))
+	require.Equal(t, []BlockRange{NewBlockRange(1, 50)}, bn2.Merge(bn1))
+	require.Equal(t, []BlockRange{bn1, bn3}, bn1.Merge(bn3))
+	require.Equal(t, []BlockRange{bn1, bn3}, bn3.Merge(bn1))
 }

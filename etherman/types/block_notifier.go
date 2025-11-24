@@ -20,4 +20,5 @@ type BlockNotifier interface {
 	GetCurrentBlockNumber() uint64
 	String() string
 	Start(ctx context.Context)
+	Initialize(ctx context.Context) error
 }

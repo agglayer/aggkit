@@ -183,7 +183,7 @@ func newBridgeSync(
 	}
 	downloader, err := sync.NewEVMDownloader(
 		syncerID.String(),
-		ethClient,
+		sync.NewAdapterEthClientToMultidownloader(ethClient),
 		cfg.SyncBlockChunkSize,
 		blockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,

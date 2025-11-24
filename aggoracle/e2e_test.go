@@ -56,7 +56,7 @@ func TestEVM_GERInjection(t *testing.T) {
 				time.Sleep(tt.sleepDuration)
 				expectedGER, err := l1.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 				require.NoError(t, err)
-
+				t.Log("Expected GER:", common.Bytes2Hex(expectedGER[:]))
 				isInjected, err := l2.AggoracleSender.IsGERInjected(expectedGER)
 				require.NoError(t, err)
 

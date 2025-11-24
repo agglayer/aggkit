@@ -65,6 +65,12 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	}
 	return result, nil
 }
+func (b *BlockNumberFinality) Equal(other BlockNumberFinality) bool {
+	if b == nil {
+		return false
+	}
+	return b.Block == other.Block && b.Offset == other.Offset
+}
 
 // String returns the string representation of the BlockNumberFinality
 func (b *BlockNumberFinality) String() string {
@@ -104,23 +110,27 @@ func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
 }
 
 // IsEmpty returns true if b is empty
-func (b BlockNumberFinality) IsEmpty() bool {
+func (b *BlockNumberFinality) IsEmpty() bool {
+	if b == nil {
+		return true
+	}
 	return b.Block == Empty
 }
 
 // IsFinalized returns true if b is finalized
-func (b BlockNumberFinality) IsFinalized() bool {
+func (b *BlockNumberFinality) IsFinalized() bool {
+	if b == nil {
+		return false
+	}
 	return b.Block == Finalized
 }
 
 // IsSafe returns true if b is safe
-func (b BlockNumberFinality) IsSafe() bool {
+func (b *BlockNumberFinality) IsSafe() bool {
+	if b == nil {
+		return false
+	}
 	return b.Block == Safe
-}
-
-// IsLatest returns true if b is latest with non-negative offset
-func (b BlockNumberFinality) IsLatest() bool {
-	return b.Block == Latest && b.Offset >= 0
 }
 
 // Validate validates the BlockNumberFinality configuration, ensuring that:
@@ -166,13 +176,12 @@ func (b *BlockNumberFinality) BlockNumber(
 	ctx context.Context,
 	requester ethereum.ChainReader,
 ) (uint64, error) {
+	if b.IsEmpty() {
+		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: cannot get block number for empty finality")
+	}
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
-		log.Errorf(
-			"BlockNumberFinality.BlockNumber: Error getting base header (block=%s, offset=%d). Err: %s",
-			b.String(), b.Offset, err.Error(),
-		)
-		return 0, err
+		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %w", b.String(), err)
 	}
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }

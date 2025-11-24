@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var _ EthClienter = (*DefaultEthClient)(nil)
@@ -48,6 +49,7 @@ type BaseEthereumClienter interface {
 // RPCClienter defines an interface for making generic RPC calls.
 type RPCClienter interface {
 	Call(result any, method string, args ...any) error
+	BatchCallContext(ctx context.Context, b []rpc.BatchElem) error
 }
 
 var _ RPCClienter = (*NoopRPCClient)(nil)
@@ -56,6 +58,10 @@ var _ RPCClienter = (*NoopRPCClient)(nil)
 type NoopRPCClient struct{}
 
 func (c *NoopRPCClient) Call(result any, method string, args ...any) error {
+	return nil
+}
+
+func (c *NoopRPCClient) BatchCallContext(ctx context.Context, b []rpc.BatchElem) error {
 	return nil
 }
 

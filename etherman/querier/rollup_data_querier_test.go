@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayermanager"
-	"github.com/agglayer/aggkit/config"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -21,7 +21,7 @@ func TestNewRollupDataQuerier(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		cfg                     config.L1NetworkConfig
+		cfg                     ethermanconfig.L1NetworkConfig
 		ethClient               aggkittypes.BaseEthereumClienter
 		rollupManagerBuilder    RollupManagerFactoryFunc
 		populateUpgradeBlocksFn func(
@@ -34,8 +34,8 @@ func TestNewRollupDataQuerier(t *testing.T) {
 	}{
 		{
 			name: "success",
-			cfg: config.L1NetworkConfig{
-				RPC: config.RPCClientConfig{
+			cfg: ethermanconfig.L1NetworkConfig{
+				RPC: ethermanconfig.RPCClientConfig{
 					URL: "http://localhost:8545",
 				},
 				RollupAddr:        mockAddr,
@@ -58,8 +58,8 @@ func TestNewRollupDataQuerier(t *testing.T) {
 		},
 		{
 			name: "rollup manager creation fails",
-			cfg: config.L1NetworkConfig{
-				RPC: config.RPCClientConfig{
+			cfg: ethermanconfig.L1NetworkConfig{
+				RPC: ethermanconfig.RPCClientConfig{
 					URL: "ok",
 				},
 				RollupManagerAddr: mockAddr,
@@ -72,8 +72,8 @@ func TestNewRollupDataQuerier(t *testing.T) {
 		},
 		{
 			name: "invalid rollup ID",
-			cfg: config.L1NetworkConfig{
-				RPC: config.RPCClientConfig{
+			cfg: ethermanconfig.L1NetworkConfig{
+				RPC: ethermanconfig.RPCClientConfig{
 					URL: "ok",
 				},
 				RollupAddr: mockAddr,

@@ -7,7 +7,7 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayermanager"
-	"github.com/agglayer/aggkit/config"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -47,7 +47,7 @@ type RollupDataQuerier struct {
 // NewRollupDataQuerier creates a new rollup data querier instance
 func NewRollupDataQuerier(
 	ctx context.Context,
-	l1Config config.L1NetworkConfig,
+	l1Config ethermanconfig.L1NetworkConfig,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rollupManagerFactory RollupManagerFactoryFunc,
 ) (*RollupDataQuerier, error) {

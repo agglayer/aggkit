@@ -160,7 +160,11 @@ reset:
 	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)
 	// start downloading
 	downloadCh := make(chan EVMBlock, d.downloadBufferSize)
-	go d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
+	go func() {
+		d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
+		log.Warnf("downloader.Download exited, cancelling context")
+		cancel()
+	}()
 
 	// Block processing goroutine
 	blockProcessingDone := make(chan struct{})

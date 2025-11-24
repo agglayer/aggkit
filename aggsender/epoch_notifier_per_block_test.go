@@ -7,8 +7,8 @@ import (
 
 	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/mocks"
-	"github.com/agglayer/aggkit/aggsender/types"
+	ethermantypes "github.com/agglayer/aggkit/etherman/types"
+	ethermantypesmocks "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/mock"
@@ -102,7 +102,7 @@ func TestEpochStep(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, event := testData.sut.step(tt.initialStatus, types.EventNewBlock{BlockNumber: tt.blockNumber, BlockFinalityType: aggkittypes.LatestBlock})
+			_, event := testData.sut.step(tt.initialStatus, ethermantypes.EventNewBlock{BlockNumber: tt.blockNumber, BlockFinalityType: aggkittypes.LatestBlock})
 			require.Equal(t, tt.expectedEvent, event != nil)
 			if event != nil {
 				require.Equal(t, tt.expectedEventEpoch, event.Epoch, "Epoch")
@@ -136,10 +136,10 @@ func TestNewConfigEpochNotifierPerBlock(t *testing.T) {
 func TestNotifyEpoch(t *testing.T) {
 	testData := newNotifierPerBlockTestData(t, nil)
 	ch := testData.sut.Subscribe("test")
-	chBlocks := make(chan types.EventNewBlock)
+	chBlocks := make(chan ethermantypes.EventNewBlock)
 	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(chBlocks)
 	testData.sut.StartAsync(testData.ctx)
-	chBlocks <- types.EventNewBlock{BlockNumber: 109, BlockFinalityType: aggkittypes.LatestBlock}
+	chBlocks <- ethermantypes.EventNewBlock{BlockNumber: 109, BlockFinalityType: aggkittypes.LatestBlock}
 	epochEvent := <-ch
 	require.Equal(t, uint64(11), epochEvent.Epoch)
 	testData.ctx.Done()
@@ -151,7 +151,7 @@ func TestStepSameEpoch(t *testing.T) {
 		lastBlockSeen:   100,
 		waitingForEpoch: testData.sut.epochNumber(100),
 	}
-	newStatus, _ := testData.sut.step(status, types.EventNewBlock{BlockNumber: 103, BlockFinalityType: aggkittypes.LatestBlock})
+	newStatus, _ := testData.sut.step(status, ethermantypes.EventNewBlock{BlockNumber: 103, BlockFinalityType: aggkittypes.LatestBlock})
 	require.Equal(t, uint64(103), newStatus.lastBlockSeen)
 	require.Equal(t, status.waitingForEpoch, newStatus.waitingForEpoch)
 }
@@ -162,7 +162,7 @@ func TestStepNotifyEpoch(t *testing.T) {
 		lastBlockSeen:   100,
 		waitingForEpoch: testData.sut.epochNumber(100),
 	}
-	status, _ = testData.sut.step(status, types.EventNewBlock{BlockNumber: 109, BlockFinalityType: aggkittypes.LatestBlock})
+	status, _ = testData.sut.step(status, ethermantypes.EventNewBlock{BlockNumber: 109, BlockFinalityType: aggkittypes.LatestBlock})
 	require.Equal(t, uint64(109), status.lastBlockSeen)
 	require.Equal(t, uint64(12), status.waitingForEpoch)
 }
@@ -193,15 +193,15 @@ func TestBlockBeforeEpoch(t *testing.T) {
 		lastBlockSeen:   104,
 		waitingForEpoch: testData.sut.epochNumber(104),
 	}
-	newStatus, _ := testData.sut.step(status, types.EventNewBlock{BlockNumber: 104, BlockFinalityType: aggkittypes.LatestBlock})
+	newStatus, _ := testData.sut.step(status, ethermantypes.EventNewBlock{BlockNumber: 104, BlockFinalityType: aggkittypes.LatestBlock})
 	// We are previous block of first epoch, so we should do nothing
 	require.Equal(t, status, newStatus)
 	status = newStatus
 	// First block of first epoch
-	newStatus, _ = testData.sut.step(status, types.EventNewBlock{BlockNumber: 105, BlockFinalityType: aggkittypes.LatestBlock})
+	newStatus, _ = testData.sut.step(status, ethermantypes.EventNewBlock{BlockNumber: 105, BlockFinalityType: aggkittypes.LatestBlock})
 	require.Equal(t, uint64(105), newStatus.lastBlockSeen)
 	// Near end  first epoch
-	newStatus, _ = testData.sut.step(status, types.EventNewBlock{BlockNumber: 114, BlockFinalityType: aggkittypes.LatestBlock})
+	newStatus, _ = testData.sut.step(status, ethermantypes.EventNewBlock{BlockNumber: 114, BlockFinalityType: aggkittypes.LatestBlock})
 	require.Equal(t, uint64(114), newStatus.lastBlockSeen)
 }
 
@@ -209,7 +209,7 @@ func TestForcePublishEpochEvent(t *testing.T) {
 	testData := newNotifierPerBlockTestData(t, nil)
 	ch := testData.sut.Subscribe("test")
 	testData.blockNotifierMock.EXPECT().GetCurrentBlockNumber().Return(uint64(145))
-	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(make(chan types.EventNewBlock))
+	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(make(chan ethermantypes.EventNewBlock))
 	testData.sut.StartAsync(testData.ctx)
 	testData.sut.ForcePublishEpochEvent()
 	epochEvent := <-ch
@@ -227,7 +227,7 @@ func TestGetEpochStatus(t *testing.T) {
 
 type notifierPerBlockTestData struct {
 	sut               *EpochNotifierPerBlock
-	blockNotifierMock *mocks.BlockNotifier
+	blockNotifierMock *ethermantypesmocks.BlockNotifier
 	ctx               context.Context
 }
 
@@ -240,7 +240,7 @@ func newNotifierPerBlockTestData(t *testing.T, config *ConfigEpochNotifierPerBlo
 			EpochNotificationPercentage: 50,
 		}
 	}
-	blockNotifierMock := mocks.NewBlockNotifier(t)
+	blockNotifierMock := ethermantypesmocks.NewBlockNotifier(t)
 	logger := log.WithFields("test", "EpochNotifierPerBlock")
 	sut, err := NewEpochNotifierPerBlock(blockNotifierMock, logger, *config, nil)
 	require.NoError(t, err)
