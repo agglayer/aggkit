@@ -35,4 +35,5 @@ type EpochNotifier interface {
 	// GetEpochStatus returns the current status of the epoch
 	GetEpochStatus() EpochStatus
 	String() string
+	ForcePublishEpochEvent()
 }
