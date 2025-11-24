@@ -2689,7 +2689,6 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 	t.Parallel()
 
 	path := path.Join(t.TempDir(), "bridgesyncGetUnsetClaimsPaged.sqlite")
-	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
 	require.NoError(t, err)
@@ -2850,8 +2849,8 @@ func TestProcessBlockWithClaims(t *testing.T) {
 	p, err := newProcessor(path, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
 	require.NoError(t, err)
 
-	newClaim := func(blockNum, pos uint64, gi int64, origin string, dest string, amount int64, mer string) Claim {
-		return Claim{
+	newClaim := func(blockNum, pos uint64, gi int64, origin string, dest string, amount int64, mer string) *Claim {
+		return &Claim{
 			BlockNum:           blockNum,
 			BlockPos:           pos,
 			GlobalIndex:        big.NewInt(gi),
@@ -2882,34 +2881,43 @@ func TestProcessBlockWithClaims(t *testing.T) {
 		CreatedAt:   uint64(time.Now().UTC().Unix()),
 	}
 
+	// Invalid claims
+	invalidClaim1 := NewInvalidClaim(claim1, InvalidGERClaimCorrect.String())
+	invalidClaim1.ID = 1
+
+	invalidClaim2 := NewInvalidClaim(claim2, InvalidGERClaimIncorrect.String())
+	invalidClaim2.ID = 2
+
 	tests := []struct {
 		name                  string
 		blocks                []sync.Block
-		expectedClaims        []Claim
+		expectedClaims        []*Claim
 		expectedInvalidClaims []*InvalidClaim
 	}{
 		{
 			name: "update claim with same global index",
 			blocks: []sync.Block{
-				block(1, Event{Claim: &claim1}, Event{Claim: &claim2}),
-				block(2, Event{Claim: &claim1Updated}),
+				block(1, Event{Claim: claim1}, Event{Claim: claim2}),
+				block(2, Event{Claim: claim1Updated}),
 			},
-			expectedClaims: []Claim{
+			expectedClaims: []*Claim{
 				claim1Updated,
 				claim2,
 			},
-			expectedInvalidClaims: []*InvalidClaim{
-				NewInvalidClaim(&claim1, 1, InvalidGERClaimCorrect.String()),
-			},
+			expectedInvalidClaims: []*InvalidClaim{invalidClaim1},
 		},
 		{
 			name: "original claim remains in the db when unclaimed",
 			blocks: []sync.Block{
 				block(3, Event{UnsetClaim: unsetClaim2}),
 			},
-			expectedClaims: []Claim{
+			expectedClaims: []*Claim{
 				claim1Updated,
 				claim2,
+			},
+			expectedInvalidClaims: []*InvalidClaim{
+				invalidClaim1,
+				invalidClaim2,
 			},
 		},
 	}
@@ -2926,7 +2934,7 @@ func TestProcessBlockWithClaims(t *testing.T) {
 				dbClaims, err := p.GetClaimsByGlobalIndex(context.Background(), expected.GlobalIndex)
 				require.NoError(t, err)
 				require.Len(t, dbClaims, 1)
-				require.Equal(t, expected, dbClaims[0])
+				require.Equal(t, expected, &dbClaims[0])
 			}
 
 			// check invalid_claim rows
@@ -2950,6 +2958,11 @@ func TestDeleteClaimReason_String(t *testing.T) {
 			name:     "InvalidGERClaimCorrect",
 			reason:   InvalidGERClaimCorrect,
 			expected: "invalid_ger_claim_correct",
+		},
+		{
+			name:     "InvalidGERClaimIncorrect",
+			reason:   InvalidGERClaimIncorrect,
+			expected: "invalid_ger_claim_incorrect",
 		},
 		{
 			name:     "UnknownReason",

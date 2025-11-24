@@ -58,12 +58,15 @@ type DeleteClaimReason int
 
 const (
 	InvalidGERClaimCorrect DeleteClaimReason = iota
+	InvalidGERClaimIncorrect
 )
 
 func (d DeleteClaimReason) String() string {
 	switch d {
 	case InvalidGERClaimCorrect:
 		return "invalid_ger_claim_correct"
+	case InvalidGERClaimIncorrect:
+		return "invalid_ger_claim_incorrect"
 	default:
 		return "unknown"
 	}
@@ -304,8 +307,8 @@ type InvalidClaim struct {
 }
 
 // NewInvalidClaim creates a new InvalidClaim from a Claim and a reason
-func NewInvalidClaim(c *Claim, id int64, reason string) *InvalidClaim {
-	ic := &InvalidClaim{
+func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
+	return &InvalidClaim{
 		BlockNum:            c.BlockNum,
 		BlockPos:            c.BlockPos,
 		TxHash:              c.TxHash,
@@ -326,10 +329,6 @@ func NewInvalidClaim(c *Claim, id int64, reason string) *InvalidClaim {
 		Reason:              reason,
 		CreatedAt:           uint64(time.Now().UTC().Unix()),
 	}
-	if id != -1 {
-		ic.ID = id
-	}
-	return ic
 }
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
@@ -1022,7 +1021,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					}
 
 					for _, existingClaim := range existingClaims {
-						invalidClaim := NewInvalidClaim(&existingClaim, -1, InvalidGERClaimCorrect.String())
+						invalidClaim := NewInvalidClaim(&existingClaim, InvalidGERClaimCorrect.String())
 						if err = meddler.Insert(tx, invalidClaimTableName, invalidClaim); err != nil {
 							p.log.Errorf("failed to insert invalid claim for global index %d: %v", globalIndex, err)
 							return err
@@ -1060,6 +1059,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.UnsetClaim != nil {
+			existingClaims, err := p.GetClaimsByGlobalIndex(ctx, event.UnsetClaim.GlobalIndex)
+			if err != nil {
+				p.log.Errorf("failed to retrieve existing claims for unsetted claim global index %s at block %d: %v",
+					event.UnsetClaim.GlobalIndex, block.Num, err)
+			}
+
+			for _, claim := range existingClaims {
+				ic := NewInvalidClaim(&claim, InvalidGERClaimIncorrect.String())
+				if err = meddler.Insert(tx, invalidClaimTableName, ic); err != nil {
+					p.log.Errorf("failed to insert invalid claim for global index %s at block %d: %v",
+						claim.GlobalIndex.String(), block.Num, err)
+				}
+			}
+
 			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
 				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
 				return err
