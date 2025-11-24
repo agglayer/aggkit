@@ -292,6 +292,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578

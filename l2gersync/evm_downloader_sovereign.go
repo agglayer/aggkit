@@ -165,12 +165,20 @@ func (d *downloaderSovereign) buildAppender(
 
 				// if timestamp is 0, the GER is not found in the L1 contract
 				if timestamp.Cmp(common.Big0) == 0 {
-					log.Fatalf("GER %s not found in L1 contract globalExitRootMap", gerHash.Hex())
+					log.Errorf("GER %s not found in L1 contract globalExitRootMap", gerHash.Hex())
+					// check if it exists on L2 and see if it got reorged on L1
+					timestampL2, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerHash)
+					if err != nil {
+						log.Errorf("failed to check if GER %s exists on L2: %s", gerHash.Hex(), err)
+					}
+					if timestampL2.Cmp(common.Big0) == 0 {
+						log.Infof("GER %s got removed from L2", gerHash.Hex())
+						return nil
+					}
 				} else {
 					log.Infof("GER %s exists in L1 contract", gerHash.Hex())
 				}
 			}
-
 			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
 				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 		}
