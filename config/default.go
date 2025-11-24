@@ -91,7 +91,7 @@ FinalizedBlock = "LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
-GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
+GlobalExitRootAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 BlockFinality = "LatestBlock/-6"
 SyncBlockChunkSize = 100
@@ -177,7 +177,7 @@ DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
-GlobalExitRootL1Addr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
