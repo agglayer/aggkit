@@ -3,9 +3,12 @@ package query
 import (
 	"context"
 	"fmt"
+	"math"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -57,9 +60,25 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for ger, injectedGER := range injectedGERs {
-		info, proof, err := g.l1InfoTreeQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRootHash)
-		if err != nil {
-			return nil, fmt.Errorf("error getting proof for GER: %s: %w", ger.String(), err)
+		var info *l1infotreesync.L1InfoTreeLeaf
+		var proof treetypes.Proof
+		var err error
+		if injectedGER.L1InfoTreeIndex == math.MaxUint32 {
+			// make a dummy info and proof for the GER
+			info = &l1infotreesync.L1InfoTreeLeaf{
+				L1InfoTreeIndex:   math.MaxUint32,
+				RollupExitRoot:    common.HexToHash("0x0"),
+				MainnetExitRoot:   common.HexToHash("0x0"),
+				PreviousBlockHash: common.HexToHash("0x0"),
+				Timestamp:         0,
+				GlobalExitRoot:    ger,
+			}
+			proof = treetypes.Proof{}
+		} else {
+			info, proof, err = g.l1InfoTreeQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRootHash)
+			if err != nil {
+				return nil, fmt.Errorf("error getting proof for GER: %s: %w", ger.String(), err)
+			}
 		}
 
 		if injectedGER.BlockPosition == nil {

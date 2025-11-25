@@ -79,13 +79,13 @@ func newInitialStatus(ctx context.Context,
 	log types.Logger, networkID uint32,
 	storage db.AggSenderStorage,
 	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
-	log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)
+	// log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)
 	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestSettledCertificateHeader from agglayer: %w", err)
 	}
 
-	log.Infof("recovery: checking last pending certificate from AggLayer for network %d", networkID)
+	// log.Infof("recovery: checking last pending certificate from AggLayer for network %d", networkID)
 	aggLayerLastPendingCert, err := aggLayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestPendingCertificateHeader from agglayer: %w", err)
@@ -112,11 +112,11 @@ func newInitialStatus(ctx context.Context,
 
 // logData logs the data from the initialStatus object
 func (i *initialStatus) logData() {
-	i.log.Infof("recovery: settled certificate from AggLayer: %s", i.AgglayerLastSettledCert.ID())
-	i.log.Infof("recovery: pending certificate from AggLayer: %s / status: %s",
-		i.AgglayerLastPendingCert.ID(), i.AgglayerLastPendingCert.StatusString())
-	i.log.Infof("recovery: certificate from Local           : %s / status: %s",
-		i.LocalLastCert.ID(), i.LocalLastCert.StatusString())
+	// i.log.Infof("recovery: settled certificate from AggLayer: %s", i.AgglayerLastSettledCert.ID())
+	// i.log.Infof("recovery: pending certificate from AggLayer: %s / status: %s",
+	// i.AgglayerLastPendingCert.ID(), i.AgglayerLastPendingCert.StatusString())
+	// i.log.Infof("recovery: certificate from Local           : %s / status: %s",
+	// i.LocalLastCert.ID(), i.LocalLastCert.StatusString())
 }
 
 // process processes the initial status and returns the actions to take
@@ -180,7 +180,7 @@ func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
 		}
 	}
 	aggLayerLastCert := i.getLatestAggLayerCert()
-	i.log.Infof("recovery: last certificate from AggLayer: %s", aggLayerLastCert.String())
+	// i.log.Infof("recovery: last certificate from AggLayer: %s", aggLayerLastCert.String())
 	localLastCert := i.LocalLastCert
 
 	// CASE 1: No certificates in local storage and agglayer

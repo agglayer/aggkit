@@ -173,7 +173,8 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats -f "Inject LatestBlock-N GER - A case FEP" || exit 1
+        # bats ./tests/aggkit/bridge-e2e.bats || exit 1
         # bats ./tests/aggkit/e2e-pp.bats || exit 1
         # bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
         # bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1

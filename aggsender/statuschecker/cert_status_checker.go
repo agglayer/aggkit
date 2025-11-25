@@ -219,17 +219,17 @@ func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context
 		}
 	}
 
-	c.log.Info("recovery: initial status actions executed successfully")
+	// c.log.Info("recovery: initial status actions executed successfully")
 
 	return nil
 }
 
 func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 	action *initialStatusResult, localCert *types.CertificateHeader) error {
-	c.log.Infof("recovery: action: %s", action.String())
+	// c.log.Infof("recovery: action: %s", action.String())
 	switch action.action {
 	case InitialStatusActionNone:
-		c.log.Info("recovery: no action needed")
+		// c.log.Info("recovery: no action needed")
 	case InitialStatusActionUpdateCurrentCert:
 		if err := c.updateCertificateStatus(ctx, localCert, action.cert); err != nil {
 			return fmt.Errorf("recovery: error updating local storage with agglayer certificate: %w", err)

@@ -2,11 +2,15 @@ package l2gersync
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayergerl2"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -82,9 +86,13 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 
 	for insertIterator.Next() {
 		ger := insertIterator.Event.NewGlobalExitRoot
+		log.Infof("inserted GER: %s at block %d, index %d", common.Hash(ger).String(),
+			insertIterator.Event.Raw.BlockNumber, insertIterator.Event.Raw.Index)
 		l1InfoLeaf, err := e.l1InfoTreeSync.GetInfoByGlobalExitRoot(ger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get L1 info tree index for global exit root %s: %w", common.Hash(ger), err)
+		if errors.Is(err, db.ErrNotFound) {
+			l1InfoLeaf = &l1infotreesync.L1InfoTreeLeaf{
+				L1InfoTreeIndex: math.MaxUint32,
+			}
 		}
 
 		gerInfo := newGlobalExitRootInfo(ger, l1InfoLeaf.L1InfoTreeIndex,
