@@ -5,6 +5,7 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman/types/mocks"
+	"github.com/agglayer/aggkit/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -28,19 +29,6 @@ func TestSetSyncSegment_String(t *testing.T) {
 	result := set.String()
 	require.Contains(t, result, "SetSyncSegment:")
 	require.Contains(t, result, "SyncSegment[0]=")
-}
-
-func TestSetSyncSegment_Segments(t *testing.T) {
-	set := NewSetSyncSegment()
-	segment := SyncSegment{
-		ContractAddr: common.HexToAddress("0x123"),
-		BlockRange:   aggkitcommon.NewBlockRange(1, 10),
-	}
-	set.segments = []*SyncSegment{&segment}
-
-	result := set.Segments()
-	require.Len(t, result, 1)
-	require.Equal(t, segment, result[0])
 }
 
 func TestSetSyncSegment_Add(t *testing.T) {
@@ -270,6 +258,16 @@ func TestSetSyncSegment_Finished(t *testing.T) {
 		set.segments = []*SyncSegment{segment}
 		require.False(t, set.Finished())
 	})
+	t.Run("empty segment", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		segment := &SyncSegment{
+			ContractAddr: common.HexToAddress("0x123"),
+			BlockRange:   aggkitcommon.NewBlockRange(1, 10),
+		}
+		segment.Empty()
+		set.segments = []*SyncSegment{segment}
+		require.True(t, set.Finished())
+	})
 }
 
 func TestSetSyncSegment_Clone(t *testing.T) {
@@ -404,4 +402,36 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 		err := set.SubtractLogQuery(logQuery)
 		require.Error(t, err)
 	})
+}
+func TestSetSyncSegment_AfterFullySync(t *testing.T) {
+	set := NewSetSyncSegment()
+	addr := common.HexToAddress("0x123124543423")
+	segment := SyncSegment{
+		ContractAddr:  addr,
+		BlockRange:    aggkitcommon.NewBlockRange(1, 100),
+		TargetToBlock: types.LatestBlock,
+	}
+	set.Add(segment)
+
+	logQuery := &LogQuery{
+		Addrs:      []common.Address{addr},
+		BlockRange: aggkitcommon.NewBlockRange(1, 100),
+	}
+
+	err := set.SubtractLogQuery(logQuery)
+	require.NoError(t, err)
+	// The segment is empty so is not returned by GetByContract
+	segment, exists := set.GetByContract(addr)
+	require.True(t, exists)
+	require.True(t, segment.IsEmpty())
+	require.True(t, set.Finished())
+	require.Equal(t, uint64(0), set.TotalBlocks())
+
+	mockBlockManager := mocks.NewBlockNotifierManager(t)
+	mockBlockManager.EXPECT().GetCurrentBlockNumber(mock.Anything, types.LatestBlock).Return(uint64(150), nil).Once()
+	set.UpdateTargetBlockToNumber(t.Context(), mockBlockManager)
+	require.Equal(t, uint64(50), set.TotalBlocks())
+	segment, exists = set.GetByContract(addr)
+	require.True(t, exists)
+	require.Equal(t, "From: 101, To: 150 (50)", segment.BlockRange.String())
 }

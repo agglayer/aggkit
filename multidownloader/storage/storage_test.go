@@ -311,7 +311,10 @@ func TestStorage_UpdateIsFinal(t *testing.T) {
 	require.Equal(t, block, readBlock, "BlockHeader mismatch")
 	require.False(t, isFinal, "expected block to not be final")
 
-	err = storage.updateIsFinal(nil, []uint64{block.Number})
+	err = storage.UpdateBlockToFinalized(nil, []uint64{})
+	require.NoError(t, err, "if no blocks provided, should be no-op")
+
+	err = storage.UpdateBlockToFinalized(nil, []uint64{block.Number})
 	require.NoError(t, err, "cannot update IsFinal")
 
 	readBlock, isFinal, err = storage.GetBlockHeaderByNumber(nil, block.Number)
@@ -319,6 +322,23 @@ func TestStorage_UpdateIsFinal(t *testing.T) {
 	require.NotNil(t, readBlock, "expected non-nil BlockHeader")
 	require.Equal(t, block, readBlock, "BlockHeader mismatch")
 	require.True(t, isFinal, "expected block to be final")
+}
+
+func TestStorage_GetRangeBlockHeader(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	block := aggkittypes.NewBlockHeader(4000, exampleTestHash[5], 1630002000, nil)
+	err := storage.saveAggkitBlock(nil, block, false)
+	require.NoError(t, err, "cannot insert BlockHeader")
+
+	lowest, highest, err := storage.GetRangeBlockHeader(nil, false)
+	require.NoError(t, err, "cannot get range BlockHeader")
+	require.Equal(t, block, lowest, "lowest BlockHeader mismatch")
+	require.Equal(t, block, highest, "highest BlockHeader mismatch")
+
+	lowest, highest, err = storage.GetRangeBlockHeader(nil, true)
+	require.NoError(t, err, "cannot get range BlockHeader")
+	require.Equal(t, nil, lowest, "lowest BlockHeader mismatch")
+	require.Equal(t, nil, highest, "highest BlockHeader mismatch")
 }
 
 func TestStorage_logRow_String(t *testing.T) {

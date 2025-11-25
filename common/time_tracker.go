@@ -18,7 +18,7 @@ type TimeTracker struct {
 
 func (t *TimeTracker) String() string {
 	return "TimeTracker{times=" + strconv.Itoa(int(t.times)) +
-		"lastDuration=" + t.lastDuration.String() +
+		", lastDuration=" + t.lastDuration.String() +
 		", accumulated=" + t.accumulated.String() +
 		"}"
 }

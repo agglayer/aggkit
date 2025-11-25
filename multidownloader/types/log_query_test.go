@@ -64,3 +64,22 @@ func TestLogQuery_ToRPCFilterQuery(t *testing.T) {
 	require.Equal(t, big.NewInt(1), filter.FromBlock)
 	require.Equal(t, big.NewInt(10), filter.ToBlock)
 }
+
+func TestLogQuery_BlockHash(t *testing.T) {
+	lq := NewLogQueryBlockHash(1234, common.HexToHash("0xabc"), []common.Address{common.HexToAddress("0x123")})
+	require.Equal(t, common.HexToHash("0xabc"), *lq.BlockHash)
+	require.Equal(t, []common.Address{common.HexToAddress("0x123")}, lq.Addrs)
+	blockHash := common.HexToHash("0xabc")
+	lq2 := NewLogQueryFromEthereumFilter(ethereum.FilterQuery{
+		Addresses: []common.Address{common.HexToAddress("0x123")},
+		BlockHash: &blockHash,
+	})
+	require.Equal(t, "LogQuery: addrs=[0x0000000000000000000000000000000000000123], blockHash=0x0000000000000000000000000000000000000000000000000000000000000abc (?)",
+		lq2.String())
+
+	rpcFilter := lq.ToRPCFilterQuery()
+	require.Equal(t, common.HexToHash("0xabc"), *rpcFilter.BlockHash)
+	require.Equal(t, []common.Address{common.HexToAddress("0x123")}, rpcFilter.Addresses)
+	require.Equal(t, "LogQuery: addrs=[0x0000000000000000000000000000000000000123], blockHash=0x0000000000000000000000000000000000000000000000000000000000000abc (1234)",
+		lq.String())
+}

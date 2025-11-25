@@ -95,6 +95,65 @@ func (_c *Storager_GetBlockHeaderByNumber_Call) RunAndReturn(run func(types.Quer
 	return _c
 }
 
+// GetBlockHeadersNotFinalized provides a mock function with given fields: tx, maxBlock
+func (_m *Storager) GetBlockHeadersNotFinalized(tx types.Querier, maxBlock uint64) ([]*aggkittypes.BlockHeader, error) {
+	ret := _m.Called(tx, maxBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBlockHeadersNotFinalized")
+	}
+
+	var r0 []*aggkittypes.BlockHeader
+	var r1 error
+	if rf, ok := ret.Get(0).(func(types.Querier, uint64) ([]*aggkittypes.BlockHeader, error)); ok {
+		return rf(tx, maxBlock)
+	}
+	if rf, ok := ret.Get(0).(func(types.Querier, uint64) []*aggkittypes.BlockHeader); ok {
+		r0 = rf(tx, maxBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*aggkittypes.BlockHeader)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(types.Querier, uint64) error); ok {
+		r1 = rf(tx, maxBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Storager_GetBlockHeadersNotFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBlockHeadersNotFinalized'
+type Storager_GetBlockHeadersNotFinalized_Call struct {
+	*mock.Call
+}
+
+// GetBlockHeadersNotFinalized is a helper method to define mock.On call
+//   - tx types.Querier
+//   - maxBlock uint64
+func (_e *Storager_Expecter) GetBlockHeadersNotFinalized(tx interface{}, maxBlock interface{}) *Storager_GetBlockHeadersNotFinalized_Call {
+	return &Storager_GetBlockHeadersNotFinalized_Call{Call: _e.mock.On("GetBlockHeadersNotFinalized", tx, maxBlock)}
+}
+
+func (_c *Storager_GetBlockHeadersNotFinalized_Call) Run(run func(tx types.Querier, maxBlock uint64)) *Storager_GetBlockHeadersNotFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.Querier), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *Storager_GetBlockHeadersNotFinalized_Call) Return(_a0 []*aggkittypes.BlockHeader, _a1 error) *Storager_GetBlockHeadersNotFinalized_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Storager_GetBlockHeadersNotFinalized_Call) RunAndReturn(run func(types.Querier, uint64) ([]*aggkittypes.BlockHeader, error)) *Storager_GetBlockHeadersNotFinalized_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEthLogs provides a mock function with given fields: tx, query
 func (_m *Storager) GetEthLogs(tx types.Querier, query multidownloadertypes.LogQuery) ([]coretypes.Log, error) {
 	ret := _m.Called(tx, query)
@@ -150,6 +209,74 @@ func (_c *Storager_GetEthLogs_Call) Return(_a0 []coretypes.Log, _a1 error) *Stor
 }
 
 func (_c *Storager_GetEthLogs_Call) RunAndReturn(run func(types.Querier, multidownloadertypes.LogQuery) ([]coretypes.Log, error)) *Storager_GetEthLogs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRangeBlockHeader provides a mock function with given fields: tx, isFinal
+func (_m *Storager) GetRangeBlockHeader(tx types.Querier, isFinal multidownloadertypes.FinalizedType) (*aggkittypes.BlockHeader, *aggkittypes.BlockHeader, error) {
+	ret := _m.Called(tx, isFinal)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRangeBlockHeader")
+	}
+
+	var r0 *aggkittypes.BlockHeader
+	var r1 *aggkittypes.BlockHeader
+	var r2 error
+	if rf, ok := ret.Get(0).(func(types.Querier, multidownloadertypes.FinalizedType) (*aggkittypes.BlockHeader, *aggkittypes.BlockHeader, error)); ok {
+		return rf(tx, isFinal)
+	}
+	if rf, ok := ret.Get(0).(func(types.Querier, multidownloadertypes.FinalizedType) *aggkittypes.BlockHeader); ok {
+		r0 = rf(tx, isFinal)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*aggkittypes.BlockHeader)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(types.Querier, multidownloadertypes.FinalizedType) *aggkittypes.BlockHeader); ok {
+		r1 = rf(tx, isFinal)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*aggkittypes.BlockHeader)
+		}
+	}
+
+	if rf, ok := ret.Get(2).(func(types.Querier, multidownloadertypes.FinalizedType) error); ok {
+		r2 = rf(tx, isFinal)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Storager_GetRangeBlockHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRangeBlockHeader'
+type Storager_GetRangeBlockHeader_Call struct {
+	*mock.Call
+}
+
+// GetRangeBlockHeader is a helper method to define mock.On call
+//   - tx types.Querier
+//   - isFinal multidownloadertypes.FinalizedType
+func (_e *Storager_Expecter) GetRangeBlockHeader(tx interface{}, isFinal interface{}) *Storager_GetRangeBlockHeader_Call {
+	return &Storager_GetRangeBlockHeader_Call{Call: _e.mock.On("GetRangeBlockHeader", tx, isFinal)}
+}
+
+func (_c *Storager_GetRangeBlockHeader_Call) Run(run func(tx types.Querier, isFinal multidownloadertypes.FinalizedType)) *Storager_GetRangeBlockHeader_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.Querier), args[1].(multidownloadertypes.FinalizedType))
+	})
+	return _c
+}
+
+func (_c *Storager_GetRangeBlockHeader_Call) Return(lowest *aggkittypes.BlockHeader, highest *aggkittypes.BlockHeader, err error) *Storager_GetRangeBlockHeader_Call {
+	_c.Call.Return(lowest, highest, err)
+	return _c
+}
+
+func (_c *Storager_GetRangeBlockHeader_Call) RunAndReturn(run func(types.Querier, multidownloadertypes.FinalizedType) (*aggkittypes.BlockHeader, *aggkittypes.BlockHeader, error)) *Storager_GetRangeBlockHeader_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -420,6 +547,53 @@ func (_c *Storager_SaveEthLogsWithHeaders_Call) Return(_a0 error) *Storager_Save
 }
 
 func (_c *Storager_SaveEthLogsWithHeaders_Call) RunAndReturn(run func(types.Querier, []*aggkittypes.BlockHeader, []coretypes.Log, bool) error) *Storager_SaveEthLogsWithHeaders_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateBlockToFinalized provides a mock function with given fields: tx, blockNumbers
+func (_m *Storager) UpdateBlockToFinalized(tx types.Querier, blockNumbers []uint64) error {
+	ret := _m.Called(tx, blockNumbers)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateBlockToFinalized")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(types.Querier, []uint64) error); ok {
+		r0 = rf(tx, blockNumbers)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Storager_UpdateBlockToFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateBlockToFinalized'
+type Storager_UpdateBlockToFinalized_Call struct {
+	*mock.Call
+}
+
+// UpdateBlockToFinalized is a helper method to define mock.On call
+//   - tx types.Querier
+//   - blockNumbers []uint64
+func (_e *Storager_Expecter) UpdateBlockToFinalized(tx interface{}, blockNumbers interface{}) *Storager_UpdateBlockToFinalized_Call {
+	return &Storager_UpdateBlockToFinalized_Call{Call: _e.mock.On("UpdateBlockToFinalized", tx, blockNumbers)}
+}
+
+func (_c *Storager_UpdateBlockToFinalized_Call) Run(run func(tx types.Querier, blockNumbers []uint64)) *Storager_UpdateBlockToFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.Querier), args[1].([]uint64))
+	})
+	return _c
+}
+
+func (_c *Storager_UpdateBlockToFinalized_Call) Return(_a0 error) *Storager_UpdateBlockToFinalized_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Storager_UpdateBlockToFinalized_Call) RunAndReturn(run func(types.Querier, []uint64) error) *Storager_UpdateBlockToFinalized_Call {
 	_c.Call.Return(run)
 	return _c
 }

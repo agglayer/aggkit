@@ -11,7 +11,8 @@ import (
 // SyncSegment represents a segment of blocks, it is used for synced segments but also
 // for representing segments to be synced
 type SyncSegment struct {
-	ContractAddr  common.Address
+	ContractAddr common.Address
+	// If FromBlock is 0 means that is empty
 	BlockRange    aggkitcommon.BlockRange
 	TargetToBlock aggkittypes.BlockNumberFinality
 }
@@ -58,6 +59,24 @@ func (s *SyncSegment) UpdateToBlock(newToBlock uint64) {
 		return
 	}
 	s.BlockRange.ToBlock = newToBlock
+}
+
+func (s *SyncSegment) Empty() {
+	if s == nil {
+		return
+	}
+	// Set FromBlock greater than ToBlock to indicate empty segment
+	s.BlockRange = aggkitcommon.NewBlockRange(
+		s.BlockRange.ToBlock+1,
+		0,
+	)
+}
+
+func (s *SyncSegment) IsEmpty() bool {
+	if s == nil {
+		return true
+	}
+	return s.BlockRange.FromBlock > s.BlockRange.ToBlock
 }
 
 // Equal checks if two SyncSegments are equal

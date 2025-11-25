@@ -8,6 +8,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+type FinalizedType = bool
+
+const (
+	NotFinalized FinalizedType = false
+	Finalized    FinalizedType = true
+)
+
 type Storager interface {
 	dbtypes.KeyValueStorager
 	// GetSyncedBlockRangePerContract It returns the synced block range stored in DB
@@ -19,4 +26,9 @@ type Storager interface {
 	UpsertSyncerConfigs(tx dbtypes.Querier, configs []ContractConfig) error
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
+
+	GetBlockHeadersNotFinalized(tx dbtypes.Querier, maxBlock uint64) ([]*aggkittypes.BlockHeader, error)
+	UpdateBlockToFinalized(tx dbtypes.Querier, blockNumbers []uint64) error
+	GetRangeBlockHeader(tx dbtypes.Querier, isFinal FinalizedType) (lowest *aggkittypes.BlockHeader,
+		highest *aggkittypes.BlockHeader, err error)
 }

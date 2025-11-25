@@ -191,3 +191,14 @@ func ChunkedRangeQuery[T any](
 
 	return all, nil
 }
+
+func (b BlockRange) ListBlockNumbers() []uint64 {
+	if b.IsEmpty() {
+		return []uint64{}
+	}
+	blockNumbers := make([]uint64, 0, b.CountBlocks())
+	for i := b.FromBlock; i <= b.ToBlock; i++ {
+		blockNumbers = append(blockNumbers, i)
+	}
+	return blockNumbers
+}

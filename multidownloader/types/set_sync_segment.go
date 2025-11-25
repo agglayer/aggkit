@@ -48,15 +48,6 @@ func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) SetSyncSegment {
 	return set
 }
 
-// Segments returns all SyncSegments in the SetSyncSegment
-func (s *SetSyncSegment) Segments() []SyncSegment {
-	result := make([]SyncSegment, 0, len(s.segments))
-	for _, segment := range s.segments {
-		result = append(result, *segment)
-	}
-	return result
-}
-
 // Add adds a new SyncSegment to the SetSyncSegment, merging block ranges
 // if the contract address already exists
 func (s *SetSyncSegment) Add(segment SyncSegment) {
@@ -91,13 +82,13 @@ func (f *SetSyncSegment) SubtractSegments(segments *SetSyncSegment) error {
 		return nil
 	}
 	newSegments := f.Clone()
-	for _, segment := range segments.Segments() {
+	for _, segment := range segments.segments {
 		previousSegment, exists := newSegments.GetByContract(segment.ContractAddr)
 		if exists {
 			brs := previousSegment.BlockRange.Subtract(segment.BlockRange)
 			switch len(brs) {
 			case 0:
-				newSegments.Remove(&previousSegment)
+				newSegments.Empty(&previousSegment)
 			case 1:
 				newSegments.UpdateBlockRange(&previousSegment, brs[0])
 			default:
@@ -215,6 +206,35 @@ func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uin
 		BlockRange: br,
 	}, nil
 }
+func (f *SetSyncSegment) GetHighestBlockNumber() uint64 {
+	if f == nil || len(f.segments) == 0 {
+		return 0
+	}
+	highest := uint64(0)
+	for _, segment := range f.segments {
+		if segment.BlockRange.ToBlock > highest {
+			highest = segment.BlockRange.ToBlock
+		}
+	}
+	return highest
+}
+
+func (f *SetSyncSegment) GetTotalPendingBlockRange() *aggkitcommon.BlockRange {
+	if f == nil || len(f.segments) == 0 {
+		return nil
+	}
+	var totalRange *aggkitcommon.BlockRange
+	for _, segment := range f.segments {
+		if totalRange == nil {
+			br := segment.BlockRange
+			totalRange = &br
+		} else {
+			extended := totalRange.Extend(segment.BlockRange)
+			totalRange = &extended
+		}
+	}
+	return totalRange
+}
 
 func (f *SetSyncSegment) GetLowestFromBlockSegment() *SyncSegment {
 	if f == nil || len(f.segments) == 0 {
@@ -239,8 +259,21 @@ func (f *SetSyncSegment) GetAddressesForBlockRange(blockRange aggkitcommon.Block
 	return addresses
 }
 
+func (f *SetSyncSegment) GetAddressesForBlock(blockNumber uint64) []common.Address {
+	blockRange := aggkitcommon.NewBlockRange(blockNumber, blockNumber)
+	return f.GetAddressesForBlockRange(blockRange)
+}
+
 func (f *SetSyncSegment) Finished() bool {
-	return f == nil || len(f.segments) == 0
+	if f == nil || len(f.segments) == 0 {
+		return true
+	}
+	for _, segment := range f.segments {
+		if !segment.IsEmpty() {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *SetSyncSegment) Clone() *SetSyncSegment {
@@ -252,6 +285,15 @@ func (f *SetSyncSegment) Clone() *SetSyncSegment {
 		newSet.Add(*segment)
 	}
 	return &newSet
+}
+
+func (f *SetSyncSegment) Empty(segment *SyncSegment) {
+	for _, s := range f.segments {
+		if s.Equal(*segment) {
+			s.Empty()
+			return
+		}
+	}
 }
 
 func (f *SetSyncSegment) Remove(segmentToRemove *SyncSegment) {

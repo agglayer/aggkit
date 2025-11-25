@@ -471,3 +471,12 @@ func TestChunkedRangeQuery_EmptyRange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, empty, result)
 }
+
+func TestBlockRange_ListBlockNumbers(t *testing.T) {
+	bn1 := NewBlockRange(1, 1)
+	require.Equal(t, []uint64{1}, bn1.ListBlockNumbers())
+	bn2 := NewBlockRange(3, 5)
+	require.Equal(t, []uint64{3, 4, 5}, bn2.ListBlockNumbers())
+	bn3 := NewBlockRange(0, 0)
+	require.Equal(t, []uint64{}, bn3.ListBlockNumbers())
+}
