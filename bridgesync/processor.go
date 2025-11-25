@@ -433,6 +433,7 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 }
 
 type processor struct {
+	syncerID       string
 	db             *sql.DB
 	exitTree       *tree.AppendOnlyTree
 	log            *log.Logger
@@ -445,7 +446,7 @@ type processor struct {
 
 func newProcessor(
 	dbPath string,
-	name string,
+	syncerID string,
 	logger *log.Logger,
 	dbQueryTimeout time.Duration,
 ) (*processor, error) {
@@ -461,13 +462,14 @@ func newProcessor(
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
+		syncerID:       syncerID,
 		db:             database,
 		exitTree:       exitTree,
 		log:            logger,
 		dbQueryTimeout: dbQueryTimeout,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
-			name,
+			syncerID,
 		),
 	}, nil
 }
@@ -1074,11 +1076,10 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 	shouldRollback = false
 
-	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
+	logMsg := fmt.Sprintf("[%s] block %d processed with %d events", p.syncerID, block.Num, len(block.Events))
 	if len(block.Events) > 0 {
 		p.log.Info(logMsg)
-	} else {
-		p.log.Debugf(logMsg)
+		p.log.Debugf("[%s] indexed events: %+v", p.syncerID, block.Events)
 	}
 
 	return nil
