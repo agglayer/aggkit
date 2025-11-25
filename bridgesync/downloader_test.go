@@ -2,13 +2,16 @@ package bridgesync
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/polygonzkevmbridge"
+	"github.com/agglayer/aggkit/bridgesync/migrations"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -347,6 +350,32 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
+		{
+			name:           "backwardLETEventSignature appender",
+			eventSignature: backwardLETEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(backwardLETEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				previousDepositCount := big.NewInt(10)
+				previousRoot := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
+				newDepositCount := big.NewInt(5)
+				newRoot := common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
+				data, err := event.Inputs.Pack(previousDepositCount, previousRoot, newDepositCount, newRoot)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{backwardLETEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -368,6 +397,27 @@ func TestBuildAppender(t *testing.T) {
 			err = appenderFunc(block, log)
 			require.NoError(t, err)
 			require.Len(t, block.Events, 1)
+
+			// For backwardLET event, verify the event structure
+			if tt.eventSignature == backwardLETEventSignature {
+				event, ok := block.Events[0].(Event)
+				require.True(t, ok, "Expected block.Events[0] to be of type Event")
+				require.NotNil(t, event.BackwardLET, "BackwardLET event should not be nil")
+
+				expectedPreviousDepositCount := big.NewInt(10)
+				expectedPreviousRoot := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
+				expectedNewDepositCount := big.NewInt(5)
+				expectedNewRoot := common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
+
+				require.Equal(t, expectedPreviousDepositCount.String(), event.BackwardLET.PreviousDepositCount.String(),
+					"PreviousDepositCount should match")
+				require.Equal(t, expectedPreviousRoot, event.BackwardLET.PreviousRoot,
+					"PreviousRoot should match")
+				require.Equal(t, expectedNewDepositCount.String(), event.BackwardLET.NewDepositCount.String(),
+					"NewDepositCount should match")
+				require.Equal(t, expectedNewRoot, event.BackwardLET.NewRoot,
+					"NewRoot should match")
+			}
 		})
 	}
 }
@@ -783,4 +833,86 @@ func TestTxnSenderField(t *testing.T) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func TestBackwardLETEvent_DatabaseInsertion(t *testing.T) {
+	t.Parallel()
+
+	// Setup test database
+	tempDir := t.TempDir()
+	dbPath := fmt.Sprintf("%s/backwardlet_test.db", tempDir)
+
+	// Run migrations
+	err := migrations.RunMigrations(dbPath)
+	require.NoError(t, err)
+
+	// Create processor
+	logger := logger.WithFields("module", "test")
+	processor, err := newProcessor(dbPath, "test-processor", logger, 30*time.Second)
+	require.NoError(t, err)
+	defer processor.db.Close()
+
+	// Create backwardLET event
+	previousDepositCount := big.NewInt(10)
+	previousRoot := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
+	newDepositCount := big.NewInt(5)
+	newRoot := common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
+
+	backwardLET := &BackwardLET{
+		BlockNum:             100,
+		BlockPos:             0,
+		PreviousDepositCount: previousDepositCount,
+		PreviousRoot:         previousRoot,
+		NewDepositCount:      newDepositCount,
+		NewRoot:              newRoot,
+	}
+
+	// Create block with backwardLET event
+	block := sync.Block{
+		Num:  backwardLET.BlockNum,
+		Hash: common.HexToHash(fmt.Sprintf("0x%x", backwardLET.BlockNum)),
+		Events: []any{
+			Event{BackwardLET: backwardLET},
+		},
+	}
+
+	// Process block
+	ctx := context.Background()
+	err = processor.ProcessBlock(ctx, block)
+	require.NoError(t, err)
+
+	// Verify the backwardLET event was inserted into the database
+	rows, err := processor.db.Query(`
+		SELECT block_num, block_pos, previous_deposit_count, previous_root, new_deposit_count, new_root
+		FROM backward_let
+		WHERE block_num = $1 AND block_pos = $2
+	`, backwardLET.BlockNum, backwardLET.BlockPos)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	require.True(t, rows.Next(), "BackwardLET event should be inserted in database")
+
+	var storedBlockNum, storedBlockPos uint64
+	var storedPreviousDepositCount, storedNewDepositCount string
+	var storedPreviousRoot, storedNewRoot string
+
+	err = rows.Scan(
+		&storedBlockNum,
+		&storedBlockPos,
+		&storedPreviousDepositCount,
+		&storedPreviousRoot,
+		&storedNewDepositCount,
+		&storedNewRoot,
+	)
+	require.NoError(t, err)
+
+	// Verify all values match
+	require.Equal(t, backwardLET.BlockNum, storedBlockNum, "BlockNum should match")
+	require.Equal(t, backwardLET.BlockPos, storedBlockPos, "BlockPos should match")
+	require.Equal(t, previousDepositCount.String(), storedPreviousDepositCount, "PreviousDepositCount should match")
+	require.Equal(t, previousRoot.Hex(), storedPreviousRoot, "PreviousRoot should match")
+	require.Equal(t, newDepositCount.String(), storedNewDepositCount, "NewDepositCount should match")
+	require.Equal(t, newRoot.Hex(), storedNewRoot, "NewRoot should match")
+
+	require.False(t, rows.Next(), "Should have only one BackwardLET event")
 }

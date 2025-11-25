@@ -2980,3 +2980,229 @@ func TestDeleteClaimReason_String(t *testing.T) {
 		})
 	}
 }
+
+func TestBackwardLETEvent_CombinedBridgeAndRootDeletion(t *testing.T) {
+	t.Parallel()
+
+	path := path.Join(t.TempDir(), "backwardlet_combined.db")
+	err := migrations.RunMigrations(path)
+	require.NoError(t, err)
+
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Step 1: Insert initial bridges using ProcessBlock (this will also create roots via PutLeaf)
+	initialBridges := []*Bridge{
+		{BlockNum: 1, BlockPos: 0, DepositCount: 0, Amount: big.NewInt(100), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+		{BlockNum: 2, BlockPos: 0, DepositCount: 1, Amount: big.NewInt(200), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+		{BlockNum: 3, BlockPos: 0, DepositCount: 2, Amount: big.NewInt(300), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+		{BlockNum: 3, BlockPos: 1, DepositCount: 3, Amount: big.NewInt(350), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}}, // Same block, different position
+		{BlockNum: 4, BlockPos: 0, DepositCount: 4, Amount: big.NewInt(400), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+		{BlockNum: 5, BlockPos: 0, DepositCount: 5, Amount: big.NewInt(500), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+	}
+
+	// Group bridges by block number to process multiple bridges in the same block
+	bridgesByBlock := make(map[uint64][]*Bridge)
+	for _, bridge := range initialBridges {
+		bridgesByBlock[bridge.BlockNum] = append(bridgesByBlock[bridge.BlockNum], bridge)
+	}
+
+	// Process each block with its bridges
+	for blockNum, bridges := range bridgesByBlock {
+		events := make([]any, 0, len(bridges))
+		for _, bridge := range bridges {
+			events = append(events, Event{Bridge: bridge})
+		}
+
+		block := sync.Block{
+			Num:    blockNum,
+			Hash:   common.HexToHash(fmt.Sprintf("0x%x", blockNum)),
+			Events: events,
+		}
+		err = p.ProcessBlock(ctx, block)
+		require.NoError(t, err, "Failed to process block %d with bridges", blockNum)
+	}
+
+	// Verify initial state: should have 6 bridges and 6 roots
+	allBridges, err := p.GetBridges(ctx, 1, 5)
+	require.NoError(t, err)
+	require.Len(t, allBridges, 6, "Should have 6 bridges initially")
+
+	rows, err := p.db.Query(`SELECT hash, position, block_num, block_position FROM root ORDER BY block_num, block_position`)
+	require.NoError(t, err)
+	var initialRoots []types.Root
+	for rows.Next() {
+		var root types.Root
+		var hashStr string
+		err := rows.Scan(&hashStr, &root.Index, &root.BlockNum, &root.BlockPosition)
+		require.NoError(t, err)
+		root.Hash = common.HexToHash(hashStr)
+		initialRoots = append(initialRoots, root)
+	}
+	rows.Close()
+	require.Len(t, initialRoots, 6, "Should have 6 roots initially")
+
+	// Get the root at deposit_count 2 (NewDepositCount) and the last root (PreviousRoot)
+	var newRootHash common.Hash
+	rows, err = p.db.Query(`SELECT hash FROM root WHERE position = $1 ORDER BY block_num, block_position LIMIT 1`, 2)
+	require.NoError(t, err)
+	require.True(t, rows.Next(), "Should find root at position 2")
+	var newRootHashStr string
+	err = rows.Scan(&newRootHashStr)
+	require.NoError(t, err)
+	newRootHash = common.HexToHash(newRootHashStr)
+	rows.Close()
+
+	var previousRootHash common.Hash
+	rows, err = p.db.Query(`SELECT hash FROM root ORDER BY block_num DESC, block_position DESC LIMIT 1`)
+	require.NoError(t, err)
+	require.True(t, rows.Next(), "Should find last root")
+	var previousRootHashStr string
+	err = rows.Scan(&previousRootHashStr)
+	require.NoError(t, err)
+	previousRootHash = common.HexToHash(previousRootHashStr)
+	rows.Close()
+
+	// Step 2: Process backwardLET event that should delete bridges with deposit_count > 2 and roots after NewRoot
+	backwardLET := &BackwardLET{
+		BlockNum:             10,
+		BlockPos:             0,
+		PreviousDepositCount: big.NewInt(5),
+		PreviousRoot:         previousRootHash,
+		NewDepositCount:      big.NewInt(2),
+		NewRoot:              newRootHash,
+	}
+
+	block := sync.Block{
+		Num:  backwardLET.BlockNum,
+		Hash: common.HexToHash(fmt.Sprintf("0x%x", backwardLET.BlockNum)),
+		Events: []any{
+			Event{BackwardLET: backwardLET},
+		},
+	}
+
+	err = p.ProcessBlock(ctx, block)
+	require.NoError(t, err, "Failed to process backwardLET event")
+
+	// Step 3: Verify correct deletions from bridge table
+	allBridges, err = p.GetBridges(ctx, 1, 10)
+	require.NoError(t, err)
+	require.Len(t, allBridges, 3, "Should have 3 bridges after backwardLET (deposit_count 0, 1, 2)")
+
+	// Verify that the bridge at block 3, position 1 (deposit_count 3) was deleted
+	foundBlock3Pos1 := false
+	for _, bridge := range allBridges {
+		if bridge.BlockNum == 3 && bridge.BlockPos == 1 {
+			foundBlock3Pos1 = true
+			break
+		}
+	}
+	require.False(t, foundBlock3Pos1, "Bridge at block 3, position 1 (deposit_count 3) should have been deleted")
+
+	depositCounts := make(map[uint32]bool)
+	for _, bridge := range allBridges {
+		depositCounts[bridge.DepositCount] = true
+		require.LessOrEqual(t, bridge.DepositCount, uint32(2), "Bridge with deposit_count %d should have been deleted", bridge.DepositCount)
+	}
+	require.True(t, depositCounts[0], "Bridge with deposit_count 0 should exist")
+	require.True(t, depositCounts[1], "Bridge with deposit_count 1 should exist")
+	require.True(t, depositCounts[2], "Bridge with deposit_count 2 should exist")
+
+	// Step 4: Verify correct deletions from root table
+	rows, err = p.db.Query(`SELECT hash, position, block_num, block_position FROM root ORDER BY block_num, block_position`)
+	require.NoError(t, err)
+	var remainingRoots []types.Root
+	for rows.Next() {
+		var root types.Root
+		var hashStr string
+		err := rows.Scan(&hashStr, &root.Index, &root.BlockNum, &root.BlockPosition)
+		require.NoError(t, err)
+		root.Hash = common.HexToHash(hashStr)
+		remainingRoots = append(remainingRoots, root)
+	}
+	rows.Close()
+
+	require.Len(t, remainingRoots, 3, "Should have 3 roots after backwardLET (position 0, 1, 2)")
+
+	// Verify roots are in correct order and have correct indices
+	for i, root := range remainingRoots {
+		require.Equal(t, uint32(i), root.Index, "Root at position %d should have index %d", i, i)
+		require.LessOrEqual(t, root.Index, uint32(2), "Root with index %d should have been deleted", root.Index)
+	}
+
+	// Verify the NewRoot is the last root
+	require.Equal(t, newRootHash, remainingRoots[len(remainingRoots)-1].Hash, "Last root should match NewRoot")
+
+	// Step 5: Insert bridges again to verify the system continues to work
+	newBridges := []*Bridge{
+		{BlockNum: 11, BlockPos: 0, DepositCount: 3, Amount: big.NewInt(600), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+		{BlockNum: 12, BlockPos: 0, DepositCount: 4, Amount: big.NewInt(700), OriginNetwork: 1, DestinationNetwork: 1, LeafType: 1, OriginAddress: common.HexToAddress("0x01"), DestinationAddress: common.HexToAddress("0x02"), Metadata: []byte{}},
+	}
+
+	for _, bridge := range newBridges {
+		block := sync.Block{
+			Num:    bridge.BlockNum,
+			Hash:   common.HexToHash(fmt.Sprintf("0x%x", bridge.BlockNum)),
+			Events: []any{Event{Bridge: bridge}},
+		}
+		err = p.ProcessBlock(ctx, block)
+		require.NoError(t, err, "Failed to process block %d with new bridge", bridge.BlockNum)
+	}
+
+	// Step 6: Verify final state after inserting new bridges
+	allBridges, err = p.GetBridges(ctx, 1, 12)
+	require.NoError(t, err)
+	require.Len(t, allBridges, 5, "Should have 5 bridges after inserting new ones (0, 1, 2, 3, 4)")
+
+	finalDepositCounts := make(map[uint32]bool)
+	for _, bridge := range allBridges {
+		finalDepositCounts[bridge.DepositCount] = true
+	}
+	require.True(t, finalDepositCounts[0], "Bridge with deposit_count 0 should exist")
+	require.True(t, finalDepositCounts[1], "Bridge with deposit_count 1 should exist")
+	require.True(t, finalDepositCounts[2], "Bridge with deposit_count 2 should exist")
+	require.True(t, finalDepositCounts[3], "Bridge with deposit_count 3 should exist")
+	require.True(t, finalDepositCounts[4], "Bridge with deposit_count 4 should exist")
+
+	// Verify roots: should have 5 roots (0, 1, 2, 3, 4)
+	rows, err = p.db.Query(`SELECT hash, position, block_num, block_position FROM root ORDER BY block_num, block_position`)
+	require.NoError(t, err)
+	var finalRoots []types.Root
+	for rows.Next() {
+		var root types.Root
+		var hashStr string
+		err := rows.Scan(&hashStr, &root.Index, &root.BlockNum, &root.BlockPosition)
+		require.NoError(t, err)
+		root.Hash = common.HexToHash(hashStr)
+		finalRoots = append(finalRoots, root)
+	}
+	rows.Close()
+
+	require.Len(t, finalRoots, 5, "Should have 5 roots after inserting new bridges")
+
+	// Verify roots are in correct order
+	for i, root := range finalRoots {
+		require.Equal(t, uint32(i), root.Index, "Root at position %d should have index %d", i, i)
+	}
+
+	// Verify backwardLET event was stored in database
+	rows, err = p.db.Query(`SELECT block_num, block_pos, previous_deposit_count, previous_root, new_deposit_count, new_root FROM backward_let WHERE block_num = $1`, backwardLET.BlockNum)
+	require.NoError(t, err)
+	require.True(t, rows.Next(), "BackwardLET event should be stored in database")
+	var storedBlockNum, storedBlockPos uint64
+	var storedPreviousDepositCount, storedNewDepositCount string
+	var storedPreviousRoot, storedNewRoot string
+	err = rows.Scan(&storedBlockNum, &storedBlockPos, &storedPreviousDepositCount, &storedPreviousRoot, &storedNewDepositCount, &storedNewRoot)
+	require.NoError(t, err)
+	require.Equal(t, backwardLET.BlockNum, storedBlockNum)
+	require.Equal(t, backwardLET.BlockPos, storedBlockPos)
+	require.Equal(t, backwardLET.PreviousDepositCount.String(), storedPreviousDepositCount)
+	require.Equal(t, backwardLET.PreviousRoot.Hex(), storedPreviousRoot)
+	require.Equal(t, backwardLET.NewDepositCount.String(), storedNewDepositCount)
+	require.Equal(t, backwardLET.NewRoot.Hex(), storedNewRoot)
+	require.False(t, rows.Next(), "Should have only one BackwardLET event")
+	rows.Close()
+}
