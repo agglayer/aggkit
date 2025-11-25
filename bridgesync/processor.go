@@ -1076,10 +1076,10 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 	shouldRollback = false
 
-	logMsg := fmt.Sprintf("[%s] block %d processed with %d events", p.syncerID, block.Num, len(block.Events))
+	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
 	if len(block.Events) > 0 {
 		p.log.Info(logMsg)
-		p.log.Debugf("[%s] indexed events: %+v", p.syncerID, block.Events)
+		p.log.Debugf("indexed events: %s", block.Events)
 	}
 
 	return nil
