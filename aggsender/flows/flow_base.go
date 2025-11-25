@@ -716,7 +716,11 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 			return earliestCutBlock, nil
 		}
 
-		// Check 2: Check if this claim's unclaim appears after any later unfinalized claim
+// Check 2: Ensure we can include this claim's unclaim without being forced to include
+// a later unfinalized claim that doesn't exist on L1.
+// We need to cut certificate if:
+// - a later unfinalized claim (that doesn't exist on L1) appears at or before our unclaim block
+// - and that later claim either has no unclaim OR has an unclaim after our unclaim
 		for j := i + 1; j < len(certParams.Claims); j++ {
 			laterClaim := certParams.Claims[j]
 			if laterClaim.BlockNum > unclaimBlock {
