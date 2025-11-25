@@ -3192,9 +3192,13 @@ func TestBackwardLETEvent_CombinedBridgeAndRootDeletion(t *testing.T) {
 	rows, err = p.db.Query(`SELECT block_num, block_pos, previous_deposit_count, previous_root, new_deposit_count, new_root FROM backward_let WHERE block_num = $1`, backwardLET.BlockNum)
 	require.NoError(t, err)
 	require.True(t, rows.Next(), "BackwardLET event should be stored in database")
-	var storedBlockNum, storedBlockPos uint64
-	var storedPreviousDepositCount, storedNewDepositCount string
-	var storedPreviousRoot, storedNewRoot string
+	var (
+		storedBlockNum, storedBlockPos uint64
+		storedPreviousDepositCount     string
+		storedPreviousRoot             common.Hash
+		storedNewDepositCount          string
+		storedNewRoot                  common.Hash
+	)
 	err = rows.Scan(&storedBlockNum, &storedBlockPos, &storedPreviousDepositCount, &storedPreviousRoot, &storedNewDepositCount, &storedNewRoot)
 	require.NoError(t, err)
 	require.Equal(t, backwardLET.BlockNum, storedBlockNum)

@@ -1094,29 +1094,29 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 	// Helper functions for common mock patterns
 	mockTwoClaimsGER1NotOnL1GER2OnL1 := func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier, l1InfoTreeLeafCount uint32) {
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 	}
 
 	mockThreeClaimsGER1GER2NotOnL1GER3OnL1 := func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier, l1InfoTreeLeafCount uint32) {
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger3).Return(true, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger3).Return(true, nil).Once()
 	}
 
 	mockFourClaimsGER1GER2GER3NotOnL1GER4OnL1 := func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier, l1InfoTreeLeafCount uint32) {
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger3).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger3).Return(false, nil).Once()
 		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger4, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger4).Return(true, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger4).Return(true, nil).Once()
 	}
 
 	tests := []struct {
@@ -1180,10 +1180,10 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				// First claim (block 5) - unfinalized, doesn't exist on L1
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 				// Second claim (block 15) - unfinalized, exists on L1
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedToBlock: 4, // Cut at block 4 (5 - 1) because C1 can't be included
 		},
@@ -1240,7 +1240,7 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
 				// Second claim - unfinalized, exists on L1
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedToBlock: 14, // Adjusted to block 14 (15 - 1)
 		},
@@ -1278,11 +1278,11 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger3).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger3).Return(true, nil).Once()
 			},
 			expectedToBlock: 4, // Cut at block 4 (5 - 1) because block 5's unclaim at 12 requires including block 10 which is unfinalized
 		},
@@ -1412,12 +1412,12 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, uint32(10)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger4, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger4).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger4).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger5, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger5).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger5).Return(true, nil).Once()
 			},
 			expectedToBlock: 24, // Adjusted to block 24 (25 - 1)
 		},
@@ -1533,9 +1533,9 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedToBlock: 4, // Cut at block 4 (5 - 1) because block 5's unclaim at 15 requires including block 15 which is unfinalized
 		},
@@ -1573,7 +1573,7 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedToBlock: 9, // Adjusted to block 9 (10 - 1) - earliest unfinalized existent GER
 		},
@@ -1641,9 +1641,9 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedError: "cannot create certificate: claim at block 1 (start block 1) cannot be included and no valid blocks before it",
 		},
@@ -1686,7 +1686,7 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger1).Return(false, errors.New("some error")).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, errors.New("some error")).Once()
 			},
 			expectedError: "error checking if GER",
 		},
@@ -1741,7 +1741,7 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				// First pass: check all claims (cached results will be reused in subsequent calls)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(false, errors.New("some error")).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, errors.New("some error")).Once()
 			},
 			expectedError: "error checking if GER",
 		},

@@ -208,7 +208,7 @@ func (l *L1InfoTreeDataQuerier) IsGERFinalized(
 	return info.L1InfoTreeIndex <= finalizedL1InfoLeafCount-1, nil
 }
 
-func (l *L1InfoTreeDataQuerier) IsGERExistsOnL1(
+func (l *L1InfoTreeDataQuerier) DoesGERExistsOnL1(
 	ger common.Hash,
 ) (bool, error) {
 	gerIndex, err := l.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)

@@ -892,9 +892,11 @@ func TestBackwardLETEvent_DatabaseInsertion(t *testing.T) {
 
 	require.True(t, rows.Next(), "BackwardLET event should be inserted in database")
 
-	var storedBlockNum, storedBlockPos uint64
-	var storedPreviousDepositCount, storedNewDepositCount string
-	var storedPreviousRoot, storedNewRoot string
+	var (
+		storedBlockNum, storedBlockPos                    uint64
+		storedPreviousDepositCount, storedNewDepositCount string
+		storedPreviousRoot, storedNewRoot                 common.Hash
+	)
 
 	err = rows.Scan(
 		&storedBlockNum,

@@ -394,7 +394,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(1)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(1)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
