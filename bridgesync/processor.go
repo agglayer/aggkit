@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -107,6 +108,17 @@ type Bridge struct {
 	TxnSender          common.Address `meddler:"txn_sender,address"`
 }
 
+func (b *Bridge) String() string {
+	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
+		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
+		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
+		"DepositCount: %d, TxnSender: %s}",
+		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
+		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
+		b.DestinationNetwork, b.DestinationAddress.String(), b.Amount.String(), b.Metadata,
+		b.DepositCount, b.TxnSender.String())
+}
+
 // Hash returns the hash of the bridge event as expected by the exit tree
 // Note: can't change the Hash() here after adding BlockTimestamp and TxHash. Might affect previous versions
 func (b *Bridge) Hash() common.Hash {
@@ -155,6 +167,19 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+}
+
+func (c *Claim) String() string {
+	return fmt.Sprintf("Claim{BlockNum: %d, BlockPos: %d, TxHash: %s, GlobalIndex: %s, "+
+		"OriginNetwork: %d, OriginAddress: %s, DestinationAddress: %s, Amount: %s, "+
+		"ProofLocalExitRoot: %v, ProofRollupExitRoot: %v, MainnetExitRoot: %s, "+
+		"RollupExitRoot: %s, GlobalExitRoot: %s, DestinationNetwork: %d, Metadata: %x, "+
+		"IsMessage: %t, BlockTimestamp: %d}",
+		c.BlockNum, c.BlockPos, c.TxHash.String(), c.GlobalIndex.String(),
+		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), c.Amount.String(),
+		c.ProofLocalExitRoot.String(), c.ProofRollupExitRoot.String(), c.MainnetExitRoot.String(),
+		c.RollupExitRoot.String(), c.GlobalExitRoot.String(), c.DestinationNetwork, c.Metadata,
+		c.IsMessage, c.BlockTimestamp)
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
@@ -341,6 +366,15 @@ type TokenMapping struct {
 	Type                bridgetypes.TokenMappingType `meddler:"token_type"`
 }
 
+func (t *TokenMapping) String() string {
+	return fmt.Sprintf("TokenMapping{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
+		"OriginNetwork: %d, OriginTokenAddress: %s, WrappedTokenAddress: %s, Metadata: %x, "+
+		"IsNotMintable: %t, Type: %s}",
+		t.BlockNum, t.BlockPos, t.BlockTimestamp, t.TxHash.String(),
+		t.OriginNetwork, t.OriginTokenAddress.String(), t.WrappedTokenAddress.String(), t.Metadata,
+		t.IsNotMintable, t.Type.String())
+}
+
 // LegacyTokenMigration representation of a MigrateLegacyToken event,
 // that is emitted by the sovereign chain bridge contract.
 type LegacyTokenMigration struct {
@@ -354,6 +388,14 @@ type LegacyTokenMigration struct {
 	Amount              *big.Int       `meddler:"amount,bigint"`
 }
 
+func (l *LegacyTokenMigration) String() string {
+	return fmt.Sprintf("LegacyTokenMigration{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
+		"Sender: %s, LegacyTokenAddress: %s, UpdatedTokenAddress: %s, Amount: %s}",
+		l.BlockNum, l.BlockPos, l.BlockTimestamp, l.TxHash.String(),
+		l.Sender.String(), l.LegacyTokenAddress.String(), l.UpdatedTokenAddress.String(),
+		l.Amount.String())
+}
+
 // RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
 // that is emitted by the sovereign chain bridge contract.
 type RemoveLegacyToken struct {
@@ -362,6 +404,13 @@ type RemoveLegacyToken struct {
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash"`
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
+}
+
+func (r *RemoveLegacyToken) String() string {
+	return fmt.Sprintf("RemoveLegacyToken{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
+		"LegacyTokenAddress: %s}",
+		r.BlockNum, r.BlockPos, r.BlockTimestamp, r.TxHash.String(),
+		r.LegacyTokenAddress.String())
 }
 
 // UnsetClaim representation of an UpdatedUnsetGlobalIndexHashChain event,
@@ -375,6 +424,13 @@ type UnsetClaim struct {
 	CreatedAt                 uint64      `meddler:"created_at"`
 }
 
+func (u *UnsetClaim) String() string {
+	return fmt.Sprintf("UnsetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
+		"GlobalIndex: %s, UnsetGlobalIndexHashChain: %s, CreatedAt: %d}",
+		u.BlockNum, u.BlockPos, u.TxHash.String(),
+		u.GlobalIndex.String(), u.UnsetGlobalIndexHashChain.String(), u.CreatedAt)
+}
+
 // SetClaim representation of a SetClaim event,
 // that is emitted by the bridge contract when a claim is set.
 type SetClaim struct {
@@ -383,6 +439,13 @@ type SetClaim struct {
 	TxHash      common.Hash `meddler:"tx_hash,hash"`
 	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
 	CreatedAt   uint64      `meddler:"created_at"`
+}
+
+func (s *SetClaim) String() string {
+	return fmt.Sprintf("SetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
+		"GlobalIndex: %s, CreatedAt: %d}",
+		s.BlockNum, s.BlockPos, s.TxHash.String(),
+		s.GlobalIndex.String(), s.CreatedAt)
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
@@ -394,6 +457,32 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 	UnsetClaim           *UnsetClaim
 	SetClaim             *SetClaim
+}
+
+func (e Event) String() string {
+	parts := []string{}
+	if e.Bridge != nil {
+		parts = append(parts, e.Bridge.String())
+	}
+	if e.Claim != nil {
+		parts = append(parts, e.Claim.String())
+	}
+	if e.TokenMapping != nil {
+		parts = append(parts, e.TokenMapping.String())
+	}
+	if e.LegacyTokenMigration != nil {
+		parts = append(parts, e.LegacyTokenMigration.String())
+	}
+	if e.RemoveLegacyToken != nil {
+		parts = append(parts, e.RemoveLegacyToken.String())
+	}
+	if e.UnsetClaim != nil {
+		parts = append(parts, e.UnsetClaim.String())
+	}
+	if e.SetClaim != nil {
+		parts = append(parts, e.SetClaim.String())
+	}
+	return "Event{" + strings.Join(parts, ", ") + "}"
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -1079,7 +1168,18 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
 	if len(block.Events) > 0 {
 		p.log.Info(logMsg)
-		p.log.Debugf("indexed events: %s", block.Events)
+
+		if p.log.IsEnabledLogLevel(zapcore.DebugLevel) {
+			p.log.Debugf("[%s] indexed events: ", p.syncerID)
+			for _, e := range block.Events {
+				event, ok := e.(Event)
+				if !ok {
+					p.log.Errorf("failed to convert event to Event type in block %d for debug logging", block.Num)
+					return errors.New("failed to convert sync.Block.Event to Event for debug logging")
+				}
+				p.log.Debugf("%s", event.String())
+			}
+		}
 	}
 
 	return nil
