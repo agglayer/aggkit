@@ -275,33 +275,3 @@ func VerifyProof(leaf common.Hash, proof types.Proof, index uint32, expectedRoot
 		calculated.Hex(), expectedRoot.Hex(),
 	)
 }
-
-// DeleteRoot finds the root by hash and deletes all rows that come after it
-func (t *Tree) DeleteRoot(tx dbtypes.Querier, root common.Hash) error {
-	if tx == nil {
-		tx = t.db
-	}
-
-	// First, find the root to get its block_num and block_position
-	var foundRoot types.Root
-	err := meddler.QueryRow(
-		tx, &foundRoot,
-		fmt.Sprintf(`SELECT * FROM %s WHERE hash = $1;`, t.rootTable),
-		root.Hex(),
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return db.ErrNotFound
-		}
-		return err
-	}
-
-	// Delete all roots that come after the found root
-	// (rows with block_num > found_block_num OR (block_num = found_block_num AND block_position > found_block_position))
-	_, err = tx.Exec(
-		fmt.Sprintf(`DELETE FROM %s WHERE block_num > $1 OR (block_num = $1 AND block_position > $2)`, t.rootTable),
-		foundRoot.BlockNum,
-		foundRoot.BlockPosition,
-	)
-	return err
-}

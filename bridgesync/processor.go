@@ -1105,18 +1105,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				p.log.Errorf("failed to insert backward let event at block %d: %v", block.Num, err)
 				return err
 			}
-			// delete from bridge table from  the new deposit count to latest deposit count
-			_, err := tx.Exec(fmt.Sprintf(`DELETE FROM %s WHERE deposit_count > $1`, bridgeTableName), event.BackwardLET.NewDepositCount.Uint64())
-			if err != nil {
-				p.log.Errorf("failed to delete bridges for backward let at block %d: %v", block.Num, err)
-				return err
-			}
-			// delete from root table from the new root to last root
-			err = p.exitTree.DeleteRoot(tx, event.BackwardLET.NewRoot)
-			if err != nil {
-				p.log.Errorf("failed to delete roots for backward let at block %d: %v", block.Num, err)
-				return err
-			}
 		}
 	}
 
