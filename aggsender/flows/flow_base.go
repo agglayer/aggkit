@@ -354,7 +354,6 @@ func (f *baseFlow) getImportedBridgeExits(
 	unclaims []bridgesynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-
 	// Build unclaim counts by GlobalIndex
 	unclaimCnt := make(map[string]int)
 	for _, u := range unclaims {
@@ -716,7 +715,6 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 			}
 			return earliestCutBlock, nil
 		}
-
 		// Check 2: Check if this claim's unclaim appears after any later unfinalized claim
 		for j := i + 1; j < len(certParams.Claims); j++ {
 			laterClaim := certParams.Claims[j]
