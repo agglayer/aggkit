@@ -895,16 +895,16 @@ func TestBackwardLETEvent_DatabaseInsertion(t *testing.T) {
 	var (
 		storedBlockNum, storedBlockPos                    uint64
 		storedPreviousDepositCount, storedNewDepositCount string
-		storedPreviousRoot, storedNewRoot                 common.Hash
+		storedPreviousRootStr, storedNewRootStr           string
 	)
 
 	err = rows.Scan(
 		&storedBlockNum,
 		&storedBlockPos,
 		&storedPreviousDepositCount,
-		&storedPreviousRoot,
+		&storedPreviousRootStr,
 		&storedNewDepositCount,
-		&storedNewRoot,
+		&storedNewRootStr,
 	)
 	require.NoError(t, err)
 
@@ -912,9 +912,9 @@ func TestBackwardLETEvent_DatabaseInsertion(t *testing.T) {
 	require.Equal(t, backwardLET.BlockNum, storedBlockNum, "BlockNum should match")
 	require.Equal(t, backwardLET.BlockPos, storedBlockPos, "BlockPos should match")
 	require.Equal(t, previousDepositCount.String(), storedPreviousDepositCount, "PreviousDepositCount should match")
-	require.Equal(t, previousRoot.Hex(), storedPreviousRoot, "PreviousRoot should match")
+	require.Equal(t, previousRoot.Hex(), storedPreviousRootStr, "PreviousRoot should match")
 	require.Equal(t, newDepositCount.String(), storedNewDepositCount, "NewDepositCount should match")
-	require.Equal(t, newRoot.Hex(), storedNewRoot, "NewRoot should match")
+	require.Equal(t, newRoot.Hex(), storedNewRootStr, "NewRoot should match")
 
 	require.False(t, rows.Next(), "Should have only one BackwardLET event")
 }
