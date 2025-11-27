@@ -561,7 +561,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, co
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
 			return []Claim{}, nil
 		}
-		p.log.Errorf("GetClaimsNew: query failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
+		p.log.Errorf("GetClaims query failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 
@@ -573,14 +573,14 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, co
 
 	claimPtrs := []*Claim{}
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
-		p.log.Errorf("GetClaimsNew: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
+		p.log.Errorf("GetClaims: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 
 	claimsIface := db.SlicePtrsToSlice(claimPtrs)
 	claims, ok := claimsIface.([]Claim)
 	if !ok {
-		p.log.Errorf("GetClaimsNew: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
+		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
 		return nil, errFailToConvertClaims
 	}
 

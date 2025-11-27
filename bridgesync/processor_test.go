@@ -2784,7 +2784,7 @@ func TestDeleteClaimReason_String(t *testing.T) {
 }
 
 //nolint:dupl
-func TestGetClaimsNew(t *testing.T) {
+func TestGetClaims_Compact(t *testing.T) {
 	// Define all claims used across test cases
 	claims := []*Claim{
 		// claims[0] - Basic claim with GlobalIndex=1
