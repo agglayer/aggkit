@@ -35,7 +35,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
 					{BlockNum: 100, BlockPos: 1},
 				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
+				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200), false).Return([]bridgesync.Claim{
 					{BlockNum: 200, BlockPos: 1},
 				}, nil)
 			},
@@ -65,7 +65,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
 					{BlockNum: 100, BlockPos: 1},
 				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
+				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200), false).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting claims: some error",
 		},
@@ -75,7 +75,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			toBlock:   200,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, nil)
+				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200), false).Return(nil, nil)
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
@@ -95,7 +95,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
 
-			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
+			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, false)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

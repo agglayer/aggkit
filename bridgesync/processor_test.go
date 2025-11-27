@@ -483,7 +483,7 @@ func (a *getClaims) desc() string {
 
 func (a *getClaims) execute(t *testing.T) {
 	t.Helper()
-	actualEvents, actualErr := a.p.GetClaims(a.ctx, a.fromBlock, a.toBlock)
+	actualEvents, actualErr := a.p.getClaims(a.ctx, a.fromBlock, a.toBlock)
 	require.Equal(t, a.expectedErr, actualErr)
 	require.Equal(t, a.expectedClaims, actualEvents)
 }
@@ -859,7 +859,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	require.NoError(t, tx.Commit())
 
 	// get test claim
-	claims, err := p.GetClaims(context.Background(), 1, 1)
+	claims, err := p.getClaims(context.Background(), 1, 1)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 	require.Equal(t, testClaim, &claims[0])
@@ -2742,7 +2742,7 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 
-	_, err = pShortTimeout.GetClaims(ctx, 1, 1)
+	_, err = pShortTimeout.getClaims(ctx, 1, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 }
@@ -3748,7 +3748,7 @@ func TestGetClaimsNew(t *testing.T) {
 			}
 
 			// Execute test
-			claims, err := p.GetClaimsNew(ctx, tc.queryFrom, tc.queryTo, tc.compacted)
+			claims, err := p.GetClaims(ctx, tc.queryFrom, tc.queryTo, tc.compacted)
 
 			// Validate error expectations
 			if tc.errorContains != "" {

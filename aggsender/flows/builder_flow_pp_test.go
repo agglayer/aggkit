@@ -311,7 +311,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(nil, nil, errors.New("some error"))
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
@@ -324,7 +324,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 			},
 			expectedParams: nil,
@@ -339,7 +339,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(true, nil).Once()
 			},
@@ -355,7 +355,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 10}}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 10}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(false, errors.New("some error")).Once()
 			},
@@ -376,7 +376,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				rer2 := common.HexToHash("0x3")
 				mer2 := common.HexToHash("0x4")
 				ger2 := l1infotreesync.CalculateGER(mer2, rer2)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{
 					{
 						BlockNum:        9,
 						GlobalExitRoot:  ger1,
@@ -428,7 +428,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
 				ger := l1infotreesync.CalculateGER(mer, rer)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{
 					{
 						BlockNum:        1,
 						GlobalExitRoot:  ger,
@@ -469,7 +469,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return(
 					[]bridgesync.Bridge{{}}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(true, nil).Once()
@@ -497,7 +497,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
 						RollupExitRoot:  rer,

@@ -58,7 +58,7 @@ type AggsenderVerifierFlow interface {
 
 type AggsenderFlowBaser interface {
 	GetCertificateBuildParamsInternal(
-		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
+		ctx context.Context, certType CertificateType, compactedClaims bool) (*CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		certParams *CertificateBuildParams,
 		lastSentCertificate *CertificateHeader,
@@ -69,13 +69,15 @@ type AggsenderFlowBaser interface {
 	VerifyBlockRangeGaps(
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
-		newFromBlock, newToBlock uint64) error
+		newFromBlock, newToBlock uint64,
+		compactedClaims bool) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)
 	GenerateBuildParams(ctx context.Context,
-		preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
+		preParams CertificatePreBuildParams,
+		compactedClaims bool) (*CertificateBuildParams, error)
 	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
 
@@ -98,7 +100,7 @@ type L2BridgeSyncer interface {
 	GetBlockByLER(ctx context.Context, ler common.Hash) (uint64, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
-	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
+	GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
@@ -111,6 +113,7 @@ type BridgeQuerier interface {
 	GetBridgesAndClaims(
 		ctx context.Context,
 		fromBlock, toBlock uint64,
+		compactedClaims bool,
 	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)

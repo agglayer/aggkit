@@ -147,9 +147,9 @@ func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) RunAndReturn
 	return _c
 }
 
-// GenerateBuildParams provides a mock function with given fields: ctx, preParams
-func (_m *AggsenderFlowBaser) GenerateBuildParams(ctx context.Context, preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
-	ret := _m.Called(ctx, preParams)
+// GenerateBuildParams provides a mock function with given fields: ctx, preParams, compactedClaims
+func (_m *AggsenderFlowBaser) GenerateBuildParams(ctx context.Context, preParams types.CertificatePreBuildParams, compactedClaims bool) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, preParams, compactedClaims)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateBuildParams")
@@ -157,19 +157,19 @@ func (_m *AggsenderFlowBaser) GenerateBuildParams(ctx context.Context, preParams
 
 	var r0 *types.CertificateBuildParams
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)); ok {
-		return rf(ctx, preParams)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificatePreBuildParams, bool) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, preParams, compactedClaims)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, types.CertificatePreBuildParams) *types.CertificateBuildParams); ok {
-		r0 = rf(ctx, preParams)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificatePreBuildParams, bool) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, preParams, compactedClaims)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateBuildParams)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, types.CertificatePreBuildParams) error); ok {
-		r1 = rf(ctx, preParams)
+	if rf, ok := ret.Get(1).(func(context.Context, types.CertificatePreBuildParams, bool) error); ok {
+		r1 = rf(ctx, preParams, compactedClaims)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -185,13 +185,14 @@ type AggsenderFlowBaser_GenerateBuildParams_Call struct {
 // GenerateBuildParams is a helper method to define mock.On call
 //   - ctx context.Context
 //   - preParams types.CertificatePreBuildParams
-func (_e *AggsenderFlowBaser_Expecter) GenerateBuildParams(ctx interface{}, preParams interface{}) *AggsenderFlowBaser_GenerateBuildParams_Call {
-	return &AggsenderFlowBaser_GenerateBuildParams_Call{Call: _e.mock.On("GenerateBuildParams", ctx, preParams)}
+//   - compactedClaims bool
+func (_e *AggsenderFlowBaser_Expecter) GenerateBuildParams(ctx interface{}, preParams interface{}, compactedClaims interface{}) *AggsenderFlowBaser_GenerateBuildParams_Call {
+	return &AggsenderFlowBaser_GenerateBuildParams_Call{Call: _e.mock.On("GenerateBuildParams", ctx, preParams, compactedClaims)}
 }
 
-func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) Run(run func(ctx context.Context, preParams types.CertificatePreBuildParams)) *AggsenderFlowBaser_GenerateBuildParams_Call {
+func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) Run(run func(ctx context.Context, preParams types.CertificatePreBuildParams, compactedClaims bool)) *AggsenderFlowBaser_GenerateBuildParams_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.CertificatePreBuildParams))
+		run(args[0].(context.Context), args[1].(types.CertificatePreBuildParams), args[2].(bool))
 	})
 	return _c
 }
@@ -201,7 +202,7 @@ func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) Return(_a0 *types.Certifi
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) RunAndReturn(run func(context.Context, types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GenerateBuildParams_Call {
+func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) RunAndReturn(run func(context.Context, types.CertificatePreBuildParams, bool) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GenerateBuildParams_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -265,9 +266,9 @@ func (_c *AggsenderFlowBaser_GeneratePreBuildParams_Call) RunAndReturn(run func(
 	return _c
 }
 
-// GetCertificateBuildParamsInternal provides a mock function with given fields: ctx, certType
-func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
-	ret := _m.Called(ctx, certType)
+// GetCertificateBuildParamsInternal provides a mock function with given fields: ctx, certType, compactedClaims
+func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Context, certType types.CertificateType, compactedClaims bool) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, certType, compactedClaims)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCertificateBuildParamsInternal")
@@ -275,19 +276,19 @@ func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Cont
 
 	var r0 *types.CertificateBuildParams
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) (*types.CertificateBuildParams, error)); ok {
-		return rf(ctx, certType)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType, bool) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, certType, compactedClaims)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) *types.CertificateBuildParams); ok {
-		r0 = rf(ctx, certType)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType, bool) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, certType, compactedClaims)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateBuildParams)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, types.CertificateType) error); ok {
-		r1 = rf(ctx, certType)
+	if rf, ok := ret.Get(1).(func(context.Context, types.CertificateType, bool) error); ok {
+		r1 = rf(ctx, certType, compactedClaims)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -303,13 +304,14 @@ type AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call struct {
 // GetCertificateBuildParamsInternal is a helper method to define mock.On call
 //   - ctx context.Context
 //   - certType types.CertificateType
-func (_e *AggsenderFlowBaser_Expecter) GetCertificateBuildParamsInternal(ctx interface{}, certType interface{}) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
-	return &AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call{Call: _e.mock.On("GetCertificateBuildParamsInternal", ctx, certType)}
+//   - compactedClaims bool
+func (_e *AggsenderFlowBaser_Expecter) GetCertificateBuildParamsInternal(ctx interface{}, certType interface{}, compactedClaims interface{}) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
+	return &AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call{Call: _e.mock.On("GetCertificateBuildParamsInternal", ctx, certType, compactedClaims)}
 }
 
-func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) Run(run func(ctx context.Context, certType types.CertificateType)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
+func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) Run(run func(ctx context.Context, certType types.CertificateType, compactedClaims bool)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.CertificateType))
+		run(args[0].(context.Context), args[1].(types.CertificateType), args[2].(bool))
 	})
 	return _c
 }
@@ -319,7 +321,7 @@ func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) Return(_a0 
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) RunAndReturn(run func(context.Context, types.CertificateType) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
+func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) RunAndReturn(run func(context.Context, types.CertificateType, bool) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -486,17 +488,17 @@ func (_c *AggsenderFlowBaser_StartL2Block_Call) RunAndReturn(run func() uint64) 
 	return _c
 }
 
-// VerifyBlockRangeGaps provides a mock function with given fields: ctx, lastSentCertificate, newFromBlock, newToBlock
-func (_m *AggsenderFlowBaser) VerifyBlockRangeGaps(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64) error {
-	ret := _m.Called(ctx, lastSentCertificate, newFromBlock, newToBlock)
+// VerifyBlockRangeGaps provides a mock function with given fields: ctx, lastSentCertificate, newFromBlock, newToBlock, compactedClaims
+func (_m *AggsenderFlowBaser) VerifyBlockRangeGaps(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64, compactedClaims bool) error {
+	ret := _m.Called(ctx, lastSentCertificate, newFromBlock, newToBlock, compactedClaims)
 
 	if len(ret) == 0 {
 		panic("no return value specified for VerifyBlockRangeGaps")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader, uint64, uint64) error); ok {
-		r0 = rf(ctx, lastSentCertificate, newFromBlock, newToBlock)
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader, uint64, uint64, bool) error); ok {
+		r0 = rf(ctx, lastSentCertificate, newFromBlock, newToBlock, compactedClaims)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -514,13 +516,14 @@ type AggsenderFlowBaser_VerifyBlockRangeGaps_Call struct {
 //   - lastSentCertificate *types.CertificateHeader
 //   - newFromBlock uint64
 //   - newToBlock uint64
-func (_e *AggsenderFlowBaser_Expecter) VerifyBlockRangeGaps(ctx interface{}, lastSentCertificate interface{}, newFromBlock interface{}, newToBlock interface{}) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
-	return &AggsenderFlowBaser_VerifyBlockRangeGaps_Call{Call: _e.mock.On("VerifyBlockRangeGaps", ctx, lastSentCertificate, newFromBlock, newToBlock)}
+//   - compactedClaims bool
+func (_e *AggsenderFlowBaser_Expecter) VerifyBlockRangeGaps(ctx interface{}, lastSentCertificate interface{}, newFromBlock interface{}, newToBlock interface{}, compactedClaims interface{}) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+	return &AggsenderFlowBaser_VerifyBlockRangeGaps_Call{Call: _e.mock.On("VerifyBlockRangeGaps", ctx, lastSentCertificate, newFromBlock, newToBlock, compactedClaims)}
 }
 
-func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Run(run func(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64)) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Run(run func(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64, compactedClaims bool)) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*types.CertificateHeader), args[2].(uint64), args[3].(uint64))
+		run(args[0].(context.Context), args[1].(*types.CertificateHeader), args[2].(uint64), args[3].(uint64), args[4].(bool))
 	})
 	return _c
 }
@@ -530,7 +533,7 @@ func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Return(_a0 error) *Aggse
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) RunAndReturn(run func(context.Context, *types.CertificateHeader, uint64, uint64) error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) RunAndReturn(run func(context.Context, *types.CertificateHeader, uint64, uint64, bool) error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
 	_c.Call.Return(run)
 	return _c
 }

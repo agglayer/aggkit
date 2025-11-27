@@ -62,7 +62,7 @@ func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 	if preParams == nil {
 		return nil, fmt.Errorf("ppFlow - preParams is nil")
 	}
-	params, err := p.baseFlow.GenerateBuildParams(ctx, *preParams)
+	params, err := p.baseFlow.GenerateBuildParams(ctx, *preParams, true) // PP mode uses compacted claims
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error generating build params: %w", err)
 	}
@@ -80,7 +80,8 @@ func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPBuilderFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.baseFlow.GetCertificateBuildParamsInternal(ctx, types.CertificateTypePP)
+	buildParams, err := p.baseFlow.GetCertificateBuildParamsInternal(ctx,
+		types.CertificateTypePP, true) // PP mode uses compacted claims
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate,

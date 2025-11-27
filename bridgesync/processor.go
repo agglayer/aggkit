@@ -502,9 +502,9 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-func (p *processor) GetClaimsNew(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
+func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
 	if !compacted {
-		return p.GetClaims(ctx, fromBlock, toBlock)
+		return p.getClaims(ctx, fromBlock, toBlock)
 	}
 
 	// Check if blocks are processed
@@ -587,7 +587,7 @@ func (p *processor) GetClaimsNew(ctx context.Context, fromBlock, toBlock uint64,
 	return claims, nil
 }
 
-func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
+func (p *processor) getClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
 	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {

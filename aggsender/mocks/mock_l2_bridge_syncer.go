@@ -147,9 +147,9 @@ func (_c *L2BridgeSyncer_GetBridges_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
-// GetClaims provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *L2BridgeSyncer) GetClaims(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesync.Claim, error) {
-	ret := _m.Called(ctx, fromBlock, toBlock)
+// GetClaims provides a mock function with given fields: ctx, fromBlock, toBlock, compacted
+func (_m *L2BridgeSyncer) GetClaims(ctx context.Context, fromBlock uint64, toBlock uint64, compacted bool) ([]bridgesync.Claim, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock, compacted)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClaims")
@@ -157,19 +157,19 @@ func (_m *L2BridgeSyncer) GetClaims(ctx context.Context, fromBlock uint64, toBlo
 
 	var r0 []bridgesync.Claim
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]bridgesync.Claim, error)); ok {
-		return rf(ctx, fromBlock, toBlock)
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, bool) ([]bridgesync.Claim, error)); ok {
+		return rf(ctx, fromBlock, toBlock, compacted)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []bridgesync.Claim); ok {
-		r0 = rf(ctx, fromBlock, toBlock)
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, bool) []bridgesync.Claim); ok {
+		r0 = rf(ctx, fromBlock, toBlock, compacted)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]bridgesync.Claim)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) error); ok {
-		r1 = rf(ctx, fromBlock, toBlock)
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64, bool) error); ok {
+		r1 = rf(ctx, fromBlock, toBlock, compacted)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -186,13 +186,14 @@ type L2BridgeSyncer_GetClaims_Call struct {
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-func (_e *L2BridgeSyncer_Expecter) GetClaims(ctx interface{}, fromBlock interface{}, toBlock interface{}) *L2BridgeSyncer_GetClaims_Call {
-	return &L2BridgeSyncer_GetClaims_Call{Call: _e.mock.On("GetClaims", ctx, fromBlock, toBlock)}
+//   - compacted bool
+func (_e *L2BridgeSyncer_Expecter) GetClaims(ctx interface{}, fromBlock interface{}, toBlock interface{}, compacted interface{}) *L2BridgeSyncer_GetClaims_Call {
+	return &L2BridgeSyncer_GetClaims_Call{Call: _e.mock.On("GetClaims", ctx, fromBlock, toBlock, compacted)}
 }
 
-func (_c *L2BridgeSyncer_GetClaims_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *L2BridgeSyncer_GetClaims_Call {
+func (_c *L2BridgeSyncer_GetClaims_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64, compacted bool)) *L2BridgeSyncer_GetClaims_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64), args[3].(bool))
 	})
 	return _c
 }
@@ -202,7 +203,7 @@ func (_c *L2BridgeSyncer_GetClaims_Call) Return(_a0 []bridgesync.Claim, _a1 erro
 	return _c
 }
 
-func (_c *L2BridgeSyncer_GetClaims_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesync.Claim, error)) *L2BridgeSyncer_GetClaims_Call {
+func (_c *L2BridgeSyncer_GetClaims_Call) RunAndReturn(run func(context.Context, uint64, uint64, bool) ([]bridgesync.Claim, error)) *L2BridgeSyncer_GetClaims_Call {
 	_c.Call.Return(run)
 	return _c
 }

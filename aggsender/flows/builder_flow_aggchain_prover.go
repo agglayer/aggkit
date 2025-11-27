@@ -122,7 +122,7 @@ func (a *AggchainProverBuilderFlow) CheckInitialStatus(ctx context.Context) erro
 	}
 
 	if err := a.baseFlow.VerifyBlockRangeGaps(
-		ctx, lastSentCertificate, startL2Block, startL2Block); err != nil {
+		ctx, lastSentCertificate, startL2Block, startL2Block, false); err != nil { // FEP does not use compacted claims
 		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup. Err: %w", err)
 	}
 
@@ -151,7 +151,7 @@ func (a *AggchainProverBuilderFlow) GenerateBuildParams(ctx context.Context,
 		return nil, fmt.Errorf("aggchainProverFlow - preParams is nil")
 	}
 
-	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams)
+	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams, false) // FEP mode does not use compacted claims
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error generating build params: %w", err)
 	}
@@ -198,6 +198,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, fromBlock,
 			toBlock,
+			false, // do not include compacted claims
 		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
@@ -251,7 +252,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 			lastSentCert.CertType, typeCert)
 	}
 
-	buildParams, err := a.baseFlow.GetCertificateBuildParamsInternal(ctx, typeCert)
+	buildParams, err := a.baseFlow.GetCertificateBuildParamsInternal(ctx, typeCert, false) // FEP mode does not use compacted claims
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate

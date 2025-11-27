@@ -85,7 +85,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 	data.mockOptimisticModeQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
 	// then because last cert type doesnt match is going to act as a new one
 	// requesting to GetCertificateBuildParamsInternal to create a new cert
-	data.mockFlowBase.EXPECT().GetCertificateBuildParamsInternal(data.ctx, types.CertificateTypeFEP).Return(
+	data.mockFlowBase.EXPECT().GetCertificateBuildParamsInternal(data.ctx, types.CertificateTypeFEP, false).Return(
 		nextCert, nil).Once()
 	// After the function verifyBuildParamsAndGenerateProof calls to baseFlow.VerifyBuildParams()
 	data.mockFlowBase.EXPECT().VerifyBuildParams(mock.Anything, mock.Anything).Return(nil).Once()

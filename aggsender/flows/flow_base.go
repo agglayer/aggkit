@@ -165,13 +165,14 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 }
 
 func (f *baseFlow) GenerateBuildParams(ctx context.Context,
-	preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	preParams types.CertificatePreBuildParams,
+	compactedClaims bool) (*types.CertificateBuildParams, error) {
 	if preParams.L1InfoTreeToProve == nil {
 		return nil, fmt.Errorf("L1InfoTreeWhichToProve should be not nil for GenerateBuildParams")
 	}
 
 	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
-		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
+		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock, compactedClaims)
 	if err != nil {
 		return nil, fmt.Errorf("generateBuildParams fails getting bridges and claims. Err: %w", err)
 	}
@@ -206,12 +207,12 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 
 // GetCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) GetCertificateBuildParamsInternal(
-	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+	ctx context.Context, certType types.CertificateType, compactedClaims bool) (*types.CertificateBuildParams, error) {
 	preParams, err := f.GeneratePreBuildParams(ctx, certType)
 	if err != nil {
 		return nil, fmt.Errorf("error generating pre build params: %w", err)
 	}
-	params, err := f.GenerateBuildParams(ctx, *preParams)
+	params, err := f.GenerateBuildParams(ctx, *preParams, compactedClaims)
 	if err != nil {
 		return nil, fmt.Errorf("error generating build params: %w", err)
 	}
@@ -462,7 +463,8 @@ func (f *baseFlow) verifyRetryCertStartingBlock(buildParams *types.CertificateBu
 func (f *baseFlow) VerifyBlockRangeGaps(
 	ctx context.Context,
 	lastSentCertificate *types.CertificateHeader,
-	newFromBlock, newToBlock uint64) error {
+	newFromBlock, newToBlock uint64,
+	compactedClaims bool) error {
 	if lastSentCertificate == nil {
 		return nil
 	}
@@ -499,7 +501,7 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	}
 
 	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.GetBridgesAndClaims(
-		ctx, gap.FromBlock, gap.ToBlock)
+		ctx, gap.FromBlock, gap.ToBlock, compactedClaims)
 	if err != nil {
 		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
 	}
