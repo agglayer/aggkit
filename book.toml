@@ -1,7 +1,6 @@
 [book]
 authors = ["Aggkit Team - Polygon Labs"]
 language = "en"
-multilingual = false
 src = "docs"
 title = "Aggkit Docs"
 
