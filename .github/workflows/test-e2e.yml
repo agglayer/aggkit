@@ -18,6 +18,7 @@ concurrency:
 
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
+  KURTOSIS_CDK_COMMIT: "065241eab7a30c615147a9b262343d27e6f4cb3b"
 
 permissions:
   packages: write
@@ -54,7 +55,7 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="065241eab7a30c615147a9b262343d27e6f4cb3b"
+            COMMIT="${{ env.KURTOSIS_CDK_COMMIT }}"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
