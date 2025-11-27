@@ -43,6 +43,11 @@ type BaseFlowConfig struct {
 	RequireNoFEPBlockGap bool
 	// FullClaimsNeeded indicates whether the flow requires full claims data
 	FullClaimsNeeded bool
+	// CompactClaims indicates whether the flow requires the l2 bridge syncer
+	// to compact the claims when retrieving them
+	//  (in case when we have an invalid claim with GlobalIndex=1, and then a valid claim
+	//   that fixes it with GlobalIndex=1, we only want to latest one in the certificate)
+	CompactClaims bool
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
@@ -52,6 +57,7 @@ func NewBaseFlowConfigDefault() BaseFlowConfig {
 		StartL2Block:         0,     // 0 means start from the first block
 		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
 		FullClaimsNeeded:     true,  // default is true, can be set to false if full claims are not needed
+		CompactClaims:        true,  // default is true, can be set to false if compact claims are not needed
 	}
 }
 
@@ -61,12 +67,14 @@ func NewBaseFlowConfig(
 	startL2Block uint64,
 	requireNoFEPBlockGap bool,
 	fullClaimsNeeded bool,
+	compactClaims bool,
 ) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:          maxCertSize,
 		StartL2Block:         startL2Block,
 		RequireNoFEPBlockGap: requireNoFEPBlockGap,
 		FullClaimsNeeded:     fullClaimsNeeded,
+		CompactClaims:        compactClaims,
 	}
 }
 
@@ -165,14 +173,13 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 }
 
 func (f *baseFlow) GenerateBuildParams(ctx context.Context,
-	preParams types.CertificatePreBuildParams,
-	compactedClaims bool) (*types.CertificateBuildParams, error) {
+	preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
 	if preParams.L1InfoTreeToProve == nil {
 		return nil, fmt.Errorf("L1InfoTreeWhichToProve should be not nil for GenerateBuildParams")
 	}
 
 	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
-		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock, compactedClaims)
+		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock, f.cfg.CompactClaims)
 	if err != nil {
 		return nil, fmt.Errorf("generateBuildParams fails getting bridges and claims. Err: %w", err)
 	}
@@ -207,12 +214,12 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 
 // GetCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) GetCertificateBuildParamsInternal(
-	ctx context.Context, certType types.CertificateType, compactedClaims bool) (*types.CertificateBuildParams, error) {
+	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	preParams, err := f.GeneratePreBuildParams(ctx, certType)
 	if err != nil {
 		return nil, fmt.Errorf("error generating pre build params: %w", err)
 	}
-	params, err := f.GenerateBuildParams(ctx, *preParams, compactedClaims)
+	params, err := f.GenerateBuildParams(ctx, *preParams)
 	if err != nil {
 		return nil, fmt.Errorf("error generating build params: %w", err)
 	}
@@ -463,8 +470,7 @@ func (f *baseFlow) verifyRetryCertStartingBlock(buildParams *types.CertificateBu
 func (f *baseFlow) VerifyBlockRangeGaps(
 	ctx context.Context,
 	lastSentCertificate *types.CertificateHeader,
-	newFromBlock, newToBlock uint64,
-	compactedClaims bool) error {
+	newFromBlock, newToBlock uint64) error {
 	if lastSentCertificate == nil {
 		return nil
 	}
@@ -501,7 +507,7 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	}
 
 	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.GetBridgesAndClaims(
-		ctx, gap.FromBlock, gap.ToBlock, compactedClaims)
+		ctx, gap.FromBlock, gap.ToBlock, f.cfg.CompactClaims)
 	if err != nil {
 		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
 	}

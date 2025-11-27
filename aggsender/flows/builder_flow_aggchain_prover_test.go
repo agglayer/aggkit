@@ -360,7 +360,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
 				mockLERQuerier,
-				NewBaseFlowConfigDefault())
+				NewBaseFlowConfig(0, 0, false, true, false))
 			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverBuilderFlow(
 				logger,
@@ -479,7 +479,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // sotrage
 				nil, // l1InfoTreeDataQuerier,
 				nil, // lerQuerier
-				NewBaseFlowConfig(0, tc.startL2Block, false, true),
+				NewBaseFlowConfig(0, tc.startL2Block, false, true, false),
 			)
 			flow := NewAggchainProverBuilderFlow(
 				logger,
@@ -743,7 +743,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
 				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(15)).Return(nil).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15), false).
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15)).
 					Return(errors.New("gap error")).Once()
 			},
 			expectedError: "aggchainProverFlow - error verifying block range gaps on startup",
@@ -760,7 +760,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
 				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(11)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(11)).Return(nil).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11), false).
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11)).
 					Return(nil).Once()
 			},
 		},
@@ -823,7 +823,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 			mockFn: func(mockBaseFlow *mocks.AggsenderFlowBaser) {
 				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
 					BlockRange: aggkitcommon.NewBlockRange(1, 10),
-				}, false).Return(nil, errors.New("base flow error")).Once()
+				}).Return(nil, errors.New("base flow error")).Once()
 			},
 			expectedError: "aggchainProverFlow - error generating build params: base flow error",
 		},
@@ -844,7 +844,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 				}
 				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
 					BlockRange: aggkitcommon.NewBlockRange(1, 10),
-				}, false).Return(expectedParams, nil).Once()
+				}).Return(expectedParams, nil).Once()
 				mockBaseFlow.EXPECT().VerifyBuildParams(ctx, expectedParams).Return(nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{

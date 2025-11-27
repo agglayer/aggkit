@@ -35,6 +35,7 @@ func NewVerifierFlow(
 			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
+			true, // compact claims are needed in validator PP mode
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
@@ -63,7 +64,8 @@ func NewVerifierFlow(
 			0, cfg.FEPConfig.RequireNoBlockGap,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
-			true, // full claims are (eventually) needed in validator mode
+			true,  // full claims are (eventually) needed in validator mode
+			false, // compact claims are not needed in validator FEP mode
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,

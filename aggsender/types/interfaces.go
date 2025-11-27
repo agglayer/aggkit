@@ -58,7 +58,7 @@ type AggsenderVerifierFlow interface {
 
 type AggsenderFlowBaser interface {
 	GetCertificateBuildParamsInternal(
-		ctx context.Context, certType CertificateType, compactedClaims bool) (*CertificateBuildParams, error)
+		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		certParams *CertificateBuildParams,
 		lastSentCertificate *CertificateHeader,
@@ -69,15 +69,13 @@ type AggsenderFlowBaser interface {
 	VerifyBlockRangeGaps(
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
-		newFromBlock, newToBlock uint64,
-		compactedClaims bool) error
+		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)
 	GenerateBuildParams(ctx context.Context,
-		preParams CertificatePreBuildParams,
-		compactedClaims bool) (*CertificateBuildParams, error)
+		preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
 	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
 

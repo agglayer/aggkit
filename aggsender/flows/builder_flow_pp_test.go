@@ -622,7 +622,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block, false, true)}
+			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block, false, true, true)}
 
 			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
 

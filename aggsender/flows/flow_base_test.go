@@ -130,7 +130,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				NewBaseFlowConfig(tt.maxCertSize, 0, false, true))
+				NewBaseFlowConfig(tt.maxCertSize, 0, false, true, true))
 
 			result, err := f.LimitCertSize(tt.fullCert)
 
@@ -752,7 +752,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 				},
 			}
 
-			err := f.VerifyBlockRangeGaps(ctx, tt.args.lastSentCertificate, tt.args.newFromBlock, tt.args.newToBlock, false)
+			err := f.VerifyBlockRangeGaps(ctx, tt.args.lastSentCertificate, tt.args.newFromBlock, tt.args.newToBlock)
 			if tt.expectedError != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedError)
