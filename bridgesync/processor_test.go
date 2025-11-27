@@ -2783,6 +2783,7 @@ func TestDeleteClaimReason_String(t *testing.T) {
 	}
 }
 
+//nolint:dupl
 func TestGetClaimsNew(t *testing.T) {
 	// Define all claims used across test cases
 	claims := []*Claim{
@@ -3183,6 +3184,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       2,
 			expectedCount: 2,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				require.Len(t, claims, 2)
 				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex)
 				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex)
@@ -3220,6 +3222,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 3,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				require.Len(t, claims, 3, "all duplicate claims should be returned in non-compacted mode")
 				// Verify all three claims have the same GlobalIndex
 				require.Equal(t, big.NewInt(100), claims[0].GlobalIndex)
@@ -3260,6 +3263,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       2,
 			expectedCount: 2,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				require.Len(t, claims, 2)
 				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex)
 				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex)
@@ -3297,6 +3301,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 1,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				claim := claims[0]
 				// Fields from oldest claim (block 1) - should be preserved
 				require.Equal(t, uint64(1), claim.BlockNum, "BlockNum should be from oldest claim")
@@ -3346,6 +3351,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       2,
 			expectedCount: 2,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				// First claim (globalIndex1=100)
 				claim1 := claims[0]
 				require.Equal(t, big.NewInt(100), claim1.GlobalIndex)
@@ -3409,6 +3415,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       1,
 			expectedCount: 1,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				claim := claims[0]
 				// Fields from oldest claim (block 1, pos 0) - should be preserved
 				require.Equal(t, uint64(1), claim.BlockNum, "BlockNum should be from oldest")
@@ -3477,6 +3484,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 1,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				claim := claims[0]
 				// Fields from oldest claim in range (block 2) - should be preserved
 				require.Equal(t, uint64(2), claim.BlockNum, "BlockNum should be from oldest in range")
@@ -3545,6 +3553,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 3,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				// Should be ordered by block_num ASC, not by global_index value
 				require.Equal(t, big.NewInt(200), claims[0].GlobalIndex)
 				require.Equal(t, big.NewInt(100), claims[1].GlobalIndex)
@@ -3591,6 +3600,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 0,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				// Should return empty array for invalid range (WHERE block_num >= 5 AND block_num <= 3 returns nothing)
 				require.Empty(t, claims)
 			},
@@ -3627,6 +3637,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 3,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				// Should return all claims from block 1 onwards (block 0 doesn't exist, WHERE clause: block_num >= 0)
 				require.Len(t, claims, 3)
 				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex)
@@ -3674,6 +3685,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       3,
 			expectedCount: 1,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				// Should compact GlobalIndex=100 appearing at both boundaries (blocks 2 and 3)
 				require.Len(t, claims, 1)
 				require.Equal(t, big.NewInt(100), claims[0].GlobalIndex)
@@ -3721,6 +3733,7 @@ func TestGetClaimsNew(t *testing.T) {
 			queryTo:       5,
 			expectedCount: 2,
 			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
 				// Should return claims from blocks that exist in the range
 				// Block 2 has no events, block 3 was not processed at all
 				// But claims from blocks 1 and 4 should still be returned
