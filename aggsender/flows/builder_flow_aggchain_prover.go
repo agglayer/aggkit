@@ -198,7 +198,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, fromBlock,
 			toBlock,
-			false, // do not include compacted claims
+			false, // do not compact claims
 		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
