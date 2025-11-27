@@ -128,14 +128,13 @@ func (d *downloaderSovereign) buildAppender(
 			return fmt.Errorf("error parsing UpdateRemovalHashChainValue event log %+v: %w", l, err)
 		}
 
-		event := newEvent(
+		b.Events = append(b.Events, newEvent(
 			newGlobalExitRootInfo(
 				removeGEREvent.RemovedGlobalExitRoot,
 				0,
 				b.Num,
 				uint64(l.Index)),
-			GEREventTypeRemove)
-		b.Events = append(b.Events, event)
+			GEREventTypeRemove))
 		return nil
 	}
 
@@ -175,14 +174,13 @@ func (d *downloaderSovereign) buildAppender(
 				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 		}
 
-		event := newEvent(
+		b.Events = append(b.Events, newEvent(
 			newGlobalExitRootInfo(
 				insertGEREvent.NewGlobalExitRoot,
 				l1InfoTreeLeaf.L1InfoTreeIndex,
 				b.Num,
 				uint64(l.Index)),
-			GEREventTypeInsert)
-		b.Events = append(b.Events, event)
+			GEREventTypeInsert))
 		return nil
 	}
 
