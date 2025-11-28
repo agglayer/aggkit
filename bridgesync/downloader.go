@@ -45,7 +45,7 @@ var (
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 
-	bridgeAssetMethodID = common.Hex2Bytes("cd586579")
+	BridgeAssetMethodID = common.Hex2Bytes("cd586579")
 )
 
 const (
@@ -113,9 +113,9 @@ func buildBridgeEventHandler(
 		}
 
 		// Extract call data and root call for txn_sender
-		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c call) (bool, error) {
-			return len(c.Input) >= len(bridgeAssetMethodID) &&
-				bytes.Equal(c.Input[0:len(bridgeAssetMethodID)], bridgeAssetMethodID), nil
+		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
+			return len(c.Input) >= len(BridgeAssetMethodID) &&
+				bytes.Equal(c.Input[0:len(BridgeAssetMethodID)], BridgeAssetMethodID), nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
@@ -319,13 +319,13 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 	}
 }
 
-type call struct {
+type Call struct {
 	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
 	Value *rpctypes.ArgBig  `json:"value"`
 	Err   *string           `json:"error"`
 	Input rpctypes.ArgBytes `json:"input"`
-	Calls []call            `json:"calls"`
+	Calls []Call            `json:"calls"`
 }
 
 type tracerCfg struct {
@@ -333,14 +333,14 @@ type tracerCfg struct {
 }
 
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
-func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error), logger *logger.Logger,
-) (*call, error) {
+func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (bool, error), logger *logger.Logger,
+) (*Call, error) {
 	callStack := stack.New()
 	callStack.Push(rootCall)
 
 	for callStack.Len() > 0 {
 		currentCallInterface := callStack.Pop()
-		currentCall, ok := currentCallInterface.(call)
+		currentCall, ok := currentCallInterface.(Call)
 		if !ok {
 			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
 		}
@@ -380,8 +380,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 }
 
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
-func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
-	rootCall := &call{To: contractAddr}
+func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
+	rootCall := &Call{To: contractAddr}
 	err := client.Call(rootCall, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
@@ -389,7 +389,7 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 	return rootCall, nil
 }
 
-func logCalls(calls []call, indent string, logger *logger.Logger) { //nolint:unused
+func logCalls(calls []Call, indent string, logger *logger.Logger) { //nolint:unused
 	for _, call := range calls {
 		if call.Err != nil {
 			logger.Debugf("%sCall to %s from %s reverted: %s", indent, call.To.Hex(), call.From.Hex(), *call.Err)
@@ -407,8 +407,8 @@ func extractCallData(
 	bridgeAddr common.Address,
 	txHash common.Hash,
 	logger *logger.Logger,
-	callback func(c call) (bool, error),
-) (foundCall *call, rootCall *call, err error) {
+	callback func(c Call) (bool, error),
+) (foundCall *Call, rootCall *Call, err error) {
 	// Extract root call first
 	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
@@ -435,12 +435,12 @@ func extractCallData(
 //
 // Returns an error if calldata isn't found.
 func (c *Claim) setClaimCalldataFromRoot(
-	rootCall *call,
+	rootCall *Call,
 	bridge common.Address,
 	logger *logger.Logger,
 ) error {
 	_, err := findCall(*rootCall, bridge,
-		func(call call) (bool, error) {
+		func(call Call) (bool, error) {
 			// Skip reverted calls
 			if call.Err != nil {
 				return false, nil

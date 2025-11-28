@@ -31,13 +31,13 @@ func TestBuildAppender(t *testing.T) {
 	tests := []struct {
 		name           string
 		eventSignature common.Hash
-		callFrame      call
+		callFrame      Call
 		logBuilder     func() (types.Log, error)
 	}{
 		{
 			name:           "bridgeEventSignature appender",
 			eventSignature: bridgeEventSignature,
-			callFrame:      call{To: bridgeAddr, Input: bridgeAssetMethodID},
+			callFrame:      Call{To: bridgeAddr, Input: BridgeAssetMethodID},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
 				if err != nil {
@@ -70,7 +70,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "claimEventSignaturePreEtrog appender",
 			eventSignature: claimEventSignaturePreEtrog,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      Call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				bridgeV1Abi, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
 				require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "claimEventSignature appender",
 			eventSignature: claimEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      Call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(claimEventSignature)
 				if err != nil {
@@ -131,7 +131,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "tokenMappingEventSignature appender",
 			eventSignature: tokenMappingEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      Call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(tokenMappingEventSignature)
 				if err != nil {
@@ -159,7 +159,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "setSovereignTokenAddress appender",
 			eventSignature: setSovereignTokenEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      Call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeSovereignChainABI.EventByID(setSovereignTokenEventSignature)
 				if err != nil {
@@ -187,7 +187,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "legacyTokenMigration appender",
 			eventSignature: migrateLegacyTokenEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      Call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeSovereignChainABI.EventByID(migrateLegacyTokenEventSignature)
 				if err != nil {
@@ -215,7 +215,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "removeLegacySovereignTokenAddress appender",
 			eventSignature: removeLegacySovereignTokenEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      Call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeSovereignChainABI.EventByID(removeLegacySovereignTokenEventSignature)
 				if err != nil {
@@ -257,7 +257,7 @@ func TestBuildAppender(t *testing.T) {
 			ethClient.EXPECT().
 				Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Run(func(result any, method string, args ...any) {
-					arg, ok := result.(*call)
+					arg, ok := result.(*Call)
 					require.True(t, ok)
 					*arg = tt.callFrame
 				}).
@@ -290,7 +290,7 @@ func TestFindCall(t *testing.T) {
 	logger := logger.WithFields("module", "test")
 
 	// Simple direct call
-	root := call{
+	root := Call{
 		To:   bridgeAddr,
 		From: fromAddr,
 		Err:  nil,
@@ -301,7 +301,7 @@ func TestFindCall(t *testing.T) {
 	require.Equal(t, bridgeAddr, found.To)
 
 	// Reverted call should be skipped
-	root = call{
+	root = Call{
 		To:   bridgeAddr,
 		From: fromAddr,
 		Err:  strPtr("reverted"),
@@ -310,11 +310,11 @@ func TestFindCall(t *testing.T) {
 	require.Error(t, err)
 
 	// Nested call, only inner is not reverted
-	root = call{
+	root = Call{
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
-		Calls: []call{
+		Calls: []Call{
 			{
 				To:   bridgeAddr,
 				From: fromAddr,
@@ -342,11 +342,11 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	// First call: getProxiedTokensManager (unrecognized)
 	// Second call: claimAsset (recognized)
 	// Third call: claimMessage (recognized)
-	rootCall := call{
+	rootCall := Call{
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
-		Calls: []call{
+		Calls: []Call{
 			{
 				To:    bridgeAddr,
 				From:  fromAddr,
@@ -369,7 +369,7 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	}
 
 	// Test that findCall continues searching and finds the first valid claim method
-	found, err := findCall(rootCall, bridgeAddr, func(call call) (bool, error) {
+	found, err := findCall(rootCall, bridgeAddr, func(call Call) (bool, error) {
 		// Simulate tryDecodeClaimCalldata behavior
 		if len(call.Input) < methodIDLength {
 			return false, fmt.Errorf("input too short")
@@ -394,11 +394,11 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 	logger := logger.WithFields("module", "test")
 
 	// Test case: Transaction with only unrecognized method calls
-	rootCall := call{
+	rootCall := Call{
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
-		Calls: []call{
+		Calls: []Call{
 			{
 				To:    bridgeAddr,
 				From:  fromAddr,
@@ -415,7 +415,7 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 	}
 
 	// Test that findCall returns not found when no valid claim methods exist
-	found, err := findCall(rootCall, bridgeAddr, func(call call) (bool, error) {
+	found, err := findCall(rootCall, bridgeAddr, func(call Call) (bool, error) {
 		// Simulate tryDecodeClaimCalldata behavior
 		if len(call.Input) < 4 {
 			return false, fmt.Errorf("input too short")
@@ -472,10 +472,10 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 	logger := logger.WithFields("module", "test")
 
 	// Case 1: Root call successful, valid internal call
-	rootCall := &call{
+	rootCall := &Call{
 		To:  common.HexToAddress("0x01"),
 		Err: nil,
-		Calls: []call{
+		Calls: []Call{
 			{
 				To:    bridgeAddr,
 				From:  common.HexToAddress("0x20"),
@@ -491,7 +491,7 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 	require.Contains(t, err.Error(), "length insufficient")
 
 	// Case 2: Root call reverted
-	rootCall = &call{
+	rootCall = &Call{
 		To:  bridgeAddr,
 		Err: strPtr("reverted"),
 	}
@@ -502,10 +502,10 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 	require.Contains(t, err.Error(), "not found")
 
 	// Case 3: All internal calls reverted
-	rootCall = &call{
+	rootCall = &Call{
 		To:  common.HexToAddress("0x01"),
 		Err: nil,
-		Calls: []call{
+		Calls: []Call{
 			{
 				To:  bridgeAddr,
 				Err: strPtr("reverted"),
@@ -519,10 +519,10 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 	require.Contains(t, err.Error(), "not found")
 
 	// Case 4: No matching call
-	rootCall = &call{
+	rootCall = &Call{
 		To:    common.HexToAddress("0x01"),
 		Err:   nil,
-		Calls: []call{},
+		Calls: []Call{},
 	}
 
 	claim = &Claim{}
@@ -542,23 +542,23 @@ func TestTxnSenderField(t *testing.T) {
 	tests := []struct {
 		name              string
 		eventSignature    common.Hash
-		callFrame         call
+		callFrame         Call
 		logBuilder        func() (types.Log, error)
 		expectedTxnSender common.Address
 	}{
 		{
 			name:           "bridgeEventSignature with TxnSender",
 			eventSignature: bridgeEventSignature,
-			callFrame: call{
+			callFrame: Call{
 				To:   common.HexToAddress("0x01"),
 				From: expectedTxnSender,
 				Err:  nil,
-				Calls: []call{
+				Calls: []Call{
 					{
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x20"),
 						Err:   nil,
-						Input: bridgeAssetMethodID,
+						Input: BridgeAssetMethodID,
 					},
 				},
 			},
@@ -595,16 +595,16 @@ func TestTxnSenderField(t *testing.T) {
 		{
 			name:           "claimEventSignature with TxnSender",
 			eventSignature: claimEventSignature,
-			callFrame: call{
+			callFrame: Call{
 				To:   common.HexToAddress("0x01"),
 				From: expectedTxnSender,
 				Err:  nil,
-				Calls: []call{
+				Calls: []Call{
 					{
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x20"),
 						Err:   nil,
-						Input: bridgeAssetMethodID,
+						Input: BridgeAssetMethodID,
 					},
 				},
 			},
@@ -656,7 +656,7 @@ func TestTxnSenderField(t *testing.T) {
 			ethClient.EXPECT().
 				Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Run(func(result any, method string, args ...any) {
-					arg, ok := result.(*call)
+					arg, ok := result.(*Call)
 					require.True(t, ok)
 					*arg = tt.callFrame
 				}).

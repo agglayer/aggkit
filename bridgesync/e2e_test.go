@@ -30,7 +30,11 @@ func TestBridgeEventE2E(t *testing.T) {
 	)
 
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg := result.(*bridgesync.Call)
+			arg.Input = bridgesync.BridgeAssetMethodID
+		}).Return(nil)
 
 	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
 	ctx := t.Context()
