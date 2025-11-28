@@ -388,7 +388,7 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 	return rootCall, nil
 }
 
-func logCalls(calls []call, indent string, logger *logger.Logger) {
+func logCalls(calls []call, indent string, logger *logger.Logger) { //nolint:unused
 	for _, call := range calls {
 		if call.Err != nil {
 			logger.Debugf("%sCall to %s from %s reverted: %s", indent, call.To.Hex(), call.From.Hex(), *call.Err)
