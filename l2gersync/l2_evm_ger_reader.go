@@ -122,6 +122,16 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, insertIterator.Error()
 	}
 
+	removedGERs, err := e.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get removed GERs for range %d : %d: %w",
+			fromBlock, toBlock, err)
+	}
+
+	for _, removedGER := range removedGERs {
+		delete(injectedGERs, removedGER.GlobalExitRoot)
+	}
+
 	return injectedGERs, nil
 }
 
