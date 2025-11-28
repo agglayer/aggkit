@@ -78,9 +78,6 @@ const (
 )
 
 var (
-	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
-	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
-
 	// errFailToConvertClaims indicates that the conversion from []*Claim to []Claim failed.
 	errFailToConvertClaims = errors.New("failed to convert from []*Claim to []Claim")
 

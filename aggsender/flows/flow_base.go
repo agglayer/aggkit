@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -356,18 +355,26 @@ func (f *baseFlow) getImportedBridgeExits(
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	// Build unclaim counts by GlobalIndex
-	unclaimCnt := make(map[*big.Int]int)
+	// Use string representation as map key since *big.Int pointer comparison doesn't work
+	unclaimCnt := make(map[string]int)
 	for _, u := range unclaims {
-		key := u.GlobalIndex
-		unclaimCnt[key]++
+		if u.GlobalIndex != nil {
+			key := u.GlobalIndex.String()
+			unclaimCnt[key]++
+		}
 	}
 
 	filteredClaims := make([]bridgesync.Claim, 0)
 	for _, c := range claims {
-		key := c.GlobalIndex
-		if unclaimCnt[key] > 0 {
-			unclaimCnt[key]--
+		if c.GlobalIndex != nil {
+			key := c.GlobalIndex.String()
+			if unclaimCnt[key] > 0 {
+				unclaimCnt[key]--
+			} else {
+				filteredClaims = append(filteredClaims, c)
+			}
 		} else {
+			// If GlobalIndex is nil, include the claim
 			filteredClaims = append(filteredClaims, c)
 		}
 	}
