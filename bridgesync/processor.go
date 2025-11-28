@@ -53,6 +53,9 @@ const (
 
 	// setClaimTableName is the name of the table that stores set claim events
 	setClaimTableName = "set_claim"
+
+	// nilStr holds nil string
+	nilStr = "nil"
 )
 
 type DeleteClaimReason int
@@ -109,7 +112,7 @@ type Bridge struct {
 }
 
 func (b *Bridge) String() string {
-	amountStr := "nil"
+	amountStr := nilStr
 	if b.Amount != nil {
 		amountStr = b.Amount.String()
 	}
@@ -174,12 +177,12 @@ type Claim struct {
 }
 
 func (c *Claim) String() string {
-	globalIndexStr := "nil"
+	globalIndexStr := nilStr
 	if c.GlobalIndex != nil {
 		globalIndexStr = c.GlobalIndex.String()
 	}
 
-	amountStr := "nil"
+	amountStr := nilStr
 	if c.Amount != nil {
 		amountStr = c.Amount.String()
 	}
@@ -403,7 +406,7 @@ type LegacyTokenMigration struct {
 }
 
 func (l *LegacyTokenMigration) String() string {
-	amountStr := "nil"
+	amountStr := nilStr
 	if l.Amount != nil {
 		amountStr = l.Amount.String()
 	}
@@ -443,7 +446,7 @@ type UnsetClaim struct {
 }
 
 func (u *UnsetClaim) String() string {
-	globalIndexStr := "nil"
+	globalIndexStr := nilStr
 	if u.GlobalIndex != nil {
 		globalIndexStr = u.GlobalIndex.String()
 	}
@@ -465,7 +468,7 @@ type SetClaim struct {
 }
 
 func (s *SetClaim) String() string {
-	globalIndexStr := "nil"
+	globalIndexStr := nilStr
 	if s.GlobalIndex != nil {
 		globalIndexStr = s.GlobalIndex.String()
 	}
