@@ -242,6 +242,8 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 		isUpToDateError      error
 		l1ContractTimestamp  *big.Int
 		l1ContractError      error
+		l2ContractTimestamp  *big.Int
+		l2ContractError      error
 		expectError          bool
 		expectedErrorMessage string
 	}{
@@ -271,15 +273,35 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
-		// Note: Skipping the case where log.Fatalf is called as it would terminate the test process
-		// The case where L1 contract returns timestamp=0 is covered by integration tests
+		{
+			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_true_L1Contract_timestamp_zero_L2Contract_timestamp_zero",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     true,
+			isUpToDateError:      nil,
+			l1ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER not found
+			l1ContractError:      nil,
+			l2ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER removed from L2
+			l2ContractError:      nil,
+			expectError:          false, // Should return nil when GER is removed from L2
+			expectedErrorMessage: "",
+		},
+		{
+			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_true_L1Contract_timestamp_zero_L2Contract_timestamp_nonzero",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     true,
+			isUpToDateError:      nil,
+			l1ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER not found
+			l1ContractError:      nil,
+			l2ContractTimestamp:  big.NewInt(1234567890), // timestamp > 0 means GER exists on L2
+			l2ContractError:      nil,
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
 		{
 			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_false_skips_L1Contract_call",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
 			isUpToDateResult:     false, // Set to false to avoid L1 contract call path
 			isUpToDateError:      nil,
-			l1ContractTimestamp:  nil,
-			l1ContractError:      nil,
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
@@ -318,10 +340,25 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 
 			// Mock L1 client contract calls for test cases where isUpToDate is true
 			if tt.isUpToDateResult {
-				if tt.l1ContractTimestamp != nil {
+				if tt.l1ContractTimestamp != nil || tt.l1ContractError != nil {
 					callResult := make([]byte, 32)
-					tt.l1ContractTimestamp.FillBytes(callResult)
+					if tt.l1ContractTimestamp != nil {
+						tt.l1ContractTimestamp.FillBytes(callResult)
+					}
+					// Even on error, return a valid byte array so contract binding can decode it
 					mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(callResult, tt.l1ContractError).Maybe()
+				}
+
+				// Mock L2 client contract calls when L1 returns timestamp = 0
+				if tt.l1ContractTimestamp != nil && tt.l1ContractTimestamp.Cmp(big.NewInt(0)) == 0 && tt.l1ContractError == nil {
+					if tt.l2ContractTimestamp != nil || tt.l2ContractError != nil {
+						var l2CallResult []byte
+						if tt.l2ContractTimestamp != nil {
+							l2CallResult = make([]byte, 32)
+							tt.l2ContractTimestamp.FillBytes(l2CallResult)
+						}
+						mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(l2CallResult, tt.l2ContractError).Maybe()
+					}
 				}
 			}
 
@@ -351,10 +388,14 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 				Events: []any{},
 			}
 
-			// This should trigger the error path
+			// This should trigger the error path (or return nil in some cases)
 			err = insertAppender(block, testLogs[0])
-			require.Error(t, err)
-			require.Contains(t, err.Error(), tt.expectedErrorMessage)
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErrorMessage)
+			} else {
+				require.NoError(t, err, "Expected no error when GER is removed from L2")
+			}
 
 			mockL2Client.AssertExpectations(t)
 			mockL1Client.AssertExpectations(t)
