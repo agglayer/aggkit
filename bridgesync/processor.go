@@ -109,13 +109,17 @@ type Bridge struct {
 }
 
 func (b *Bridge) String() string {
+	amountStr := "nil"
+	if b.Amount != nil {
+		amountStr = b.Amount.String()
+	}
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
 		"DepositCount: %d, TxnSender: %s}",
 		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
-		b.DestinationNetwork, b.DestinationAddress.String(), b.Amount.String(), b.Metadata,
+		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
 		b.DepositCount, b.TxnSender.String())
 }
 
@@ -170,13 +174,23 @@ type Claim struct {
 }
 
 func (c *Claim) String() string {
+	globalIndexStr := "nil"
+	if c.GlobalIndex != nil {
+		globalIndexStr = c.GlobalIndex.String()
+	}
+
+	amountStr := "nil"
+	if c.Amount != nil {
+		amountStr = c.Amount.String()
+	}
+
 	return fmt.Sprintf("Claim{BlockNum: %d, BlockPos: %d, TxHash: %s, GlobalIndex: %s, "+
 		"OriginNetwork: %d, OriginAddress: %s, DestinationAddress: %s, Amount: %s, "+
 		"ProofLocalExitRoot: %v, ProofRollupExitRoot: %v, MainnetExitRoot: %s, "+
 		"RollupExitRoot: %s, GlobalExitRoot: %s, DestinationNetwork: %d, Metadata: %x, "+
 		"IsMessage: %t, BlockTimestamp: %d}",
-		c.BlockNum, c.BlockPos, c.TxHash.String(), c.GlobalIndex.String(),
-		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), c.Amount.String(),
+		c.BlockNum, c.BlockPos, c.TxHash.String(), globalIndexStr,
+		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), amountStr,
 		c.ProofLocalExitRoot.String(), c.ProofRollupExitRoot.String(), c.MainnetExitRoot.String(),
 		c.RollupExitRoot.String(), c.GlobalExitRoot.String(), c.DestinationNetwork, c.Metadata,
 		c.IsMessage, c.BlockTimestamp)
@@ -389,11 +403,15 @@ type LegacyTokenMigration struct {
 }
 
 func (l *LegacyTokenMigration) String() string {
+	amountStr := "nil"
+	if l.Amount != nil {
+		amountStr = l.Amount.String()
+	}
 	return fmt.Sprintf("LegacyTokenMigration{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
 		"Sender: %s, LegacyTokenAddress: %s, UpdatedTokenAddress: %s, Amount: %s}",
 		l.BlockNum, l.BlockPos, l.BlockTimestamp, l.TxHash.String(),
 		l.Sender.String(), l.LegacyTokenAddress.String(), l.UpdatedTokenAddress.String(),
-		l.Amount.String())
+		amountStr)
 }
 
 // RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
@@ -425,10 +443,15 @@ type UnsetClaim struct {
 }
 
 func (u *UnsetClaim) String() string {
+	globalIndexStr := "nil"
+	if u.GlobalIndex != nil {
+		globalIndexStr = u.GlobalIndex.String()
+	}
+
 	return fmt.Sprintf("UnsetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
 		"GlobalIndex: %s, UnsetGlobalIndexHashChain: %s, CreatedAt: %d}",
 		u.BlockNum, u.BlockPos, u.TxHash.String(),
-		u.GlobalIndex.String(), u.UnsetGlobalIndexHashChain.String(), u.CreatedAt)
+		globalIndexStr, u.UnsetGlobalIndexHashChain.String(), u.CreatedAt)
 }
 
 // SetClaim representation of a SetClaim event,
@@ -442,10 +465,14 @@ type SetClaim struct {
 }
 
 func (s *SetClaim) String() string {
+	globalIndexStr := "nil"
+	if s.GlobalIndex != nil {
+		globalIndexStr = s.GlobalIndex.String()
+	}
 	return fmt.Sprintf("SetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
 		"GlobalIndex: %s, CreatedAt: %d}",
 		s.BlockNum, s.BlockPos, s.TxHash.String(),
-		s.GlobalIndex.String(), s.CreatedAt)
+		globalIndexStr, s.CreatedAt)
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
