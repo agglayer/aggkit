@@ -32,7 +32,8 @@ func TestBridgeEventE2E(t *testing.T) {
 	rpcClient := mocks.NewRPCClienter(t)
 	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
-			arg := result.(*bridgesync.Call)
+			arg, ok := result.(*bridgesync.Call)
+			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 
