@@ -10,7 +10,7 @@ require (
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.10-20251103121356-e8eff0e259e6.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.12-0.20251114093850-2ce555e137b6
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
-	github.com/0xPolygon/zkevm-ethtx-manager v0.2.16
+	github.com/0xPolygon/zkevm-ethtx-manager v0.2.17
 	github.com/agglayer/go_signer v0.0.7
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/gin-gonic/gin v1.11.0
@@ -18,7 +18,7 @@ require (
 	github.com/hermeznetwork/tracerr v0.3.2
 	github.com/invopop/jsonschema v0.13.0
 	github.com/jellydator/ttlcache/v3 v3.4.0
-	github.com/jmoiron/sqlx v1.2.0
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/parsers/toml v0.1.0
 	github.com/knadh/koanf/providers/rawbytes v1.0.0
@@ -37,7 +37,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valyala/fasttemplate v1.2.2
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	golang.org/x/net v0.46.0
 	golang.org/x/sync v0.18.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b
