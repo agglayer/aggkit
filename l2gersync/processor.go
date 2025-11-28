@@ -30,6 +30,7 @@ type GlobalExitRootInfo struct {
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
 	BlockPosition   *uint64        `meddler:"block_pos"`
+	Removed         bool           `meddler:"-"`
 }
 
 // RemoveGEREvent represents a remove GER event stored in the database

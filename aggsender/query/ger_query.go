@@ -60,11 +60,14 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for ger, injectedGER := range injectedGERs {
-		var info *l1infotreesync.L1InfoTreeLeaf
-		var proof treetypes.Proof
-		var err error
-		if injectedGER.L1InfoTreeIndex == math.MaxUint32 {
-			// make a dummy info and proof for the GER
+		var (
+			info  *l1infotreesync.L1InfoTreeLeaf
+			proof treetypes.Proof
+			err   error
+		)
+
+		if injectedGER.Removed {
+			// make a dummy info and proof for the removed GER
 			info = &l1infotreesync.L1InfoTreeLeaf{
 				L1InfoTreeIndex:   math.MaxUint32,
 				RollupExitRoot:    common.HexToHash("0x0"),

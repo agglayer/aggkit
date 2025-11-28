@@ -2,15 +2,11 @@ package l2gersync
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayergerl2"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
-	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -82,21 +78,43 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		}
 	}()
 
+	removedGERs, err := e.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
+	}
+
+	removedGERMap := make(map[common.Hash]struct{}, len(removedGERs))
+	for _, removedGER := range removedGERs {
+		removedGERMap[removedGER.GlobalExitRoot] = struct{}{}
+	}
+
 	injectedGERs := make(map[common.Hash]GlobalExitRootInfo, 0)
 
 	for insertIterator.Next() {
-		ger := insertIterator.Event.NewGlobalExitRoot
-		log.Infof("inserted GER: %s at block %d, index %d", common.Hash(ger).String(),
-			insertIterator.Event.Raw.BlockNumber, insertIterator.Event.Raw.Index)
-		l1InfoLeaf, err := e.l1InfoTreeSync.GetInfoByGlobalExitRoot(ger)
-		if errors.Is(err, db.ErrNotFound) {
-			l1InfoLeaf = &l1infotreesync.L1InfoTreeLeaf{
-				L1InfoTreeIndex: math.MaxUint32,
+		ger := common.Hash(insertIterator.Event.NewGlobalExitRoot)
+
+		var (
+			l1InfoTreeIndex uint32
+			removed         bool
+		)
+		if _, removed = removedGERMap[ger]; removed {
+			log.Infof("inserted GER %s at block %d, index %d was removed", ger.String(),
+				insertIterator.Event.Raw.BlockNumber, insertIterator.Event.Raw.Index)
+		} else {
+			log.Infof("inserted GER: %s at block %d, index %d", ger.String(),
+				insertIterator.Event.Raw.BlockNumber, insertIterator.Event.Raw.Index)
+			l1InfoLeaf, err := e.l1InfoTreeSync.GetInfoByGlobalExitRoot(ger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get L1 info tree index for global exit root %s: %w",
+					ger.String(), err)
 			}
+
+			l1InfoTreeIndex = l1InfoLeaf.L1InfoTreeIndex
 		}
 
-		gerInfo := newGlobalExitRootInfo(ger, l1InfoLeaf.L1InfoTreeIndex,
+		gerInfo := newGlobalExitRootInfo(ger, l1InfoTreeIndex,
 			insertIterator.Event.Raw.BlockNumber, uint64(insertIterator.Event.Raw.Index))
+		gerInfo.Removed = removed
 		injectedGERs[ger] = *gerInfo
 	}
 
