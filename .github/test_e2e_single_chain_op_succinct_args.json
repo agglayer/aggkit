@@ -1,8 +1,6 @@
 {
   "args": {
-    "consensus_contract_type": "fep",
-    "additional_services": [
-    ]
+    "consensus_contract_type": "fep"
   },
   "optimism_package": {
     "chains": {

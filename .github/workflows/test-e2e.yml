@@ -231,7 +231,6 @@ jobs:
       - read-aggkit-args
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@063284df5efceca567e46ea46efaf23c2143f619
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
@@ -247,7 +246,6 @@ jobs:
     needs:
       - test-single-l2-network-op-succinct-aggoracle-committee
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct-aggoracle-committee.result) }}
