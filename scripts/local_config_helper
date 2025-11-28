@@ -191,7 +191,7 @@ function export_portnum_from_kurtosis_or_fail() {
 }
 ###############################################################################
 function export_forced_values() {
-    export global_log_level="info"
+    export global_log_level="debug"
     export l2_rpc_name="localhost"
     export sequencer_name="localhost"
     export deployment_suffix=""

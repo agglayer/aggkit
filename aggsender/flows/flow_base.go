@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -355,15 +356,15 @@ func (f *baseFlow) getImportedBridgeExits(
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	// Build unclaim counts by GlobalIndex
-	unclaimCnt := make(map[string]int)
+	unclaimCnt := make(map[*big.Int]int)
 	for _, u := range unclaims {
-		key := u.GlobalIndex.String()
+		key := u.GlobalIndex
 		unclaimCnt[key]++
 	}
 
 	filteredClaims := make([]bridgesync.Claim, 0)
 	for _, c := range claims {
-		key := c.GlobalIndex.String()
+		key := c.GlobalIndex
 		if unclaimCnt[key] > 0 {
 			unclaimCnt[key]--
 		} else {
@@ -572,8 +573,8 @@ func (f *baseFlow) getGERFinalizedStatus(
 	return isFinalized, nil
 }
 
-// getGERExistsOnL1Status checks if a GER exists on L1, using cache if available
-func (f *baseFlow) getGERExistsOnL1Status(
+// isGERExistentOnL1Status checks if a GER exists on L1, using cache if available
+func (f *baseFlow) isGERExistentOnL1Status(
 	cache *gerStatusCache,
 	ger common.Hash) (bool, error) {
 	if cached, ok := cache.existsOnL1[ger]; ok {
@@ -624,7 +625,7 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 
 		if !isGERFinalized {
 			// check on L1 if GER exists
-			exists, err := f.getGERExistsOnL1Status(cache, c.GlobalExitRoot)
+			exists, err := f.isGERExistentOnL1Status(cache, c.GlobalExitRoot)
 			if err != nil {
 				return nil, fmt.Errorf("error checking if GER %s exists on L1: %w", c.GlobalExitRoot.String(), err)
 			}

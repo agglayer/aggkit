@@ -52,9 +52,6 @@ const (
 
 	// setClaimTableName is the name of the table that stores set claim events
 	setClaimTableName = "set_claim"
-
-	// backwardLETTableName is the name of the table that stores backward let events
-	backwardLETTableName = "backward_let"
 )
 
 type DeleteClaimReason int
@@ -391,17 +388,6 @@ type SetClaim struct {
 	CreatedAt   uint64      `meddler:"created_at"`
 }
 
-// BackwardLET representation of a BackwardLET event,
-// that is emitted by the bridge contract when a claim is backwarded.
-type BackwardLET struct {
-	BlockNum             uint64      `meddler:"block_num"`
-	BlockPos             uint64      `meddler:"block_pos"`
-	PreviousDepositCount *big.Int    `meddler:"previous_deposit_count,bigint"`
-	PreviousRoot         common.Hash `meddler:"previous_root,hash"`
-	NewDepositCount      *big.Int    `meddler:"new_deposit_count,bigint"`
-	NewRoot              common.Hash `meddler:"new_root,hash"`
-}
-
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -411,7 +397,6 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 	UnsetClaim           *UnsetClaim
 	SetClaim             *SetClaim
-	BackwardLET          *BackwardLET
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -1096,13 +1081,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.SetClaim != nil {
 			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
 				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
-				return err
-			}
-		}
-
-		if event.BackwardLET != nil {
-			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
-				p.log.Errorf("failed to insert backward let event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
