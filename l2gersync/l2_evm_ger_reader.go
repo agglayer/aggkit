@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/log"
@@ -120,16 +120,6 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 
 	if insertIterator.Error() != nil {
 		return nil, insertIterator.Error()
-	}
-
-	removedGERs, err := e.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get removed GERs for range %d : %d: %w",
-			fromBlock, toBlock, err)
-	}
-
-	for _, removedGER := range removedGERs {
-		delete(injectedGERs, removedGER.GlobalExitRoot)
 	}
 
 	return injectedGERs, nil
