@@ -413,7 +413,9 @@ func extractCallData(
 	if err != nil {
 		return nil, nil, err
 	}
-	logCalls(rootCall.Calls, "  ", logger)
+	// Uncomment for debugging call traces
+	// logCalls(rootCall.Calls, "  ", logger)
+
 	// Find the specific call to the bridge contract
 	foundCall, err = findCall(*rootCall, bridgeAddr, callback, logger)
 	if err != nil {
