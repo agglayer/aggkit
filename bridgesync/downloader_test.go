@@ -37,7 +37,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "bridgeEventSignature appender",
 			eventSignature: bridgeEventSignature,
-			callFrame:      call{To: bridgeAddr},
+			callFrame:      call{To: bridgeAddr, Input: bridgeAssetMethodID},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
 				if err != nil {

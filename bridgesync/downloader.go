@@ -44,6 +44,8 @@ var (
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
+
+	bridgeAssetMethodID = common.Hex2Bytes("cd586579")
 )
 
 const (
@@ -111,7 +113,9 @@ func buildBridgeEventHandler(
 		}
 
 		// Extract call data and root call for txn_sender
-		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c call) (bool, error) {
+			return bytes.Equal(c.Input[0:len(bridgeAssetMethodID)], bridgeAssetMethodID), nil
+		})
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -159,10 +163,11 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
+		logger.Debugf("extracted root call from: %s", rootCall.From.Hex())
 		// Check if the root call was successful
 		if rootCall.Err != nil {
 			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
@@ -202,7 +207,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -383,20 +388,34 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 	return rootCall, nil
 }
 
+func logCalls(calls []call, indent string, logger *logger.Logger) {
+	for _, call := range calls {
+		if call.Err != nil {
+			logger.Debugf("%sCall to %s from %s reverted: %s", indent, call.To.Hex(), call.From.Hex(), *call.Err)
+		} else {
+			logger.Debugf("%sCall to %s from %s succeeded", indent, call.To.Hex(), call.From.Hex())
+			if len(call.Calls) > 0 {
+				logCalls(call.Calls, indent+"  ", logger)
+			}
+		}
+	}
+}
+
 func extractCallData(
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
 	logger *logger.Logger,
+	callback func(c call) (bool, error),
 ) (foundCall *call, rootCall *call, err error) {
 	// Extract root call first
 	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
 		return nil, nil, err
 	}
-
+	logCalls(rootCall.Calls, "  ", logger)
 	// Find the specific call to the bridge contract
-	foundCall, err = findCall(*rootCall, bridgeAddr, nil, logger)
+	foundCall, err = findCall(*rootCall, bridgeAddr, callback, logger)
 	if err != nil {
 		return nil, nil, err
 	}
