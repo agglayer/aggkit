@@ -813,10 +813,6 @@ func (p *processor) GetLegacyTokenMigrations(
 func (p *processor) queryBlockRange(
 	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string,
 ) (*sql.Rows, error) {
-	if err := p.isBlockProcessed(ctx, tx, toBlock); err != nil {
-		return nil, err
-	}
-
 	// Create a context with database timeout
 	dbCtx, _ := p.withDatabaseTimeout(ctx)
 	rows, err := tx.QueryContext(dbCtx, fmt.Sprintf(`
@@ -854,17 +850,6 @@ func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 		return nil, err
 	}
 	return rows, nil
-}
-
-func (p *processor) isBlockProcessed(ctx context.Context, tx dbtypes.Querier, blockNum uint64) error {
-	lpb, err := p.getLastProcessedBlockWithTx(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if lpb < blockNum {
-		return fmt.Errorf(errBlockNotProcessedFormat, blockNum, lpb)
-	}
-	return nil
 }
 
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
