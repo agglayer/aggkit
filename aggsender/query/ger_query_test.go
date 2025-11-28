@@ -87,7 +87,7 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 			},
 		},
 		{
-			name: "success with MaxUint32 L1InfoTreeIndex (dummy info and proof)",
+			name: "success with removed GER (dummy info and proof)",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				blockPos := uint64(5)
 				gerHash := common.HexToHash("0xabc123")
@@ -97,6 +97,7 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 						L1InfoTreeIndex: math.MaxUint32,
 						BlockNum:        222,
 						BlockPosition:   &blockPos,
+						Removed:         true,
 					},
 				}, nil)
 				// GetProofForGER should NOT be called when L1InfoTreeIndex is MaxUint32
