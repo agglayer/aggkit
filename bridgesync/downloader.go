@@ -114,7 +114,7 @@ func buildBridgeEventHandler(
 
 		// Extract call data and root call for txn_sender
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c call) (bool, error) {
-			return bytes.Equal(c.Input[0:len(bridgeAssetMethodID)], bridgeAssetMethodID), nil
+			return len(c.Input) >= len(bridgeAssetMethodID) && bytes.Equal(c.Input[0:len(bridgeAssetMethodID)], bridgeAssetMethodID), nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
