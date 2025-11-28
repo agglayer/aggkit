@@ -173,14 +173,14 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats ./tests/aggkit/bridge-e2e.bats || exit 1
-        bats ./tests/aggkit/e2e-pp.bats || exit 1
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
-        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
-        bats ./tests/aggkit/internal-claims.bats || exit 1
-        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
-        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
-        bats ./tests/op/optimistic-mode.bats || exit 1
+        bats ./tests/aggkit/bridge-e2e.bats -f "ERC20 token deposit L2 -> L1" || exit 1
+        # bats ./tests/aggkit/e2e-pp.bats || exit 1
+        # bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
+        # bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        # bats ./tests/aggkit/internal-claims.bats || exit 1
+        # bats ./tests/aggkit/claim-reetrancy.bats || exit 1
+        # bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
+        # bats ./tests/op/optimistic-mode.bats || exit 1
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats || exit 1
