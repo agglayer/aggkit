@@ -389,19 +389,6 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 	return rootCall, nil
 }
 
-func logCalls(calls []Call, indent string, logger *logger.Logger) { //nolint:unused
-	for _, call := range calls {
-		if call.Err != nil {
-			logger.Debugf("%sCall to %s from %s reverted: %s", indent, call.To.Hex(), call.From.Hex(), *call.Err)
-		} else {
-			logger.Debugf("%sCall to %s from %s succeeded", indent, call.To.Hex(), call.From.Hex())
-			if len(call.Calls) > 0 {
-				logCalls(call.Calls, indent+"  ", logger)
-			}
-		}
-	}
-}
-
 func extractCallData(
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
@@ -414,9 +401,6 @@ func extractCallData(
 	if err != nil {
 		return nil, nil, err
 	}
-	// Uncomment for debugging call traces
-	// logCalls(rootCall.Calls, "  ", logger)
-
 	// Find the specific call to the bridge contract
 	foundCall, err = findCall(*rootCall, bridgeAddr, callback, logger)
 	if err != nil {
