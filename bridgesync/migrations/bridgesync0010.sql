@@ -2,7 +2,6 @@
 DROP TABLE IF EXISTS set_claim;
 DROP TABLE IF EXISTS unset_claim;
 DROP TABLE IF EXISTS invalid_claim;
-DROP TABLE IF EXISTS backward_let;
 
 ALTER TABLE claim ADD COLUMN from_address VARCHAR;
 
@@ -47,16 +46,6 @@ CREATE TABLE invalid_claim (
     created_at              INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     reason                  VARCHAR NOT NULL,
     PRIMARY KEY (block_num, block_pos)
-);
-
-CREATE TABLE backward_let (
-	block_num               INTEGER NOT NULL REFERENCES block(num) ON DELETE CASCADE,
-	block_pos               INTEGER NOT NULL,
-	previous_deposit_count  TEXT NOT NULL,
-	previous_root           VARCHAR NOT NULL,
-	new_deposit_count       TEXT NOT NULL,
-	new_root                VARCHAR NOT NULL,
-	PRIMARY KEY (block_num, block_pos)
 );
 
 ALTER TABLE claim DROP COLUMN from_address;
