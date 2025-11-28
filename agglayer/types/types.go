@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -99,38 +100,6 @@ func (c *CertificateStatus) UnmarshalJSON(rawStatus []byte) error {
 
 	return nil
 }
-
-type LeafType uint8
-
-func (l LeafType) Uint8() uint8 {
-	return uint8(l)
-}
-
-func (l LeafType) String() string {
-	return [...]string{"Transfer", "Message"}[l]
-}
-
-func (l *LeafType) UnmarshalJSON(raw []byte) error {
-	rawStr := strings.Trim(string(raw), "\"")
-	switch rawStr {
-	case "Transfer":
-		*l = LeafTypeAsset
-	case "Message":
-		*l = LeafTypeMessage
-	default:
-		var value int
-		if _, err := fmt.Sscanf(rawStr, "%d", &value); err != nil {
-			return fmt.Errorf("invalid LeafType: %s", rawStr)
-		}
-		*l = LeafType(value)
-	}
-	return nil
-}
-
-const (
-	LeafTypeAsset LeafType = iota
-	LeafTypeMessage
-)
 
 type AggchainData interface {
 	json.Marshaler
@@ -635,19 +604,19 @@ func (g *GlobalIndex) UnmarshalFromMap(data map[string]interface{}) error {
 
 // BridgeExit represents a token bridge exit
 type BridgeExit struct {
-	LeafType           LeafType       `json:"leaf_type"`
-	TokenInfo          *TokenInfo     `json:"token_info"`
-	DestinationNetwork uint32         `json:"dest_network"`
-	DestinationAddress common.Address `json:"dest_address"`
-	Amount             *big.Int       `json:"amount"`
-	Metadata           []byte         `json:"metadata"`
+	LeafType           bridgetypes.LeafType `json:"leaf_type"`
+	TokenInfo          *TokenInfo           `json:"token_info"`
+	DestinationNetwork uint32               `json:"dest_network"`
+	DestinationAddress common.Address       `json:"dest_address"`
+	Amount             *big.Int             `json:"amount"`
+	Metadata           []byte               `json:"metadata"`
 }
 
 func (b *BridgeExit) Validate() error {
 	if b == nil {
 		return errors.New("bridgeExit is nil")
 	}
-	if b.LeafType.Uint8() > LeafTypeMessage.Uint8() {
+	if b.LeafType.Uint8() > bridgetypes.LeafTypeMessage.Uint8() {
 		return fmt.Errorf("bridgeExit leaf type %d is invalid", b.LeafType.Uint8())
 	}
 	if b.Amount != nil && b.Amount.Sign() < 0 {
@@ -727,12 +696,12 @@ func (b *BridgeExit) MarshalJSON() ([]byte, error) {
 
 func (b *BridgeExit) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		LeafType           LeafType       `json:"leaf_type"`
-		TokenInfo          *TokenInfo     `json:"token_info"`
-		DestinationNetwork uint32         `json:"dest_network"`
-		DestinationAddress common.Address `json:"dest_address"`
-		Amount             string         `json:"amount"`
-		Metadata           interface{}    `json:"metadata"`
+		LeafType           bridgetypes.LeafType `json:"leaf_type"`
+		TokenInfo          *TokenInfo           `json:"token_info"`
+		DestinationNetwork uint32               `json:"dest_network"`
+		DestinationAddress common.Address       `json:"dest_address"`
+		Amount             string               `json:"amount"`
+		Metadata           interface{}          `json:"metadata"`
 	}{}
 
 	if err := json.Unmarshal(data, &aux); err != nil {

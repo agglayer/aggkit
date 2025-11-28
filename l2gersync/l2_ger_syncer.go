@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayergerl2"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -165,4 +165,13 @@ func (s *L2GERSync) GetInjectedGERsForRange(ctx context.Context,
 // GetLastProcessedBlock returns the last processed block number
 func (s *L2GERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return s.processor.GetLastProcessedBlock(ctx)
+}
+
+// GetRemoveGEREvents retrieves remove GER events from the database with optional filters
+func (s *L2GERSync) GetRemoveGEREvents(
+	ctx context.Context,
+	globalExitRoot *common.Hash,
+	limit uint32,
+) ([]*RemoveGEREvent, error) {
+	return s.processor.GetRemoveGEREvents(ctx, globalExitRoot, limit)
 }

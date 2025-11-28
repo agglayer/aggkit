@@ -5,7 +5,7 @@ package mocks
 import (
 	big "math/big"
 
-	aggchainbase "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
+	aggchainbase "github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/aggchainbase"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 

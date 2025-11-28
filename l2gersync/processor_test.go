@@ -189,11 +189,13 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 	ctx := context.Background()
 
 	blockPosition := uint64(0)
+	blockPosition1 := uint64(1)
+	blockPosition2 := uint64(2)
 	makeGERs := func() []*GlobalExitRootInfo {
 		return []*GlobalExitRootInfo{
 			{GlobalExitRoot: common.HexToHash("0x1234"), BlockPosition: &blockPosition},
-			{GlobalExitRoot: common.HexToHash("0x5678")},
-			{GlobalExitRoot: common.HexToHash("0x9876")},
+			{GlobalExitRoot: common.HexToHash("0x5678"), BlockPosition: &blockPosition1},
+			{GlobalExitRoot: common.HexToHash("0x9876"), BlockPosition: &blockPosition2},
 		}
 	}
 
@@ -228,7 +230,7 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 			{Num: 95, Events: []any{&Event{GERInfo: gerList[2]}}},
 			{Num: 96, Events: []any{&Event{
 				GERInfo: newGlobalExitRootInfo(
-					gerList[2].GlobalExitRoot, 0, 0, 0),
+					gerList[2].GlobalExitRoot, 0, 0, 3),
 				EventType: GEREventTypeRemove,
 			}}},
 		}
@@ -242,13 +244,14 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 	t.Run("returns only non-removed GERs", func(t *testing.T) {
 		t.Parallel()
 
+		blockPosition3 := uint64(3)
 		gerList := makeGERs()
 		allBlocks := []sync.Block{
 			{Num: 93, Events: []any{&Event{GERInfo: gerList[0]}}},
 			{Num: 94, Events: []any{&Event{GERInfo: gerList[1]}}},
 			{Num: 95, Events: []any{&Event{GERInfo: gerList[2]}}},
 			{Num: 96, Events: []any{&Event{
-				GERInfo:   &GlobalExitRootInfo{GlobalExitRoot: gerList[2].GlobalExitRoot},
+				GERInfo:   &GlobalExitRootInfo{GlobalExitRoot: gerList[2].GlobalExitRoot, BlockPosition: &blockPosition3},
 				EventType: GEREventTypeRemove,
 			}}},
 		}
@@ -290,5 +293,92 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 			require.True(t, ok, "GER %s not found", expected.GlobalExitRoot.Hex())
 			require.Equal(t, expected, &actual)
 		}
+	})
+}
+
+func TestRemoveGEREvents(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "test_remove_ger_events.sqlite")
+	processor, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	ger1 := common.HexToHash("0x1234567890abcdef")
+	ger2 := common.HexToHash("0xfedcba0987654321")
+
+	t.Run("Insert and Remove GER Events", func(t *testing.T) {
+		t.Parallel()
+		insertEvent1 := &Event{
+			GERInfo:   newGlobalExitRootInfo(ger1, 1, 100, 0),
+			EventType: GEREventTypeInsert,
+		}
+		removeEvent1 := &Event{
+			GERInfo:   newGlobalExitRootInfo(ger1, 0, 101, 1),
+			EventType: GEREventTypeRemove,
+		}
+		removeEvent2 := &Event{
+			GERInfo:   newGlobalExitRootInfo(ger2, 0, 102, 0),
+			EventType: GEREventTypeRemove,
+		}
+
+		// Process blocks with events
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    100,
+			Events: []any{insertEvent1},
+			Hash:   common.HexToHash("0xblock100"),
+		})
+		require.NoError(t, err)
+
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    101,
+			Events: []any{removeEvent1},
+			Hash:   common.HexToHash("0xblock101"),
+		})
+		require.NoError(t, err)
+
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    102,
+			Events: []any{removeEvent2},
+			Hash:   common.HexToHash("0xblock102"),
+		})
+		require.NoError(t, err)
+
+		// Test GetRemoveGEREvents - all events (no filters)
+		// When no filters are provided, events are returned in descending order (most recent first)
+		allRemoveEvents, err := processor.GetRemoveGEREvents(ctx, nil, 50)
+		require.NoError(t, err)
+		require.Len(t, allRemoveEvents, 2)
+
+		// Verify first remove event (most recent - ger2 from block 102)
+		require.Equal(t, ger2, allRemoveEvents[0].GlobalExitRoot)
+		require.Equal(t, uint64(102), allRemoveEvents[0].BlockNum)
+		require.Equal(t, uint64(0), allRemoveEvents[0].BlockPos)    // Block position from removeEvent2
+		require.Greater(t, allRemoveEvents[0].CreatedAt, uint64(0)) // CreatedAt should be set
+
+		// Verify second remove event (older - ger1 from block 101)
+		require.Equal(t, ger1, allRemoveEvents[1].GlobalExitRoot)
+		require.Equal(t, uint64(101), allRemoveEvents[1].BlockNum)
+		require.Equal(t, uint64(1), allRemoveEvents[1].BlockPos)    // Block position from removeEvent1
+		require.Greater(t, allRemoveEvents[1].CreatedAt, uint64(0)) // CreatedAt should be set
+
+		// Test GetRemoveGEREvents with limit
+		limitedEvents, err := processor.GetRemoveGEREvents(ctx, nil, 1)
+		require.NoError(t, err)
+		require.Len(t, limitedEvents, 1)
+		require.Equal(t, ger2, limitedEvents[0].GlobalExitRoot) // Should return only the most recent
+
+		// Test GetRemoveGEREvents by specific GER (limit is applied when GER is provided)
+		gerEvents, err := processor.GetRemoveGEREvents(ctx, &ger1, 50)
+		require.NoError(t, err)
+		require.Len(t, gerEvents, 1)
+		require.Equal(t, ger1, gerEvents[0].GlobalExitRoot)
+		require.Equal(t, uint64(101), gerEvents[0].BlockNum)
+
+		// Test no results for non-existent GER
+		nonExistentGER := common.HexToHash("0xnonexistent")
+		noEvents, err := processor.GetRemoveGEREvents(ctx, &nonExistentGER, 50)
+		require.NoError(t, err)
+		require.Len(t, noEvents, 0)
 	})
 }

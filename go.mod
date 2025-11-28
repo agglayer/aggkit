@@ -8,7 +8,7 @@ require (
 	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.10-20250923143526-220bf697ba47.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.10-20251103121356-e8eff0e259e6.1
-	github.com/0xPolygon/cdk-contracts-tooling v0.0.11
+	github.com/0xPolygon/cdk-contracts-tooling v0.0.12-0.20251114093850-2ce555e137b6
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.17
 	github.com/agglayer/go_signer v0.0.7

@@ -38,11 +38,43 @@ const (
 	// claimTableName is the name of the table that stores claim events
 	claimTableName = "claim"
 
+	// invalidClaimTableName is the name of the table that stores invalid claim events
+	invalidClaimTableName = "invalid_claim"
+
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
+
+	// unsetClaimTableName is the name of the table that stores unset claim events
+	unsetClaimTableName = "unset_claim"
+
+	// setClaimTableName is the name of the table that stores set claim events
+	setClaimTableName = "set_claim"
+)
+
+type DeleteClaimReason int
+
+const (
+	InvalidGERClaimCorrect DeleteClaimReason = iota
+	InvalidGERClaimIncorrect
+)
+
+func (d DeleteClaimReason) String() string {
+	switch d {
+	case InvalidGERClaimCorrect:
+		return "invalid_ger_claim_correct"
+	case InvalidGERClaimIncorrect:
+		return "invalid_ger_claim_incorrect"
+	default:
+		return "unknown"
+	}
+}
+
+const (
+	// orderByBlockDesc is the default order by clause for block-based queries
+	orderByBlockDesc = "block_num DESC, block_pos DESC"
 )
 
 var (
@@ -249,6 +281,55 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	return true, nil
 }
 
+type InvalidClaim struct {
+	// claim struct fields
+	BlockNum            uint64         `meddler:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
+	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
+	OriginNetwork       uint32         `meddler:"origin_network"`
+	OriginAddress       common.Address `meddler:"origin_address"`
+	DestinationAddress  common.Address `meddler:"destination_address"`
+	Amount              *big.Int       `meddler:"amount,bigint"`
+	ProofLocalExitRoot  types.Proof    `meddler:"proof_local_exit_root,merkleproof"`
+	ProofRollupExitRoot types.Proof    `meddler:"proof_rollup_exit_root,merkleproof"`
+	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"`
+	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"`
+	GlobalExitRoot      common.Hash    `meddler:"global_exit_root,hash"`
+	DestinationNetwork  uint32         `meddler:"destination_network"`
+	Metadata            []byte         `meddler:"metadata"`
+	IsMessage           bool           `meddler:"is_message"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	// additional fields
+	Reason    string `meddler:"reason"`
+	CreatedAt uint64 `meddler:"created_at"`
+}
+
+// NewInvalidClaim creates a new InvalidClaim from a Claim and a reason
+func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
+	return &InvalidClaim{
+		BlockNum:            c.BlockNum,
+		BlockPos:            c.BlockPos,
+		TxHash:              c.TxHash,
+		GlobalIndex:         c.GlobalIndex,
+		OriginNetwork:       c.OriginNetwork,
+		OriginAddress:       c.OriginAddress,
+		DestinationAddress:  c.DestinationAddress,
+		Amount:              c.Amount,
+		ProofLocalExitRoot:  c.ProofLocalExitRoot,
+		ProofRollupExitRoot: c.ProofRollupExitRoot,
+		MainnetExitRoot:     c.MainnetExitRoot,
+		RollupExitRoot:      c.RollupExitRoot,
+		GlobalExitRoot:      c.GlobalExitRoot,
+		DestinationNetwork:  c.DestinationNetwork,
+		Metadata:            c.Metadata,
+		IsMessage:           c.IsMessage,
+		BlockTimestamp:      c.BlockTimestamp,
+		Reason:              reason,
+		CreatedAt:           uint64(time.Now().UTC().Unix()),
+	}
+}
+
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
 	BlockNum            uint64                       `meddler:"block_num"`
@@ -286,6 +367,27 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+// UnsetClaim representation of an UpdatedUnsetGlobalIndexHashChain event,
+// that is emitted by the bridge contract when a claim is unset.
+type UnsetClaim struct {
+	BlockNum                  uint64      `meddler:"block_num"`
+	BlockPos                  uint64      `meddler:"block_pos"`
+	TxHash                    common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex               *big.Int    `meddler:"global_index,bigint"`
+	UnsetGlobalIndexHashChain common.Hash `meddler:"unset_global_index_hash_chain,hash"`
+	CreatedAt                 uint64      `meddler:"created_at"`
+}
+
+// SetClaim representation of a SetClaim event,
+// that is emitted by the bridge contract when a claim is set.
+type SetClaim struct {
+	BlockNum    uint64      `meddler:"block_num"`
+	BlockPos    uint64      `meddler:"block_pos"`
+	TxHash      common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
+	CreatedAt   uint64      `meddler:"created_at"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -293,6 +395,8 @@ type Event struct {
 	TokenMapping         *TokenMapping
 	LegacyTokenMigration *LegacyTokenMigration
 	RemoveLegacyToken    *RemoveLegacyToken
+	UnsetClaim           *UnsetClaim
+	SetClaim             *SetClaim
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -548,9 +652,7 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
-
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByBlockDesc, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -573,6 +675,62 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	return claims, claimsCount, nil
+}
+
+// GetUnsetClaimsPaged returns a paginated list of unset claims
+func (p *processor) GetUnsetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+	globalIndex *big.Int,
+) ([]*UnsetClaim, int, error) {
+	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
+	unclaimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if unclaimsCount == 0 {
+		return []*UnsetClaim{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, unclaimsCount, unsetClaimTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByBlockDesc, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, unclaimsCount, nil
+		}
+		p.log.Errorf("GetUnsetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	unsetClaims := []*UnsetClaim{}
+	if err = meddler.ScanAll(rows, &unsetClaims); err != nil {
+		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return unsetClaims, unclaimsCount, nil
+}
+
+// buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
+// based on the provided globalIndex
+func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
+	if globalIndex != nil {
+		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
+	}
+
+	return ""
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
@@ -623,9 +781,8 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
 	rows, err := p.queryPaged(
-		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
+		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByBlockDesc, whereClause,
 	)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -839,6 +996,39 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Claim != nil {
+			globalIndex := event.Claim.GlobalIndex
+			_, unsetCount, err := p.GetUnsetClaimsPaged(ctx, 1, 1, globalIndex)
+			if err != nil {
+				p.log.Errorf("failed to get unset claims for global index %s at block %d: %v",
+					event.Claim.GlobalIndex.String(), block.Num, err)
+				return err
+			}
+
+			if unsetCount == 0 {
+				existingClaims, err := p.GetClaimsByGlobalIndex(ctx, globalIndex)
+				if err != nil {
+					p.log.Errorf("failed to get claims for global index %d at block %d: %v",
+						event.Claim.GlobalIndex, block.Num, err)
+					return err
+				}
+
+				if len(existingClaims) > 0 {
+					_, err = tx.Exec(`DELETE FROM claim WHERE global_index = ?`, globalIndex.String())
+					if err != nil {
+						p.log.Errorf("failed to delete claims for global index %d: %v", globalIndex, err)
+						return err
+					}
+
+					for _, existingClaim := range existingClaims {
+						invalidClaim := NewInvalidClaim(&existingClaim, InvalidGERClaimCorrect.String())
+						if err = meddler.Insert(tx, invalidClaimTableName, invalidClaim); err != nil {
+							p.log.Errorf("failed to insert invalid claim for global index %d: %v", globalIndex, err)
+							return err
+						}
+					}
+				}
+			}
+
 			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
 				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
 				return err
@@ -866,6 +1056,34 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.UnsetClaim != nil {
+			existingClaims, err := p.GetClaimsByGlobalIndex(ctx, event.UnsetClaim.GlobalIndex)
+			if err != nil {
+				p.log.Errorf("failed to retrieve existing claims for unsetted claim global index %s at block %d: %v",
+					event.UnsetClaim.GlobalIndex, block.Num, err)
+			}
+
+			for _, claim := range existingClaims {
+				ic := NewInvalidClaim(&claim, InvalidGERClaimIncorrect.String())
+				if err = meddler.Insert(tx, invalidClaimTableName, ic); err != nil {
+					p.log.Errorf("failed to insert invalid claim for global index %s at block %d: %v",
+						claim.GlobalIndex.String(), block.Num, err)
+				}
+			}
+
+			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
+				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.SetClaim != nil {
+			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
+				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -882,6 +1100,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 
 	return nil
+}
+
+// getInvalidClaimsByGlobalIndex returns invalid claims by global index
+func (p *processor) getInvalidClaimsByGlobalIndex(globalIndex *big.Int) ([]*InvalidClaim, error) {
+	var results []*InvalidClaim
+	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
+		SELECT * FROM %s
+		WHERE global_index = $1
+		ORDER BY block_num ASC, block_pos ASC;
+	`, invalidClaimTableName), globalIndex.String()); err != nil {
+		return nil, fmt.Errorf("failed to query invalid claims by global index: %s: %w", globalIndex.String(), err)
+	}
+
+	return results, nil
 }
 
 // GetTotalNumberOfRecords returns the total number of records in the given table

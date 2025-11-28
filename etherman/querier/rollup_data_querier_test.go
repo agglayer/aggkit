@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayermanager"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	"github.com/agglayer/aggkit/test/helpers"

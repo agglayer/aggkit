@@ -6,6 +6,7 @@ import (
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,7 +26,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 	L1InfoTreeLeafCount: 11,
 	BridgeExits: []*agglayertypes.BridgeExit{
 		{
-			LeafType: agglayertypes.LeafTypeAsset,
+			LeafType: bridgetypes.LeafTypeAsset,
 			TokenInfo: &agglayertypes.TokenInfo{
 				OriginNetwork:      2,
 				OriginTokenAddress: common.HexToAddress("0x010203"),
@@ -38,7 +39,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 	ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
 		{
 			BridgeExit: &agglayertypes.BridgeExit{
-				LeafType: agglayertypes.LeafTypeAsset,
+				LeafType: bridgetypes.LeafTypeAsset,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginNetwork:      1,
 					OriginTokenAddress: common.HexToAddress("0x01111"),
@@ -75,7 +76,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 		},
 		{
 			BridgeExit: &agglayertypes.BridgeExit{
-				LeafType: agglayertypes.LeafTypeMessage,
+				LeafType: bridgetypes.LeafTypeMessage,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginNetwork:      11,
 					OriginTokenAddress: common.HexToAddress("0x011"),
@@ -452,7 +453,7 @@ func TestGrpcBridgeExitToAgglayer(t *testing.T) {
 		result, err := grpcBridgeExitToAgglayer(bridgeExit)
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		require.Equal(t, agglayertypes.LeafTypeMessage, result.LeafType)
+		require.Equal(t, bridgetypes.LeafTypeMessage, result.LeafType)
 		require.Equal(t, common.HexToAddress("0x123"), result.TokenInfo.OriginTokenAddress)
 		require.Equal(t, uint32(1), result.TokenInfo.OriginNetwork)
 		require.Equal(t, uint32(2), result.DestinationNetwork)
@@ -466,19 +467,19 @@ func TestGrpcLeafTypeToAgglayer(t *testing.T) {
 	t.Run("transfer leaf type", func(t *testing.T) {
 		result, err := grpcLeafTypeToAgglayer(v1types.LeafType_LEAF_TYPE_TRANSFER)
 		require.NoError(t, err)
-		require.Equal(t, agglayertypes.LeafTypeAsset, result)
+		require.Equal(t, bridgetypes.LeafTypeAsset, result)
 	})
 
 	t.Run("message leaf type", func(t *testing.T) {
 		result, err := grpcLeafTypeToAgglayer(v1types.LeafType_LEAF_TYPE_MESSAGE)
 		require.NoError(t, err)
-		require.Equal(t, agglayertypes.LeafTypeMessage, result)
+		require.Equal(t, bridgetypes.LeafTypeMessage, result)
 	})
 
 	t.Run("unknown leaf type", func(t *testing.T) {
 		result, err := grpcLeafTypeToAgglayer(v1types.LeafType(999))
 		require.Error(t, err)
-		require.Equal(t, agglayertypes.LeafTypeAsset, result)
+		require.Equal(t, bridgetypes.LeafTypeAsset, result)
 		require.Contains(t, err.Error(), "unknown leaf type")
 	})
 }

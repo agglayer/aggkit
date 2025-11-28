@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayergerl2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -128,14 +128,13 @@ func (d *downloaderSovereign) buildAppender(
 			return fmt.Errorf("error parsing UpdateRemovalHashChainValue event log %+v: %w", l, err)
 		}
 
-		b.Events = []any{
-			newEvent(
-				newGlobalExitRootInfo(
-					removeGEREvent.RemovedGlobalExitRoot,
-					0,
-					b.Num,
-					uint64(l.Index)),
-				GEREventTypeRemove)}
+		b.Events = append(b.Events, newEvent(
+			newGlobalExitRootInfo(
+				removeGEREvent.RemovedGlobalExitRoot,
+				0,
+				b.Num,
+				uint64(l.Index)),
+			GEREventTypeRemove))
 		return nil
 	}
 
@@ -175,15 +174,13 @@ func (d *downloaderSovereign) buildAppender(
 				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
 		}
 
-		b.Events = []any{
-			newEvent(
-				newGlobalExitRootInfo(
-					insertGEREvent.NewGlobalExitRoot,
-					l1InfoTreeLeaf.L1InfoTreeIndex,
-					b.Num,
-					uint64(l.Index)),
-				GEREventTypeInsert),
-		}
+		b.Events = append(b.Events, newEvent(
+			newGlobalExitRootInfo(
+				insertGEREvent.NewGlobalExitRoot,
+				l1InfoTreeLeaf.L1InfoTreeIndex,
+				b.Num,
+				uint64(l.Index)),
+			GEREventTypeInsert))
 		return nil
 	}
 
