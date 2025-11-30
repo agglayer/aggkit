@@ -47,8 +47,7 @@ const (
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
 
-	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the L1 or L2 section of " +
-		"config file as BridgeAddr."
+	bridgeAddrSetOnWrongSection = "polygonBridgeAddr is deprecated. Use L1Config.BridgeAddr for L1 bridge configuration and L2Config.BridgeAddr for L2 bridge configuration."
 	l2URLHint                = "Use L2URL instead"
 	bridgeMetadataAsHashHint = "BridgeMetaDataAsHash is deprecated, remove it from configuration " +
 		"(bridge metadata is always stored as hash)"
