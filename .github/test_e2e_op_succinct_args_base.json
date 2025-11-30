@@ -10,6 +10,8 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
-    "additional_services": []
+    "additional_services": [
+      "bridge_spammer"
+    ]
   }
 }

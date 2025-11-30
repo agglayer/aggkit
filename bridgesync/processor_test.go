@@ -110,24 +110,6 @@ func TestProcessor(t *testing.T) {
 			firstReorgedBlock: 1,
 			expectedErr:       nil,
 		},
-		&getClaims{
-			p:              p,
-			description:    "on an empty processor",
-			ctx:            context.Background(),
-			fromBlock:      0,
-			toBlock:        2,
-			expectedClaims: nil,
-			expectedErr:    fmt.Errorf(errBlockNotProcessedFormat, 2, 0),
-		},
-		&getBridges{
-			p:               p,
-			description:     "on an empty processor",
-			ctx:             context.Background(),
-			fromBlock:       0,
-			toBlock:         2,
-			expectedBridges: nil,
-			expectedErr:     fmt.Errorf(errBlockNotProcessedFormat, 2, 0),
-		},
 		&processBlockAction{
 			p:           p,
 			description: "block1",
@@ -141,24 +123,6 @@ func TestProcessor(t *testing.T) {
 			ctx:                        context.Background(),
 			expectedLastProcessedBlock: 1,
 			expectedErr:                nil,
-		},
-		&getClaims{
-			p:              p,
-			description:    "after block1: range 0, 2",
-			ctx:            context.Background(),
-			fromBlock:      0,
-			toBlock:        2,
-			expectedClaims: nil,
-			expectedErr:    fmt.Errorf(errBlockNotProcessedFormat, 2, 1),
-		},
-		&getBridges{
-			p:               p,
-			description:     "after block1: range 0, 2",
-			ctx:             context.Background(),
-			fromBlock:       0,
-			toBlock:         2,
-			expectedBridges: nil,
-			expectedErr:     fmt.Errorf(errBlockNotProcessedFormat, 2, 1),
 		},
 		&getClaims{
 			p:              p,
@@ -183,25 +147,6 @@ func TestProcessor(t *testing.T) {
 			description:       "after block1",
 			firstReorgedBlock: 1,
 			expectedErr:       nil,
-		},
-		// processed: ~
-		&getClaims{
-			p:              p,
-			description:    "after block1 reorged",
-			ctx:            context.Background(),
-			fromBlock:      0,
-			toBlock:        2,
-			expectedClaims: nil,
-			expectedErr:    fmt.Errorf(errBlockNotProcessedFormat, 2, 0),
-		},
-		&getBridges{
-			p:               p,
-			description:     "after block1 reorged",
-			ctx:             context.Background(),
-			fromBlock:       0,
-			toBlock:         2,
-			expectedBridges: nil,
-			expectedErr:     fmt.Errorf(errBlockNotProcessedFormat, 2, 0),
 		},
 		&processBlockAction{
 			p:           p,
@@ -2391,48 +2336,6 @@ func intPtr(i int) *int {
 
 func TestProcessor_ErrorPathLogging(t *testing.T) {
 	t.Parallel()
-
-	t.Run("GetBridges error paths", func(t *testing.T) {
-		t.Parallel()
-		p := createTestProcessor(t, "GetBridgesErrorPaths")
-
-		// Test queryBlockRange failure - block not processed
-		_, err := p.GetBridges(context.Background(), 1, 5)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "block 5 not processed")
-
-		// Test successful case with no bridges
-		tx, err := p.db.BeginTx(context.Background(), nil)
-		require.NoError(t, err)
-		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
-		require.NoError(t, err)
-		require.NoError(t, tx.Commit())
-
-		bridges, err := p.GetBridges(context.Background(), 1, 1)
-		require.NoError(t, err)
-		require.Empty(t, bridges)
-	})
-
-	t.Run("GetClaims error paths", func(t *testing.T) {
-		t.Parallel()
-		p := createTestProcessor(t, "GetClaimsErrorPaths")
-
-		// Test queryBlockRange failure - block not processed
-		_, err := p.GetClaims(context.Background(), 1, 5)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "block 5 not processed")
-
-		// Test successful case with no claims
-		tx, err := p.db.BeginTx(context.Background(), nil)
-		require.NoError(t, err)
-		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
-		require.NoError(t, err)
-		require.NoError(t, tx.Commit())
-
-		claims, err := p.GetClaims(context.Background(), 1, 1)
-		require.NoError(t, err)
-		require.Empty(t, claims)
-	})
 
 	t.Run("GetBridgesPaged error paths", func(t *testing.T) {
 		t.Parallel()

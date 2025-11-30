@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -20,17 +22,24 @@ var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 // L1InfoTreeDataQuerier is a struct that holds the logic to query the L1 Info tree data
 type L1InfoTreeDataQuerier struct {
 	l1Client         aggkittypes.BaseEthereumClienter
+	l1GERManager     *agglayerger.Agglayerger
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 }
 
 // NewL1InfoTreeDataQuerier returns a new instance of the L1InfoTreeDataQuery
 func NewL1InfoTreeDataQuerier(
 	l1Client aggkittypes.BaseEthereumClienter,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer) *L1InfoTreeDataQuerier {
+	l1GERAddr common.Address,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer) (*L1InfoTreeDataQuerier, error) {
+	l1GERManager, err := agglayerger.NewAgglayerger(l1GERAddr, l1Client)
+	if err != nil {
+		return nil, err
+	}
 	return &L1InfoTreeDataQuerier{
 		l1Client:         l1Client,
+		l1GERManager:     l1GERManager,
 		l1InfoTreeSyncer: l1InfoTreeSyncer,
-	}
+	}, nil
 }
 
 // GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
@@ -189,7 +198,7 @@ func (l *L1InfoTreeDataQuerier) IsGERFinalized(
 	finalizedL1InfoLeafCount uint32) (bool, error) {
 	info, err := l.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(ger)
 	if err != nil {
-		return false, fmt.Errorf("error getting info by global exit root: %w", err)
+		return false, err
 	}
 
 	if info == nil {
@@ -197,4 +206,14 @@ func (l *L1InfoTreeDataQuerier) IsGERFinalized(
 	}
 
 	return info.L1InfoTreeIndex <= finalizedL1InfoLeafCount-1, nil
+}
+
+func (l *L1InfoTreeDataQuerier) DoesGERExistsOnL1(
+	ger common.Hash,
+) (bool, error) {
+	gerIndex, err := l.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
+	if err != nil {
+		return false, fmt.Errorf("error checking if GER %s exists on L1: %w", ger.String(), err)
+	}
+	return gerIndex.Cmp(common.Big0) == 1, nil
 }

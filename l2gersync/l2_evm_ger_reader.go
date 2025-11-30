@@ -78,17 +78,43 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		}
 	}()
 
+	removedGERs, err := e.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error getting removed GERs block numbers: %w", err)
+	}
+
+	removedGERMap := make(map[common.Hash]struct{}, len(removedGERs))
+	for _, removedGER := range removedGERs {
+		removedGERMap[removedGER.GlobalExitRoot] = struct{}{}
+	}
+
 	injectedGERs := make(map[common.Hash]GlobalExitRootInfo, 0)
 
 	for insertIterator.Next() {
-		ger := insertIterator.Event.NewGlobalExitRoot
-		l1InfoLeaf, err := e.l1InfoTreeSync.GetInfoByGlobalExitRoot(ger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get L1 info tree index for global exit root %s: %w", common.Hash(ger), err)
+		ger := common.Hash(insertIterator.Event.NewGlobalExitRoot)
+
+		var (
+			l1InfoTreeIndex uint32
+			removed         bool
+		)
+		if _, removed = removedGERMap[ger]; removed {
+			log.Infof("inserted GER %s at block %d, index %d was removed", ger.String(),
+				insertIterator.Event.Raw.BlockNumber, insertIterator.Event.Raw.Index)
+		} else {
+			log.Infof("inserted GER: %s at block %d, index %d", ger.String(),
+				insertIterator.Event.Raw.BlockNumber, insertIterator.Event.Raw.Index)
+			l1InfoLeaf, err := e.l1InfoTreeSync.GetInfoByGlobalExitRoot(ger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get L1 info tree index for global exit root %s: %w",
+					ger.String(), err)
+			}
+
+			l1InfoTreeIndex = l1InfoLeaf.L1InfoTreeIndex
 		}
 
-		gerInfo := newGlobalExitRootInfo(ger, l1InfoLeaf.L1InfoTreeIndex,
+		gerInfo := newGlobalExitRootInfo(ger, l1InfoTreeIndex,
 			insertIterator.Event.Raw.BlockNumber, uint64(insertIterator.Event.Raw.Index))
+		gerInfo.Removed = removed
 		injectedGERs[ger] = *gerInfo
 	}
 
