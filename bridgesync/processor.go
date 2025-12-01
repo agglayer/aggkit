@@ -507,11 +507,6 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, co
 		return p.getClaims(ctx, fromBlock, toBlock)
 	}
 
-	// Check if blocks are processed
-	if err := p.isBlockProcessed(ctx, p.db, toBlock); err != nil {
-		return nil, err
-	}
-
 	// Create a context with database timeout
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()

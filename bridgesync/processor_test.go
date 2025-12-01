@@ -3506,22 +3506,6 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "unprocessed block error",
-			compacted: true,
-			setupBlocks: func() []sync.Block {
-				return []sync.Block{
-					{
-						Num:    1,
-						Hash:   common.HexToHash("0x1"),
-						Events: []any{},
-					},
-				}
-			},
-			queryFrom:     1,
-			queryTo:       5,
-			errorContains: "not processed",
-		},
-		{
 			name:      "ordering preserved by block number and position",
 			compacted: true,
 			setupBlocks: func() []sync.Block {
