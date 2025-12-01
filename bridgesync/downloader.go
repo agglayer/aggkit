@@ -45,9 +45,11 @@ var (
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 
-	// bridgeAsset(uint32 destinationNetwork,address destinationAddress,uint256 amount,address token,bool forceUpdateGlobalExitRoot,bytes permitData)
+	// bridgeAsset(uint32 destinationNetwork,address destinationAddress,uint256 amount,
+	// 	address token,bool forceUpdateGlobalExitRoot,bytes permitData)
 	BridgeAssetMethodID = common.Hex2Bytes("cd586579")
-	// bridgeMessage(uint32 destinationNetwork,address destinationAddress,bool forceUpdateGlobalExitRoot,bytes metadata)
+	// bridgeMessage(uint32 destinationNetwork,address destinationAddress,
+	//  bool forceUpdateGlobalExitRoot,bytes metadata)
 	BridgeMessageMethodID = common.Hex2Bytes("240ff378")
 	bridgeLeafTypeAsset   = uint8(0)
 	bridgeLeafTypeMessage = uint8(1)
