@@ -123,11 +123,9 @@ func buildBridgeEventHandler(
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
 			switch bridgeEvent.LeafType {
 			case bridgeLeafTypeAsset:
-				return len(c.Input) >= len(BridgeAssetMethodID) &&
-					bytes.Equal(c.Input[0:len(BridgeAssetMethodID)], BridgeAssetMethodID), nil
+				return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
 			case bridgeLeafTypeMessage:
-				return len(c.Input) >= len(BridgeMessageMethodID) &&
-					bytes.Equal(c.Input[0:len(BridgeMessageMethodID)], BridgeMessageMethodID), nil
+				return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
 			}
 			return false, nil
 		})
