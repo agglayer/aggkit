@@ -4042,4 +4042,57 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		require.True(t, globalIndices[300])
 		require.True(t, globalIndices[400])
 	})
+
+	// Test with network IDs filter - should only return claims from networks 1 and 3
+	t.Run("Filter by network IDs", func(t *testing.T) {
+		networkIDs := []uint32{1, 3} // Only global_index 100 (network 1) and 200 (network 3)
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, nil)
+		require.NoError(t, err)
+		require.Equal(t, 5, count) // 3 claims with network 1, 2 claims with network 3
+
+		// Should get 2 compacted claims: 100 and 200
+		require.Len(t, result, 2)
+
+		globalIndices := make(map[int64]bool)
+		for _, claim := range result {
+			globalIndices[claim.GlobalIndex.Int64()] = true
+		}
+
+		require.True(t, globalIndices[100])
+		require.True(t, globalIndices[200])
+		require.False(t, globalIndices[300]) // Network 5 - excluded
+		require.False(t, globalIndices[400]) // Network 7 - excluded
+	})
+
+	// Test with network IDs and specific global index filter
+	t.Run("Filter by network IDs and global index", func(t *testing.T) {
+		networkIDs := []uint32{1, 3, 5} // Networks that include our target global_index
+		globalIndexFilter := big.NewInt(100)
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, globalIndexFilter)
+		require.NoError(t, err)
+		require.Equal(t, 3, count) // 3 raw claims with global_index 100
+
+		// Should get 1 compacted claim: only global_index 100 (network 1 matches filter)
+		require.Len(t, result, 1)
+		require.Equal(t, big.NewInt(100), result[0].GlobalIndex)
+		require.Equal(t, uint32(1), result[0].OriginNetwork)
+
+		// Verify compaction: oldest metadata with newest proofs
+		require.Equal(t, uint64(10), result[0].BlockNum)                        // Oldest claim's block
+		require.Equal(t, common.HexToHash("0xa1"), result[0].TxHash)            // Oldest claim's tx
+		require.Equal(t, []byte("old"), result[0].Metadata)                     // Oldest claim's metadata
+		require.Equal(t, newProof, result[0].ProofLocalExitRoot)                // Newest claim's proof
+		require.Equal(t, common.HexToHash("0xcccc"), result[0].MainnetExitRoot) // Newest claim's root
+	})
+
+	// Test with network IDs and global index that don't match
+	t.Run("Filter by network IDs and global index - no match", func(t *testing.T) {
+		networkIDs := []uint32{5, 7}         // Networks 5 and 7
+		globalIndexFilter := big.NewInt(100) // But global_index 100 is on network 1
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, globalIndexFilter)
+		require.NoError(t, err)
+		require.Equal(t, 0, count) // No claims match both filters
+
+		require.Len(t, result, 0)
+	})
 }
