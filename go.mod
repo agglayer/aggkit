@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251003171624-441244f9c27c.2
-	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.10-20251003171624-441244f9c27c.1
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.10-20251127185557-2318c2365ae8.1
 	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.10-20250923143526-220bf697ba47.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.10-20251103121356-e8eff0e259e6.1
