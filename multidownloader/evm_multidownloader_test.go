@@ -35,7 +35,7 @@ const l1InfoTreeUseMultidownloader = true
 const storagePath = "../tmp/ut/"
 
 func TestEVMMultidownloader(t *testing.T) {
-	//t.Skip("code to test/debug not real unittest")
+	// t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -117,7 +117,7 @@ func TestEVMMultidownloader(t *testing.T) {
 			},
 			multidownloader,
 			reorgDetector,
-			//l1infotreesync.FlagStopOnFinalizedBlockReached,
+			// l1infotreesync.FlagStopOnFinalizedBlockReached,
 			l1infotreesync.FlagNone,
 		)
 		require.NoError(t, err)

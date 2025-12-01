@@ -93,6 +93,7 @@ func TestE2E(t *testing.T) {
 			nil, // rpcClient
 			nil,
 			nil,
+			nil, // reorgProcessor will be created internally
 		)
 		require.NoError(t, err)
 	} else {
@@ -175,8 +176,9 @@ func TestWithReorgs(t *testing.T) {
 			"testMD",
 			etherman.NewDefaultEthClient(client.Client(), nil, nil),
 			nil, // rpcClient
-			nil,
-			nil,
+			nil, // Storage will be created internally
+			nil, // blockNotifierManager will be created internally
+			nil, // reorgProcessor will be created internally
 		)
 		require.NoError(t, err)
 	} else {
@@ -328,8 +330,9 @@ func TestStressAndReorgs(t *testing.T) {
 			"testMD",
 			etherman.NewDefaultEthClient(client.Client(), nil, nil),
 			nil, // rpcClient
-			nil,
-			nil,
+			nil, // Storage will be created internally
+			nil, // blockNotifierManager will be created internally
+			nil, // reorgProcessor will be created internally
 		)
 		require.NoError(t, err)
 	} else {

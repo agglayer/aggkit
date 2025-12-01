@@ -5,7 +5,6 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman/types/mocks"
-	"github.com/agglayer/aggkit/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -409,7 +408,7 @@ func TestSetSyncSegment_AfterFullySync(t *testing.T) {
 	segment := SyncSegment{
 		ContractAddr:  addr,
 		BlockRange:    aggkitcommon.NewBlockRange(1, 100),
-		TargetToBlock: types.LatestBlock,
+		TargetToBlock: aggkittypes.LatestBlock,
 	}
 	set.Add(segment)
 
@@ -428,8 +427,9 @@ func TestSetSyncSegment_AfterFullySync(t *testing.T) {
 	require.Equal(t, uint64(0), set.TotalBlocks())
 
 	mockBlockManager := mocks.NewBlockNotifierManager(t)
-	mockBlockManager.EXPECT().GetCurrentBlockNumber(mock.Anything, types.LatestBlock).Return(uint64(150), nil).Once()
-	set.UpdateTargetBlockToNumber(t.Context(), mockBlockManager)
+	mockBlockManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).Return(uint64(150), nil).Once()
+	err = set.UpdateTargetBlockToNumber(t.Context(), mockBlockManager)
+	require.NoError(t, err)
 	require.Equal(t, uint64(50), set.TotalBlocks())
 	segment, exists = set.GetByContract(addr)
 	require.True(t, exists)

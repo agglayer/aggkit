@@ -142,7 +142,8 @@ func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) er
 	if err != nil {
 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
 	}
-	dh.log.Infof("MoveUnsafeToSafeIfPossible: finalizedBlockNumber=%d, unsafe blocks to finalize=%d", finalizedBlockNumber, len(blocks))
+	dh.log.Infof("MoveUnsafeToSafeIfPossible: finalizedBlockNumber=%d, "+
+		"unsafe blocks to finalize=%d", finalizedBlockNumber, len(blocks))
 	err = dh.detectReorgs(ctx, blocks)
 	if err != nil {
 		return fmt.Errorf("MoveUnsafeToSafeIfPossible: error detecting reorgs: %w", err)
@@ -382,7 +383,6 @@ func (dh *EVMMultidownloader) sync(ctx context.Context,
 	}
 	dh.log.Infof("🎉🎉🎉🎉🎉 sync %s completed after %d iterations.", name, iteration)
 	dh.statistics.FinishSyncing()
-	//dh.ShowStatistics(iteration)
 	return nil
 }
 
@@ -407,14 +407,14 @@ func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 
 // getTotalPendingBlockRange returns the full pending block range without taking in
 // consideration addrs
-func (dh *EVMMultidownloader) getTotalPendingBlockRange(ctx context.Context) *aggkitcommon.BlockRange {
+func (dh *EVMMultidownloader) getTotalPendingBlockRange() *aggkitcommon.BlockRange {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	br := dh.state.GetTotalPendingBlockRange()
 	return br
 }
 
-func (dh *EVMMultidownloader) getUnsafeLogQueries(ctx context.Context, blockHeaders []*aggkittypes.BlockHeader) []mdrtypes.LogQuery {
+func (dh *EVMMultidownloader) getUnsafeLogQueries(blockHeaders []*aggkittypes.BlockHeader) []mdrtypes.LogQuery {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	logQueries := make([]mdrtypes.LogQuery, 0, len(blockHeaders))
@@ -464,17 +464,19 @@ func (dh *EVMMultidownloader) checkIntegrityNewLogsBlockHeaders(logs []types.Log
 	for _, lg := range logs {
 		bh, exists := blockMap[lg.BlockNumber]
 		if !exists {
-			return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: block header for log block number %d not found", lg.BlockNumber)
+			return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: "+
+				"block header for log block number %d not found", lg.BlockNumber)
 		}
 		if bh.Hash != lg.BlockHash {
-			return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: log block hash %s does not match block header hash %s for block number %d",
+			return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: "+
+				"log block hash %s does not match block header hash %s for block number %d",
 				lg.BlockHash.String(), bh.Hash.String(), lg.BlockNumber)
 		}
 	}
 	return nil
 }
 
-func (dh *EVMMultidownloader) checkParent(ctx context.Context, blockHeader *aggkittypes.BlockHeader) error {
+func (dh *EVMMultidownloader) checkParent(blockHeader *aggkittypes.BlockHeader) error {
 	if blockHeader.Number == 0 {
 		return nil
 	}
@@ -488,13 +490,15 @@ func (dh *EVMMultidownloader) checkParent(ctx context.Context, blockHeader *aggk
 	// Parenthash (from DB) doesn't match parent Hash of first blockHeader, but parent is finalized
 	// so the discrepancy is the new block that is discarded without reorg (still not in DB)
 	if isFinalized && blockHeader.ParentHash != nil && parentHeader.Hash != *blockHeader.ParentHash {
-		return fmt.Errorf("checkParent: parent hash mismatch for block number %d: expected %s, got %s (but parent is finalized)",
+		return fmt.Errorf("checkParent: "+
+			"parent hash mismatch for block number %d: expected %s, got %s (but parent is finalized)",
 			blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String())
 	}
 	if blockHeader.ParentHash != nil && parentHeader.Hash != *blockHeader.ParentHash {
 		// Parenthash mismatch, reorg detected
-		return mdrtypes.NewReorgError(parentHeader.Number, parentHeader.Hash, *blockHeader.ParentHash, fmt.Sprintf("checkParent: parent hash mismatch for block number %d: expected %s, got %s",
-			blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String()))
+		return mdrtypes.NewReorgError(parentHeader.Number, parentHeader.Hash,
+			*blockHeader.ParentHash, fmt.Sprintf("checkParent: parent hash mismatch for block number %d: expected %s, got %s",
+				blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String()))
 	}
 	return nil
 }
@@ -503,7 +507,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	pendingBlockRange := dh.getTotalPendingBlockRange(ctx)
+	pendingBlockRange := dh.getTotalPendingBlockRange()
 	blocks := pendingBlockRange.ListBlockNumbers()
 	// TODO: Check that the blocks are all inside unsafe range
 	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
@@ -512,7 +516,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("Unsafe/Step: failed to retrieve %s block headers: %w", pendingBlockRange.String(), err)
 	}
 	dh.log.Debugf("Unsafe/Step: querying logs for %s", pendingBlockRange.String())
-	logQueries := dh.getUnsafeLogQueries(ctx, blockHeaders)
+	logQueries := dh.getUnsafeLogQueries(blockHeaders)
 	logs, err := dh.requestMultiplesLogs(ctx, logQueries)
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: failed to retrieve logs for %s: %w", pendingBlockRange.String(), err)

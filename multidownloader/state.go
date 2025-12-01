@@ -25,7 +25,8 @@ func NewState(synced *mdrtypes.SetSyncSegment, pending *mdrtypes.SetSyncSegment)
 	}
 }
 
-func NewStateFromStorageSyncedBlocks(storageSynced mdrtypes.SetSyncSegment, totalToSync mdrtypes.SetSyncSegment) (*State, error) {
+func NewStateFromStorageSyncedBlocks(storageSynced mdrtypes.SetSyncSegment,
+	totalToSync mdrtypes.SetSyncSegment) (*State, error) {
 	err := totalToSync.SubtractSegments(&storageSynced)
 	if err != nil {
 		return nil, fmt.Errorf("Initialize: cannot calculate pendingSync: %w", err)

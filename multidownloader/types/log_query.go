@@ -45,7 +45,6 @@ func NewLogQueryFromEthereumFilter(query ethereum.FilterQuery) LogQuery {
 			blockNumber = query.FromBlock.Uint64()
 		}
 		return NewLogQueryBlockHash(blockNumber, *query.BlockHash, query.Addresses)
-
 	}
 	return NewLogQuery(query.FromBlock.Uint64(), query.ToBlock.Uint64(), query.Addresses)
 }

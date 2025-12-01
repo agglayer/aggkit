@@ -167,8 +167,9 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			"testMD",
 			l1EthClient,
 			nil, // RPC client is not simulated
-			nil,
-			nil,
+			nil, // Storage will be created internally
+			nil, // blockNotifierManager will be created internally
+			nil, // reorgProcessor will be created internally
 		)
 		require.NoError(t, err)
 	} else {

@@ -28,11 +28,13 @@ func NewEVMMultidownloaderRPC(
 func (b *EVMMultidownloaderRPC) Status() (interface{}, rpc.Error) {
 	finalizedBlockNumber, err := b.downloader.GetFinalizedBlockNumber(context.Background())
 	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "EVMMultidownloaderRPC.Status: getting finalized block number: %v", err)
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.Status: getting finalized block number: %v", err)
 	}
 	latestBlockNumber, err := b.downloader.GetLatestBlockNumber(context.Background())
 	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "EVMMultidownloaderRPC.Status: getting latest block number: %v", err)
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.Status: getting latest block number: %v", err)
 	}
 	b.downloader.mutex.Lock()
 	defer b.downloader.mutex.Unlock()
