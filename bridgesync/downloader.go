@@ -45,7 +45,10 @@ var (
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 
-	BridgeAssetMethodID = common.Hex2Bytes("cd586579")
+	BridgeAssetMethodID   = common.Hex2Bytes("cd586579")
+	BridgeMessageMethodID = common.Hex2Bytes("240ff378")
+	BridgeLeafTypeAsset   = uint8(0)
+	BridgeLeafTypeMessage = uint8(1)
 )
 
 const (
@@ -114,8 +117,15 @@ func buildBridgeEventHandler(
 
 		// Extract call data and root call for txn_sender
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
-			return len(c.Input) >= len(BridgeAssetMethodID) &&
-				bytes.Equal(c.Input[0:len(BridgeAssetMethodID)], BridgeAssetMethodID), nil
+			switch bridgeEvent.LeafType {
+			case BridgeLeafTypeAsset:
+				return len(c.Input) >= len(BridgeAssetMethodID) &&
+					bytes.Equal(c.Input[0:len(BridgeAssetMethodID)], BridgeAssetMethodID), nil
+			case BridgeLeafTypeMessage:
+				return len(c.Input) >= len(BridgeMessageMethodID) &&
+					bytes.Equal(c.Input[0:len(BridgeMessageMethodID)], BridgeMessageMethodID), nil
+			}
+			return false, nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
