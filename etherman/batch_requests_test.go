@@ -247,7 +247,7 @@ func TestRetrieveBlockHeadersInBatchParallel(t *testing.T) {
 	result, err := retrieveBlockHeadersInBatchParallel(
 		ctx,
 		logger,
-		func(ctx context.Context, blocks []uint64) ([]*aggkittypes.BlockHeader, error) {
+		func(ctx context.Context, blocks []uint64) (aggkittypes.ListBlockHeaders, error) {
 			t.Logf("Retrieving blocks in batch: %v", blocks)
 			headers := make([]*aggkittypes.BlockHeader, len(blocks))
 			for i, bn := range blocks {

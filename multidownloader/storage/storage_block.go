@@ -41,8 +41,8 @@ func (b *Blocks) Get(number uint64) (*aggkittypes.BlockHeader, bool, error) {
 	return header, isFinal, nil
 }
 
-func (b *Blocks) ListHeaders() []*aggkittypes.BlockHeader {
-	headers := make([]*aggkittypes.BlockHeader, 0, len(b.Headers))
+func (b *Blocks) ListHeaders() aggkittypes.ListBlockHeaders {
+	headers := aggkittypes.NewListBlockHeadersEmpty(len(b.Headers))
 	for _, header := range b.Headers {
 		headers = append(headers, header)
 	}
@@ -117,7 +117,7 @@ func (a *MultidownloaderStorage) GetRangeBlockHeader(tx dbtypes.Querier, isFinal
 }
 
 func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
-	blockNumber uint64) (*aggkittypes.BlockHeader, bool, error) {
+	blockNumber uint64) (*aggkittypes.BlockHeader, mdtypes.FinalizedType, error) {
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
 	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE block_number = ?", blockNumber)
@@ -162,7 +162,7 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
 }
 
 // GetBlockHeadersNotFinalized retrieves all block headers that are not finalized <= maxBlock
-func (a *MultidownloaderStorage) GetBlockHeadersNotFinalized(tx dbtypes.Querier, maxBlock uint64) ([]*aggkittypes.BlockHeader, error) {
+func (a *MultidownloaderStorage) GetBlockHeadersNotFinalized(tx dbtypes.Querier, maxBlock uint64) (aggkittypes.ListBlockHeaders, error) {
 	if tx == nil {
 		tx = a.db
 	}

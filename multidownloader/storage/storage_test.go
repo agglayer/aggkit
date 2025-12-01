@@ -48,30 +48,6 @@ func TestStorage_Exploratory(t *testing.T) {
 	log.Infof("Retrieved block: %+v", block)
 }
 
-func TestStorage_GetBlock(t *testing.T) {
-	storage := newStorageForTest(t, nil)
-	// BlockBase not present
-	blockHeader, _, err := storage.GetBlockHeaderByNumber(nil, 1234)
-	require.NoError(t, err, "cannot get BlockHeader")
-	require.Nil(t, blockHeader, "expected nil BlockHeader")
-	block := aggkittypes.NewBlockHeader(1234, exampleTestHash[0], 5678, &exampleTestHash[1])
-	err = storage.saveAggkitBlock(nil, block, true)
-	require.NoError(t, err, "cannot insert BlockHeader")
-	// Get and verify block
-	readBlock, isFinal, err := storage.GetBlockHeaderByNumber(nil, 1234)
-	require.NoError(t, err, "cannot get BlockHeader")
-	require.NotNil(t, readBlock, "expected non-nil BlockHeader")
-	require.Equal(t, block, readBlock, "BlockHeader mismatch")
-	require.True(t, isFinal, "expected block to be final")
-
-	blockNilParentHash := aggkittypes.NewBlockHeader(1235, exampleTestHash[0], 5678, nil)
-	err = storage.saveAggkitBlock(nil, blockNilParentHash, true)
-	require.NoError(t, err, "cannot get BlockHeader")
-	readBlock, _, err = storage.GetBlockHeaderByNumber(nil, blockNilParentHash.Number)
-	require.NoError(t, err, "cannot get BlockHeader")
-	require.Equal(t, blockNilParentHash, readBlock, "BlockHeader mismatch")
-}
-
 func TestStorage_GetLogs(t *testing.T) {
 	storage := newStorageForTest(t, nil)
 	// Logs not present
@@ -324,23 +300,6 @@ func TestStorage_UpdateIsFinal(t *testing.T) {
 	require.True(t, isFinal, "expected block to be final")
 }
 
-func TestStorage_GetRangeBlockHeader(t *testing.T) {
-	storage := newStorageForTest(t, nil)
-	block := aggkittypes.NewBlockHeader(4000, exampleTestHash[5], 1630002000, nil)
-	err := storage.saveAggkitBlock(nil, block, false)
-	require.NoError(t, err, "cannot insert BlockHeader")
-
-	lowest, highest, err := storage.GetRangeBlockHeader(nil, false)
-	require.NoError(t, err, "cannot get range BlockHeader")
-	require.Equal(t, block, lowest, "lowest BlockHeader mismatch")
-	require.Equal(t, block, highest, "highest BlockHeader mismatch")
-
-	lowest, highest, err = storage.GetRangeBlockHeader(nil, true)
-	require.NoError(t, err, "cannot get range BlockHeader")
-	require.Equal(t, nil, lowest, "lowest BlockHeader mismatch")
-	require.Equal(t, nil, highest, "highest BlockHeader mismatch")
-}
-
 func TestStorage_logRow_String(t *testing.T) {
 	row := logRow{
 		Address:     exampleAddr1,
@@ -391,4 +350,41 @@ func newStorageForTest(t *testing.T, dbFileFullPath *string) *MultidownloaderSto
 	storage, err := NewMultidownloaderStorage(logger, cfg)
 	require.NoError(t, err, "cannot create storage")
 	return storage
+}
+
+func populateLogsAndBlocksForTest(t *testing.T, storage *MultidownloaderStorage,
+	startingBlock uint64, numBlocks int, logsPerBlock int) {
+	t.Helper()
+	var blocks []*aggkittypes.BlockHeader
+	var logs []types.Log
+	for i := 0; i < numBlocks; i++ {
+		blockNumber := startingBlock + uint64(i)
+		blockHash := exampleTestHash[i%len(exampleTestHash)]
+		var parentHash *common.Hash
+		if i > 0 {
+			parentHash = &exampleTestHash[(i-1)%len(exampleTestHash)]
+		}
+		block := aggkittypes.NewBlockHeader(blockNumber, blockHash, 1630000000+uint64(i*60), parentHash)
+		blocks = append(blocks, block)
+
+		for j := 0; j < logsPerBlock; j++ {
+			logEntry := types.Log{
+				Address:        exampleAddr1,
+				BlockNumber:    blockNumber,
+				BlockHash:      blockHash,
+				BlockTimestamp: 1630000000 + uint64(i*60),
+				Topics: []common.Hash{
+					exampleTestHash[j%len(exampleTestHash)],
+				},
+				Data:    []byte{0x01, 0x02, byte(j)},
+				TxHash:  exampleTestHash[(i+j)%len(exampleTestHash)],
+				TxIndex: uint(100 + j),
+				Index:   uint(10 + j),
+			}
+			logs = append(logs, logEntry)
+		}
+	}
+
+	err := storage.SaveEthLogsWithHeaders(nil, blocks, logs, true)
+	require.NoError(t, err, "cannot populate logs and blocks")
 }

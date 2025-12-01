@@ -142,7 +142,7 @@ func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*blockRow {
 	return blockMap
 }
 
-func NewBlockRowsFromAggkitBlock(blockHeaders []*aggkittypes.BlockHeader, isFinal bool) map[uint64]*blockRow {
+func NewBlockRowsFromAggkitBlock(blockHeaders aggkittypes.ListBlockHeaders, isFinal bool) map[uint64]*blockRow {
 	blockMap := make(map[uint64]*blockRow)
 	for _, header := range blockHeaders {
 		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, isFinal)
@@ -247,7 +247,7 @@ func (a *MultidownloaderStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Lo
 }
 
 func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier,
-	blockHeaders []*aggkittypes.BlockHeader, logs []types.Log, isFinal bool) error {
+	blockHeaders aggkittypes.ListBlockHeaders, logs []types.Log, isFinal bool) error {
 	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders, isFinal), NewLogRowsFromEthLogs(logs))
 }
 

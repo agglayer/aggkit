@@ -56,7 +56,7 @@ func RetrieveBlockHeaders(ctx context.Context,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
 	blockNumbers []uint64,
-	maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
+	maxConcurrency int) (aggkittypes.ListBlockHeaders, error) {
 	if rpcClient != nil {
 		return RetrieveBlockHeadersBatch(ctx, log, rpcClient, blockNumbers, maxConcurrency)
 	}
@@ -69,11 +69,11 @@ func RetrieveBlockHeadersBatch(ctx context.Context,
 	log aggkitcommon.Logger,
 	rpcClient aggkittypes.RPCClienter,
 	blockNumbers []uint64,
-	maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
+	maxConcurrency int) (aggkittypes.ListBlockHeaders, error) {
 	return retrieveBlockHeadersInBatchParallel(
 		ctx,
 		log,
-		func(ctx context.Context, blocks []uint64) ([]*aggkittypes.BlockHeader, error) {
+		func(ctx context.Context, blocks []uint64) (aggkittypes.ListBlockHeaders, error) {
 			return retrieveBlockHeadersInBatch(ctx, log, rpcClient, blocks)
 		}, blockNumbers, batchRequestLimitHTTP, maxConcurrency)
 }
@@ -88,8 +88,8 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 	return retrieveBlockHeadersInBatchParallel(
 		ctx,
 		log,
-		func(ctx context.Context, blocks []uint64) ([]*aggkittypes.BlockHeader, error) {
-			result := make([]*aggkittypes.BlockHeader, len(blocks))
+		func(ctx context.Context, blocks []uint64) (aggkittypes.ListBlockHeaders, error) {
+			result := aggkittypes.NewListBlockHeadersEmpty(len(blocks))
 			for i, blockNumber := range blocks {
 				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
 				if err != nil {
@@ -107,9 +107,9 @@ func retrieveBlockHeadersInBatch(ctx context.Context,
 	log aggkitcommon.Logger,
 	rpcClient aggkittypes.RPCClienter,
 	blockNumbers []uint64,
-) ([]*aggkittypes.BlockHeader, error) {
+) (aggkittypes.ListBlockHeaders, error) {
 	if len(blockNumbers) == 0 {
-		return make([]*aggkittypes.BlockHeader, 0), nil
+		return aggkittypes.NewListBlockHeadersEmpty(0), nil
 	}
 	headers := make([]*blockRawEth, len(blockNumbers))
 	timeTracker := aggkitcommon.NewTimeTracker()
@@ -146,9 +146,9 @@ func retrieveBlockHeadersInBatch(ctx context.Context,
 func retrieveBlockHeadersInBatchParallel(
 	ctx context.Context,
 	logger aggkitcommon.Logger,
-	funcRetrieval func(context.Context, []uint64) ([]*aggkittypes.BlockHeader, error),
+	funcRetrieval func(context.Context, []uint64) (aggkittypes.ListBlockHeaders, error),
 	blockNumbers []uint64,
-	chunckSize, maxConcurrency int) ([]*aggkittypes.BlockHeader, error) {
+	chunckSize, maxConcurrency int) (aggkittypes.ListBlockHeaders, error) {
 	var mu sync.Mutex
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrency)

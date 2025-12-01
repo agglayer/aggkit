@@ -96,23 +96,23 @@ func (_c *Storager_GetBlockHeaderByNumber_Call) RunAndReturn(run func(types.Quer
 }
 
 // GetBlockHeadersNotFinalized provides a mock function with given fields: tx, maxBlock
-func (_m *Storager) GetBlockHeadersNotFinalized(tx types.Querier, maxBlock uint64) ([]*aggkittypes.BlockHeader, error) {
+func (_m *Storager) GetBlockHeadersNotFinalized(tx types.Querier, maxBlock uint64) (aggkittypes.ListBlockHeaders, error) {
 	ret := _m.Called(tx, maxBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetBlockHeadersNotFinalized")
 	}
 
-	var r0 []*aggkittypes.BlockHeader
+	var r0 aggkittypes.ListBlockHeaders
 	var r1 error
-	if rf, ok := ret.Get(0).(func(types.Querier, uint64) ([]*aggkittypes.BlockHeader, error)); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, uint64) (aggkittypes.ListBlockHeaders, error)); ok {
 		return rf(tx, maxBlock)
 	}
-	if rf, ok := ret.Get(0).(func(types.Querier, uint64) []*aggkittypes.BlockHeader); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, uint64) aggkittypes.ListBlockHeaders); ok {
 		r0 = rf(tx, maxBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*aggkittypes.BlockHeader)
+			r0 = ret.Get(0).(aggkittypes.ListBlockHeaders)
 		}
 	}
 
@@ -144,12 +144,12 @@ func (_c *Storager_GetBlockHeadersNotFinalized_Call) Run(run func(tx types.Queri
 	return _c
 }
 
-func (_c *Storager_GetBlockHeadersNotFinalized_Call) Return(_a0 []*aggkittypes.BlockHeader, _a1 error) *Storager_GetBlockHeadersNotFinalized_Call {
+func (_c *Storager_GetBlockHeadersNotFinalized_Call) Return(_a0 aggkittypes.ListBlockHeaders, _a1 error) *Storager_GetBlockHeadersNotFinalized_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *Storager_GetBlockHeadersNotFinalized_Call) RunAndReturn(run func(types.Querier, uint64) ([]*aggkittypes.BlockHeader, error)) *Storager_GetBlockHeadersNotFinalized_Call {
+func (_c *Storager_GetBlockHeadersNotFinalized_Call) RunAndReturn(run func(types.Querier, uint64) (aggkittypes.ListBlockHeaders, error)) *Storager_GetBlockHeadersNotFinalized_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -395,6 +395,63 @@ func (_c *Storager_GetValue_Call) RunAndReturn(run func(types.Querier, string, s
 	return _c
 }
 
+// InsertReorgAndMoveReorgedBlocksAndLogs provides a mock function with given fields: tx, reorgData
+func (_m *Storager) InsertReorgAndMoveReorgedBlocksAndLogs(tx types.Querier, reorgData multidownloadertypes.ReorgData) (uint64, error) {
+	ret := _m.Called(tx, reorgData)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InsertReorgAndMoveReorgedBlocksAndLogs")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(types.Querier, multidownloadertypes.ReorgData) (uint64, error)); ok {
+		return rf(tx, reorgData)
+	}
+	if rf, ok := ret.Get(0).(func(types.Querier, multidownloadertypes.ReorgData) uint64); ok {
+		r0 = rf(tx, reorgData)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(types.Querier, multidownloadertypes.ReorgData) error); ok {
+		r1 = rf(tx, reorgData)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InsertReorgAndMoveReorgedBlocksAndLogs'
+type Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call struct {
+	*mock.Call
+}
+
+// InsertReorgAndMoveReorgedBlocksAndLogs is a helper method to define mock.On call
+//   - tx types.Querier
+//   - reorgData multidownloadertypes.ReorgData
+func (_e *Storager_Expecter) InsertReorgAndMoveReorgedBlocksAndLogs(tx interface{}, reorgData interface{}) *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call {
+	return &Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call{Call: _e.mock.On("InsertReorgAndMoveReorgedBlocksAndLogs", tx, reorgData)}
+}
+
+func (_c *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call) Run(run func(tx types.Querier, reorgData multidownloadertypes.ReorgData)) *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.Querier), args[1].(multidownloadertypes.ReorgData))
+	})
+	return _c
+}
+
+func (_c *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call) Return(_a0 uint64, _a1 error) *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call) RunAndReturn(run func(types.Querier, multidownloadertypes.ReorgData) (uint64, error)) *Storager_InsertReorgAndMoveReorgedBlocksAndLogs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // InsertValue provides a mock function with given fields: tx, owner, key, value
 func (_m *Storager) InsertValue(tx types.Querier, owner string, key string, value string) error {
 	ret := _m.Called(tx, owner, key, value)
@@ -503,7 +560,7 @@ func (_c *Storager_NewTx_Call) RunAndReturn(run func(context.Context) (types.Txe
 }
 
 // SaveEthLogsWithHeaders provides a mock function with given fields: tx, blockHeaders, logs, isFinal
-func (_m *Storager) SaveEthLogsWithHeaders(tx types.Querier, blockHeaders []*aggkittypes.BlockHeader, logs []coretypes.Log, isFinal bool) error {
+func (_m *Storager) SaveEthLogsWithHeaders(tx types.Querier, blockHeaders aggkittypes.ListBlockHeaders, logs []coretypes.Log, isFinal bool) error {
 	ret := _m.Called(tx, blockHeaders, logs, isFinal)
 
 	if len(ret) == 0 {
@@ -511,7 +568,7 @@ func (_m *Storager) SaveEthLogsWithHeaders(tx types.Querier, blockHeaders []*agg
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.Querier, []*aggkittypes.BlockHeader, []coretypes.Log, bool) error); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, aggkittypes.ListBlockHeaders, []coretypes.Log, bool) error); ok {
 		r0 = rf(tx, blockHeaders, logs, isFinal)
 	} else {
 		r0 = ret.Error(0)
@@ -527,16 +584,16 @@ type Storager_SaveEthLogsWithHeaders_Call struct {
 
 // SaveEthLogsWithHeaders is a helper method to define mock.On call
 //   - tx types.Querier
-//   - blockHeaders []*aggkittypes.BlockHeader
+//   - blockHeaders aggkittypes.ListBlockHeaders
 //   - logs []coretypes.Log
 //   - isFinal bool
 func (_e *Storager_Expecter) SaveEthLogsWithHeaders(tx interface{}, blockHeaders interface{}, logs interface{}, isFinal interface{}) *Storager_SaveEthLogsWithHeaders_Call {
 	return &Storager_SaveEthLogsWithHeaders_Call{Call: _e.mock.On("SaveEthLogsWithHeaders", tx, blockHeaders, logs, isFinal)}
 }
 
-func (_c *Storager_SaveEthLogsWithHeaders_Call) Run(run func(tx types.Querier, blockHeaders []*aggkittypes.BlockHeader, logs []coretypes.Log, isFinal bool)) *Storager_SaveEthLogsWithHeaders_Call {
+func (_c *Storager_SaveEthLogsWithHeaders_Call) Run(run func(tx types.Querier, blockHeaders aggkittypes.ListBlockHeaders, logs []coretypes.Log, isFinal bool)) *Storager_SaveEthLogsWithHeaders_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.Querier), args[1].([]*aggkittypes.BlockHeader), args[2].([]coretypes.Log), args[3].(bool))
+		run(args[0].(types.Querier), args[1].(aggkittypes.ListBlockHeaders), args[2].([]coretypes.Log), args[3].(bool))
 	})
 	return _c
 }
@@ -546,7 +603,7 @@ func (_c *Storager_SaveEthLogsWithHeaders_Call) Return(_a0 error) *Storager_Save
 	return _c
 }
 
-func (_c *Storager_SaveEthLogsWithHeaders_Call) RunAndReturn(run func(types.Querier, []*aggkittypes.BlockHeader, []coretypes.Log, bool) error) *Storager_SaveEthLogsWithHeaders_Call {
+func (_c *Storager_SaveEthLogsWithHeaders_Call) RunAndReturn(run func(types.Querier, aggkittypes.ListBlockHeaders, []coretypes.Log, bool) error) *Storager_SaveEthLogsWithHeaders_Call {
 	_c.Call.Return(run)
 	return _c
 }

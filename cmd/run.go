@@ -628,6 +628,7 @@ func runL1MultiDownloaderIfNeeded(
 		l1Client, // rpcClient
 		nil,      // storage
 		nil,      // blockNotifierManager
+		nil,      // reorgProcessor
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create L1 MultiDownloader: %w", err)

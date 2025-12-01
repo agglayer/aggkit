@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
@@ -29,8 +30,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const runL1InfoTree = true
+const runL1InfoTree = false
 const l1InfoTreeUseMultidownloader = true
+const storagePath = "../tmp/ut/"
 
 func TestEVMMultidownloader(t *testing.T) {
 	//t.Skip("code to test/debug not real unittest")
@@ -54,7 +56,7 @@ func TestEVMMultidownloader(t *testing.T) {
 	logger := log.WithFields("test", "test")
 
 	db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
-		DBPath: "/tmp/mdr_test.sqlite",
+		DBPath: storagePath + "mdr_test.sqlite",
 	})
 	require.NoError(t, err)
 	cfg := Config{
@@ -64,9 +66,10 @@ func TestEVMMultidownloader(t *testing.T) {
 		WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
 		PeriodToCheckReorgs:             types.NewDuration(time.Second * 10),
 	}
+	var rpcServices []jRPC.Service
 	mdr, err := NewEVMMultidownloader(logger,
 		cfg, "l1", ethClient, ethRPCClient,
-		db, nil)
+		db, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, mdr)
 	err = mdr.RegisterSyncer(aggkittypes.SyncerConfig{
@@ -79,6 +82,7 @@ func TestEVMMultidownloader(t *testing.T) {
 		ToBlock:   aggkittypes.LatestBlock,
 	})
 	require.NoError(t, err)
+	rpcServices = append(rpcServices, mdr.GetRPCServices()...)
 	ctx := context.TODO()
 	var l1infotree *l1infotreesync.L1InfoTreeSync
 	if runL1InfoTree == true {
@@ -86,13 +90,13 @@ func TestEVMMultidownloader(t *testing.T) {
 		var dbPath string
 		if l1InfoTreeUseMultidownloader {
 			multidownloader = mdr
-			dbPath = "/tmp/l1infotree_md.sqlite"
+			dbPath = storagePath + "l1infotree_md.sqlite"
 		} else {
 			multidownloader = aggkitsync.NewAdapterEthClientToMultidownloader(ethClient)
-			dbPath = "/tmp/l1infotree_eth.sqlite"
+			dbPath = storagePath + "l1infotree_eth.sqlite"
 		}
 		reorgDetector, err := reorgdetector.New(ethClient, reorgdetector.Config{
-			DBPath:              "/tmp/l1_reorgdetector.sqlite",
+			DBPath:              storagePath + "l1_reorgdetector.sqlite",
 			CheckReorgsInterval: types.NewDuration(time.Second * 10),
 			FinalizedBlock:      aggkittypes.FinalizedBlock,
 		}, reorgdetector.L1)
@@ -113,9 +117,29 @@ func TestEVMMultidownloader(t *testing.T) {
 			},
 			multidownloader,
 			reorgDetector,
+			//l1infotreesync.FlagStopOnFinalizedBlockReached,
 			l1infotreesync.FlagNone,
 		)
 		require.NoError(t, err)
+		rpcServices = append(rpcServices, l1infotree.GetRPCServices()...)
+	}
+	if len(rpcServices) > 0 {
+		log.Infof("Registering %d RPC services", len(rpcServices))
+		logger := log.WithFields("module", "RPC")
+		jRPCServer := jRPC.NewServer(
+			jRPC.Config{
+				Host:                      "127.0.0.1",
+				Port:                      5576,
+				MaxRequestsPerIPAndSecond: 10000.0,
+			},
+			rpcServices,
+			jRPC.WithLogger(logger.GetSugaredLogger()),
+		)
+		go func() {
+			if err := jRPCServer.Start(); err != nil {
+				log.Fatal(err)
+			}
+		}()
 	}
 
 	var wg sync.WaitGroup
@@ -233,7 +257,7 @@ func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.
 func TestEVMMultidownloader_NewEVMMultidownloader(t *testing.T) {
 	logger := log.WithFields("test", "evm_multidownloader_test")
 	cfg := NewConfigDefault("test.sqlite", t.TempDir())
-	sut, err := NewEVMMultidownloader(logger, cfg, "test", nil, nil, nil, nil)
+	sut, err := NewEVMMultidownloader(logger, cfg, "test", nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.NotNil(t, sut.blockNotifierManager)
@@ -307,7 +331,7 @@ func TestEVMMultidownloader_GetRPCServices(t *testing.T) {
 		require.NoError(t, err)
 
 		customName := "custom-name"
-		mdr, err := NewEVMMultidownloader(logger, cfg, customName, ethClient, nil, db, nil)
+		mdr, err := NewEVMMultidownloader(logger, cfg, customName, ethClient, nil, db, nil, nil)
 		require.NoError(t, err)
 
 		services := mdr.GetRPCServices()
@@ -455,7 +479,7 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		useDB = realDB
 	}
 	// TODO: Add mock for ethRPCClient if needed
-	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, mockBlockNotifierManager)
+	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, mockBlockNotifierManager, nil)
 	require.NoError(t, err)
 	return &testDataEVMMultidownloader{
 		mockEthClient:            ethClient,

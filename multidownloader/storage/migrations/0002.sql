@@ -3,8 +3,8 @@ DROP TABLE IF EXISTS logs_reorged;
 -- +migrate Up
 
 CREATE TABLE logs_reorged (
-    chain_id INTEGER NOT NULL,
-    block_number BIGINT NOT NULL,
+    chain_id BIGINT NOT NULL ,
+    block_number BIGINT NOT NULL ,
     address TEXT NOT NULL,                -- 
     topics TEXT NOT NULL,                 -- list of hashes in JSON
     data BLOB,                            -- 
@@ -12,25 +12,28 @@ CREATE TABLE logs_reorged (
     tx_index INTEGER NOT NULL,
     log_index INTEGER NOT NULL,      -- “index” is a reserved keyword
     PRIMARY KEY (address, chain_id,block_number, log_index),
-    FOREIGN KEY (chain_id, block_number) REFERENCES block_reorged(chain_id, block_number)
+    FOREIGN KEY (chain_id, block_number) REFERENCES blocks_reorged(chain_id, block_number)
 );
 
 CREATE INDEX idx_logs_reorged_block_number ON logs_reorged(block_number);
 
-CREATE TABLE block_reorged (
-    chain_id INTEGER NOT NULL,
+CREATE TABLE blocks_reorged (
+    chain_id BIGINT NOT NULL REFERENCES reorgs(chain_id),
     block_number BIGINT NOT NULL,
      block_hash TEXT NOT NULL, 
      block_timestamp INTEGER NOT NULL,
-    block_parent_hash TEXT, 
+    block_parent_hash TEXT NOT NULL,  
     PRIMARY KEY (chain_id, block_number)
 );
 
 CREATE TABLE reorgs (
-    chain_id INTEGER NOT NULL,
+    chain_id BIGINT PRIMARY KEY,
     detected_at_block BIGINT NOT NULL,
     reorged_from_block BIGINT NOT NULL,
     reorged_to_block BIGINT NOT NULL,
-    detected_timestamp INTEGER NOT NULL,    
-    PRIMARY KEY (chain_id, detected_at_block)
+    detected_timestamp INTEGER NOT NULL,   
+    network_latest_block INTEGER NOT NULL,  -- which was the latest block in the detection moment
+    network_finalized_block INTEGER NOT NULL, -- which was the finalized block in the detection moment
+    network_finalized_block_name TEXT NOT NULL, -- name of the finalized block (e.g., "finalized", "safe", etc.)
+    description TEXT -- extran information, can be null
 );

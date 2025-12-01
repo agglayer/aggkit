@@ -16,10 +16,11 @@ const (
 )
 
 type Storager interface {
+	StoragerForReorg
 	dbtypes.KeyValueStorager
 	// GetSyncedBlockRangePerContract It returns the synced block range stored in DB
 	GetSyncedBlockRangePerContract(tx dbtypes.Querier) (SetSyncSegment, error)
-	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders []*aggkittypes.BlockHeader,
+	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders aggkittypes.ListBlockHeaders,
 		logs []types.Log, isFinal bool) error
 	GetEthLogs(tx dbtypes.Querier, query LogQuery) ([]types.Log, error)
 	UpdateSyncedStatus(tx dbtypes.Querier, segments []SyncSegment) error
@@ -27,8 +28,13 @@ type Storager interface {
 	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 
-	GetBlockHeadersNotFinalized(tx dbtypes.Querier, maxBlock uint64) ([]*aggkittypes.BlockHeader, error)
+	GetBlockHeadersNotFinalized(tx dbtypes.Querier, maxBlock uint64) (aggkittypes.ListBlockHeaders, error)
 	UpdateBlockToFinalized(tx dbtypes.Querier, blockNumbers []uint64) error
 	GetRangeBlockHeader(tx dbtypes.Querier, isFinal FinalizedType) (lowest *aggkittypes.BlockHeader,
 		highest *aggkittypes.BlockHeader, err error)
+}
+
+type StoragerForReorg interface {
+	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, FinalizedType, error)
+	InsertReorgAndMoveReorgedBlocksAndLogs(tx dbtypes.Querier, reorgData ReorgData) (uint64, error)
 }
