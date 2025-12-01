@@ -37,7 +37,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "bridgeEventSignature appender",
 			eventSignature: bridgeEventSignature,
-			callFrame:      Call{To: bridgeAddr, Input: BridgeAssetMethodID},
+			callFrame:      Call{To: bridgeAddr, Input: BridgeMessageMethodID},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
 				if err != nil {
@@ -558,7 +558,7 @@ func TestTxnSenderField(t *testing.T) {
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x20"),
 						Err:   nil,
-						Input: BridgeAssetMethodID,
+						Input: BridgeMessageMethodID,
 					},
 				},
 			},

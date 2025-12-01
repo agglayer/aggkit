@@ -45,10 +45,12 @@ var (
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 
-	BridgeAssetMethodID   = common.Hex2Bytes("cd586579")
+	// bridgeAsset(uint32 destinationNetwork,address destinationAddress,uint256 amount,address token,bool forceUpdateGlobalExitRoot,bytes permitData)
+	BridgeAssetMethodID = common.Hex2Bytes("cd586579")
+	// bridgeMessage(uint32 destinationNetwork,address destinationAddress,bool forceUpdateGlobalExitRoot,bytes metadata)
 	BridgeMessageMethodID = common.Hex2Bytes("240ff378")
-	BridgeLeafTypeAsset   = uint8(0)
-	BridgeLeafTypeMessage = uint8(1)
+	bridgeLeafTypeAsset   = uint8(0)
+	bridgeLeafTypeMessage = uint8(1)
 )
 
 const (
@@ -118,10 +120,10 @@ func buildBridgeEventHandler(
 		// Extract call data and root call for txn_sender
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
 			switch bridgeEvent.LeafType {
-			case BridgeLeafTypeAsset:
+			case bridgeLeafTypeAsset:
 				return len(c.Input) >= len(BridgeAssetMethodID) &&
 					bytes.Equal(c.Input[0:len(BridgeAssetMethodID)], BridgeAssetMethodID), nil
-			case BridgeLeafTypeMessage:
+			case bridgeLeafTypeMessage:
 				return len(c.Input) >= len(BridgeMessageMethodID) &&
 					bytes.Equal(c.Input[0:len(BridgeMessageMethodID)], BridgeMessageMethodID), nil
 			}
