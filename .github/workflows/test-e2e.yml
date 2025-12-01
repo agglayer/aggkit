@@ -54,7 +54,7 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="b8b654a0659bc909d65af11255ee8c55010f53ea"
+            COMMIT="41a7b1db45a2625ab2dec1f6868161bc6b64980a"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
