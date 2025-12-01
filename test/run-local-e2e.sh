@@ -173,6 +173,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
+        bats ./tests/aggkit/latest-n-injected-ger.bats -f "Test invalid GER injection case B2 (FEP mode)" || exit 1
         bats ./tests/aggkit/bridge-e2e.bats || exit 1
         bats ./tests/aggkit/e2e-pp.bats || exit 1
         bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
@@ -186,6 +187,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats || exit 1
         ;;
     single-l2-network-op-pessimistic)
+        bats ./tests/aggkit/latest-n-injected-ger.bats -f "Test invalid GER injection case B2 (PP mode)" || exit 1
         bats ./tests/aggkit/bridge-e2e.bats || exit 1
         bats ./tests/aggkit/e2e-pp.bats || exit 1
         bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
