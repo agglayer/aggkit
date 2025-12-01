@@ -520,7 +520,7 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
