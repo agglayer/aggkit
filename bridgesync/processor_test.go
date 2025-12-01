@@ -3763,3 +3763,283 @@ func TestGetClaims_Compact(t *testing.T) {
 		})
 	}
 }
+
+// TestGetClaimsPaged_CompactionAcrossPages tests the compaction behavior when
+// claims with the same global_index span across multiple pages
+func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
+	path := path.Join(t.TempDir(), "claimsPaged_compaction.sqlite")
+	require.NoError(t, migrations.RunMigrations(path))
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Create test scenario:
+	// - Global index 100: claims at blocks 10 (oldest), 20, 30 (newest with updated proofs)
+	// - Global index 200: claims at blocks 15 (oldest), 25 (newest with updated proofs)
+	// - Global index 300: single claim at block 35
+	// - Global index 400: single claim at block 5
+	//
+	// When ordered DESC by block_num: [35, 30, 25, 20, 15, 10, 5]
+	//
+	// Page 1 (size 3): blocks [35, 30, 25]
+	//   - Block 35: global_index=300 (newest) -> INCLUDE (compacted with itself)
+	//   - Block 30: global_index=100 (newest) -> INCLUDE (compacted with block 10)
+	//   - Block 25: global_index=200 (newest) -> INCLUDE (compacted with block 15)
+	//
+	// Page 2 (size 3): blocks [20, 15, 10]
+	//   - Block 20: global_index=100 (NOT newest, 30 is newest) -> EXCLUDE
+	//   - Block 15: global_index=200 (NOT newest, 25 is newest) -> EXCLUDE
+	//   - Block 10: global_index=100 (NOT newest, 30 is newest) -> EXCLUDE
+	//
+	// Page 3 (size 3): blocks [5]
+	//   - Block 5: global_index=400 (newest) -> INCLUDE (compacted with itself)
+
+	oldProof := types.Proof{}
+	oldProof[0] = common.HexToHash("0x01")
+
+	newProof := types.Proof{}
+	newProof[0] = common.HexToHash("0x02")
+
+	claims := []*Claim{
+		// Global index 100 - oldest (will be base for compaction)
+		{
+			BlockNum:            10,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa1"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x1111"),
+			DestinationAddress:  common.HexToAddress("0x2222"),
+			Amount:              big.NewInt(1000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x3333"),
+			RollupExitRoot:      common.HexToHash("0x4444"),
+			GlobalExitRoot:      common.HexToHash("0x5555"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("old"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// Global index 200 - oldest
+		{
+			BlockNum:            15,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa2"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0x3333"),
+			DestinationAddress:  common.HexToAddress("0x4444"),
+			Amount:              big.NewInt(2000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x6666"),
+			RollupExitRoot:      common.HexToHash("0x7777"),
+			GlobalExitRoot:      common.HexToHash("0x8888"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("metadata200"),
+			IsMessage:           true,
+			BlockTimestamp:      1500,
+		},
+		// Global index 100 - middle
+		{
+			BlockNum:            20,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa3"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x1111"),
+			DestinationAddress:  common.HexToAddress("0x2222"),
+			Amount:              big.NewInt(1000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x3333"),
+			RollupExitRoot:      common.HexToHash("0x4444"),
+			GlobalExitRoot:      common.HexToHash("0x5555"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("should_not_matter"),
+			IsMessage:           false,
+			BlockTimestamp:      2000,
+		},
+		// Global index 200 - newest (has updated proofs)
+		{
+			BlockNum:            25,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa4"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0x3333"),
+			DestinationAddress:  common.HexToAddress("0x4444"),
+			Amount:              big.NewInt(2000),
+			ProofLocalExitRoot:  newProof,                   // Updated proof
+			ProofRollupExitRoot: newProof,                   // Updated proof
+			MainnetExitRoot:     common.HexToHash("0x9999"), // Updated
+			RollupExitRoot:      common.HexToHash("0xaaaa"), // Updated
+			GlobalExitRoot:      common.HexToHash("0xbbbb"), // Updated
+			DestinationNetwork:  4,
+			Metadata:            []byte("should_not_matter"),
+			IsMessage:           true,
+			BlockTimestamp:      2500,
+		},
+		// Global index 100 - newest (has updated proofs)
+		{
+			BlockNum:            30,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa5"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x1111"),
+			DestinationAddress:  common.HexToAddress("0x2222"),
+			Amount:              big.NewInt(1000),
+			ProofLocalExitRoot:  newProof,                   // Updated proof
+			ProofRollupExitRoot: newProof,                   // Updated proof
+			MainnetExitRoot:     common.HexToHash("0xcccc"), // Updated
+			RollupExitRoot:      common.HexToHash("0xdddd"), // Updated
+			GlobalExitRoot:      common.HexToHash("0xeeee"), // Updated
+			DestinationNetwork:  2,
+			Metadata:            []byte("should_not_matter"),
+			IsMessage:           false,
+			BlockTimestamp:      3000,
+		},
+		// Global index 300 - single claim
+		{
+			BlockNum:            35,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa6"),
+			GlobalIndex:         big.NewInt(300),
+			OriginNetwork:       5,
+			OriginAddress:       common.HexToAddress("0x5555"),
+			DestinationAddress:  common.HexToAddress("0x6666"),
+			Amount:              big.NewInt(3000),
+			ProofLocalExitRoot:  newProof,
+			ProofRollupExitRoot: newProof,
+			MainnetExitRoot:     common.HexToHash("0xffff"),
+			RollupExitRoot:      common.HexToHash("0x0000"),
+			GlobalExitRoot:      common.HexToHash("0x1111"),
+			DestinationNetwork:  6,
+			Metadata:            []byte("metadata300"),
+			IsMessage:           false,
+			BlockTimestamp:      3500,
+		},
+		// Global index 400 - single claim
+		{
+			BlockNum:            5,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa7"),
+			GlobalIndex:         big.NewInt(400),
+			OriginNetwork:       7,
+			OriginAddress:       common.HexToAddress("0x7777"),
+			DestinationAddress:  common.HexToAddress("0x8888"),
+			Amount:              big.NewInt(4000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x2222"),
+			RollupExitRoot:      common.HexToHash("0x3333"),
+			GlobalExitRoot:      common.HexToHash("0x4444"),
+			DestinationNetwork:  8,
+			Metadata:            []byte("metadata400"),
+			IsMessage:           true,
+			BlockTimestamp:      500,
+		},
+	}
+
+	// Insert all claims
+	tx, err := p.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	for i := uint64(1); i <= 40; i++ {
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+		require.NoError(t, err)
+	}
+
+	for _, claim := range claims {
+		require.NoError(t, meddler.Insert(tx, "claim", claim))
+	}
+	require.NoError(t, tx.Commit())
+
+	// Test Page 1: Should return 3 compacted claims (300, 100 compacted, 200 compacted)
+	t.Run("Page 1 - newest claims on page", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 1, 3, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count) // Total raw claims in DB
+
+		// Should get 3 claims: global_index 300, 100 (compacted), 200 (compacted)
+		require.Len(t, result, 3)
+
+		// Build a map for easier testing
+		claimsByGlobalIndex := make(map[int64]*Claim)
+		for _, claim := range result {
+			claimsByGlobalIndex[claim.GlobalIndex.Int64()] = claim
+		}
+
+		// Verify we have the expected global indices
+		require.Contains(t, claimsByGlobalIndex, int64(100))
+		require.Contains(t, claimsByGlobalIndex, int64(200))
+		require.Contains(t, claimsByGlobalIndex, int64(300))
+
+		// Check global_index 300 (block 35)
+		claim300 := claimsByGlobalIndex[300]
+		require.Equal(t, uint64(35), claim300.BlockNum)
+		require.Equal(t, []byte("metadata300"), claim300.Metadata)
+
+		// Check global_index 100 (compacted: oldest block 10, newest proofs from block 30)
+		claim100 := claimsByGlobalIndex[100]
+		require.Equal(t, uint64(10), claim100.BlockNum)                        // Oldest claim's block
+		require.Equal(t, common.HexToHash("0xa1"), claim100.TxHash)            // Oldest claim's tx
+		require.Equal(t, []byte("old"), claim100.Metadata)                     // Oldest claim's metadata
+		require.Equal(t, newProof, claim100.ProofLocalExitRoot)                // Newest claim's proof
+		require.Equal(t, common.HexToHash("0xcccc"), claim100.MainnetExitRoot) // Newest claim's root
+
+		// Check global_index 200 (compacted: oldest block 15, newest proofs from block 25)
+		claim200 := claimsByGlobalIndex[200]
+		require.Equal(t, uint64(15), claim200.BlockNum)                        // Oldest claim's block
+		require.Equal(t, []byte("metadata200"), claim200.Metadata)             // Oldest claim's metadata
+		require.Equal(t, newProof, claim200.ProofLocalExitRoot)                // Newest claim's proof
+		require.Equal(t, common.HexToHash("0x9999"), claim200.MainnetExitRoot) // Newest claim's root
+	})
+
+	// Test Page 2: Should return 0 claims (all claims on this page are NOT the newest)
+	t.Run("Page 2 - no newest claims on page", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 2, 3, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+
+		// Should get 0 claims because blocks 20, 15, 10 are all older versions
+		require.Len(t, result, 0)
+	})
+
+	// Test Page 3: Should return 1 claim (global_index 400)
+	t.Run("Page 3 - single newest claim on page", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 3, 3, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+
+		// Should get 1 claim: global_index 400
+		require.Len(t, result, 1)
+		require.Equal(t, big.NewInt(400), result[0].GlobalIndex)
+		require.Equal(t, uint64(5), result[0].BlockNum)
+		require.Equal(t, []byte("metadata400"), result[0].Metadata)
+	})
+
+	// Test with larger page size that captures everything
+	t.Run("Large page size - all newest claims", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+
+		// Should get 4 compacted claims: 300, 100, 200, 400
+		require.Len(t, result, 4)
+
+		globalIndices := make(map[int64]bool)
+		for _, claim := range result {
+			globalIndices[claim.GlobalIndex.Int64()] = true
+		}
+
+		require.True(t, globalIndices[100])
+		require.True(t, globalIndices[200])
+		require.True(t, globalIndices[300])
+		require.True(t, globalIndices[400])
+	})
+}

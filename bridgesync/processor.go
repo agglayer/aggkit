@@ -72,6 +72,27 @@ func (d DeleteClaimReason) String() string {
 const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
+
+	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
+	// It combines metadata from the oldest claim with proofs from the newest claim
+	compactedClaimsSelectSQL = `
+		o.block_num,
+		o.block_pos,
+		o.tx_hash,
+		o.global_index,
+		o.origin_network,
+		o.origin_address,
+		o.destination_address,
+		o.amount,
+		n.proof_local_exit_root,
+		n.proof_rollup_exit_root,
+		n.mainnet_exit_root,
+		n.rollup_exit_root,
+		n.global_exit_root,
+		o.destination_network,
+		o.metadata,
+		o.is_message,
+		o.block_timestamp`
 )
 
 var (
@@ -514,7 +535,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, co
 	// SQL query with compaction logic:
 	// - Gets the oldest claim for each global_index (preserves all metadata)
 	// - Updates only the proof fields from the newest claim with same global_index
-	query := `
+	query := fmt.Sprintf(`
 		WITH ranked_claims AS (
 			SELECT 
 				*,
@@ -525,30 +546,14 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, co
 		),
 		oldest_with_newest_proofs AS (
 			SELECT 
-				o.block_num,
-				o.block_pos,
-				o.tx_hash,
-				o.global_index,
-				o.origin_network,
-				o.origin_address,
-				o.destination_address,
-				o.amount,
-				n.proof_local_exit_root,
-				n.proof_rollup_exit_root,
-				n.mainnet_exit_root,
-				n.rollup_exit_root,
-				n.global_exit_root,
-				o.destination_network,
-				o.metadata,
-				o.is_message,
-				o.block_timestamp
+			%s
 			FROM ranked_claims o
 			JOIN ranked_claims n ON o.global_index = n.global_index AND n.rn_newest = 1
 			WHERE o.rn_oldest = 1
 		)
 		SELECT * FROM oldest_with_newest_proofs
 		ORDER BY block_num ASC, block_pos ASC;
-	`
+	`, compactedClaimsSelectSQL)
 
 	rows, err := p.db.QueryContext(dbCtx, query, fromBlock, toBlock)
 	if err != nil {
@@ -726,9 +731,54 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByBlockDesc, whereClause)
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// Step 1: Get the raw claims for this page
+	// Step 2: For each claim on this page, check if it's the newest with its global_index
+	// Step 3: If it IS the newest, compact it with the oldest claim of same global_index
+	// Step 4: If it's NOT the newest, exclude it from results
+	//
+	// This query:
+	// - Gets claims for the requested page
+	// - Ranks all claims globally by global_index to find oldest and newest
+	// - Only returns compacted claims where the newest claim appears on this page
+	//nolint:gosec
+	query := fmt.Sprintf(`
+		WITH page_claims AS (
+			SELECT *
+			FROM claim
+			%s
+			ORDER BY block_num DESC, block_pos DESC
+			LIMIT $1 OFFSET $2
+		),
+		all_claims_ranked AS (
+			SELECT 
+				*,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+			FROM claim
+			%s
+		),
+		newest_on_page AS (
+			SELECT DISTINCT pc.global_index
+			FROM page_claims pc
+			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest = 1
+			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
+		)
+		SELECT 
+		%s
+		FROM all_claims_ranked o
+		JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest = 1
+		WHERE o.rn_oldest = 1
+			AND o.global_index IN (SELECT global_index FROM newest_on_page)
+		ORDER BY o.block_num DESC, o.block_pos DESC;
+	`, whereClause, whereClause, compactedClaimsSelectSQL)
+
+	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)
 	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
+		if errors.Is(err, sql.ErrNoRows) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
 				pageNumber, pageSize)
 			return nil, claimsCount, nil
