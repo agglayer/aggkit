@@ -200,6 +200,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/bridges", b.GetBridgesHandler)
 		bridgeGroup.GET("/claims", b.GetClaimsHandler)
 		bridgeGroup.GET("/unset-claims", b.GetUnsetClaimsHandler)
+		bridgeGroup.GET("/set-claims", b.GetSetClaimsHandler)
 		bridgeGroup.GET("/token-mappings", b.GetTokenMappingsHandler)
 		bridgeGroup.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
 		bridgeGroup.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
@@ -640,6 +641,97 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		types.UnsetClaimsResult{
 			UnsetClaims: unsetClaimResponses,
 			Count:       count,
+		})
+}
+
+// @Summary Get set claims
+// @Description Returns set claims for the configured L2 network, paginated.
+// Note: set claims are only available for L2 networks, not L1.
+// @Tags set-claims
+// @Param page_number query int false "Page number"
+// @Param page_size query int false "Page size"
+// @Param global_index query string false "Filter by global index"
+// @Produce json
+// @Success 200 {object} types.SetClaimsResult
+// @Failure 400 {object} types.ErrorResponse "Bad Request - Invalid parameters"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable - L2 bridge syncer not available"
+// @Router /set-claims [get]
+func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
+	b.logger.Debugf("GetSetClaims request received (page number=%s, page size=%s, global_index=%s)",
+		c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(globalIndexParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetSetClaimsReq, statusCode, startTime)
+	}()
+
+	globalIndexRaw := c.Query(globalIndexParam)
+	var (
+		globalIndex *big.Int
+		ok          bool
+	)
+	if globalIndexRaw != "" {
+		globalIndex, ok = new(big.Int).SetString(globalIndexRaw, 0)
+		if !ok {
+			b.logger.Warnf("invalid %s parameter", globalIndexParam)
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode,
+				gin.H{"error": fmt.Sprintf("invalid %s parameter, it should be a numeric", globalIndexParam)})
+			return
+		}
+	}
+
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
+	if err != nil {
+		b.logger.Warnf(errSetupRequest, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching set claims for L2 network (network id=%d, page=%d, size=%d, global_index=%v)",
+		b.networkID, pageNumber, pageSize, globalIndex)
+
+	var (
+		setClaims []*bridgesync.SetClaim
+		count     int
+	)
+
+	if b.bridgeL2 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode,
+			gin.H{"error": "L2 bridge syncer is not available"})
+		return
+	}
+
+	setClaims, count, err = b.bridgeL2.GetSetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
+	if err != nil {
+		b.logger.Warnf("failed to get set claims for L2 network (ID=%d): %v", b.networkID, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
+			gin.H{"error": fmt.Sprintf("failed to get set claims for the L2 network (ID=%d), error: %s", b.networkID, err)})
+		return
+	}
+
+	// Convert set claims to response format
+	setClaimResponses := make([]*types.SetClaimResponse, len(setClaims))
+	for i, setClaim := range setClaims {
+		setClaimResponses[i] = &types.SetClaimResponse{
+			BlockNum:    setClaim.BlockNum,
+			BlockPos:    setClaim.BlockPos,
+			TxHash:      types.Hash(setClaim.TxHash.Hex()),
+			GlobalIndex: types.BigIntString(setClaim.GlobalIndex.String()),
+			CreatedAt:   setClaim.CreatedAt,
+		}
+	}
+
+	c.JSON(statusCode,
+		types.SetClaimsResult{
+			SetClaims: setClaimResponses,
+			Count:     count,
 		})
 }
 

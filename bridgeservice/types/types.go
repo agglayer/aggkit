@@ -409,3 +409,32 @@ type UnsetClaimResponse struct {
 	// Timestamp when the unset claim was created
 	CreatedAt uint64 `json:"created_at" example:"1684500000"`
 }
+
+// SetClaimResponse represents a set claim event response
+// @Description Detailed information about a set claim event
+type SetClaimResponse struct {
+	// Block number where the set claim was processed
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the set claim event within the block
+	BlockPos uint64 `json:"block_pos" example:"2"`
+
+	// Transaction hash associated with the set claim
+	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+
+	// Global index of the claim that was set
+	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
+
+	// Timestamp when the set claim was created
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// SetClaimsResult contains the set claims and the total count
+// @Description Paginated response of set claim events (L2 networks only)
+type SetClaimsResult struct {
+	// List of set claim events
+	SetClaims []*SetClaimResponse `json:"set_claims"`
+
+	// Total number of set claim events
+	Count int `json:"count" example:"20"`
+}
