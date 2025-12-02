@@ -51,30 +51,12 @@ const (
 	setClaimTableName = "set_claim"
 )
 
-type DeleteClaimReason int
-
-const (
-	InvalidGERClaimCorrect DeleteClaimReason = iota
-	InvalidGERClaimIncorrect
-)
-
-func (d DeleteClaimReason) String() string {
-	switch d {
-	case InvalidGERClaimCorrect:
-		return "invalid_ger_claim_correct"
-	case InvalidGERClaimIncorrect:
-		return "invalid_ger_claim_incorrect"
-	default:
-		return "unknown"
-	}
-}
-
 const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
 
 	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
-	// It combines metadata from the oldest claim with proofs from the newest claim
+	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
 	compactedClaimsSelectSQL = `
 		o.block_num,
 		o.block_pos,
@@ -93,6 +75,12 @@ const (
 		o.metadata,
 		o.is_message,
 		o.block_timestamp`
+
+	queryBlockRangeSelectSQL = `
+		SELECT * FROM %s
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
+	`
 )
 
 var (
@@ -105,6 +93,12 @@ var (
 	// deleteLegacyTokenSQL is the SQL statement to delete legacy token migration event
 	// with specific legacy token address
 	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
+
+	// getBridgesBlockRangeSelectSQL is the SELECT clause for bridges within a block range
+	getBridgesBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, bridgeTableName)
+
+	// getClaimsBlockRangeSelectSQL is the SELECT clause for claims within a block range
+	getClaimsBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, claimTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -493,7 +487,7 @@ func newProcessor(
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, bridgeTableName)
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, getBridgesBlockRangeSelectSQL)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
@@ -524,18 +518,12 @@ func (p *processor) GetBridges(
 }
 
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
-	if !compacted {
-		return p.getClaims(ctx, fromBlock, toBlock)
-	}
-
-	// Create a context with database timeout
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	// SQL query with compaction logic:
-	// - Gets the oldest claim for each global_index (preserves all metadata)
-	// - Updates only the proof fields from the newest claim with same global_index
-	query := fmt.Sprintf(`
+	query := getClaimsBlockRangeSelectSQL
+	if compacted {
+		// SQL query with compaction logic:
+		// - Gets the oldest claim for each global_index (preserves all metadata)
+		// - Updates only the proof fields from the newest claim with same global_index
+		query = fmt.Sprintf(`
 		WITH ranked_claims AS (
 			SELECT 
 				*,
@@ -554,41 +542,13 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, co
 		SELECT * FROM oldest_with_newest_proofs
 		ORDER BY block_num ASC, block_pos ASC;
 	`, compactedClaimsSelectSQL)
-
-	rows, err := p.db.QueryContext(dbCtx, query, fromBlock, toBlock)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
-			return []Claim{}, nil
-		}
-		p.log.Errorf("GetClaims query failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
-		return nil, err
 	}
 
-	defer func() {
-		if cerr := rows.Close(); cerr != nil {
-			p.log.Errorf("error closing rows: %v", cerr)
-		}
-	}()
-
-	claimPtrs := []*Claim{}
-	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
-		p.log.Errorf("GetClaims: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
-		return nil, err
-	}
-
-	claimsIface := db.SlicePtrsToSlice(claimPtrs)
-	claims, ok := claimsIface.([]Claim)
-	if !ok {
-		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
-		return nil, errFailToConvertClaims
-	}
-
-	return claims, nil
+	return p.getClaimsInternal(ctx, query, fromBlock, toBlock)
 }
 
-func (p *processor) getClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, claimTableName)
+func (p *processor) getClaimsInternal(ctx context.Context, query string, fromBlock, toBlock uint64) ([]Claim, error) {
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, query)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
@@ -935,15 +895,12 @@ func (p *processor) GetLegacyTokenMigrations(
 }
 
 func (p *processor) queryBlockRange(
-	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string,
+	ctx context.Context, tx dbtypes.Querier,
+	fromBlock, toBlock uint64, query string,
 ) (*sql.Rows, error) {
 	// Create a context with database timeout
 	dbCtx, _ := p.withDatabaseTimeout(ctx)
-	rows, err := tx.QueryContext(dbCtx, fmt.Sprintf(`
-		SELECT * FROM %s
-		WHERE block_num >= $1 AND block_num <= $2
-		ORDER BY block_num ASC, block_pos ASC;
-	`, table), fromBlock, toBlock)
+	rows, err := tx.QueryContext(dbCtx, query, fromBlock, toBlock)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound

@@ -483,7 +483,7 @@ func (a *getClaims) desc() string {
 
 func (a *getClaims) execute(t *testing.T) {
 	t.Helper()
-	actualEvents, actualErr := a.p.getClaims(a.ctx, a.fromBlock, a.toBlock)
+	actualEvents, actualErr := a.p.getClaimsInternal(a.ctx, getClaimsBlockRangeSelectSQL, a.fromBlock, a.toBlock)
 	require.Equal(t, a.expectedErr, actualErr)
 	require.Equal(t, a.expectedClaims, actualEvents)
 }
@@ -859,7 +859,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	require.NoError(t, tx.Commit())
 
 	// get test claim
-	claims, err := p.getClaims(context.Background(), 1, 1)
+	claims, err := p.getClaimsInternal(context.Background(), getClaimsBlockRangeSelectSQL, 1, 1)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 	require.Equal(t, testClaim, &claims[0])
@@ -2742,45 +2742,9 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 
-	_, err = pShortTimeout.getClaims(ctx, 1, 1)
+	_, err = pShortTimeout.getClaimsInternal(ctx, queryBlockRangeSelectSQL, 1, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
-}
-
-func TestDeleteClaimReason_String(t *testing.T) {
-	tests := []struct {
-		name     string
-		reason   DeleteClaimReason
-		expected string
-	}{
-		{
-			name:     "InvalidGERClaimCorrect",
-			reason:   InvalidGERClaimCorrect,
-			expected: "invalid_ger_claim_correct",
-		},
-		{
-			name:     "InvalidGERClaimIncorrect",
-			reason:   InvalidGERClaimIncorrect,
-			expected: "invalid_ger_claim_incorrect",
-		},
-		{
-			name:     "UnknownReason",
-			reason:   DeleteClaimReason(999), // something outside defined range
-			expected: "unknown",
-		},
-		{
-			name:     "NegativeReason",
-			reason:   DeleteClaimReason(-1),
-			expected: "unknown",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.reason.String()
-			require.Equal(t, tt.expected, got)
-		})
-	}
 }
 
 //nolint:dupl
