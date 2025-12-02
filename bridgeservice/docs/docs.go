@@ -495,6 +495,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/set-claims": {
+            "get": {
+                "description": "Returns set claims for the configured L2 network, paginated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "set-claims"
+                ],
+                "summary": "Get set claims",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by global index",
+                        "name": "global_index",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.SetClaimsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request - Invalid parameters",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable - L2 bridge syncer not available",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sync-status": {
             "get": {
                 "description": "Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.\nShows if bridge syncers are active and whether they're keeping up with on-chain events.",
@@ -1122,6 +1180,55 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/types.RemoveGEREventResponse"
+                    }
+                }
+            }
+        },
+        "types.SetClaimResponse": {
+            "description": "Detailed information about a set claim event",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the set claim was processed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_pos": {
+                    "description": "Position of the set claim event within the block",
+                    "type": "integer",
+                    "example": 2
+                },
+                "created_at": {
+                    "description": "Timestamp when the set claim was created",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "global_index": {
+                    "description": "Global index of the claim that was set",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "tx_hash": {
+                    "description": "Transaction hash associated with the set claim",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                }
+            }
+        },
+        "types.SetClaimsResult": {
+            "description": "Paginated response of set claim events (L2 networks only)",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of set claim events",
+                    "type": "integer",
+                    "example": 20
+                },
+                "set_claims": {
+                    "description": "List of set claim events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.SetClaimResponse"
                     }
                 }
             }

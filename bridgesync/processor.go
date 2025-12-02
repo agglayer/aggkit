@@ -730,6 +730,62 @@ func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
 	return ""
 }
 
+// GetSetClaimsPaged returns a paginated list of set claims
+func (p *processor) GetSetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+	globalIndex *big.Int,
+) ([]*SetClaim, int, error) {
+	whereClause := p.buildSetClaimsFilterClause(globalIndex)
+	setClaimsCount, err := p.GetTotalNumberOfRecords(ctx, setClaimTableName, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if setClaimsCount == 0 {
+		return []*SetClaim{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, setClaimsCount, setClaimTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, setClaimTableName, orderByBlockDesc, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no set claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, setClaimsCount, nil
+		}
+		p.log.Errorf("GetSetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	setClaims := []*SetClaim{}
+	if err = meddler.ScanAll(rows, &setClaims); err != nil {
+		p.log.Errorf("GetSetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return setClaims, setClaimsCount, nil
+}
+
+// buildSetClaimsFilterClause builds the WHERE clause for the set_claim table
+// based on the provided globalIndex
+func (p *processor) buildSetClaimsFilterClause(globalIndex *big.Int) string {
+	if globalIndex != nil {
+		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
+	}
+
+	return ""
+}
+
 // buildClaimsFilterClause builds the WHERE clause for the claims table
 // based on the provided networkIDs and globalIndex
 func (p *processor) buildClaimsFilterClause(networkIDs []uint32, globalIndex *big.Int) string {

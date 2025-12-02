@@ -371,6 +371,43 @@ definitions:
           $ref: '#/definitions/types.RemoveGEREventResponse'
         type: array
     type: object
+  types.SetClaimResponse:
+    description: Detailed information about a set claim event
+    properties:
+      block_num:
+        description: Block number where the set claim was processed
+        example: 1234
+        type: integer
+      block_pos:
+        description: Position of the set claim event within the block
+        example: 2
+        type: integer
+      created_at:
+        description: Timestamp when the set claim was created
+        example: 1684500000
+        type: integer
+      global_index:
+        description: Global index of the claim that was set
+        example: "1000000000000000000"
+        type: string
+      tx_hash:
+        description: Transaction hash associated with the set claim
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+    type: object
+  types.SetClaimsResult:
+    description: Paginated response of set claim events (L2 networks only)
+    properties:
+      count:
+        description: Total number of set claim events
+        example: 20
+        type: integer
+      set_claims:
+        description: List of set claim events
+        items:
+          $ref: '#/definitions/types.SetClaimResponse'
+        type: array
+    type: object
   types.SyncStatus:
     description: Bridge sync status comparing on-chain deposit counts with local database
       counts
@@ -813,6 +850,44 @@ paths:
       summary: Get remove GER events
       tags:
       - ger-events
+  /set-claims:
+    get:
+      description: Returns set claims for the configured L2 network, paginated.
+      parameters:
+      - description: Page number
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by global index
+        in: query
+        name: global_index
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SetClaimsResult'
+        "400":
+          description: Bad Request - Invalid parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable - L2 bridge syncer not available
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get set claims
+      tags:
+      - set-claims
   /sync-status:
     get:
       description: |-
