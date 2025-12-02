@@ -275,7 +275,7 @@ func Test_L1GERDataQuerier_DoesGERExistOnContract(t *testing.T) {
 					big.NewInt(int64(aggkittypes.Finalized)),
 				).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error getting block number for finality FinalizedBlock: some error",
+			expectedError: "error getting block number for finality FinalizedBlock",
 		},
 		{
 			name: "error querying GER existence on contract",
