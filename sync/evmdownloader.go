@@ -76,9 +76,9 @@ func NewEVMDownloader(
 
 	logger := log.WithFields("syncer", syncerID)
 	if finalizedBlockType.LessFinalThan(finality) {
+		logger.Warnf("finalized block type: %s is less final than block finality: %s, overriding finalized block type to %s",
+			finalizedBlockType.String(), finality.String(), finality.String())
 		finalizedBlockType = finality
-		logger.Warnf("finalized block type %s is less final than block finality %s, setting finalized block type to %s",
-			finalizedBlockType.String(), finality.String(), finalizedBlockType.String())
 	}
 
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
