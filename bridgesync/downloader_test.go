@@ -34,7 +34,7 @@ func TestBuildAppender(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
-			*arg = Call{To: bridgeAddr, Input: BridgeMessageMethodID}
+			*arg = Call{To: bridgeAddr, Input: BridgeAssetMethodID}
 		}).
 		Return(nil).
 		Maybe()
@@ -81,7 +81,6 @@ func TestBuildAppender(t *testing.T) {
 				if err != nil {
 					return types.Log{}, err
 				}
-
 				l := types.Log{
 					Topics: []common.Hash{bridgeEventSignature},
 					Data:   data,
