@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/aggchainfep"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainfep"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"

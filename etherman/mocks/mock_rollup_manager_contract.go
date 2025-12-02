@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	agglayermanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/tmp-detailed-claim-event/agglayermanager"
+	agglayermanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 
 	common "github.com/ethereum/go-ethereum/common"
