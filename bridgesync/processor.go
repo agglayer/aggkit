@@ -39,9 +39,6 @@ const (
 	// claimTableName is the name of the table that stores claim events
 	claimTableName = "claim"
 
-	// invalidClaimTableName is the name of the table that stores invalid claim events
-	invalidClaimTableName = "invalid_claim"
-
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
 
@@ -58,27 +55,36 @@ const (
 	nilStr = "nil"
 )
 
-type DeleteClaimReason int
-
-const (
-	InvalidGERClaimCorrect DeleteClaimReason = iota
-	InvalidGERClaimIncorrect
-)
-
-func (d DeleteClaimReason) String() string {
-	switch d {
-	case InvalidGERClaimCorrect:
-		return "invalid_ger_claim_correct"
-	case InvalidGERClaimIncorrect:
-		return "invalid_ger_claim_incorrect"
-	default:
-		return "unknown"
-	}
-}
-
 const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
+
+	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
+	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
+	compactedClaimsSelectSQL = `
+		o.block_num,
+		o.block_pos,
+		o.tx_hash,
+		o.global_index,
+		o.origin_network,
+		o.origin_address,
+		o.destination_address,
+		o.amount,
+		n.proof_local_exit_root,
+		n.proof_rollup_exit_root,
+		n.mainnet_exit_root,
+		n.rollup_exit_root,
+		n.global_exit_root,
+		o.destination_network,
+		o.metadata,
+		o.is_message,
+		o.block_timestamp`
+
+	queryBlockRangeSelectSQL = `
+		SELECT * FROM %s
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
+	`
 )
 
 var (
@@ -91,6 +97,12 @@ var (
 	// deleteLegacyTokenSQL is the SQL statement to delete legacy token migration event
 	// with specific legacy token address
 	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
+
+	// getBridgesBlockRangeSelectSQL is the SELECT clause for bridges within a block range
+	getBridgesBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, bridgeTableName)
+
+	// getClaimsBlockRangeSelectSQL is the SELECT clause for claims within a block range
+	getClaimsBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, claimTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -596,7 +608,7 @@ func newProcessor(
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, bridgeTableName)
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, getBridgesBlockRangeSelectSQL)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
@@ -626,8 +638,38 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, claimTableName)
+func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
+	query := getClaimsBlockRangeSelectSQL
+	if compacted {
+		// SQL query with compaction logic:
+		// - Gets the oldest claim for each global_index (preserves all metadata)
+		// - Updates only the proof fields from the newest claim with same global_index
+		query = fmt.Sprintf(`
+		WITH ranked_claims AS (
+			SELECT 
+				*,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+			FROM claim
+			WHERE block_num >= $1 AND block_num <= $2
+		),
+		oldest_with_newest_proofs AS (
+			SELECT 
+			%s
+			FROM ranked_claims o
+			JOIN ranked_claims n ON o.global_index = n.global_index AND n.rn_newest = 1
+			WHERE o.rn_oldest = 1
+		)
+		SELECT * FROM oldest_with_newest_proofs
+		ORDER BY block_num ASC, block_pos ASC;
+	`, compactedClaimsSelectSQL)
+	}
+
+	return p.getClaimsInternal(ctx, query, fromBlock, toBlock)
+}
+
+func (p *processor) getClaimsInternal(ctx context.Context, query string, fromBlock, toBlock uint64) ([]Claim, error) {
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, query)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
@@ -770,9 +812,54 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByBlockDesc, whereClause)
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// Step 1: Get the raw claims for this page
+	// Step 2: For each claim on this page, check if it's the newest with its global_index
+	// Step 3: If it IS the newest, compact it with the oldest claim of same global_index
+	// Step 4: If it's NOT the newest, exclude it from results
+	//
+	// This query:
+	// - Gets claims for the requested page
+	// - Ranks all claims globally by global_index to find oldest and newest
+	// - Only returns compacted claims where the newest claim appears on this page
+	//nolint:gosec
+	query := fmt.Sprintf(`
+		WITH page_claims AS (
+			SELECT *
+			FROM claim
+			%s
+			ORDER BY block_num DESC, block_pos DESC
+			LIMIT $1 OFFSET $2
+		),
+		all_claims_ranked AS (
+			SELECT 
+				*,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+			FROM claim
+			%s
+		),
+		newest_on_page AS (
+			SELECT DISTINCT pc.global_index
+			FROM page_claims pc
+			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest = 1
+			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
+		)
+		SELECT 
+		%s
+		FROM all_claims_ranked o
+		JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest = 1
+		WHERE o.rn_oldest = 1
+			AND o.global_index IN (SELECT global_index FROM newest_on_page)
+		ORDER BY o.block_num DESC, o.block_pos DESC;
+	`, whereClause, whereClause, compactedClaimsSelectSQL)
+
+	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)
 	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
+		if errors.Is(err, sql.ErrNoRows) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
 				pageNumber, pageSize)
 			return nil, claimsCount, nil
@@ -929,15 +1016,12 @@ func (p *processor) GetLegacyTokenMigrations(
 }
 
 func (p *processor) queryBlockRange(
-	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string,
+	ctx context.Context, tx dbtypes.Querier,
+	fromBlock, toBlock uint64, query string,
 ) (*sql.Rows, error) {
 	// Create a context with database timeout
 	dbCtx, _ := p.withDatabaseTimeout(ctx)
-	rows, err := tx.QueryContext(dbCtx, fmt.Sprintf(`
-		SELECT * FROM %s
-		WHERE block_num >= $1 AND block_num <= $2
-		ORDER BY block_num ASC, block_pos ASC;
-	`, table), fromBlock, toBlock)
+	rows, err := tx.QueryContext(dbCtx, query, fromBlock, toBlock)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -1099,39 +1183,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Claim != nil {
-			globalIndex := event.Claim.GlobalIndex
-			_, unsetCount, err := p.GetUnsetClaimsPaged(ctx, 1, 1, globalIndex)
-			if err != nil {
-				p.log.Errorf("failed to get unset claims for global index %s at block %d: %v",
-					event.Claim.GlobalIndex.String(), block.Num, err)
-				return err
-			}
-
-			if unsetCount == 0 {
-				existingClaims, err := p.GetClaimsByGlobalIndex(ctx, globalIndex)
-				if err != nil {
-					p.log.Errorf("failed to get claims for global index %d at block %d: %v",
-						event.Claim.GlobalIndex, block.Num, err)
-					return err
-				}
-
-				if len(existingClaims) > 0 {
-					_, err = tx.Exec(`DELETE FROM claim WHERE global_index = ?`, globalIndex.String())
-					if err != nil {
-						p.log.Errorf("failed to delete claims for global index %d: %v", globalIndex, err)
-						return err
-					}
-
-					for _, existingClaim := range existingClaims {
-						invalidClaim := NewInvalidClaim(&existingClaim, InvalidGERClaimCorrect.String())
-						if err = meddler.Insert(tx, invalidClaimTableName, invalidClaim); err != nil {
-							p.log.Errorf("failed to insert invalid claim for global index %d: %v", globalIndex, err)
-							return err
-						}
-					}
-				}
-			}
-
 			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
 				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
 				return err
@@ -1161,20 +1212,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.UnsetClaim != nil {
-			existingClaims, err := p.GetClaimsByGlobalIndex(ctx, event.UnsetClaim.GlobalIndex)
-			if err != nil {
-				p.log.Errorf("failed to retrieve existing claims for unsetted claim global index %s at block %d: %v",
-					event.UnsetClaim.GlobalIndex, block.Num, err)
-			}
-
-			for _, claim := range existingClaims {
-				ic := NewInvalidClaim(&claim, InvalidGERClaimIncorrect.String())
-				if err = meddler.Insert(tx, invalidClaimTableName, ic); err != nil {
-					p.log.Errorf("failed to insert invalid claim for global index %s at block %d: %v",
-						claim.GlobalIndex.String(), block.Num, err)
-				}
-			}
-
 			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
 				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
 				return err
@@ -1213,20 +1250,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 
 	return nil
-}
-
-// getInvalidClaimsByGlobalIndex returns invalid claims by global index
-func (p *processor) getInvalidClaimsByGlobalIndex(globalIndex *big.Int) ([]*InvalidClaim, error) {
-	var results []*InvalidClaim
-	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
-		SELECT * FROM %s
-		WHERE global_index = $1
-		ORDER BY block_num ASC, block_pos ASC;
-	`, invalidClaimTableName), globalIndex.String()); err != nil {
-		return nil, fmt.Errorf("failed to query invalid claims by global index: %s: %w", globalIndex.String(), err)
-	}
-
-	return results, nil
 }
 
 // GetTotalNumberOfRecords returns the total number of records in the given table

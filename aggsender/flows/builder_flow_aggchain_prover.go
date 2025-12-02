@@ -122,7 +122,7 @@ func (a *AggchainProverBuilderFlow) CheckInitialStatus(ctx context.Context) erro
 	}
 
 	if err := a.baseFlow.VerifyBlockRangeGaps(
-		ctx, lastSentCertificate, startL2Block, startL2Block); err != nil {
+		ctx, lastSentCertificate, startL2Block, startL2Block); err != nil { // FEP does not use compacted claims
 		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup. Err: %w", err)
 	}
 
@@ -198,6 +198,7 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, fromBlock,
 			toBlock,
+			false, // do not compact claims
 		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)

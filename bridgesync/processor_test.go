@@ -483,7 +483,7 @@ func (a *getClaims) desc() string {
 
 func (a *getClaims) execute(t *testing.T) {
 	t.Helper()
-	actualEvents, actualErr := a.p.GetClaims(a.ctx, a.fromBlock, a.toBlock)
+	actualEvents, actualErr := a.p.getClaimsInternal(a.ctx, getClaimsBlockRangeSelectSQL, a.fromBlock, a.toBlock)
 	require.Equal(t, a.expectedErr, actualErr)
 	require.Equal(t, a.expectedClaims, actualEvents)
 }
@@ -859,7 +859,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	require.NoError(t, tx.Commit())
 
 	// get test claim
-	claims, err := p.GetClaims(context.Background(), 1, 1)
+	claims, err := p.getClaimsInternal(context.Background(), getClaimsBlockRangeSelectSQL, 1, 1)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 	require.Equal(t, testClaim, &claims[0])
@@ -2742,144 +2742,1321 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 
-	_, err = pShortTimeout.GetClaims(ctx, 1, 1)
+	_, err = pShortTimeout.getClaimsInternal(ctx, queryBlockRangeSelectSQL, 1, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 }
 
-func TestProcessBlockWithClaims(t *testing.T) {
-	path := path.Join(t.TempDir(), fmt.Sprintf("%s.db", t.Name()))
-	p, err := newProcessor(path, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
-	require.NoError(t, err)
-
-	newClaim := func(blockNum, pos uint64, gi int64, origin string, dest string, amount int64, mer string) *Claim {
-		return &Claim{
-			BlockNum:           blockNum,
-			BlockPos:           pos,
-			GlobalIndex:        big.NewInt(gi),
-			OriginNetwork:      uint32(gi), // just distinct per test
-			OriginAddress:      common.HexToAddress(origin),
-			DestinationAddress: common.HexToAddress(dest),
-			Amount:             big.NewInt(amount),
-			MainnetExitRoot:    common.HexToHash(mer),
-		}
+//nolint:dupl
+func TestGetClaims_Compact(t *testing.T) {
+	// Define all claims used across test cases
+	claims := []*Claim{
+		// claims[0] - Basic claim with GlobalIndex=1
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x111"),
+			GlobalIndex:         big.NewInt(1),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0xaaa"),
+			DestinationAddress:  common.HexToAddress("0xbbb"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+			MainnetExitRoot:     common.HexToHash("0x1c"),
+			RollupExitRoot:      common.HexToHash("0x1d"),
+			GlobalExitRoot:      common.HexToHash("0x1e"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("metadata1"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// claims[1] - Basic claim with GlobalIndex=2
+		{
+			BlockNum:            2,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x222"),
+			GlobalIndex:         big.NewInt(2),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0xccc"),
+			DestinationAddress:  common.HexToAddress("0xddd"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+			MainnetExitRoot:     common.HexToHash("0x2c"),
+			RollupExitRoot:      common.HexToHash("0x2d"),
+			GlobalExitRoot:      common.HexToHash("0x2e"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("metadata2"),
+			IsMessage:           true,
+			BlockTimestamp:      2000,
+		},
+		// claims[2] - Oldest claim with GlobalIndex=100 (block 1)
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x111"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0xaaa"),
+			DestinationAddress:  common.HexToAddress("0xbbb"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+			MainnetExitRoot:     common.HexToHash("0x1c"),
+			RollupExitRoot:      common.HexToHash("0x1d"),
+			GlobalExitRoot:      common.HexToHash("0x1e"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("original_metadata"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// claims[3] - Middle claim with GlobalIndex=100 (block 2)
+		{
+			BlockNum:            2,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x222"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       99,
+			OriginAddress:       common.HexToAddress("0xfff"),
+			DestinationAddress:  common.HexToAddress("0xeee"),
+			Amount:              big.NewInt(999),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+			MainnetExitRoot:     common.HexToHash("0x2c"),
+			RollupExitRoot:      common.HexToHash("0x2d"),
+			GlobalExitRoot:      common.HexToHash("0x2e"),
+			DestinationNetwork:  88,
+			Metadata:            []byte("middle_metadata"),
+			IsMessage:           true,
+			BlockTimestamp:      2000,
+		},
+		// claims[4] - Newest claim with GlobalIndex=100 (block 3)
+		{
+			BlockNum:            3,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x333"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       77,
+			OriginAddress:       common.HexToAddress("0x999"),
+			DestinationAddress:  common.HexToAddress("0x888"),
+			Amount:              big.NewInt(777),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+			MainnetExitRoot:     common.HexToHash("0x3c"),
+			RollupExitRoot:      common.HexToHash("0x3d"),
+			GlobalExitRoot:      common.HexToHash("0x3e"),
+			DestinationNetwork:  66,
+			Metadata:            []byte("newest_metadata"),
+			IsMessage:           true,
+			BlockTimestamp:      3000,
+		},
+		// claims[5] - Oldest claim with GlobalIndex=100 (block 1, pos 0) - for multiple groups test
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x111"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0xa1"),
+			DestinationAddress:  common.HexToAddress("0xb1"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+			MainnetExitRoot:     common.HexToHash("0x1c"),
+			RollupExitRoot:      common.HexToHash("0x1d"),
+			GlobalExitRoot:      common.HexToHash("0x1e"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("index1_old"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// claims[6] - Oldest claim with GlobalIndex=200 (block 1, pos 1)
+		{
+			BlockNum:            1,
+			BlockPos:            1,
+			TxHash:              common.HexToHash("0x112"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0xa2"),
+			DestinationAddress:  common.HexToAddress("0xb2"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+			MainnetExitRoot:     common.HexToHash("0x2c"),
+			RollupExitRoot:      common.HexToHash("0x2d"),
+			GlobalExitRoot:      common.HexToHash("0x2e"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("index2_old"),
+			IsMessage:           true,
+			BlockTimestamp:      1001,
+		},
+		// claims[7] - Newest claim with GlobalIndex=100 (block 2, pos 0)
+		{
+			BlockNum:            2,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x221"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       99,
+			OriginAddress:       common.HexToAddress("0xc1"),
+			DestinationAddress:  common.HexToAddress("0xd1"),
+			Amount:              big.NewInt(999),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+			MainnetExitRoot:     common.HexToHash("0x3c"),
+			RollupExitRoot:      common.HexToHash("0x3d"),
+			GlobalExitRoot:      common.HexToHash("0x3e"),
+			DestinationNetwork:  88,
+			Metadata:            []byte("index1_new"),
+			IsMessage:           true,
+			BlockTimestamp:      2000,
+		},
+		// claims[8] - Newest claim with GlobalIndex=200 (block 2, pos 1)
+		{
+			BlockNum:            2,
+			BlockPos:            1,
+			TxHash:              common.HexToHash("0x222"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       77,
+			OriginAddress:       common.HexToAddress("0xc2"),
+			DestinationAddress:  common.HexToAddress("0xd2"),
+			Amount:              big.NewInt(777),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x4a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x4b")},
+			MainnetExitRoot:     common.HexToHash("0x4c"),
+			RollupExitRoot:      common.HexToHash("0x4d"),
+			GlobalExitRoot:      common.HexToHash("0x4e"),
+			DestinationNetwork:  66,
+			Metadata:            []byte("index2_new"),
+			IsMessage:           false,
+			BlockTimestamp:      2001,
+		},
+		// claims[9] - Same block, pos 0 with GlobalIndex=123
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x111"),
+			GlobalIndex:         big.NewInt(123),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0xaaa"),
+			DestinationAddress:  common.HexToAddress("0xbbb"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+			MainnetExitRoot:     common.HexToHash("0x1c"),
+			RollupExitRoot:      common.HexToHash("0x1d"),
+			GlobalExitRoot:      common.HexToHash("0x1e"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("pos0"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// claims[10] - Same block, pos 1 with GlobalIndex=123
+		{
+			BlockNum:            1,
+			BlockPos:            1,
+			TxHash:              common.HexToHash("0x112"),
+			GlobalIndex:         big.NewInt(123),
+			OriginNetwork:       99,
+			OriginAddress:       common.HexToAddress("0xccc"),
+			DestinationAddress:  common.HexToAddress("0xddd"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+			MainnetExitRoot:     common.HexToHash("0x2c"),
+			RollupExitRoot:      common.HexToHash("0x2d"),
+			GlobalExitRoot:      common.HexToHash("0x2e"),
+			DestinationNetwork:  88,
+			Metadata:            []byte("pos1"),
+			IsMessage:           true,
+			BlockTimestamp:      1001,
+		},
+		// claims[11] - Same block, pos 2 with GlobalIndex=123
+		{
+			BlockNum:            1,
+			BlockPos:            2,
+			TxHash:              common.HexToHash("0x113"),
+			GlobalIndex:         big.NewInt(123),
+			OriginNetwork:       77,
+			OriginAddress:       common.HexToAddress("0xeee"),
+			DestinationAddress:  common.HexToAddress("0xfff"),
+			Amount:              big.NewInt(300),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+			MainnetExitRoot:     common.HexToHash("0x3c"),
+			RollupExitRoot:      common.HexToHash("0x3d"),
+			GlobalExitRoot:      common.HexToHash("0x3e"),
+			DestinationNetwork:  66,
+			Metadata:            []byte("pos2"),
+			IsMessage:           false,
+			BlockTimestamp:      1002,
+		},
+		// claims[12] - Partial range GlobalIndex=456 (block 1)
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x111"),
+			GlobalIndex:         big.NewInt(456),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0xaaa"),
+			DestinationAddress:  common.HexToAddress("0xbbb"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+			MainnetExitRoot:     common.HexToHash("0x1c"),
+			RollupExitRoot:      common.HexToHash("0x1d"),
+			GlobalExitRoot:      common.HexToHash("0x1e"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("block1"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// claims[13] - Partial range GlobalIndex=456 (block 2)
+		{
+			BlockNum:            2,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x222"),
+			GlobalIndex:         big.NewInt(456),
+			OriginNetwork:       99,
+			OriginAddress:       common.HexToAddress("0xccc"),
+			DestinationAddress:  common.HexToAddress("0xddd"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+			MainnetExitRoot:     common.HexToHash("0x2c"),
+			RollupExitRoot:      common.HexToHash("0x2d"),
+			GlobalExitRoot:      common.HexToHash("0x2e"),
+			DestinationNetwork:  88,
+			Metadata:            []byte("block2"),
+			IsMessage:           true,
+			BlockTimestamp:      2000,
+		},
+		// claims[14] - Partial range GlobalIndex=456 (block 3)
+		{
+			BlockNum:            3,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x333"),
+			GlobalIndex:         big.NewInt(456),
+			OriginNetwork:       77,
+			OriginAddress:       common.HexToAddress("0xeee"),
+			DestinationAddress:  common.HexToAddress("0xfff"),
+			Amount:              big.NewInt(300),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+			MainnetExitRoot:     common.HexToHash("0x3c"),
+			RollupExitRoot:      common.HexToHash("0x3d"),
+			GlobalExitRoot:      common.HexToHash("0x3e"),
+			DestinationNetwork:  66,
+			Metadata:            []byte("block3"),
+			IsMessage:           false,
+			BlockTimestamp:      3000,
+		},
+		// claims[15] - Ordering test GlobalIndex=200 (block 1)
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x111"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0xa1"),
+			DestinationAddress:  common.HexToAddress("0xb1"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+			MainnetExitRoot:     common.HexToHash("0x1c"),
+			RollupExitRoot:      common.HexToHash("0x1d"),
+			GlobalExitRoot:      common.HexToHash("0x1e"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("200"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
+		},
+		// claims[16] - Ordering test GlobalIndex=100 (block 2)
+		{
+			BlockNum:            2,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x222"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       2,
+			OriginAddress:       common.HexToAddress("0xa2"),
+			DestinationAddress:  common.HexToAddress("0xb2"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+			MainnetExitRoot:     common.HexToHash("0x2c"),
+			RollupExitRoot:      common.HexToHash("0x2d"),
+			GlobalExitRoot:      common.HexToHash("0x2e"),
+			DestinationNetwork:  3,
+			Metadata:            []byte("100"),
+			IsMessage:           true,
+			BlockTimestamp:      2000,
+		},
+		// claims[17] - Ordering test GlobalIndex=150 (block 3)
+		{
+			BlockNum:            3,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0x333"),
+			GlobalIndex:         big.NewInt(150),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0xa3"),
+			DestinationAddress:  common.HexToAddress("0xb3"),
+			Amount:              big.NewInt(300),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+			MainnetExitRoot:     common.HexToHash("0x3c"),
+			RollupExitRoot:      common.HexToHash("0x3d"),
+			GlobalExitRoot:      common.HexToHash("0x3e"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("150"),
+			IsMessage:           false,
+			BlockTimestamp:      3000,
+		},
 	}
 
-	block := func(num uint64, events ...any) sync.Block {
-		return sync.Block{Num: num, Events: events}
-	}
-
-	// Initial claims (block 1)
-	claim1 := newClaim(1, 0, 1, "1", "1", 1, "")
-	claim2 := newClaim(1, 1, 2, "2", "2", 2, "5ca1e1")
-
-	// Replacement claim (block 2)
-	claim1Updated := newClaim(2, 0, 1, "3", "3", 10, "5ca1e")
-
-	// Unset claim for claim2 (global index 2)
-	unsetClaim2 := &UnsetClaim{
-		BlockNum:    3,
-		BlockPos:    0,
-		GlobalIndex: claim2.GlobalIndex,
-		CreatedAt:   uint64(time.Now().UTC().Unix()),
-	}
-
-	// Invalid claims
-	invalidClaim1 := NewInvalidClaim(claim1, InvalidGERClaimCorrect.String())
-	invalidClaim2 := NewInvalidClaim(claim2, InvalidGERClaimIncorrect.String())
-
-	tests := []struct {
-		name                  string
-		blocks                []sync.Block
-		expectedClaims        []*Claim
-		expectedInvalidClaims []*InvalidClaim
+	testCases := []struct {
+		name            string
+		compacted       bool
+		setupBlocks     func() []sync.Block
+		queryFrom       uint64
+		queryTo         uint64
+		expectedCount   int
+		errorContains   string
+		validateResults func(t *testing.T, claims []Claim)
 	}{
 		{
-			name: "update claim with same global index",
-			blocks: []sync.Block{
-				block(1, Event{Claim: claim1}, Event{Claim: claim2}),
-				block(2, Event{Claim: claim1Updated}),
+			name:      "non-compacted mode with different claims",
+			compacted: false,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]},
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[1]},
+						},
+					},
+				}
 			},
-			expectedClaims: []*Claim{
-				claim1Updated,
-				claim2,
+			queryFrom:     1,
+			queryTo:       2,
+			expectedCount: 2,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				require.Len(t, claims, 2)
+				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex)
+				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex)
 			},
-			expectedInvalidClaims: []*InvalidClaim{invalidClaim1},
 		},
 		{
-			name: "original claim remains in the db when unclaimed",
-			blocks: []sync.Block{
-				block(3, Event{UnsetClaim: unsetClaim2}),
+			name:      "non-compacted mode with duplicates",
+			compacted: false,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[2]}, // GlobalIndex=100
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[3]}, // GlobalIndex=100
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=100
+						},
+					},
+				}
 			},
-			expectedClaims: []*Claim{
-				claim1Updated,
-				claim2,
+			queryFrom:     1,
+			queryTo:       3,
+			expectedCount: 3,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				require.Len(t, claims, 3, "all duplicate claims should be returned in non-compacted mode")
+				// Verify all three claims have the same GlobalIndex
+				require.Equal(t, big.NewInt(100), claims[0].GlobalIndex)
+				require.Equal(t, big.NewInt(100), claims[1].GlobalIndex)
+				require.Equal(t, big.NewInt(100), claims[2].GlobalIndex)
+				// Verify they are ordered by block number
+				require.Equal(t, uint64(1), claims[0].BlockNum)
+				require.Equal(t, uint64(2), claims[1].BlockNum)
+				require.Equal(t, uint64(3), claims[2].BlockNum)
+				// Verify metadata from each claim is preserved (no compaction)
+				require.Equal(t, []byte("original_metadata"), claims[0].Metadata)
+				require.Equal(t, []byte("middle_metadata"), claims[1].Metadata)
+				require.Equal(t, []byte("newest_metadata"), claims[2].Metadata)
 			},
-			expectedInvalidClaims: []*InvalidClaim{
-				invalidClaim1,
-				invalidClaim2,
+		},
+		{
+			name:      "compacted mode with no duplicates",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]},
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[1]},
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       2,
+			expectedCount: 2,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				require.Len(t, claims, 2)
+				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex)
+				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex)
+			},
+		},
+		{
+			name:      "compacted mode with duplicates across blocks",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[2]},
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[3]},
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]},
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       3,
+			expectedCount: 1,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				claim := claims[0]
+				// Fields from oldest claim (block 1) - should be preserved
+				require.Equal(t, uint64(1), claim.BlockNum, "BlockNum should be from oldest claim")
+				require.Equal(t, uint64(0), claim.BlockPos, "BlockPos should be from oldest claim")
+				require.Equal(t, common.HexToHash("0x111"), claim.TxHash, "TxHash should be from oldest claim")
+				require.Equal(t, big.NewInt(100), claim.GlobalIndex)
+				require.Equal(t, uint32(1), claim.OriginNetwork, "OriginNetwork should be from oldest claim")
+				require.Equal(t, common.HexToAddress("0xaaa"), claim.OriginAddress, "OriginAddress should be from oldest claim")
+				require.Equal(t, common.HexToAddress("0xbbb"), claim.DestinationAddress, "DestinationAddress should be from oldest claim")
+				require.Equal(t, big.NewInt(100), claim.Amount, "Amount should be from oldest claim")
+				require.Equal(t, uint32(2), claim.DestinationNetwork, "DestinationNetwork should be from oldest claim")
+				require.Equal(t, []byte("original_metadata"), claim.Metadata, "Metadata should be from oldest claim")
+				require.Equal(t, false, claim.IsMessage, "IsMessage should be from oldest claim")
+				require.Equal(t, uint64(1000), claim.BlockTimestamp, "BlockTimestamp should be from oldest claim")
+				// Fields from newest claim (block 3) - should be updated
+				require.Equal(t, common.HexToHash("0x3a"), claim.ProofLocalExitRoot[0], "ProofLocalExitRoot should be from newest claim")
+				require.Equal(t, common.HexToHash("0x3b"), claim.ProofRollupExitRoot[0], "ProofRollupExitRoot should be from newest claim")
+				require.Equal(t, common.HexToHash("0x3c"), claim.MainnetExitRoot, "MainnetExitRoot should be from newest claim")
+				require.Equal(t, common.HexToHash("0x3d"), claim.RollupExitRoot, "RollupExitRoot should be from newest claim")
+				require.Equal(t, common.HexToHash("0x3e"), claim.GlobalExitRoot, "GlobalExitRoot should be from newest claim")
+			},
+		},
+		{
+			name:      "compacted mode with multiple duplicate groups",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[5]}, // GlobalIndex=100, oldest
+							Event{Claim: claims[6]}, // GlobalIndex=200, oldest
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[7]}, // GlobalIndex=100, newest
+							Event{Claim: claims[8]}, // GlobalIndex=200, newest
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       2,
+			expectedCount: 2,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// First claim (globalIndex1=100)
+				claim1 := claims[0]
+				require.Equal(t, big.NewInt(100), claim1.GlobalIndex)
+				// Fields from oldest claim (block 1, pos 0) - should be preserved
+				require.Equal(t, uint64(1), claim1.BlockNum, "Claim1: BlockNum should be from oldest")
+				require.Equal(t, uint64(0), claim1.BlockPos, "Claim1: BlockPos should be from oldest")
+				require.Equal(t, uint32(1), claim1.OriginNetwork, "Claim1: OriginNetwork should be from oldest")
+				require.Equal(t, common.HexToAddress("0xa1"), claim1.OriginAddress, "Claim1: OriginAddress should be from oldest")
+				require.Equal(t, common.HexToAddress("0xb1"), claim1.DestinationAddress, "Claim1: DestinationAddress should be from oldest")
+				require.Equal(t, big.NewInt(100), claim1.Amount, "Claim1: Amount should be from oldest")
+				require.Equal(t, uint32(2), claim1.DestinationNetwork, "Claim1: DestinationNetwork should be from oldest")
+				require.Equal(t, []byte("index1_old"), claim1.Metadata, "Claim1: Metadata should be from oldest")
+				require.Equal(t, false, claim1.IsMessage, "Claim1: IsMessage should be from oldest")
+				require.Equal(t, uint64(1000), claim1.BlockTimestamp, "Claim1: BlockTimestamp should be from oldest")
+				// Fields from newest claim (block 2, pos 0) - should be updated
+				require.Equal(t, common.HexToHash("0x3a"), claim1.ProofLocalExitRoot[0], "Claim1: ProofLocalExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x3b"), claim1.ProofRollupExitRoot[0], "Claim1: ProofRollupExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x3c"), claim1.MainnetExitRoot, "Claim1: MainnetExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x3d"), claim1.RollupExitRoot, "Claim1: RollupExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x3e"), claim1.GlobalExitRoot, "Claim1: GlobalExitRoot should be from newest")
+
+				// Second claim (globalIndex2=200)
+				claim2 := claims[1]
+				require.Equal(t, big.NewInt(200), claim2.GlobalIndex)
+				// Fields from oldest claim (block 1, pos 1) - should be preserved
+				require.Equal(t, uint64(1), claim2.BlockNum, "Claim2: BlockNum should be from oldest")
+				require.Equal(t, uint64(1), claim2.BlockPos, "Claim2: BlockPos should be from oldest")
+				require.Equal(t, uint32(3), claim2.OriginNetwork, "Claim2: OriginNetwork should be from oldest")
+				require.Equal(t, common.HexToAddress("0xa2"), claim2.OriginAddress, "Claim2: OriginAddress should be from oldest")
+				require.Equal(t, common.HexToAddress("0xb2"), claim2.DestinationAddress, "Claim2: DestinationAddress should be from oldest")
+				require.Equal(t, big.NewInt(200), claim2.Amount, "Claim2: Amount should be from oldest")
+				require.Equal(t, uint32(4), claim2.DestinationNetwork, "Claim2: DestinationNetwork should be from oldest")
+				require.Equal(t, []byte("index2_old"), claim2.Metadata, "Claim2: Metadata should be from oldest")
+				require.Equal(t, true, claim2.IsMessage, "Claim2: IsMessage should be from oldest")
+				require.Equal(t, uint64(1001), claim2.BlockTimestamp, "Claim2: BlockTimestamp should be from oldest")
+				// Fields from newest claim (block 2, pos 1) - should be updated
+				require.Equal(t, common.HexToHash("0x4a"), claim2.ProofLocalExitRoot[0], "Claim2: ProofLocalExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x4b"), claim2.ProofRollupExitRoot[0], "Claim2: ProofRollupExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x4c"), claim2.MainnetExitRoot, "Claim2: MainnetExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x4d"), claim2.RollupExitRoot, "Claim2: RollupExitRoot should be from newest")
+				require.Equal(t, common.HexToHash("0x4e"), claim2.GlobalExitRoot, "Claim2: GlobalExitRoot should be from newest")
+			},
+		},
+		{
+			name:      "compacted mode same block multiple positions",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[9]},  // pos 0 - oldest
+							Event{Claim: claims[10]}, // pos 1 - middle
+							Event{Claim: claims[11]}, // pos 2 - newest
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       1,
+			expectedCount: 1,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				claim := claims[0]
+				// Fields from oldest claim (block 1, pos 0) - should be preserved
+				require.Equal(t, uint64(1), claim.BlockNum, "BlockNum should be from oldest")
+				require.Equal(t, uint64(0), claim.BlockPos, "BlockPos should be from oldest (pos 0)")
+				require.Equal(t, uint32(1), claim.OriginNetwork, "OriginNetwork should be from oldest")
+				require.Equal(t, common.HexToAddress("0xaaa"), claim.OriginAddress, "OriginAddress should be from oldest")
+				require.Equal(t, common.HexToAddress("0xbbb"), claim.DestinationAddress, "DestinationAddress should be from oldest")
+				require.Equal(t, big.NewInt(100), claim.Amount, "Amount should be from oldest")
+				require.Equal(t, uint32(2), claim.DestinationNetwork, "DestinationNetwork should be from oldest")
+				require.Equal(t, []byte("pos0"), claim.Metadata, "Metadata should be from oldest (pos0)")
+				require.Equal(t, false, claim.IsMessage, "IsMessage should be from oldest")
+				require.Equal(t, uint64(1000), claim.BlockTimestamp, "BlockTimestamp should be from oldest")
+				// Fields from newest claim (block 1, pos 2) - should be updated
+				require.Equal(t, common.HexToHash("0x3a"), claim.ProofLocalExitRoot[0], "ProofLocalExitRoot should be from newest (pos 2)")
+				require.Equal(t, common.HexToHash("0x3b"), claim.ProofRollupExitRoot[0], "ProofRollupExitRoot should be from newest (pos 2)")
+				require.Equal(t, common.HexToHash("0x3c"), claim.MainnetExitRoot, "MainnetExitRoot should be from newest (pos 2)")
+				require.Equal(t, common.HexToHash("0x3d"), claim.RollupExitRoot, "RollupExitRoot should be from newest (pos 2)")
+				require.Equal(t, common.HexToHash("0x3e"), claim.GlobalExitRoot, "GlobalExitRoot should be from newest (pos 2)")
+			},
+		},
+		{
+			name:      "compacted mode empty range",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:    1,
+						Hash:   common.HexToHash("0x1"),
+						Events: []any{},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       1,
+			expectedCount: 0,
+		},
+		{
+			name:      "compacted mode partial range",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[12]}, // block 1
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[13]}, // block 2
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[14]}, // block 3
+						},
+					},
+				}
+			},
+			queryFrom:     2,
+			queryTo:       3,
+			expectedCount: 1,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				claim := claims[0]
+				// Fields from oldest claim in range (block 2) - should be preserved
+				require.Equal(t, uint64(2), claim.BlockNum, "BlockNum should be from oldest in range")
+				require.Equal(t, uint64(0), claim.BlockPos, "BlockPos should be from oldest in range")
+				require.Equal(t, uint32(99), claim.OriginNetwork, "OriginNetwork should be from oldest in range")
+				require.Equal(t, common.HexToAddress("0xccc"), claim.OriginAddress, "OriginAddress should be from oldest in range")
+				require.Equal(t, common.HexToAddress("0xddd"), claim.DestinationAddress, "DestinationAddress should be from oldest in range")
+				require.Equal(t, big.NewInt(200), claim.Amount, "Amount should be from oldest in range")
+				require.Equal(t, uint32(88), claim.DestinationNetwork, "DestinationNetwork should be from oldest in range")
+				require.Equal(t, []byte("block2"), claim.Metadata, "Metadata should be from oldest in range")
+				require.Equal(t, true, claim.IsMessage, "IsMessage should be from oldest in range")
+				require.Equal(t, uint64(2000), claim.BlockTimestamp, "BlockTimestamp should be from oldest in range")
+				// Fields from newest claim in range (block 3) - should be updated
+				require.Equal(t, common.HexToHash("0x3a"), claim.ProofLocalExitRoot[0], "ProofLocalExitRoot should be from newest in range")
+				require.Equal(t, common.HexToHash("0x3b"), claim.ProofRollupExitRoot[0], "ProofRollupExitRoot should be from newest in range")
+				require.Equal(t, common.HexToHash("0x3c"), claim.MainnetExitRoot, "MainnetExitRoot should be from newest in range")
+				require.Equal(t, common.HexToHash("0x3d"), claim.RollupExitRoot, "RollupExitRoot should be from newest in range")
+				require.Equal(t, common.HexToHash("0x3e"), claim.GlobalExitRoot, "GlobalExitRoot should be from newest in range")
+			},
+		},
+		{
+			name:      "ordering preserved by block number and position",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[15]}, // GlobalIndex=200
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[16]}, // GlobalIndex=100
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[17]}, // GlobalIndex=150
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       3,
+			expectedCount: 3,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should be ordered by block_num ASC, not by global_index value
+				require.Equal(t, big.NewInt(200), claims[0].GlobalIndex)
+				require.Equal(t, big.NewInt(100), claims[1].GlobalIndex)
+				require.Equal(t, big.NewInt(150), claims[2].GlobalIndex)
+			},
+		},
+		{
+			name:      "invalid block range - fromBlock greater than toBlock",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]},
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[1]},
+						},
+					},
+					{
+						Num:    3,
+						Hash:   common.HexToHash("0x3"),
+						Events: []any{},
+					},
+					{
+						Num:    4,
+						Hash:   common.HexToHash("0x4"),
+						Events: []any{},
+					},
+					{
+						Num:    5,
+						Hash:   common.HexToHash("0x5"),
+						Events: []any{},
+					},
+				}
+			},
+			queryFrom:     5,
+			queryTo:       3,
+			expectedCount: 0,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should return empty array for invalid range (WHERE block_num >= 5 AND block_num <= 3 returns nothing)
+				require.Empty(t, claims)
+			},
+		},
+		{
+			name:      "fromBlock = 0 edge case",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]},
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[1]},
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=100, BlockNum=3
+						},
+					},
+				}
+			},
+			queryFrom:     0,
+			queryTo:       3,
+			expectedCount: 3,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should return all claims from block 1 onwards (block 0 doesn't exist, WHERE clause: block_num >= 0)
+				require.Len(t, claims, 3)
+				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex)
+				require.Equal(t, uint64(1), claims[0].BlockNum)
+				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex)
+				require.Equal(t, uint64(2), claims[1].BlockNum)
+				require.Equal(t, big.NewInt(100), claims[2].GlobalIndex)
+				require.Equal(t, uint64(3), claims[2].BlockNum)
+			},
+		},
+		{
+			name:      "claims at both fromBlock and toBlock boundaries with compaction",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]}, // GlobalIndex=1, outside range
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[3]}, // GlobalIndex=100, at fromBlock boundary (oldest)
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=100, at toBlock boundary (newest, should provide proofs)
+						},
+					},
+					{
+						Num:    4,
+						Hash:   common.HexToHash("0x4"),
+						Events: []any{},
+					},
+				}
+			},
+			queryFrom:     2,
+			queryTo:       3,
+			expectedCount: 1,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should compact GlobalIndex=100 appearing at both boundaries (blocks 2 and 3)
+				require.Len(t, claims, 1)
+				require.Equal(t, big.NewInt(100), claims[0].GlobalIndex)
+				require.Equal(t, uint64(2), claims[0].BlockNum, "Should preserve oldest block (fromBlock boundary)")
+				require.Equal(t, uint64(0), claims[0].BlockPos, "Should preserve oldest BlockPos")
+				// Verify compaction: oldest metadata from block 2, newest proofs from block 3
+				require.Equal(t, []byte("middle_metadata"), claims[0].Metadata, "Should preserve oldest metadata from block 2")
+				require.Equal(t, common.HexToHash("0x3a"), claims[0].ProofLocalExitRoot[0], "Should use newest proof from block 3")
+				require.Equal(t, common.HexToHash("0x3c"), claims[0].MainnetExitRoot, "Should use newest MainnetExitRoot from block 3")
+			},
+		},
+		{
+			name:      "block range with gaps in processed blocks",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]}, // GlobalIndex=1
+						},
+					},
+					{
+						Num:    2,
+						Hash:   common.HexToHash("0x2"),
+						Events: []any{}, // Block 2 has no claims (processed but empty)
+					},
+					// Block 3 is completely skipped (not processed)
+					{
+						Num:  4,
+						Hash: common.HexToHash("0x4"),
+						Events: []any{
+							Event{Claim: claims[1]}, // GlobalIndex=2
+						},
+					},
+					{
+						Num:    5,
+						Hash:   common.HexToHash("0x5"),
+						Events: []any{}, // Block 5 has no claims (processed but empty)
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       5,
+			expectedCount: 2,
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should return claims from blocks that exist in the range
+				// Block 2 has no events, block 3 was not processed at all
+				// But claims from blocks 1 and 4 should still be returned
+				require.Len(t, claims, 2)
+				require.Equal(t, big.NewInt(1), claims[0].GlobalIndex, "First claim from block 1")
+				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex, "Second claim - claims[1] was added to block 4 but has BlockNum=2 in its data")
+				require.Equal(t, uint64(1), claims[0].BlockNum)
+				require.Equal(t, uint64(2), claims[1].BlockNum, "BlockNum comes from claim data, not the block it was added to")
 			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// process blocks
-			for _, b := range tt.blocks {
-				require.NoError(t, p.ProcessBlock(context.Background(), b))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			dbPath := t.TempDir() + "/test.db"
+			p, err := newProcessor(dbPath, "test", log.GetDefaultLogger(), time.Second*10)
+			require.NoError(t, err)
+
+			// Setup blocks
+			blocks := tc.setupBlocks()
+			for _, block := range blocks {
+				err := p.ProcessBlock(ctx, block)
+				require.NoError(t, err)
 			}
 
-			// check final claims
-			for _, expected := range tt.expectedClaims {
-				dbClaims, err := p.GetClaimsByGlobalIndex(context.Background(), expected.GlobalIndex)
-				require.NoError(t, err)
-				require.Len(t, dbClaims, 1)
-				require.Equal(t, expected, &dbClaims[0])
-			}
+			// Execute test
+			claims, err := p.GetClaims(ctx, tc.queryFrom, tc.queryTo, tc.compacted)
 
-			// check invalid_claim rows
-			for _, expected := range tt.expectedInvalidClaims {
-				dbInvalidClaims, err := p.getInvalidClaimsByGlobalIndex(expected.GlobalIndex)
+			// Validate error expectations
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+			} else {
+				// Validate success expectations
 				require.NoError(t, err)
-				require.Len(t, dbInvalidClaims, 1)
-				require.Equal(t, expected, dbInvalidClaims[0])
+				require.Len(t, claims, tc.expectedCount)
+
+				// Run custom validations if provided
+				if tc.validateResults != nil {
+					tc.validateResults(t, claims)
+				}
 			}
 		})
 	}
 }
 
-func TestDeleteClaimReason_String(t *testing.T) {
-	tests := []struct {
-		name     string
-		reason   DeleteClaimReason
-		expected string
-	}{
+// TestGetClaimsPaged_CompactionAcrossPages tests the compaction behavior when
+// claims with the same global_index span across multiple pages
+func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
+	path := path.Join(t.TempDir(), "claimsPaged_compaction.sqlite")
+	require.NoError(t, migrations.RunMigrations(path))
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Create test scenario:
+	// - Global index 100: claims at blocks 10 (oldest), 20, 30 (newest with updated proofs)
+	// - Global index 200: claims at blocks 15 (oldest), 25 (newest with updated proofs)
+	// - Global index 300: single claim at block 35
+	// - Global index 400: single claim at block 5
+	//
+	// When ordered DESC by block_num: [35, 30, 25, 20, 15, 10, 5]
+	//
+	// Page 1 (size 3): blocks [35, 30, 25]
+	//   - Block 35: global_index=300 (newest) -> INCLUDE (compacted with itself)
+	//   - Block 30: global_index=100 (newest) -> INCLUDE (compacted with block 10)
+	//   - Block 25: global_index=200 (newest) -> INCLUDE (compacted with block 15)
+	//
+	// Page 2 (size 3): blocks [20, 15, 10]
+	//   - Block 20: global_index=100 (NOT newest, 30 is newest) -> EXCLUDE
+	//   - Block 15: global_index=200 (NOT newest, 25 is newest) -> EXCLUDE
+	//   - Block 10: global_index=100 (NOT newest, 30 is newest) -> EXCLUDE
+	//
+	// Page 3 (size 3): blocks [5]
+	//   - Block 5: global_index=400 (newest) -> INCLUDE (compacted with itself)
+
+	oldProof := types.Proof{}
+	oldProof[0] = common.HexToHash("0x01")
+
+	newProof := types.Proof{}
+	newProof[0] = common.HexToHash("0x02")
+
+	claims := []*Claim{
+		// Global index 100 - oldest (will be base for compaction)
 		{
-			name:     "InvalidGERClaimCorrect",
-			reason:   InvalidGERClaimCorrect,
-			expected: "invalid_ger_claim_correct",
+			BlockNum:            10,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa1"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x1111"),
+			DestinationAddress:  common.HexToAddress("0x2222"),
+			Amount:              big.NewInt(1000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x3333"),
+			RollupExitRoot:      common.HexToHash("0x4444"),
+			GlobalExitRoot:      common.HexToHash("0x5555"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("old"),
+			IsMessage:           false,
+			BlockTimestamp:      1000,
 		},
+		// Global index 200 - oldest
 		{
-			name:     "InvalidGERClaimIncorrect",
-			reason:   InvalidGERClaimIncorrect,
-			expected: "invalid_ger_claim_incorrect",
+			BlockNum:            15,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa2"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0x3333"),
+			DestinationAddress:  common.HexToAddress("0x4444"),
+			Amount:              big.NewInt(2000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x6666"),
+			RollupExitRoot:      common.HexToHash("0x7777"),
+			GlobalExitRoot:      common.HexToHash("0x8888"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("metadata200"),
+			IsMessage:           true,
+			BlockTimestamp:      1500,
 		},
+		// Global index 100 - middle
 		{
-			name:     "UnknownReason",
-			reason:   DeleteClaimReason(999), // something outside defined range
-			expected: "unknown",
+			BlockNum:            20,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa3"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x1111"),
+			DestinationAddress:  common.HexToAddress("0x2222"),
+			Amount:              big.NewInt(1000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x3333"),
+			RollupExitRoot:      common.HexToHash("0x4444"),
+			GlobalExitRoot:      common.HexToHash("0x5555"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("should_not_matter"),
+			IsMessage:           false,
+			BlockTimestamp:      2000,
 		},
+		// Global index 200 - newest (has updated proofs)
 		{
-			name:     "NegativeReason",
-			reason:   DeleteClaimReason(-1),
-			expected: "unknown",
+			BlockNum:            25,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa4"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0x3333"),
+			DestinationAddress:  common.HexToAddress("0x4444"),
+			Amount:              big.NewInt(2000),
+			ProofLocalExitRoot:  newProof,                   // Updated proof
+			ProofRollupExitRoot: newProof,                   // Updated proof
+			MainnetExitRoot:     common.HexToHash("0x9999"), // Updated
+			RollupExitRoot:      common.HexToHash("0xaaaa"), // Updated
+			GlobalExitRoot:      common.HexToHash("0xbbbb"), // Updated
+			DestinationNetwork:  4,
+			Metadata:            []byte("should_not_matter"),
+			IsMessage:           true,
+			BlockTimestamp:      2500,
+		},
+		// Global index 100 - newest (has updated proofs)
+		{
+			BlockNum:            30,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa5"),
+			GlobalIndex:         big.NewInt(100),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x1111"),
+			DestinationAddress:  common.HexToAddress("0x2222"),
+			Amount:              big.NewInt(1000),
+			ProofLocalExitRoot:  newProof,                   // Updated proof
+			ProofRollupExitRoot: newProof,                   // Updated proof
+			MainnetExitRoot:     common.HexToHash("0xcccc"), // Updated
+			RollupExitRoot:      common.HexToHash("0xdddd"), // Updated
+			GlobalExitRoot:      common.HexToHash("0xeeee"), // Updated
+			DestinationNetwork:  2,
+			Metadata:            []byte("should_not_matter"),
+			IsMessage:           false,
+			BlockTimestamp:      3000,
+		},
+		// Global index 300 - single claim
+		{
+			BlockNum:            35,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa6"),
+			GlobalIndex:         big.NewInt(300),
+			OriginNetwork:       5,
+			OriginAddress:       common.HexToAddress("0x5555"),
+			DestinationAddress:  common.HexToAddress("0x6666"),
+			Amount:              big.NewInt(3000),
+			ProofLocalExitRoot:  newProof,
+			ProofRollupExitRoot: newProof,
+			MainnetExitRoot:     common.HexToHash("0xffff"),
+			RollupExitRoot:      common.HexToHash("0x0000"),
+			GlobalExitRoot:      common.HexToHash("0x1111"),
+			DestinationNetwork:  6,
+			Metadata:            []byte("metadata300"),
+			IsMessage:           false,
+			BlockTimestamp:      3500,
+		},
+		// Global index 400 - single claim
+		{
+			BlockNum:            5,
+			BlockPos:            0,
+			TxHash:              common.HexToHash("0xa7"),
+			GlobalIndex:         big.NewInt(400),
+			OriginNetwork:       7,
+			OriginAddress:       common.HexToAddress("0x7777"),
+			DestinationAddress:  common.HexToAddress("0x8888"),
+			Amount:              big.NewInt(4000),
+			ProofLocalExitRoot:  oldProof,
+			ProofRollupExitRoot: oldProof,
+			MainnetExitRoot:     common.HexToHash("0x2222"),
+			RollupExitRoot:      common.HexToHash("0x3333"),
+			GlobalExitRoot:      common.HexToHash("0x4444"),
+			DestinationNetwork:  8,
+			Metadata:            []byte("metadata400"),
+			IsMessage:           true,
+			BlockTimestamp:      500,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.reason.String()
-			require.Equal(t, tt.expected, got)
-		})
+	// Insert all claims
+	tx, err := p.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	for i := uint64(1); i <= 40; i++ {
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+		require.NoError(t, err)
 	}
+
+	for _, claim := range claims {
+		require.NoError(t, meddler.Insert(tx, "claim", claim))
+	}
+	require.NoError(t, tx.Commit())
+
+	// Test Page 1: Should return 3 compacted claims (300, 100 compacted, 200 compacted)
+	t.Run("Page 1 - newest claims on page", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 1, 3, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count) // Total raw claims in DB
+
+		// Should get 3 claims: global_index 300, 100 (compacted), 200 (compacted)
+		require.Len(t, result, 3)
+
+		// Build a map for easier testing
+		claimsByGlobalIndex := make(map[int64]*Claim)
+		for _, claim := range result {
+			claimsByGlobalIndex[claim.GlobalIndex.Int64()] = claim
+		}
+
+		// Verify we have the expected global indices
+		require.Contains(t, claimsByGlobalIndex, int64(100))
+		require.Contains(t, claimsByGlobalIndex, int64(200))
+		require.Contains(t, claimsByGlobalIndex, int64(300))
+
+		// Check global_index 300 (block 35)
+		claim300 := claimsByGlobalIndex[300]
+		require.Equal(t, uint64(35), claim300.BlockNum)
+		require.Equal(t, []byte("metadata300"), claim300.Metadata)
+
+		// Check global_index 100 (compacted: oldest block 10, newest proofs from block 30)
+		claim100 := claimsByGlobalIndex[100]
+		require.Equal(t, uint64(10), claim100.BlockNum)                        // Oldest claim's block
+		require.Equal(t, common.HexToHash("0xa1"), claim100.TxHash)            // Oldest claim's tx
+		require.Equal(t, []byte("old"), claim100.Metadata)                     // Oldest claim's metadata
+		require.Equal(t, newProof, claim100.ProofLocalExitRoot)                // Newest claim's proof
+		require.Equal(t, common.HexToHash("0xcccc"), claim100.MainnetExitRoot) // Newest claim's root
+
+		// Check global_index 200 (compacted: oldest block 15, newest proofs from block 25)
+		claim200 := claimsByGlobalIndex[200]
+		require.Equal(t, uint64(15), claim200.BlockNum)                        // Oldest claim's block
+		require.Equal(t, []byte("metadata200"), claim200.Metadata)             // Oldest claim's metadata
+		require.Equal(t, newProof, claim200.ProofLocalExitRoot)                // Newest claim's proof
+		require.Equal(t, common.HexToHash("0x9999"), claim200.MainnetExitRoot) // Newest claim's root
+	})
+
+	// Test Page 2: Should return 0 claims (all claims on this page are NOT the newest)
+	t.Run("Page 2 - no newest claims on page", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 2, 3, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+
+		// Should get 0 claims because blocks 20, 15, 10 are all older versions
+		require.Len(t, result, 0)
+	})
+
+	// Test Page 3: Should return 1 claim (global_index 400)
+	t.Run("Page 3 - single newest claim on page", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 3, 3, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+
+		// Should get 1 claim: global_index 400
+		require.Len(t, result, 1)
+		require.Equal(t, big.NewInt(400), result[0].GlobalIndex)
+		require.Equal(t, uint64(5), result[0].BlockNum)
+		require.Equal(t, []byte("metadata400"), result[0].Metadata)
+	})
+
+	// Test with larger page size that captures everything
+	t.Run("Large page size - all newest claims", func(t *testing.T) {
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+
+		// Should get 4 compacted claims: 300, 100, 200, 400
+		require.Len(t, result, 4)
+
+		globalIndices := make(map[int64]bool)
+		for _, claim := range result {
+			globalIndices[claim.GlobalIndex.Int64()] = true
+		}
+
+		require.True(t, globalIndices[100])
+		require.True(t, globalIndices[200])
+		require.True(t, globalIndices[300])
+		require.True(t, globalIndices[400])
+	})
+
+	// Test with network IDs filter - should only return claims from networks 1 and 3
+	t.Run("Filter by network IDs", func(t *testing.T) {
+		networkIDs := []uint32{1, 3} // Only global_index 100 (network 1) and 200 (network 3)
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, nil)
+		require.NoError(t, err)
+		require.Equal(t, 5, count) // 3 claims with network 1, 2 claims with network 3
+
+		// Should get 2 compacted claims: 100 and 200
+		require.Len(t, result, 2)
+
+		globalIndices := make(map[int64]bool)
+		for _, claim := range result {
+			globalIndices[claim.GlobalIndex.Int64()] = true
+		}
+
+		require.True(t, globalIndices[100])
+		require.True(t, globalIndices[200])
+		require.False(t, globalIndices[300]) // Network 5 - excluded
+		require.False(t, globalIndices[400]) // Network 7 - excluded
+	})
+
+	// Test with network IDs and specific global index filter
+	t.Run("Filter by network IDs and global index", func(t *testing.T) {
+		networkIDs := []uint32{1, 3, 5} // Networks that include our target global_index
+		globalIndexFilter := big.NewInt(100)
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, globalIndexFilter)
+		require.NoError(t, err)
+		require.Equal(t, 3, count) // 3 raw claims with global_index 100
+
+		// Should get 1 compacted claim: only global_index 100 (network 1 matches filter)
+		require.Len(t, result, 1)
+		require.Equal(t, big.NewInt(100), result[0].GlobalIndex)
+		require.Equal(t, uint32(1), result[0].OriginNetwork)
+
+		// Verify compaction: oldest metadata with newest proofs
+		require.Equal(t, uint64(10), result[0].BlockNum)                        // Oldest claim's block
+		require.Equal(t, common.HexToHash("0xa1"), result[0].TxHash)            // Oldest claim's tx
+		require.Equal(t, []byte("old"), result[0].Metadata)                     // Oldest claim's metadata
+		require.Equal(t, newProof, result[0].ProofLocalExitRoot)                // Newest claim's proof
+		require.Equal(t, common.HexToHash("0xcccc"), result[0].MainnetExitRoot) // Newest claim's root
+	})
+
+	// Test with network IDs and global index that don't match
+	t.Run("Filter by network IDs and global index - no match", func(t *testing.T) {
+		networkIDs := []uint32{5, 7}         // Networks 5 and 7
+		globalIndexFilter := big.NewInt(100) // But global_index 100 is on network 1
+		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, globalIndexFilter)
+		require.NoError(t, err)
+		require.Equal(t, 0, count) // No claims match both filters
+
+		require.Len(t, result, 0)
+	})
 }
