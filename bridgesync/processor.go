@@ -739,20 +739,94 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 		return nil, fmt.Errorf("global index parameter cannot be nil")
 	}
 
-	var results []*Claim
-	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
-		SELECT *
-		FROM %s
+	// SQL query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for the global_index, return all claims uncompacted
+	// Case 2: If no unset_claim exists, return compacted claim (oldest metadata + newest proofs)
+	// Case 3: Same as case 2 (all claims for this global_index are considered "in range")
+	query := fmt.Sprintf(`
+	WITH all_claims_for_index AS (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
+			ROW_NUMBER() OVER (ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+		FROM claim
 		WHERE global_index = $1
-		ORDER BY block_num ASC, block_pos ASC;
-	`, claimTableName), globalIndex.String()); err != nil {
+	),
+	claims_with_unset AS (
+		-- Case 1: Return all claims if unset_claim exists (no compaction)
+		SELECT 
+			c.block_num,
+			c.block_pos,
+			c.tx_hash,
+			c.global_index,
+			c.origin_network,
+			c.origin_address,
+			c.destination_address,
+			c.amount,
+			c.proof_local_exit_root,
+			c.proof_rollup_exit_root,
+			c.mainnet_exit_root,
+			c.rollup_exit_root,
+			c.global_exit_root,
+			c.destination_network,
+			c.metadata,
+			c.is_message,
+			c.block_timestamp
+		FROM all_claims_for_index c
+		WHERE EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = $1
+		)
+	),
+	compactable_claims AS (
+		-- Case 2: Handle claims without unset_claim (compact)
+		SELECT 
+		%s
+		FROM all_claims_for_index o
+		JOIN all_claims_for_index n ON n.rn_newest = 1
+		WHERE o.rn_oldest = 1
+		AND NOT EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = $1
+		)
+	)
+	SELECT * FROM claims_with_unset
+	UNION ALL
+	SELECT * FROM compactable_claims
+	ORDER BY block_num ASC, block_pos ASC;
+`, compactedClaimsSelectSQL)
+
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := p.db.QueryContext(dbCtx, query, globalIndex.String())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			p.log.Debugf("no claims were found for global index: %s", globalIndex.String())
+			return []Claim{}, nil
+		}
+		p.log.Errorf("GetClaimsByGlobalIndex: query failed for global index %s: %v", globalIndex.String(), err)
 		return nil, fmt.Errorf("failed to query claims by global index: %s: %w", globalIndex.String(), err)
 	}
 
-	claimsSlice := db.SlicePtrsToSlice(results)
-	claims, ok := claimsSlice.([]Claim)
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	claimPtrs := []*Claim{}
+	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		p.log.Errorf("GetClaimsByGlobalIndex: meddler.ScanAll failed for global index %s: %v", globalIndex.String(), err)
+		return nil, fmt.Errorf("failed to scan claims for global index: %s: %w", globalIndex.String(), err)
+	}
+
+	claimsIface := db.SlicePtrsToSlice(claimPtrs)
+	claims, ok := claimsIface.([]Claim)
 	if !ok {
-		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for global index: %s", globalIndex.String())
+		p.log.Errorf("GetClaimsByGlobalIndex: failed to convert from []*Claim to []Claim for global index: %s",
+			globalIndex.String())
 		return nil, errFailToConvertClaims
 	}
 
