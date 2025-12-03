@@ -56,14 +56,13 @@ func NewBridgeDataQuerier(
 func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
-	compactedClaims bool,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
 	bridges, err := b.bridgeSyncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
 
-	claims, err := b.bridgeSyncer.GetClaims(ctx, fromBlock, toBlock, compactedClaims)
+	claims, err := b.bridgeSyncer.GetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting claims: %w", err)
 	}

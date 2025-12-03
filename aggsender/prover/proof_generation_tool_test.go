@@ -37,7 +37,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				mockFlow *mocks.AggchainProofFlow,
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10), false).Return([]bridgesync.Claim{}, nil)
+				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
 				certBuildParams := &types.CertificateBuildParams{
 					Claims: []bridgesync.Claim{},
 				}
@@ -65,7 +65,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				mockFlow *mocks.AggchainProofFlow,
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10), false).Return(nil, errors.New("test error"))
+				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return(nil, errors.New("test error"))
 			},
 			expectedError: "error getting claims (imported bridge exits)",
 		},
@@ -77,7 +77,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				mockFlow *mocks.AggchainProofFlow,
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10), false).Return([]bridgesync.Claim{}, nil)
+				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
 				certBuildParams := &types.CertificateBuildParams{
 					Claims: []bridgesync.Claim{},
 				}

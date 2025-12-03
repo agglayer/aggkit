@@ -64,8 +64,6 @@ var (
 	// bridgeMessage(uint32 destinationNetwork,address destinationAddress,
 	//  bool forceUpdateGlobalExitRoot,bytes metadata)
 	BridgeMessageMethodID = common.Hex2Bytes("240ff378")
-	bridgeLeafTypeAsset   = uint8(0)
-	bridgeLeafTypeMessage = uint8(1)
 )
 
 const (
@@ -133,9 +131,9 @@ func buildBridgeEventHandler(
 		// Extract call data and root call for txn_sender
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
 			switch bridgeEvent.LeafType {
-			case bridgeLeafTypeAsset:
+			case bridgesynctypes.LeafTypeAsset.Uint8():
 				return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
-			case bridgeLeafTypeMessage:
+			case bridgesynctypes.LeafTypeMessage.Uint8():
 				return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
 			}
 			return false, nil

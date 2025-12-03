@@ -130,7 +130,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				NewBaseFlowConfig(tt.maxCertSize, 0, false, true, true))
+				NewBaseFlowConfig(tt.maxCertSize, 0, false, true))
 
 			result, err := f.LimitCertSize(tt.fullCert)
 
@@ -625,7 +625,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				// gap is [16,16]
 				mockL2BridgeQuerier.EXPECT().
-					GetBridgesAndClaims(ctx, uint64(16), uint64(16), false).
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
 					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 			},
 		},
@@ -642,7 +642,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 			},
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().
-					GetBridgesAndClaims(ctx, uint64(16), uint64(16), false).
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
 					Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{}, nil)
 			},
 			expectedError: "there are new bridges or claims in the gap",
@@ -660,7 +660,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 			},
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().
-					GetBridgesAndClaims(ctx, uint64(16), uint64(16), false).
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
 					Return([]bridgesync.Bridge{}, []bridgesync.Claim{{}}, nil)
 			},
 			expectedError: "there are new bridges or claims in the gap",
@@ -679,7 +679,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 			requireNoFEPGap: true,
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().
-					GetBridgesAndClaims(ctx, uint64(16), uint64(16), false).
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
 					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 			},
 			expectedError: "block gap detected",
@@ -697,7 +697,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 			},
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().
-					GetBridgesAndClaims(ctx, uint64(16), uint64(16), false).
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
 					Return(nil, nil, errors.New("db error"))
 			},
 			expectedError: "error getting bridges and claims in the gap",
@@ -716,7 +716,7 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				// lastSettledToBlock = 4, so gap is [5,6]
 				mockL2BridgeQuerier.EXPECT().
-					GetBridgesAndClaims(ctx, uint64(5), uint64(6), false).
+					GetBridgesAndClaims(ctx, uint64(5), uint64(6)).
 					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 			},
 		},

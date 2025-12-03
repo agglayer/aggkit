@@ -59,6 +59,25 @@ const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
 
+	// claimColumnsSQL is the list of all claim columns
+	claimColumnsSQL = `block_num,
+		block_pos,
+		tx_hash,
+		global_index,
+		origin_network,
+		origin_address,
+		destination_address,
+		amount,
+		proof_local_exit_root,
+		proof_rollup_exit_root,
+		mainnet_exit_root,
+		rollup_exit_root,
+		global_exit_root,
+		destination_network,
+		metadata,
+		is_message,
+		block_timestamp`
+
 	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
 	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
 	compactedClaimsSelectSQL = `
@@ -100,9 +119,6 @@ var (
 
 	// getBridgesBlockRangeSelectSQL is the SELECT clause for bridges within a block range
 	getBridgesBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, bridgeTableName)
-
-	// getClaimsBlockRangeSelectSQL is the SELECT clause for claims within a block range
-	getClaimsBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, claimTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -638,37 +654,52 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
-	query := getClaimsBlockRangeSelectSQL
-	if compacted {
-		// SQL query with compaction logic:
-		// - Gets the oldest claim for each global_index (preserves all metadata)
-		// - Updates only the proof fields from the newest claim with same global_index
-		query = fmt.Sprintf(`
-		WITH ranked_claims AS (
-			SELECT 
-				*,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest
-			FROM claim
-			WHERE block_num >= $1 AND block_num <= $2
-		),
-		oldest_with_newest_proofs AS (
-			SELECT 
-			%s
-			FROM ranked_claims o
-			JOIN ranked_claims n ON o.global_index = n.global_index AND n.rn_newest = 1
-			WHERE o.rn_oldest = 1
+func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
+	// SQL query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for a global_index, return all claims in range uncompacted
+	// Case 2: If no unset_claim exists and globally oldest is in range, return compacted claim
+	// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
+	query := fmt.Sprintf(`
+	WITH all_claims_ranked AS (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
+			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
+		FROM claim
+	),
+	claims_in_range AS (
+		SELECT *
+		FROM all_claims_ranked
+		WHERE block_num >= $1 AND block_num <= $2
+	),
+	claims_with_unset AS (
+		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
+		SELECT 
+			c.%s
+		FROM claims_in_range c
+		WHERE EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = c.global_index
 		)
-		SELECT * FROM oldest_with_newest_proofs
-		ORDER BY block_num ASC, block_pos ASC;
-	`, compactedClaimsSelectSQL)
-	}
+	),
+	compactable_claims AS (
+		-- Case 2 & 3: Handle claims without unset_claim
+		SELECT 
+		%s
+		FROM claims_in_range o
+		JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
+		WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
+		AND NOT EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = o.global_index
+		)
+	)
+	SELECT * FROM claims_with_unset
+	UNION ALL
+	SELECT * FROM compactable_claims
+	ORDER BY block_num ASC, block_pos ASC;
+`, claimColumnsSQL, compactedClaimsSelectSQL)
 
-	return p.getClaimsInternal(ctx, query, fromBlock, toBlock)
-}
-
-func (p *processor) getClaimsInternal(ctx context.Context, query string, fromBlock, toBlock uint64) ([]Claim, error) {
 	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, query)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -704,20 +735,78 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 		return nil, fmt.Errorf("global index parameter cannot be nil")
 	}
 
-	var results []*Claim
-	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
-		SELECT *
-		FROM %s
+	// SQL query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for the global_index, return all claims uncompacted
+	// Case 2: If no unset_claim exists, return compacted claim (oldest metadata + newest proofs)
+	// Case 3: Same as case 2 (all claims for this global_index are considered "in range")
+	query := fmt.Sprintf(`
+	WITH all_claims_for_index AS (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
+			ROW_NUMBER() OVER (ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+		FROM claim
 		WHERE global_index = $1
-		ORDER BY block_num ASC, block_pos ASC;
-	`, claimTableName), globalIndex.String()); err != nil {
+	),
+	claims_with_unset AS (
+		-- Case 1: Return all claims if unset_claim exists (no compaction)
+		SELECT 
+			c.%s
+		FROM all_claims_for_index c
+		WHERE EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = $1
+		)
+	),
+	compactable_claims AS (
+		-- Case 2: Handle claims without unset_claim (compact)
+		SELECT 
+		%s
+		FROM all_claims_for_index o
+		JOIN all_claims_for_index n ON n.rn_newest = 1
+		WHERE o.rn_oldest = 1
+		AND NOT EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = $1
+		)
+	)
+	SELECT * FROM claims_with_unset
+	UNION ALL
+	SELECT * FROM compactable_claims
+	ORDER BY block_num ASC, block_pos ASC;
+`, claimColumnsSQL, compactedClaimsSelectSQL)
+
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := p.db.QueryContext(dbCtx, query, globalIndex.String())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			p.log.Debugf("no claims were found for global index: %s", globalIndex.String())
+			return []Claim{}, nil
+		}
+		p.log.Errorf("GetClaimsByGlobalIndex: query failed for global index %s: %v", globalIndex.String(), err)
 		return nil, fmt.Errorf("failed to query claims by global index: %s: %w", globalIndex.String(), err)
 	}
 
-	claimsSlice := db.SlicePtrsToSlice(results)
-	claims, ok := claimsSlice.([]Claim)
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	claimPtrs := []*Claim{}
+	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		p.log.Errorf("GetClaimsByGlobalIndex: meddler.ScanAll failed for global index %s: %v", globalIndex.String(), err)
+		return nil, fmt.Errorf("failed to scan claims for global index: %s: %w", globalIndex.String(), err)
+	}
+
+	claimsIface := db.SlicePtrsToSlice(claimPtrs)
+	claims, ok := claimsIface.([]Claim)
 	if !ok {
-		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for global index: %s", globalIndex.String())
+		p.log.Errorf("GetClaimsByGlobalIndex: failed to convert from []*Claim to []Claim for global index: %s",
+			globalIndex.String())
 		return nil, errFailToConvertClaims
 	}
 
@@ -816,15 +905,16 @@ func (p *processor) GetClaimsPaged(
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	// Step 1: Get the raw claims for this page
-	// Step 2: For each claim on this page, check if it's the newest with its global_index
-	// Step 3: If it IS the newest, compact it with the oldest claim of same global_index
-	// Step 4: If it's NOT the newest, exclude it from results
+	// Pagination query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for a global_index, return all claims on page uncompacted
+	// Case 2: If no unset_claim exists and globally oldest is on page, return compacted claim
+	// Case 3: If globally oldest is outside page and no unset_claim exists, exclude from results
 	//
 	// This query:
-	// - Gets claims for the requested page
+	// - Gets claims for the requested page (DESC order: newest first)
 	// - Ranks all claims globally by global_index to find oldest and newest
-	// - Only returns compacted claims where the newest claim appears on this page
+	// - For claims with unset_claim: returns all instances on the page uncompacted
+	// - For claims without unset_claim: only returns compacted version if newest is on page
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		WITH page_claims AS (
@@ -837,25 +927,45 @@ func (p *processor) GetClaimsPaged(
 		all_claims_ranked AS (
 			SELECT 
 				*,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
 			FROM claim
 			%s
+		),
+		claims_with_unset_on_page AS (
+			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
+			SELECT 
+				pc.%s
+			FROM page_claims pc
+			WHERE EXISTS (
+				SELECT 1 FROM unset_claim uc 
+				WHERE uc.global_index = pc.global_index
+			)
 		),
 		newest_on_page AS (
 			SELECT DISTINCT pc.global_index
 			FROM page_claims pc
-			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest = 1
+			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest_global = 1
 			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
-		)
-		SELECT 
-		%s
-		FROM all_claims_ranked o
-		JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest = 1
-		WHERE o.rn_oldest = 1
+			AND NOT EXISTS (
+				SELECT 1 FROM unset_claim uc 
+				WHERE uc.global_index = pc.global_index
+			)
+		),
+		compactable_claims AS (
+			-- Case 2 & 3: Handle claims without unset_claim
+			SELECT 
+			%s
+			FROM all_claims_ranked o
+			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
+			WHERE o.rn_oldest_global = 1  -- Globally oldest claim
 			AND o.global_index IN (SELECT global_index FROM newest_on_page)
-		ORDER BY o.block_num DESC, o.block_pos DESC;
-	`, whereClause, whereClause, compactedClaimsSelectSQL)
+		)
+		SELECT * FROM claims_with_unset_on_page
+		UNION ALL
+		SELECT * FROM compactable_claims
+		ORDER BY block_num DESC, block_pos DESC;
+	`, whereClause, whereClause, claimColumnsSQL, compactedClaimsSelectSQL)
 
 	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)
 	if err != nil {
