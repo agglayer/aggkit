@@ -98,12 +98,6 @@ const (
 		o.metadata,
 		o.is_message,
 		o.block_timestamp`
-
-	queryBlockRangeSelectSQL = `
-		SELECT * FROM %s
-		WHERE block_num >= $1 AND block_num <= $2
-		ORDER BY block_num ASC, block_pos ASC;
-	`
 )
 
 var (
@@ -118,7 +112,11 @@ var (
 	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
 
 	// getBridgesBlockRangeSelectSQL is the SELECT clause for bridges within a block range
-	getBridgesBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, bridgeTableName)
+	getBridgesBlockRangeSelectSQL = fmt.Sprintf(`
+	SELECT * FROM %s
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
+	`, bridgeTableName)
 )
 
 // Bridge is the representation of a bridge event
