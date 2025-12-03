@@ -2747,7 +2747,6 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	require.Contains(t, err.Error(), "context deadline exceeded")
 }
 
-//nolint:dupl
 func TestGetClaims_Compact(t *testing.T) {
 	// Define all claims used across test cases
 	claims := []*Claim{
@@ -3111,6 +3110,26 @@ func TestGetClaims_Compact(t *testing.T) {
 			IsMessage:           false,
 			BlockTimestamp:      3000,
 		},
+		// claims[18] - block 3, pos 1 with GlobalIndex=200
+		{
+			BlockNum:            3,
+			BlockPos:            1,
+			TxHash:              common.HexToHash("0x112"),
+			GlobalIndex:         big.NewInt(200),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0xccc"),
+			DestinationAddress:  common.HexToAddress("0xddd"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2ab")},
+			ProofRollupExitRoot: types.Proof{common.HexToHash("0x2bc")},
+			MainnetExitRoot:     common.HexToHash("0x2ce"),
+			RollupExitRoot:      common.HexToHash("0x2df"),
+			GlobalExitRoot:      common.HexToHash("0x2ee"),
+			DestinationNetwork:  88,
+			Metadata:            []byte("block3pos1"),
+			IsMessage:           true,
+			BlockTimestamp:      3001,
+		},
 	}
 
 	testCases := []struct {
@@ -3446,27 +3465,12 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 			queryFrom:     2,
 			queryTo:       3,
-			expectedCount: 1,
+			expectedCount: 0, // Changed from 1 to 0: globally oldest claim (block 1) is outside query range
 			validateResults: func(t *testing.T, claims []Claim) {
 				t.Helper()
-				claim := claims[0]
-				// Fields from oldest claim in range (block 2) - should be preserved
-				require.Equal(t, uint64(2), claim.BlockNum, "BlockNum should be from oldest in range")
-				require.Equal(t, uint64(0), claim.BlockPos, "BlockPos should be from oldest in range")
-				require.Equal(t, uint32(99), claim.OriginNetwork, "OriginNetwork should be from oldest in range")
-				require.Equal(t, common.HexToAddress("0xccc"), claim.OriginAddress, "OriginAddress should be from oldest in range")
-				require.Equal(t, common.HexToAddress("0xddd"), claim.DestinationAddress, "DestinationAddress should be from oldest in range")
-				require.Equal(t, big.NewInt(200), claim.Amount, "Amount should be from oldest in range")
-				require.Equal(t, uint32(88), claim.DestinationNetwork, "DestinationNetwork should be from oldest in range")
-				require.Equal(t, []byte("block2"), claim.Metadata, "Metadata should be from oldest in range")
-				require.Equal(t, true, claim.IsMessage, "IsMessage should be from oldest in range")
-				require.Equal(t, uint64(2000), claim.BlockTimestamp, "BlockTimestamp should be from oldest in range")
-				// Fields from newest claim in range (block 3) - should be updated
-				require.Equal(t, common.HexToHash("0x3a"), claim.ProofLocalExitRoot[0], "ProofLocalExitRoot should be from newest in range")
-				require.Equal(t, common.HexToHash("0x3b"), claim.ProofRollupExitRoot[0], "ProofRollupExitRoot should be from newest in range")
-				require.Equal(t, common.HexToHash("0x3c"), claim.MainnetExitRoot, "MainnetExitRoot should be from newest in range")
-				require.Equal(t, common.HexToHash("0x3d"), claim.RollupExitRoot, "RollupExitRoot should be from newest in range")
-				require.Equal(t, common.HexToHash("0x3e"), claim.GlobalExitRoot, "GlobalExitRoot should be from newest in range")
+				// Case 3: Since globally oldest claim (block 1) is outside the query range (2-3),
+				// we should not return anything for this global_index (no unset claim exists)
+				require.Empty(t, claims, "should return no claims when globally oldest is outside range")
 			},
 		},
 		{
@@ -3690,6 +3694,230 @@ func TestGetClaims_Compact(t *testing.T) {
 				require.Equal(t, big.NewInt(2), claims[1].GlobalIndex, "Second claim - claims[1] was added to block 4 but has BlockNum=2 in its data")
 				require.Equal(t, uint64(1), claims[0].BlockNum)
 				require.Equal(t, uint64(2), claims[1].BlockNum, "BlockNum comes from claim data, not the block it was added to")
+			},
+		},
+		{
+			name:      "Case 1: don't compact if unset claim exists for global_index",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[2]}, // GlobalIndex=100, block 1, pos 1
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{UnsetClaim: &UnsetClaim{ // Unset claim for GlobalIndex=1
+								GlobalIndex:               big.NewInt(100),
+								BlockNum:                  2,
+								BlockPos:                  0,
+								TxHash:                    common.Hash{},
+								UnsetGlobalIndexHashChain: common.Hash{},
+							}},
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=1, block 3, pos 0
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       3,
+			expectedCount: 2, // Should return all claims without compacting GlobalIndex=100 due to unset claim
+			validateResults: func(t *testing.T, resultClaims []Claim) {
+				t.Helper()
+				// Should return: claim (GI=100, block 1), claim (GI=100, block 3)
+				require.Len(t, resultClaims, 2, "should not compact GlobalIndex=100 when unset claim exists")
+				require.Equal(t, *claims[2], resultClaims[0])
+				require.Equal(t, *claims[4], resultClaims[1])
+			},
+		},
+		{
+			name:      "Case 2: compact if no unset claim exists",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[2]}, // GlobalIndex=100, block 1 (oldest)
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[3]}, // GlobalIndex=100, block 2
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=100, block 3 (newest)
+							// No unset claim - should compact
+						},
+					},
+				}
+			},
+			queryFrom:     1,
+			queryTo:       3,
+			expectedCount: 1, // Should return 1 compacted claim
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should compact all 3 claims into 1
+				require.Len(t, claims, 1, "should compact when no unset claim exists")
+				claim := claims[0]
+				require.Equal(t, big.NewInt(100), claim.GlobalIndex)
+				// Metadata from oldest (block 1)
+				require.Equal(t, uint64(1), claim.BlockNum, "should preserve oldest block")
+				require.Equal(t, uint64(0), claim.BlockPos, "should preserve oldest position")
+				require.Equal(t, []byte("original_metadata"), claim.Metadata, "should preserve oldest metadata")
+				require.Equal(t, big.NewInt(100), claim.Amount, "should preserve oldest amount")
+				require.Equal(t, uint32(1), claim.OriginNetwork, "should preserve oldest origin network")
+				// Proofs from newest (block 3)
+				require.Equal(t, common.HexToHash("0x3a"), claim.ProofLocalExitRoot[0], "should use newest proof")
+				require.Equal(t, common.HexToHash("0x3c"), claim.MainnetExitRoot, "should use newest MainnetExitRoot")
+				require.Equal(t, common.HexToHash("0x3d"), claim.RollupExitRoot, "should use newest RollupExitRoot")
+				require.Equal(t, common.HexToHash("0x3e"), claim.GlobalExitRoot, "should use newest GlobalExitRoot")
+			},
+		},
+		{
+			name:      "Case 3: don't return if globally oldest is outside query range",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[2]}, // GlobalIndex=100, block 1 (globally oldest)
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[3]}, // GlobalIndex=100, block 2
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=100, block 3 (newest)
+						},
+					},
+				}
+			},
+			queryFrom:     2, // Query starts at block 2, but globally oldest is at block 1
+			queryTo:       3,
+			expectedCount: 0, // Should return nothing because globally oldest (block 1) is outside range
+			validateResults: func(t *testing.T, claims []Claim) {
+				t.Helper()
+				// Should return no claims because the globally oldest claim (block 1) is outside the query range (2-3)
+				require.Empty(t, claims, "should not return claims when globally oldest is outside query range")
+			},
+		},
+		{
+			name:      "Case 3 exception: return if unset claim exists even when globally oldest is outside range",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[0]}, // GlobalIndex=1, block 1, pos 0
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{UnsetClaim: &UnsetClaim{ // Unset claim for GlobalIndex=100
+								GlobalIndex:               big.NewInt(1),
+								BlockNum:                  1,
+								BlockPos:                  1,
+								TxHash:                    common.Hash{},
+								UnsetGlobalIndexHashChain: common.Hash{},
+							}},
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x3"),
+						Events: []any{
+							Event{Claim: claims[4]}, // GlobalIndex=1, block 3, pos 0
+						},
+					},
+				}
+			},
+			queryFrom:     3, // Query starts at block 3, globally oldest is at block 1
+			queryTo:       3,
+			expectedCount: 1, // Should return claim from block 3 (uncompacted) because unset claim exists
+			validateResults: func(t *testing.T, resultClaims []Claim) {
+				t.Helper()
+				// Should return claim from block 3 even though globally oldest is outside range
+				// because an unset claim exists for this global_index
+				require.Len(t, resultClaims, 1, "should return claims when unset claim exists, even if globally oldest is outside range")
+				require.Equal(t, *claims[4], resultClaims[0])
+			},
+		},
+		{
+			name:      "Multiple global_indexes with different compaction rules",
+			compacted: true,
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{Claim: claims[2]}, // GlobalIndex=100, block 1, pos 0 (globally oldest)
+							Event{Claim: claims[6]}, // GlobalIndex=200, block 1, pos 1 (globally oldest)
+						},
+					},
+					{
+						Num:  2,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{UnsetClaim: &UnsetClaim{ // Unset claim for GlobalIndex=100
+								GlobalIndex: big.NewInt(100),
+								BlockNum:    1,
+								BlockPos:    1,
+							}},
+						},
+					},
+					{
+						Num:  3,
+						Hash: common.HexToHash("0x2"),
+						Events: []any{
+							Event{Claim: claims[4]},  // GlobalIndex=100, block 3, pos 0
+							Event{Claim: claims[18]}, // GlobalIndex=200, block 3, pos 1
+						},
+					},
+				}
+			},
+			queryFrom:     3, // Query block 3
+			queryTo:       3,
+			expectedCount: 1, // GlobalIndex=100: 1 claim (uncompacted, block 2 due to unset claim)
+			// GlobalIndex=456: 0 claims (globally oldest is at block 1, outside range)
+			// GlobalIndex=1: 0 claims (only exists at block 1, outside range)
+			validateResults: func(t *testing.T, resultClaims []Claim) {
+				t.Helper()
+				require.Len(t, resultClaims, 1, "should apply different rules per global_index")
+				// Should be GlobalIndex=100 (the one with unset claim)
+				require.Equal(t, *claims[4], resultClaims[0])
 			},
 		},
 	}
