@@ -48,9 +48,10 @@ func NewBuilderFlow(
 			0, false,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
-			true,
+			true, // fullClaims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.GlobalExitRootL1Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -95,9 +96,10 @@ func NewBuilderFlow(
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
-			true,
+			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.GlobalExitRootL1Addr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -163,6 +165,7 @@ func CreateCommonFlowComponents(
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
+	globalExitRootL1Addr ethCommon.Address,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
@@ -181,12 +184,20 @@ func CreateCommonFlowComponents(
 	}
 
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, delayBetweenRetries, agglayerBridgeL2Reader)
-	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
+	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, globalExitRootL1Addr, l1InfoTreeSyncer)
+	if err != nil {
+		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
+	}
 	lerQuerier := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
 
 	baseFlow := NewBaseFlow(
 		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-		NewBaseFlowConfig(maxCertSize, startL2Block, requireNoFEPBlockGap, fullClaimsRequired),
+		NewBaseFlowConfig(
+			maxCertSize,
+			startL2Block,
+			requireNoFEPBlockGap,
+			fullClaimsRequired,
+		),
 	)
 
 	return &CommonFlowComponents{

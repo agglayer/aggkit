@@ -10,7 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -59,7 +59,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 				{
 					ImportedBridgeExit: &agglayertypes.ImportedBridgeExit{
 						BridgeExit: &agglayertypes.BridgeExit{
-							LeafType: agglayertypes.LeafTypeAsset,
+							LeafType: bridgetypes.LeafTypeAsset,
 							TokenInfo: &agglayertypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x123"),
@@ -80,7 +80,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 				{
 					ImportedBridgeExit: &agglayertypes.ImportedBridgeExit{
 						BridgeExit: &agglayertypes.BridgeExit{
-							LeafType: agglayertypes.LeafTypeMessage,
+							LeafType: bridgetypes.LeafTypeMessage,
 							TokenInfo: &agglayertypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x123"),
@@ -375,18 +375,18 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 
 	testCases := []struct {
 		name             string
-		unclaims         []bridgesynctypes.Unclaim
+		unclaims         []bridgetypes.Unclaim
 		expectedUnclaims []*agglayertypes.Unclaim
 		expectedError    string
 	}{
 		{
 			name:             "empty map",
-			unclaims:         []bridgesynctypes.Unclaim{},
+			unclaims:         []bridgetypes.Unclaim{},
 			expectedUnclaims: []*agglayertypes.Unclaim{},
 		},
 		{
 			name: "single unclaim with mainnet flag true",
-			unclaims: []bridgesynctypes.Unclaim{
+			unclaims: []bridgetypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 5),
 					BlockNumber: 100,
@@ -407,7 +407,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "single unclaim with mainnet flag false and rollup index",
-			unclaims: []bridgesynctypes.Unclaim{
+			unclaims: []bridgetypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 3, 7),
 					BlockNumber: 200,
@@ -428,7 +428,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "multiple unclaims with different configurations",
-			unclaims: []bridgesynctypes.Unclaim{
+			unclaims: []bridgetypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
 					BlockNumber: 100,
@@ -477,7 +477,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "unclaim with zero global index",
-			unclaims: []bridgesynctypes.Unclaim{
+			unclaims: []bridgetypes.Unclaim{
 				{
 					GlobalIndex: big.NewInt(0),
 					BlockNumber: 100,
@@ -498,7 +498,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "unclaim with large values",
-			unclaims: []bridgesynctypes.Unclaim{
+			unclaims: []bridgetypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 4294967295, 4294967295), // max uint32 values
 					BlockNumber: 999999,

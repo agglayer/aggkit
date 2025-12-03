@@ -9,6 +9,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -33,7 +34,7 @@ func TestBuildAppender(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
-			*arg = Call{To: bridgeAddr, Input: BridgeMessageMethodID}
+			*arg = Call{To: bridgeAddr, Input: BridgeAssetMethodID}
 		}).
 		Return(nil).
 		Maybe()
@@ -65,7 +66,7 @@ func TestBuildAppender(t *testing.T) {
 					return types.Log{}, err
 				}
 
-				leafType := uint8(1)
+				leafType := bridgetypes.LeafTypeAsset
 				originNetwork := uint32(10)
 				originAddress := common.HexToAddress("0x20")
 				destinationNetwork := uint32(20)
@@ -80,7 +81,6 @@ func TestBuildAppender(t *testing.T) {
 				if err != nil {
 					return types.Log{}, err
 				}
-
 				l := types.Log{
 					Topics: []common.Hash{bridgeEventSignature},
 					Data:   data,
@@ -168,13 +168,14 @@ func TestBuildAppender(t *testing.T) {
 				rerProof := [treetypes.DefaultHeight]common.Hash{}
 				mainnetExitRoot := common.HexToHash("5ca1e")
 				rollupExitRoot := common.HexToHash("5ca1e1")
+				leafType := bridgetypes.LeafTypeAsset
 				originNet := uint32(6)
 				originAddress := common.HexToAddress("0x20")
 				destinationNet := uint32(7)
 				amount := big.NewInt(10)
 				metadata := []byte{}
 				data, err := event.Inputs.NonIndexed().Pack(lerProof, rerProof, mainnetExitRoot, rollupExitRoot,
-					originNet, originAddress, destinationNet, amount, metadata)
+					leafType, originNet, originAddress, destinationNet, amount, metadata)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -291,6 +292,55 @@ func TestBuildAppender(t *testing.T) {
 
 				l := types.Log{
 					Topics: []common.Hash{removeLegacySovereignTokenEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
+			name:           "unsetClaimEventSignature appender",
+			eventSignature: unsetClaimEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(unsetClaimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				unsetGlobalIndex := [32]byte{}
+				copy(unsetGlobalIndex[:], big.NewInt(12345).Bytes())
+				newUnsetGlobalIndexHashChain := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+
+				data, err := event.Inputs.Pack(unsetGlobalIndex, newUnsetGlobalIndexHashChain)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{unsetClaimEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
+			name:           "setClaimEventSignature appender",
+			eventSignature: setClaimEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(setClaimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				globalIndexBytes := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+				data, err := event.Inputs.Pack(globalIndexBytes)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{setClaimEventSignature},
 					Data:   data,
 				}
 				return l, nil

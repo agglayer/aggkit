@@ -34,6 +34,9 @@ type AggchainProofFlow interface {
 
 // Config is the configuration for the AggchainProofGenerationTool
 type Config struct {
+	// GlobalExitRootL1Addr is the address of the GlobalExitRootManager contract on L1
+	GlobalExitRootL1Addr common.Address `mapstructure:"GlobalExitRootL1Addr"`
+
 	// AggkitProverClient is the AggkitProver client configuration
 	AggkitProverClient *aggkitgrpc.ClientConfig `mapstructure:"AggkitProverClient"`
 
@@ -94,7 +97,10 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
+	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer)
+	if err != nil {
+		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
+	}
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader)
 
 	baseFlow := flows.NewBaseFlow(

@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -32,7 +33,9 @@ var (
 
 	// sovereign chain contract events
 	detailedClaimEventSignature = crypto.Keccak256Hash([]byte(
-		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)",
+		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
+			"uint256,bytes32,bytes32,uint8,uint32," +
+			"address,uint32,address,uint256,bytes)",
 	))
 	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"SetSovereignTokenAddress(uint32,address,address,bool)",
@@ -42,6 +45,12 @@ var (
 	))
 	removeLegacySovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"RemoveLegacySovereignTokenAddress(address)",
+	))
+	unsetClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)",
+	))
+	setClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"SetClaim(bytes32)",
 	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
@@ -55,8 +64,6 @@ var (
 	// bridgeMessage(uint32 destinationNetwork,address destinationAddress,
 	//  bool forceUpdateGlobalExitRoot,bytes metadata)
 	BridgeMessageMethodID = common.Hex2Bytes("240ff378")
-	bridgeLeafTypeAsset   = uint8(0)
-	bridgeLeafTypeMessage = uint8(1)
 )
 
 const (
@@ -91,15 +98,18 @@ func buildAppender(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
-	appender[claimEventSignature] = buildClaimEventHandler(
-		bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims,
-		bridgeDeployment.kind, logger)
+	switch bridgeDeployment.kind {
+	case NonSovereignChain:
+		appender[claimEventSignature] = buildClaimEventHandler(
+			bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
 
-	if bridgeDeployment.kind == SovereignChain {
+	case SovereignChain:
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[setClaimEventSignature] = buildSetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 	}
 
 	return appender, nil
@@ -121,9 +131,9 @@ func buildBridgeEventHandler(
 		// Extract call data and root call for txn_sender
 		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
 			switch bridgeEvent.LeafType {
-			case bridgeLeafTypeAsset:
+			case bridgesynctypes.LeafTypeAsset.Uint8():
 				return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
-			case bridgeLeafTypeMessage:
+			case bridgesynctypes.LeafTypeMessage.Uint8():
 				return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
 			}
 			return false, nil
@@ -155,7 +165,7 @@ func buildBridgeEventHandler(
 // buildClaimEventHandler creates a handler for the Claim event log.
 func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool,
-	bridgeDeployment BridgeDeployment, logger *logger.Logger,
+	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
@@ -191,13 +201,6 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			}
 		}
 
-		// TODO: The DetailedClaimEvent is for now emitted only for claimAsset function
-		// Skip its insertion, since it will be handled through DetailedClaimEvent handler
-		// https://github.com/agglayer/aggkit/blob/02b5493dfdc130281155dd2783a6a476212747f1/bridgesync/downloader.go#L191-L226
-		if bridgeDeployment == SovereignChain && !claim.IsMessage {
-			return nil
-		}
-
 		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
@@ -229,9 +232,7 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			ProofLocalExitRoot:  treetypes.NewProof(claimEvent.SmtProofLocalExitRoot),
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
-			// TODO: Populate once leafType is provided by the DetailedClaimEvent
-			// (https://github.com/agglayer/agglayer-contracts/pull/568)
-			IsMessage: false,
+			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
@@ -369,6 +370,50 @@ func buildRemoveLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2) 
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
 			LegacyTokenAddress: event.SovereignTokenAddress,
+		}})
+		return nil
+	}
+}
+
+// buildUnsetClaimEventHandler creates a handler for the UpdatedUnsetGlobalIndexHashChain event log
+func buildUnsetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock,
+	types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseUpdatedUnsetGlobalIndexHashChain(l)
+		if err != nil {
+			return fmt.Errorf("error parsing UpdatedUnsetGlobalIndexHashChain event log %+v: %w", l, err)
+		}
+
+		// Convert bytes32 to big.Int
+		globalIndex := new(big.Int).SetBytes(event.UnsetGlobalIndex[:])
+
+		b.Events = append(b.Events, Event{UnsetClaim: &UnsetClaim{
+			BlockNum:                  b.Num,
+			BlockPos:                  uint64(l.Index),
+			TxHash:                    l.TxHash,
+			GlobalIndex:               globalIndex,
+			UnsetGlobalIndexHashChain: event.NewUnsetGlobalIndexHashChain,
+		}})
+		return nil
+	}
+}
+
+// buildSetClaimEventHandler creates a handler for the SetClaim event log
+func buildSetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseSetClaim(l)
+		if err != nil {
+			return fmt.Errorf("error parsing SetClaim event log %+v: %w", l, err)
+		}
+
+		// Convert bytes32 to big.Int
+		globalIndex := new(big.Int).SetBytes(event.GlobalIndex[:])
+
+		b.Events = append(b.Events, Event{SetClaim: &SetClaim{
+			BlockNum:    b.Num,
+			BlockPos:    uint64(l.Index),
+			TxHash:      l.TxHash,
+			GlobalIndex: globalIndex,
 		}})
 		return nil
 	}
