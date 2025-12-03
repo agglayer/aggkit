@@ -854,15 +854,16 @@ func (p *processor) GetClaimsPaged(
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	// Step 1: Get the raw claims for this page
-	// Step 2: For each claim on this page, check if it's the newest with its global_index
-	// Step 3: If it IS the newest, compact it with the oldest claim of same global_index
-	// Step 4: If it's NOT the newest, exclude it from results
+	// Pagination query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for a global_index, return all claims on page uncompacted
+	// Case 2: If no unset_claim exists and globally oldest is on page, return compacted claim
+	// Case 3: If globally oldest is outside page and no unset_claim exists, exclude from results
 	//
 	// This query:
-	// - Gets claims for the requested page
+	// - Gets claims for the requested page (DESC order: newest first)
 	// - Ranks all claims globally by global_index to find oldest and newest
-	// - Only returns compacted claims where the newest claim appears on this page
+	// - For claims with unset_claim: returns all instances on the page uncompacted
+	// - For claims without unset_claim: only returns compacted version if newest is on page
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		WITH page_claims AS (
@@ -875,24 +876,60 @@ func (p *processor) GetClaimsPaged(
 		all_claims_ranked AS (
 			SELECT 
 				*,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
 			FROM claim
 			%s
+		),
+		claims_with_unset_on_page AS (
+			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
+			SELECT 
+				pc.block_num,
+				pc.block_pos,
+				pc.tx_hash,
+				pc.global_index,
+				pc.origin_network,
+				pc.origin_address,
+				pc.destination_address,
+				pc.amount,
+				pc.proof_local_exit_root,
+				pc.proof_rollup_exit_root,
+				pc.mainnet_exit_root,
+				pc.rollup_exit_root,
+				pc.global_exit_root,
+				pc.destination_network,
+				pc.metadata,
+				pc.is_message,
+				pc.block_timestamp
+			FROM page_claims pc
+			WHERE EXISTS (
+				SELECT 1 FROM unset_claim uc 
+				WHERE uc.global_index = pc.global_index
+			)
 		),
 		newest_on_page AS (
 			SELECT DISTINCT pc.global_index
 			FROM page_claims pc
-			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest = 1
+			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest_global = 1
 			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
-		)
-		SELECT 
-		%s
-		FROM all_claims_ranked o
-		JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest = 1
-		WHERE o.rn_oldest = 1
+			AND NOT EXISTS (
+				SELECT 1 FROM unset_claim uc 
+				WHERE uc.global_index = pc.global_index
+			)
+		),
+		compactable_claims AS (
+			-- Case 2 & 3: Handle claims without unset_claim
+			SELECT 
+			%s
+			FROM all_claims_ranked o
+			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
+			WHERE o.rn_oldest_global = 1  -- Globally oldest claim
 			AND o.global_index IN (SELECT global_index FROM newest_on_page)
-		ORDER BY o.block_num DESC, o.block_pos DESC;
+		)
+		SELECT * FROM claims_with_unset_on_page
+		UNION ALL
+		SELECT * FROM compactable_claims
+		ORDER BY block_num DESC, block_pos DESC;
 	`, whereClause, whereClause, compactedClaimsSelectSQL)
 
 	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)

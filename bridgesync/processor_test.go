@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"testing"
@@ -36,7 +37,7 @@ func TestBigIntString(t *testing.T) {
 	_, ok := new(big.Int).SetString(globalIndex.String(), 10)
 	require.True(t, ok)
 
-	dbPath := path.Join(t.TempDir(), "bridgesyncTestBigIntString.sqlite")
+	dbPath := filepath.Join(t.TempDir(), "bridgesyncTestBigIntString.sqlite")
 
 	err := migrations.RunMigrations(dbPath)
 	require.NoError(t, err)
@@ -3958,6 +3959,8 @@ func TestGetClaims_Compact(t *testing.T) {
 
 // TestGetClaimsPaged_CompactionAcrossPages tests the compaction behavior when
 // claims with the same global_index span across multiple pages
+//
+//nolint:dupl
 func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 	path := path.Join(t.TempDir(), "claimsPaged_compaction.sqlite")
 	require.NoError(t, migrations.RunMigrations(path))
@@ -4286,5 +4289,494 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		require.Equal(t, 0, count) // No claims match both filters
 
 		require.Len(t, result, 0)
+	})
+
+	// ========== Additional comprehensive test cases (mirroring TestGetClaims_Compact) ==========
+
+	// Test Case 1: Don't compact if unset_claim exists for global_index
+	t.Run("Case 1: don't compact if unset_claim exists for global_index", func(t *testing.T) {
+		// Create a new database for this test
+		dbPath := filepath.Join(t.TempDir(), "case1.sqlite")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		require.NoError(t, err)
+
+		// Setup: Insert 3 claims with same global_index and 1 unset_claim
+		tx, err := testP.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		for i := uint64(1); i <= 3; i++ {
+			_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+			require.NoError(t, err)
+		}
+
+		testClaims := []*Claim{
+			{
+				BlockNum:            1,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x111"),
+				GlobalIndex:         big.NewInt(1),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0xaaa"),
+				DestinationAddress:  common.HexToAddress("0xbbb"),
+				Amount:              big.NewInt(100),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+				MainnetExitRoot:     common.HexToHash("0x1c"),
+				RollupExitRoot:      common.HexToHash("0x1d"),
+				GlobalExitRoot:      common.HexToHash("0x1e"),
+				DestinationNetwork:  2,
+				Metadata:            []byte("metadata1"),
+				IsMessage:           false,
+				BlockTimestamp:      1000,
+			},
+			{
+				BlockNum:            2,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x222"),
+				GlobalIndex:         big.NewInt(1),
+				OriginNetwork:       3,
+				OriginAddress:       common.HexToAddress("0xccc"),
+				DestinationAddress:  common.HexToAddress("0xddd"),
+				Amount:              big.NewInt(200),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+				MainnetExitRoot:     common.HexToHash("0x2c"),
+				RollupExitRoot:      common.HexToHash("0x2d"),
+				GlobalExitRoot:      common.HexToHash("0x2e"),
+				DestinationNetwork:  4,
+				Metadata:            []byte("metadata2"),
+				IsMessage:           true,
+				BlockTimestamp:      2000,
+			},
+		}
+
+		for _, claim := range testClaims {
+			require.NoError(t, meddler.Insert(tx, "claim", claim))
+		}
+
+		// Insert unset_claim for global_index 1
+		unsetClaim := &UnsetClaim{
+			BlockNum:    1,
+			BlockPos:    1,
+			GlobalIndex: big.NewInt(1),
+		}
+		require.NoError(t, meddler.Insert(tx, "unset_claim", unsetClaim))
+		require.NoError(t, tx.Commit())
+
+		// Query: Should return all claims uncompacted because unset_claim exists
+		result, count, err := testP.GetClaimsPaged(ctx, 1, 10, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 2, count)
+		require.Len(t, result, 2)
+		require.Equal(t, result[0], testClaims[1]) // they are returned in DESC order
+		require.Equal(t, result[1], testClaims[0])
+	})
+
+	// Test Case 2: Compact if no unset_claim exists
+	t.Run("Case 2: compact if no unset_claim exists", func(t *testing.T) {
+		// Create a new database for this test
+		dbPath := filepath.Join(t.TempDir(), "case2.sqlite")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		require.NoError(t, err)
+
+		// Setup: Insert 3 claims with same global_index, NO unset_claim
+		tx, err := testP.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		for i := uint64(1); i <= 3; i++ {
+			_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+			require.NoError(t, err)
+		}
+
+		testClaims := []*Claim{
+			{
+				BlockNum:            1,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x111"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0xaaa"),
+				DestinationAddress:  common.HexToAddress("0xbbb"),
+				Amount:              big.NewInt(100),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+				MainnetExitRoot:     common.HexToHash("0x1c"),
+				RollupExitRoot:      common.HexToHash("0x1d"),
+				GlobalExitRoot:      common.HexToHash("0x1e"),
+				DestinationNetwork:  2,
+				Metadata:            []byte("original_metadata"),
+				IsMessage:           false,
+				BlockTimestamp:      1000,
+			},
+			{
+				BlockNum:            2,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x222"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       99,
+				OriginAddress:       common.HexToAddress("0xfff"),
+				DestinationAddress:  common.HexToAddress("0xeee"),
+				Amount:              big.NewInt(999),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+				MainnetExitRoot:     common.HexToHash("0x2c"),
+				RollupExitRoot:      common.HexToHash("0x2d"),
+				GlobalExitRoot:      common.HexToHash("0x2e"),
+				DestinationNetwork:  88,
+				Metadata:            []byte("middle_metadata"),
+				IsMessage:           true,
+				BlockTimestamp:      2000,
+			},
+			{
+				BlockNum:            3,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x333"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       77,
+				OriginAddress:       common.HexToAddress("0x999"),
+				DestinationAddress:  common.HexToAddress("0x888"),
+				Amount:              big.NewInt(777),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+				MainnetExitRoot:     common.HexToHash("0x3c"),
+				RollupExitRoot:      common.HexToHash("0x3d"),
+				GlobalExitRoot:      common.HexToHash("0x3e"),
+				DestinationNetwork:  66,
+				Metadata:            []byte("newest_metadata"),
+				IsMessage:           true,
+				BlockTimestamp:      3000,
+			},
+		}
+
+		for _, claim := range testClaims {
+			require.NoError(t, meddler.Insert(tx, "claim", claim))
+		}
+		require.NoError(t, tx.Commit())
+
+		// Query: Should return 1 compacted claim (oldest metadata + newest proofs)
+		result, count, err := testP.GetClaimsPaged(ctx, 1, 10, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 3, count)
+		require.Len(t, result, 1)
+
+		// Verify compaction: oldest claim's metadata with newest claim's proofs
+		require.Equal(t, big.NewInt(100), result[0].GlobalIndex)
+		require.Equal(t, uint64(1), result[0].BlockNum)                                       // Oldest claim's block
+		require.Equal(t, common.HexToHash("0x111"), result[0].TxHash)                         // Oldest claim's tx
+		require.Equal(t, []byte("original_metadata"), result[0].Metadata)                     // Oldest claim's metadata
+		require.Equal(t, types.Proof{common.HexToHash("0x3a")}, result[0].ProofLocalExitRoot) // Newest claim's proof
+		require.Equal(t, common.HexToHash("0x3c"), result[0].MainnetExitRoot)                 // Newest claim's root
+	})
+
+	// Test Case 3: Don't return if globally oldest is outside page range
+	t.Run("Case 3: don't return if globally oldest is outside page range", func(t *testing.T) {
+		// Create a new database for this test
+		dbPath := filepath.Join(t.TempDir(), "case3.sqlite")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		require.NoError(t, err)
+
+		// Setup: Insert claims where oldest is at block 1, newest at block 3
+		tx, err := testP.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		for i := uint64(1); i <= 3; i++ {
+			_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+			require.NoError(t, err)
+		}
+
+		testClaims := []*Claim{
+			// Oldest claim (block 1)
+			{
+				BlockNum:            1,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x111"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0xaaa"),
+				DestinationAddress:  common.HexToAddress("0xbbb"),
+				Amount:              big.NewInt(100),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+				MainnetExitRoot:     common.HexToHash("0x1c"),
+				RollupExitRoot:      common.HexToHash("0x1d"),
+				GlobalExitRoot:      common.HexToHash("0x1e"),
+				DestinationNetwork:  2,
+				Metadata:            []byte("original_metadata"),
+				IsMessage:           false,
+				BlockTimestamp:      1000,
+			},
+			// Middle claim (block 2)
+			{
+				BlockNum:            2,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x222"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       99,
+				OriginAddress:       common.HexToAddress("0xfff"),
+				DestinationAddress:  common.HexToAddress("0xeee"),
+				Amount:              big.NewInt(999),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+				MainnetExitRoot:     common.HexToHash("0x2c"),
+				RollupExitRoot:      common.HexToHash("0x2d"),
+				GlobalExitRoot:      common.HexToHash("0x2e"),
+				DestinationNetwork:  88,
+				Metadata:            []byte("middle_metadata"),
+				IsMessage:           true,
+				BlockTimestamp:      2000,
+			},
+			// Newest claim (block 3)
+			{
+				BlockNum:            3,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x333"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       77,
+				OriginAddress:       common.HexToAddress("0x999"),
+				DestinationAddress:  common.HexToAddress("0x888"),
+				Amount:              big.NewInt(777),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+				MainnetExitRoot:     common.HexToHash("0x3c"),
+				RollupExitRoot:      common.HexToHash("0x3d"),
+				GlobalExitRoot:      common.HexToHash("0x3e"),
+				DestinationNetwork:  66,
+				Metadata:            []byte("newest_metadata"),
+				IsMessage:           true,
+				BlockTimestamp:      3000,
+			},
+		}
+
+		for _, claim := range testClaims {
+			require.NoError(t, meddler.Insert(tx, "claim", claim))
+		}
+		require.NoError(t, tx.Commit())
+
+		// Query page 2 (which contains block 2): The newest (block 3) is NOT on this page
+		// Page 1 would have block 3, Page 2 would have block 2, Page 3 would have block 1
+		result, count, err := testP.GetClaimsPaged(ctx, 2, 1, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 3, count)
+
+		// Should return 0 claims because the newest for global_index 100 is not on this page
+		require.Len(t, result, 0)
+	})
+
+	// Test Case 3 Exception: Return if unset_claim exists even when globally oldest is outside range
+	t.Run("Case 3 exception: return if unset_claim exists even when globally oldest is outside range", func(t *testing.T) {
+		// Create a new database for this test
+		dbPath := filepath.Join(t.TempDir(), "case3_exception.sqlite")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		require.NoError(t, err)
+
+		// Setup: Insert claims + unset_claim
+		tx, err := testP.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		for i := uint64(1); i <= 3; i++ {
+			_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+			require.NoError(t, err)
+		}
+
+		testClaims := []*Claim{
+			// Oldest claim (block 1)
+			{
+				BlockNum:            1,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x111"),
+				GlobalIndex:         big.NewInt(1),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0xaaa"),
+				DestinationAddress:  common.HexToAddress("0xbbb"),
+				Amount:              big.NewInt(100),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+				MainnetExitRoot:     common.HexToHash("0x1c"),
+				RollupExitRoot:      common.HexToHash("0x1d"),
+				GlobalExitRoot:      common.HexToHash("0x1e"),
+				DestinationNetwork:  2,
+				Metadata:            []byte("metadata1"),
+				IsMessage:           false,
+				BlockTimestamp:      1000,
+			},
+			// Newest claim (block 3)
+			{
+				BlockNum:            3,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x333"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       77,
+				OriginAddress:       common.HexToAddress("0x999"),
+				DestinationAddress:  common.HexToAddress("0x888"),
+				Amount:              big.NewInt(777),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x3a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x3b")},
+				MainnetExitRoot:     common.HexToHash("0x3c"),
+				RollupExitRoot:      common.HexToHash("0x3d"),
+				GlobalExitRoot:      common.HexToHash("0x3e"),
+				DestinationNetwork:  66,
+				Metadata:            []byte("newest_metadata"),
+				IsMessage:           true,
+				BlockTimestamp:      3000,
+			},
+		}
+
+		for _, claim := range testClaims {
+			require.NoError(t, meddler.Insert(tx, "claim", claim))
+		}
+
+		// Insert unset_claim for global_index 1
+		unsetClaim := &UnsetClaim{
+			BlockNum:    1,
+			BlockPos:    1,
+			GlobalIndex: big.NewInt(1),
+		}
+		require.NoError(t, meddler.Insert(tx, "unset_claim", unsetClaim))
+		require.NoError(t, tx.Commit())
+
+		// Query: Even though oldest is outside page, should return claim because unset_claim exists
+		result, count, err := testP.GetClaimsPaged(ctx, 1, 10, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 2, count)
+
+		// Should return both claims uncompacted
+		require.Len(t, result, 2)
+		require.Equal(t, result[0], testClaims[1]) // they are returned in DESC order
+		require.Equal(t, result[1], testClaims[0])
+	})
+
+	// Test: Multiple global_indexes with different compaction rules
+	t.Run("Multiple global_indexes with different compaction rules", func(t *testing.T) {
+		// Create a new database for this test
+		dbPath := filepath.Join(t.TempDir(), "multiple_indexes.sqlite")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		require.NoError(t, err)
+
+		// Setup: Multiple global indexes with different scenarios
+		tx, err := testP.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		for i := uint64(1); i <= 3; i++ {
+			_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+			require.NoError(t, err)
+		}
+
+		testClaims := []*Claim{
+			// Global index 100 - oldest (block 1, pos 0)
+			{
+				BlockNum:            1,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x111"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0xa1"),
+				DestinationAddress:  common.HexToAddress("0xb1"),
+				Amount:              big.NewInt(100),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x1a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x1b")},
+				MainnetExitRoot:     common.HexToHash("0x1c"),
+				RollupExitRoot:      common.HexToHash("0x1d"),
+				GlobalExitRoot:      common.HexToHash("0x1e"),
+				DestinationNetwork:  2,
+				Metadata:            []byte("index1_old"),
+				IsMessage:           false,
+				BlockTimestamp:      1000,
+			},
+			// Global index 200 - oldest (block 1, pos 1)
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				TxHash:              common.HexToHash("0x112"),
+				GlobalIndex:         big.NewInt(200),
+				OriginNetwork:       3,
+				OriginAddress:       common.HexToAddress("0xa2"),
+				DestinationAddress:  common.HexToAddress("0xb2"),
+				Amount:              big.NewInt(200),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x2b")},
+				MainnetExitRoot:     common.HexToHash("0x2c"),
+				RollupExitRoot:      common.HexToHash("0x2d"),
+				GlobalExitRoot:      common.HexToHash("0x2e"),
+				DestinationNetwork:  4,
+				Metadata:            []byte("index2_old"),
+				IsMessage:           true,
+				BlockTimestamp:      1001,
+			},
+			// Global index 200 - newest (block 3, pos 1)
+			{
+				BlockNum:            3,
+				BlockPos:            1,
+				TxHash:              common.HexToHash("0x112"),
+				GlobalIndex:         big.NewInt(200),
+				OriginNetwork:       3,
+				OriginAddress:       common.HexToAddress("0xccc"),
+				DestinationAddress:  common.HexToAddress("0xddd"),
+				Amount:              big.NewInt(200),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x2ab")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x2bc")},
+				MainnetExitRoot:     common.HexToHash("0x2ce"),
+				RollupExitRoot:      common.HexToHash("0x2df"),
+				GlobalExitRoot:      common.HexToHash("0x2ee"),
+				DestinationNetwork:  88,
+				Metadata:            []byte("block3pos1"),
+				IsMessage:           true,
+				BlockTimestamp:      3001,
+			},
+			// Global index 100 - newest (block 3, pos 0)
+			{
+				BlockNum:            3,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x333"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       77,
+				OriginAddress:       common.HexToAddress("0xc2"),
+				DestinationAddress:  common.HexToAddress("0xd2"),
+				Amount:              big.NewInt(777),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x4a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x4b")},
+				MainnetExitRoot:     common.HexToHash("0x4c"),
+				RollupExitRoot:      common.HexToHash("0x4d"),
+				GlobalExitRoot:      common.HexToHash("0x4e"),
+				DestinationNetwork:  66,
+				Metadata:            []byte("index1_new"),
+				IsMessage:           false,
+				BlockTimestamp:      2001,
+			},
+		}
+
+		for _, claim := range testClaims {
+			require.NoError(t, meddler.Insert(tx, "claim", claim))
+		}
+
+		// Insert unset_claim for global_index 100 only
+		unsetClaim := &UnsetClaim{
+			BlockNum:    1,
+			BlockPos:    1,
+			GlobalIndex: big.NewInt(100),
+		}
+		require.NoError(t, meddler.Insert(tx, "unset_claim", unsetClaim))
+		require.NoError(t, tx.Commit())
+
+		// Query: Should return:
+		// - Global index 100: both claims uncompacted (because unset_claim exists)
+		// - Global index 200: 1 compacted claim
+		result, count, err := testP.GetClaimsPaged(ctx, 1, 10, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 4, count)
+		require.Len(t, result, 3) // 2 for index 100 (uncompacted) + 1 for index 200 (compacted)
+
+		// Count claims by global index
+		claimsByGlobalIndex := make(map[int64]int)
+		for _, claim := range result {
+			claimsByGlobalIndex[claim.GlobalIndex.Int64()]++
+		}
+
+		require.Equal(t, 2, claimsByGlobalIndex[100]) // Uncompacted
+		require.Equal(t, 1, claimsByGlobalIndex[200]) // Compacted
 	})
 }
