@@ -59,6 +59,25 @@ const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
 
+	// claimColumnsSQL is the list of all claim columns
+	claimColumnsSQL = `block_num,
+		block_pos,
+		tx_hash,
+		global_index,
+		origin_network,
+		origin_address,
+		destination_address,
+		amount,
+		proof_local_exit_root,
+		proof_rollup_exit_root,
+		mainnet_exit_root,
+		rollup_exit_root,
+		global_exit_root,
+		destination_network,
+		metadata,
+		is_message,
+		block_timestamp`
+
 	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
 	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
 	compactedClaimsSelectSQL = `
@@ -100,9 +119,6 @@ var (
 
 	// getBridgesBlockRangeSelectSQL is the SELECT clause for bridges within a block range
 	getBridgesBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, bridgeTableName)
-
-	// getClaimsBlockRangeSelectSQL is the SELECT clause for claims within a block range
-	getClaimsBlockRangeSelectSQL = fmt.Sprintf(queryBlockRangeSelectSQL, claimTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -659,23 +675,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	claims_with_unset AS (
 		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
 		SELECT 
-			c.block_num,
-			c.block_pos,
-			c.tx_hash,
-			c.global_index,
-			c.origin_network,
-			c.origin_address,
-			c.destination_address,
-			c.amount,
-			c.proof_local_exit_root,
-			c.proof_rollup_exit_root,
-			c.mainnet_exit_root,
-			c.rollup_exit_root,
-			c.global_exit_root,
-			c.destination_network,
-			c.metadata,
-			c.is_message,
-			c.block_timestamp
+			c.%s
 		FROM claims_in_range c
 		WHERE EXISTS (
 			SELECT 1 FROM unset_claim uc 
@@ -698,12 +698,8 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	UNION ALL
 	SELECT * FROM compactable_claims
 	ORDER BY block_num ASC, block_pos ASC;
-`, compactedClaimsSelectSQL)
+`, claimColumnsSQL, compactedClaimsSelectSQL)
 
-	return p.getClaimsInternal(ctx, query, fromBlock, toBlock)
-}
-
-func (p *processor) getClaimsInternal(ctx context.Context, query string, fromBlock, toBlock uint64) ([]Claim, error) {
 	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, query)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -755,23 +751,7 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	claims_with_unset AS (
 		-- Case 1: Return all claims if unset_claim exists (no compaction)
 		SELECT 
-			c.block_num,
-			c.block_pos,
-			c.tx_hash,
-			c.global_index,
-			c.origin_network,
-			c.origin_address,
-			c.destination_address,
-			c.amount,
-			c.proof_local_exit_root,
-			c.proof_rollup_exit_root,
-			c.mainnet_exit_root,
-			c.rollup_exit_root,
-			c.global_exit_root,
-			c.destination_network,
-			c.metadata,
-			c.is_message,
-			c.block_timestamp
+			c.%s
 		FROM all_claims_for_index c
 		WHERE EXISTS (
 			SELECT 1 FROM unset_claim uc 
@@ -794,7 +774,7 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	UNION ALL
 	SELECT * FROM compactable_claims
 	ORDER BY block_num ASC, block_pos ASC;
-`, compactedClaimsSelectSQL)
+`, claimColumnsSQL, compactedClaimsSelectSQL)
 
 	// Create a context with database timeout
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
@@ -955,23 +935,7 @@ func (p *processor) GetClaimsPaged(
 		claims_with_unset_on_page AS (
 			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
 			SELECT 
-				pc.block_num,
-				pc.block_pos,
-				pc.tx_hash,
-				pc.global_index,
-				pc.origin_network,
-				pc.origin_address,
-				pc.destination_address,
-				pc.amount,
-				pc.proof_local_exit_root,
-				pc.proof_rollup_exit_root,
-				pc.mainnet_exit_root,
-				pc.rollup_exit_root,
-				pc.global_exit_root,
-				pc.destination_network,
-				pc.metadata,
-				pc.is_message,
-				pc.block_timestamp
+				pc.%s
 			FROM page_claims pc
 			WHERE EXISTS (
 				SELECT 1 FROM unset_claim uc 
@@ -1001,7 +965,7 @@ func (p *processor) GetClaimsPaged(
 		UNION ALL
 		SELECT * FROM compactable_claims
 		ORDER BY block_num DESC, block_pos DESC;
-	`, whereClause, whereClause, compactedClaimsSelectSQL)
+	`, whereClause, whereClause, claimColumnsSQL, compactedClaimsSelectSQL)
 
 	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)
 	if err != nil {

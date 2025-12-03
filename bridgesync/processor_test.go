@@ -484,7 +484,7 @@ func (a *getClaims) desc() string {
 
 func (a *getClaims) execute(t *testing.T) {
 	t.Helper()
-	actualEvents, actualErr := a.p.getClaimsInternal(a.ctx, getClaimsBlockRangeSelectSQL, a.fromBlock, a.toBlock)
+	actualEvents, actualErr := a.p.GetClaims(a.ctx, a.fromBlock, a.toBlock)
 	require.Equal(t, a.expectedErr, actualErr)
 	require.Equal(t, a.expectedClaims, actualEvents)
 }
@@ -860,7 +860,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	require.NoError(t, tx.Commit())
 
 	// get test claim
-	claims, err := p.getClaimsInternal(context.Background(), getClaimsBlockRangeSelectSQL, 1, 1)
+	claims, err := p.GetClaims(context.Background(), 1, 1)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 	require.Equal(t, testClaim, &claims[0])
@@ -3127,7 +3127,7 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 
-	_, err = pShortTimeout.getClaimsInternal(ctx, queryBlockRangeSelectSQL, 1, 1)
+	_, err = pShortTimeout.GetClaims(ctx, 1, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 }
