@@ -169,7 +169,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	// get claims for the block range
 	a.logger.Debugf("Getting claims for block range [%d : %d]", fromBlock, maxEndBlock)
 
-	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, maxEndBlock, false)
+	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, maxEndBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error getting claims (imported bridge exits): %w", err)
 	}

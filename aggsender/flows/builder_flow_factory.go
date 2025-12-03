@@ -49,7 +49,6 @@ func NewBuilderFlow(
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true, // fullClaims required (with calldata)
-			true, // compact claims required
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
@@ -97,8 +96,7 @@ func NewBuilderFlow(
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
-			true,  // full claims required (with calldata)
-			false, // compact claims disabled
+			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
@@ -165,7 +163,6 @@ func CreateCommonFlowComponents(
 	delayBetweenRetries time.Duration,
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
-	compactClaims bool,
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
 	globalExitRootL1Addr ethCommon.Address,
@@ -200,7 +197,6 @@ func CreateCommonFlowComponents(
 			startL2Block,
 			requireNoFEPBlockGap,
 			fullClaimsRequired,
-			compactClaims,
 		),
 	)
 

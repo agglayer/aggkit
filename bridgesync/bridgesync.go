@@ -361,11 +361,11 @@ func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *bi
 	return s.processor.GetClaimsByGlobalIndex(ctx, globalIndex)
 }
 
-func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
+func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	return s.processor.GetClaims(ctx, fromBlock, toBlock, compacted)
+	return s.processor.GetClaims(ctx, fromBlock, toBlock)
 }
 
 func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
