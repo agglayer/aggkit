@@ -43,11 +43,6 @@ type BaseFlowConfig struct {
 	RequireNoFEPBlockGap bool
 	// FullClaimsNeeded indicates whether the flow requires full claims data
 	FullClaimsNeeded bool
-	// CompactClaims indicates whether the flow requires the l2 bridge syncer
-	// to compact the claims when retrieving them
-	//  (in case when we have an invalid claim with GlobalIndex=1, and then a valid claim
-	//   that fixes it with GlobalIndex=1, we only want to latest one in the certificate)
-	CompactClaims bool
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
@@ -57,7 +52,6 @@ func NewBaseFlowConfigDefault() BaseFlowConfig {
 		StartL2Block:         0,     // 0 means start from the first block
 		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
 		FullClaimsNeeded:     true,  // default is true, can be set to false if full claims are not needed
-		CompactClaims:        true,  // default is true, can be set to false if compact claims are not needed
 	}
 }
 
@@ -67,14 +61,12 @@ func NewBaseFlowConfig(
 	startL2Block uint64,
 	requireNoFEPBlockGap bool,
 	fullClaimsNeeded bool,
-	compactClaims bool,
 ) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:          maxCertSize,
 		StartL2Block:         startL2Block,
 		RequireNoFEPBlockGap: requireNoFEPBlockGap,
 		FullClaimsNeeded:     fullClaimsNeeded,
-		CompactClaims:        compactClaims,
 	}
 }
 
@@ -179,7 +171,7 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 	}
 
 	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
-		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock, f.cfg.CompactClaims)
+		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("generateBuildParams fails getting bridges and claims. Err: %w", err)
 	}
@@ -507,7 +499,7 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	}
 
 	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.GetBridgesAndClaims(
-		ctx, gap.FromBlock, gap.ToBlock, f.cfg.CompactClaims)
+		ctx, gap.FromBlock, gap.ToBlock)
 	if err != nil {
 		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
 	}

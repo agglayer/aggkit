@@ -638,70 +638,67 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64, compacted bool) ([]Claim, error) {
-	query := getClaimsBlockRangeSelectSQL
-	if compacted {
-		// SQL query with compaction logic implementing three cases:
-		// Case 1: If unset_claim exists for a global_index, return all claims in range uncompacted
-		// Case 2: If no unset_claim exists and globally oldest is in range, return compacted claim
-		// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
-		query = fmt.Sprintf(`
-		WITH all_claims_ranked AS (
-			SELECT 
-				*,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
-			FROM claim
-		),
-		claims_in_range AS (
-			SELECT *
-			FROM all_claims_ranked
-			WHERE block_num >= $1 AND block_num <= $2
-		),
-		claims_with_unset AS (
-			-- Case 1: Return all claims in range if unset_claim exists (no compaction)
-			SELECT 
-				c.block_num,
-				c.block_pos,
-				c.tx_hash,
-				c.global_index,
-				c.origin_network,
-				c.origin_address,
-				c.destination_address,
-				c.amount,
-				c.proof_local_exit_root,
-				c.proof_rollup_exit_root,
-				c.mainnet_exit_root,
-				c.rollup_exit_root,
-				c.global_exit_root,
-				c.destination_network,
-				c.metadata,
-				c.is_message,
-				c.block_timestamp
-			FROM claims_in_range c
-			WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc 
-				WHERE uc.global_index = c.global_index
-			)
-		),
-		compactable_claims AS (
-			-- Case 2 & 3: Handle claims without unset_claim
-			SELECT 
-			%s
-			FROM claims_in_range o
-			JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
-			WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
-			AND NOT EXISTS (
-				SELECT 1 FROM unset_claim uc 
-				WHERE uc.global_index = o.global_index
-			)
+func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
+	// SQL query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for a global_index, return all claims in range uncompacted
+	// Case 2: If no unset_claim exists and globally oldest is in range, return compacted claim
+	// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
+	query := fmt.Sprintf(`
+	WITH all_claims_ranked AS (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
+			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
+		FROM claim
+	),
+	claims_in_range AS (
+		SELECT *
+		FROM all_claims_ranked
+		WHERE block_num >= $1 AND block_num <= $2
+	),
+	claims_with_unset AS (
+		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
+		SELECT 
+			c.block_num,
+			c.block_pos,
+			c.tx_hash,
+			c.global_index,
+			c.origin_network,
+			c.origin_address,
+			c.destination_address,
+			c.amount,
+			c.proof_local_exit_root,
+			c.proof_rollup_exit_root,
+			c.mainnet_exit_root,
+			c.rollup_exit_root,
+			c.global_exit_root,
+			c.destination_network,
+			c.metadata,
+			c.is_message,
+			c.block_timestamp
+		FROM claims_in_range c
+		WHERE EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = c.global_index
 		)
-		SELECT * FROM claims_with_unset
-		UNION ALL
-		SELECT * FROM compactable_claims
-		ORDER BY block_num ASC, block_pos ASC;
-	`, compactedClaimsSelectSQL)
-	}
+	),
+	compactable_claims AS (
+		-- Case 2 & 3: Handle claims without unset_claim
+		SELECT 
+		%s
+		FROM claims_in_range o
+		JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
+		WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
+		AND NOT EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = o.global_index
+		)
+	)
+	SELECT * FROM claims_with_unset
+	UNION ALL
+	SELECT * FROM compactable_claims
+	ORDER BY block_num ASC, block_pos ASC;
+`, compactedClaimsSelectSQL)
 
 	return p.getClaimsInternal(ctx, query, fromBlock, toBlock)
 }

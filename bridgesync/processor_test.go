@@ -3135,7 +3135,6 @@ func TestGetClaims_Compact(t *testing.T) {
 
 	testCases := []struct {
 		name            string
-		compacted       bool
 		setupBlocks     func() []sync.Block
 		queryFrom       uint64
 		queryTo         uint64
@@ -3144,8 +3143,7 @@ func TestGetClaims_Compact(t *testing.T) {
 		validateResults func(t *testing.T, claims []Claim)
 	}{
 		{
-			name:      "non-compacted mode with different claims",
-			compacted: false,
+			name: "non-compacted mode with different claims",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3175,56 +3173,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "non-compacted mode with duplicates",
-			compacted: false,
-			setupBlocks: func() []sync.Block {
-				return []sync.Block{
-					{
-						Num:  1,
-						Hash: common.HexToHash("0x1"),
-						Events: []any{
-							Event{Claim: claims[2]}, // GlobalIndex=100
-						},
-					},
-					{
-						Num:  2,
-						Hash: common.HexToHash("0x2"),
-						Events: []any{
-							Event{Claim: claims[3]}, // GlobalIndex=100
-						},
-					},
-					{
-						Num:  3,
-						Hash: common.HexToHash("0x3"),
-						Events: []any{
-							Event{Claim: claims[4]}, // GlobalIndex=100
-						},
-					},
-				}
-			},
-			queryFrom:     1,
-			queryTo:       3,
-			expectedCount: 3,
-			validateResults: func(t *testing.T, claims []Claim) {
-				t.Helper()
-				require.Len(t, claims, 3, "all duplicate claims should be returned in non-compacted mode")
-				// Verify all three claims have the same GlobalIndex
-				require.Equal(t, big.NewInt(100), claims[0].GlobalIndex)
-				require.Equal(t, big.NewInt(100), claims[1].GlobalIndex)
-				require.Equal(t, big.NewInt(100), claims[2].GlobalIndex)
-				// Verify they are ordered by block number
-				require.Equal(t, uint64(1), claims[0].BlockNum)
-				require.Equal(t, uint64(2), claims[1].BlockNum)
-				require.Equal(t, uint64(3), claims[2].BlockNum)
-				// Verify metadata from each claim is preserved (no compaction)
-				require.Equal(t, []byte("original_metadata"), claims[0].Metadata)
-				require.Equal(t, []byte("middle_metadata"), claims[1].Metadata)
-				require.Equal(t, []byte("newest_metadata"), claims[2].Metadata)
-			},
-		},
-		{
-			name:      "compacted mode with no duplicates",
-			compacted: true,
+			name: "compacted mode with no duplicates",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3254,8 +3203,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "compacted mode with duplicates across blocks",
-			compacted: true,
+			name: "compacted mode with duplicates across blocks",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3309,8 +3257,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "compacted mode with multiple duplicate groups",
-			compacted: true,
+			name: "compacted mode with multiple duplicate groups",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3380,8 +3327,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "compacted mode same block multiple positions",
-			compacted: true,
+			name: "compacted mode same block multiple positions",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3421,8 +3367,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "compacted mode empty range",
-			compacted: true,
+			name: "compacted mode empty range",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3437,8 +3382,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			expectedCount: 0,
 		},
 		{
-			name:      "compacted mode partial range",
-			compacted: true,
+			name: "compacted mode partial range",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3475,8 +3419,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "ordering preserved by block number and position",
-			compacted: true,
+			name: "ordering preserved by block number and position",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3514,8 +3457,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "invalid block range - fromBlock greater than toBlock",
-			compacted: true,
+			name: "invalid block range - fromBlock greater than toBlock",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3559,8 +3501,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "fromBlock = 0 edge case",
-			compacted: true,
+			name: "fromBlock = 0 edge case",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3602,8 +3543,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "claims at both fromBlock and toBlock boundaries with compaction",
-			compacted: true,
+			name: "claims at both fromBlock and toBlock boundaries with compaction",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3651,8 +3591,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "block range with gaps in processed blocks",
-			compacted: true,
+			name: "block range with gaps in processed blocks",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3698,8 +3637,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "Case 1: don't compact if unset claim exists for global_index",
-			compacted: true,
+			name: "Case 1: don't compact if unset claim exists for global_index",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3743,8 +3681,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "Case 2: compact if no unset claim exists",
-			compacted: true,
+			name: "Case 2: compact if no unset claim exists",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3794,8 +3731,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "Case 3: don't return if globally oldest is outside query range",
-			compacted: true,
+			name: "Case 3: don't return if globally oldest is outside query range",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3831,8 +3767,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "Case 3 exception: return if unset claim exists even when globally oldest is outside range",
-			compacted: true,
+			name: "Case 3 exception: return if unset claim exists even when globally oldest is outside range",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3876,8 +3811,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			},
 		},
 		{
-			name:      "Multiple global_indexes with different compaction rules",
-			compacted: true,
+			name: "Multiple global_indexes with different compaction rules",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
 					{
@@ -3938,7 +3872,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			}
 
 			// Execute test
-			claims, err := p.GetClaims(ctx, tc.queryFrom, tc.queryTo, tc.compacted)
+			claims, err := p.GetClaims(ctx, tc.queryFrom, tc.queryTo)
 
 			// Validate error expectations
 			if tc.errorContains != "" {
