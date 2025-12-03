@@ -30,8 +30,11 @@ jobs:
           - linux/arm64
         variant:
           - { suffix: "", include_shell: "false", description: "production" }
-          - { suffix: "-dev", include_shell: "true", description: "development" }
-
+          - {
+              suffix: "-dev",
+              include_shell: "true",
+              description: "development",
+            }
     outputs:
       IMAGE_NAME_PROD: ${{ steps.image_builder_prod.outputs.IMAGE }}
       IMAGE_NAME_DEV: ${{ steps.image_builder_dev.outputs.IMAGE }}
@@ -99,18 +102,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.variant.description }} image by digest
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: ${{ matrix.platform }}
           push: false
-          cache-from: type=gha,scope=${{ matrix.variant.description }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant.description }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ (matrix.variant.suffix == '') && steps.meta_prod.outputs.labels || steps.meta_dev.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             INCLUDE_SHELL=${{ matrix.variant.include_shell }}
-          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true
+          outputs: type=image,name=${{ (matrix.variant.suffix == '') && steps.image_builder_prod.outputs.IMAGE || steps.image_builder_dev.outputs.IMAGE }},push-by-digest=true,push=true
 
       - name: Export digest
         run: |
