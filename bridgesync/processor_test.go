@@ -9,8 +9,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -5098,4 +5101,55 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		require.Equal(t, 2, claimsByGlobalIndex[100]) // Uncompacted
 		require.Equal(t, 1, claimsByGlobalIndex[200]) // Compacted
 	})
+}
+
+// TestClaimColumnsSQL_ReflectionCheck verifies that all meddler-tagged fields
+// in the Claim struct are present in the claimColumnsSQL constant.
+// This test uses reflection to ensure maintainability - if a new field is added
+// to Claim with a meddler tag, this test will fail until claimColumnsSQL is updated.
+func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
+	t.Parallel()
+
+	claimType := reflect.TypeOf(Claim{})
+
+	// Collect meddler-tagged column names
+	var meddlerColumns []string
+	for i := 0; i < claimType.NumField(); i++ {
+		tag := claimType.Field(i).Tag.Get("meddler")
+		if tag == "" {
+			continue
+		}
+		name := strings.Split(tag, ",")[0]
+		if name != "" && name != "-" {
+			meddlerColumns = append(meddlerColumns, name)
+		}
+	}
+
+	require.NotEmpty(t, meddlerColumns, "Claim struct should have meddler-tagged fields")
+
+	// Normalize whitespace and split columns
+	ws := regexp.MustCompile(`\s+`)
+	normalized := strings.TrimSpace(ws.ReplaceAllString(claimColumnsSQL, " "))
+
+	var sqlColumns []string
+	for col := range strings.SplitSeq(normalized, ",") {
+		if col = strings.TrimSpace(col); col != "" {
+			sqlColumns = append(sqlColumns, col)
+		}
+	}
+
+	require.Equal(t, len(meddlerColumns), len(sqlColumns),
+		"SQL column count must match meddler-tagged field count")
+
+	// Turn SQL columns into a lookup set
+	sqlSet := make(map[string]struct{}, len(sqlColumns))
+	for _, col := range sqlColumns {
+		sqlSet[col] = struct{}{}
+	}
+
+	// Ensure every struct tag column exists in SQL
+	for _, col := range meddlerColumns {
+		_, ok := sqlSet[col]
+		require.True(t, ok, "Missing SQL column for meddler-tag '%s'", col)
+	}
 }
