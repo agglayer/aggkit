@@ -1099,7 +1099,7 @@ func TestClaimCalldata(t *testing.T) {
 			logger := log.WithFields("module", "test")
 
 			// Extract root call first using new function
-			_, rootCall, err := extractCallData(client, bridgeAddr, tc.log.TxHash, logger)
+			_, rootCall, err := extractCallData(client, bridgeAddr, tc.log.TxHash, logger, nil)
 			require.NoError(t, err)
 
 			// Use setClaimCalldataFromRoot instead of setClaimCalldata

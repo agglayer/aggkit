@@ -30,7 +30,12 @@ func TestBridgeEventE2E(t *testing.T) {
 	)
 
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg, ok := result.(*bridgesync.Call)
+			require.True(t, ok)
+			arg.Input = bridgesync.BridgeAssetMethodID
+		}).Return(nil)
 
 	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
 	ctx := t.Context()
@@ -156,8 +161,14 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
-
-	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+	rpcClient := mocks.NewRPCClienter(t)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg, ok := result.(*bridgesync.Call)
+			require.True(t, ok)
+			arg.Input = bridgesync.BridgeAssetMethodID
+		}).Return(nil)
+	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
 
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
@@ -329,8 +340,14 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
-
-	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+	rpcClient := mocks.NewRPCClienter(t)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg, ok := result.(*bridgesync.Call)
+			require.True(t, ok)
+			arg.Input = bridgesync.BridgeAssetMethodID
+		}).Return(nil)
+	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
@@ -434,8 +451,14 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
-
-	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), &aggkittypes.NoopRPCClient{})
+	rpcClient := mocks.NewRPCClienter(t)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg, ok := result.(*bridgesync.Call)
+			require.True(t, ok)
+			arg.Input = bridgesync.BridgeAssetMethodID
+		}).Return(nil)
+	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
 
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
