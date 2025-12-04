@@ -997,7 +997,7 @@ func (p *processor) GetUnsetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
 ) ([]*UnsetClaim, int, error) {
-	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
+	whereClause := buildGlobalIndexFilterClause(globalIndex)
 	unclaimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -1038,9 +1038,8 @@ func (p *processor) GetUnsetClaimsPaged(
 	return unsetClaims, unclaimsCount, nil
 }
 
-// buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
-// based on the provided globalIndex
-func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
+// buildGlobalIndexFilterClause builds a WHERE clause for filtering by global_index
+func buildGlobalIndexFilterClause(globalIndex *big.Int) string {
 	if globalIndex != nil {
 		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
 	}
@@ -1055,7 +1054,7 @@ func (p *processor) GetSetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
 ) ([]*SetClaim, int, error) {
-	whereClause := p.buildSetClaimsFilterClause(globalIndex)
+	whereClause := buildGlobalIndexFilterClause(globalIndex)
 	setClaimsCount, err := p.GetTotalNumberOfRecords(ctx, setClaimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -1094,16 +1093,6 @@ func (p *processor) GetSetClaimsPaged(
 	}
 
 	return setClaims, setClaimsCount, nil
-}
-
-// buildSetClaimsFilterClause builds the WHERE clause for the set_claim table
-// based on the provided globalIndex
-func (p *processor) buildSetClaimsFilterClause(globalIndex *big.Int) string {
-	if globalIndex != nil {
-		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
-	}
-
-	return ""
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
