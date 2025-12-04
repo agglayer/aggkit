@@ -95,65 +95,6 @@ func (_c *Storager_GetBlockHeaderByNumber_Call) RunAndReturn(run func(types.Quer
 	return _c
 }
 
-// GetBlockHeaderNotFinal provides a mock function with given fields: tx, finalizedBlockNumber
-func (_m *Storager) GetBlockHeaderNotFinal(tx types.Querier, finalizedBlockNumber uint64) ([]*aggkittypes.BlockHeader, error) {
-	ret := _m.Called(tx, finalizedBlockNumber)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetBlockHeaderNotFinal")
-	}
-
-	var r0 []*aggkittypes.BlockHeader
-	var r1 error
-	if rf, ok := ret.Get(0).(func(types.Querier, uint64) ([]*aggkittypes.BlockHeader, error)); ok {
-		return rf(tx, finalizedBlockNumber)
-	}
-	if rf, ok := ret.Get(0).(func(types.Querier, uint64) []*aggkittypes.BlockHeader); ok {
-		r0 = rf(tx, finalizedBlockNumber)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*aggkittypes.BlockHeader)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(types.Querier, uint64) error); ok {
-		r1 = rf(tx, finalizedBlockNumber)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// Storager_GetBlockHeaderNotFinal_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBlockHeaderNotFinal'
-type Storager_GetBlockHeaderNotFinal_Call struct {
-	*mock.Call
-}
-
-// GetBlockHeaderNotFinal is a helper method to define mock.On call
-//   - tx types.Querier
-//   - finalizedBlockNumber uint64
-func (_e *Storager_Expecter) GetBlockHeaderNotFinal(tx interface{}, finalizedBlockNumber interface{}) *Storager_GetBlockHeaderNotFinal_Call {
-	return &Storager_GetBlockHeaderNotFinal_Call{Call: _e.mock.On("GetBlockHeaderNotFinal", tx, finalizedBlockNumber)}
-}
-
-func (_c *Storager_GetBlockHeaderNotFinal_Call) Run(run func(tx types.Querier, finalizedBlockNumber uint64)) *Storager_GetBlockHeaderNotFinal_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.Querier), args[1].(uint64))
-	})
-	return _c
-}
-
-func (_c *Storager_GetBlockHeaderNotFinal_Call) Return(_a0 []*aggkittypes.BlockHeader, _a1 error) *Storager_GetBlockHeaderNotFinal_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *Storager_GetBlockHeaderNotFinal_Call) RunAndReturn(run func(types.Querier, uint64) ([]*aggkittypes.BlockHeader, error)) *Storager_GetBlockHeaderNotFinal_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetEthLogs provides a mock function with given fields: tx, query
 func (_m *Storager) GetEthLogs(tx types.Querier, query multidownloadertypes.LogQuery) ([]coretypes.Log, error) {
 	ret := _m.Called(tx, query)
@@ -479,53 +420,6 @@ func (_c *Storager_SaveEthLogsWithHeaders_Call) Return(_a0 error) *Storager_Save
 }
 
 func (_c *Storager_SaveEthLogsWithHeaders_Call) RunAndReturn(run func(types.Querier, []*aggkittypes.BlockHeader, []coretypes.Log, bool) error) *Storager_SaveEthLogsWithHeaders_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// UpdateIsFinal provides a mock function with given fields: tx, blockNumbers
-func (_m *Storager) UpdateIsFinal(tx types.Querier, blockNumbers []uint64) error {
-	ret := _m.Called(tx, blockNumbers)
-
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateIsFinal")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(types.Querier, []uint64) error); ok {
-		r0 = rf(tx, blockNumbers)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// Storager_UpdateIsFinal_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateIsFinal'
-type Storager_UpdateIsFinal_Call struct {
-	*mock.Call
-}
-
-// UpdateIsFinal is a helper method to define mock.On call
-//   - tx types.Querier
-//   - blockNumbers []uint64
-func (_e *Storager_Expecter) UpdateIsFinal(tx interface{}, blockNumbers interface{}) *Storager_UpdateIsFinal_Call {
-	return &Storager_UpdateIsFinal_Call{Call: _e.mock.On("UpdateIsFinal", tx, blockNumbers)}
-}
-
-func (_c *Storager_UpdateIsFinal_Call) Run(run func(tx types.Querier, blockNumbers []uint64)) *Storager_UpdateIsFinal_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(types.Querier), args[1].([]uint64))
-	})
-	return _c
-}
-
-func (_c *Storager_UpdateIsFinal_Call) Return(_a0 error) *Storager_UpdateIsFinal_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *Storager_UpdateIsFinal_Call) RunAndReturn(run func(types.Querier, []uint64) error) *Storager_UpdateIsFinal_Call {
 	_c.Call.Return(run)
 	return _c
 }

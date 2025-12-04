@@ -83,7 +83,8 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(mockL1Client, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer)
+			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
 
@@ -178,7 +179,8 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(mockL1Client, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer)
+			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)
 
@@ -261,7 +263,8 @@ func Test_GetProofForGER(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(nil, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer)
+			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
 
@@ -297,7 +300,7 @@ func Test_IsGERFinalized(t *testing.T) {
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error getting info by global exit root: some error",
+			expectedError: "some error",
 		},
 		{
 			name:                     "no L1 Info tree leaf found for global exit root",
@@ -371,7 +374,8 @@ func Test_IsGERFinalized(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(nil, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer)
+			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
 

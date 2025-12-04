@@ -108,7 +108,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		return err
 	}
 
-	_, err = bridgeProxyContract.Initialize0(
+	_, err = bridgeProxyContract.Initialize(
 		s.UserAuth,
 		networkID,
 		common.Address{}, // gasTokenAddressMainnet

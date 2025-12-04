@@ -111,7 +111,7 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     multi-l2-networks-2-chains-op-pessimistic)
         jq -s '.[0] * .[1]' \
             "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
-            "$PROJECT_ROOT/.github/test_e2e_op_multi_chains_args_1.json" > /tmp/merged_args_1.json
+            "$PROJECT_ROOT/.github/test_e2e_op_args_chain_1.json" > /tmp/merged_args_1.json
         jq -s '.[0] * .[1]' \
             "$PROJECT_ROOT/.github/test_e2e_op_args_base.json" \
             "$PROJECT_ROOT/.github/test_e2e_op_args_chain_2.json" > /tmp/merged_args_2.json

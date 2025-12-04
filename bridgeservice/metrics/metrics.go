@@ -16,6 +16,7 @@ const (
 
 	GetBridgesReq                = "get_bridges"
 	GetClaimsReq                 = "get_claims"
+	GetUnsetClaimsReq            = "get_unset_claims"
 	GetTokenMappingsReq          = "get_token_mappings"
 	GetLegacyTokenMigrationsReq  = "get_legacy_token_migrations"
 	GetL1InfoTreeIndexReq        = "l1_info_tree_index_for_bridge"
@@ -23,6 +24,7 @@ const (
 	GetClaimProofReq             = "claim_proof"
 	GetLastReorgEventReq         = "last_reorg_event"
 	GetSyncStatusReq             = "get_sync_status"
+	GetRemoveGEREventsReq        = "get_remove_ger_events"
 	GetHealthCheckReq            = "health_check"
 )
 

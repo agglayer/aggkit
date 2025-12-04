@@ -1,9 +1,6 @@
 {
   "args": {
-    "consensus_contract_type": "fep",
-    "additional_services": [
-      "bridge_spammer"
-    ]
+    "consensus_contract_type": "fep"
   },
   "optimism_package": {
     "chains": {

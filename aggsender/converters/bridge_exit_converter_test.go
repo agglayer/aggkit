@@ -6,6 +6,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ func TestConvertBridgeExits(t *testing.T) {
 			name: "Single bridge",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayertypes.LeafTypeAsset.Uint8(),
+					LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -34,7 +35,7 @@ func TestConvertBridgeExits(t *testing.T) {
 			},
 			expectedExits: []*agglayertypes.BridgeExit{
 				{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
@@ -50,7 +51,7 @@ func TestConvertBridgeExits(t *testing.T) {
 			name: "Multiple bridges",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayertypes.LeafTypeAsset.Uint8(),
+					LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -59,7 +60,7 @@ func TestConvertBridgeExits(t *testing.T) {
 					Metadata:           []byte("metadata"),
 				},
 				{
-					LeafType:           agglayertypes.LeafTypeMessage.Uint8(),
+					LeafType:           bridgetypes.LeafTypeMessage.Uint8(),
 					OriginNetwork:      3,
 					OriginAddress:      common.HexToAddress("0x789"),
 					DestinationNetwork: 4,
@@ -70,7 +71,7 @@ func TestConvertBridgeExits(t *testing.T) {
 			},
 			expectedExits: []*agglayertypes.BridgeExit{
 				{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
@@ -81,7 +82,7 @@ func TestConvertBridgeExits(t *testing.T) {
 					Metadata:           crypto.Keccak256([]byte("metadata")),
 				},
 				{
-					LeafType: agglayertypes.LeafTypeMessage,
+					LeafType: bridgetypes.LeafTypeMessage,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      3,
 						OriginTokenAddress: common.HexToAddress("0x789"),

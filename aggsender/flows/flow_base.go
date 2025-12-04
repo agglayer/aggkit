@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	aggkitdb "github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -354,41 +355,27 @@ func (f *baseFlow) getImportedBridgeExits(
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	// Build unclaim counts by GlobalIndex
+	// Use string representation as map key since *big.Int pointer comparison doesn't work
 	unclaimCnt := make(map[string]int)
 	for _, u := range unclaims {
-		// Adjust accessor as needed:
-		//   - if GlobalIndex is uint64: key := strconv.FormatUint(u.GlobalIndex, 10)
-		//   - if it's *big.Int:         key := u.GlobalIndex.String()
-		//   - if it's a struct method:   key := u.GlobalIndex().String()
-		key := u.GlobalIndex.String()
-		unclaimCnt[key]++
-	}
-
-	// Build claim counts by GlobalIndex
-	claimCnt := make(map[string]int)
-	for _, c := range claims {
-		key := c.GlobalIndex.String()
-		claimCnt[key]++
-	}
-
-	// Compute how many claims should remain per index after cancelling unclaims
-	remaining := make(map[string]int, len(claimCnt))
-	for k, c := range claimCnt {
-		u := unclaimCnt[k]
-		if c > u {
-			remaining[k] = c - u
-		} else {
-			remaining[k] = 0
+		if u.GlobalIndex != nil {
+			key := u.GlobalIndex.String()
+			unclaimCnt[key]++
 		}
 	}
 
-	// Filter claims: keep in original order, but only as many as remaining[idx]
-	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
+	filteredClaims := make([]bridgesync.Claim, 0)
 	for _, c := range claims {
-		key := c.GlobalIndex.String()
-		if remaining[key] > 0 {
+		if c.GlobalIndex != nil {
+			key := c.GlobalIndex.String()
+			if unclaimCnt[key] > 0 {
+				unclaimCnt[key]--
+			} else {
+				filteredClaims = append(filteredClaims, c)
+			}
+		} else {
+			// If GlobalIndex is nil, include the claim
 			filteredClaims = append(filteredClaims, c)
-			remaining[key]--
 		}
 	}
 
@@ -554,6 +541,67 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 	return lastSentBlock, retryCount
 }
 
+// gerStatusCache stores the cached status of GER checks
+type gerStatusCache struct {
+	finalized  map[common.Hash]bool
+	existsOnL1 map[common.Hash]bool
+	errors     map[common.Hash]error
+}
+
+// newGERStatusCache creates a new GER status cache
+func newGERStatusCache() *gerStatusCache {
+	return &gerStatusCache{
+		finalized:  make(map[common.Hash]bool),
+		existsOnL1: make(map[common.Hash]bool),
+		errors:     make(map[common.Hash]error),
+	}
+}
+
+// getGERFinalizedStatus checks if a GER is finalized, using cache if available
+func (f *baseFlow) getGERFinalizedStatus(
+	cache *gerStatusCache,
+	ger common.Hash,
+	l1InfoTreeLeafCount uint32) (bool, error) {
+	if cached, ok := cache.finalized[ger]; ok {
+		// Check if there was an error for this GER
+		if err, hasErr := cache.errors[ger]; hasErr {
+			return false, err
+		}
+		return cached, nil
+	}
+
+	// Not in cache, call the querier
+	isFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(ger, l1InfoTreeLeafCount)
+	if err != nil && !errors.Is(err, aggkitdb.ErrNotFound) {
+		cache.errors[ger] = err
+		return false, err
+	}
+	cache.finalized[ger] = isFinalized
+	return isFinalized, nil
+}
+
+// isGERExistentOnL1Status checks if a GER exists on L1, using cache if available
+func (f *baseFlow) isGERExistentOnL1Status(
+	cache *gerStatusCache,
+	ger common.Hash) (bool, error) {
+	if cached, ok := cache.existsOnL1[ger]; ok {
+		// Check if there was an error for this GER
+		if err, hasErr := cache.errors[ger]; hasErr {
+			return false, err
+		}
+		return cached, nil
+	}
+
+	// Not in cache, call the querier
+	exists, err := f.l1InfoTreeDataQuerier.DoesGERExistsOnL1(ger)
+	if err != nil {
+		cache.errors[ger] = err
+		return false, err
+	}
+	cache.existsOnL1[ger] = exists
+	return exists, nil
+}
+
 // adjustCertificateIfNonFinalizedClaims checks if any claims in the certificate parameters
 // contain non-finalized Global Exit Roots (GERs). If a non-finalized GER is found, it
 // adjusts the certificate parameters to exclude that block and all subsequent blocks by
@@ -573,20 +621,145 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 //   - error: Error if GER finalization status check fails
 func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+	// Create a cache to avoid multiple calls for the same GER
+	cache := newGERStatusCache()
+
 	for _, c := range certParams.Claims {
-		isGERFinalized, err := f.l1InfoTreeDataQuerier.IsGERFinalized(
-			c.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+		isGERFinalized, err := f.getGERFinalizedStatus(cache, c.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if GER %s is finalized: %w", c.GlobalExitRoot.String(), err)
 		}
 
 		if !isGERFinalized {
-			f.log.Warnf("found a non-finalized GER: %s on block: %d. "+
-				"Certificate will be resized to exclude it and all blocks after it",
-				c.GlobalExitRoot.String(), c.BlockNum)
-			return certParams.AdjustToBlock(c.BlockNum - 1)
+			// check on L1 if GER exists
+			exists, err := f.isGERExistentOnL1Status(cache, c.GlobalExitRoot)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if GER %s exists on L1: %w", c.GlobalExitRoot.String(), err)
+			}
+
+			if exists {
+				f.log.Warnf("found a non-finalized GER: %s on block: %d. "+
+					"we will adjust the certificate to exclude it and all blocks after it",
+					c.GlobalExitRoot.String(), c.BlockNum)
+				certParams, err = certParams.AdjustToBlock(c.BlockNum - 1)
+				if err != nil {
+					return nil, fmt.Errorf("error adjusting certificate to block %d: %w", c.BlockNum-1, err)
+				}
+				break
+			}
 		}
 	}
 
+	// Validate unclaims for unfinalized GERs that don't exist on L1 in a single pass.
+	// This checks both:
+	// 1. If any claim with unfinalized GER that doesn't exist on L1 has an unclaim
+	//    that appears after a later unfinalized claim
+	// 2. If any previous claims with unfinalized GERs that don't exist on L1 have their
+	//    unclaims before the current block
+	cutBlock, err := f.validateUnclaimsForUnfinalizedGERs(certParams, cache)
+	if err != nil {
+		return nil, fmt.Errorf("error validating unclaims for unfinalized GERs: %w", err)
+	}
+	if cutBlock != 0 {
+		newToBlock := cutBlock - 1
+		if newToBlock < certParams.FromBlock {
+			return nil, fmt.Errorf(
+				"cannot create certificate: claim at block %d (start block %d) cannot be included and no valid blocks before it",
+				cutBlock, certParams.FromBlock)
+		}
+		f.log.Warnf("found claim with unclaim after later unfinalized claim at block %d, cutting certificate at block %d",
+			cutBlock, newToBlock)
+		return certParams.AdjustToBlock(newToBlock)
+	}
+
 	return certParams, nil
+}
+
+// validateUnclaimsForUnfinalizedGERs validates unclaims for unfinalized GERs that don't exist on L1
+// in a single pass. This function combines two checks:
+//  1. Checks if any claim with unfinalized GER that doesn't exist on L1 has an unclaim that appears
+//     after a later unfinalized claim. If so, returns the block number to cut at.
+//  2. Validates that any previous claims with unfinalized GERs that don't exist on L1 have their
+//     unclaims before the current claim's block. If a claim without an unclaim is found, returns
+//     the block number to cut at.
+//
+// Returns the earliest cut block found (or 0 if no cut is needed) and an error if validation fails.
+func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
+	certParams *types.CertificateBuildParams,
+	cache *gerStatusCache) (uint64, error) {
+	// Build a map of unclaims by GlobalIndex for quick lookup
+	unclaimMap := make(map[string]uint64)
+	for _, unclaim := range certParams.Unclaims {
+		key := unclaim.GlobalIndex.String()
+		// Keep the earliest unclaim if there are multiple
+		if existing, ok := unclaimMap[key]; !ok || unclaim.BlockNumber < existing {
+			unclaimMap[key] = unclaim.BlockNumber
+		}
+	}
+
+	var earliestCutBlock uint64
+
+	// Single pass through all claims to perform both checks
+	for i, claim := range certParams.Claims {
+		// Check if this claim's GER is finalized
+		isGERFinalized, err := f.getGERFinalizedStatus(cache, claim.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+		if err != nil {
+			return 0, fmt.Errorf("error checking if claim's GER %s is finalized: %w",
+				claim.GlobalExitRoot.String(), err)
+		}
+
+		// Skip if GER is finalized
+		if isGERFinalized {
+			continue
+		}
+
+		// Check 1: Validate that claims before currentBlockNum with unfinalized GERs that don't exist on L1
+		// have their unclaims before currentBlockNum
+		unclaimBlock, hasUnclaim := unclaimMap[claim.GlobalIndex.String()]
+		if !hasUnclaim {
+			// Found a claim without an unclaim - this is a cut point
+			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
+				earliestCutBlock = claim.BlockNum
+			}
+			return earliestCutBlock, nil
+		}
+
+		// Check 2: Ensure we can include this claim's unclaim without being forced to include
+		// a later unfinalized claim that doesn't exist on L1.
+		// We need to cut certificate if:
+		// - a later unfinalized claim (that doesn't exist on L1) appears at or before our unclaim block
+		// - and that later claim either has no unclaim OR has an unclaim after our unclaim
+		for j := i + 1; j < len(certParams.Claims); j++ {
+			laterClaim := certParams.Claims[j]
+			if laterClaim.BlockNum > unclaimBlock {
+				// Later claim is after the unclaim, so we can include the unclaim without including the later claim
+				continue
+			}
+
+			// Check if the later claim is unfinalized
+			isLaterGERFinalized, err := f.getGERFinalizedStatus(cache, laterClaim.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+			if err != nil {
+				return 0, fmt.Errorf("error checking if later claim's GER %s is finalized: %w",
+					laterClaim.GlobalExitRoot.String(), err)
+			}
+			if isLaterGERFinalized {
+				continue
+			}
+
+			// Later unfinalized claim that doesn't exist on L1
+			// Check if it also has an unclaim at or before the current claim's unclaim block
+			laterUnclaimBlock, hasLaterUnclaim := unclaimMap[laterClaim.GlobalIndex.String()]
+			if hasLaterUnclaim && laterUnclaimBlock <= unclaimBlock {
+				// Both claims have unclaims at or before the same block, so we can include both
+				continue
+			}
+			// Later claim doesn't have an unclaim or has unclaim after current claim's unclaim
+			// We need to cut before the current claim
+			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
+				earliestCutBlock = claim.BlockNum
+			}
+		}
+	}
+
+	return earliestCutBlock, nil
 }
