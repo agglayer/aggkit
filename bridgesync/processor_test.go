@@ -3095,6 +3095,128 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 	}
 }
 
+func TestGetSetClaimsPaged(t *testing.T) {
+	t.Parallel()
+
+	path := path.Join(t.TempDir(), "bridgesyncGetSetClaimsPaged.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	// Create test set claims
+	setClaims := []*SetClaim{
+		{
+			BlockNum:    1,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x111"),
+			GlobalIndex: big.NewInt(100),
+		},
+		{
+			BlockNum:    2,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x222"),
+			GlobalIndex: big.NewInt(200),
+		},
+		{
+			BlockNum:    3,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x333"),
+			GlobalIndex: big.NewInt(100), // Same global index as first
+		},
+		{
+			BlockNum:    4,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x444"),
+			GlobalIndex: big.NewInt(300),
+		},
+	}
+
+	// Insert test data by processing blocks
+	for i, setClaim := range setClaims {
+		block := sync.Block{
+			Num:  uint64(i + 1),
+			Hash: common.HexToHash(fmt.Sprintf("0x%d", i+1)),
+			Events: []any{
+				Event{SetClaim: setClaim},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), block))
+	}
+
+	testCases := []struct {
+		name           string
+		pageSize       uint32
+		page           uint32
+		globalIndex    *big.Int
+		expectedCount  int
+		expectedClaims []*SetClaim
+		expectedError  string
+	}{
+		{
+			name:           "all results on first page",
+			pageSize:       10,
+			page:           1,
+			globalIndex:    nil,
+			expectedCount:  4,
+			expectedClaims: []*SetClaim{setClaims[3], setClaims[2], setClaims[1], setClaims[0]}, // DESC order
+			expectedError:  "",
+		},
+		{
+			name:           "pagination: page 2, size 1",
+			pageSize:       1,
+			page:           2,
+			globalIndex:    nil,
+			expectedCount:  4,
+			expectedClaims: []*SetClaim{setClaims[2]}, // Second item in DESC order
+			expectedError:  "",
+		},
+		{
+			name:           "filter by global index",
+			pageSize:       10,
+			page:           1,
+			globalIndex:    big.NewInt(100),
+			expectedCount:  2,
+			expectedClaims: []*SetClaim{setClaims[2], setClaims[0]}, // DESC order, filtered by globalIndex=100
+			expectedError:  "",
+		},
+		{
+			name:           "filter by non-existent global index",
+			pageSize:       10,
+			page:           1,
+			globalIndex:    big.NewInt(999),
+			expectedCount:  0,
+			expectedClaims: []*SetClaim{},
+			expectedError:  "",
+		},
+		{
+			name:           "invalid page number",
+			pageSize:       4,
+			page:           5,
+			globalIndex:    nil,
+			expectedCount:  0,
+			expectedClaims: []*SetClaim{},
+			expectedError:  "invalid page number for given page size and total number of set_claim",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			setClaims, count, err := p.GetSetClaimsPaged(ctx, tc.page, tc.pageSize, tc.globalIndex)
+
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedClaims, setClaims)
+				require.Equal(t, tc.expectedCount, count)
+			}
+		})
+	}
+}
+
 func TestDatabaseQueryTimeout(t *testing.T) {
 	normalTimeout := 100 * time.Millisecond
 	shortTimeout := 1 * time.Nanosecond
