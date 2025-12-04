@@ -115,6 +115,157 @@ func buildAppender(
 	return appender, nil
 }
 
+// ExtractTxnSenderAndFrom extracts the txn_sender and from address from the transaction trace.
+// return fromAddr and txnSender
+func ExtractTxnSenderAndFrom(client aggkittypes.RPCClienter,
+	bridgeAddr common.Address,
+	txHash common.Hash,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
+	logger *logger.Logger) (fromAddr common.Address, txnSender common.Address, err error) {
+	foundCalls, rootCall, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
+		switch logEvent.LeafType {
+		case bridgeLeafTypeAsset:
+			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
+		case bridgeLeafTypeMessage:
+			return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return common.Address{}, common.Address{},
+			fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", txHash, err)
+	}
+	txnSender, err = ExtractTxnSenderFromCalls(foundCalls, logEvent)
+	if err != nil {
+		return common.Address{}, common.Address{},
+			fmt.Errorf("failed to extract txn sender from tx_hash:%s calls: %w",
+				txHash.Hex(), err)
+	}
+
+	return rootCall.From, txnSender, nil
+}
+
+type bridgeCallParams struct {
+	LeafType           uint8
+	DestinationNetwork uint32
+	DestinationAddress common.Address
+	Amount             *big.Int
+	// can't use Token because could be a token network that native eth is a token or a wapped token
+	// in this cases the calling value doesn't match the event (event field: OriginTokenAddress)
+	Token common.Address
+}
+
+func (b *bridgeCallParams) Equal(logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) bool {
+	return b.LeafType == logEvent.LeafType &&
+		b.DestinationNetwork == logEvent.DestinationNetwork &&
+		b.DestinationAddress == logEvent.DestinationAddress &&
+		b.Amount.Cmp(logEvent.Amount) == 0
+}
+
+func ExtractParamFromCallData(callData []byte) (*bridgeCallParams, error) {
+	if len(callData) < methodIDLength {
+		return nil, fmt.Errorf("call data too short to extract method ID")
+	}
+	bridgeV2ABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bridge V2 ABI: %w", err)
+	}
+	methodID := callData[:methodIDLength]
+	method, err := bridgeV2ABI.MethodById(methodID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get method %s by ID: %w", common.Bytes2Hex(methodID), err)
+	}
+	data, err := method.Inputs.Unpack(callData[methodIDLength:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to unpack inputs call data: %w", err)
+	}
+	destinationNetwork, ok := data[0].(uint32)
+	if !ok {
+		return nil, fmt.Errorf("failed to assert destinationNetwork as uint32")
+	}
+	destinationAddress, ok := data[1].(common.Address)
+	if !ok {
+		return nil, fmt.Errorf("failed to assert destinationAddress as common.Address")
+	}
+
+	if bytes.HasPrefix(callData, BridgeMessageMethodID) {
+		return &bridgeCallParams{
+			LeafType:           bridgeLeafTypeMessage,
+			DestinationNetwork: destinationNetwork,
+			DestinationAddress: destinationAddress,
+			Amount:             big.NewInt(0),
+		}, nil
+	}
+	if bytes.HasPrefix(callData, BridgeAssetMethodID) {
+
+		amount, ok := data[2].(*big.Int)
+		if !ok {
+			return nil, fmt.Errorf("failed to assert amount as *big.Int")
+		}
+		token, ok := data[3].(common.Address)
+		if !ok {
+			return nil, fmt.Errorf("failed to assert token as common.Address")
+		}
+		return &bridgeCallParams{
+			LeafType:           bridgeLeafTypeAsset,
+			DestinationNetwork: destinationNetwork,
+			DestinationAddress: destinationAddress,
+			Amount:             amount,
+			Token:              token,
+		}, nil
+	}
+	return nil, fmt.Errorf("unsupported call data method ID: %s (only support BridgeAssetMethodID)", common.Bytes2Hex(callData[:methodIDLength]))
+}
+
+func haveCommonFromForCalls(foundCalls []*Call) (common.Address, bool) {
+	var commonFrom common.Address
+	for i, call := range foundCalls {
+		if i == 0 {
+			commonFrom = call.From
+		} else {
+			if call.From != commonFrom {
+				return common.Address{}, false
+			}
+		}
+	}
+	return commonFrom, true
+}
+
+func ExtractTxnSenderFromCalls(foundCalls []*Call, logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (common.Address, error) {
+	switch len(foundCalls) {
+	case 0:
+		return common.Address{}, fmt.Errorf("no calls found to extract txn sender")
+	case 1:
+		return foundCalls[0].From, nil
+	default:
+		// If all calls have same From we don't need to dig further
+		commonFrom, ok := haveCommonFromForCalls(foundCalls)
+		if ok {
+			return commonFrom, nil
+		}
+		// Multiple calls found, try to find addr
+		var candidate *Call
+		var candidateCallParams *bridgeCallParams
+		for _, call := range foundCalls {
+			bridgeCallParams, err := ExtractParamFromCallData(call.Input)
+			if err != nil {
+				return common.Address{}, fmt.Errorf("failed to extract bridge call params: %w", err)
+			}
+			if bridgeCallParams.Equal(logEvent) {
+				if candidate != nil {
+					return common.Address{}, fmt.Errorf("multiple matching calls found to extract txn sender")
+				}
+				candidate = call
+				candidateCallParams = bridgeCallParams
+			}
+		}
+		if candidate == nil || candidateCallParams == nil {
+			return common.Address{}, fmt.Errorf("no matching call found to extract txn sender")
+		}
+		return candidate.From, nil
+	}
+}
+
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(
 	contract *agglayerbridge.Agglayerbridge,
@@ -128,16 +279,8 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
-		// Extract call data and root call for txn_sender
-		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
-			switch bridgeEvent.LeafType {
-			case bridgesynctypes.LeafTypeAsset.Uint8():
-				return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
-			case bridgesynctypes.LeafTypeMessage.Uint8():
-				return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
-			}
-			return false, nil
-		})
+		fromAddress, txnSender, err := ExtractTxnSenderAndFrom(client, bridgeAddr, l.TxHash,
+			bridgeEvent, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -145,7 +288,7 @@ func buildBridgeEventHandler(
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
-			FromAddress:        foundCall.From,
+			FromAddress:        fromAddress,
 			TxHash:             l.TxHash,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
@@ -156,7 +299,7 @@ func buildBridgeEventHandler(
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
-			TxnSender:          rootCall.From,
+			TxnSender:          txnSender,
 		}})
 		return nil
 	}
@@ -434,10 +577,10 @@ type tracerCfg struct {
 
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
 func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (bool, error), logger *logger.Logger,
-) (*Call, error) {
+) ([]*Call, error) {
 	callStack := stack.New()
 	callStack.Push(rootCall)
-
+	matchingCalls := []*Call{}
 	for callStack.Len() > 0 {
 		currentCallInterface := callStack.Pop()
 		currentCall, ok := currentCallInterface.(Call)
@@ -459,10 +602,10 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 					return nil, err
 				}
 				if found {
-					return &currentCall, nil
+					matchingCalls = append(matchingCalls, &currentCall)
 				}
 			} else {
-				return &currentCall, nil
+				matchingCalls = append(matchingCalls, &currentCall)
 			}
 		}
 
@@ -475,6 +618,9 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 					c.To.Hex(), c.From.Hex(), *c.Err)
 			}
 		}
+	}
+	if len(matchingCalls) > 0 {
+		return matchingCalls, nil
 	}
 	return nil, db.ErrNotFound
 }
@@ -495,7 +641,7 @@ func extractCallData(
 	txHash common.Hash,
 	logger *logger.Logger,
 	callback func(c Call) (bool, error),
-) (foundCall *Call, rootCall *Call, err error) {
+) (foundCalls []*Call, rootCall *Call, err error) {
 	// Extract root call first
 	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
@@ -503,12 +649,12 @@ func extractCallData(
 	}
 
 	// Find the specific call to the bridge contract
-	foundCall, err = findCall(*rootCall, bridgeAddr, callback, logger)
+	foundCalls, err = findCall(*rootCall, bridgeAddr, callback, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return foundCall, rootCall, nil
+	return foundCalls, rootCall, nil
 }
 
 // setClaimCalldataFromRoot finds and decodes calldata for the given bridge address using an already traced root call.

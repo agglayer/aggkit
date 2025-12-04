@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -670,7 +671,10 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		})
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(t.Context(), txHash)
+		sender, err := backfiller.extractTxnSender(t.Context(), txHash,
+			&agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType: bridgeLeafTypeAsset,
+			})
 		require.NoError(t, err)
 		require.Equal(t, expectedSender, sender)
 	})
@@ -693,7 +697,9 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("transaction not found"))
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(t.Context(), txHash)
+		sender, err := backfiller.extractTxnSender(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
+			LeafType: bridgeLeafTypeAsset,
+		})
 		require.Error(t, err)
 		require.Equal(t, common.Address{}, sender)
 		require.Contains(t, err.Error(), "failed to fetch transaction by hash")

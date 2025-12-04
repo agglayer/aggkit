@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
@@ -13,12 +14,198 @@ import (
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
+	l1url := os.Getenv("L1URL")
+	ethRawClient, err := ethclient.Dial(l1url)
+	require.NoError(t, err)
+	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	bridgeAddr := common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede")
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethRawClient)
+	require.NoError(t, err)
+	logger := logger.WithFields("module", "test")
+	bn := big.NewInt(0).SetUint64(17830788)
+	handler := buildBridgeEventHandler(agglayerBridge, bridgeAddr, ethClient, logger)
+	filterQuery := ethereum.FilterQuery{
+		Addresses: []common.Address{bridgeAddr},
+		FromBlock: bn,
+		ToBlock:   bn,
+	}
+	logs, err := ethClient.FilterLogs(t.Context(), filterQuery)
+	require.NoError(t, err)
+	for _, vLog := range logs {
+		if vLog.Topics[0] == bridgeEventSignature {
+			err := handler(&sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: bn.Uint64()}}, vLog)
+			require.NoError(t, err)
+		}
+	}
+}
+func showCalls(t *testing.T, calls []*Call) {
+	for _, call := range calls {
+		fmt.Printf("Root Call To: %s From: %s\n", call.To.Hex(), call.From.Hex())
+		params, err := ExtractParamFromCallData(call.Input)
+		require.NoError(t, err)
+		fmt.Printf("  Params: LeafType: %d DestNetwork: %d DestAddress: %s Amount: %s Token: %s Input: %s\n",
+			params.LeafType, params.DestinationNetwork, params.DestinationAddress.Hex(), params.Amount.String(), params.Token.Hex(),
+			common.Bytes2Hex(call.Input))
+	}
+}
+
+// This case is https://etherscan.io/tx/0x280334ea89e49380d29e3c3931b9217bf699eaa7fa23e126c74a05eea1258503
+// 2 calls everything is the same except the token address but is translated to event so doesn't match the call and the event
+// this case is solved because the From is the same for both calls
+func TestExtractCallDataCaseNotMatchingExploratory(t *testing.T) {
+	t.Skip("Skipping exploratory test")
+	l1url := os.Getenv("L1URL")
+	ethRawClient, err := ethclient.Dial(l1url)
+	require.NoError(t, err)
+	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+		common.HexToHash("0x280334ea89e49380d29e3c3931b9217bf699eaa7fa23e126c74a05eea1258503"),
+		logger.WithFields("module", "test"), nil)
+	require.NoError(t, err)
+	fmt.Printf("rootCall To: %s From: %s\n", rootCall.To.Hex(), rootCall.From.Hex())
+	showCalls(t, foundCalls)
+	amount, ok := big.NewInt(0).SetString("3308702758450298978558701", 10)
+	require.True(t, ok)
+	txnSender, err := ExtractTxnSenderFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
+		LeafType:           bridgeLeafTypeAsset,
+		DestinationNetwork: 1,
+		DestinationAddress: common.HexToAddress("0x3CF5Ed527DB2E08e5DdD5A2c692Dc5Ae35778D46"),
+		Amount:             amount,
+		OriginAddress:      common.HexToAddress("0x25722Cd432d02895d9BE45f5dEB60fc479c8781E"),
+	})
+	require.NoError(t, err)
+	fmt.Printf("Txn Sender: %s\n", txnSender.Hex())
+}
+
+func TestExtractCallDataCaseMessageExploratory(t *testing.T) {
+	t.Skip("Skipping exploratory test")
+	l1url := os.Getenv("L1URL")
+	ethRawClient, err := ethclient.Dial(l1url)
+	require.NoError(t, err)
+	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+		common.HexToHash("0x84a7e20778bd35231bfaefdcbb4ada9169b08658db49d69d38e3f467a799db38"),
+		logger.WithFields("module", "test"), nil)
+	require.NoError(t, err)
+	fmt.Printf("rootCall To: %s From: %s\n", rootCall.To.Hex(), rootCall.From.Hex())
+	for _, call := range foundCalls {
+		fmt.Printf("Root Call To: %s From: %s\n", call.To.Hex(), call.From.Hex())
+	}
+	txnSender, err := ExtractTxnSenderFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
+		LeafType:           bridgeLeafTypeAsset,
+		DestinationNetwork: 1,
+		DestinationAddress: common.HexToAddress("0x679606F3b37c49946F5AA7774a37f03387c7f264"),
+		Amount:             big.NewInt(10000000000000000),
+	})
+	require.NoError(t, err)
+	fmt.Printf("Txn Sender: %s\n", txnSender.Hex())
+}
+
+func TestExtractTxnSenderFromCalls(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	fromAddr1 := common.HexToAddress("0x20")
+	fromAddr2 := common.HexToAddress("0x30")
+	callFromAddr1 := &Call{
+		To:    bridgeAddr,
+		From:  fromAddr1,
+		Err:   nil,
+		Input: BridgeAssetMethodID,
+	}
+	callFromAddr2 := &Call{
+		To:    bridgeAddr,
+		From:  fromAddr2,
+		Err:   nil,
+		Input: BridgeAssetMethodID,
+	}
+	event1 := &agglayerbridge.AgglayerbridgeBridgeEvent{
+		LeafType:           bridgeLeafTypeAsset,
+		DestinationNetwork: 1,
+		DestinationAddress: common.HexToAddress("0x30"),
+		Amount:             big.NewInt(100),
+	}
+	tests := []struct {
+		name       string
+		callFrames []*Call
+		event      *agglayerbridge.AgglayerbridgeBridgeEvent
+		expectAddr common.Address
+		expectErr  string
+	}{
+		{
+			name: "single matching call",
+			callFrames: []*Call{
+				&Call{
+					To:    bridgeAddr,
+					From:  fromAddr1,
+					Err:   nil,
+					Input: BridgeAssetMethodID,
+				},
+			},
+			event:      event1,
+			expectAddr: fromAddr1,
+		},
+		{
+			name:       "no matching call",
+			callFrames: []*Call{},
+			event:      event1,
+			expectErr:  "no calls found",
+		},
+		{
+			name:       "multiples calls same from",
+			callFrames: []*Call{callFromAddr1, callFromAddr1},
+			event:      event1,
+			expectAddr: fromAddr1,
+		},
+		{
+			name:       "multiples calls not same from,bad input data",
+			callFrames: []*Call{callFromAddr1, callFromAddr2},
+			event:      event1,
+			expectErr:  " unpack inputs call data",
+		},
+		{
+			name: "case: not same from, no match token and origin address",
+			callFrames: []*Call{&Call{
+				To:    bridgeAddr,
+				From:  common.HexToAddress("0x047E0b64743071b897A6177F1796E98b4C3f344E"),
+				Input: common.Hex2Bytes("cd58657900000000000000000000000000000000000000000000000000000000000000010000000000000000000000003cf5ed527db2e08e5ddd5a2c692dc5ae35778d4600000000000000000000000000000000000000000000000000038d7ea4c680000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000"),
+			},
+				&Call{
+					To:    bridgeAddr,
+					From:  common.HexToAddress("0x047E0b64743071b897A6177F1796E98b4C3f344E"),
+					Input: common.Hex2Bytes("cd586579000000000000000000000000000000000000000000000000000000000000000100000000000000000000000025722cd432d02895d9be45f5deb60fc479c87810000000000000000000000003cf5ed527db2e08e5ddd5a2c692dc5ae35778d4600000000000000000000000000000000000000000000000000038d7ea4c68000000000000000000000000000000000000000000000000000000000000000000"),
+				},
+			},
+			event: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeAsset,
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x679606F3b37c49946F5AA7774a37f03387c7f264"),
+				Amount:             big.NewInt(10000000000000000),
+			},
+			expectAddr: common.HexToAddress("0x047E0b64743071b897A6177F1796E98b4C3f344E"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			txnSender, err := ExtractTxnSenderFromCalls(tt.callFrames, tt.event)
+			if tt.expectErr != "" {
+				require.ErrorContains(t, err, tt.expectErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectAddr, txnSender)
+			}
+		})
+	}
+}
 
 func TestBuildAppender(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
@@ -382,10 +569,10 @@ func TestFindCall(t *testing.T) {
 		From: fromAddr,
 		Err:  nil,
 	}
-	found, err := findCall(root, bridgeAddr, nil, logger)
+	founds, err := findCall(root, bridgeAddr, nil, logger)
 	require.NoError(t, err)
-	require.NotNil(t, found)
-	require.Equal(t, bridgeAddr, found.To)
+	require.NotNil(t, founds)
+	require.Equal(t, bridgeAddr, founds[0].To)
 
 	// Reverted call should be skipped
 	root = Call{
@@ -414,10 +601,10 @@ func TestFindCall(t *testing.T) {
 			},
 		},
 	}
-	found, err = findCall(root, bridgeAddr, nil, logger)
+	founds, err = findCall(root, bridgeAddr, nil, logger)
 	require.NoError(t, err)
-	require.NotNil(t, found)
-	require.Equal(t, bridgeAddr, found.To)
+	require.NotNil(t, founds)
+	require.Equal(t, bridgeAddr, founds[0].To)
 }
 
 func TestFindCallWithMixedMethods(t *testing.T) {
@@ -456,7 +643,7 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	}
 
 	// Test that findCall continues searching and finds the first valid claim method
-	found, err := findCall(rootCall, bridgeAddr, func(call Call) (bool, error) {
+	founds, err := findCall(rootCall, bridgeAddr, func(call Call) (bool, error) {
 		// Simulate tryDecodeClaimCalldata behavior
 		if len(call.Input) < methodIDLength {
 			return false, fmt.Errorf("input too short")
@@ -469,10 +656,10 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	}, logger)
 
 	require.NoError(t, err)
-	require.NotNil(t, found)
-	require.Equal(t, bridgeAddr, found.To)
+	require.NotNil(t, founds)
+	require.Equal(t, bridgeAddr, founds[0].To)
 	// Note: DFS traversal processes calls in reverse order (stack), so it finds claimMessage first
-	require.Equal(t, claimMessageEtrogMethodID, []byte(found.Input[:4])) // Should find the first claim method in DFS order
+	require.Equal(t, claimMessageEtrogMethodID, []byte(founds[0].Input[:4])) // Should find the first claim method in DFS order
 }
 
 func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
