@@ -25,6 +25,7 @@ import (
 )
 
 func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
+	t.Skip("Skipping exploratory test")
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
@@ -50,6 +51,7 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	}
 }
 func showCalls(t *testing.T, calls []*Call) {
+	t.Helper()
 	for _, call := range calls {
 		fmt.Printf("Root Call To: %s From: %s\n", call.To.Hex(), call.From.Hex())
 		params, err := ExtractParamFromCallData(call.Input)
@@ -142,15 +144,8 @@ func TestExtractTxnSenderFromCalls(t *testing.T) {
 		expectErr  string
 	}{
 		{
-			name: "single matching call",
-			callFrames: []*Call{
-				&Call{
-					To:    bridgeAddr,
-					From:  fromAddr1,
-					Err:   nil,
-					Input: BridgeAssetMethodID,
-				},
-			},
+			name:       "single matching call",
+			callFrames: []*Call{callFromAddr1},
 			event:      event1,
 			expectAddr: fromAddr1,
 		},
@@ -174,12 +169,13 @@ func TestExtractTxnSenderFromCalls(t *testing.T) {
 		},
 		{
 			name: "case: not same from, no match token and origin address",
-			callFrames: []*Call{&Call{
-				To:    bridgeAddr,
-				From:  common.HexToAddress("0x047E0b64743071b897A6177F1796E98b4C3f344E"),
-				Input: common.Hex2Bytes("cd58657900000000000000000000000000000000000000000000000000000000000000010000000000000000000000003cf5ed527db2e08e5ddd5a2c692dc5ae35778d4600000000000000000000000000000000000000000000000000038d7ea4c680000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000"),
-			},
-				&Call{
+			callFrames: []*Call{
+				{
+					To:    bridgeAddr,
+					From:  common.HexToAddress("0x047E0b64743071b897A6177F1796E98b4C3f344E"),
+					Input: common.Hex2Bytes("cd58657900000000000000000000000000000000000000000000000000000000000000010000000000000000000000003cf5ed527db2e08e5ddd5a2c692dc5ae35778d4600000000000000000000000000000000000000000000000000038d7ea4c680000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000"),
+				},
+				{
 					To:    bridgeAddr,
 					From:  common.HexToAddress("0x047E0b64743071b897A6177F1796E98b4C3f344E"),
 					Input: common.Hex2Bytes("cd586579000000000000000000000000000000000000000000000000000000000000000100000000000000000000000025722cd432d02895d9be45f5deb60fc479c87810000000000000000000000003cf5ed527db2e08e5ddd5a2c692dc5ae35778d4600000000000000000000000000000000000000000000000000038d7ea4c68000000000000000000000000000000000000000000000000000000000000000000"),
@@ -829,7 +825,7 @@ func TestTxnSenderField(t *testing.T) {
 				Calls: []Call{
 					{
 						To:    bridgeAddr,
-						From:  common.HexToAddress("0x20"),
+						From:  expectedTxnSender,
 						Err:   nil,
 						Input: BridgeMessageMethodID,
 					},

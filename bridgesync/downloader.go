@@ -75,6 +75,9 @@ const (
 
 	// methodIDLength is the length of the method ID in bytes
 	methodIDLength = 4
+
+	bridgeLeafTypeMessage = uint8(bridgesynctypes.LeafTypeMessage)
+	bridgeLeafTypeAsset   = uint8(bridgesynctypes.LeafTypeAsset)
 )
 
 func buildAppender(
@@ -197,7 +200,6 @@ func ExtractParamFromCallData(callData []byte) (*bridgeCallParams, error) {
 		}, nil
 	}
 	if bytes.HasPrefix(callData, BridgeAssetMethodID) {
-
 		amount, ok := data[2].(*big.Int)
 		if !ok {
 			return nil, fmt.Errorf("failed to assert amount as *big.Int")
@@ -214,7 +216,8 @@ func ExtractParamFromCallData(callData []byte) (*bridgeCallParams, error) {
 			Token:              token,
 		}, nil
 	}
-	return nil, fmt.Errorf("unsupported call data method ID: %s (only support BridgeAssetMethodID)", common.Bytes2Hex(callData[:methodIDLength]))
+	return nil, fmt.Errorf("unsupported call data method ID: %s (only support BridgeAssetMethodID)",
+		common.Bytes2Hex(callData[:methodIDLength]))
 }
 
 func haveCommonFromForCalls(foundCalls []*Call) (common.Address, bool) {
@@ -222,16 +225,16 @@ func haveCommonFromForCalls(foundCalls []*Call) (common.Address, bool) {
 	for i, call := range foundCalls {
 		if i == 0 {
 			commonFrom = call.From
-		} else {
-			if call.From != commonFrom {
-				return common.Address{}, false
-			}
+		} else if call.From != commonFrom {
+			return common.Address{}, false
 		}
 	}
+
 	return commonFrom, true
 }
 
-func ExtractTxnSenderFromCalls(foundCalls []*Call, logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (common.Address, error) {
+func ExtractTxnSenderFromCalls(foundCalls []*Call,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (common.Address, error) {
 	switch len(foundCalls) {
 	case 0:
 		return common.Address{}, fmt.Errorf("no calls found to extract txn sender")

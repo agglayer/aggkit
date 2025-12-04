@@ -310,7 +310,7 @@ func (b *BackfillTxnSender) worker(
 		}
 		logEvent := &agglayerbridge.AgglayerbridgeBridgeEvent{
 			LeafType:           job.Record.LeafType,
-			DestinationNetwork: uint32(job.Record.DestinationNetwork),
+			DestinationNetwork: job.Record.DestinationNetwork,
 			DestinationAddress: job.Record.DestinationAddress,
 			Amount:             job.Record.Amount,
 		}
