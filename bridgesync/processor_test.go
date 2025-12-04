@@ -2358,9 +2358,6 @@ func TestGetClaimsByGlobalIndex_Compact(t *testing.T) {
 	oldProof := types.Proof{}
 	oldProof[0] = common.HexToHash("0x01")
 
-	newProof := types.Proof{}
-	newProof[0] = common.HexToHash("0x02")
-
 	testCases := []struct {
 		name            string
 		globalIndex     *big.Int
