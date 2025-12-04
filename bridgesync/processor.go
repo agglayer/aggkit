@@ -991,7 +991,8 @@ func (p *processor) GetClaimsPaged(
 }
 
 // GetUnsetClaimsPaged returns a paginated list of unset claims
-// nolint:dupl
+//
+//nolint:dupl
 func (p *processor) GetUnsetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
@@ -1048,7 +1049,8 @@ func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
 }
 
 // GetSetClaimsPaged returns a paginated list of set claims
-// nolint:dupl
+//
+//nolint:dupl
 func (p *processor) GetSetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
