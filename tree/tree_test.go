@@ -306,6 +306,104 @@ func TestVerifyProof(t *testing.T) {
 	}
 }
 
+func TestTree_BackwardToIndex(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("deletes roots with index higher than targetIndex", func(t *testing.T) {
+		t.Parallel()
+
+		treeDB := createTreeDBForTest(t)
+		tree := NewAppendOnlyTree(treeDB, "")
+
+		// Add 8 leaves (roots with indices 0..7)
+		putTestLeaves(t, tree, treeDB, 8, 0)
+
+		// Confirm all roots exist
+		for i := range 8 {
+			root, err := tree.GetRootByIndex(ctx, uint32(i))
+			require.NoError(t, err)
+			require.Equal(t, uint32(i), root.Index)
+		}
+
+		// Delete roots with index > 4
+		err := tree.Tree.BackwardToIndex(ctx, 4)
+		require.NoError(t, err)
+
+		// Roots with index 0..4 should exist
+		for i := 0; i <= 4; i++ {
+			root, err := tree.GetRootByIndex(ctx, uint32(i))
+			require.NoError(t, err)
+			require.Equal(t, uint32(i), root.Index)
+		}
+
+		// Roots with index 5..7 should not exist
+		for i := 5; i < 8; i++ {
+			_, err := tree.GetRootByIndex(ctx, uint32(i))
+			require.Error(t, err)
+			require.ErrorIs(t, err, db.ErrNotFound)
+		}
+
+		// Add more leaves to confirm tree is still functional
+		putTestLeaves(t, tree, treeDB, 3, 5) // adding leaves with indices 5,6,7
+
+		// Confirm new roots exist
+		for i := range 8 {
+			root, err := tree.GetRootByIndex(ctx, uint32(i))
+			require.NoError(t, err)
+			require.Equal(t, uint32(i), root.Index)
+		}
+	})
+
+	t.Run("no roots deleted if none above targetIndex", func(t *testing.T) {
+		t.Parallel()
+
+		treeDB := createTreeDBForTest(t)
+		tree := NewAppendOnlyTree(treeDB, "")
+
+		putTestLeaves(t, tree, treeDB, 3, 0)
+
+		err := tree.Tree.BackwardToIndex(ctx, 10)
+		require.NoError(t, err)
+
+		// All roots should still exist
+		for i := range 3 {
+			root, err := tree.GetRootByIndex(ctx, uint32(i))
+			require.NoError(t, err)
+			require.Equal(t, uint32(i), root.Index)
+		}
+	})
+
+	t.Run("handles empty table gracefully", func(t *testing.T) {
+		t.Parallel()
+
+		treeDB := createTreeDBForTest(t)
+		tree := NewAppendOnlyTree(treeDB, "")
+
+		err := tree.Tree.BackwardToIndex(ctx, 0)
+		require.NoError(t, err)
+	})
+
+	t.Run("returns error on database failure", func(t *testing.T) {
+		t.Parallel()
+
+		dbPath := path.Join(t.TempDir(), "tree_BackwardToIndex_dberr.sqlite")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		treeDB, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+
+		// Intentionally invalid table name
+		tree := &Tree{
+			db:        treeDB,
+			rootTable: "nonexistent_table",
+		}
+
+		err = tree.BackwardToIndex(ctx, 0)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "no such table")
+	})
+}
+
 func createTreeDBForTest(t *testing.T) *sql.DB {
 	t.Helper()
 

@@ -246,12 +246,21 @@ func (t *Tree) Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error {
 	return err
 }
 
+// BackwardToIndex deletes all the roots with index higher than targetIndex
+func (t *Tree) BackwardToIndex(ctx context.Context, targetIndex uint32) error {
+	_, err := t.db.Exec(
+		fmt.Sprintf(`DELETE FROM %s WHERE position > $1`, t.rootTable),
+		targetIndex,
+	)
+	return err
+}
+
 // CalculateRoot calculates the Merkle Root based on the leaf and proof	of inclusion
 func CalculateRoot(leafHash common.Hash, proof [types.DefaultHeight]common.Hash, index uint32) common.Hash {
 	node := leafHash
 
 	// Compute the Merkle root
-	for height := uint8(0); height < types.DefaultHeight; height++ {
+	for height := range types.DefaultHeight {
 		if (index>>height)&1 == 1 {
 			node = crypto.Keccak256Hash(proof[height].Bytes(), node.Bytes())
 		} else {
