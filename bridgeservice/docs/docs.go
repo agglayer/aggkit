@@ -61,7 +61,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -69,21 +68,18 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page number (default 1)",
                         "name": "page_number",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page size (default 100)",
                         "name": "page_size",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "format": "int64",
                         "description": "Filter by deposit count",
                         "name": "deposit_count",
                         "in": "query"
@@ -97,8 +93,7 @@ const docTemplate = `{
                     {
                         "type": "array",
                         "items": {
-                            "type": "integer",
-                            "format": "int32"
+                            "type": "integer"
                         },
                         "collectionFormat": "csv",
                         "description": "Filter by one or more destination network IDs (maximum 5 allowed)",
@@ -141,7 +136,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -149,7 +143,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Index in the L1 info tree",
                         "name": "leaf_index",
                         "in": "query",
@@ -157,7 +150,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Number of deposits in the bridge",
                         "name": "deposit_count",
                         "in": "query",
@@ -199,7 +191,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -207,14 +198,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page number (default 1)",
                         "name": "page_number",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page size (default 100)",
                         "name": "page_size",
                         "in": "query"
@@ -222,8 +211,7 @@ const docTemplate = `{
                     {
                         "type": "array",
                         "items": {
-                            "type": "integer",
-                            "format": "int32"
+                            "type": "integer"
                         },
                         "collectionFormat": "csv",
                         "description": "Filter by one or more source network IDs (maximum 5 allowed)",
@@ -238,7 +226,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Filter by global index",
                         "name": "global_index",
                         "in": "query"
@@ -344,8 +331,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "integer",
-                            "format": "int32"
+                            "type": "integer"
                         }
                     },
                     "400": {

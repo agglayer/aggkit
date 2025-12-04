@@ -551,23 +551,19 @@ paths:
       description: Returns a paginated list of bridge events for the specified network.
       parameters:
       - description: Origin network ID
-        format: int32
         in: query
         name: network_id
         required: true
         type: integer
       - description: Page number (default 1)
-        format: int32
         in: query
         name: page_number
         type: integer
       - description: Page size (default 100)
-        format: int32
         in: query
         name: page_size
         type: integer
       - description: Filter by deposit count
-        format: int64
         in: query
         name: deposit_count
         type: integer
@@ -579,7 +575,6 @@ paths:
         description: Filter by one or more destination network IDs (maximum 5 allowed)
         in: query
         items:
-          format: int32
           type: integer
         name: network_ids
         type: array
@@ -608,19 +603,16 @@ paths:
         the corresponding L1 info tree leaf needed to verify a claim.
       parameters:
       - description: Origin network ID
-        format: int32
         in: query
         name: network_id
         required: true
         type: integer
       - description: Index in the L1 info tree
-        format: int32
         in: query
         name: leaf_index
         required: true
         type: integer
       - description: Number of deposits in the bridge
-        format: int32
         in: query
         name: deposit_count
         required: true
@@ -648,18 +640,15 @@ paths:
       description: Returns a paginated list of claims for the specified network.
       parameters:
       - description: Origin network ID
-        format: int32
         in: query
         name: network_id
         required: true
         type: integer
       - description: Page number (default 1)
-        format: int32
         in: query
         name: page_number
         type: integer
       - description: Page size (default 100)
-        format: int32
         in: query
         name: page_size
         type: integer
@@ -667,7 +656,6 @@ paths:
         description: Filter by one or more source network IDs (maximum 5 allowed)
         in: query
         items:
-          format: int32
           type: integer
         name: network_ids
         type: array
@@ -676,7 +664,6 @@ paths:
         name: include_all_fields
         type: boolean
       - description: Filter by global index
-        format: int32
         in: query
         name: global_index
         type: integer
@@ -753,7 +740,6 @@ paths:
         "200":
           description: OK
           schema:
-            format: int32
             type: integer
         "400":
           description: Bad Request

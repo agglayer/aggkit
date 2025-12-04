@@ -659,7 +659,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
 	query := fmt.Sprintf(`
 	WITH all_claims_ranked AS (
-		SELECT 
+		SELECT
 			*,
 			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
 			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
@@ -672,23 +672,23 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	),
 	claims_with_unset AS (
 		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
-		SELECT 
+		SELECT
 			c.%s
 		FROM claims_in_range c
 		WHERE EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = c.global_index
 		)
 	),
 	compactable_claims AS (
 		-- Case 2 & 3: Handle claims without unset_claim
-		SELECT 
+		SELECT
 		%s
 		FROM claims_in_range o
 		JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
 		WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
 		AND NOT EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = o.global_index
 		)
 	)
@@ -739,7 +739,7 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	// Case 3: Same as case 2 (all claims for this global_index are considered "in range")
 	query := fmt.Sprintf(`
 	WITH all_claims_for_index AS (
-		SELECT 
+		SELECT
 			*,
 			ROW_NUMBER() OVER (ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
 			ROW_NUMBER() OVER (ORDER BY block_num DESC, block_pos DESC) AS rn_newest
@@ -748,23 +748,23 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	),
 	claims_with_unset AS (
 		-- Case 1: Return all claims if unset_claim exists (no compaction)
-		SELECT 
+		SELECT
 			c.%s
 		FROM all_claims_for_index c
 		WHERE EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = $1
 		)
 	),
 	compactable_claims AS (
 		-- Case 2: Handle claims without unset_claim (compact)
-		SELECT 
+		SELECT
 		%s
 		FROM all_claims_for_index o
 		JOIN all_claims_for_index n ON n.rn_newest = 1
 		WHERE o.rn_oldest = 1
 		AND NOT EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = $1
 		)
 	)
@@ -923,7 +923,7 @@ func (p *processor) GetClaimsPaged(
 			LIMIT $1 OFFSET $2
 		),
 		all_claims_ranked AS (
-			SELECT 
+			SELECT
 				*,
 				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
 				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
@@ -932,11 +932,11 @@ func (p *processor) GetClaimsPaged(
 		),
 		claims_with_unset_on_page AS (
 			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
-			SELECT 
+			SELECT
 				pc.%s
 			FROM page_claims pc
 			WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc 
+				SELECT 1 FROM unset_claim uc
 				WHERE uc.global_index = pc.global_index
 			)
 		),
@@ -946,13 +946,13 @@ func (p *processor) GetClaimsPaged(
 			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest_global = 1
 			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
 			AND NOT EXISTS (
-				SELECT 1 FROM unset_claim uc 
+				SELECT 1 FROM unset_claim uc
 				WHERE uc.global_index = pc.global_index
 			)
 		),
 		compactable_claims AS (
 			-- Case 2 & 3: Handle claims without unset_claim
-			SELECT 
+			SELECT
 			%s
 			FROM all_claims_ranked o
 			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
@@ -991,6 +991,7 @@ func (p *processor) GetClaimsPaged(
 }
 
 // GetUnsetClaimsPaged returns a paginated list of unset claims
+// nolint:dupl
 func (p *processor) GetUnsetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
@@ -1047,6 +1048,7 @@ func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
 }
 
 // GetSetClaimsPaged returns a paginated list of set claims
+// nolint:dupl
 func (p *processor) GetSetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
