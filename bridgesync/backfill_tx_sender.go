@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -84,8 +85,8 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 		return nil
 	}
 
-	b.log.Infof("Found %d records in %s table that need txn_sender backfilling", totalCount, tableName)
-
+	b.log.Infof("Found %d records in %s table that need txn_sender or from_address backfilling", totalCount, tableName)
+	pending := totalCount
 	// Process records in batches
 	for {
 		// Check if context is cancelled before processing next batch
@@ -106,6 +107,8 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 		}
 
 		b.processBatch(ctx, tableName, records)
+		pending -= len(records)
+		b.log.Infof("%d records remaining to backfill in %s table", pending, tableName)
 	}
 
 	b.log.Infof("Completed backfilling for %s table", tableName)
@@ -124,13 +127,30 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 //		Amount             *big.Int
 //		LeafType           uint8
 //	}
-type RecordToBackfill = Bridge
+
+type RecordToBackfill struct {
+	BlockNum           uint64         `meddler:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos"`
+	FromAddress        *string        `meddler:"from_address"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp"`
+	LeafType           uint8          `meddler:"leaf_type"`
+	OriginNetwork      uint32         `meddler:"origin_network"`
+	OriginAddress      common.Address `meddler:"origin_address"`
+	DestinationNetwork uint32         `meddler:"destination_network"`
+	DestinationAddress common.Address `meddler:"destination_address"`
+	Amount             *big.Int       `meddler:"amount,bigint"`
+	Metadata           []byte         `meddler:"metadata"`
+	DepositCount       uint32         `meddler:"deposit_count"`
+	TxnSender          *string        `meddler:"txn_sender"`
+}
 
 // RecordUpdate represents a record update with txn_sender data
 type RecordUpdate struct {
 	BlockNum  uint64
 	BlockPos  uint64
 	TxnSender common.Address
+	FromAddr  common.Address
 }
 
 func (r *RecordUpdate) String() string {
@@ -155,7 +175,7 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM %s
-		WHERE txn_sender = '' OR txn_sender IS NULL
+		WHERE txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL
 	`, tableName)
 
 	var count int
@@ -178,9 +198,9 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 ) ([]RecordToBackfill, error) {
 	//nolint:gosec
 	query := fmt.Sprintf(`
-		SELECT block_num, block_pos, tx_hash, leaf_type, destination_network, destination_address, amount
+		SELECT *
 		FROM %s
-		WHERE txn_sender = '' OR txn_sender IS NULL
+		WHERE txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL
 		LIMIT $1
 	`, tableName)
 
@@ -200,28 +220,6 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	if !ok {
 		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
 	}
-	// var records []RecordToBackfill
-	// for rows.Next() {
-	// 	var record RecordToBackfill
-	// 	var txHashStr string
-	// 	var destinationNetwork string
-	// 	var destinationAddress string
-	// 	var amount string
-	// 	err := rows.Scan(&record.BlockNum, &record.BlockPos, &txHashStr, &record.LeafType,
-	// 		&destinationNetwork, &destinationAddress, &amount)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to scan record: %w", err)
-	// 	}
-	// 	record.DestinationNetwork, _ = strconv.ParseUint(destinationNetwork, 10, 32)
-	// 	record.DestinationAddress = common.HexToAddress(destinationAddress)
-	// 	record.Amount = new(big.Int)
-	// 	record.Amount.SetString(amount, 10)
-
-	// 	record.TxHash = common.HexToHash(txHashStr)
-
-	// 	records = append(records, record)
-	// }
-
 	return records, nil
 }
 
@@ -282,7 +280,7 @@ func (b *BackfillTxnSender) processBatch(
 
 	// Perform bulk update if we have any successful extractions
 	if len(updates) > 0 {
-		if err := b.bulkUpdateTxnSender(ctx, tableName, updates); err != nil {
+		if err := b.bulkUpdate(ctx, tableName, updates); err != nil {
 			b.log.Errorf("Failed to bulk update txn_sender for %d records: %v", len(updates), err)
 		} else {
 			b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
@@ -315,13 +313,14 @@ func (b *BackfillTxnSender) worker(
 			Amount:             job.Record.Amount,
 		}
 		// Extract txn_sender from transaction hash
-		txnSender, err := b.extractTxnSender(ctx, job.Record.TxHash, logEvent)
+		txnSender, fromAddr, err := b.extractData(ctx, job.Record.TxHash, logEvent)
 
 		result := TxnSenderResult{
 			Update: RecordUpdate{
 				BlockNum:  job.Record.BlockNum,
 				BlockPos:  job.Record.BlockPos,
 				TxnSender: txnSender,
+				FromAddr:  fromAddr,
 			},
 			Error: err,
 		}
@@ -351,21 +350,21 @@ type Transaction struct {
 	TransactionIndex string `json:"transactionIndex"`
 }
 
-// extractTxnSender extracts the transaction sender from a transaction hash
-func (b *BackfillTxnSender) extractTxnSender(ctx context.Context,
-	txHash common.Hash, logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (common.Address, error) {
+// extractData extracts the transaction txn_sender  and from_address
+func (b *BackfillTxnSender) extractData(ctx context.Context,
+	txHash common.Hash,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address, fromAddr common.Address, err error) {
 	// Check if context is cancelled before making network call
 	select {
 	case <-ctx.Done():
-		return common.Address{}, ctx.Err()
+		return common.Address{}, common.Address{}, ctx.Err()
 	default:
 	}
-	_, txnSender, err := ExtractTxnSenderAndFrom(b.client, b.bridgeAddr, txHash, logEvent, b.log)
-	return txnSender, err
+	return ExtractTxnSenderAndFrom(b.client, b.bridgeAddr, txHash, logEvent, b.log)
 }
 
-// bulkUpdateTxnSender performs a bulk update of txn_sender for multiple records
-func (b *BackfillTxnSender) bulkUpdateTxnSender(
+// bulkUpdate performs a bulk update of multiple records
+func (b *BackfillTxnSender) bulkUpdate(
 	ctx context.Context,
 	tableName string,
 	updates []RecordUpdate,
@@ -394,7 +393,9 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 
 	stmt, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
-		SET txn_sender = ?
+		SET 
+			txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
+			from_address = COALESCE(NULLIF(from_address, ''), ?)
 		WHERE block_num = ? AND block_pos = ?;
 	`, tableName))
 	if err != nil {
@@ -403,7 +404,7 @@ func (b *BackfillTxnSender) bulkUpdateTxnSender(
 	defer stmt.Close()
 
 	for _, update := range updates {
-		_, err := stmt.ExecContext(dbCtx, update.TxnSender.Hex(), update.BlockNum, update.BlockPos)
+		_, err := stmt.ExecContext(dbCtx, update.TxnSender.Hex(), update.FromAddr.Hex(), update.BlockNum, update.BlockPos)
 		if err != nil {
 			return fmt.Errorf("failed to execute update for block %d pos %d: %w",
 				update.BlockNum, update.BlockPos, err)

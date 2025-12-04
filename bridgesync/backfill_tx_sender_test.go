@@ -671,7 +671,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		})
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(t.Context(), txHash,
+		sender, _, err := backfiller.extractData(t.Context(), txHash,
 			&agglayerbridge.AgglayerbridgeBridgeEvent{
 				LeafType: bridgeLeafTypeAsset,
 			})
@@ -697,7 +697,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("transaction not found"))
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
+		sender, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
 			LeafType: bridgeLeafTypeAsset,
 		})
 		require.Error(t, err)
@@ -759,7 +759,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			},
 		}
 
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
 		require.NoError(t, err)
 	})
 
@@ -823,7 +823,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			},
 		}
 
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
 		require.NoError(t, err)
 	})
 
@@ -842,7 +842,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		defer backfiller.Close()
 
 		ctx := t.Context()
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", []RecordUpdate{})
+		err = backfiller.bulkUpdate(ctx, "bridge", []RecordUpdate{})
 		require.NoError(t, err)
 	})
 
@@ -872,7 +872,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			},
 		}
 
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to bulk update txn_sender")
 	})

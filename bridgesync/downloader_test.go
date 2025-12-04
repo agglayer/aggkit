@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mainnet: case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985)
+// case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
 func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	t.Skip("Skipping exploratory test")
 	l1url := os.Getenv("L1URL")
@@ -34,7 +36,7 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethRawClient)
 	require.NoError(t, err)
 	logger := logger.WithFields("module", "test")
-	bn := big.NewInt(0).SetUint64(17830788)
+	bn := big.NewInt(0).SetUint64(19566985)
 	handler := buildBridgeEventHandler(agglayerBridge, bridgeAddr, ethClient, logger)
 	filterQuery := ethereum.FilterQuery{
 		Addresses: []common.Address{bridgeAddr},
@@ -43,6 +45,11 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	}
 	logs, err := ethClient.FilterLogs(t.Context(), filterQuery)
 	require.NoError(t, err)
+	foundCalls, _, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+		common.HexToHash("0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65"),
+		logger.WithFields("module", "test"), nil)
+	require.NotNil(t, foundCalls)
+	showCalls(t, foundCalls)
 	for _, vLog := range logs {
 		if vLog.Topics[0] == bridgeEventSignature {
 			err := handler(&sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: bn.Uint64()}}, vLog)
@@ -79,7 +86,7 @@ func TestExtractCallDataCaseNotMatchingExploratory(t *testing.T) {
 	showCalls(t, foundCalls)
 	amount, ok := big.NewInt(0).SetString("3308702758450298978558701", 10)
 	require.True(t, ok)
-	txnSender, err := ExtractTxnSenderFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
+	txnSender, err := ExtractFromAddrFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
 		LeafType:           bridgeLeafTypeAsset,
 		DestinationNetwork: 1,
 		DestinationAddress: common.HexToAddress("0x3CF5Ed527DB2E08e5DdD5A2c692Dc5Ae35778D46"),
@@ -104,7 +111,7 @@ func TestExtractCallDataCaseMessageExploratory(t *testing.T) {
 	for _, call := range foundCalls {
 		fmt.Printf("Root Call To: %s From: %s\n", call.To.Hex(), call.From.Hex())
 	}
-	txnSender, err := ExtractTxnSenderFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
+	txnSender, err := ExtractFromAddrFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
 		LeafType:           bridgeLeafTypeAsset,
 		DestinationNetwork: 1,
 		DestinationAddress: common.HexToAddress("0x679606F3b37c49946F5AA7774a37f03387c7f264"),
@@ -192,7 +199,7 @@ func TestExtractTxnSenderFromCalls(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			txnSender, err := ExtractTxnSenderFromCalls(tt.callFrames, tt.event)
+			txnSender, err := ExtractFromAddrFromCalls(tt.callFrames, tt.event)
 			if tt.expectErr != "" {
 				require.ErrorContains(t, err, tt.expectErr)
 			} else {
