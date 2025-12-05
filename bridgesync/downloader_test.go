@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,8 @@ import (
 // mainnet: case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985)
 // case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
 func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
-	t.Skip("Skipping exploratory test")
+	//t.Skip("Skipping exploratory test")
+	ctx := t.Context()
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
@@ -36,8 +38,8 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethRawClient)
 	require.NoError(t, err)
 	logger := logger.WithFields("module", "test")
-	bn := big.NewInt(0).SetUint64(19566985)
-	handler := buildBridgeEventHandler(agglayerBridge, bridgeAddr, ethClient, logger)
+	bn := big.NewInt(0).SetUint64(22770713)
+	handler := buildBridgeEventHandler(ctx, agglayerBridge, bridgeAddr, ethClient, logger)
 	filterQuery := ethereum.FilterQuery{
 		Addresses: []common.Address{bridgeAddr},
 		FromBlock: bn,
@@ -45,11 +47,14 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	}
 	logs, err := ethClient.FilterLogs(t.Context(), filterQuery)
 	require.NoError(t, err)
-	foundCalls, _, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
-		common.HexToHash("0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65"),
+	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+		common.HexToHash("0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab"),
 		logger.WithFields("module", "test"), nil)
 	require.NotNil(t, foundCalls)
-	showCalls(t, foundCalls)
+	require.NotNil(t, rootCall)
+	showListPtrCall(t, foundCalls)
+	//showListCall(t, rootCall.Calls, 0)
+	showLogs(t, logs, &bridgeEventSignature)
 	for _, vLog := range logs {
 		if vLog.Topics[0] == bridgeEventSignature {
 			err := handler(&sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: bn.Uint64()}}, vLog)
@@ -57,15 +62,44 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 		}
 	}
 }
-func showCalls(t *testing.T, calls []*Call) {
+func showLogs(t *testing.T, logs []types.Log, equalTo *common.Hash) {
+	t.Helper()
+	for i, vLog := range logs {
+		if equalTo != nil && vLog.Topics[0] != *equalTo {
+			continue
+		}
+		fmt.Printf("Log %d: index: %d, Address:%s, Topics: +%v, BlockNumber:%d, TxHash:%s\n", i,
+			vLog.Index, vLog.Address, vLog.Topics, vLog.BlockNumber, vLog.TxHash.Hex())
+	}
+}
+func showCall(call *Call, nestedLevel int) {
+	nestedPrefixStr := string(bytes.Repeat([]byte("*"), nestedLevel))
+
+	hash := crypto.Keccak256(call.Input)
+	fmt.Printf("%s Root Call To: %s From: %s Input Hash: %s\n", nestedPrefixStr, call.To.Hex(), call.From.Hex(),
+		common.Bytes2Hex(hash))
+	params, err := ExtractParamFromCallData(call.Input)
+	if err == nil {
+		fmt.Printf("%s  ---- Params: LeafType: %d DestNetwork: %d DestAddress: %s Amount: %s Token: %s Input: %s\n",
+			nestedPrefixStr, params.LeafType, params.DestinationNetwork, params.DestinationAddress.Hex(), params.Amount.String(), params.Token.Hex(),
+			common.Bytes2Hex(call.Input))
+	} else {
+		fmt.Printf("%s  ---- ???\n", nestedPrefixStr)
+	}
+}
+func showListCall(t *testing.T, calls []Call, nestedLevel int) {
 	t.Helper()
 	for _, call := range calls {
-		fmt.Printf("Root Call To: %s From: %s\n", call.To.Hex(), call.From.Hex())
-		params, err := ExtractParamFromCallData(call.Input)
-		require.NoError(t, err)
-		fmt.Printf("  Params: LeafType: %d DestNetwork: %d DestAddress: %s Amount: %s Token: %s Input: %s\n",
-			params.LeafType, params.DestinationNetwork, params.DestinationAddress.Hex(), params.Amount.String(), params.Token.Hex(),
-			common.Bytes2Hex(call.Input))
+		showCall(&call, nestedLevel)
+		if len(call.Calls) > 0 {
+			showListCall(t, call.Calls, nestedLevel+1)
+		}
+	}
+}
+func showListPtrCall(t *testing.T, calls []*Call) {
+	t.Helper()
+	for _, call := range calls {
+		showCall(call, 0)
 	}
 }
 
@@ -83,7 +117,7 @@ func TestExtractCallDataCaseNotMatchingExploratory(t *testing.T) {
 		logger.WithFields("module", "test"), nil)
 	require.NoError(t, err)
 	fmt.Printf("rootCall To: %s From: %s\n", rootCall.To.Hex(), rootCall.From.Hex())
-	showCalls(t, foundCalls)
+	showListPtrCall(t, foundCalls)
 	amount, ok := big.NewInt(0).SetString("3308702758450298978558701", 10)
 	require.True(t, ok)
 	txnSender, err := ExtractFromAddrFromCalls(foundCalls, &agglayerbridge.AgglayerbridgeBridgeEvent{
@@ -545,7 +579,7 @@ func TestBuildAppender(t *testing.T) {
 
 			logger := logger.WithFields("module", "test")
 			bridgeDeployment.kind = tt.deploymentKind
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -947,7 +981,7 @@ func TestTxnSenderField(t *testing.T) {
 				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
