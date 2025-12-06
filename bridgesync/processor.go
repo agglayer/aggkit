@@ -484,7 +484,7 @@ func (u *UnsetClaim) String() string {
 }
 
 // SetClaim representation of a SetClaim event,
-// that is emitted by the bridge contract when a claim is set.
+// that is emitted by the L2 bridge contract when a claim is set.
 type SetClaim struct {
 	BlockNum    uint64      `meddler:"block_num"`
 	BlockPos    uint64      `meddler:"block_pos"`
@@ -504,6 +504,17 @@ func (s *SetClaim) String() string {
 		globalIndexStr, s.CreatedAt)
 }
 
+// BackwardLET representation of a BackwardLET event,
+// that is emitted by the L2 bridge contract when a LET is rolled back.
+type BackwardLET struct {
+	BlockNum             uint64      `meddler:"block_num"`
+	BlockPos             uint64      `meddler:"block_pos"`
+	PreviousDepositCount *big.Int    `meddler:"previous_deposit_count,bigint"`
+	PreviousRoot         common.Hash `meddler:"previous_root,hash"`
+	NewDepositCount      *big.Int    `meddler:"new_deposit_count,bigint"`
+	NewRoot              common.Hash `meddler:"new_root,hash"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -513,6 +524,7 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 	UnsetClaim           *UnsetClaim
 	SetClaim             *SetClaim
+	BackwardLET          *BackwardLET
 }
 
 func (e Event) String() string {
