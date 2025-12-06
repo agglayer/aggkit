@@ -185,6 +185,7 @@ jobs:
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
       execute-all-tests: ${{ github.event_name == 'schedule' }}
+      fail-fast: ${{ github.event_name != 'schedule' }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-pessimistic-tests-result:
@@ -213,6 +214,7 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       test-name: "test-single-l2-network-op-succinct"
       execute-all-tests: ${{ github.event_name == 'schedule' }}
+      fail-fast: ${{ github.event_name != 'schedule' }}
 
   check-single-network-op-succinct-tests-result:
     name: Check results for single l2 network (op-succinct)
@@ -240,6 +242,7 @@ jobs:
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
       test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
       execute-all-tests: ${{ github.event_name == 'schedule' }}
+      fail-fast: ${{ github.event_name != 'schedule' }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-succinct-aggoracle-committee-tests-result:
