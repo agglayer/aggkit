@@ -51,6 +51,9 @@ const (
 	// setClaimTableName is the name of the table that stores set claim events
 	setClaimTableName = "set_claim"
 
+	// backwardLETTableName is the name of the table that stores backward local exit tree events
+	backwardLETTableName = "backward_let"
+
 	// nilStr holds nil string
 	nilStr = "nil"
 )
@@ -1341,6 +1344,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.SetClaim != nil {
 			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
 				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.BackwardLET != nil {
+			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
+				p.log.Errorf("failed to insert backward LET event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
