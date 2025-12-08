@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"regexp"
 	"strings"
@@ -1349,9 +1350,26 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
-			// TODO: update the exit tree accordingly
+			ndc := event.BackwardLET.NewDepositCount
+
+			// Check bounds
+			if !ndc.IsUint64() {
+				return fmt.Errorf("NewDepositCount=%s does not fit into uint64", ndc.String())
+			}
+
+			ndcU64 := ndc.Uint64()
+			if ndcU64 > math.MaxUint32 {
+				return fmt.Errorf("NewDepositCount=%d exceeds uint32 max (%d)", ndcU64, uint32(math.MaxUint32))
+			}
+
+			ndcU32 := uint32(ndcU64)
+
+			if err := p.exitTree.BackwardToIndex(ctx, tx, ndcU32); err != nil {
+				p.log.Errorf("failed to backward local exit tree to %d deposit count", ndcU32)
+				return err
+			}
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count >= $1", bridgeTableName)
-			_, err := tx.Exec(deleteBridges, event.BackwardLET.NewDepositCount)
+			_, err := tx.Exec(deleteBridges, ndc)
 			if err != nil {
 				p.log.Errorf("failed to remove bridges whose deposit count is greater than or equal to %d",
 					event.BackwardLET.NewDepositCount)
@@ -1359,7 +1377,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 
 			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
-				p.log.Errorf("failed to insert backward LET event at block %d: %v", block.Num, err)
+				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
