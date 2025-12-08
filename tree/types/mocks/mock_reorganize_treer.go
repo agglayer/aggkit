@@ -27,6 +27,54 @@ func (_m *ReorganizeTreer) EXPECT() *ReorganizeTreer_Expecter {
 	return &ReorganizeTreer_Expecter{mock: &_m.Mock}
 }
 
+// BackwardToIndex provides a mock function with given fields: ctx, tx, targetIndex
+func (_m *ReorganizeTreer) BackwardToIndex(ctx context.Context, tx types.Txer, targetIndex uint32) error {
+	ret := _m.Called(ctx, tx, targetIndex)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BackwardToIndex")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.Txer, uint32) error); ok {
+		r0 = rf(ctx, tx, targetIndex)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ReorganizeTreer_BackwardToIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BackwardToIndex'
+type ReorganizeTreer_BackwardToIndex_Call struct {
+	*mock.Call
+}
+
+// BackwardToIndex is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx types.Txer
+//   - targetIndex uint32
+func (_e *ReorganizeTreer_Expecter) BackwardToIndex(ctx interface{}, tx interface{}, targetIndex interface{}) *ReorganizeTreer_BackwardToIndex_Call {
+	return &ReorganizeTreer_BackwardToIndex_Call{Call: _e.mock.On("BackwardToIndex", ctx, tx, targetIndex)}
+}
+
+func (_c *ReorganizeTreer_BackwardToIndex_Call) Run(run func(ctx context.Context, tx types.Txer, targetIndex uint32)) *ReorganizeTreer_BackwardToIndex_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.Txer), args[2].(uint32))
+	})
+	return _c
+}
+
+func (_c *ReorganizeTreer_BackwardToIndex_Call) Return(_a0 error) *ReorganizeTreer_BackwardToIndex_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ReorganizeTreer_BackwardToIndex_Call) RunAndReturn(run func(context.Context, types.Txer, uint32) error) *ReorganizeTreer_BackwardToIndex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLastRoot provides a mock function with given fields: tx
 func (_m *ReorganizeTreer) GetLastRoot(tx types.Querier) (treetypes.Root, error) {
 	ret := _m.Called(tx)

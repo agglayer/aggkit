@@ -133,14 +133,11 @@ func (t *Tree) getRHTNode(tx dbtypes.Querier, nodeHash common.Hash) (*types.Tree
 }
 
 func (t *Tree) storeNodes(tx dbtypes.Txer, nodes []types.TreeNode) error {
-	for i := 0; i < len(nodes); i++ {
-		if err := meddler.Insert(tx, t.rhtTable, &nodes[i]); err != nil {
-			if sqliteErr, ok := db.SQLiteErr(err); ok {
-				if sqliteErr.ExtendedCode == db.UniqueConstrain {
-					// ignore repeated entries. This is likely to happen due to not
-					// cleaning RHT when reorg
-					continue
-				}
+	for _, node := range nodes {
+		if err := meddler.Insert(tx, t.rhtTable, &node); err != nil {
+			if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.ExtendedCode == db.UniqueConstrain {
+				// ignore repeated entries
+				continue
 			}
 			return err
 		}
