@@ -592,7 +592,7 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 type processor struct {
 	syncerID       string
 	db             *sql.DB
-	exitTree       *tree.AppendOnlyTree
+	exitTree       types.FullTreer
 	log            *log.Logger
 	mu             mutex.RWMutex
 	halted         bool
