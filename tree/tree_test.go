@@ -327,7 +327,7 @@ func TestTree_BackwardToIndex(t *testing.T) {
 		}
 
 		// Delete roots with index > 4
-		err := tree.Tree.BackwardToIndex(ctx, 4)
+		err := tree.BackwardToIndex(ctx, 4)
 		require.NoError(t, err)
 
 		// Roots with index 0..4 should exist
@@ -363,7 +363,7 @@ func TestTree_BackwardToIndex(t *testing.T) {
 
 		putTestLeaves(t, tree, treeDB, 3, 0)
 
-		err := tree.Tree.BackwardToIndex(ctx, 10)
+		err := tree.BackwardToIndex(ctx, 10)
 		require.NoError(t, err)
 
 		// All roots should still exist
@@ -380,7 +380,7 @@ func TestTree_BackwardToIndex(t *testing.T) {
 		treeDB := createTreeDBForTest(t)
 		tree := NewAppendOnlyTree(treeDB, "")
 
-		err := tree.Tree.BackwardToIndex(ctx, 0)
+		err := tree.BackwardToIndex(ctx, 0)
 		require.NoError(t, err)
 	})
 
