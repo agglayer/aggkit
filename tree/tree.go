@@ -247,8 +247,9 @@ func (t *Tree) Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error {
 }
 
 // BackwardToIndex deletes all the roots with index higher than targetIndex
-func (t *Tree) BackwardToIndex(ctx context.Context, targetIndex uint32) error {
-	_, err := t.db.Exec(
+func (t *Tree) BackwardToIndex(ctx context.Context, tx dbtypes.Txer, targetIndex uint32) error {
+	_, err := tx.ExecContext(
+		ctx,
 		fmt.Sprintf(`DELETE FROM %s WHERE position > $1`, t.rootTable),
 		targetIndex,
 	)

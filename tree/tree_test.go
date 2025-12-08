@@ -326,9 +326,12 @@ func TestTree_BackwardToIndex(t *testing.T) {
 			require.Equal(t, uint32(i), root.Index)
 		}
 
-		// Delete roots with index > 4
-		err := tree.BackwardToIndex(ctx, 4)
+		tx, err := db.NewTx(context.Background(), treeDB)
 		require.NoError(t, err)
+
+		// Delete roots with index > 4
+		require.NoError(t, tree.BackwardToIndex(ctx, tx, 4))
+		require.NoError(t, tx.Commit())
 
 		// Roots with index 0..4 should exist
 		for i := 0; i <= 4; i++ {
@@ -363,8 +366,11 @@ func TestTree_BackwardToIndex(t *testing.T) {
 
 		putTestLeaves(t, tree, treeDB, 3, 0)
 
-		err := tree.BackwardToIndex(ctx, 10)
+		tx, err := db.NewTx(context.Background(), treeDB)
 		require.NoError(t, err)
+
+		require.NoError(t, tree.BackwardToIndex(ctx, tx, 10))
+		require.NoError(t, tx.Commit())
 
 		// All roots should still exist
 		for i := range 3 {
@@ -380,8 +386,10 @@ func TestTree_BackwardToIndex(t *testing.T) {
 		treeDB := createTreeDBForTest(t)
 		tree := NewAppendOnlyTree(treeDB, "")
 
-		err := tree.BackwardToIndex(ctx, 0)
+		tx, err := db.NewTx(context.Background(), treeDB)
 		require.NoError(t, err)
+
+		require.NoError(t, tree.BackwardToIndex(ctx, tx, 0))
 	})
 
 	t.Run("returns error on database failure", func(t *testing.T) {
@@ -398,8 +406,10 @@ func TestTree_BackwardToIndex(t *testing.T) {
 			rootTable: "nonexistent_table",
 		}
 
-		err = tree.BackwardToIndex(ctx, 0)
-		require.Error(t, err)
+		tx, err := db.NewTx(context.Background(), treeDB)
+		require.NoError(t, err)
+
+		err = tree.BackwardToIndex(ctx, tx, 0)
 		require.ErrorContains(t, err, "no such table")
 	})
 }
