@@ -346,6 +346,32 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
+		{
+			name:           "backwardLETSignature appender",
+			eventSignature: backwardLETEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(backwardLETEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				previousDepositCount := big.NewInt(10)
+				previousRoot := common.HexToHash("0xdeadbeef")
+				newDepositCount := big.NewInt(8)
+				newRoot := common.HexToHash("0x5ca1e")
+				data, err := event.Inputs.Pack(previousDepositCount, previousRoot, newDepositCount, newRoot)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{backwardLETEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
 	}
 
 	for _, tt := range tests {
