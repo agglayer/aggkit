@@ -1349,6 +1349,15 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
+			// TODO: update the exit tree accordingly
+			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count >= $1", bridgeTableName)
+			_, err := tx.Exec(deleteBridges, event.BackwardLET.NewDepositCount)
+			if err != nil {
+				p.log.Errorf("failed to remove bridges whose deposit count is greater than or equal to %d",
+					event.BackwardLET.NewDepositCount)
+				return err
+			}
+
 			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
 				p.log.Errorf("failed to insert backward LET event at block %d: %v", block.Num, err)
 				return err
