@@ -1114,6 +1114,9 @@ func TestBridgeCallParams_String(t *testing.T) {
 	}
 	expectedStr := "LeafType: 1, DestinationNetwork: 42, DestinationAddress: 0x1234567890AbcdEF1234567890aBcdef12345678, Amount: 1000, Token: 0xbeEFdeaDBeefDeadBEeFDeAdbEeFDeaDbeefdEad"
 	require.Equal(t, expectedStr, params.String())
+
+	var nilParams *bridgeCallParams
+	require.Equal(t, "<nil>", nilParams.String())
 }
 
 func TestBridgeCallParams_Equal(t *testing.T) {
