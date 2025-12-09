@@ -119,19 +119,45 @@ func buildAppender(
 
 	return appender, nil
 }
+
+// Transaction represents the structure of a transaction returned by eth_getTransactionByHash
+type Transaction struct {
+	FromRaw          string `json:"from"`
+	To               string `json:"to"`
+	Hash             string `json:"hash"`
+	Value            string `json:"value"`
+	Gas              string `json:"gas"`
+	GasPrice         string `json:"gasPrice"`
+	Nonce            string `json:"nonce"`
+	Input            string `json:"input"`
+	BlockHash        string `json:"blockHash"`
+	BlockNumber      string `json:"blockNumber"`
+	TransactionIndex string `json:"transactionIndex"`
+}
+
+func (t *Transaction) From() common.Address {
+	return common.HexToAddress(t.FromRaw)
+}
+
+func RPCTransactionByHash(ctx context.Context, client aggkittypes.EthClienter,
+	txHash common.Hash) (*Transaction, error) {
+	// Use client.Call to fetch transaction details using eth_getTransactionByHash
+	var tx Transaction
+	err := client.Call(&tx, "eth_getTransactionByHash", txHash.Hex())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch transaction by hash: %w", err)
+	}
+	return &tx, nil
+}
+
 func extractTxnSender(ctx context.Context,
 	client aggkittypes.EthClienter,
 	txHash common.Hash) (common.Address, error) {
-	tx, _, err := client.TransactionByHash(ctx, txHash)
+	tx, err := RPCTransactionByHash(ctx, client, txHash)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("failed to get transaction by hash for %s: %w", txHash.Hex(), err)
 	}
-	signer := types.LatestSignerForChainID(tx.ChainId())
-	from, err := types.Sender(signer, tx)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("failed to derive sender from tx for %s: %w", txHash.Hex(), err)
-	}
-	return from, nil
+	return tx.From(), nil
 }
 
 // ExtractTxnSenderAndFrom extracts the txn_sender and from address from the transaction trace.

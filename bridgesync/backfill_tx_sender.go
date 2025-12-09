@@ -117,16 +117,6 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 
 // RecordToBackfill represents a record that needs txn_sender backfilling
 //
-//	type RecordToBackfill struct {
-//		BlockNum           uint64
-//		BlockPos           uint64
-//		TxHash             common.Hash
-//		TxnSender          common.Address
-//		DestinationNetwork uint64
-//		DestinationAddress common.Address
-//		Amount             *big.Int
-//		LeafType           uint8
-//	}
 
 type RecordToBackfill struct {
 	BlockNum           uint64         `meddler:"block_num"`
@@ -136,9 +126,9 @@ type RecordToBackfill struct {
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address"`
+	OriginAddress      common.Address `meddler:"origin_address,address"`
 	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address"`
+	DestinationAddress common.Address `meddler:"destination_address,address"`
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
@@ -337,21 +327,6 @@ func (b *BackfillTxnSender) worker(
 		case resultChan <- result:
 		}
 	}
-}
-
-// Transaction represents the structure of a transaction returned by eth_getTransactionByHash
-type Transaction struct {
-	From             string `json:"from"`
-	To               string `json:"to"`
-	Hash             string `json:"hash"`
-	Value            string `json:"value"`
-	Gas              string `json:"gas"`
-	GasPrice         string `json:"gasPrice"`
-	Nonce            string `json:"nonce"`
-	Input            string `json:"input"`
-	BlockHash        string `json:"blockHash"`
-	BlockNumber      string `json:"blockNumber"`
-	TransactionIndex string `json:"transactionIndex"`
 }
 
 // extractData extracts the transaction txn_sender  and from_address
