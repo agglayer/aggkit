@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -43,6 +44,7 @@ func NewAgglayerBridgeL2Reader(
 // GetUnsetClaimsForBlockRange retrieves all unset claims (unclaims) within a specified block range.
 // It filters the UpdatedUnsetGlobalIndexHashChain events from the bridge contract and converts them
 // into Unclaim objects for further processing.
+// If the block range is too large, it automatically splits the request into smaller chunks.
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout control
@@ -57,6 +59,32 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 	if fromBlock > toBlock {
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
+
+	unclaims, err := r.fetchUnsetClaims(ctx, fromBlock, toBlock)
+	if err != nil {
+		// Check if error is due to block range being too large
+		maxRange, parseErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+		if parseErr == nil {
+			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
+			return aggkitcommon.ChunkedRangeQuery(
+				ctx, fromBlock, toBlock, maxRange,
+				r.fetchUnsetClaims,
+				func(all, chunk []types.Unclaim) []types.Unclaim {
+					return append(all, chunk...)
+				},
+				make([]types.Unclaim, 0),
+			)
+		}
+
+		return nil, err
+	}
+
+	return unclaims, nil
+}
+
+// fetchUnsetClaims performs the actual event filtering for a given block range
+func (r *AgglayerBridgeL2Reader) fetchUnsetClaims(ctx context.Context,
+	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
 	unclaimIterator, err := r.agglayerBridgeL2.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Context: ctx, Start: fromBlock, End: &toBlock})
 	if err != nil {
