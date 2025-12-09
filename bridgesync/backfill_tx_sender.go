@@ -310,6 +310,10 @@ func (b *BackfillTxnSender) worker(
 			LeafType:           job.Record.LeafType,
 			DestinationNetwork: job.Record.DestinationNetwork,
 			DestinationAddress: job.Record.DestinationAddress,
+			OriginAddress:      job.Record.OriginAddress,
+			OriginNetwork:      job.Record.OriginNetwork,
+			DepositCount:       job.Record.DepositCount,
+			Metadata:           job.Record.Metadata,
 			Amount:             job.Record.Amount,
 		}
 		// Extract txn_sender from transaction hash

@@ -25,10 +25,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mainnet: case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985)
+// mainnet:
+// ase https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985) -> fix
 // case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
 func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
-	//t.Skip("Skipping exploratory test")
+	t.Skip("Skipping exploratory test")
 	ctx := t.Context()
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
@@ -50,10 +51,11 @@ func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
 		common.HexToHash("0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab"),
 		logger.WithFields("module", "test"), nil)
+	require.NoError(t, err)
 	require.NotNil(t, foundCalls)
 	require.NotNil(t, rootCall)
 	showListPtrCall(t, foundCalls)
-	//showListCall(t, rootCall.Calls, 0)
+	showListCall(t, rootCall.Calls, 0)
 	showLogs(t, logs, &bridgeEventSignature)
 	for _, vLog := range logs {
 		if vLog.Topics[0] == bridgeEventSignature {

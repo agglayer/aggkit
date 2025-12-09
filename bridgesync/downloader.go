@@ -293,16 +293,14 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 			if callParams.Equal(logEvent) {
 				if candidate != nil {
 					// Desperate try: to match by token address
-					if candidateCallParams.Token == logEvent.OriginAddress {
+					if candidateCallParams.Token.Hex() == logEvent.OriginAddress.Hex() {
 						continue
 					}
-					if callParams.Token == logEvent.OriginAddress {
-						candidate = call
-						candidateCallParams = callParams
+					if callParams.Token.Hex() != logEvent.OriginAddress.Hex() {
+						return common.Address{}, fmt.Errorf("multiple matching calls found to extract txn sender. "+
+							"Previous: %s, Current: %s Event: OriginAddress: %s",
+							candidateCallParams.String(), callParams.String(), logEvent.OriginAddress.Hex())
 					}
-					return common.Address{}, fmt.Errorf("multiple matching calls found to extract txn sender. "+
-						"Previous: %s, Current: %s",
-						candidateCallParams.String(), callParams.String())
 				}
 				candidate = call
 				candidateCallParams = callParams
@@ -330,7 +328,8 @@ func buildBridgeEventHandler(
 		}
 		logger.Debugf("Parsed BridgeEvent: LeafType: %d, OriginNetwork:%d, OriginAddress: %s\n"+
 			"DestinationNetwork: %d, DestinationAddress: %s, DepositCount: %d, Amount: %s, ",
-			bridgeEvent.LeafType, bridgeEvent.OriginNetwork, bridgeEvent.OriginAddress.Hex(), bridgeEvent.DestinationNetwork, bridgeEvent.DestinationAddress.Hex(), bridgeEvent.DepositCount, bridgeEvent.Amount.String())
+			bridgeEvent.LeafType, bridgeEvent.OriginNetwork, bridgeEvent.OriginAddress.Hex(), bridgeEvent.DestinationNetwork,
+			bridgeEvent.DestinationAddress.Hex(), bridgeEvent.DepositCount, bridgeEvent.Amount.String())
 		txnSender, fromAddress, err := ExtractTxnSenderAndFrom(ctx, client, bridgeAddr, l.TxHash,
 			bridgeEvent, logger)
 		if err != nil {
