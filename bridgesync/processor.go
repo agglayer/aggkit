@@ -350,55 +350,6 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	return true, nil
 }
 
-type InvalidClaim struct {
-	// claim struct fields
-	BlockNum            uint64         `meddler:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash"`
-	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
-	OriginNetwork       uint32         `meddler:"origin_network"`
-	OriginAddress       common.Address `meddler:"origin_address"`
-	DestinationAddress  common.Address `meddler:"destination_address"`
-	Amount              *big.Int       `meddler:"amount,bigint"`
-	ProofLocalExitRoot  types.Proof    `meddler:"proof_local_exit_root,merkleproof"`
-	ProofRollupExitRoot types.Proof    `meddler:"proof_rollup_exit_root,merkleproof"`
-	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"`
-	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"`
-	GlobalExitRoot      common.Hash    `meddler:"global_exit_root,hash"`
-	DestinationNetwork  uint32         `meddler:"destination_network"`
-	Metadata            []byte         `meddler:"metadata"`
-	IsMessage           bool           `meddler:"is_message"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	// additional fields
-	Reason    string `meddler:"reason"`
-	CreatedAt uint64 `meddler:"created_at"`
-}
-
-// NewInvalidClaim creates a new InvalidClaim from a Claim and a reason
-func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
-	return &InvalidClaim{
-		BlockNum:            c.BlockNum,
-		BlockPos:            c.BlockPos,
-		TxHash:              c.TxHash,
-		GlobalIndex:         c.GlobalIndex,
-		OriginNetwork:       c.OriginNetwork,
-		OriginAddress:       c.OriginAddress,
-		DestinationAddress:  c.DestinationAddress,
-		Amount:              c.Amount,
-		ProofLocalExitRoot:  c.ProofLocalExitRoot,
-		ProofRollupExitRoot: c.ProofRollupExitRoot,
-		MainnetExitRoot:     c.MainnetExitRoot,
-		RollupExitRoot:      c.RollupExitRoot,
-		GlobalExitRoot:      c.GlobalExitRoot,
-		DestinationNetwork:  c.DestinationNetwork,
-		Metadata:            c.Metadata,
-		IsMessage:           c.IsMessage,
-		BlockTimestamp:      c.BlockTimestamp,
-		Reason:              reason,
-		CreatedAt:           uint64(time.Now().UTC().Unix()),
-	}
-}
-
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
 	BlockNum            uint64                       `meddler:"block_num"`
