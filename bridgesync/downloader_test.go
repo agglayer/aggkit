@@ -80,6 +80,7 @@ func showCall(call *Call, nestedLevel int) {
 	hash := crypto.Keccak256(call.Input)
 	fmt.Printf("%s Root Call To: %s From: %s Input Hash: %s\n", nestedPrefixStr, call.To.Hex(), call.From.Hex(),
 		common.Bytes2Hex(hash))
+	fmt.Printf("%s -- Input: %s\n", nestedPrefixStr, common.Bytes2Hex(call.Input))
 	params, err := ExtractParamFromCallData(call.Input)
 	if err == nil {
 		fmt.Printf("%s  ---- Params: LeafType: %d DestNetwork: %d DestAddress: %s Amount: %s Token: %s Input: %s\n",
@@ -1130,6 +1131,20 @@ func TestBridgeCallParams_Equal(t *testing.T) {
 		Amount:             params.Amount,
 	}
 	require.True(t, params.Equal(logEvent))
+}
+
+const bridgeAssetCallData = "0xcd58657900000000000000000000000000000000000000000000000000000000000000140000000000000000000000005480f3152748809495bd56c14eab4a622aa3a19b00000000000000000000000000000000000000000000000000b1a2bc2ec500000000000000000000000000002dc70fb75b88d2eb4715bc06e1595e6d97c34dff000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000"
+
+func TestExtractParamFromCallData(t *testing.T) {
+	_, err := ExtractParamFromCallData([]byte{0x01, 0x02})
+	require.ErrorContains(t, err, "too short")
+
+	_, err = ExtractParamFromCallData([]byte{0x01, 0x02, 0x3, 0x4})
+	require.ErrorContains(t, err, "failed to get method")
+
+	calldata := common.FromHex(bridgeAssetCallData)
+	_, err = ExtractParamFromCallData(calldata)
+	require.NoError(t, err)
 }
 
 func strPtr(s string) *string {

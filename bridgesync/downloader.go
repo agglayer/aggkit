@@ -179,8 +179,7 @@ func ExtractTxnSenderAndFrom(ctx context.Context,
 		return txnSender, logEvent.OriginAddress, nil
 	}
 	foundCalls, rootCall, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
-		switch logEvent.LeafType {
-		case bridgeLeafTypeAsset:
+		if logEvent.LeafType == bridgeLeafTypeAsset {
 			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
 		}
 		return false, nil
