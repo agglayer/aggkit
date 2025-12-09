@@ -1350,26 +1350,25 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
-			ndc := event.BackwardLET.NewDepositCount
-
-			// Check bounds
-			if !ndc.IsUint64() {
-				return fmt.Errorf("NewDepositCount=%s does not fit into uint64", ndc.String())
+			newDepositCount := event.BackwardLET.NewDepositCount
+			if !newDepositCount.IsUint64() {
+				return fmt.Errorf("NewDepositCount=%d does not fit into uint64", newDepositCount)
 			}
 
-			ndcU64 := ndc.Uint64()
-			if ndcU64 > math.MaxUint32 {
-				return fmt.Errorf("NewDepositCount=%d exceeds uint32 max (%d)", ndcU64, uint32(math.MaxUint32))
+			newDepositCountU64 := newDepositCount.Uint64()
+			if newDepositCountU64 > math.MaxUint32 {
+				return fmt.Errorf("NewDepositCount=%d exceeds uint32 max (%d)", newDepositCountU64, uint32(math.MaxUint32))
 			}
 
-			ndcU32 := uint32(ndcU64)
-
-			if err := p.exitTree.BackwardToIndex(ctx, tx, ndcU32); err != nil {
-				p.log.Errorf("failed to backward local exit tree to %d deposit count", ndcU32)
+			newDepositCountU32 := uint32(newDepositCountU64)
+			if err := p.exitTree.BackwardToIndex(ctx, tx, newDepositCountU32); err != nil {
+				p.log.Errorf("failed to backward local exit tree to %d deposit count", newDepositCountU32)
 				return err
 			}
+
+			// remove all the bridges whose deposit_count is >= than the one captured by the BackwardLET event
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count >= $1", bridgeTableName)
-			_, err := tx.Exec(deleteBridges, ndc)
+			_, err := tx.Exec(deleteBridges, newDepositCount)
 			if err != nil {
 				p.log.Errorf("failed to remove bridges whose deposit count is greater than or equal to %d",
 					event.BackwardLET.NewDepositCount)
