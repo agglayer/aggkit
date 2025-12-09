@@ -1366,8 +1366,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-			// remove all the bridges whose deposit_count is >= than the one captured by the BackwardLET event
-			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count >= $1", bridgeTableName)
+			// remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
+			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
 			_, err := tx.Exec(deleteBridges, newDepositCount)
 			if err != nil {
 				p.log.Errorf("failed to remove bridges whose deposit count is greater than or equal to %d",
