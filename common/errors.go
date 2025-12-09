@@ -8,7 +8,7 @@ import (
 
 const maxRangeMatchGroups = 2
 
-// parseMaxRangeFromError extracts the max range value from error message
+// ParseMaxRangeFromError extracts the max range value from error message
 // Expected format: "block range too large, max range: 1000"
 func ParseMaxRangeFromError(errMsg string) (uint64, error) {
 	if !strings.Contains(errMsg, "block range too large") {
