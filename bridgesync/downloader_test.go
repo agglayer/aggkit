@@ -975,6 +975,15 @@ func TestTxnSenderField(t *testing.T) {
 				Return(nil).
 				Maybe()
 
+			ethClient.EXPECT().
+				Call(mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).
+				Run(func(result any, method string, args ...any) {
+					arg, ok := result.(*Transaction)
+					require.True(t, ok)
+					arg.FromRaw = tt.callFrame.From.Hex()
+				}).
+				Return(nil).
+				Maybe()
 			agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
