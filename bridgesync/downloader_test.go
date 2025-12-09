@@ -1015,6 +1015,123 @@ func TestTxnSenderField(t *testing.T) {
 	}
 }
 
+func TestExtractTxnSenderAndFrom(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	txHash := common.HexToHash("0xabcde12345abcde12345abcde12345abcde12345abcde12345abcde12345abcd")
+
+	tests := []struct {
+		name                         string
+		logEvent                     *agglayerbridge.AgglayerbridgeBridgeEvent
+		responseDebugTrace           *Call
+		responseDebugTraceError      error
+		responseTransactionHash      *Transaction
+		responseTransactionHashError error
+		expectedTxnSender            common.Address
+		expectedFrom                 common.Address
+		expectErr                    string
+	}{
+		{
+			name: "messageLeaf: error eth_getTransactionByHash",
+			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeMessage,
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x30"),
+				Amount:             big.NewInt(100),
+			},
+			responseTransactionHashError: fmt.Errorf("RPC error"),
+			expectErr:                    "RPC error",
+		},
+		{
+			name: "assetLeaf: error can't find From from calls",
+			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeAsset,
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x30"),
+				Amount:             big.NewInt(100),
+			},
+			responseDebugTrace: &Call{
+				Calls: []Call{
+					{
+						To:    bridgeAddr,
+						From:  common.HexToAddress("0x20"),
+						Input: BridgeMessageMethodID,
+					},
+					{
+						To:    bridgeAddr,
+						From:  common.HexToAddress("0x25"),
+						Input: BridgeMessageMethodID,
+					},
+				},
+			},
+			expectErr: "failed to extract",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ethClient := mocks.NewEthClienter(t)
+			ctx := t.Context()
+			logger := logger.WithFields("module", "test")
+			ethClient.EXPECT().
+				Call(mock.Anything, "eth_getTransactionByHash", mock.Anything).
+				Return(tt.responseTransactionHashError).
+				Run(func(result any, method string, args ...any) {
+					arg, ok := result.(*Transaction)
+					require.True(t, ok)
+					if tt.responseTransactionHash != nil {
+						*arg = *tt.responseTransactionHash
+					}
+				}).
+				Maybe()
+			ethClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+				Run(func(result any, method string, args ...any) {
+					arg, ok := result.(*Call)
+					require.True(t, ok)
+					*arg = *tt.responseDebugTrace
+				}).Return(nil).
+				Maybe()
+
+			txnSender, from, err := ExtractTxnSenderAndFrom(ctx, ethClient,
+				bridgeAddr, txHash, tt.logEvent, logger)
+			if tt.expectErr != "" {
+				require.ErrorContains(t, err, tt.expectErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedTxnSender, txnSender)
+				require.Equal(t, tt.expectedFrom, from)
+			}
+		})
+	}
+}
+
+func TestBridgeCallParams_String(t *testing.T) {
+	params := &bridgeCallParams{
+		LeafType:           1,
+		DestinationNetwork: 42,
+		DestinationAddress: common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		Amount:             big.NewInt(1000),
+		Token:              common.HexToAddress("0xbeefdeadbeefdeadbeefdeadbeefdeadbeefdead"),
+	}
+	expectedStr := "LeafType: 1, DestinationNetwork: 42, DestinationAddress: 0x1234567890AbcdEF1234567890aBcdef12345678, Amount: 1000, Token: 0xbeEFdeaDBeefDeadBEeFDeAdbEeFDeaDbeefdEad"
+	require.Equal(t, expectedStr, params.String())
+}
+
+func TestBridgeCallParams_Equal(t *testing.T) {
+	params := &bridgeCallParams{
+		LeafType:           1,
+		DestinationNetwork: 42,
+		DestinationAddress: common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		Amount:             big.NewInt(1000),
+		Token:              common.HexToAddress("0xbeefdeadbeefdeadbeefdeadbeefdeadbeefdead"),
+	}
+	logEvent := &agglayerbridge.AgglayerbridgeBridgeEvent{
+		LeafType:           params.LeafType,
+		DestinationNetwork: params.DestinationNetwork,
+		DestinationAddress: params.DestinationAddress,
+		Amount:             params.Amount,
+	}
+	require.True(t, params.Equal(logEvent))
+}
+
 func strPtr(s string) *string {
 	return &s
 }

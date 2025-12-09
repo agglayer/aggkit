@@ -182,8 +182,6 @@ func ExtractTxnSenderAndFrom(ctx context.Context,
 		switch logEvent.LeafType {
 		case bridgeLeafTypeAsset:
 			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
-		case bridgeLeafTypeMessage:
-			return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
 		}
 		return false, nil
 	})
