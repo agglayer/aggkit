@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -372,4 +374,199 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ContextHandling(t *t
 	})
 
 	mockClient.AssertExpectations(t)
+}
+
+func TestGetUnsetClaimsInChunks(t *testing.T) {
+	ctx := context.Background()
+	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	t.Run("exact chunk boundaries", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// Mock 3 successful chunk calls (blocks 0-999, 1000-1999, 2000-2999)
+		mockClient.On("FilterLogs", mock.Anything, mock.MatchedBy(func(q interface{}) bool {
+			return true // Accept all filter queries for simplicity
+		})).Return([]ethtypes.Log{}, nil).Times(3)
+
+		unclaims, err := aggkitcommon.ChunkedRangeQuery(
+			ctx, 0, 2999, 1000,
+			reader.fetchUnsetClaims,
+			func(all, chunk []types.Unclaim) []types.Unclaim {
+				return append(all, chunk...)
+			},
+			[]types.Unclaim{},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+		require.Empty(t, unclaims) // Empty results as we mocked empty logs
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("non-exact chunk boundaries", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// Mock 3 calls: 0-999, 1000-1999, 2000-2500
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Times(3)
+
+		unclaims, err := aggkitcommon.ChunkedRangeQuery(
+			ctx, 0, 2500, 1000,
+			reader.fetchUnsetClaims,
+			func(all, chunk []types.Unclaim) []types.Unclaim {
+				return append(all, chunk...)
+			},
+			[]types.Unclaim{},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("single chunk (range smaller than maxRange)", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 500, 1000,
+			reader.fetchUnsetClaims,
+			func(all, chunk []types.Unclaim) []types.Unclaim {
+				return append(all, chunk...)
+			},
+			[]types.Unclaim{},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("error in middle chunk", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// First chunk succeeds
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+		// Second chunk fails
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return(nil, errors.New("rpc error")).Once()
+
+		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 2000, 1000,
+			reader.fetchUnsetClaims,
+			func(all, chunk []types.Unclaim) []types.Unclaim {
+				return append(all, chunk...)
+			},
+			[]types.Unclaim{},
+		)
+		require.ErrorContains(t, err, "rpc error")
+		require.Empty(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("zero maxRange", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// Should return error immediately without making any calls
+		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 1000, 0,
+			reader.fetchUnsetClaims,
+			func(all, chunk []types.Unclaim) []types.Unclaim {
+				return append(all, chunk...)
+			},
+			[]types.Unclaim{},
+		)
+		require.ErrorContains(t, err, "maxRange must be greater than 0")
+		require.Empty(t, unclaims)
+
+		// No FilterLogs calls should have been made
+		mockClient.AssertExpectations(t)
+	})
+}
+
+func TestGetUnsetClaimsForBlockRange_ChunkingIntegration(t *testing.T) {
+	ctx := context.Background()
+	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	t.Run("normal fetch succeeds without chunking", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// Mock successful FilterLogs call
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 500)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("block range too large triggers chunking", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// First call fails with "block range too large"
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).
+			Return(nil, errors.New("block range too large, max range: 1000")).Once()
+
+		// Subsequent chunked calls succeed (0-999, 1000-1999, 2000-2500)
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).
+			Return([]ethtypes.Log{}, nil).Times(3)
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("non-parseable error returns original error", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// Return an error that doesn't match the pattern
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).
+			Return(nil, errors.New("some other RPC error")).Once()
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.ErrorContains(t, err, "some other RPC error")
+		require.Nil(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("chunking fails partway through", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, mockClient)
+		require.NoError(t, err)
+
+		// First call triggers chunking
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).
+			Return(nil, errors.New("block range too large, max range: 1000")).Once()
+
+		// First chunk succeeds
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).
+			Return([]ethtypes.Log{}, nil).Once()
+
+		// Second chunk fails
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).
+			Return(nil, errors.New("connection timeout")).Once()
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.ErrorContains(t, err, "connection timeout")
+		require.Empty(t, unclaims)
+
+		mockClient.AssertExpectations(t)
+	})
 }

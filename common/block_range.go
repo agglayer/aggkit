@@ -1,6 +1,9 @@
 package common
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 var (
 	BlockRangeZero = BlockRange{}
@@ -158,4 +161,33 @@ func (b BlockRange) Intersect(other BlockRange) BlockRange {
 		max(b.FromBlock, other.FromBlock),
 		min(b.ToBlock, other.ToBlock),
 	)
+}
+
+// ChunkedRangeQuery is a generic chunker for block range queries.
+// T is the result type (e.g., []Unclaim, map[common.Hash]GlobalExitRootInfo, []*RemovedGER, etc.)
+func ChunkedRangeQuery[T any](
+	ctx context.Context,
+	fromBlock, toBlock, maxRange uint64,
+	fetchChunk func(ctx context.Context, from, to uint64) (T, error),
+	combine func(all T, chunk T) T,
+	empty T,
+) (T, error) {
+	if maxRange == 0 {
+		return empty, fmt.Errorf("maxRange must be greater than 0")
+	}
+
+	all := empty
+	for currentFrom := fromBlock; currentFrom <= toBlock; {
+		currentTo := min(currentFrom+maxRange-1, toBlock)
+
+		chunk, err := fetchChunk(ctx, currentFrom, currentTo)
+		if err != nil {
+			return empty, fmt.Errorf("error in chunk %d-%d: %w", currentFrom, currentTo, err)
+		}
+
+		all = combine(all, chunk)
+		currentFrom = currentTo + 1
+	}
+
+	return all, nil
 }
