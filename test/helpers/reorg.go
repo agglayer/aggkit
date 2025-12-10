@@ -29,9 +29,10 @@ func Reorg(t *testing.T, client *simulated.Backend, reorgSizeInBlocks uint64) {
 	require.NoError(t, err)
 
 	block, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(currentBlockNum-reorgSizeInBlocks)))
-	log.Debugf("reorging until block %d. Current block %d (before reorg)", block.Number.Uint64(), currentBlockNum)
+	header, err := client.Client().HeaderByNumber(ctx, new(big.Int).SetUint64(currentBlockNum-reorgSizeInBlocks))
+	log.Debugf("reorging until block %d. Current block %d (before reorg)", header.Number.Uint64(), currentBlockNum)
 	require.NoError(t, err)
-	reorgFrom := block.Hash()
+	reorgFrom := header.Hash()
 	err = client.Fork(reorgFrom)
 	require.NoError(t, err)
 }
