@@ -161,7 +161,7 @@ func extractTxnSender(
 }
 
 // ExtractTxnSenderAndFrom extracts the txn_sender and from address from the transaction trace.
-// return txnSender (same for all events same tx) and fromAddr (specific for the event)
+// Return txnSender (same for all events in the same transaction) and fromAddr (specific for the event)
 func ExtractTxnSenderAndFrom(ctx context.Context,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
@@ -174,7 +174,7 @@ func ExtractTxnSenderAndFrom(ctx context.Context,
 		txnSender, err = extractTxnSender(client, txHash)
 		if err != nil {
 			return common.Address{}, common.Address{},
-				fmt.Errorf("failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
+				fmt.Errorf("extractTxnSenderAndFrom: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
 		}
 		return txnSender, logEvent.OriginAddress, nil
 	}
@@ -186,13 +186,13 @@ func ExtractTxnSenderAndFrom(ctx context.Context,
 	})
 	if err != nil {
 		return common.Address{}, common.Address{},
-			fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", txHash, err)
+			fmt.Errorf("extractTxnSenderAndFrom:failed to extract bridge event data (tx hash: %s): %w", txHash, err)
 	}
 	txnSender = rootCall.From
 	fromAddr, err = ExtractFromAddrFromCalls(foundCalls, logEvent)
 	if err != nil {
 		return common.Address{}, common.Address{},
-			fmt.Errorf("failed to extract txn sender from tx_hash:%s calls: %w",
+			fmt.Errorf("extractTxnSenderAndFrom: failed to extract fromAddr from tx_hash:%s calls: %w",
 				txHash.Hex(), err)
 	}
 
@@ -296,7 +296,7 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (common.Address, error) {
 	switch len(foundCalls) {
 	case 0:
-		return common.Address{}, fmt.Errorf("no calls found to extract txn sender")
+		return common.Address{}, fmt.Errorf("extractFromAddrFromCalls: no calls found")
 	case 1:
 		return foundCalls[0].From, nil
 	default:
@@ -311,7 +311,7 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 		for _, call := range foundCalls {
 			callParams, err := ExtractParamFromCallData(call.Input)
 			if err != nil {
-				return common.Address{}, fmt.Errorf("failed to extract bridge call params: %w", err)
+				return common.Address{}, fmt.Errorf("extractFromAddrFromCalls: failed to extract bridge call params: %w", err)
 			}
 			if callParams.Equal(logEvent) {
 				if candidate != nil {
@@ -320,7 +320,7 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 						continue
 					}
 					if callParams.Token.Hex() != logEvent.OriginAddress.Hex() {
-						return common.Address{}, fmt.Errorf("multiple matching calls found to extract txn sender. "+
+						return common.Address{}, fmt.Errorf("extractFromAddrFromCalls: multiple matching calls found to extract txn sender. "+
 							"Previous: %s, Current: %s Event: OriginAddress: %s",
 							candidateCallParams.String(), callParams.String(), logEvent.OriginAddress.Hex())
 					}
@@ -330,7 +330,7 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 			}
 		}
 		if candidate == nil || candidateCallParams == nil {
-			return common.Address{}, fmt.Errorf("no matching call found to extract txn sender")
+			return common.Address{}, fmt.Errorf("extractFromAddrFromCalls: no matching call found")
 		}
 		return candidate.From, nil
 	}

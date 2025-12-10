@@ -200,13 +200,13 @@ func TestExtractTxnSenderFromCalls(t *testing.T) {
 			expectErr:  "no calls found",
 		},
 		{
-			name:       "multiples calls same from",
+			name:       "multiple calls same from",
 			callFrames: []*Call{callFromAddr1, callFromAddr1},
 			event:      event1,
 			expectAddr: fromAddr1,
 		},
 		{
-			name:       "multiples calls not same from,bad input data",
+			name:       "multiple calls not same from,bad input data",
 			callFrames: []*Call{callFromAddr1, callFromAddr2},
 			event:      event1,
 			expectErr:  " unpack inputs call data",

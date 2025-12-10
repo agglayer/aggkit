@@ -116,8 +116,6 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 }
 
 // RecordToBackfill represents a record that needs txn_sender backfilling
-//
-
 type RecordToBackfill struct {
 	BlockNum           uint64         `meddler:"block_num"`
 	BlockPos           uint64         `meddler:"block_pos"`
