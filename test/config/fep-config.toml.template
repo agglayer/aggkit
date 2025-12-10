@@ -20,8 +20,6 @@ AggLayerURL = "{{.agglayer_grpc_url}}"
 
 AggchainProofURL= "{{.aggchain_proof_url}}"
 
-NetworkID = {{.zkevm_rollup_id}}
-
 SequencerPrivateKeyPath = "{{.zkevm_l2_sequencer_keystore_file_path}}"
 SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 

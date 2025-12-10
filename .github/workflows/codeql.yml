@@ -34,9 +34,9 @@ jobs:
       # Setup environment
       - name: Setup Go
         if: ${{ matrix.language == 'go' }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.25.3
+          go-version: 1.25.5
 
       - name: Verify Go version
         if: ${{ matrix.language == 'go' }}

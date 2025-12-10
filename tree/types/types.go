@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -37,6 +38,19 @@ func NewProof(proofRaw [DefaultHeight][common.HashLength]byte) Proof {
 		proof[i] = currentLeaf
 	}
 	return proof
+}
+
+func (p Proof) String() string {
+	var builder strings.Builder
+	builder.WriteString("Proof{[")
+	for i, hash := range p {
+		if i > 0 {
+			builder.WriteString(", ")
+		}
+		builder.WriteString(hash.String())
+	}
+	builder.WriteString("]}")
+	return builder.String()
 }
 
 func (r *Root) String() string {

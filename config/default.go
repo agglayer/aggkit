@@ -91,9 +91,9 @@ FinalizedBlock = "LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
-GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
+GlobalExitRootAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
-BlockFinality = "SafeBlock"
+BlockFinality = "FinalizedBlock"
 SyncBlockChunkSize = 100
 WaitForNewBlocksPeriod = "100ms"
 InitialBlock = {{genesisBlockNumber}}
@@ -177,7 +177,7 @@ DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
-GlobalExitRootL1Addr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
@@ -201,6 +201,7 @@ Mode = "Auto"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
@@ -268,6 +269,7 @@ Port = 9091
 [AggchainProofGen]
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
@@ -290,6 +292,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578

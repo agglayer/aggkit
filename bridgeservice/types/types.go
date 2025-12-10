@@ -351,3 +351,61 @@ type HealthCheckResponse struct {
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
 }
+
+// RemoveGEREventResponse represents a remove GER event response
+// @Description Information about a GER removal event
+type RemoveGEREventResponse struct {
+	// Global Exit Root hash that was removed
+	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
+
+	// Block number where the GER was removed
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the event within the block
+	BlockPos uint64 `json:"block_pos" example:"0"`
+
+	// Timestamp when the remove event was recorded in database
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// RemoveGEREventsResult contains the remove GER events and the total count
+// @Description Paginated response of remove GER events
+type RemoveGEREventsResult struct {
+	// List of remove GER events
+	RemoveGEREvents []*RemoveGEREventResponse `json:"remove_ger_events"`
+
+	// Total number of remove GER events
+	Count int `json:"count" example:"10"`
+}
+
+// UnsetClaimsResult contains the unset claims and the total count
+// @Description Paginated response of unset claim events (L2 networks only)
+type UnsetClaimsResult struct {
+	// List of unset claim events
+	UnsetClaims []*UnsetClaimResponse `json:"unset_claims"`
+
+	// Total number of unset claim events
+	Count int `json:"count" example:"15"`
+}
+
+// UnsetClaimResponse represents an unset claim event response
+// @Description Detailed information about an unset claim event (UpdatedUnsetGlobalIndexHashChain)
+type UnsetClaimResponse struct {
+	// Block number where the unset claim was processed
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the unset claim event within the block
+	BlockPos uint64 `json:"block_pos" example:"2"`
+
+	// Transaction hash associated with the unset claim
+	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+
+	// Global index of the claim that was unset
+	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
+
+	// Hash chain value for unset global indexes
+	UnsetGlobalIndexHashChain Hash `json:"unset_global_index_hash_chain" example:"0x1234567890abcdef"`
+
+	// Timestamp when the unset claim was created
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}

@@ -3,6 +3,7 @@ package converters
 import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -13,7 +14,7 @@ func ConvertToBridgeExit(bridge bridgesync.Bridge) *agglayertypes.BridgeExit {
 	metaData := convertBridgeMetadata(bridge.Metadata)
 
 	return &agglayertypes.BridgeExit{
-		LeafType: agglayertypes.LeafType(bridge.LeafType),
+		LeafType: bridgetypes.LeafType(bridge.LeafType),
 		TokenInfo: &agglayertypes.TokenInfo{
 			OriginNetwork:      bridge.OriginNetwork,
 			OriginTokenAddress: bridge.OriginAddress,

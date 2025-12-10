@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"testing"
 
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -124,7 +125,7 @@ func TestCertificateMarshalJSON(t *testing.T) {
 			NewLocalExitRoot:  common.Hash{},
 			BridgeExits: []*BridgeExit{
 				{
-					LeafType:           LeafTypeAsset,
+					LeafType:           bridgetypes.LeafTypeAsset,
 					DestinationAddress: common.Address{},
 					Amount:             big.NewInt(1),
 				},
@@ -132,7 +133,7 @@ func TestCertificateMarshalJSON(t *testing.T) {
 			ImportedBridgeExits: []*ImportedBridgeExit{
 				{
 					BridgeExit: &BridgeExit{
-						LeafType:           LeafTypeAsset,
+						LeafType:           bridgetypes.LeafTypeAsset,
 						DestinationAddress: common.Address{},
 						Amount:             big.NewInt(1),
 						Metadata:           []byte{},
@@ -170,7 +171,7 @@ func TestCertificateMarshalJSON(t *testing.T) {
 			NewLocalExitRoot:  common.HexToHash("0x222"),
 			BridgeExits: []*BridgeExit{
 				{
-					LeafType:           LeafTypeAsset,
+					LeafType:           bridgetypes.LeafTypeAsset,
 					TokenInfo:          &TokenInfo{OriginNetwork: 1, OriginTokenAddress: common.HexToAddress("0x123")},
 					DestinationNetwork: 2,
 					DestinationAddress: common.HexToAddress("0x456"),
@@ -181,7 +182,7 @@ func TestCertificateMarshalJSON(t *testing.T) {
 			ImportedBridgeExits: []*ImportedBridgeExit{
 				{
 					BridgeExit: &BridgeExit{
-						LeafType:           LeafTypeMessage,
+						LeafType:           bridgetypes.LeafTypeMessage,
 						TokenInfo:          &TokenInfo{OriginNetwork: 1, OriginTokenAddress: common.HexToAddress("0x789")},
 						DestinationNetwork: 2,
 						DestinationAddress: common.HexToAddress("0xabc"),
@@ -216,7 +217,7 @@ func TestCertificateMarshalJSON(t *testing.T) {
 				},
 				{
 					BridgeExit: &BridgeExit{
-						LeafType:           LeafTypeAsset,
+						LeafType:           bridgetypes.LeafTypeAsset,
 						TokenInfo:          &TokenInfo{OriginNetwork: 1, OriginTokenAddress: common.HexToAddress("0x789")},
 						DestinationNetwork: 2,
 						DestinationAddress: common.HexToAddress("0xabcdef"),
@@ -514,7 +515,7 @@ func TestCertificate_Hash(t *testing.T) {
 	// Create dummy BridgeExits
 	bridgeExits := []*BridgeExit{
 		{
-			LeafType:           LeafTypeAsset,
+			LeafType:           bridgetypes.LeafTypeAsset,
 			TokenInfo:          createDummyTokenInfo(t),
 			DestinationNetwork: 1,
 			DestinationAddress: common.HexToAddress("0x0000000000000000000000000000000000000001"),
@@ -522,7 +523,7 @@ func TestCertificate_Hash(t *testing.T) {
 			Metadata:           []byte("metadata1"),
 		},
 		{
-			LeafType:           LeafTypeMessage,
+			LeafType:           bridgetypes.LeafTypeMessage,
 			TokenInfo:          createDummyTokenInfo(t),
 			DestinationNetwork: 2,
 			DestinationAddress: common.HexToAddress("0x0000000000000000000000000000000000000002"),
@@ -535,7 +536,7 @@ func TestCertificate_Hash(t *testing.T) {
 	importedBridgeExits := []*ImportedBridgeExit{
 		{
 			BridgeExit: &BridgeExit{
-				LeafType:           LeafTypeAsset,
+				LeafType:           bridgetypes.LeafTypeAsset,
 				TokenInfo:          createDummyTokenInfo(t),
 				DestinationNetwork: 3,
 				DestinationAddress: common.HexToAddress("0x0000000000000000000000000000000000000003"),
@@ -547,7 +548,7 @@ func TestCertificate_Hash(t *testing.T) {
 		},
 		{
 			BridgeExit: &BridgeExit{
-				LeafType:           LeafTypeAsset,
+				LeafType:           bridgetypes.LeafTypeAsset,
 				TokenInfo:          createDummyTokenInfo(t),
 				DestinationNetwork: 4,
 				DestinationAddress: common.HexToAddress("0x0000000000000000000000000000000000000004"),
@@ -647,7 +648,7 @@ func TestBridgeExit_String(t *testing.T) {
 		{
 			name: "With TokenInfo",
 			bridgeExit: &BridgeExit{
-				LeafType:           LeafTypeAsset,
+				LeafType:           bridgetypes.LeafTypeAsset,
 				TokenInfo:          createDummyTokenInfo(t),
 				DestinationNetwork: 100,
 				DestinationAddress: common.HexToAddress("0x2"),
@@ -659,7 +660,7 @@ func TestBridgeExit_String(t *testing.T) {
 		{
 			name: "Without TokenInfo",
 			bridgeExit: &BridgeExit{
-				LeafType:           LeafTypeMessage,
+				LeafType:           bridgetypes.LeafTypeMessage,
 				DestinationNetwork: 200,
 				DestinationAddress: common.HexToAddress("0x1"),
 				Amount:             big.NewInt(5000),
@@ -670,7 +671,7 @@ func TestBridgeExit_String(t *testing.T) {
 		{
 			name: "Without Amount",
 			bridgeExit: &BridgeExit{
-				LeafType:           LeafTypeMessage,
+				LeafType:           bridgetypes.LeafTypeMessage,
 				DestinationNetwork: 200,
 				DestinationAddress: common.HexToAddress("0x1"),
 				Metadata:           []byte{0xff, 0xee, 0xdd},
@@ -938,7 +939,7 @@ func TestClaimType(t *testing.T) {
 
 func Test_ProblematicBridgeExitHash(t *testing.T) {
 	bridgeExit := &BridgeExit{
-		LeafType: LeafTypeAsset,
+		LeafType: bridgetypes.LeafTypeAsset,
 		TokenInfo: &TokenInfo{
 			OriginNetwork:      0,
 			OriginTokenAddress: common.HexToAddress("0x0000000000000000000000000000000000000000"),
@@ -1006,7 +1007,7 @@ func Test_UnmarshalImportedBridgeExit(t *testing.T) {
 			name: "Mainnet claim",
 			importedBridge: ImportedBridgeExit{
 				BridgeExit: &BridgeExit{
-					LeafType: LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &TokenInfo{
 						OriginNetwork:      0,
 						OriginTokenAddress: common.HexToAddress("0x1234"),
@@ -1077,7 +1078,7 @@ func Test_UnmarshalBridgeExit(t *testing.T) {
 		{
 			name: "metadataHashed",
 			data: &BridgeExit{
-				LeafType: LeafTypeAsset,
+				LeafType: bridgetypes.LeafTypeAsset,
 				Metadata: []byte{0x01, 0x02, 0x03},
 			},
 		},
@@ -1398,7 +1399,7 @@ func TestCertificate_Validate(t *testing.T) {
 			ImportedBridgeExits: []*ImportedBridgeExit{
 				{
 					BridgeExit: &BridgeExit{
-						LeafType: LeafTypeAsset,
+						LeafType: bridgetypes.LeafTypeAsset,
 						TokenInfo: &TokenInfo{
 							OriginNetwork:      0,
 							OriginTokenAddress: common.HexToAddress("0x1234"),
@@ -1478,7 +1479,7 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 	// simulate rollup exit tree
 	for i := range numOfLeavesToAdd {
 		bridgeExits[i] = &BridgeExit{
-			LeafType: LeafTypeAsset,
+			LeafType: bridgetypes.LeafTypeAsset,
 			TokenInfo: &TokenInfo{
 				OriginNetwork:      uint32(i),
 				OriginTokenAddress: common.HexToAddress(fmt.Sprintf("0x%040x", i)),
