@@ -204,7 +204,7 @@ type bridgeCallParams struct {
 	DestinationNetwork uint32
 	DestinationAddress common.Address
 	Amount             *big.Int
-	// can't use Token because could be a token network that native eth is a token or a wapped token
+	// can't use Token because could be a token network that native eth is a token or a wrapped token
 	// in this cases the calling value doesn't match the event (event field: OriginTokenAddress)
 	Token common.Address
 }
@@ -320,8 +320,8 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 						continue
 					}
 					if callParams.Token.Hex() != logEvent.OriginAddress.Hex() {
-						return common.Address{}, fmt.Errorf("extractFromAddrFromCalls: multiple matching calls found to extract txn sender. "+
-							"Previous: %s, Current: %s Event: OriginAddress: %s",
+						return common.Address{}, fmt.Errorf("extractFromAddrFromCalls: multiple matching "+
+							"calls found to extract txn sender. Previous: %s, Current: %s Event: OriginAddress: %s",
 							candidateCallParams.String(), callParams.String(), logEvent.OriginAddress.Hex())
 					}
 				}
