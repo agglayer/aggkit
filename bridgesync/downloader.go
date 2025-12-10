@@ -139,7 +139,7 @@ func (t *Transaction) From() common.Address {
 	return common.HexToAddress(t.FromRaw)
 }
 
-func RPCTransactionByHash(ctx context.Context, client aggkittypes.EthClienter,
+func RPCTransactionByHash(client aggkittypes.EthClienter,
 	txHash common.Hash) (*Transaction, error) {
 	// Use client.Call to fetch transaction details using eth_getTransactionByHash
 	var tx Transaction
@@ -150,10 +150,10 @@ func RPCTransactionByHash(ctx context.Context, client aggkittypes.EthClienter,
 	return &tx, nil
 }
 
-func extractTxnSender(ctx context.Context,
+func extractTxnSender(
 	client aggkittypes.EthClienter,
 	txHash common.Hash) (common.Address, error) {
-	tx, err := RPCTransactionByHash(ctx, client, txHash)
+	tx, err := RPCTransactionByHash(client, txHash)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("failed to get transaction by hash for %s: %w", txHash.Hex(), err)
 	}
@@ -171,7 +171,7 @@ func ExtractTxnSenderAndFrom(ctx context.Context,
 	// If event is a message, fromAddr is log.origin_address
 	// so we only need the txn_sender that can be obtained from hash_receipt
 	if logEvent.LeafType == bridgeLeafTypeMessage {
-		txnSender, err = extractTxnSender(ctx, client, txHash)
+		txnSender, err = extractTxnSender(client, txHash)
 		if err != nil {
 			return common.Address{}, common.Address{},
 				fmt.Errorf("failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
