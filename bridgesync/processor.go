@@ -1311,9 +1311,9 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("NewDepositCount=%d exceeds uint32 max (%d)", newDepositCountU64, uint32(math.MaxUint32))
 			}
 
-			newDepositCountU32 := uint32(newDepositCountU64)
-			if err := p.exitTree.BackwardToIndex(ctx, tx, newDepositCountU32); err != nil {
-				p.log.Errorf("failed to backward local exit tree to %d deposit count", newDepositCountU32)
+			leafIndex := uint32(newDepositCountU64 - 1)
+			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
+				p.log.Errorf("failed to backward local exit tree to %d deposit count", leafIndex)
 				return err
 			}
 
