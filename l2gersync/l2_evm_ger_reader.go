@@ -66,8 +66,8 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 	injectedGERs, err := e.fetchInjectedGERs(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
-		maxRange, parseErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-		if parseErr == nil {
+		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+		if isMaxRangeErr {
 			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
 			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
 				e.fetchInjectedGERs,
@@ -165,8 +165,8 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 	removedGERs, err := e.fetchRemovedGERs(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
-		maxRange, parseErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-		if parseErr == nil {
+		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+		if isMaxRangeErr {
 			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
 			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
 				e.fetchRemovedGERs,

@@ -63,8 +63,8 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 	unclaims, err := r.fetchUnsetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
-		maxRange, parseErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-		if parseErr == nil {
+		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+		if isMaxRangeErr {
 			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
 			return aggkitcommon.ChunkedRangeQuery(
 				ctx, fromBlock, toBlock, maxRange,
