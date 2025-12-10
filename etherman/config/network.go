@@ -90,6 +90,7 @@ type RPCMode string
 
 var (
 	RPCModeBasic RPCMode = "basic"
+	RPCModeHash  RPCMode = "hash"
 	RPCModeOp    RPCMode = "op"
 )
 
