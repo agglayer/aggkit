@@ -327,7 +327,7 @@ func (b *BackfillTxnSender) worker(
 	}
 }
 
-// extractData extracts the transaction txn_sender  and from_address
+// extractData extracts the transaction txn_sender and from_address
 func (b *BackfillTxnSender) extractData(ctx context.Context,
 	txHash common.Hash,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address, fromAddr common.Address, err error) {
