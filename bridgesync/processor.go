@@ -121,6 +121,21 @@ var (
 		WHERE block_num >= $1 AND block_num <= $2
 		ORDER BY block_num ASC, block_pos ASC;
 	`, bridgeTableName)
+
+	// bridgeRestoreSQL is SQL query that moves rows back from bridge_archive to bridge table
+	bridgeRestoreSQL = fmt.Sprintf(`
+            INSERT INTO %s (
+                block_num, block_pos, leaf_type, origin_network, origin_address,
+                destination_network, destination_address, amount, metadata,
+                tx_hash, block_timestamp, txn_sender, deposit_count
+            )
+            SELECT
+                block_num, block_pos, leaf_type, origin_network, origin_address,
+                destination_network, destination_address, amount, metadata,
+                tx_hash, block_timestamp, txn_sender, deposit_count
+            FROM bridge_archive
+            WHERE deposit_count > $1 AND deposit_count <= $2
+        `, bridgeTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -1172,11 +1187,46 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
+	// ---------------------------------------------------------------------
+	// 1. Load affected BackwardLETs BEFORE deleting blocks, bridges and BackwardLET entries
+	// ---------------------------------------------------------------------
+	backwardLETsQuery := `
+		SELECT previous_deposit_count, new_deposit_count
+        FROM backward_let
+        WHERE block_num >= $1`
+	var backwardLETs []*BackwardLET
+	if err := meddler.QueryAll(tx, &backwardLETs, backwardLETsQuery, firstReorgedBlock); err != nil {
+		return fmt.Errorf("failed to retrieve the affected backward LETs: %w", err)
+	}
+
+	// ---------------------------------------------------------------------
+	// 2. Restore bridge rows from archive for each interval
+	// ---------------------------------------------------------------------
+	for _, backwardLET := range backwardLETs {
+		if backwardLET.PreviousDepositCount.Cmp(backwardLET.NewDepositCount) <= 0 {
+			continue // malformed but safe to skip
+		}
+
+		if _, err := tx.Exec(bridgeRestoreSQL, backwardLET.NewDepositCount, backwardLET.NewDepositCount); err != nil {
+			return fmt.Errorf("failed to restore bridges from bridge archive (range %d..%d): %w",
+				backwardLET.NewDepositCount, backwardLET.PreviousDepositCount, err)
+		}
+
+		// Remove restored rows from archive
+		_, err := tx.Exec(`DELETE FROM bridge_archive 
+		WHERE deposit_count > $1 AND deposit_count <= $2`, backwardLET.NewDepositCount, backwardLET.PreviousDepositCount)
+		if err != nil {
+			return fmt.Errorf("failed to delete restored rows from archive (range %d..%d): %w",
+				backwardLET.NewDepositCount, backwardLET.PreviousDepositCount, err)
+		}
+	}
+
 	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {
 		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
 	}
+
 	rowsAffected, err := blocksRes.RowsAffected()
 	if err != nil {
 		p.log.Errorf("failed to get rows affected during reorg: %v", err)
