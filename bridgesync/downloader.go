@@ -279,12 +279,14 @@ func ExtractParamFromCallData(callData []byte) (*bridgeCallParams, error) {
 		common.Bytes2Hex(callData[:methodIDLength]))
 }
 
-func haveCommonFromForCalls(foundCalls []*Call) (common.Address, bool) {
-	var commonFrom common.Address
-	for i, call := range foundCalls {
-		if i == 0 {
-			commonFrom = call.From
-		} else if call.From != commonFrom {
+func haveCommonFromForCalls(calls []*Call) (common.Address, bool) {
+	if len(calls) == 0 {
+		return common.Address{}, false
+	}
+
+	commonFrom := calls[0].From
+	for _, call := range calls[1:] {
+		if call.From != commonFrom {
 			return common.Address{}, false
 		}
 	}
