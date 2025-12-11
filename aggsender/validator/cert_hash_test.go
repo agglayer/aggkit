@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -81,7 +82,7 @@ func getTestCert(t *testing.T) *agglayertypes.Certificate {
 		L1InfoTreeLeafCount: 11,
 		BridgeExits: []*agglayertypes.BridgeExit{
 			{
-				LeafType: agglayertypes.LeafTypeAsset,
+				LeafType: bridgetypes.LeafTypeAsset,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginNetwork:      2,
 					OriginTokenAddress: common.HexToAddress("0x010203"),
@@ -94,7 +95,7 @@ func getTestCert(t *testing.T) *agglayertypes.Certificate {
 		ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
 			{
 				BridgeExit: &agglayertypes.BridgeExit{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x01111"),
@@ -131,7 +132,7 @@ func getTestCert(t *testing.T) *agglayertypes.Certificate {
 			},
 			{
 				BridgeExit: &agglayertypes.BridgeExit{
-					LeafType: agglayertypes.LeafTypeMessage,
+					LeafType: bridgetypes.LeafTypeMessage,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      11,
 						OriginTokenAddress: common.HexToAddress("0x011"),

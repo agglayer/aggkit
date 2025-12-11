@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -43,12 +44,63 @@ const (
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
+
+	// unsetClaimTableName is the name of the table that stores unset claim events
+	unsetClaimTableName = "unset_claim"
+
+	// setClaimTableName is the name of the table that stores set claim events
+	setClaimTableName = "set_claim"
+
+	// nilStr holds nil string
+	nilStr = "nil"
+)
+
+const (
+	// orderByBlockDesc is the default order by clause for block-based queries
+	orderByBlockDesc = "block_num DESC, block_pos DESC"
+
+	// claimColumnsSQL is the list of all claim columns
+	claimColumnsSQL = `block_num,
+		block_pos,
+		tx_hash,
+		global_index,
+		origin_network,
+		origin_address,
+		destination_address,
+		amount,
+		proof_local_exit_root,
+		proof_rollup_exit_root,
+		mainnet_exit_root,
+		rollup_exit_root,
+		global_exit_root,
+		destination_network,
+		metadata,
+		is_message,
+		block_timestamp`
+
+	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
+	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
+	compactedClaimsSelectSQL = `
+		o.block_num,
+		o.block_pos,
+		o.tx_hash,
+		o.global_index,
+		o.origin_network,
+		o.origin_address,
+		o.destination_address,
+		o.amount,
+		n.proof_local_exit_root,
+		n.proof_rollup_exit_root,
+		n.mainnet_exit_root,
+		n.rollup_exit_root,
+		n.global_exit_root,
+		o.destination_network,
+		o.metadata,
+		o.is_message,
+		o.block_timestamp`
 )
 
 var (
-	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
-	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
-
 	// errFailToConvertClaims indicates that the conversion from []*Claim to []Claim failed.
 	errFailToConvertClaims = errors.New("failed to convert from []*Claim to []Claim")
 
@@ -58,6 +110,13 @@ var (
 	// deleteLegacyTokenSQL is the SQL statement to delete legacy token migration event
 	// with specific legacy token address
 	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
+
+	// getBridgesBlockRangeSelectSQL is the SELECT clause for bridges within a block range
+	getBridgesBlockRangeSelectSQL = fmt.Sprintf(`
+	SELECT * FROM %s
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
+	`, bridgeTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -76,6 +135,21 @@ type Bridge struct {
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
 	TxnSender          common.Address `meddler:"txn_sender,address"`
+}
+
+func (b *Bridge) String() string {
+	amountStr := nilStr
+	if b.Amount != nil {
+		amountStr = b.Amount.String()
+	}
+	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
+		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
+		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
+		"DepositCount: %d, TxnSender: %s}",
+		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
+		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
+		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
+		b.DepositCount, b.TxnSender.String())
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
@@ -126,6 +200,29 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+}
+
+func (c *Claim) String() string {
+	globalIndexStr := nilStr
+	if c.GlobalIndex != nil {
+		globalIndexStr = c.GlobalIndex.String()
+	}
+
+	amountStr := nilStr
+	if c.Amount != nil {
+		amountStr = c.Amount.String()
+	}
+
+	return fmt.Sprintf("Claim{BlockNum: %d, BlockPos: %d, TxHash: %s, GlobalIndex: %s, "+
+		"OriginNetwork: %d, OriginAddress: %s, DestinationAddress: %s, Amount: %s, "+
+		"ProofLocalExitRoot: %v, ProofRollupExitRoot: %v, MainnetExitRoot: %s, "+
+		"RollupExitRoot: %s, GlobalExitRoot: %s, DestinationNetwork: %d, Metadata: %x, "+
+		"IsMessage: %t, BlockTimestamp: %d}",
+		c.BlockNum, c.BlockPos, c.TxHash.String(), globalIndexStr,
+		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), amountStr,
+		c.ProofLocalExitRoot.String(), c.ProofRollupExitRoot.String(), c.MainnetExitRoot.String(),
+		c.RollupExitRoot.String(), c.GlobalExitRoot.String(), c.DestinationNetwork, c.Metadata,
+		c.IsMessage, c.BlockTimestamp)
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
@@ -249,6 +346,55 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	return true, nil
 }
 
+type InvalidClaim struct {
+	// claim struct fields
+	BlockNum            uint64         `meddler:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
+	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
+	OriginNetwork       uint32         `meddler:"origin_network"`
+	OriginAddress       common.Address `meddler:"origin_address"`
+	DestinationAddress  common.Address `meddler:"destination_address"`
+	Amount              *big.Int       `meddler:"amount,bigint"`
+	ProofLocalExitRoot  types.Proof    `meddler:"proof_local_exit_root,merkleproof"`
+	ProofRollupExitRoot types.Proof    `meddler:"proof_rollup_exit_root,merkleproof"`
+	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"`
+	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"`
+	GlobalExitRoot      common.Hash    `meddler:"global_exit_root,hash"`
+	DestinationNetwork  uint32         `meddler:"destination_network"`
+	Metadata            []byte         `meddler:"metadata"`
+	IsMessage           bool           `meddler:"is_message"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	// additional fields
+	Reason    string `meddler:"reason"`
+	CreatedAt uint64 `meddler:"created_at"`
+}
+
+// NewInvalidClaim creates a new InvalidClaim from a Claim and a reason
+func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
+	return &InvalidClaim{
+		BlockNum:            c.BlockNum,
+		BlockPos:            c.BlockPos,
+		TxHash:              c.TxHash,
+		GlobalIndex:         c.GlobalIndex,
+		OriginNetwork:       c.OriginNetwork,
+		OriginAddress:       c.OriginAddress,
+		DestinationAddress:  c.DestinationAddress,
+		Amount:              c.Amount,
+		ProofLocalExitRoot:  c.ProofLocalExitRoot,
+		ProofRollupExitRoot: c.ProofRollupExitRoot,
+		MainnetExitRoot:     c.MainnetExitRoot,
+		RollupExitRoot:      c.RollupExitRoot,
+		GlobalExitRoot:      c.GlobalExitRoot,
+		DestinationNetwork:  c.DestinationNetwork,
+		Metadata:            c.Metadata,
+		IsMessage:           c.IsMessage,
+		BlockTimestamp:      c.BlockTimestamp,
+		Reason:              reason,
+		CreatedAt:           uint64(time.Now().UTC().Unix()),
+	}
+}
+
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
 	BlockNum            uint64                       `meddler:"block_num"`
@@ -261,6 +407,15 @@ type TokenMapping struct {
 	Metadata            []byte                       `meddler:"metadata"`
 	IsNotMintable       bool                         `meddler:"is_not_mintable"`
 	Type                bridgetypes.TokenMappingType `meddler:"token_type"`
+}
+
+func (t *TokenMapping) String() string {
+	return fmt.Sprintf("TokenMapping{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
+		"OriginNetwork: %d, OriginTokenAddress: %s, WrappedTokenAddress: %s, Metadata: %x, "+
+		"IsNotMintable: %t, Type: %s}",
+		t.BlockNum, t.BlockPos, t.BlockTimestamp, t.TxHash.String(),
+		t.OriginNetwork, t.OriginTokenAddress.String(), t.WrappedTokenAddress.String(), t.Metadata,
+		t.IsNotMintable, t.Type.String())
 }
 
 // LegacyTokenMigration representation of a MigrateLegacyToken event,
@@ -276,6 +431,18 @@ type LegacyTokenMigration struct {
 	Amount              *big.Int       `meddler:"amount,bigint"`
 }
 
+func (l *LegacyTokenMigration) String() string {
+	amountStr := nilStr
+	if l.Amount != nil {
+		amountStr = l.Amount.String()
+	}
+	return fmt.Sprintf("LegacyTokenMigration{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
+		"Sender: %s, LegacyTokenAddress: %s, UpdatedTokenAddress: %s, Amount: %s}",
+		l.BlockNum, l.BlockPos, l.BlockTimestamp, l.TxHash.String(),
+		l.Sender.String(), l.LegacyTokenAddress.String(), l.UpdatedTokenAddress.String(),
+		amountStr)
+}
+
 // RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
 // that is emitted by the sovereign chain bridge contract.
 type RemoveLegacyToken struct {
@@ -286,6 +453,57 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+func (r *RemoveLegacyToken) String() string {
+	return fmt.Sprintf("RemoveLegacyToken{BlockNum: %d, BlockPos: %d, BlockTimestamp: %d, TxHash: %s, "+
+		"LegacyTokenAddress: %s}",
+		r.BlockNum, r.BlockPos, r.BlockTimestamp, r.TxHash.String(),
+		r.LegacyTokenAddress.String())
+}
+
+// UnsetClaim representation of an UpdatedUnsetGlobalIndexHashChain event,
+// that is emitted by the bridge contract when a claim is unset.
+type UnsetClaim struct {
+	BlockNum                  uint64      `meddler:"block_num"`
+	BlockPos                  uint64      `meddler:"block_pos"`
+	TxHash                    common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex               *big.Int    `meddler:"global_index,bigint"`
+	UnsetGlobalIndexHashChain common.Hash `meddler:"unset_global_index_hash_chain,hash"`
+	CreatedAt                 uint64      `meddler:"created_at"`
+}
+
+func (u *UnsetClaim) String() string {
+	globalIndexStr := nilStr
+	if u.GlobalIndex != nil {
+		globalIndexStr = u.GlobalIndex.String()
+	}
+
+	return fmt.Sprintf("UnsetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
+		"GlobalIndex: %s, UnsetGlobalIndexHashChain: %s, CreatedAt: %d}",
+		u.BlockNum, u.BlockPos, u.TxHash.String(),
+		globalIndexStr, u.UnsetGlobalIndexHashChain.String(), u.CreatedAt)
+}
+
+// SetClaim representation of a SetClaim event,
+// that is emitted by the bridge contract when a claim is set.
+type SetClaim struct {
+	BlockNum    uint64      `meddler:"block_num"`
+	BlockPos    uint64      `meddler:"block_pos"`
+	TxHash      common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
+	CreatedAt   uint64      `meddler:"created_at"`
+}
+
+func (s *SetClaim) String() string {
+	globalIndexStr := nilStr
+	if s.GlobalIndex != nil {
+		globalIndexStr = s.GlobalIndex.String()
+	}
+	return fmt.Sprintf("SetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
+		"GlobalIndex: %s, CreatedAt: %d}",
+		s.BlockNum, s.BlockPos, s.TxHash.String(),
+		globalIndexStr, s.CreatedAt)
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -293,6 +511,34 @@ type Event struct {
 	TokenMapping         *TokenMapping
 	LegacyTokenMigration *LegacyTokenMigration
 	RemoveLegacyToken    *RemoveLegacyToken
+	UnsetClaim           *UnsetClaim
+	SetClaim             *SetClaim
+}
+
+func (e Event) String() string {
+	parts := []string{}
+	if e.Bridge != nil {
+		parts = append(parts, e.Bridge.String())
+	}
+	if e.Claim != nil {
+		parts = append(parts, e.Claim.String())
+	}
+	if e.TokenMapping != nil {
+		parts = append(parts, e.TokenMapping.String())
+	}
+	if e.LegacyTokenMigration != nil {
+		parts = append(parts, e.LegacyTokenMigration.String())
+	}
+	if e.RemoveLegacyToken != nil {
+		parts = append(parts, e.RemoveLegacyToken.String())
+	}
+	if e.UnsetClaim != nil {
+		parts = append(parts, e.UnsetClaim.String())
+	}
+	if e.SetClaim != nil {
+		parts = append(parts, e.SetClaim.String())
+	}
+	return "Event{" + strings.Join(parts, ", ") + "}"
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -332,6 +578,7 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 }
 
 type processor struct {
+	syncerID       string
 	db             *sql.DB
 	exitTree       *tree.AppendOnlyTree
 	log            *log.Logger
@@ -344,7 +591,7 @@ type processor struct {
 
 func newProcessor(
 	dbPath string,
-	name string,
+	syncerID string,
 	logger *log.Logger,
 	dbQueryTimeout time.Duration,
 ) (*processor, error) {
@@ -360,13 +607,14 @@ func newProcessor(
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
+		syncerID:       syncerID,
 		db:             database,
 		exitTree:       exitTree,
 		log:            logger,
 		dbQueryTimeout: dbQueryTimeout,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
-			name,
+			syncerID,
 		),
 	}, nil
 }
@@ -374,7 +622,7 @@ func newProcessor(
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, bridgeTableName)
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, getBridgesBlockRangeSelectSQL)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
@@ -405,7 +653,52 @@ func (p *processor) GetBridges(
 }
 
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, claimTableName)
+	// SQL query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for a global_index, return all claims in range uncompacted
+	// Case 2: If no unset_claim exists and globally oldest is in range, return compacted claim
+	// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
+	query := fmt.Sprintf(`
+	WITH all_claims_ranked AS (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
+			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
+		FROM claim
+	),
+	claims_in_range AS (
+		SELECT *
+		FROM all_claims_ranked
+		WHERE block_num >= $1 AND block_num <= $2
+	),
+	claims_with_unset AS (
+		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
+		SELECT 
+			c.%s
+		FROM claims_in_range c
+		WHERE EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = c.global_index
+		)
+	),
+	compactable_claims AS (
+		-- Case 2 & 3: Handle claims without unset_claim
+		SELECT 
+		%s
+		FROM claims_in_range o
+		JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
+		WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
+		AND NOT EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = o.global_index
+		)
+	)
+	SELECT * FROM claims_with_unset
+	UNION ALL
+	SELECT * FROM compactable_claims
+	ORDER BY block_num ASC, block_pos ASC;
+`, claimColumnsSQL, compactedClaimsSelectSQL)
+
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, query)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
@@ -440,20 +733,78 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 		return nil, fmt.Errorf("global index parameter cannot be nil")
 	}
 
-	var results []*Claim
-	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
-		SELECT *
-		FROM %s
+	// SQL query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for the global_index, return all claims uncompacted
+	// Case 2: If no unset_claim exists, return compacted claim (oldest metadata + newest proofs)
+	// Case 3: Same as case 2 (all claims for this global_index are considered "in range")
+	query := fmt.Sprintf(`
+	WITH all_claims_for_index AS (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
+			ROW_NUMBER() OVER (ORDER BY block_num DESC, block_pos DESC) AS rn_newest
+		FROM claim
 		WHERE global_index = $1
-		ORDER BY block_num ASC, block_pos ASC;
-	`, claimTableName), globalIndex.String()); err != nil {
+	),
+	claims_with_unset AS (
+		-- Case 1: Return all claims if unset_claim exists (no compaction)
+		SELECT 
+			c.%s
+		FROM all_claims_for_index c
+		WHERE EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = $1
+		)
+	),
+	compactable_claims AS (
+		-- Case 2: Handle claims without unset_claim (compact)
+		SELECT 
+		%s
+		FROM all_claims_for_index o
+		JOIN all_claims_for_index n ON n.rn_newest = 1
+		WHERE o.rn_oldest = 1
+		AND NOT EXISTS (
+			SELECT 1 FROM unset_claim uc 
+			WHERE uc.global_index = $1
+		)
+	)
+	SELECT * FROM claims_with_unset
+	UNION ALL
+	SELECT * FROM compactable_claims
+	ORDER BY block_num ASC, block_pos ASC;
+`, claimColumnsSQL, compactedClaimsSelectSQL)
+
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := p.db.QueryContext(dbCtx, query, globalIndex.String())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			p.log.Debugf("no claims were found for global index: %s", globalIndex.String())
+			return []Claim{}, nil
+		}
+		p.log.Errorf("GetClaimsByGlobalIndex: query failed for global index %s: %v", globalIndex.String(), err)
 		return nil, fmt.Errorf("failed to query claims by global index: %s: %w", globalIndex.String(), err)
 	}
 
-	claimsSlice := db.SlicePtrsToSlice(results)
-	claims, ok := claimsSlice.([]Claim)
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	claimPtrs := []*Claim{}
+	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		p.log.Errorf("GetClaimsByGlobalIndex: meddler.ScanAll failed for global index %s: %v", globalIndex.String(), err)
+		return nil, fmt.Errorf("failed to scan claims for global index: %s: %w", globalIndex.String(), err)
+	}
+
+	claimsIface := db.SlicePtrsToSlice(claimPtrs)
+	claims, ok := claimsIface.([]Claim)
 	if !ok {
-		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for global index: %s", globalIndex.String())
+		p.log.Errorf("GetClaimsByGlobalIndex: failed to convert from []*Claim to []Claim for global index: %s",
+			globalIndex.String())
 		return nil, errFailToConvertClaims
 	}
 
@@ -548,11 +899,75 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
 
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
+	// Pagination query with compaction logic implementing three cases:
+	// Case 1: If unset_claim exists for a global_index, return all claims on page uncompacted
+	// Case 2: If no unset_claim exists and globally oldest is on page, return compacted claim
+	// Case 3: If globally oldest is outside page and no unset_claim exists, exclude from results
+	//
+	// This query:
+	// - Gets claims for the requested page (DESC order: newest first)
+	// - Ranks all claims globally by global_index to find oldest and newest
+	// - For claims with unset_claim: returns all instances on the page uncompacted
+	// - For claims without unset_claim: only returns compacted version if newest is on page
+	//nolint:gosec
+	query := fmt.Sprintf(`
+		WITH page_claims AS (
+			SELECT *
+			FROM claim
+			%s
+			ORDER BY block_num DESC, block_pos DESC
+			LIMIT $1 OFFSET $2
+		),
+		all_claims_ranked AS (
+			SELECT 
+				*,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
+				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
+			FROM claim
+			%s
+		),
+		claims_with_unset_on_page AS (
+			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
+			SELECT 
+				pc.%s
+			FROM page_claims pc
+			WHERE EXISTS (
+				SELECT 1 FROM unset_claim uc 
+				WHERE uc.global_index = pc.global_index
+			)
+		),
+		newest_on_page AS (
+			SELECT DISTINCT pc.global_index
+			FROM page_claims pc
+			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest_global = 1
+			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
+			AND NOT EXISTS (
+				SELECT 1 FROM unset_claim uc 
+				WHERE uc.global_index = pc.global_index
+			)
+		),
+		compactable_claims AS (
+			-- Case 2 & 3: Handle claims without unset_claim
+			SELECT 
+			%s
+			FROM all_claims_ranked o
+			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
+			WHERE o.rn_oldest_global = 1  -- Globally oldest claim
+			AND o.global_index IN (SELECT global_index FROM newest_on_page)
+		)
+		SELECT * FROM claims_with_unset_on_page
+		UNION ALL
+		SELECT * FROM compactable_claims
+		ORDER BY block_num DESC, block_pos DESC;
+	`, whereClause, whereClause, claimColumnsSQL, compactedClaimsSelectSQL)
+
+	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)
 	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
+		if errors.Is(err, sql.ErrNoRows) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
 				pageNumber, pageSize)
 			return nil, claimsCount, nil
@@ -573,6 +988,62 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	return claims, claimsCount, nil
+}
+
+// GetUnsetClaimsPaged returns a paginated list of unset claims
+func (p *processor) GetUnsetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+	globalIndex *big.Int,
+) ([]*UnsetClaim, int, error) {
+	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
+	unclaimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if unclaimsCount == 0 {
+		return []*UnsetClaim{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, unclaimsCount, unsetClaimTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByBlockDesc, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, unclaimsCount, nil
+		}
+		p.log.Errorf("GetUnsetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	unsetClaims := []*UnsetClaim{}
+	if err = meddler.ScanAll(rows, &unsetClaims); err != nil {
+		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return unsetClaims, unclaimsCount, nil
+}
+
+// buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
+// based on the provided globalIndex
+func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
+	if globalIndex != nil {
+		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
+	}
+
+	return ""
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
@@ -623,9 +1094,8 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num DESC, block_pos DESC"
 	rows, err := p.queryPaged(
-		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
+		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByBlockDesc, whereClause,
 	)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -654,19 +1124,12 @@ func (p *processor) GetLegacyTokenMigrations(
 }
 
 func (p *processor) queryBlockRange(
-	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string,
+	ctx context.Context, tx dbtypes.Querier,
+	fromBlock, toBlock uint64, query string,
 ) (*sql.Rows, error) {
-	if err := p.isBlockProcessed(ctx, tx, toBlock); err != nil {
-		return nil, err
-	}
-
 	// Create a context with database timeout
 	dbCtx, _ := p.withDatabaseTimeout(ctx)
-	rows, err := tx.QueryContext(dbCtx, fmt.Sprintf(`
-		SELECT * FROM %s
-		WHERE block_num >= $1 AND block_num <= $2
-		ORDER BY block_num ASC, block_pos ASC;
-	`, table), fromBlock, toBlock)
+	rows, err := tx.QueryContext(dbCtx, query, fromBlock, toBlock)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -697,17 +1160,6 @@ func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 		return nil, err
 	}
 	return rows, nil
-}
-
-func (p *processor) isBlockProcessed(ctx context.Context, tx dbtypes.Querier, blockNum uint64) error {
-	lpb, err := p.getLastProcessedBlockWithTx(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if lpb < blockNum {
-		return fmt.Errorf(errBlockNotProcessedFormat, blockNum, lpb)
-	}
-	return nil
 }
 
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
@@ -866,6 +1318,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.UnsetClaim != nil {
+			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
+				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.SetClaim != nil {
+			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
+				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -877,8 +1343,18 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
 	if len(block.Events) > 0 {
 		p.log.Info(logMsg)
-	} else {
-		p.log.Debugf(logMsg)
+
+		if p.log.IsEnabledLogLevel(zapcore.DebugLevel) {
+			p.log.Debugf("[%s] indexed events: ", p.syncerID)
+			for _, e := range block.Events {
+				event, ok := e.(Event)
+				if !ok {
+					p.log.Errorf("failed to convert event to Event type in block %d for debug logging", block.Num)
+					return errors.New("failed to convert sync.Block.Event to Event for debug logging")
+				}
+				p.log.Debugf("%s", event.String())
+			}
+		}
 	}
 
 	return nil

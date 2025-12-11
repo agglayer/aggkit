@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -79,6 +80,45 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 								GlobalExitRoot: common.HexToHash("0x1"),
 								BlockHash:      common.HexToHash("0x22"),
 								Timestamp:      112,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "success with removed GER (dummy info and proof)",
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				blockPos := uint64(5)
+				gerHash := common.HexToHash("0xabc123")
+				mockChainGERReader.EXPECT().GetInjectedGERsForRange(ctx, uint64(1), uint64(10)).Return(map[common.Hash]l2gersync.GlobalExitRootInfo{
+					gerHash: {
+						GlobalExitRoot:  gerHash,
+						L1InfoTreeIndex: math.MaxUint32,
+						BlockNum:        222,
+						BlockPosition:   &blockPos,
+						Removed:         true,
+					},
+				}, nil)
+				// GetProofForGER should NOT be called when L1InfoTreeIndex is MaxUint32
+			},
+			expectedProofs: map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{
+				common.HexToHash("0xabc123"): {
+					BlockNumber: 222,
+					LogIndex:    5,
+					ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
+						ProofGERToL1Root: &agglayertypes.MerkleProof{
+							Proof: treetypes.Proof{},
+							Root:  common.HexToHash("0x2"),
+						},
+						L1Leaf: &agglayertypes.L1InfoTreeLeaf{
+							L1InfoTreeIndex: math.MaxUint32,
+							RollupExitRoot:  common.HexToHash("0x0"),
+							MainnetExitRoot: common.HexToHash("0x0"),
+							Inner: &agglayertypes.L1InfoTreeLeafInner{
+								GlobalExitRoot: common.HexToHash("0xabc123"),
+								BlockHash:      common.HexToHash("0x0"),
+								Timestamp:      0,
 							},
 						},
 					},

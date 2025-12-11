@@ -11,6 +11,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 		NewLocalExitRoot:  common.HexToHash("0x2"),
 		BridgeExits: []*agglayertypes.BridgeExit{
 			{
-				LeafType: agglayertypes.LeafTypeAsset,
+				LeafType: bridgetypes.LeafTypeAsset,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginTokenAddress: common.HexToAddress("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					OriginNetwork:      12,
@@ -46,7 +47,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 					LeafIndex:   11,
 				},
 				BridgeExit: &agglayertypes.BridgeExit{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x1211"),

@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -32,7 +33,9 @@ var (
 
 	// sovereign chain contract events
 	detailedClaimEventSignature = crypto.Keccak256Hash([]byte(
-		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)",
+		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
+			"uint256,bytes32,bytes32,uint8,uint32," +
+			"address,uint32,address,uint256,bytes)",
 	))
 	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"SetSovereignTokenAddress(uint32,address,address,bool)",
@@ -43,11 +46,24 @@ var (
 	removeLegacySovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"RemoveLegacySovereignTokenAddress(address)",
 	))
+	unsetClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)",
+	))
+	setClaimEventSignature = crypto.Keccak256Hash([]byte(
+		"SetClaim(bytes32)",
+	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
+
+	// bridgeAsset(uint32 destinationNetwork,address destinationAddress,uint256 amount,
+	// 	address token,bool forceUpdateGlobalExitRoot,bytes permitData)
+	BridgeAssetMethodID = common.Hex2Bytes("cd586579")
+	// bridgeMessage(uint32 destinationNetwork,address destinationAddress,
+	//  bool forceUpdateGlobalExitRoot,bytes metadata)
+	BridgeMessageMethodID = common.Hex2Bytes("240ff378")
 )
 
 const (
@@ -82,15 +98,18 @@ func buildAppender(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
-	appender[claimEventSignature] = buildClaimEventHandler(
-		bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims,
-		bridgeDeployment.kind, logger)
+	switch bridgeDeployment.kind {
+	case NonSovereignChain:
+		appender[claimEventSignature] = buildClaimEventHandler(
+			bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
 
-	if bridgeDeployment.kind == SovereignChain {
+	case SovereignChain:
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[setClaimEventSignature] = buildSetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 	}
 
 	return appender, nil
@@ -110,7 +129,15 @@ func buildBridgeEventHandler(
 		}
 
 		// Extract call data and root call for txn_sender
-		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		foundCall, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, func(c Call) (bool, error) {
+			switch bridgeEvent.LeafType {
+			case bridgesynctypes.LeafTypeAsset.Uint8():
+				return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
+			case bridgesynctypes.LeafTypeMessage.Uint8():
+				return bytes.HasPrefix(c.Input, BridgeMessageMethodID), nil
+			}
+			return false, nil
+		})
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -138,7 +165,7 @@ func buildBridgeEventHandler(
 // buildClaimEventHandler creates a handler for the Claim event log.
 func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool,
-	bridgeDeployment BridgeDeployment, logger *logger.Logger,
+	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
@@ -159,7 +186,7 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -172,13 +199,6 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {
 				return err
 			}
-		}
-
-		// TODO: The DetailedClaimEvent is for now emitted only for claimAsset function
-		// Skip its insertion, since it will be handled through DetailedClaimEvent handler
-		// https://github.com/agglayer/aggkit/blob/02b5493dfdc130281155dd2783a6a476212747f1/bridgesync/downloader.go#L191-L226
-		if bridgeDeployment == SovereignChain && !claim.IsMessage {
-			return nil
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
@@ -212,9 +232,7 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			ProofLocalExitRoot:  treetypes.NewProof(claimEvent.SmtProofLocalExitRoot),
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
-			// TODO: Populate once leafType is provided by the DetailedClaimEvent
-			// (https://github.com/agglayer/agglayer-contracts/pull/568)
-			IsMessage: false,
+			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
@@ -245,7 +263,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger)
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -357,13 +375,57 @@ func buildRemoveLegacyTokenHandler(contract *agglayerbridgel2.Agglayerbridgel2) 
 	}
 }
 
-type call struct {
+// buildUnsetClaimEventHandler creates a handler for the UpdatedUnsetGlobalIndexHashChain event log
+func buildUnsetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock,
+	types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseUpdatedUnsetGlobalIndexHashChain(l)
+		if err != nil {
+			return fmt.Errorf("error parsing UpdatedUnsetGlobalIndexHashChain event log %+v: %w", l, err)
+		}
+
+		// Convert bytes32 to big.Int
+		globalIndex := new(big.Int).SetBytes(event.UnsetGlobalIndex[:])
+
+		b.Events = append(b.Events, Event{UnsetClaim: &UnsetClaim{
+			BlockNum:                  b.Num,
+			BlockPos:                  uint64(l.Index),
+			TxHash:                    l.TxHash,
+			GlobalIndex:               globalIndex,
+			UnsetGlobalIndexHashChain: event.NewUnsetGlobalIndexHashChain,
+		}})
+		return nil
+	}
+}
+
+// buildSetClaimEventHandler creates a handler for the SetClaim event log
+func buildSetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseSetClaim(l)
+		if err != nil {
+			return fmt.Errorf("error parsing SetClaim event log %+v: %w", l, err)
+		}
+
+		// Convert bytes32 to big.Int
+		globalIndex := new(big.Int).SetBytes(event.GlobalIndex[:])
+
+		b.Events = append(b.Events, Event{SetClaim: &SetClaim{
+			BlockNum:    b.Num,
+			BlockPos:    uint64(l.Index),
+			TxHash:      l.TxHash,
+			GlobalIndex: globalIndex,
+		}})
+		return nil
+	}
+}
+
+type Call struct {
 	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
 	Value *rpctypes.ArgBig  `json:"value"`
 	Err   *string           `json:"error"`
 	Input rpctypes.ArgBytes `json:"input"`
-	Calls []call            `json:"calls"`
+	Calls []Call            `json:"calls"`
 }
 
 type tracerCfg struct {
@@ -371,14 +433,14 @@ type tracerCfg struct {
 }
 
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
-func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error), logger *logger.Logger,
-) (*call, error) {
+func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (bool, error), logger *logger.Logger,
+) (*Call, error) {
 	callStack := stack.New()
 	callStack.Push(rootCall)
 
 	for callStack.Len() > 0 {
 		currentCallInterface := callStack.Pop()
-		currentCall, ok := currentCallInterface.(call)
+		currentCall, ok := currentCallInterface.(Call)
 		if !ok {
 			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
 		}
@@ -418,8 +480,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 }
 
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
-func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
-	rootCall := &call{To: contractAddr}
+func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
+	rootCall := &Call{To: contractAddr}
 	err := client.Call(rootCall, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
@@ -432,7 +494,8 @@ func extractCallData(
 	bridgeAddr common.Address,
 	txHash common.Hash,
 	logger *logger.Logger,
-) (foundCall *call, rootCall *call, err error) {
+	callback func(c Call) (bool, error),
+) (foundCall *Call, rootCall *Call, err error) {
 	// Extract root call first
 	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
@@ -440,7 +503,7 @@ func extractCallData(
 	}
 
 	// Find the specific call to the bridge contract
-	foundCall, err = findCall(*rootCall, bridgeAddr, nil, logger)
+	foundCall, err = findCall(*rootCall, bridgeAddr, callback, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -457,12 +520,12 @@ func extractCallData(
 //
 // Returns an error if calldata isn't found.
 func (c *Claim) setClaimCalldataFromRoot(
-	rootCall *call,
+	rootCall *Call,
 	bridge common.Address,
 	logger *logger.Logger,
 ) error {
 	_, err := findCall(*rootCall, bridge,
-		func(call call) (bool, error) {
+		func(call Call) (bool, error) {
 			// Skip reverted calls
 			if call.Err != nil {
 				return false, nil

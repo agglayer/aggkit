@@ -11,6 +11,7 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -123,14 +124,14 @@ func grpcBridgeExitToAgglayer(bridgeExit *v1types.BridgeExit) (*agglayertypes.Br
 }
 
 // grpcLeafTypeToAgglayer converts a leaf type to a proto leaf type
-func grpcLeafTypeToAgglayer(leafType v1types.LeafType) (agglayertypes.LeafType, error) {
+func grpcLeafTypeToAgglayer(leafType v1types.LeafType) (bridgetypes.LeafType, error) {
 	switch leafType {
 	case v1types.LeafType_LEAF_TYPE_TRANSFER:
-		return agglayertypes.LeafTypeAsset, nil
+		return bridgetypes.LeafTypeAsset, nil
 	case v1types.LeafType_LEAF_TYPE_MESSAGE:
-		return agglayertypes.LeafTypeMessage, nil
+		return bridgetypes.LeafTypeMessage, nil
 	default:
-		return agglayertypes.LeafTypeAsset, fmt.Errorf("unknown leaf type: %s", leafType)
+		return bridgetypes.LeafTypeAsset, fmt.Errorf("unknown leaf type: %s", leafType)
 	}
 }
 

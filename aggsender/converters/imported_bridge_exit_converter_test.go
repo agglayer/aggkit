@@ -9,6 +9,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,7 +42,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 			expectedError: false,
 			expectedExit: &agglayertypes.ImportedBridgeExit{
 				BridgeExit: &agglayertypes.BridgeExit{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
@@ -73,7 +74,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 			expectedError: false,
 			expectedExit: &agglayertypes.ImportedBridgeExit{
 				BridgeExit: &agglayertypes.BridgeExit{
-					LeafType: agglayertypes.LeafTypeMessage,
+					LeafType: bridgetypes.LeafTypeMessage,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
@@ -154,7 +155,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			expectedExits: []*agglayertypes.ImportedBridgeExit{
 				{
 					BridgeExit: &agglayertypes.BridgeExit{
-						LeafType: agglayertypes.LeafTypeAsset,
+						LeafType: bridgetypes.LeafTypeAsset,
 						TokenInfo: &agglayertypes.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x1234"),
@@ -243,7 +244,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			expectedExits: []*agglayertypes.ImportedBridgeExit{
 				{
 					BridgeExit: &agglayertypes.BridgeExit{
-						LeafType: agglayertypes.LeafTypeAsset,
+						LeafType: bridgetypes.LeafTypeAsset,
 						TokenInfo: &agglayertypes.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x123"),
@@ -285,7 +286,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 				},
 				{
 					BridgeExit: &agglayertypes.BridgeExit{
-						LeafType: agglayertypes.LeafTypeMessage,
+						LeafType: bridgetypes.LeafTypeMessage,
 						TokenInfo: &agglayertypes.TokenInfo{
 							OriginNetwork:      3,
 							OriginTokenAddress: common.HexToAddress("0x789"),
@@ -418,7 +419,7 @@ func TestConvertToImportedBridgeExitsWithoutClaimData_MultipleClaims(t *testing.
 	expected := []*agglayertypes.ImportedBridgeExit{
 		{
 			BridgeExit: &agglayertypes.BridgeExit{
-				LeafType: agglayertypes.LeafTypeAsset,
+				LeafType: bridgetypes.LeafTypeAsset,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginNetwork:      1,
 					OriginTokenAddress: common.HexToAddress("0x123"),
@@ -435,7 +436,7 @@ func TestConvertToImportedBridgeExitsWithoutClaimData_MultipleClaims(t *testing.
 		},
 		{
 			BridgeExit: &agglayertypes.BridgeExit{
-				LeafType: agglayertypes.LeafTypeMessage,
+				LeafType: bridgetypes.LeafTypeMessage,
 				TokenInfo: &agglayertypes.TokenInfo{
 					OriginNetwork:      3,
 					OriginTokenAddress: common.HexToAddress("0x789"),

@@ -13,6 +13,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	dbmocks "github.com/agglayer/aggkit/db/mocks"
@@ -469,7 +470,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			NewLocalExitRoot:  common.HexToHash("0x2"),
 			BridgeExits: []*agglayertypes.BridgeExit{
 				{
-					LeafType: agglayertypes.LeafTypeAsset,
+					LeafType: bridgetypes.LeafTypeAsset,
 					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x1"),
@@ -804,7 +805,7 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 
 	bridgeExits := []*agglayertypes.BridgeExit{
 		{
-			LeafType: agglayertypes.LeafTypeAsset,
+			LeafType: bridgetypes.LeafTypeAsset,
 			TokenInfo: &agglayertypes.TokenInfo{
 				OriginNetwork:      1,
 				OriginTokenAddress: common.HexToAddress("0x1"),

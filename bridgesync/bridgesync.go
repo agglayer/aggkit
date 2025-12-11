@@ -153,19 +153,20 @@ func newBridgeSync(
 	}
 
 	if lastProcessedBlock < cfg.InitialBlockNum {
-		block, err := ethClient.BlockByNumber(ctx, new(big.Int).SetUint64(cfg.InitialBlockNum))
+		header, err := ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(cfg.InitialBlockNum))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial block %d: %w", cfg.InitialBlockNum, err)
 		}
 
 		err = processor.ProcessBlock(ctx, sync.Block{
 			Num:  cfg.InitialBlockNum,
-			Hash: block.Hash(),
+			Hash: header.Hash(),
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	rh := &sync.RetryHandler{
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
@@ -277,8 +278,8 @@ func resolveBridgeDeployment(ctx context.Context,
 
 	callOpts := &bind.CallOpts{Pending: false, Context: ctx}
 
-	// 1. Try calling BRIDGE_SOVEREIGN_VERSION — only exists on AgglayerBridgeL2
-	if _, err := agglayerBridgeL2.BRIDGESOVEREIGNVERSION(callOpts); err == nil {
+	// 1. Try calling bridgeManager function — only exists on AgglayerBridgeL2
+	if _, err := agglayerBridgeL2.BridgeManager(callOpts); err == nil {
 		return &bridgeDeployment{
 			kind:             SovereignChain,
 			agglayerBridge:   agglayerBridge,
@@ -288,8 +289,8 @@ func resolveBridgeDeployment(ctx context.Context,
 		return nil, fmt.Errorf("unexpected error querying AgglayerBridgeL2.BRIDGE_SOVEREIGN_VERSION: %w", err)
 	}
 
-	// 2. If that failed, try BRIDGE_VERSION — exists on base AgglayerBridge
-	if _, err := agglayerBridge.BRIDGEVERSION(callOpts); err == nil {
+	// 2. If that failed, try lastUpdatedDepositCount function — exists on base AgglayerBridge
+	if _, err := agglayerBridge.LastUpdatedDepositCount(callOpts); err == nil {
 		return &bridgeDeployment{
 			kind:             NonSovereignChain,
 			agglayerBridge:   agglayerBridge,
@@ -326,6 +327,16 @@ func (s *BridgeSync) GetClaimsPaged(
 		return nil, 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
+}
+
+func (s *BridgeSync) GetUnsetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32, globalIndex *big.Int) ([]*UnsetClaim, int, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get unset claims")
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
