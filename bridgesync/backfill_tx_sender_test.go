@@ -1316,16 +1316,6 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock successful extractions for all records
-		// mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		// 	tx, ok := args.Get(0).(*Transaction)
-		// 	if !ok {
-		// 		return
-		// 	}
-		// 	tx.FromRaw = testAddress
-		// 	tx.To = "0x1234"
-		// })
-
 		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
