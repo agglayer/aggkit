@@ -10,7 +10,15 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 log_warn() { echo -e "${ORANGE}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
-trap 'log_error "Script failed at line $LINENO"' ERR
+cleanup() {
+    if [ -n "$TEMP_CLONE_DIR" ] && [ -d "$TEMP_CLONE_DIR" ]; then
+        log_info "Cleaning up temporary clone at: $TEMP_CLONE_DIR"
+        rm -rf "$TEMP_CLONE_DIR"
+    fi
+}
+
+trap 'cleanup; log_error "Script failed at line $LINENO"' ERR
+trap 'cleanup' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -18,23 +26,29 @@ LOCAL_CONFIG_DIR="$SCRIPT_DIR/config"
 LOCAL_CONFIG_FILE="$LOCAL_CONFIG_DIR/aggkit-config.toml"
 KURTOSIS_TEMPLATE_REL_PATH="templates/aggkit/aggkit-config.toml"
 WORKFLOW_FILE="$PROJECT_ROOT/.github/workflows/test-e2e.yml"
+KURTOSIS_CDK_REPO_URL="https://github.com/0xPolygon/kurtosis-cdk.git"
+TEMP_CLONE_DIR=""
 
 usage() {
-    echo "Usage: $0 <kurtosis_repo_path>"
+    echo "Usage: $0 [kurtosis_repo_path]"
     echo ""
     echo "Syncs the aggkit-config.toml template between the local test/config folder"
     echo "and the Kurtosis CDK repository."
     echo ""
     echo "Arguments:"
-    echo "  kurtosis_repo_path  Path to Kurtosis CDK repo"
+    echo "  kurtosis_repo_path  (Optional) Path to existing Kurtosis CDK repo"
+    echo "                      If not provided, will clone to a temporary location"
     echo ""
     echo "Behavior:"
+    echo "  - If no path provided: Clones kurtosis-cdk to a temporary directory"
     echo "  - Verifies Kurtosis repo is at the expected commit from test-e2e.yml"
     echo "  - If local copy exists: Replaces the Kurtosis template with local copy"
     echo "  - If no local copy: Prompts to copy template from Kurtosis repo"
+    echo "  - Cleans up temporary clone on exit"
     echo ""
     echo "Examples:"
-    echo "  $0 /path/to/kurtosis-cdk"
+    echo "  $0                          # Clone to temp directory"
+    echo "  $0 /path/to/kurtosis-cdk   # Use existing repo"
     exit 1
 }
 
@@ -91,29 +105,69 @@ check_kurtosis_commit() {
     fi
 }
 
-if [ "$#" -ne 1 ]; then
+# Clone kurtosis-cdk repo to temporary directory
+clone_kurtosis_repo() {
+    local expected_commit="$1"
+
+    TEMP_CLONE_DIR=$(mktemp -d)
+    log_info "No kurtosis-cdk path provided. Cloning to temporary directory..."
+    log_info "Temporary directory: $TEMP_CLONE_DIR"
+
+    if ! git clone --quiet "$KURTOSIS_CDK_REPO_URL" "$TEMP_CLONE_DIR"; then
+        log_error "Failed to clone kurtosis-cdk repository"
+        exit 1
+    fi
+
+    log_info "Successfully cloned kurtosis-cdk repository"
+    log_info "Checking out commit $expected_commit..."
+
+    if ! git -C "$TEMP_CLONE_DIR" checkout --quiet "$expected_commit"; then
+        log_error "Failed to checkout commit $expected_commit"
+        exit 1
+    fi
+
+    log_info "Successfully checked out expected commit"
+    echo "$TEMP_CLONE_DIR"
+}
+
+# Check for help flag
+if [ "$#" -eq 1 ] && [[ "$1" == "-h" || "$1" == "--help" ]]; then
     usage
 fi
 
-KURTOSIS_REPO_PATH="$1"
-KURTOSIS_TEMPLATE_FILE="$KURTOSIS_REPO_PATH/$KURTOSIS_TEMPLATE_REL_PATH"
-
-# Validate Kurtosis repo path
-if [ ! -d "$KURTOSIS_REPO_PATH" ]; then
-    log_error "The provided Kurtosis repo path does not exist: $KURTOSIS_REPO_PATH"
-    exit 1
+if [ "$#" -gt 1 ]; then
+    usage
 fi
 
-# Verify it's a git repository
-if [ ! -d "$KURTOSIS_REPO_PATH/.git" ]; then
-    log_error "The provided path is not a git repository: $KURTOSIS_REPO_PATH"
-    exit 1
-fi
-
-# Get expected commit and verify Kurtosis repo
+# Get expected commit first
 EXPECTED_COMMIT=$(get_expected_kurtosis_commit)
 log_info "Expected Kurtosis CDK commit from workflow: $EXPECTED_COMMIT"
-check_kurtosis_commit "$KURTOSIS_REPO_PATH" "$EXPECTED_COMMIT"
+
+# Determine Kurtosis repo path
+if [ "$#" -eq 1 ]; then
+    # Use provided path
+    KURTOSIS_REPO_PATH="$1"
+
+    # Validate Kurtosis repo path
+    if [ ! -d "$KURTOSIS_REPO_PATH" ]; then
+        log_error "The provided Kurtosis repo path does not exist: $KURTOSIS_REPO_PATH"
+        exit 1
+    fi
+
+    # Verify it's a git repository
+    if [ ! -d "$KURTOSIS_REPO_PATH/.git" ]; then
+        log_error "The provided path is not a git repository: $KURTOSIS_REPO_PATH"
+        exit 1
+    fi
+
+    # Check if repo is at expected commit
+    check_kurtosis_commit "$KURTOSIS_REPO_PATH" "$EXPECTED_COMMIT"
+else
+    # Clone to temporary directory
+    KURTOSIS_REPO_PATH=$(clone_kurtosis_repo "$EXPECTED_COMMIT")
+fi
+
+KURTOSIS_TEMPLATE_FILE="$KURTOSIS_REPO_PATH/$KURTOSIS_TEMPLATE_REL_PATH"
 
 # Check if Kurtosis template exists
 if [ ! -f "$KURTOSIS_TEMPLATE_FILE" ]; then
