@@ -32,33 +32,29 @@ jobs:
     outputs:
       kurtosis-commit: ${{ steps.get-commit.outputs.commit }}
     steps:
-      - name: Get kurtosis-cdk commit based on trigger
-        id: get-commit
+      - name: Determine kurtosis-cdk ref
+        id: determine-ref
         run: |
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            # For scheduled runs, get the latest commit
-            COMMIT=""
-            for i in {1..3}; do
-              COMMIT=$(curl -s https://api.github.com/repos/0xPolygon/kurtosis-cdk/commits/main | jq -r '.sha')
-              if [[ -n "$COMMIT" && "$COMMIT" != "null" ]]; then
-                echo "Using latest kurtosis-cdk commit: ${COMMIT}"
-                break
-              else
-                echo "Attempt $i: Failed to fetch commit, retrying..."
-                sleep 2
-              fi
-            done
-
-            if [[ -z "$COMMIT" || "$COMMIT" == "null" ]]; then
-              echo "Error: Failed to fetch kurtosis-cdk commit after 3 attempts"
-              exit 1
-            fi
+            echo "ref=main" >> $GITHUB_OUTPUT
+            echo "Using latest kurtosis-cdk main branch"
           else
-            # For push/workflow_dispatch, use the fixed commit
-            COMMIT="${{ env.KURTOSIS_CDK_COMMIT }}"
-            echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
+            echo "ref=${{ env.KURTOSIS_CDK_COMMIT }}" >> $GITHUB_OUTPUT
+            echo "Using fixed kurtosis-cdk commit: ${{ env.KURTOSIS_CDK_COMMIT }}"
           fi
+
+      - name: Checkout kurtosis-cdk
+        uses: actions/checkout@v5
+        with:
+          repository: 0xPolygon/kurtosis-cdk
+          ref: ${{ steps.determine-ref.outputs.ref }}
+
+      - name: Get kurtosis-cdk commit SHA
+        id: get-commit
+        run: |
+          COMMIT=$(git rev-parse HEAD)
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "Using kurtosis-cdk commit: ${COMMIT}"
 
   build-aggkit-image:
     uses: ./.github/workflows/build-aggkit-image.yml
