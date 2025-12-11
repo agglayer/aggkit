@@ -612,21 +612,12 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-		mockClient.EXPECT().Call(mock.Anything, mock.Anything, debugTraceTxEndpoint, mock.Anything).
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
-		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
-		// mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		// 	tx, ok := args.Get(0).(*Transaction)
-		// 	if !ok {
-		// 		return
-		// 	}
-		// 	tx.FromRaw = testAddress
-		// 	tx.To = "0x1234"
-		// })
 		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)

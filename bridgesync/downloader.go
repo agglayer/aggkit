@@ -205,7 +205,7 @@ type bridgeCallParams struct {
 	DestinationAddress common.Address
 	Amount             *big.Int
 	// can't use Token because could be a token network that native eth is a token or a wrapped token
-	// in this cases the calling value doesn't match the event (event field: OriginTokenAddress)
+	// in these cases the calling value doesn't match the event (event field: OriginTokenAddress)
 	Token common.Address
 }
 

@@ -11,5 +11,5 @@ WHERE tx_hash IN (
 UPDATE bridge
 SET from_address = NULL
 WHERE tx_hash IN (
-    SELECT  tx_hash FROM bridge GROUP BY tx_hash HAVING COUNT(*) > 1 
+    SELECT tx_hash FROM bridge GROUP BY tx_hash HAVING COUNT(*) > 1 
 );

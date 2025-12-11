@@ -206,7 +206,7 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	recordsIface := db.SlicePtrsToSlice(recordsPtr)
 	records, ok := recordsIface.([]RecordToBackfill)
 	if !ok {
-		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
+		return nil, errors.New("failed to convert")
 	}
 	return records, nil
 }

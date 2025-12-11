@@ -26,7 +26,7 @@ import (
 )
 
 // mainnet:
-// ase https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985) -> fix
+// case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985) -> fix
 // case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
 func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
 	t.Skip("Skipping exploratory test")
