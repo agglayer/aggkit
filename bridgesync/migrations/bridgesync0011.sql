@@ -6,6 +6,19 @@ DROP TRIGGER IF EXISTS archive_bridge_before_delete;
 DROP TABLE IF EXISTS bridge_archive;
 
 -- +migrate Up
+UPDATE bridge
+SET from_address = NULL
+WHERE tx_hash IN (
+    SELECT b.tx_hash
+    FROM bridge b
+    JOIN claim c ON b.tx_hash = c.tx_hash
+);
+UPDATE bridge
+SET from_address = NULL
+WHERE tx_hash IN (
+    SELECT tx_hash FROM bridge GROUP BY tx_hash HAVING COUNT(*) > 1 
+);
+
 CREATE TABLE IF NOT EXISTS backward_let (
 		block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,
 		block_pos INTEGER NOT NULL,
