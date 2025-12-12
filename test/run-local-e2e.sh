@@ -82,6 +82,11 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
 
     log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_REPO_PATH"
 
+    # Verify kurtosis-cdk is at the expected commit
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    log_info "Verifying kurtosis-cdk repository commit..."
+    "$SCRIPT_DIR/kurtosis-config.sh" "$KURTOSIS_REPO_PATH"
+
     pushd "$KURTOSIS_REPO_PATH" >/dev/null
     log_info "Cleaning any existing Kurtosis enclaves..."
     kurtosis clean --all
