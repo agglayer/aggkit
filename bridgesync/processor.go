@@ -1386,18 +1386,19 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("new deposit count must be at least 1 to compute the leaf index, got 0")
 			}
 
-			leafIndex := uint32(newDepositCountU64 - 1)
-			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
-				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-					leafIndex, newDepositCountU64)
-				return err
-			}
-
 			// remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
 			_, err := tx.Exec(deleteBridges, newDepositCountU64)
 			if err != nil {
 				p.log.Errorf("failed to remove bridges whose deposit count is greater than %d", newDepositCountU64)
+				return err
+			}
+
+			// remove all the indices after the provided leafIndex in the exit tree
+			leafIndex := uint32(newDepositCountU64 - 1)
+			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
+				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+					leafIndex, newDepositCountU64)
 				return err
 			}
 
