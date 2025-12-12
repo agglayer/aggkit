@@ -740,6 +740,7 @@ func runBridgeSyncL1IfNeeded(
 			log.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
+		log.Infof("txn_sender backfilling completed for L1 bridge sync")
 	}()
 
 	go bridgeSyncL1.Start(ctx)
