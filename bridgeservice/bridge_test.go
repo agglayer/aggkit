@@ -1189,6 +1189,204 @@ func TestGetClaimsHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "L2 bridge syncer is not available", response["error"])
 	})
+
+	t.Run("GetClaims count with compaction - multiple claims same global_index", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create 2 claims with the same global_index (should be compacted to 1)
+		globalIndex, _ := new(big.Int).SetString("18446744073709551617", 10)
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        globalIndex,
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+		}
+
+		expectedCount := 1
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, expectedCount, nil)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam: []string{"1"},
+			pageSizeParam:   []string{"10"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, expectedCount, response.Count)
+	})
+
+	t.Run("GetClaims count with unset_claim - all claims counted", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create 3 claims with the same global_index but with unset_claim (all should be returned)
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+			{
+				BlockNum:           2,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+			{
+				BlockNum:           3,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+		}
+
+		// The count should be 3 (all claims, no compaction when unset_claim exists)
+		expectedCount := 3
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, expectedCount, nil)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam: []string{"1"},
+			pageSizeParam:   []string{"10"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, expectedCount, response.Count)
+	})
+
+	t.Run("GetClaims count with mixed scenarios - compaction and unset_claim", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Mixed scenario:
+		// - global_index=100: 2 claims, no unset_claim → compacted to 1
+		// - global_index=200: 3 claims, has unset_claim → all 3 returned
+		// - global_index=300: 1 claim, no unset_claim → 1 returned
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+			{
+				BlockNum:           2,
+				GlobalIndex:        big.NewInt(200),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x3"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x4"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xabc...123"),
+			},
+			{
+				BlockNum:           3,
+				GlobalIndex:        big.NewInt(200),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x3"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x4"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xabc...123"),
+			},
+			{
+				BlockNum:           4,
+				GlobalIndex:        big.NewInt(200),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x3"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x4"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xabc...123"),
+			},
+			{
+				BlockNum:           5,
+				GlobalIndex:        big.NewInt(300),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x5"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x6"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0x456...def"),
+			},
+		}
+
+		// Expected count: 1 (compacted) + 3 (all with unset_claim) + 1 (single) = 5
+		expectedCount := 5
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, expectedCount, nil)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam: []string{"1"},
+			pageSizeParam:   []string{"10"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, expectedCount, response.Count)
+	})
 }
 
 func TestGetUnsetClaimsHandler(t *testing.T) {
