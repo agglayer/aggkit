@@ -199,32 +199,9 @@ Implements `ChainSender` using Ethereum clients and transaction management, supp
 Used in both operational modes for final GER storage and status checking.
 
 - **Contract**: `GlobalExitRootManagerL2SovereignChain.sol`
-- **Key Functions**:
-  - `insertGlobalExitRoot`: Final GER injection (called directly in Direct Mode, or by committee contract in Committee Mode)
-  - `GlobalExitRootMap`: Check if a GER is already injected
-  - `GlobalExitRootUpdater`: Get authorized updater address (for Direct Mode validation)
-- **Source Code**: [zkevm-contracts](https://github.com/0xPolygonHermez/zkevm-contracts/blob/feature/audit-remediations/contracts/v2/sovereignChains/GlobalExitRootManagerL2SovereignChain.sol#L89-L103)
-- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/pp/l2-sovereign-chain)
-
-### 2. AggOracleCommittee Contract
-
-Used exclusively in Committee Mode for consensus-based GER proposals.
-
-> **⚠️ Implementation Note**: The client-side code only handles proposal submission via `proposeGlobalExitRoot`. The consensus mechanism, quorum handling, and automatic GER injection are handled at the smart contract level. Refer to the actual [AggOracleCommittee.sol](https://github.com/agglayer/agglayer-contracts/blob/feature/descentralized_aggoracle/contracts/v2/sovereignChains/AggOracleCommittee.sol) contract for complete implementation details.
-
-- **Contract**: `AggOracleCommittee.sol`
-- **Key Functions** (as defined in current interface):
-  - `proposeGlobalExitRoot`: Submit GER proposal (called via transaction)
-  - `GetAggOracleMemberIndex`: Validate committee membership
-  - `AddressToLastProposedGER`: Track last proposal by each member
-
-- **Additional Functions** (used in implementation but not in interface):
-  - `AggOracleMembers`: Get committee member information (used in validation)
-  - `ProposedGERToReport`: Get proposal status for a specific GER
-- **Initialization Parameters**:
-  - **Committee Members**: Array of authorized oracle addresses
-  - **Quorum**: Minimum proposals/votes required for consensus (contract-level implementation)
-- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/pp/l2-sovereign-chain)
+- **Function**: `insertGlobalExitRoot`
+    - [Source Code](https://github.com/0xPolygonHermez/zkevm-contracts/blob/feature/audit-remediations/contracts/v2/sovereignChains/GlobalExitRootManagerL2SovereignChain.sol#L89-L103)
+- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/pp/l2-sovereign-chain).
 
 ---
 
