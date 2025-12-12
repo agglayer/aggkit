@@ -1460,8 +1460,16 @@ func (p *processor) getCompactedClaimsCount(ctx context.Context, whereClause str
 			SELECT * FROM claim %s
 		)
 		SELECT
-			(SELECT COUNT(*) FROM filtered_claims WHERE EXISTS (SELECT 1 FROM unset_claim uc WHERE uc.global_index = filtered_claims.global_index)) +
-			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims WHERE NOT EXISTS (SELECT 1 FROM unset_claim uc WHERE uc.global_index = filtered_claims.global_index)) AS total_count;
+			(SELECT COUNT(*) FROM filtered_claims
+			 WHERE EXISTS (
+				SELECT 1 FROM unset_claim uc
+				WHERE uc.global_index = filtered_claims.global_index
+			 )) +
+			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims
+			 WHERE NOT EXISTS (
+				SELECT 1 FROM unset_claim uc
+				WHERE uc.global_index = filtered_claims.global_index
+			 )) AS total_count;
 	`, whereClause)
 
 	count := 0
