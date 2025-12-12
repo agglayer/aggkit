@@ -1,9 +1,7 @@
 -- +migrate Down
-DROP TABLE IF EXISTS backward_let;
-
 DROP TRIGGER IF EXISTS archive_bridge_before_delete;
-
 DROP TABLE IF EXISTS bridge_archive;
+DROP TABLE IF EXISTS backward_let;
 
 -- +migrate Up
 UPDATE bridge
@@ -45,7 +43,8 @@ CREATE TABLE IF NOT EXISTS bridge_archive (
 		metadata BLOB,
 		tx_hash VARCHAR,
 		block_timestamp INTEGER,
-		txn_sender VARCHAR
+		txn_sender VARCHAR,
+        from_address VARCHAR
 	);
 
 ------------------------------------------------------------------------------
@@ -68,7 +67,8 @@ BEGIN
         metadata,
         tx_hash,
         block_timestamp,
-        txn_sender
+        txn_sender,
+        from_address,
     )
     VALUES (
         OLD.deposit_count,
@@ -83,6 +83,7 @@ BEGIN
         OLD.metadata,
         OLD.tx_hash,
         OLD.block_timestamp,
-        OLD.txn_sender
+        OLD.txn_sender,
+        OLD.from_address,
     );
 END;

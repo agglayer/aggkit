@@ -127,12 +127,12 @@ var (
             INSERT INTO %s (
                 block_num, block_pos, leaf_type, origin_network, origin_address,
                 destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count
+                tx_hash, block_timestamp, txn_sender, deposit_count, from_address
             )
             SELECT
                 block_num, block_pos, leaf_type, origin_network, origin_address,
                 destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count
+                tx_hash, block_timestamp, txn_sender, deposit_count, from_address
             FROM bridge_archive
             WHERE deposit_count > $1 AND deposit_count <= $2
         `, bridgeTableName)
@@ -483,6 +483,21 @@ type BackwardLET struct {
 	PreviousRoot         common.Hash `meddler:"previous_root,hash"`
 	NewDepositCount      *big.Int    `meddler:"new_deposit_count,bigint"`
 	NewRoot              common.Hash `meddler:"new_root,hash"`
+}
+
+// String returns a formatted string representation of BackwardLET for debugging and logging.
+func (b *BackwardLET) String() string {
+	previousDepositCountStr := nilStr
+	if b.PreviousDepositCount != nil {
+		previousDepositCountStr = b.PreviousDepositCount.String()
+	}
+	newDepositCountStr := nilStr
+	if b.NewDepositCount != nil {
+		newDepositCountStr = b.NewDepositCount.String()
+	}
+	return fmt.Sprintf("BackwardLET{BlockNum: %d, BlockPos: %d, "+
+		"PreviousDepositCount: %s, PreviousRoot: %s, NewDepositCount: %s, NewRoot: %s}",
+		b.BlockNum, b.BlockPos, previousDepositCountStr, b.PreviousRoot.String(), newDepositCountStr, b.NewRoot.String())
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
@@ -1207,7 +1222,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 			return fmt.Errorf("invalid previous deposit count: %d", backwardLET.PreviousDepositCount)
 		}
 
-		if backwardLET.PreviousDepositCount == nil || !backwardLET.PreviousDepositCount.IsUint64() {
+		if backwardLET.NewDepositCount == nil || !backwardLET.NewDepositCount.IsUint64() {
 			return fmt.Errorf("invalid new deposit count: %d", backwardLET.NewDepositCount)
 		}
 
@@ -1359,17 +1374,22 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.BackwardLET != nil {
 			newDepositCount := event.BackwardLET.NewDepositCount
 			if !newDepositCount.IsUint64() {
-				return fmt.Errorf("NewDepositCount=%d does not fit into uint64", newDepositCount)
+				return fmt.Errorf("new deposit count=%d does not fit into uint64", newDepositCount)
 			}
 
 			newDepositCountU64 := newDepositCount.Uint64()
 			if newDepositCountU64 > math.MaxUint32 {
-				return fmt.Errorf("NewDepositCount=%d exceeds uint32 max (%d)", newDepositCountU64, uint32(math.MaxUint32))
+				return fmt.Errorf("new deposit count=%d exceeds uint32 max (%d)", newDepositCountU64, uint32(math.MaxUint32))
+			}
+
+			if newDepositCountU64 == 0 {
+				return fmt.Errorf("new deposit count must be at least 1 to compute the leaf index, got 0")
 			}
 
 			leafIndex := uint32(newDepositCountU64 - 1)
 			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
-				p.log.Errorf("failed to backward local exit tree to %d deposit count", leafIndex)
+				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+					leafIndex, newDepositCountU64)
 				return err
 			}
 
