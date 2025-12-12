@@ -659,7 +659,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
 	query := fmt.Sprintf(`
 	WITH all_claims_ranked AS (
-		SELECT 
+		SELECT
 			*,
 			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
 			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
@@ -672,23 +672,23 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	),
 	claims_with_unset AS (
 		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
-		SELECT 
+		SELECT
 			c.%s
 		FROM claims_in_range c
 		WHERE EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = c.global_index
 		)
 	),
 	compactable_claims AS (
 		-- Case 2 & 3: Handle claims without unset_claim
-		SELECT 
+		SELECT
 		%s
 		FROM claims_in_range o
 		JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
 		WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
 		AND NOT EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = o.global_index
 		)
 	)
@@ -739,7 +739,7 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	// Case 3: Same as case 2 (all claims for this global_index are considered "in range")
 	query := fmt.Sprintf(`
 	WITH all_claims_for_index AS (
-		SELECT 
+		SELECT
 			*,
 			ROW_NUMBER() OVER (ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
 			ROW_NUMBER() OVER (ORDER BY block_num DESC, block_pos DESC) AS rn_newest
@@ -748,23 +748,23 @@ func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	),
 	claims_with_unset AS (
 		-- Case 1: Return all claims if unset_claim exists (no compaction)
-		SELECT 
+		SELECT
 			c.%s
 		FROM all_claims_for_index c
 		WHERE EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = $1
 		)
 	),
 	compactable_claims AS (
 		-- Case 2: Handle claims without unset_claim (compact)
-		SELECT 
+		SELECT
 		%s
 		FROM all_claims_for_index o
 		JOIN all_claims_for_index n ON n.rn_newest = 1
 		WHERE o.rn_oldest = 1
 		AND NOT EXISTS (
-			SELECT 1 FROM unset_claim uc 
+			SELECT 1 FROM unset_claim uc
 			WHERE uc.global_index = $1
 		)
 	)
@@ -885,7 +885,7 @@ func (p *processor) GetClaimsPaged(
 	networkIDs []uint32, globalIndex *big.Int,
 ) ([]*Claim, int, error) {
 	whereClause := p.buildClaimsFilterClause(networkIDs, globalIndex)
-	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
+	claimsCount, err := p.getCompactedClaimsCount(ctx, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -923,7 +923,7 @@ func (p *processor) GetClaimsPaged(
 			LIMIT $1 OFFSET $2
 		),
 		all_claims_ranked AS (
-			SELECT 
+			SELECT
 				*,
 				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
 				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
@@ -932,11 +932,11 @@ func (p *processor) GetClaimsPaged(
 		),
 		claims_with_unset_on_page AS (
 			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
-			SELECT 
+			SELECT
 				pc.%s
 			FROM page_claims pc
 			WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc 
+				SELECT 1 FROM unset_claim uc
 				WHERE uc.global_index = pc.global_index
 			)
 		),
@@ -946,13 +946,13 @@ func (p *processor) GetClaimsPaged(
 			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest_global = 1
 			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
 			AND NOT EXISTS (
-				SELECT 1 FROM unset_claim uc 
+				SELECT 1 FROM unset_claim uc
 				WHERE uc.global_index = pc.global_index
 			)
 		),
 		compactable_claims AS (
 			-- Case 2 & 3: Handle claims without unset_claim
-			SELECT 
+			SELECT
 			%s
 			FROM all_claims_ranked o
 			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
@@ -1439,6 +1439,38 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	}
 
 	return tokenMappings, nil
+}
+
+// getCompactedClaimsCount returns the count of claims with compaction logic applied.
+// - If unset_claim exists for a global_index, count all claims with that global_index
+// - If no unset_claim exists, count only one per global_index (compacted)
+// The count represents the total across all pages, matching what would be returned
+// if all pages were queried.
+func (p *processor) getCompactedClaimsCount(ctx context.Context, whereClause string) (int, error) {
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// Count query with compaction logic matching GetClaimsPaged:
+	// 1. Count all claims with unset_claim (no compaction, all returned)
+	// 2. Count distinct global_index for claims without unset_claim (compacted, one per global_index)
+	//nolint:gosec
+	query := fmt.Sprintf(`
+		WITH filtered_claims AS (
+			SELECT * FROM claim %s
+		)
+		SELECT
+			(SELECT COUNT(*) FROM filtered_claims WHERE EXISTS (SELECT 1 FROM unset_claim uc WHERE uc.global_index = filtered_claims.global_index)) +
+			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims WHERE NOT EXISTS (SELECT 1 FROM unset_claim uc WHERE uc.global_index = filtered_claims.global_index)) AS total_count;
+	`, whereClause)
+
+	count := 0
+	err := p.db.QueryRowContext(dbCtx, query).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 // buildNetworkIDsFilter builds SQL filter for the given network IDs
