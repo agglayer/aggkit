@@ -42,7 +42,7 @@ CREATE TRIGGER IF NOT EXISTS archive_bridge_before_delete
 BEFORE DELETE ON bridge
 FOR EACH ROW
 BEGIN
-    INSERT INTO bridge_archive (
+    INSERT OR IGNORE INTO bridge_archive (
         deposit_count,
         block_num,
         block_pos,

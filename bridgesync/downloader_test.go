@@ -55,6 +55,7 @@ func TestBuildAppender(t *testing.T) {
 		eventSignature common.Hash
 		deploymentKind BridgeDeployment
 		logBuilder     func() (types.Log, error)
+		expectedErr    string
 	}{
 		{
 			name:           "bridgeEventSignature appender",
@@ -372,6 +373,12 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
+		{
+			name:           "unknown deployment kind",
+			deploymentKind: 100,
+			logBuilder:     func() (types.Log, error) { return types.Log{}, nil },
+			expectedErr:    "unsupported bridge deployment kind: 100",
+		},
 	}
 
 	for _, tt := range tests {
@@ -382,17 +389,21 @@ func TestBuildAppender(t *testing.T) {
 			logger := logger.WithFields("module", "test")
 			bridgeDeployment.kind = tt.deploymentKind
 			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeDeployment, logger)
-			require.NoError(t, err)
-			require.NotNil(t, appenderMap)
+			if tt.expectedErr == "" {
+				require.NoError(t, err)
+				require.NotNil(t, appenderMap)
 
-			block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
+				block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
 
-			appenderFunc, exists := appenderMap[tt.eventSignature]
-			require.True(t, exists)
+				appenderFunc, exists := appenderMap[tt.eventSignature]
+				require.True(t, exists)
 
-			err = appenderFunc(block, log)
-			require.NoError(t, err)
-			require.Len(t, block.Events, 1)
+				err = appenderFunc(block, log)
+				require.NoError(t, err)
+				require.Len(t, block.Events, 1)
+			} else {
+				require.ErrorContains(t, err, tt.expectedErr)
+			}
 		})
 	}
 }

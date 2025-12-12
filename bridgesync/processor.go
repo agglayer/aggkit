@@ -1203,21 +1203,27 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	// 2. Restore bridge rows from archive for each interval
 	// ---------------------------------------------------------------------
 	for _, backwardLET := range backwardLETs {
-		if backwardLET.PreviousDepositCount.Cmp(backwardLET.NewDepositCount) <= 0 {
-			continue // malformed but safe to skip
+		if backwardLET.PreviousDepositCount == nil || !backwardLET.PreviousDepositCount.IsUint64() {
+			return fmt.Errorf("invalid previous deposit count: %d", backwardLET.PreviousDepositCount)
 		}
 
-		if _, err := tx.Exec(bridgeRestoreSQL, backwardLET.NewDepositCount, backwardLET.NewDepositCount); err != nil {
+		if backwardLET.PreviousDepositCount == nil || !backwardLET.PreviousDepositCount.IsUint64() {
+			return fmt.Errorf("invalid new deposit count: %d", backwardLET.NewDepositCount)
+		}
+
+		prevDepositCount := backwardLET.PreviousDepositCount.Uint64()
+		newDepositCount := backwardLET.NewDepositCount.Uint64()
+		if _, err := tx.Exec(bridgeRestoreSQL, newDepositCount, prevDepositCount); err != nil {
 			return fmt.Errorf("failed to restore bridges from bridge archive (range %d..%d): %w",
-				backwardLET.NewDepositCount, backwardLET.PreviousDepositCount, err)
+				newDepositCount, prevDepositCount, err)
 		}
 
 		// Remove restored rows from archive
 		_, err := tx.Exec(`DELETE FROM bridge_archive 
-		WHERE deposit_count > $1 AND deposit_count <= $2`, backwardLET.NewDepositCount, backwardLET.PreviousDepositCount)
+		WHERE deposit_count > $1 AND deposit_count <= $2`, newDepositCount, prevDepositCount)
 		if err != nil {
 			return fmt.Errorf("failed to delete restored rows from archive (range %d..%d): %w",
-				backwardLET.NewDepositCount, backwardLET.PreviousDepositCount, err)
+				newDepositCount, prevDepositCount, err)
 		}
 	}
 
@@ -1369,10 +1375,9 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 			// remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
-			_, err := tx.Exec(deleteBridges, newDepositCount)
+			_, err := tx.Exec(deleteBridges, newDepositCountU64)
 			if err != nil {
-				p.log.Errorf("failed to remove bridges whose deposit count is greater than or equal to %d",
-					event.BackwardLET.NewDepositCount)
+				p.log.Errorf("failed to remove bridges whose deposit count is greater than %d", newDepositCountU64)
 				return err
 			}
 

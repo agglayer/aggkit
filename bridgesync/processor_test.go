@@ -20,6 +20,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -320,6 +321,18 @@ func TestProcessor(t *testing.T) {
 					eventsToClaims(block5.Events),
 				)),
 		},
+		&reorgAction{
+			p:                 p,
+			description:       "reorg the last block",
+			firstReorgedBlock: 5,
+		},
+		&getLastProcessedBlockAction{
+			p:                          p,
+			description:                "after last block reorged",
+			ctx:                        context.Background(),
+			expectedLastProcessedBlock: 4,
+			expectedErr:                nil,
+		},
 	}
 
 	for _, a := range actions {
@@ -339,13 +352,13 @@ var (
 			Event{Bridge: &Bridge{
 				BlockNum:           1,
 				BlockPos:           0,
-				LeafType:           1,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
 				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("01"),
+				OriginAddress:      common.HexToAddress("1"),
 				DestinationNetwork: 1,
-				DestinationAddress: common.HexToAddress("01"),
+				DestinationAddress: common.HexToAddress("1"),
 				Amount:             big.NewInt(1),
-				Metadata:           common.Hex2Bytes("01"),
+				Metadata:           common.Hex2Bytes("1"),
 				DepositCount:       0,
 			}},
 			Event{Claim: &Claim{
@@ -353,8 +366,8 @@ var (
 				BlockPos:           1,
 				GlobalIndex:        big.NewInt(1),
 				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("01"),
-				DestinationAddress: common.HexToAddress("01"),
+				OriginAddress:      common.HexToAddress("1"),
+				DestinationAddress: common.HexToAddress("1"),
 				Amount:             big.NewInt(1),
 				MainnetExitRoot:    common.Hash{},
 			}},
@@ -390,26 +403,38 @@ var (
 			Event{Bridge: &Bridge{
 				BlockNum:           3,
 				BlockPos:           0,
-				LeafType:           2,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
 				OriginNetwork:      2,
-				OriginAddress:      common.HexToAddress("02"),
+				OriginAddress:      common.HexToAddress("2"),
 				DestinationNetwork: 2,
-				DestinationAddress: common.HexToAddress("02"),
+				DestinationAddress: common.HexToAddress("2"),
 				Amount:             big.NewInt(2),
-				Metadata:           common.Hex2Bytes("02"),
+				Metadata:           common.Hex2Bytes("2"),
 				DepositCount:       1,
 			}},
 			Event{Bridge: &Bridge{
 				BlockNum:           3,
 				BlockPos:           1,
-				LeafType:           3,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
 				OriginNetwork:      3,
-				OriginAddress:      common.HexToAddress("03"),
+				OriginAddress:      common.HexToAddress("3"),
 				DestinationNetwork: 3,
-				DestinationAddress: common.HexToAddress("03"),
+				DestinationAddress: common.HexToAddress("3"),
 				Amount:             big.NewInt(0),
-				Metadata:           common.Hex2Bytes("03"),
+				Metadata:           common.Hex2Bytes("3"),
 				DepositCount:       2,
+			}},
+			Event{Bridge: &Bridge{
+				BlockNum:           3,
+				BlockPos:           2,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
+				OriginNetwork:      3,
+				OriginAddress:      common.HexToAddress("4"),
+				DestinationNetwork: 3,
+				DestinationAddress: common.HexToAddress("4"),
+				Amount:             big.NewInt(0),
+				Metadata:           common.Hex2Bytes("4"),
+				DepositCount:       3,
 			}},
 		},
 	}
@@ -452,6 +477,12 @@ var (
 				BlockNum:           5,
 				BlockPos:           3,
 				LegacyTokenAddress: common.HexToAddress("0x11"),
+			}},
+			Event{BackwardLET: &BackwardLET{
+				BlockNum:             5,
+				BlockPos:             4,
+				PreviousDepositCount: big.NewInt(3),
+				NewDepositCount:      big.NewInt(2),
 			}},
 		},
 	}
