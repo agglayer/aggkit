@@ -265,7 +265,7 @@ func TestIsUpToDate(t *testing.T) {
 		}
 
 		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-		mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("RPC error"))
+		mockL1Client.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("RPC error"))
 
 		ctx := context.Background()
 		result, err := s.IsUpToDate(ctx, mockL1Client)
@@ -287,7 +287,7 @@ func TestIsUpToDate(t *testing.T) {
 
 		block := ethtypes.NewBlock(&ethtypes.Header{Number: big.NewInt(0)}, nil, nil, nil)
 		mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-		mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(block, nil)
+		mockL1Client.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(block.Header(), nil)
 
 		ctx := context.Background()
 		result, err := s.IsUpToDate(ctx, mockL1Client)
