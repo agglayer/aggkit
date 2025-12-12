@@ -1,0 +1,109 @@
+package etherman
+
+import (
+	"context"
+	"fmt"
+	"math/big"
+
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	commontypes "github.com/agglayer/aggkit/common/types"
+	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
+)
+
+var _ aggkittypes.EthClienter = (*DefaultEthClient)(nil)
+
+type DefaultEthClient struct {
+	aggkittypes.EthereumClienter
+	aggkittypes.RPCClienter
+
+	// If true, the block Hash is getted from JSON RPC
+	// if false, the block Hash is getted from go-ethereum RLP hashing of header
+	HashFromJSON bool
+}
+
+// DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
+// It returns an EthClienter on success or an error if all attempts fail.
+func DialWithRetry(ctx context.Context, url string, retryHandler commontypes.RetryHandler) (aggkittypes.EthClienter, error) {
+	return aggkitcommon.Execute(retryHandler, ctx, log.Infof, fmt.Sprintf("dial %s rpc", url),
+		func() (aggkittypes.EthClienter, error) {
+			client, err := ethclient.Dial(url)
+			if err != nil {
+				return nil, err
+			}
+			return NewDefaultEthClient(client, client.Client()), nil
+		})
+}
+
+func NewDefaultEthClient(client aggkittypes.EthereumClienter, rpcClient aggkittypes.RPCClienter) *DefaultEthClient {
+	if rpcClient == nil {
+		rpcClient = &NoopRPCClient{}
+	}
+	return &DefaultEthClient{
+		EthereumClienter: client,
+		RPCClienter:      rpcClient,
+	}
+}
+
+func (c *DefaultEthClient) CustomBlockNumber(ctx context.Context, number aggkittypes.BlockName) (uint64, error) {
+	ethHeader, err := c.EthereumClienter.HeaderByNumber(ctx, number.ToBigInt())
+	if err != nil {
+		return 0, err
+	}
+	return ethHeader.Number.Uint64(), nil
+}
+
+func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+	if number == nil {
+		number = &aggkittypes.LatestBlock
+	}
+	// The number can have an offset, so maybe we need to resolve the blockName, apply offset to require the header
+	numberBigInt, err := c.resolveBlockNumber(ctx, number)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.HashFromJSON {
+		rpcGetBlockByNumber, err := c.rpcGetBlockByNumber(ctx, numberBigInt)
+		if err != nil {
+			return nil, err
+		}
+		return rpcGetBlockByNumber, nil
+	}
+
+	ethHeader, err := c.EthereumClienter.HeaderByNumber(ctx, numberBigInt)
+	if err != nil {
+		return nil, err
+	}
+	res := aggkittypes.NewBlockHeaderFromEthHeader(ethHeader)
+	res.RequestedBlock = number
+	return res, nil
+
+}
+
+func (c *DefaultEthClient) resolveBlockNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*big.Int, error) {
+	// If is a number or don't have offset with 1 query it's enough
+	if number.IsConstant() || !number.HasOffset() {
+		return number.ToBigInt(), nil
+	}
+	// Resolve the base block number
+	hdr, err := c.rpcGetBlockByNumber(ctx, number.ToBigInt())
+	if err != nil {
+		return nil, err
+	}
+	num := number.CalculateBlockNumber(hdr.Number)
+	return big.NewInt(int64(num)), nil
+}
+
+func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.Int) (*aggkittypes.BlockHeader, error) {
+	blockArg := rpc.BlockNumber(number.Int64()).String()
+	fmt.Printf("rpcGetBlockByNumber: requesting block %s via JSON RPC\n", blockArg)
+	var rawEthHeader *blockRawEth
+	err := c.CallContext(ctx, &rawEthHeader, "eth_getBlockByNumber", blockArg, false)
+	if err != nil {
+		return nil, fmt.Errorf("rpcGetBlockByNumber: %w", err)
+	}
+	return rawEthHeader.ToBlockHeader()
+}
