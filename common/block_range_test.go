@@ -1,6 +1,8 @@
 package common
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -346,4 +348,126 @@ func TestBlockRange_Merge(t *testing.T) {
 	require.Equal(t, []BlockRange{NewBlockRange(1, 50)}, bn2.Merge(bn1))
 	require.Equal(t, []BlockRange{bn1, bn3}, bn1.Merge(bn3))
 	require.Equal(t, []BlockRange{bn1, bn3}, bn3.Merge(bn1))
+}
+
+func TestChunkedRangeQuery_IntSlice(t *testing.T) {
+	ctx := context.Background()
+	fromBlock := uint64(1)
+	toBlock := uint64(10)
+	maxRange := uint64(3)
+
+	// Simulate fetchChunk: returns a slice of ints representing block numbers
+	fetchChunk := func(ctx context.Context, from, to uint64) ([]int, error) {
+		result := make([]int, 0, to-from+1)
+		for i := from; i <= to; i++ {
+			result = append(result, int(i))
+		}
+		return result, nil
+	}
+
+	// Combine: append slices
+	combine := func(all, chunk []int) []int {
+		return append(all, chunk...)
+	}
+
+	empty := []int{}
+
+	result, err := ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange, fetchChunk, combine, empty)
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, result)
+}
+
+func TestChunkedRangeQuery_ErrorPropagation(t *testing.T) {
+	ctx := context.Background()
+	fromBlock := uint64(1)
+	toBlock := uint64(5)
+	maxRange := uint64(2)
+
+	fetchChunk := func(ctx context.Context, from, to uint64) ([]int, error) {
+		if from == 3 {
+			return nil, fmt.Errorf("simulated error")
+		}
+		result := make([]int, 0, to-from+1)
+		for i := from; i <= to; i++ {
+			result = append(result, int(i))
+		}
+		return result, nil
+	}
+
+	combine := func(all, chunk []int) []int {
+		return append(all, chunk...)
+	}
+
+	empty := []int{}
+
+	result, err := ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange, fetchChunk, combine, empty)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "simulated error")
+	require.Equal(t, empty, result)
+}
+
+func TestChunkedRangeQuery_ZeroMaxRange(t *testing.T) {
+	ctx := context.Background()
+	fromBlock := uint64(1)
+	toBlock := uint64(5)
+	maxRange := uint64(0)
+
+	fetchChunk := func(ctx context.Context, from, to uint64) ([]int, error) {
+		return []int{}, nil
+	}
+
+	combine := func(all, chunk []int) []int {
+		return append(all, chunk...)
+	}
+
+	empty := []int{}
+
+	result, err := ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange, fetchChunk, combine, empty)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxRange must be greater than 0")
+	require.Equal(t, empty, result)
+}
+
+func TestChunkedRangeQuery_SingleBlock(t *testing.T) {
+	ctx := context.Background()
+	fromBlock := uint64(7)
+	toBlock := uint64(7)
+	maxRange := uint64(10)
+
+	fetchChunk := func(ctx context.Context, from, to uint64) ([]int, error) {
+		require.Equal(t, uint64(7), from)
+		require.Equal(t, uint64(7), to)
+		return []int{int(from)}, nil
+	}
+
+	combine := func(all, chunk []int) []int {
+		return append(all, chunk...)
+	}
+
+	empty := []int{}
+
+	result, err := ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange, fetchChunk, combine, empty)
+	require.NoError(t, err)
+	require.Equal(t, []int{7}, result)
+}
+
+func TestChunkedRangeQuery_EmptyRange(t *testing.T) {
+	ctx := context.Background()
+	fromBlock := uint64(10)
+	toBlock := uint64(9)
+	maxRange := uint64(5)
+
+	fetchChunk := func(ctx context.Context, from, to uint64) ([]int, error) {
+		return []int{}, nil
+	}
+
+	combine := func(all, chunk []int) []int {
+		return append(all, chunk...)
+	}
+
+	empty := []int{}
+
+	result, err := ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange, fetchChunk, combine, empty)
+	require.NoError(t, err)
+	require.Equal(t, empty, result)
 }

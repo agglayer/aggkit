@@ -5,10 +5,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	aggoraclemocks "github.com/agglayer/aggkit/aggoracle/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync/mocks"
 	"github.com/agglayer/aggkit/test/helpers"
+	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
@@ -115,6 +117,54 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 		require.True(t, exists)
 		require.Equal(t, expectedGER, ger.GlobalExitRoot)
 	})
+
+	t.Run("block range too large triggers chunking", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2Client := mocksethclient.NewBaseEthereumClienter(t)
+		mockL2GERManager, err := agglayergerl2.NewAgglayergerl2(
+			common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), mockL2Client)
+		require.NoError(t, err)
+
+		gerReader := &L2EVMGERReader{
+			l2GERManager: mockL2GERManager,
+		}
+
+		// First call fails with "block range too large"
+		mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).
+			Return(nil, errors.New("block range too large, max range: 1000")).Once()
+
+		// Subsequent chunked calls succeed (0-999, 1000-1999, 2000-2500)
+		mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).
+			Return([]types.Log{}, nil).Times(6) // 3 chunks for inserts, 3 chunks for removals
+
+		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, injectedGERs)
+
+		mockL2Client.AssertExpectations(t)
+	})
+
+	t.Run("non-parseable error returns original error", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2GERManager := aggoraclemocks.NewL2GERManagerContract(t)
+
+		gerReader := &L2EVMGERReader{
+			l2GERManager: mockL2GERManager,
+		}
+
+		// Return an error that doesn't match the pattern
+		mockL2GERManager.EXPECT().
+			FilterUpdateHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("some other RPC error")).Once()
+
+		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 0, 2500)
+		require.ErrorContains(t, err, "some other RPC error")
+		require.Nil(t, injectedGERs)
+
+		mockL2GERManager.AssertExpectations(t)
+	})
 }
 
 func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
@@ -135,6 +185,44 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 
 		_, err := gerReader.GetRemovedGERsForRange(ctx, 1, toBlock)
 		require.ErrorContains(t, err, "failed to create removal iterator")
+	})
+
+	t.Run("block range too large triggers chunking", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2GERManager := aggoraclemocks.NewL2GERManagerContract(t)
+		// First call: return error that triggers chunking
+		mockL2GERManager.EXPECT().
+			FilterUpdateRemovalHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("block range too large, max range: 1000")).Once()
+		// Second call (first chunk): return a different error to prove chunking was triggered
+		mockL2GERManager.EXPECT().
+			FilterUpdateRemovalHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("mock iterator error for removal")).Once()
+
+		gerReader := &L2EVMGERReader{l2GERManager: mockL2GERManager}
+
+		_, err := gerReader.GetRemovedGERsForRange(ctx, 0, 2000)
+		// Verify that chunking was triggered by checking for the second error
+		require.ErrorContains(t, err, "mock iterator error for removal")
+
+		mockL2GERManager.AssertExpectations(t)
+	})
+
+	t.Run("non-parseable error returns original error", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2GERManager := aggoraclemocks.NewL2GERManagerContract(t)
+		mockL2GERManager.EXPECT().
+			FilterUpdateRemovalHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("some other RPC error"))
+
+		gerReader := &L2EVMGERReader{l2GERManager: mockL2GERManager}
+
+		_, err := gerReader.GetRemovedGERsForRange(ctx, 0, 2000)
+		require.ErrorContains(t, err, "some other RPC error")
+
+		mockL2GERManager.AssertExpectations(t)
 	})
 
 	t.Run("success with no removed GERs", func(t *testing.T) {
@@ -291,5 +379,56 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, 5)
 		require.NoError(t, err)
 		require.Len(t, removedGERs, 0)
+	})
+
+	t.Run("block range too large triggers chunking", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2Client := mocksethclient.NewBaseEthereumClienter(t)
+		mockL2GERManager, err := agglayergerl2.NewAgglayergerl2(
+			common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), mockL2Client)
+		require.NoError(t, err)
+
+		gerReader := &L2EVMGERReader{
+			l2GERManager: mockL2GERManager,
+		}
+
+		// First call fails with "block range too large"
+		mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).
+			Return(nil, errors.New("block range too large, max range: 1000")).Once()
+
+		// Subsequent chunked calls succeed (0-999, 1000-1999, 2000-2500)
+		mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).
+			Return([]types.Log{}, nil).Times(3)
+
+		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, removedGERs)
+
+		mockL2Client.AssertExpectations(t)
+	})
+
+	t.Run("non-parseable error returns original error", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2Client := mocksethclient.NewBaseEthereumClienter(t)
+		mockL2GERManager, err := agglayergerl2.NewAgglayergerl2(
+			common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), mockL2Client)
+		require.NoError(t, err)
+
+		gerReader := &L2EVMGERReader{
+			l2GERManager: mockL2GERManager,
+		}
+
+		// Return an error that doesn't match the pattern
+		mockL2Client.EXPECT().
+			FilterLogs(mock.Anything, mock.Anything).
+			Return(nil, errors.New("some other RPC error")).Once()
+
+		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 0, 2500)
+		require.ErrorContains(t, err, "some other RPC error")
+		require.Empty(t, removedGERs)
+
+		mockL2Client.AssertExpectations(t)
 	})
 }

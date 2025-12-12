@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   test-unit:
+    name: test-unit
     strategy:
       fail-fast: false
       matrix:
