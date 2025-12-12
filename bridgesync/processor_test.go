@@ -4403,8 +4403,6 @@ func TestGetClaims_Compact(t *testing.T) {
 
 // TestGetClaimsPaged_CompactionAcrossPages tests the compaction behavior when
 // claims with the same global_index span across multiple pages
-//
-//nolint:dupl
 func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 	path := path.Join(t.TempDir(), "claimsPaged_compaction.sqlite")
 	require.NoError(t, migrations.RunMigrations(path))
