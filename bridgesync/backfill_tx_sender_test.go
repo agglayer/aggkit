@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -50,11 +51,13 @@ func TestBackfillTxnSender(t *testing.T) {
 
 	_, err = tx.Exec(`
 		INSERT INTO bridge (
-			block_num, block_pos, leaf_type, origin_network, origin_address,
+			block_num, block_pos, leaf_type,
+			origin_network, origin_address,
 			destination_network, destination_address, amount, metadata, deposit_count,
 			tx_hash, block_timestamp, from_address, txn_sender
 		) VALUES (
-			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
+			1, 0, 1, 
+			1, '0x1234567890123456789012345678901234567890',
 			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
 			1234567890, '0x1111111111111111111111111111111111111111', ''
@@ -203,10 +206,9 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = testAddress
+			tx.FromRaw = testAddress
 			tx.To = "0x1234"
 		})
-
 		err = backfiller.BackfillAll(ctx)
 		require.NoError(t, err)
 	})
@@ -305,7 +307,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = testAddress
+			tx.FromRaw = testAddress
 			tx.To = "0x1234"
 		})
 
@@ -551,16 +553,12 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
-			if !ok {
-				return
-			}
-			tx.From = testAddress
-			tx.To = "0x1234"
-		})
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+			}).Return(nil).Maybe()
 
 		ctx := context.Background()
 		records := []RecordToBackfill{
@@ -588,9 +586,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractTxnSender function to return an error (via eth_getTransactionByHash)
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("transaction not found"))
-
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 		ctx := context.Background()
 		records := []RecordToBackfill{
 			{
@@ -616,26 +612,30 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
-			if !ok {
-				return
-			}
-			tx.From = testAddress
-			tx.To = "0x1234"
-		})
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+			}).Return(nil).Maybe()
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+			}).Return(nil).Maybe()
 
 		// Close the database to cause bulk update error
 		backfiller.db.Close()
 
 		ctx := t.Context()
+		addr := "0x1111111111111111111111111111111111111111"
 		records := []RecordToBackfill{
 			{
-				BlockNum: 1,
-				BlockPos: 0,
-				TxHash:   common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+				BlockNum:    1,
+				BlockPos:    0,
+				TxHash:      common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+				FromAddress: &addr,
 			},
 		}
 
@@ -658,19 +658,21 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
 		expectedSender := common.HexToAddress(testAddress)
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
-			if !ok {
-				return
-			}
-			tx.From = expectedSender.Hex()
-			tx.To = "0x1234"
-		})
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+				arg.From = expectedSender
+				arg.To = common.HexToAddress("0x1234")
+			}).Return(nil).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(t.Context(), txHash)
+		sender, _, err := backfiller.extractData(t.Context(), txHash,
+			&agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType: bridgeLeafTypeAsset,
+			})
 		require.NoError(t, err)
 		require.Equal(t, expectedSender, sender)
 	})
@@ -689,14 +691,15 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock the extractTxnSender function to return an error (via eth_getTransactionByHash)
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("transaction not found"))
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, err := backfiller.extractTxnSender(t.Context(), txHash)
+		sender, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
+			LeafType: bridgeLeafTypeAsset,
+		})
 		require.Error(t, err)
 		require.Equal(t, common.Address{}, sender)
-		require.Contains(t, err.Error(), "failed to fetch transaction by hash")
+		require.Contains(t, err.Error(), "failed")
 	})
 }
 
@@ -753,7 +756,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			},
 		}
 
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
 		require.NoError(t, err)
 	})
 
@@ -817,7 +820,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			},
 		}
 
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
 		require.NoError(t, err)
 	})
 
@@ -836,7 +839,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		defer backfiller.Close()
 
 		ctx := t.Context()
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", []RecordUpdate{})
+		err = backfiller.bulkUpdate(ctx, "bridge", []RecordUpdate{})
 		require.NoError(t, err)
 	})
 
@@ -866,7 +869,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 			},
 		}
 
-		err = backfiller.bulkUpdateTxnSender(ctx, "bridge", updates)
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to bulk update txn_sender")
 	})
@@ -944,15 +947,14 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock successful extractions for all records
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
-			if !ok {
-				return
-			}
-			tx.From = testAddress
-			tx.To = "0x1234"
-		}).Maybe() // Allow multiple calls
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+				arg.From = common.HexToAddress(testAddress)
+				arg.To = common.HexToAddress("0x1234")
+			}).Return(nil).Maybe()
 
 		records := []RecordToBackfill{
 			{
@@ -1030,22 +1032,18 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		defer backfiller.Close()
 
 		// Mock mixed results: first call succeeds, second fails
-		var callCount int64
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			count := atomic.AddInt64(&callCount, 1)
-			if count == 1 {
-				// First call succeeds
-				tx, ok := args.Get(0).(*Transaction)
-				if !ok {
-					return
-				}
-				tx.From = testAddress
-				tx.To = "0x1234"
-			}
-		}).Once()
+
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+				arg.From = common.HexToAddress(testAddress)
+				arg.To = common.HexToAddress("0x1234")
+			}).Return(nil).Once()
 
 		// Mock the second call to fail
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("transaction not found")).Once()
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
 
 		records := []RecordToBackfill{
 			{
@@ -1123,7 +1121,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		defer backfiller.Close()
 
 		// Mock all calls to fail
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("network error"))
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("network error")).Maybe()
 
 		records := []RecordToBackfill{
 			{
@@ -1203,17 +1202,13 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		// Create a context that will be cancelled
 		cancelCtx, cancel := context.WithCancel(ctx)
 
-		// Mock calls that will be slow to allow cancellation
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			// Simulate some processing time
-			time.Sleep(10 * time.Millisecond)
-			tx, ok := args.Get(0).(*Transaction)
-			if !ok {
-				return
-			}
-			tx.From = testAddress
-			tx.To = "0x1234"
-		})
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				time.Sleep(10 * time.Millisecond)
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+			}).Return(nil).Maybe()
 
 		records := []RecordToBackfill{
 			{
@@ -1321,15 +1316,14 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		// Mock successful extractions for all records
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
-			if !ok {
-				return
-			}
-			tx.From = testAddress
-			tx.To = "0x1234"
-		})
+		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(result any, method string, args ...any) {
+				arg, ok := result.(*Call)
+				require.True(t, ok)
+				arg.Input = BridgeAssetMethodID
+				arg.From = common.HexToAddress(testAddress)
+				arg.To = common.HexToAddress("0x1234")
+			}).Return(nil).Maybe()
 
 		backfiller.processBatch(ctx, "bridge", records)
 
@@ -1408,7 +1402,7 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 				if !ok {
 					return
 				}
-				tx.From = testAddress
+				tx.FromRaw = testAddress
 				tx.To = "0x1234"
 			})
 
@@ -1492,7 +1486,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = testAddress
+			tx.FromRaw = testAddress
 			tx.To = "0x1234"
 		}).Maybe() // Allow multiple calls
 
@@ -1577,7 +1571,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 			if !ok {
 				return
 			}
-			tx.From = testAddress
+			tx.FromRaw = testAddress
 			tx.To = "0x1234"
 		}).Maybe() // Allow multiple calls
 

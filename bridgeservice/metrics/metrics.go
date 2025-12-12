@@ -17,6 +17,7 @@ const (
 	GetBridgesReq                = "get_bridges"
 	GetClaimsReq                 = "get_claims"
 	GetUnsetClaimsReq            = "get_unset_claims"
+	GetSetClaimsReq              = "get_set_claims"
 	GetTokenMappingsReq          = "get_token_mappings"
 	GetLegacyTokenMigrationsReq  = "get_legacy_token_migrations"
 	GetL1InfoTreeIndexReq        = "l1_info_tree_index_for_bridge"

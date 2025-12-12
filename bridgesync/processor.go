@@ -991,11 +991,13 @@ func (p *processor) GetClaimsPaged(
 }
 
 // GetUnsetClaimsPaged returns a paginated list of unset claims
+//
+//nolint:dupl
 func (p *processor) GetUnsetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
 ) ([]*UnsetClaim, int, error) {
-	whereClause := p.buildUnsetClaimsFilterClause(globalIndex)
+	whereClause := buildGlobalIndexFilterClause(globalIndex)
 	unclaimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -1036,14 +1038,61 @@ func (p *processor) GetUnsetClaimsPaged(
 	return unsetClaims, unclaimsCount, nil
 }
 
-// buildUnsetClaimsFilterClause builds the WHERE clause for the unset_claim table
-// based on the provided globalIndex
-func (p *processor) buildUnsetClaimsFilterClause(globalIndex *big.Int) string {
+// buildGlobalIndexFilterClause builds a WHERE clause for filtering by global_index
+func buildGlobalIndexFilterClause(globalIndex *big.Int) string {
 	if globalIndex != nil {
 		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
 	}
 
 	return ""
+}
+
+// GetSetClaimsPaged returns a paginated list of set claims
+//
+//nolint:dupl
+func (p *processor) GetSetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+	globalIndex *big.Int,
+) ([]*SetClaim, int, error) {
+	whereClause := buildGlobalIndexFilterClause(globalIndex)
+	setClaimsCount, err := p.GetTotalNumberOfRecords(ctx, setClaimTableName, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if setClaimsCount == 0 {
+		return []*SetClaim{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, setClaimsCount, setClaimTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, setClaimTableName, orderByBlockDesc, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no set claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, setClaimsCount, nil
+		}
+		p.log.Errorf("GetSetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	setClaims := []*SetClaim{}
+	if err = meddler.ScanAll(rows, &setClaims); err != nil {
+		p.log.Errorf("GetSetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return setClaims, setClaimsCount, nil
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
