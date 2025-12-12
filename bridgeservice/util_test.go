@@ -100,7 +100,7 @@ func TestParseBigIntQuery(t *testing.T) {
 				URL: &url.URL{RawQuery: tt.queryParams},
 			}
 
-			result, err := parseBigIntQuery(c, globalIndexParam)
+			result, err := parseBigIntQuery(c)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)

@@ -463,7 +463,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		}
 	}
 
-	globalIndex, err := parseBigIntQuery(c, globalIndexParam)
+	globalIndex, err := parseBigIntQuery(c)
 	if err != nil {
 		b.logger.Warnf("invalid %s parameter", globalIndexParam)
 		statusCode = http.StatusBadRequest
@@ -573,7 +573,7 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	globalIndex, err := parseBigIntQuery(c, globalIndexParam)
+	globalIndex, err := parseBigIntQuery(c)
 	if err != nil {
 		b.logger.Warnf("invalid %s parameter", globalIndexParam)
 		statusCode = http.StatusBadRequest
@@ -657,7 +657,7 @@ func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	globalIndex, err := parseBigIntQuery(c, globalIndexParam)
+	globalIndex, err := parseBigIntQuery(c)
 	if err != nil {
 		b.logger.Warnf("invalid %s parameter", globalIndexParam)
 		statusCode = http.StatusBadRequest
