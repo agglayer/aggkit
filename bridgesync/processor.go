@@ -1385,10 +1385,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("new deposit count=%d exceeds uint32 max (%d)", newDepositCountU64, uint32(math.MaxUint32))
 			}
 
-			if newDepositCountU64 == 0 {
-				return fmt.Errorf("new deposit count must be at least 1 to compute the leaf index, got 0")
-			}
-
 			// remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
 			_, err := tx.Exec(deleteBridges, newDepositCountU64)
