@@ -6,9 +6,9 @@ RED='\033[0;31m'
 ORANGE='\033[0;33m'
 NC='\033[0m'
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
-log_warn() { echo -e "${ORANGE}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+log_info() { echo -e "${GREEN}[INFO]${NC} $*" >&2; }
+log_warn() { echo -e "${ORANGE}[WARN]${NC} $*" >&2; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 # Variables for temporary clones
 TEMP_KURTOSIS_DIR=""
