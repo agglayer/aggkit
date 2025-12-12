@@ -84,6 +84,6 @@ BEGIN
         OLD.tx_hash,
         OLD.block_timestamp,
         OLD.txn_sender,
-        OLD.from_address,
+        OLD.from_address
     );
 END;
