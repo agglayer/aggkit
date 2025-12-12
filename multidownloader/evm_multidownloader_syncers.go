@@ -36,12 +36,12 @@ func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get block number for finality=%s: %w",
 			finality.String(), err)
 	}
-	header, err := dh.ethClient.HeaderByNumber(ctx, big.NewInt(int64(number)))
+	header, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(number))
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get header for block number=%d: %w",
 			number, err)
 	}
-	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
+	return header, nil
 }
 
 // FilterLogs filters the logs. It gets them from storage or waits until they are available
@@ -70,7 +70,7 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 }
 
 // HeaderByNumber gets the block header for the given block number from storage or ethClient
-func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.Int) (*aggkittypes.BlockHeader, error) {
+func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
 	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	if number.Cmp(big.NewInt(0)) < 0 {
@@ -89,12 +89,11 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *big.In
 	// This is a fallback mechanism in case the block is not found in storage (it must be in storage!)
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: block number=%d not found in storage, fetching from ethClient",
 		number.Uint64())
-	ethBlock, err := dh.ethClient.HeaderByNumber(ctx, number)
+	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(number.Uint64()))
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: ethClient.HeaderByNumber(%d) failed. Err: %w",
 			number.Uint64(), err)
 	}
-	blockHeader := aggkittypes.NewBlockHeaderFromEthHeader(ethBlock)
 	return blockHeader, nil
 }
 

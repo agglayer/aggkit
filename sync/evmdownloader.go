@@ -75,7 +75,11 @@ func NewEVMDownloader(
 	}
 
 	logger := log.WithFields("syncer", syncerID)
-	if finalizedBlockType.LessFinalThan(finality) {
+	lessFinal, err := finalizedBlockType.LessFinalThan(finality)
+	if err != nil {
+		return nil, fmt.Errorf("error comparing finalized block type and block finality: %w", err)
+	}
+	if lessFinal {
 		logger.Warnf("finalized block type: %s is less final than block finality: %s, overriding finalized block type to %s",
 			finalizedBlockType.String(), finality.String(), finality.String())
 		finalizedBlockType = finality
@@ -519,7 +523,7 @@ func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []t
 func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {
 	attempts := 0
 	for {
-		header, err := d.ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
+		header, err := d.ethClient.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNum))
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				// context is canceled, we don't want to fatal on max attempts in this case

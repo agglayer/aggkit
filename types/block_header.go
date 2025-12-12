@@ -12,6 +12,8 @@ type BlockHeader struct {
 	Hash       common.Hash  `json:"hash"`
 	Time       uint64       `json:"timestamp"`
 	ParentHash *common.Hash `json:"parentHash"`
+	// the RequestedBlock is the original Block requested
+	RequestedBlock *BlockNumberFinality
 }
 
 func NewBlockHeader(number uint64, hash common.Hash, time uint64, parentHash *common.Hash) *BlockHeader {

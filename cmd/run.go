@@ -555,12 +555,11 @@ func runL1ClientIfNeeded(ctx context.Context,
 	}
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
 
-	retryHandler, err := rpcClientCfg.NewRetryHandler()
-	if err != nil {
-		log.Fatalf("failed to create retry handler: %w", err)
-	}
-
-	ethClient, err := aggkittypes.DialWithRetry(ctx, rpcClientCfg.URL, retryHandler)
+	ethClient, err := etherman.NewRPCClient(ctx,
+		ethermanconfig.L2RPCClientConfig{
+			Mode:            ethermanconfig.RPCModeBasic,
+			RPCClientConfig: rpcClientCfg,
+		})
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
 	}
@@ -888,12 +887,11 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 func createRollupDataQuerier(ctx context.Context,
 	cfg ethermanconfig.L1NetworkConfig,
 ) (*ethermanquierier.RollupDataQuerier, error) {
-	retryHandler, err := cfg.RPC.NewRetryHandler()
-	if err != nil {
-		log.Fatalf("failed to create retry handler: %w", err)
-	}
-
-	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.RPC.URL, retryHandler)
+	ethClient, err := etherman.NewRPCClient(ctx,
+		ethermanconfig.L2RPCClientConfig{
+			Mode:            ethermanconfig.RPCModeBasic,
+			RPCClientConfig: cfg.RPC,
+		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}

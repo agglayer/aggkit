@@ -153,14 +153,14 @@ func newBridgeSync(
 	}
 
 	if lastProcessedBlock < cfg.InitialBlockNum {
-		header, err := ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(cfg.InitialBlockNum))
+		header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(cfg.InitialBlockNum))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial block %d: %w", cfg.InitialBlockNum, err)
 		}
 
 		err = processor.ProcessBlock(ctx, sync.Block{
 			Num:  cfg.InitialBlockNum,
-			Hash: header.Hash(),
+			Hash: header.Hash,
 		})
 		if err != nil {
 			return nil, err

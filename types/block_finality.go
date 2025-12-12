@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/invopop/jsonschema"
 )
 
 const (
+	ConstantBlockName  = "ConstantBlock"
 	SafeBlockName      = "SafeBlock"
 	FinalizedBlockName = "FinalizedBlock"
 	LatestBlockName    = "LatestBlock"
@@ -39,35 +39,76 @@ var (
 
 // BlockNumberFinality represents a block finality with an optional offset
 type BlockNumberFinality struct {
-	Block  BlockNumber
-	Offset int64
+	Block    BlockName
+	Offset   int64
+	Specific uint64 // Specific block number, Block must be Constant
+}
+
+func convertStringToNumber[T any](s string) (T, error) {
+	zeroValue := *new(T)
+	for _, base := range []int{10, 0, 16} {
+		var result interface{}
+		var err error
+
+		// Check if T is uint64 or int64 and call appropriate parser
+		switch any(zeroValue).(type) {
+		case uint64:
+			result, err = strconv.ParseUint(s, base, 64)
+		case int64:
+			result, err = strconv.ParseInt(s, base, 64)
+		default:
+			return zeroValue, fmt.Errorf("unsupported type for number conversion")
+		}
+
+		if err == nil {
+			return result.(T), nil
+		}
+	}
+	return zeroValue, fmt.Errorf("invalid block number format: %s", s)
+}
+
+func NewBlockNumber(number uint64) *BlockNumberFinality {
+	return &BlockNumberFinality{
+		Block:    Constant,
+		Specific: number,
+	}
 }
 
 // NewBlockNumberFinality creates a new BlockNumberFinality from a string
 // format: <blockName>[/<offset>] e.g: "SafeBlock", "FinalizedBlock/-5", "LatestBlock/+10"
-func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
+// can be directly a number
+func NewBlockNumberFinality(s string) (*BlockNumberFinality, error) {
 	result := BlockNumberFinality{}
 	splitted := strings.Split(s, blockNameAndOffsetSeparator)
 	if len(splitted) == 0 || len(splitted) > 2 {
-		return result, fmt.Errorf("invalid block finality format: %s", s)
+		return nil, fmt.Errorf("invalid block finality format: %s", s)
 	}
-	block, err := NewBlockNumber(splitted[0])
+	block, err := NewBlockName(splitted[0])
 	if err != nil {
-		return result, err
+		// It's a constant block?
+		n, errParse := convertStringToNumber[uint64](splitted[0])
+		if errParse == nil {
+			return NewBlockNumber(n), nil
+		}
+		return nil, err
 	}
+
 	result.Block = block
 	if len(splitted) == 2 { //nolint:mnd
-		offset, err := strconv.ParseInt(splitted[1], 10, 64)
+		offset, err := convertStringToNumber[int64](splitted[1])
 		if err != nil {
-			return result, fmt.Errorf("invalid block offset format: %s", splitted[1])
+			return nil, fmt.Errorf("invalid block offset format: %s", splitted[1])
 		}
 		result.Offset = offset
 	}
-	return result, nil
+	return &result, nil
 }
 func (b *BlockNumberFinality) Equal(other BlockNumberFinality) bool {
 	if b == nil {
 		return false
+	}
+	if b.Block.IsConstant() {
+		return b.Block == other.Block && b.Specific == other.Specific
 	}
 	return b.Block == other.Block && b.Offset == other.Offset
 }
@@ -76,6 +117,9 @@ func (b *BlockNumberFinality) Equal(other BlockNumberFinality) bool {
 func (b *BlockNumberFinality) String() string {
 	if b == nil {
 		return "nil"
+	}
+	if b.Block.IsConstant() {
+		return fmt.Sprintf("%d", b.Specific)
 	}
 	if b.Offset == 0 {
 		return b.Block.String()
@@ -89,8 +133,7 @@ func (b *BlockNumberFinality) UnmarshalText(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse BlockNumberFinality %s: %w", string(data), err)
 	}
-	b.Block = res.Block
-	b.Offset = res.Offset
+	*b = *res
 	return nil
 }
 
@@ -133,6 +176,20 @@ func (b *BlockNumberFinality) IsSafe() bool {
 	return b.Block == Safe
 }
 
+func (b *BlockNumberFinality) IsConstant() bool {
+	if b == nil {
+		return false
+	}
+	return b.Block.IsConstant()
+}
+
+func (b *BlockNumberFinality) HasOffset() bool {
+	if b == nil {
+		return false
+	}
+	return !b.Block.IsConstant() && b.Offset != 0
+}
+
 // Validate validates the BlockNumberFinality configuration, ensuring that:
 // - The block name is valid (one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock)
 // - The positive offset does not exceed the maximum allowed for the specific block finality type
@@ -170,16 +227,50 @@ func (b BlockNumberFinality) Validate() error {
 	}
 	return nil
 }
+func (b *BlockNumberFinality) ToBigInt() *big.Int {
+	if b == nil {
+		return nil
+	}
+	if b.Block.IsConstant() {
+		return big.NewInt(int64(b.Specific))
+	}
+	return b.Block.ToBigInt()
+}
+
+func (b *BlockNumberFinality) ApplyOffset(blockNumber uint64) uint64 {
+	return b.Block.ApplyOffset(blockNumber, b.Offset)
+}
+
+func (b *BlockNumberFinality) BlockName() BlockName {
+	if b == nil {
+		return Empty
+	}
+	return b.Block
+}
+
+func (c *BlockNumberFinality) CalculateBlockNumber(baseBlockNumber uint64) uint64 {
+	if c == nil {
+		return 0
+	}
+	if c.IsConstant() {
+		return c.Specific
+	}
+	return c.Block.ApplyOffset(baseBlockNumber, c.Offset)
+}
 
 // BlockNumber gets the block number from RPC with offset taken into account
 func (b *BlockNumberFinality) BlockNumber(
 	ctx context.Context,
-	requester ethereum.ChainReader,
+	requester EthChainReader,
 ) (uint64, error) {
 	if b.IsEmpty() {
 		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: cannot get block number for empty finality")
 	}
-	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
+	if b.IsConstant() {
+		return b.Specific, nil
+	}
+
+	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.ToBigInt())
 	if err != nil {
 		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %w", b.String(), err)
 	}
@@ -189,9 +280,10 @@ func (b *BlockNumberFinality) BlockNumber(
 // BlockHeader gets the block header from RPC with offset taken into account
 func (b *BlockNumberFinality) BlockHeader(
 	ctx context.Context,
-	requester ethereum.ChainReader,
+	requester EthChainReader,
 ) (*types.Header, error) {
-	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
+	numberBigInt := b.ToBigInt()
+	blockHeader, err := requester.HeaderByNumber(ctx, numberBigInt)
 	if err != nil {
 		log.Errorf(
 			"BlockNumberFinality.BlockHeader: Error getting base header (block=%s, offset=%d). Err: %s",
@@ -210,35 +302,44 @@ func (b *BlockNumberFinality) BlockHeader(
 // LessFinalThan returns true if b is less strict commitment level than other.
 // In case commitment level keywords are the same, it compares the offsets.
 // finalized ≤ safe ≤ latest ≤ pending
-func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) bool {
+func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) (bool, error) {
+	if b.Block.IsConstant() && other.Block.IsConstant() {
+		return b.Specific < other.Specific, nil
+	}
+	if b.Block.IsConstant() || other.Block.IsConstant() {
+		return true, fmt.Errorf("cannot compare constant block with non-constant block")
+	}
 	if b == nil {
-		return true
+		return true, nil
 	}
 	if blockOrder[b.Block] > blockOrder[other.Block] {
-		return true
+		return true, nil
 	}
 	if b.Block == other.Block {
-		return b.Offset > other.Offset
+		return b.Offset > other.Offset, nil
 	}
-	return false
+	return false, nil
 }
 
-type BlockNumber int64
+type BlockName int64
 
 var (
-	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 5} //nolint:mnd
+	blockOrder = map[BlockName]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 5} //nolint:mnd
 )
 
 const (
-	Safe      = BlockNumber(rpc.SafeBlockNumber)
-	Finalized = BlockNumber(rpc.FinalizedBlockNumber)
-	Latest    = BlockNumber(rpc.LatestBlockNumber)
-	Pending   = BlockNumber(rpc.PendingBlockNumber)
-	Empty     = BlockNumber(0)
+	Constant  = BlockName(rpc.EarliestBlockNumber - 1)
+	Safe      = BlockName(rpc.SafeBlockNumber)
+	Finalized = BlockName(rpc.FinalizedBlockNumber)
+	Latest    = BlockName(rpc.LatestBlockNumber)
+	Pending   = BlockName(rpc.PendingBlockNumber)
+	Empty     = BlockName(0)
 )
 
-func NewBlockNumber(s string) (BlockNumber, error) {
+func NewBlockName(s string) (BlockName, error) {
 	switch strings.ToUpper(s) {
+	case strings.ToUpper(ConstantBlockName):
+		return Constant, nil
 	case strings.ToUpper(FinalizedBlockName):
 		return Finalized, nil
 	case strings.ToUpper(SafeBlockName):
@@ -252,7 +353,10 @@ func NewBlockNumber(s string) (BlockNumber, error) {
 	}
 }
 
-func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
+func (b BlockName) ApplyOffset(blockNumber uint64, offset int64) uint64 {
+	if b.IsConstant() {
+		return blockNumber
+	}
 	originalBlockNumber := blockNumber
 	if offset < 0 {
 		if blockNumber < uint64(-offset) {
@@ -270,8 +374,10 @@ func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
 	return blockNumber
 }
 
-func (b BlockNumber) String() string {
+func (b BlockName) String() string {
 	switch b {
+	case Constant:
+		return ConstantBlockName
 	case Finalized:
 		return FinalizedBlockName
 	case Safe:
@@ -287,9 +393,17 @@ func (b BlockNumber) String() string {
 	}
 }
 
-func (b BlockNumber) toBigInt() *big.Int {
-	if b == Latest || b == Empty {
+func (b BlockName) IsConstant() bool {
+	return b == Constant
+}
+
+func (b BlockName) ToBigInt() *big.Int {
+	switch b {
+	case Latest, Empty:
 		return nil
+	case Constant:
+		return big.NewInt(0)
+	default:
+		return big.NewInt(int64(b))
 	}
-	return big.NewInt(int64(b))
 }

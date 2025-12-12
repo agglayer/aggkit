@@ -74,6 +74,9 @@ func TestBlockNumberFinalityReadFromConfigFile(t *testing.T) {
 	require.Error(t, err)
 	_, err = readConfigFile[configTest](t, "BlockFinality = \"\"")
 	require.Error(t, err)
+	cfg, err = readConfigFile[configTest](t, "BlockFinality = \"123\"")
+	require.NoError(t, err)
+	require.Equal(t, "123", cfg.BlockFinality.String())
 }
 
 func TestBlockNumberFinalityWithOffset(t *testing.T) {
@@ -121,6 +124,7 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 		firstFinality  aggkittypes.BlockNumberFinality
 		secondFinality aggkittypes.BlockNumberFinality
 		isLessFinal    bool
+		expectedError  string
 	}{
 		{
 			name:           "empty finality less final than pending block type",
@@ -206,12 +210,40 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 			},
 			isLessFinal: false,
 		},
+		{
+			name:           "compare 2 cte",
+			firstFinality:  aggkittypes.NewBlockNumber(234),
+			secondFinality: aggkittypes.NewBlockNumber(345),
+			isLessFinal:    true,
+		},
+		{
+			name:           "compare 2 cte",
+			firstFinality:  aggkittypes.NewBlockNumber(345),
+			secondFinality: aggkittypes.NewBlockNumber(234),
+			isLessFinal:    false,
+		},
+		{
+			name:           "compare cte vs non-cte",
+			firstFinality:  aggkittypes.NewBlockNumber(234),
+			secondFinality: aggkittypes.LatestBlock,
+			expectedError:  "cannot compare constant block with non-constant block",
+		},
+		{
+			name:           "compare cte vs non-cte",
+			firstFinality:  aggkittypes.LatestBlock,
+			secondFinality: aggkittypes.NewBlockNumber(234),
+			expectedError:  "cannot compare constant block with non-constant block",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.firstFinality.LessFinalThan(tt.secondFinality)
-			require.Equal(t, tt.isLessFinal, result)
+			result, err := tt.firstFinality.LessFinalThan(tt.secondFinality)
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+			} else {
+				require.Equal(t, tt.isLessFinal, result)
+			}
 		})
 	}
 }
@@ -219,7 +251,7 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 func TestBlockNumber_ApplyOffset(t *testing.T) {
 	tests := []struct {
 		name           string
-		blockType      aggkittypes.BlockNumber
+		blockType      aggkittypes.BlockName
 		blockNumber    uint64
 		offset         int64
 		expectedResult uint64
@@ -262,6 +294,13 @@ func TestBlockNumber_ApplyOffset(t *testing.T) {
 		{
 			name:           "latest block ignores positive offset",
 			blockType:      aggkittypes.Latest,
+			blockNumber:    500,
+			offset:         10,
+			expectedResult: 500,
+		},
+		{
+			name:           "const block ignore offset",
+			blockType:      aggkittypes.Constant,
 			blockNumber:    500,
 			offset:         10,
 			expectedResult: 500,
@@ -324,6 +363,11 @@ func TestBlockNumberFinality(t *testing.T) {
 			name:        "invalid block",
 			input:       "InvalidBlock",
 			expectedErr: fmt.Errorf("invalid finality keyword: InvalidBlock"),
+		},
+		{
+			name:           "cte block",
+			input:          "1234",
+			expectedResult: aggkittypes.NewBlockNumber(1234),
 		},
 	}
 	for _, testCase := range testCases {
@@ -495,7 +539,7 @@ func TestBlockNumberFinality_Validate(t *testing.T) {
 		},
 		{
 			name:          "Unknown block type should fail validation",
-			finality:      aggkittypes.BlockNumberFinality{Block: aggkittypes.BlockNumber(999), Offset: 0},
+			finality:      aggkittypes.BlockNumberFinality{Block: aggkittypes.BlockName(999), Offset: 0},
 			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
 		},
 		{
@@ -528,9 +572,26 @@ func TestBlockNumberFinalityEqual(t *testing.T) {
 	bn2 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
 	bn3 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 0}
 	bn4 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
-
+	bn5 := aggkittypes.NewBlockNumber(1234)
+	bn6 := aggkittypes.NewBlockNumber(12345)
 	require.False(t, blockFinalityEmpty.Equal(bn1), "bn1 should not be equal to empty finality")
 	require.True(t, bn1.Equal(bn2), "bn1 should be equal to bn2")
 	require.False(t, bn1.Equal(bn3), "bn1 should not be equal to bn3")
 	require.False(t, bn1.Equal(bn4), "bn1 should not be equal to bn4")
+	require.False(t, bn5.Equal(bn3))
+	require.False(t, bn3.Equal(bn5))
+	require.True(t, bn5.Equal(bn5))
+	require.False(t, bn5.Equal(bn6))
+
+}
+func TestNewBlockNumberFinalityCte(t *testing.T) {
+	sut, err := aggkittypes.NewBlockNumberFinality("1234")
+	require.NoError(t, err)
+	require.Equal(t, "1234", sut.String())
+	sut, err = aggkittypes.NewBlockNumberFinality("0x1234")
+	require.NoError(t, err)
+	require.Equal(t, "4660", sut.String())
+	sut, err = aggkittypes.NewBlockNumberFinality("BEEF")
+	require.NoError(t, err)
+	require.Equal(t, "48879", sut.String())
 }

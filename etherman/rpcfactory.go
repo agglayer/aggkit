@@ -21,7 +21,7 @@ func NewRPCClient(ctx context.Context, cfg ethermanconfig.L2RPCClientConfig) (ag
 		if err != nil {
 			return nil, fmt.Errorf("failed to create retry handler: %w", err)
 		}
-		ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, retryHandler)
+		ethClient, err := DialWithRetry(ctx, cfg.URL, retryHandler)
 		if err != nil {
 			return nil, fmt.Errorf("fails to create basic RPC client. Err: %w", err)
 		}

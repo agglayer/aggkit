@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,7 +25,7 @@ type MultiDownloader interface {
 	// TODO: delete this method because it's only required for a intermediate fix of old RerogDetector
 	BlockHeader(ctx context.Context, finality BlockNumberFinality) (*BlockHeader, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*BlockHeader, error)
+	HeaderByNumber(ctx context.Context, number *BlockNumberFinality) (*BlockHeader, error)
 	EthClient() BaseEthereumClienter
 	RegisterSyncer(data SyncerConfig) error
 	Start(ctx context.Context) error

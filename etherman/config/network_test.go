@@ -3,14 +3,35 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math/big"
+	"os"
 	"testing"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
+
+// Test for issue: 1389
+func TestEthClientExploratory(t *testing.T) {
+	l2url := os.Getenv("L2URL")
+	ethRawClient, err := ethclient.Dial(l2url)
+	require.NoError(t, err)
+	defer ethRawClient.Close()
+	ctx := t.Context()
+	number := big.NewInt(34797856)
+	header, err := ethRawClient.HeaderByNumber(ctx, number)
+	require.NoError(t, err)
+	fmt.Printf("block number: %d\n", header.Number.Uint64())
+	hash := header.Hash()
+	fmt.Printf("block hash: %s\n", hash.Hex())
+
+	ethRawClient.Client().BatchCall(nil)
+
+}
 
 func TestGetString(t *testing.T) {
 	cfg := L2RPCClientConfig{

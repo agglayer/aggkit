@@ -34,7 +34,12 @@ func (c *ContractConfig) Update(syncerConfig aggkittypes.SyncerConfig) {
 	if syncerConfig.FromBlock < c.FromBlock {
 		c.FromBlock = syncerConfig.FromBlock
 	}
-	if syncerConfig.ToBlock.LessFinalThan(c.ToBlock) {
+	lessFinal, err := syncerConfig.ToBlock.LessFinalThan(c.ToBlock)
+	if err != nil {
+		// In case of error, we do not update ToBlock
+		return
+	}
+	if lessFinal {
 		c.ToBlock = syncerConfig.ToBlock
 	}
 	if !elementMatch(c.Syncers, syncerConfig.SyncerID) {
