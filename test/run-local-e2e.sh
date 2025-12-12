@@ -28,29 +28,64 @@ cleanup_temp_dirs() {
 trap 'cleanup_temp_dirs; log_error "Script failed at line $LINENO"' ERR
 trap 'cleanup_temp_dirs' EXIT
 
+# Parse flags
+FORCE_CLONE=false
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--force)
+            FORCE_CLONE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS] <test_type> [kurtosis_repo_path] [e2e_repo_path]"
+            echo ""
+            echo "Options:"
+            echo "  -f, --force         Automatically clone repos without prompting (non-interactive mode)"
+            echo "  -h, --help          Show this help message"
+            echo ""
+            echo "Arguments:"
+            echo "  test_type           Type of test to run (required)"
+            echo "                      Options: single-l2-network-op-succinct"
+            echo "                               single-l2-network-op-succinct-aggoracle-committee"
+            echo "                               single-l2-network-op-pessimistic"
+            echo "                               multi-l2-networks-2-chains-op-pessimistic"
+            echo "                               multi-l2-networks-3-chains-cdk-erigon-pessimistic"
+            echo "  kurtosis_repo_path  Path to Kurtosis CDK repo (optional)"
+            echo "                      - If not provided: Will prompt to clone temporarily (or auto-clone with --force)"
+            echo "                      - Use '-' to skip Kurtosis setup entirely"
+            echo "  e2e_repo_path       Path to E2E repo (optional)"
+            echo "                      - If not provided: Will prompt to clone temporarily (or auto-clone with --force)"
+            echo "                      - Use '-' to skip E2E tests entirely"
+            echo ""
+            echo "Examples:"
+            echo "  $0 single-l2-network-op-succinct                                     # Prompt to clone both repos"
+            echo "  $0 -f single-l2-network-op-succinct                                  # Auto-clone both repos (no prompts)"
+            echo "  $0 single-l2-network-op-succinct /path/to/kurtosis /path/to/e2e     # Use existing repos"
+            echo "  $0 --force single-l2-network-op-succinct /path/to/kurtosis          # Use Kurtosis, auto-clone E2E"
+            echo "  $0 single-l2-network-op-succinct - /path/to/e2e                     # Skip Kurtosis, use E2E repo"
+            echo "  $0 single-l2-network-op-succinct /path/to/kurtosis -                # Use Kurtosis, skip E2E"
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Restore positional parameters
+set -- "${ARGS[@]}"
+
 if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 <test_type> [kurtosis_repo_path] [e2e_repo_path]"
-    echo ""
-    echo "Arguments:"
-    echo "  test_type           Type of test to run (required)"
-    echo "                      Options: single-l2-network-op-succinct"
-    echo "                               single-l2-network-op-succinct-aggoracle-committee"
-    echo "                               single-l2-network-op-pessimistic"
-    echo "                               multi-l2-networks-2-chains-op-pessimistic"
-    echo "                               multi-l2-networks-3-chains-cdk-erigon-pessimistic"
-    echo "  kurtosis_repo_path  Path to Kurtosis CDK repo (optional)"
-    echo "                      - If not provided: Will prompt to clone temporarily"
-    echo "                      - Use '-' to skip Kurtosis setup entirely"
-    echo "  e2e_repo_path       Path to E2E repo (optional)"
-    echo "                      - If not provided: Will prompt to clone temporarily"
-    echo "                      - Use '-' to skip E2E tests entirely"
-    echo ""
-    echo "Examples:"
-    echo "  $0 single-l2-network-op-succinct                                     # Prompt to clone both repos"
-    echo "  $0 single-l2-network-op-succinct /path/to/kurtosis /path/to/e2e     # Use existing repos"
-    echo "  $0 single-l2-network-op-succinct /path/to/kurtosis                  # Use Kurtosis, prompt for E2E"
-    echo "  $0 single-l2-network-op-succinct - /path/to/e2e                     # Skip Kurtosis, use E2E repo"
-    echo "  $0 single-l2-network-op-succinct /path/to/kurtosis -                # Use Kurtosis, skip E2E"
+    echo "Usage: $0 [OPTIONS] <test_type> [kurtosis_repo_path] [e2e_repo_path]"
+    echo "Use -h or --help for detailed usage information"
     exit 1
 fi
 
@@ -151,18 +186,24 @@ esac
 if [ "$KURTOSIS_REPO_PATH" = "-" ]; then
     log_info "Skipping Kurtosis setup (kurtosis_repo_path is '-')"
 elif [ -z "$KURTOSIS_REPO_PATH" ]; then
-    # No path provided, ask user if they want to clone
-    echo ""
-    log_warn "No Kurtosis CDK repository path provided."
-    read -p "Do you want to clone the Kurtosis CDK repo temporarily? [Y/n] " -n 1 -r
-    echo ""
-
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    # No path provided, ask user if they want to clone (or auto-clone if --force)
+    if [ "$FORCE_CLONE" = true ]; then
+        log_info "No Kurtosis CDK repository path provided. Auto-cloning (--force enabled)..."
         EXPECTED_COMMIT=$(get_expected_kurtosis_commit)
         KURTOSIS_REPO_PATH=$(clone_kurtosis_repo "$EXPECTED_COMMIT")
     else
-        log_info "Skipping Kurtosis setup"
-        KURTOSIS_REPO_PATH="-"
+        echo ""
+        log_warn "No Kurtosis CDK repository path provided."
+        read -p "Do you want to clone the Kurtosis CDK repo temporarily? [Y/n] " -n 1 -r
+        echo ""
+
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            EXPECTED_COMMIT=$(get_expected_kurtosis_commit)
+            KURTOSIS_REPO_PATH=$(clone_kurtosis_repo "$EXPECTED_COMMIT")
+        else
+            log_info "Skipping Kurtosis setup"
+            KURTOSIS_REPO_PATH="-"
+        fi
     fi
 fi
 
@@ -215,17 +256,25 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
             log_warn "Kurtosis repo is not at the expected commit!"
             log_warn "  Expected: $EXPECTED_COMMIT"
             log_warn "  Current:  $CURRENT_COMMIT"
-            echo ""
-            read -p "Do you want to checkout the expected commit? [y/N] " -n 1 -r
-            echo ""
 
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                log_info "Checking out commit $EXPECTED_COMMIT..."
+            if [ "$FORCE_CLONE" = true ]; then
+                log_info "Auto-checking out expected commit (--force enabled)..."
                 git -C "$KURTOSIS_REPO_PATH" fetch origin
                 git -C "$KURTOSIS_REPO_PATH" checkout "$EXPECTED_COMMIT"
                 log_info "Successfully checked out expected commit."
             else
-                log_warn "Continuing with current commit. Tests may not match CI behavior."
+                echo ""
+                read -p "Do you want to checkout the expected commit? [y/N] " -n 1 -r
+                echo ""
+
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    log_info "Checking out commit $EXPECTED_COMMIT..."
+                    git -C "$KURTOSIS_REPO_PATH" fetch origin
+                    git -C "$KURTOSIS_REPO_PATH" checkout "$EXPECTED_COMMIT"
+                    log_info "Successfully checked out expected commit."
+                else
+                    log_warn "Continuing with current commit. Tests may not match CI behavior."
+                fi
             fi
         else
             log_info "Kurtosis repo is at expected commit: $EXPECTED_COMMIT"
@@ -295,17 +344,22 @@ fi
 if [ "$E2E_REPO_PATH" = "-" ]; then
     log_info "Skipping E2E tests (e2e_repo_path is '-')"
 elif [ -z "$E2E_REPO_PATH" ]; then
-    # No path provided, ask user if they want to clone
-    echo ""
-    log_warn "No E2E test repository path provided."
-    read -p "Do you want to clone the E2E test repo temporarily? [Y/n] " -n 1 -r
-    echo ""
-
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    # No path provided, ask user if they want to clone (or auto-clone if --force)
+    if [ "$FORCE_CLONE" = true ]; then
+        log_info "No E2E test repository path provided. Auto-cloning (--force enabled)..."
         E2E_REPO_PATH=$(clone_e2e_repo)
     else
-        log_info "Skipping E2E tests"
-        E2E_REPO_PATH="-"
+        echo ""
+        log_warn "No E2E test repository path provided."
+        read -p "Do you want to clone the E2E test repo temporarily? [Y/n] " -n 1 -r
+        echo ""
+
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            E2E_REPO_PATH=$(clone_e2e_repo)
+        else
+            log_info "Skipping E2E tests"
+            E2E_REPO_PATH="-"
+        fi
     fi
 fi
 
