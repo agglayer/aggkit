@@ -68,7 +68,7 @@ BEGIN
         tx_hash,
         block_timestamp,
         txn_sender,
-        from_address,
+        from_address
     )
     VALUES (
         OLD.deposit_count,
