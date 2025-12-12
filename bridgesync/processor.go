@@ -535,6 +535,9 @@ func (e Event) String() string {
 	if e.SetClaim != nil {
 		parts = append(parts, e.SetClaim.String())
 	}
+	if e.BackwardLET != nil {
+		parts = append(parts, e.BackwardLET.String())
+	}
 	return "Event{" + strings.Join(parts, ", ") + "}"
 }
 
