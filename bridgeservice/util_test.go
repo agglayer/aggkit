@@ -1,6 +1,7 @@
 package bridgeservice
 
 import (
+	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
@@ -61,6 +62,58 @@ func TestParseNetworkIDSliceParam(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedResult, result)
+			}
+		})
+	}
+}
+
+func TestParseBigIntQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		queryParams    string
+		expectedResult *big.Int
+		expectedError  string
+	}{
+		{
+			name:           "valid number",
+			queryParams:    "global_index=1000000",
+			expectedResult: big.NewInt(1000000),
+		},
+		{
+			name:           "empty parameter",
+			queryParams:    "",
+			expectedResult: nil,
+		},
+		{
+			name:          "invalid input",
+			queryParams:   "global_index=invalid",
+			expectedError: "invalid global_index parameter, it should be a numeric",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(nil)
+			c.Request = &http.Request{
+				URL: &url.URL{RawQuery: tt.queryParams},
+			}
+
+			result, err := parseBigIntQuery(c, globalIndexParam)
+
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				if tt.expectedResult == nil {
+					assert.Nil(t, result)
+				} else {
+					require.NotNil(t, result)
+					assert.Equal(t, 0, tt.expectedResult.Cmp(result), "expected %s, got %s", tt.expectedResult.String(), result.String())
+				}
 			}
 		})
 	}

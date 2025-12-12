@@ -79,6 +79,23 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 	return result, nil
 }
 
+// parseBigIntQuery parses a big.Int query parameter from the request context.
+// Returns nil if the parameter is not provided (empty string).
+// Returns an error if the parameter is provided but cannot be parsed as a big.Int.
+func parseBigIntQuery(c *gin.Context, key string) (*big.Int, error) {
+	paramStr := c.Query(key)
+	if paramStr == "" {
+		return nil, nil
+	}
+
+	globalIndex, ok := new(big.Int).SetString(paramStr, 0)
+	if !ok {
+		return nil, fmt.Errorf("invalid %s parameter, it should be a numeric", key)
+	}
+
+	return globalIndex, nil
+}
+
 // parseNetworkIDSliceParam parses a slice of uint32 parameters from the request context
 // and enforces a maximum limit on the number of network IDs to prevent DoS attacks
 func parseNetworkIDSliceParam(c *gin.Context, key string) ([]uint32, error) {
