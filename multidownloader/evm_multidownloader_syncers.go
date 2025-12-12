@@ -4,7 +4,6 @@ package multidownloader
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
@@ -73,26 +72,26 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
 	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
-	if number.Cmp(big.NewInt(0)) < 0 {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: negative block numbers are not supported=%s",
+	if !number.IsConstant() {
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: only numeric blockNumber are not supported=%s",
 			number.String())
 	}
-
-	block, _, err := dh.storage.GetBlockHeaderByNumber(nil, number.Uint64())
+	blockNumber := number.Specific
+	block, _, err := dh.storage.GetBlockHeaderByNumber(nil, blockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get BlockHeader number=%d: %w",
-			number.Uint64(), err)
+			number, err)
 	}
 	if block != nil {
 		return block, nil
 	}
 	// This is a fallback mechanism in case the block is not found in storage (it must be in storage!)
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: block number=%d not found in storage, fetching from ethClient",
-		number.Uint64())
-	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(number.Uint64()))
+		blockNumber)
+	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: ethClient.HeaderByNumber(%d) failed. Err: %w",
-			number.Uint64(), err)
+			blockNumber, err)
 	}
 	return blockHeader, nil
 }
