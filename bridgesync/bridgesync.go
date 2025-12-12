@@ -177,7 +177,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ethClient, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
+	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -337,6 +337,16 @@ func (s *BridgeSync) GetUnsetClaimsPaged(
 		return nil, 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
+}
+
+func (s *BridgeSync) GetSetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32, globalIndex *big.Int) ([]*SetClaim, int, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get set claims")
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
