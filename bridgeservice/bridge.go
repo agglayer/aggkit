@@ -67,6 +67,7 @@ const (
 	errNetworkID         = "unsupported network id: %v"
 	errSetupRequest      = "failed to setup request: %v"
 	errDepositCountParam = "invalid deposit count parameter: %v"
+	errInvalidParam      = "invalid %s parameter"
 
 	// etrogVersionID is the version ID of AgglayerManager after Etrog upgrade
 	etrogVersionID = 2
@@ -200,6 +201,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/bridges", b.GetBridgesHandler)
 		bridgeGroup.GET("/claims", b.GetClaimsHandler)
 		bridgeGroup.GET("/unset-claims", b.GetUnsetClaimsHandler)
+		bridgeGroup.GET("/set-claims", b.GetSetClaimsHandler)
 		bridgeGroup.GET("/token-mappings", b.GetTokenMappingsHandler)
 		bridgeGroup.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
 		bridgeGroup.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
@@ -463,27 +465,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		}
 	}
 
-	globalIndexRaw := c.Query(globalIndexParam)
-	var (
-		globalIndex *big.Int
-		ok          bool
-	)
-	if globalIndexRaw != "" {
-		globalIndex, ok = new(big.Int).SetString(globalIndexRaw, 0)
-		if !ok {
-			b.logger.Warnf("invalid %s parameter", globalIndexParam)
-			statusCode = http.StatusBadRequest
-			c.JSON(statusCode,
-				gin.H{"error": fmt.Sprintf("invalid %s parameter, it should be a numeric", globalIndexParam)})
-			return
-		}
-	}
-
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
-	if err != nil {
-		b.logger.Warnf(errSetupRequest, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+	globalIndex, ctx, cancel, pageNumber, pageSize, ok := b.parseGlobalIndexAndSetupRequest(c, &statusCode)
+	if !ok {
 		return
 	}
 	defer cancel()
@@ -574,27 +557,15 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		reportMetrics(metrics.GetUnsetClaimsReq, statusCode, startTime)
 	}()
 
-	globalIndexRaw := c.Query(globalIndexParam)
-	var (
-		globalIndex *big.Int
-		ok          bool
-	)
-	if globalIndexRaw != "" {
-		globalIndex, ok = new(big.Int).SetString(globalIndexRaw, 0)
-		if !ok {
-			b.logger.Warnf("invalid %s parameter", globalIndexParam)
-			statusCode = http.StatusBadRequest
-			c.JSON(statusCode,
-				gin.H{"error": fmt.Sprintf("invalid %s parameter, it should be a numeric", globalIndexParam)})
-			return
-		}
+	if b.bridgeL2 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode,
+			gin.H{"error": "L2 bridge syncer is not available"})
+		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
-	if err != nil {
-		b.logger.Warnf(errSetupRequest, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+	globalIndex, ctx, cancel, pageNumber, pageSize, ok := b.parseGlobalIndexAndSetupRequest(c, &statusCode)
+	if !ok {
 		return
 	}
 	defer cancel()
@@ -605,14 +576,8 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 	var (
 		unsetClaims []*bridgesync.UnsetClaim
 		count       int
+		err         error
 	)
-
-	if b.bridgeL2 == nil {
-		statusCode = http.StatusServiceUnavailable
-		c.JSON(statusCode,
-			gin.H{"error": "L2 bridge syncer is not available"})
-		return
-	}
 
 	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
 	if err != nil {
@@ -640,6 +605,79 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		types.UnsetClaimsResult{
 			UnsetClaims: unsetClaimResponses,
 			Count:       count,
+		})
+}
+
+// @Summary Get set claims
+// @Description Returns set claims for the configured L2 network, paginated.
+// Note: set claims are only available for L2 networks, not L1.
+// @Tags set-claims
+// @Param page_number query int false "Page number"
+// @Param page_size query int false "Page size"
+// @Param global_index query string false "Filter by global index"
+// @Produce json
+// @Success 200 {object} types.SetClaimsResult
+// @Failure 400 {object} types.ErrorResponse "Bad Request - Invalid parameters"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable - L2 bridge syncer not available"
+// @Router /set-claims [get]
+func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
+	b.logger.Debugf("GetSetClaims request received (page number=%s, page size=%s, global_index=%s)",
+		c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(globalIndexParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetSetClaimsReq, statusCode, startTime)
+	}()
+
+	if b.bridgeL2 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode,
+			gin.H{"error": "L2 bridge syncer is not available"})
+		return
+	}
+
+	globalIndex, ctx, cancel, pageNumber, pageSize, ok := b.parseGlobalIndexAndSetupRequest(c, &statusCode)
+	if !ok {
+		return
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching set claims for L2 network (network id=%d, page=%d, size=%d, global_index=%v)",
+		b.networkID, pageNumber, pageSize, globalIndex)
+
+	var (
+		setClaims []*bridgesync.SetClaim
+		count     int
+		err       error
+	)
+
+	setClaims, count, err = b.bridgeL2.GetSetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
+	if err != nil {
+		b.logger.Warnf("failed to get set claims for L2 network (ID=%d): %v", b.networkID, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
+			gin.H{"error": fmt.Sprintf("failed to get set claims for the L2 network (ID=%d), error: %s", b.networkID, err)})
+		return
+	}
+
+	// Convert set claims to response format
+	setClaimResponses := make([]*types.SetClaimResponse, len(setClaims))
+	for i, setClaim := range setClaims {
+		setClaimResponses[i] = &types.SetClaimResponse{
+			BlockNum:    setClaim.BlockNum,
+			BlockPos:    setClaim.BlockPos,
+			TxHash:      types.Hash(setClaim.TxHash.Hex()),
+			GlobalIndex: types.BigIntString(setClaim.GlobalIndex.String()),
+			CreatedAt:   setClaim.CreatedAt,
+		}
+	}
+
+	c.JSON(statusCode,
+		types.SetClaimsResult{
+			SetClaims: setClaimResponses,
+			Count:     count,
 		})
 }
 
@@ -1522,6 +1560,32 @@ func (b *BridgeService) setupRequest(c *gin.Context) (context.Context, context.C
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 
 	return ctx, cancel, pageNumber, pageSize, nil
+}
+
+// parseGlobalIndexAndSetupRequest parses the global_index query parameter and sets up the request context.
+// Returns the parsed globalIndex, context, cancel function, pageNumber, pageSize, and a boolean indicating success.
+// If parsing fails, it handles the error response and returns false.
+func (b *BridgeService) parseGlobalIndexAndSetupRequest(
+	c *gin.Context,
+	statusCode *int,
+) (*big.Int, context.Context, context.CancelFunc, uint32, uint32, bool) {
+	globalIndex, err := parseBigIntQuery(c)
+	if err != nil {
+		b.logger.Warnf(errInvalidParam, globalIndexParam)
+		*statusCode = http.StatusBadRequest
+		c.JSON(*statusCode, gin.H{"error": err.Error()})
+		return nil, nil, nil, 0, 0, false
+	}
+
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
+	if err != nil {
+		b.logger.Warnf(errSetupRequest, err)
+		*statusCode = http.StatusBadRequest
+		c.JSON(*statusCode, gin.H{"error": err.Error()})
+		return nil, nil, nil, 0, 0, false
+	}
+
+	return globalIndex, ctx, cancel, pageNumber, pageSize, true
 }
 
 // reportMetrics reports the request metric for the given handler and status code

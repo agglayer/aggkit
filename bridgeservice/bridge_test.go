@@ -1266,6 +1266,161 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 	})
 }
 
+func TestGetSetClaimsHandler(t *testing.T) {
+	t.Run("GetSetClaims for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedSetClaims := []*bridgesync.SetClaim{
+			{
+				BlockNum:    1,
+				BlockPos:    1,
+				TxHash:      common.HexToHash("0x1234567890abcdef"),
+				GlobalIndex: big.NewInt(1000000),
+				CreatedAt:   1617184800,
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetSetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
+			Return(expectedSetClaims, len(expectedSetClaims), nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SetClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedSetClaims), response.Count)
+		require.Len(t, response.SetClaims, len(expectedSetClaims))
+		require.Equal(t, expectedSetClaims[0].BlockNum, response.SetClaims[0].BlockNum)
+		require.Equal(t, expectedSetClaims[0].GlobalIndex.String(), string(response.SetClaims[0].GlobalIndex))
+		require.Equal(t, expectedSetClaims[0].CreatedAt, response.SetClaims[0].CreatedAt)
+	})
+
+	t.Run("GetSetClaims for L2 network with global_index filter", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		globalIndex := big.NewInt(2000000)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedSetClaims := []*bridgesync.SetClaim{
+			{
+				BlockNum:    2,
+				BlockPos:    0,
+				TxHash:      common.HexToHash("0xabcdef1234567890"),
+				GlobalIndex: globalIndex,
+				CreatedAt:   1617184900,
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetSetClaimsPaged(mock.Anything, page, pageSize, globalIndex).
+			Return(expectedSetClaims, len(expectedSetClaims), nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+		queryParams.Set(globalIndexParam, globalIndex.String())
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SetClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedSetClaims), response.Count)
+		require.Len(t, response.SetClaims, len(expectedSetClaims))
+		require.Equal(t, expectedSetClaims[0].BlockNum, response.SetClaims[0].BlockNum)
+		require.Equal(t, expectedSetClaims[0].GlobalIndex.String(), string(response.SetClaims[0].GlobalIndex))
+	})
+
+	t.Run("GetSetClaims for L2 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL2.EXPECT().
+			GetSetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(barErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get set claims for the L2 network (ID=%d)", l2NetworkID))
+	})
+
+	t.Run("GetSetClaims with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
+	})
+
+	t.Run("GetSetClaims with invalid global_index parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+		queryParams.Set(globalIndexParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
+	})
+
+	t.Run("GetSetClaims with invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "invalid")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
+	})
+
+	t.Run("GetSetClaims with invalid page size parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageSizeParam))
+	})
+}
+
 func TestGetRemoveGEREventsHandler(t *testing.T) {
 	t.Run("GetRemoveGEREvents - get all events", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
