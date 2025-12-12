@@ -1374,7 +1374,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.BackwardLET != nil {
 			newDepositCount := event.BackwardLET.NewDepositCount
 			if !newDepositCount.IsUint64() {
-				return fmt.Errorf("new deposit count=%d does not fit into uint64", newDepositCount)
+				return fmt.Errorf("new deposit count=%s does not fit into uint64", newDepositCount)
 			}
 
 			newDepositCountU64 := newDepositCount.Uint64()
