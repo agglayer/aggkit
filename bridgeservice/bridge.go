@@ -66,6 +66,7 @@ const (
 	errNetworkID         = "unsupported network id: %v"
 	errSetupRequest      = "failed to setup request: %v"
 	errDepositCountParam = "invalid deposit count parameter: %v"
+	errInvalidParam      = "invalid %s parameter"
 
 	// etrogVersionID is the version ID of AgglayerManager after Etrog upgrade
 	etrogVersionID = 2
@@ -465,7 +466,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	globalIndex, err := parseBigIntQuery(c)
 	if err != nil {
-		b.logger.Warnf("invalid %s parameter", globalIndexParam)
+		b.logger.Warnf(errInvalidParam, globalIndexParam)
 		statusCode = http.StatusBadRequest
 		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
@@ -575,7 +576,7 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 
 	globalIndex, err := parseBigIntQuery(c)
 	if err != nil {
-		b.logger.Warnf("invalid %s parameter", globalIndexParam)
+		b.logger.Warnf(errInvalidParam, globalIndexParam)
 		statusCode = http.StatusBadRequest
 		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
@@ -659,7 +660,7 @@ func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
 
 	globalIndex, err := parseBigIntQuery(c)
 	if err != nil {
-		b.logger.Warnf("invalid %s parameter", globalIndexParam)
+		b.logger.Warnf(errInvalidParam, globalIndexParam)
 		statusCode = http.StatusBadRequest
 		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
