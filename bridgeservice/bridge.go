@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -464,19 +465,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		}
 	}
 
-	globalIndex, err := parseBigIntQuery(c)
-	if err != nil {
-		b.logger.Warnf(errInvalidParam, globalIndexParam)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
-	if err != nil {
-		b.logger.Warnf(errSetupRequest, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+	globalIndex, ctx, cancel, pageNumber, pageSize, ok := b.parseGlobalIndexAndSetupRequest(c, &statusCode)
+	if !ok {
 		return
 	}
 	defer cancel()
@@ -574,19 +564,8 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	globalIndex, err := parseBigIntQuery(c)
-	if err != nil {
-		b.logger.Warnf(errInvalidParam, globalIndexParam)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
-	if err != nil {
-		b.logger.Warnf(errSetupRequest, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+	globalIndex, ctx, cancel, pageNumber, pageSize, ok := b.parseGlobalIndexAndSetupRequest(c, &statusCode)
+	if !ok {
 		return
 	}
 	defer cancel()
@@ -597,6 +576,7 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 	var (
 		unsetClaims []*bridgesync.UnsetClaim
 		count       int
+		err         error
 	)
 
 	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
@@ -658,19 +638,8 @@ func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	globalIndex, err := parseBigIntQuery(c)
-	if err != nil {
-		b.logger.Warnf(errInvalidParam, globalIndexParam)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
-	if err != nil {
-		b.logger.Warnf(errSetupRequest, err)
-		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+	globalIndex, ctx, cancel, pageNumber, pageSize, ok := b.parseGlobalIndexAndSetupRequest(c, &statusCode)
+	if !ok {
 		return
 	}
 	defer cancel()
@@ -681,6 +650,7 @@ func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
 	var (
 		setClaims []*bridgesync.SetClaim
 		count     int
+		err       error
 	)
 
 	setClaims, count, err = b.bridgeL2.GetSetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
@@ -1590,6 +1560,32 @@ func (b *BridgeService) setupRequest(c *gin.Context) (context.Context, context.C
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 
 	return ctx, cancel, pageNumber, pageSize, nil
+}
+
+// parseGlobalIndexAndSetupRequest parses the global_index query parameter and sets up the request context.
+// Returns the parsed globalIndex, context, cancel function, pageNumber, pageSize, and a boolean indicating success.
+// If parsing fails, it handles the error response and returns false.
+func (b *BridgeService) parseGlobalIndexAndSetupRequest(
+	c *gin.Context,
+	statusCode *int,
+) (*big.Int, context.Context, context.CancelFunc, uint32, uint32, bool) {
+	globalIndex, err := parseBigIntQuery(c)
+	if err != nil {
+		b.logger.Warnf(errInvalidParam, globalIndexParam)
+		*statusCode = http.StatusBadRequest
+		c.JSON(*statusCode, gin.H{"error": err.Error()})
+		return nil, nil, nil, 0, 0, false
+	}
+
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
+	if err != nil {
+		b.logger.Warnf(errSetupRequest, err)
+		*statusCode = http.StatusBadRequest
+		c.JSON(*statusCode, gin.H{"error": err.Error()})
+		return nil, nil, nil, 0, 0, false
+	}
+
+	return globalIndex, ctx, cancel, pageNumber, pageSize, true
 }
 
 // reportMetrics reports the request metric for the given handler and status code
