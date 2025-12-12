@@ -54,6 +54,9 @@ const (
 	// backwardLETTableName is the name of the table that stores backward local exit tree events
 	backwardLETTableName = "backward_let"
 
+	// forwardLETTableName is the name of the table that stores forward local exit tree events
+	forwardLETTableName = "forward_let"
+
 	// nilStr holds nil string
 	nilStr = "nil"
 )
@@ -503,6 +506,39 @@ func (b *BackwardLET) String() string {
 		b.BlockNum, b.BlockPos, previousDepositCountStr, b.PreviousRoot.String(), newDepositCountStr, b.NewRoot.String())
 }
 
+// ForwardLET representation of a ForwardLET event,
+// that is emitted by the L2 bridge contract when a LET is advanced.
+type ForwardLET struct {
+	BlockNum             uint64      `meddler:"block_num"`
+	BlockPos             uint64      `meddler:"block_pos"`
+	BlockTimestamp       uint64      `meddler:"block_timestamp"`
+	PreviousDepositCount *big.Int    `meddler:"previous_deposit_count,bigint"`
+	PreviousRoot         common.Hash `meddler:"previous_root,hash"`
+	NewDepositCount      *big.Int    `meddler:"new_deposit_count,bigint"`
+	NewRoot              common.Hash `meddler:"new_root,hash"`
+	NewLeaves            []byte      `meddler:"new_leaves"`
+}
+
+// String returns a formatted string representation of ForwardLET for debugging and logging.
+func (f *ForwardLET) String() string {
+	prevDepositCountStr := nilStr
+	if f.PreviousDepositCount != nil {
+		prevDepositCountStr = f.PreviousDepositCount.String()
+	}
+
+	newDepositCountStr := nilStr
+	if f.NewDepositCount != nil {
+		newDepositCountStr = f.NewDepositCount.String()
+	}
+
+	return fmt.Sprintf("ForwardLET{BlockNum: %d, BlockPos: %d, "+
+		"PreviousDepositCount: %s, PreviousRoot: %s, "+
+		"NewDepositCount: %s, NewRoot: %s, NewLeaves: %x}",
+		f.BlockNum, f.BlockPos,
+		prevDepositCountStr, f.PreviousRoot.String(),
+		newDepositCountStr, f.NewRoot.String(), f.NewLeaves)
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -513,6 +549,7 @@ type Event struct {
 	UnsetClaim           *UnsetClaim
 	SetClaim             *SetClaim
 	BackwardLET          *BackwardLET
+	ForwardLET           *ForwardLET
 }
 
 func (e Event) String() string {
@@ -540,6 +577,9 @@ func (e Event) String() string {
 	}
 	if e.BackwardLET != nil {
 		parts = append(parts, e.BackwardLET.String())
+	}
+	if e.ForwardLET != nil {
+		parts = append(parts, e.ForwardLET.String())
 	}
 	return "Event{" + strings.Join(parts, ", ") + "}"
 }
@@ -1559,6 +1599,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.ForwardLET != nil {
+			if err = p.handleForwardLETEvent(tx, event.ForwardLET); err != nil {
+				p.log.Errorf("failed to handle forward LET event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1641,6 +1688,46 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
 			len(deletedDepositCounts), depositCount, deletedDepositCounts,
 		)
+	}
+
+	return nil
+}
+
+// handleForwardLETEvent processes a ForwardLET event and updates the database accordingly
+func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET) error {
+	decodedNewLeaves, err := decodeForwardLETLeaves(event.NewLeaves)
+	if err != nil {
+		return fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
+	}
+
+	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+
+	for _, leaf := range decodedNewLeaves {
+		bridge := leaf.ToBridge(
+			event.BlockNum,
+			event.BlockPos,
+			event.BlockTimestamp,
+			newDepositCount,
+		)
+
+		if _, err = p.exitTree.PutLeaf(tx, event.BlockNum, event.BlockPos, types.Leaf{
+			Index: newDepositCount,
+			Hash:  bridge.Hash(),
+		}); err != nil {
+			if errors.Is(err, tree.ErrInvalidIndex) {
+				p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
+			}
+			return sync.ErrInconsistentState
+		}
+		if err = meddler.Insert(tx, bridgeTableName, bridge); err != nil {
+			return fmt.Errorf("failed to insert bridge event from ForwardLET: %w", err)
+		}
+
+		newDepositCount++
+	}
+
+	if err = meddler.Insert(tx, forwardLETTableName, event); err != nil {
+		return fmt.Errorf("failed to insert forward local exit tree event: %w", err)
 	}
 
 	return nil
