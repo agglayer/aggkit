@@ -594,3 +594,14 @@ func TestNewBlockNumberFinalityCte(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "48879", sut.String())
 }
+
+func TestConvertStringToNumber(t *testing.T) {
+	num, err := aggkittypes.ConvertStringToNumber[uint64]("1234")
+	require.NoError(t, err)
+	require.Equal(t, uint64(1234), num)
+	num, err = aggkittypes.ConvertStringToNumber[uint64]("0x1234")
+	require.NoError(t, err)
+	require.Equal(t, uint64(4660), num)
+	_, err = aggkittypes.ConvertStringToNumber[uint64]("123A")
+	require.Error(t, err)
+}

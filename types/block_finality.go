@@ -44,30 +44,32 @@ type BlockNumberFinality struct {
 	Specific uint64 // Specific block number, Block must be Constant
 }
 
-func convertStringToNumber[T any](s string) (T, error) {
+const baseAutoDetect = 0
+
+func ConvertStringToNumber[T any](s string) (T, error) {
 	zeroValue := *new(T)
-	for _, base := range []int{10, 0, 16} {
-		var result interface{}
-		var err error
 
-		// Check if T is uint64 or int64 and call appropriate parser
-		switch any(zeroValue).(type) {
-		case uint64:
-			result, err = strconv.ParseUint(s, base, 64)
-		case int64:
-			result, err = strconv.ParseInt(s, base, 64)
-		default:
-			return zeroValue, fmt.Errorf("unsupported type for number conversion")
-		}
+	var result interface{}
+	var err error
 
-		if err == nil {
-			res, ok := result.(T)
-			if !ok {
-				return zeroValue, fmt.Errorf("type assertion failed during number conversion")
-			}
-			return res, nil
-		}
+	// Check if T is uint64 or int64 and call appropriate parser
+	switch any(zeroValue).(type) {
+	case uint64:
+		result, err = strconv.ParseUint(s, baseAutoDetect, 64)
+	case int64:
+		result, err = strconv.ParseInt(s, baseAutoDetect, 64)
+	default:
+		return zeroValue, fmt.Errorf("unsupported type for number conversion")
 	}
+
+	if err == nil {
+		res, ok := result.(T)
+		if !ok {
+			return zeroValue, fmt.Errorf("type assertion failed during number conversion")
+		}
+		return res, nil
+	}
+
 	return zeroValue, fmt.Errorf("invalid block number format: %s", s)
 }
 
@@ -90,7 +92,7 @@ func NewBlockNumberFinality(s string) (*BlockNumberFinality, error) {
 	block, err := NewBlockName(splitted[0])
 	if err != nil {
 		// It's a constant block?
-		n, errParse := convertStringToNumber[uint64](splitted[0])
+		n, errParse := ConvertStringToNumber[uint64](splitted[0])
 		if errParse == nil {
 			return NewBlockNumber(n), nil
 		}
@@ -99,7 +101,7 @@ func NewBlockNumberFinality(s string) (*BlockNumberFinality, error) {
 
 	result.Block = block
 	if len(splitted) == 2 { //nolint:mnd
-		offset, err := convertStringToNumber[int64](splitted[1])
+		offset, err := ConvertStringToNumber[int64](splitted[1])
 		if err != nil {
 			return nil, fmt.Errorf("invalid block offset format: %s", splitted[1])
 		}
