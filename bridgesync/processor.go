@@ -143,9 +143,9 @@ type Bridge struct {
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address,address"`
+	OriginAddress      common.Address `meddler:"origin_address"`
 	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address,address"`
+	DestinationAddress common.Address `meddler:"destination_address"`
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
@@ -1584,6 +1584,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
+			// we sanity check that the previous root matches the latest one in the exit tree
+			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.PreviousRoot); err != nil {
+				p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
+				return err
+			}
+
 			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
 			if err != nil {
 				return err
@@ -1604,7 +1610,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-			// 3. insert the backward let event to designated table
+			// 4. sanity check that the new root matches the latest one in the exit tree
+			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.NewRoot); err != nil {
+				p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
+				return err
+			}
+
+			// 5. insert the backward let event to designated table
 			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
 				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
 				return err
@@ -1757,9 +1769,9 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		err = meddler.QueryAll(tx, &archivedBridges, getArchivedBridgesSQL,
 			leaf.LeafType,
 			leaf.OriginNetwork,
-			leaf.OriginAddress.Hex(),
+			leaf.OriginAddress,
 			leaf.DestinationNetwork,
-			leaf.DestinationAddress.Hex(),
+			leaf.DestinationAddress,
 			leaf.Amount.String(),
 			leaf.Metadata,
 		)
