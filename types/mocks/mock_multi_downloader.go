@@ -4,11 +4,9 @@ package mocks
 
 import (
 	context "context"
-	big "math/big"
-
-	coretypes "github.com/ethereum/go-ethereum/core/types"
 
 	ethereum "github.com/ethereum/go-ethereum"
+	coretypes "github.com/ethereum/go-ethereum/core/types"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -307,7 +305,7 @@ func (_c *MultiDownloader_FilterLogs_Call) RunAndReturn(run func(context.Context
 }
 
 // HeaderByNumber provides a mock function with given fields: ctx, number
-func (_m *MultiDownloader) HeaderByNumber(ctx context.Context, number *big.Int) (*types.BlockHeader, error) {
+func (_m *MultiDownloader) HeaderByNumber(ctx context.Context, number *types.BlockNumberFinality) (*types.BlockHeader, error) {
 	ret := _m.Called(ctx, number)
 
 	if len(ret) == 0 {
@@ -316,10 +314,10 @@ func (_m *MultiDownloader) HeaderByNumber(ctx context.Context, number *big.Int) 
 
 	var r0 *types.BlockHeader
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) (*types.BlockHeader, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.BlockNumberFinality) (*types.BlockHeader, error)); ok {
 		return rf(ctx, number)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) *types.BlockHeader); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.BlockNumberFinality) *types.BlockHeader); ok {
 		r0 = rf(ctx, number)
 	} else {
 		if ret.Get(0) != nil {
@@ -327,7 +325,7 @@ func (_m *MultiDownloader) HeaderByNumber(ctx context.Context, number *big.Int) 
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *big.Int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *types.BlockNumberFinality) error); ok {
 		r1 = rf(ctx, number)
 	} else {
 		r1 = ret.Error(1)
@@ -343,14 +341,14 @@ type MultiDownloader_HeaderByNumber_Call struct {
 
 // HeaderByNumber is a helper method to define mock.On call
 //   - ctx context.Context
-//   - number *big.Int
+//   - number *types.BlockNumberFinality
 func (_e *MultiDownloader_Expecter) HeaderByNumber(ctx interface{}, number interface{}) *MultiDownloader_HeaderByNumber_Call {
 	return &MultiDownloader_HeaderByNumber_Call{Call: _e.mock.On("HeaderByNumber", ctx, number)}
 }
 
-func (_c *MultiDownloader_HeaderByNumber_Call) Run(run func(ctx context.Context, number *big.Int)) *MultiDownloader_HeaderByNumber_Call {
+func (_c *MultiDownloader_HeaderByNumber_Call) Run(run func(ctx context.Context, number *types.BlockNumberFinality)) *MultiDownloader_HeaderByNumber_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*big.Int))
+		run(args[0].(context.Context), args[1].(*types.BlockNumberFinality))
 	})
 	return _c
 }
@@ -360,7 +358,7 @@ func (_c *MultiDownloader_HeaderByNumber_Call) Return(_a0 *types.BlockHeader, _a
 	return _c
 }
 
-func (_c *MultiDownloader_HeaderByNumber_Call) RunAndReturn(run func(context.Context, *big.Int) (*types.BlockHeader, error)) *MultiDownloader_HeaderByNumber_Call {
+func (_c *MultiDownloader_HeaderByNumber_Call) RunAndReturn(run func(context.Context, *types.BlockNumberFinality) (*types.BlockHeader, error)) *MultiDownloader_HeaderByNumber_Call {
 	_c.Call.Return(run)
 	return _c
 }

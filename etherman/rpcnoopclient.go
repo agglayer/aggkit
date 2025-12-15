@@ -10,7 +10,7 @@ import (
 
 var (
 	_                 aggkittypes.RPCClienter = (*NoopRPCClient)(nil)
-	ErrNotImplemented                         = errors.New("Not implemented")
+	ErrNotImplemented                         = errors.New("not implemented")
 )
 
 // NoopRPCClient is no operation implementation for the RPCClienter interface

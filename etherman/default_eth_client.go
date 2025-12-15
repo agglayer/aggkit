@@ -26,7 +26,8 @@ type DefaultEthClient struct {
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
 // It returns an EthClienter on success or an error if all attempts fail.
-func DialWithRetry(ctx context.Context, url string, retryHandler commontypes.RetryHandler) (aggkittypes.EthClienter, error) {
+func DialWithRetry(ctx context.Context, url string,
+	retryHandler commontypes.RetryHandler) (aggkittypes.EthClienter, error) {
 	return aggkitcommon.Execute(retryHandler, ctx, log.Infof, fmt.Sprintf("dial %s rpc", url),
 		func() (aggkittypes.EthClienter, error) {
 			client, err := ethclient.Dial(url)
@@ -38,9 +39,6 @@ func DialWithRetry(ctx context.Context, url string, retryHandler commontypes.Ret
 }
 
 func NewDefaultEthClient(client aggkittypes.EthereumClienter, rpcClient aggkittypes.RPCClienter) *DefaultEthClient {
-	if rpcClient == nil {
-		rpcClient = &NoopRPCClient{}
-	}
 	return &DefaultEthClient{
 		EthereumClienter: client,
 		RPCClienter:      rpcClient,
@@ -48,14 +46,15 @@ func NewDefaultEthClient(client aggkittypes.EthereumClienter, rpcClient aggkitty
 }
 
 func (c *DefaultEthClient) CustomBlockNumber(ctx context.Context, number aggkittypes.BlockName) (uint64, error) {
-	ethHeader, err := c.EthereumClienter.HeaderByNumber(ctx, number.ToBigInt())
+	ethHeader, err := c.HeaderByNumber(ctx, number.ToBigInt())
 	if err != nil {
 		return 0, err
 	}
 	return ethHeader.Number.Uint64(), nil
 }
 
-func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context,
+	number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
 	if number == nil {
 		number = &aggkittypes.LatestBlock
 	}
@@ -64,26 +63,26 @@ func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context, number *agg
 	if err != nil {
 		return nil, err
 	}
-
+	var result *aggkittypes.BlockHeader
 	if c.HashFromJSON {
-		rpcGetBlockByNumber, err := c.rpcGetBlockByNumber(ctx, numberBigInt)
+		result, err = c.rpcGetBlockByNumber(ctx, numberBigInt)
 		if err != nil {
 			return nil, err
 		}
-		return rpcGetBlockByNumber, nil
+	} else {
+		ethHeader, err := c.HeaderByNumber(ctx, numberBigInt)
+		if err != nil {
+			return nil, err
+		}
+		result = aggkittypes.NewBlockHeaderFromEthHeader(ethHeader)
 	}
 
-	ethHeader, err := c.EthereumClienter.HeaderByNumber(ctx, numberBigInt)
-	if err != nil {
-		return nil, err
-	}
-	res := aggkittypes.NewBlockHeaderFromEthHeader(ethHeader)
-	res.RequestedBlock = number
-	return res, nil
-
+	result.RequestedBlock = number
+	return result, nil
 }
 
-func (c *DefaultEthClient) resolveBlockNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*big.Int, error) {
+func (c *DefaultEthClient) resolveBlockNumber(ctx context.Context,
+	number *aggkittypes.BlockNumberFinality) (*big.Int, error) {
 	// If is a number or don't have offset with 1 query it's enough
 	if number.IsConstant() || !number.HasOffset() {
 		return number.ToBigInt(), nil
@@ -106,4 +105,26 @@ func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.
 		return nil, fmt.Errorf("rpcGetBlockByNumber: %w", err)
 	}
 	return rawEthHeader.ToBlockHeader()
+}
+
+func (c *DefaultEthClient) Call(result any, method string, args ...any) error {
+	if c.RPCClienter == nil {
+		return ErrNotImplemented
+	}
+	return c.RPCClienter.Call(result, method, args...)
+}
+
+func (c *DefaultEthClient) BatchCallContext(ctx context.Context, b []rpc.BatchElem) error {
+	if c.RPCClienter == nil {
+		return ErrNotImplemented
+	}
+	return c.RPCClienter.BatchCallContext(ctx, b)
+}
+
+func (c *DefaultEthClient) CallContext(ctx context.Context,
+	result interface{}, method string, args ...interface{}) error {
+	if c.RPCClienter == nil {
+		return ErrNotImplemented
+	}
+	return c.RPCClienter.CallContext(ctx, result, method, args...)
 }

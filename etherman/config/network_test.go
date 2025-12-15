@@ -17,6 +17,7 @@ import (
 
 // Test for issue: 1389
 func TestEthClientExploratory(t *testing.T) {
+	t.Skip("explotaroty test")
 	l2url := os.Getenv("L2URL")
 	ethRawClient, err := ethclient.Dial(l2url)
 	require.NoError(t, err)
@@ -29,8 +30,8 @@ func TestEthClientExploratory(t *testing.T) {
 	hash := header.Hash()
 	fmt.Printf("block hash: %s\n", hash.Hex())
 
-	ethRawClient.Client().BatchCall(nil)
-
+	err = ethRawClient.Client().BatchCall(nil)
+	require.NoError(t, err)
 }
 
 func TestGetString(t *testing.T) {

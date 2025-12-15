@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -37,6 +38,8 @@ var _ aggkittypes.EthClienter = (*TestClient)(nil)
 type TestClient struct {
 	simulated.Client
 	aggkittypes.RPCClienter
+	aggkittypes.CustomEthereumClienter
+	defaultEthClient aggkittypes.EthClienter
 }
 
 // TestClientOption defines a function signature for optional parameters.
@@ -45,7 +48,8 @@ type TestClientOption func(*TestClient)
 // NewTestClient creates a new TestClient with optional configurations.
 func NewTestClient(ethClient simulated.Client, opts ...TestClientOption) *TestClient {
 	tc := &TestClient{
-		Client: ethClient,
+		Client:           ethClient,
+		defaultEthClient: etherman.NewDefaultEthClient(ethClient, nil),
 	}
 
 	// Apply options
@@ -65,6 +69,18 @@ func WithRPCClienter(rpcClient aggkittypes.RPCClienter) TestClientOption {
 
 func (t *TestClient) Call(result any, method string, args ...any) error {
 	return t.RPCClienter.Call(result, method, args)
+}
+
+func (t *TestClient) CallContext(ctx context.Context, result interface{}, method string, args ...interface{}) error {
+	return t.RPCClienter.CallContext(ctx, result, method, args)
+}
+
+func (t *TestClient) BatchCallContext(ctx context.Context, b []rpc.BatchElem) error {
+	return t.RPCClienter.BatchCallContext(ctx, b)
+}
+
+func (t *TestClient) CustomHeaderByNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+	return t.defaultEthClient.CustomHeaderByNumber(ctx, number)
 }
 
 // SimulatedBackendSetup defines the setup for a simulated backend.

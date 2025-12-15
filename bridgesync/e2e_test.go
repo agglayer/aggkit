@@ -10,6 +10,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/helpers"
@@ -102,7 +103,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	time.Sleep(time.Second * 2) // sleeping since the processor could be up to date, but have pending reorgs
 
 	lb := getFinalizedBlockNumber(t, ctx, l1Setup.SimBackend.Client())
-	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb, l1Setup.SimBackend.Client())
+	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb, etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil))
 
 	// Get bridges
 	lastBlock, err := l1Setup.SimBackend.Client().BlockNumber(ctx)
@@ -145,7 +146,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	//nolint:dogsled
 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil), reorgdetector.Config{
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 10),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
@@ -174,7 +175,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient)
 
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
@@ -324,7 +325,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	//nolint:dogsled
 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil), reorgdetector.Config{
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 10),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
@@ -353,7 +354,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient)
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
@@ -435,7 +436,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	//nolint:dogsled
 	client, auth, _, _, bridgeAddr, bridgeContract, _ := helpers.NewSimulatedL1(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{
+	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil), reorgdetector.Config{
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 10),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
@@ -464,8 +465,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
-
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient)
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)

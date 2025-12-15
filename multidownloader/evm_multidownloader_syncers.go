@@ -69,7 +69,8 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 }
 
 // HeaderByNumber gets the block header for the given block number from storage or ethClient
-func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context,
+	number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
 	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	if !number.IsConstant() {
@@ -79,19 +80,19 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context, number *aggkit
 	blockNumber := number.Specific
 	block, _, err := dh.storage.GetBlockHeaderByNumber(nil, blockNumber)
 	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get BlockHeader number=%d: %w",
-			number, err)
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get BlockHeader number=%s: %w",
+			number.String(), err)
 	}
 	if block != nil {
 		return block, nil
 	}
 	// This is a fallback mechanism in case the block is not found in storage (it must be in storage!)
-	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: block number=%d not found in storage, fetching from ethClient",
-		blockNumber)
-	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
+	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: block number=%s not found in storage, fetching from ethClient",
+		number.String())
+	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, number)
 	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: ethClient.HeaderByNumber(%d) failed. Err: %w",
-			blockNumber, err)
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: ethClient.HeaderByNumber(%s) failed. Err: %w",
+			number.String(), err)
 	}
 	return blockHeader, nil
 }

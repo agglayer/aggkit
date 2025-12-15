@@ -55,7 +55,6 @@ func (a *AdaptEthClientToMultidownloader) BlockHeader(ctx context.Context,
 
 func (a *AdaptEthClientToMultidownloader) HeaderByNumber(ctx context.Context,
 	number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
-
 	header, err := a.ethClient.CustomHeaderByNumber(ctx, number)
 	if err != nil {
 		return nil, fmt.Errorf("AdaptEthClient.HeaderByNumber: cannot get BlockHeader number=%s: %w", number.String(), err)

@@ -61,7 +61,11 @@ func convertStringToNumber[T any](s string) (T, error) {
 		}
 
 		if err == nil {
-			return result.(T), nil
+			res, ok := result.(T)
+			if !ok {
+				return zeroValue, fmt.Errorf("type assertion failed during number conversion")
+			}
+			return res, nil
 		}
 	}
 	return zeroValue, fmt.Errorf("invalid block number format: %s", s)

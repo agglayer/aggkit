@@ -13,8 +13,8 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -1743,7 +1743,7 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create real client
-	client, err := aggkittypes.DialWithRetry(t.Context(), rpcURL, nil)
+	client, err := etherman.DialWithRetry(t.Context(), rpcURL, nil)
 	require.NoError(t, err)
 
 	// Create backfill instance

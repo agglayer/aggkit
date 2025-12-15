@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l1infotreesync/mocks"
 	"github.com/agglayer/aggkit/log"
@@ -88,14 +89,14 @@ func TestE2E(t *testing.T) {
 			log.WithFields("module", "multidownloader"),
 			cfgMD,
 			"testMD",
-			client.Client(),
+			etherman.NewDefaultEthClient(client.Client(), nil),
 			nil, // rpcClient
 			nil,
 			nil,
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil))
 	}
 
 	cfg := l1infotreesync.Config{
@@ -161,7 +162,7 @@ func TestWithReorgs(t *testing.T) {
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}
-	rd, err := reorgdetector.New(client.Client(), rdConfig, reorgdetector.L1)
+	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil), rdConfig, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 	var multidownloaderClient aggkittypes.MultiDownloader
@@ -172,14 +173,14 @@ func TestWithReorgs(t *testing.T) {
 			log.WithFields("module", "multidownloader"),
 			cfgMD,
 			"testMD",
-			client.Client(),
+			etherman.NewDefaultEthClient(client.Client(), nil),
 			nil, // rpcClient
 			nil,
 			nil,
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil))
 	}
 
 	cfg := l1infotreesync.Config{
@@ -313,7 +314,7 @@ func TestStressAndReorgs(t *testing.T) {
 		DBPath:              dbPathReorg,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 		FinalizedBlock:      aggkittypes.FinalizedBlock}
-	rd, err := reorgdetector.New(client.Client(), reorgDetectorCfg, reorgdetector.L1)
+	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil), reorgDetectorCfg, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
@@ -325,14 +326,14 @@ func TestStressAndReorgs(t *testing.T) {
 			log.WithFields("module", "multidownloader"),
 			cfgMD,
 			"testMD",
-			client.Client(),
+			etherman.NewDefaultEthClient(client.Client(), nil),
 			nil, // rpcClient
 			nil,
 			nil,
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(client.Client())
+		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil))
 	}
 
 	cfg := l1infotreesync.Config{

@@ -212,26 +212,26 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 		},
 		{
 			name:           "compare 2 cte",
-			firstFinality:  aggkittypes.NewBlockNumber(234),
-			secondFinality: aggkittypes.NewBlockNumber(345),
+			firstFinality:  *aggkittypes.NewBlockNumber(234),
+			secondFinality: *aggkittypes.NewBlockNumber(345),
 			isLessFinal:    true,
 		},
 		{
 			name:           "compare 2 cte",
-			firstFinality:  aggkittypes.NewBlockNumber(345),
-			secondFinality: aggkittypes.NewBlockNumber(234),
+			firstFinality:  *aggkittypes.NewBlockNumber(345),
+			secondFinality: *aggkittypes.NewBlockNumber(234),
 			isLessFinal:    false,
 		},
 		{
 			name:           "compare cte vs non-cte",
-			firstFinality:  aggkittypes.NewBlockNumber(234),
+			firstFinality:  *aggkittypes.NewBlockNumber(234),
 			secondFinality: aggkittypes.LatestBlock,
 			expectedError:  "cannot compare constant block with non-constant block",
 		},
 		{
 			name:           "compare cte vs non-cte",
 			firstFinality:  aggkittypes.LatestBlock,
-			secondFinality: aggkittypes.NewBlockNumber(234),
+			secondFinality: *aggkittypes.NewBlockNumber(234),
 			expectedError:  "cannot compare constant block with non-constant block",
 		},
 	}
@@ -367,7 +367,7 @@ func TestBlockNumberFinality(t *testing.T) {
 		{
 			name:           "cte block",
 			input:          "1234",
-			expectedResult: aggkittypes.NewBlockNumber(1234),
+			expectedResult: *aggkittypes.NewBlockNumber(1234),
 		},
 	}
 	for _, testCase := range testCases {
@@ -579,10 +579,9 @@ func TestBlockNumberFinalityEqual(t *testing.T) {
 	require.False(t, bn1.Equal(bn3), "bn1 should not be equal to bn3")
 	require.False(t, bn1.Equal(bn4), "bn1 should not be equal to bn4")
 	require.False(t, bn5.Equal(bn3))
-	require.False(t, bn3.Equal(bn5))
-	require.True(t, bn5.Equal(bn5))
-	require.False(t, bn5.Equal(bn6))
-
+	require.False(t, bn3.Equal(*bn5))
+	require.True(t, bn5.Equal(*bn5))
+	require.False(t, bn5.Equal(*bn6))
 }
 func TestNewBlockNumberFinalityCte(t *testing.T) {
 	sut, err := aggkittypes.NewBlockNumberFinality("1234")

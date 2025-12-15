@@ -325,7 +325,7 @@ func (_c *BaseEthereumClienter_CodeAt_Call) RunAndReturn(run func(context.Contex
 }
 
 // CustomHeaderByNumber provides a mock function with given fields: ctx, number
-func (_m *BaseEthereumClienter) CustomHeaderByNumber(ctx context.Context, number *big.Int) (*types.BlockHeader, error) {
+func (_m *BaseEthereumClienter) CustomHeaderByNumber(ctx context.Context, number *types.BlockNumberFinality) (*types.BlockHeader, error) {
 	ret := _m.Called(ctx, number)
 
 	if len(ret) == 0 {
@@ -334,10 +334,10 @@ func (_m *BaseEthereumClienter) CustomHeaderByNumber(ctx context.Context, number
 
 	var r0 *types.BlockHeader
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) (*types.BlockHeader, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.BlockNumberFinality) (*types.BlockHeader, error)); ok {
 		return rf(ctx, number)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) *types.BlockHeader); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.BlockNumberFinality) *types.BlockHeader); ok {
 		r0 = rf(ctx, number)
 	} else {
 		if ret.Get(0) != nil {
@@ -345,7 +345,7 @@ func (_m *BaseEthereumClienter) CustomHeaderByNumber(ctx context.Context, number
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *big.Int) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *types.BlockNumberFinality) error); ok {
 		r1 = rf(ctx, number)
 	} else {
 		r1 = ret.Error(1)
@@ -361,14 +361,14 @@ type BaseEthereumClienter_CustomHeaderByNumber_Call struct {
 
 // CustomHeaderByNumber is a helper method to define mock.On call
 //   - ctx context.Context
-//   - number *big.Int
+//   - number *types.BlockNumberFinality
 func (_e *BaseEthereumClienter_Expecter) CustomHeaderByNumber(ctx interface{}, number interface{}) *BaseEthereumClienter_CustomHeaderByNumber_Call {
 	return &BaseEthereumClienter_CustomHeaderByNumber_Call{Call: _e.mock.On("CustomHeaderByNumber", ctx, number)}
 }
 
-func (_c *BaseEthereumClienter_CustomHeaderByNumber_Call) Run(run func(ctx context.Context, number *big.Int)) *BaseEthereumClienter_CustomHeaderByNumber_Call {
+func (_c *BaseEthereumClienter_CustomHeaderByNumber_Call) Run(run func(ctx context.Context, number *types.BlockNumberFinality)) *BaseEthereumClienter_CustomHeaderByNumber_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*big.Int))
+		run(args[0].(context.Context), args[1].(*types.BlockNumberFinality))
 	})
 	return _c
 }
@@ -378,7 +378,7 @@ func (_c *BaseEthereumClienter_CustomHeaderByNumber_Call) Return(_a0 *types.Bloc
 	return _c
 }
 
-func (_c *BaseEthereumClienter_CustomHeaderByNumber_Call) RunAndReturn(run func(context.Context, *big.Int) (*types.BlockHeader, error)) *BaseEthereumClienter_CustomHeaderByNumber_Call {
+func (_c *BaseEthereumClienter_CustomHeaderByNumber_Call) RunAndReturn(run func(context.Context, *types.BlockNumberFinality) (*types.BlockHeader, error)) *BaseEthereumClienter_CustomHeaderByNumber_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -10,6 +10,7 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	ethereum "github.com/ethereum/go-ethereum"
@@ -49,7 +50,7 @@ func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (
 	retryHandler, err := cfg.NewRetryHandler()
 	require.NoError(t, err, "failed to create retry handler")
 
-	client, err := aggkittypes.DialWithRetry(t.Context(), "http://127.0.0.1:8545", retryHandler)
+	client, err := etherman.DialWithRetry(t.Context(), "http://127.0.0.1:8545", retryHandler)
 	require.NoError(t, err)
 
 	auth := createAuth(t, ctx, "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", client)

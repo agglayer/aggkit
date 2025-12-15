@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/etherman"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -228,7 +229,7 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_SimulatedBackend(t *
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, client)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil))
 	require.NoError(t, err)
 
 	// Test with the simulated backend - need to mine some blocks first
@@ -253,7 +254,7 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithRealEvents(t *te
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, client)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil))
 	require.NoError(t, err)
 
 	// Mine some blocks to create a valid range
@@ -281,7 +282,7 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_IteratorBehavior(t *
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, client)
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil))
 	require.NoError(t, err)
 
 	// Mine some blocks to create a valid range

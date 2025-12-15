@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -50,7 +51,8 @@ func TestL2GERSyncE2E(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 	}
 	syncer, err := l2gersync.New(ctx, l2SyncerCfg, l2Setup.ReorgDetector,
-		l2Setup.SimBackend.Client(), l1Setup.InfoTreeSync, l1Setup.SimBackend.Client())
+		etherman.NewDefaultEthClient(l2Setup.SimBackend.Client(), nil),
+		l1Setup.InfoTreeSync, etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil))
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -84,7 +86,8 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 	}
 	syncer, err := l2gersync.New(ctx, l2SyncerCfg, l2Setup.ReorgDetector,
-		l2Setup.SimBackend.Client(), l1Setup.InfoTreeSync, l1Setup.SimBackend.Client())
+		etherman.NewDefaultEthClient(l2Setup.SimBackend.Client(), nil), l1Setup.InfoTreeSync,
+		etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil))
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -111,7 +114,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 	// wait for the GER removal events to be processed
 	lb, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
-	helpers.RequireProcessorUpdated(t, syncer, lb, l2Setup.SimBackend.Client())
+	helpers.RequireProcessorUpdated(t, syncer, lb, etherman.NewDefaultEthClient(l2Setup.SimBackend.Client(), nil))
 
 	for _, removedGER := range gersToRemove {
 		isInjected, err := l2Setup.AggoracleSender.IsGERInjected(removedGER)
@@ -149,9 +152,9 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 		ctx,
 		l2SyncerCfg,
 		l2Setup.ReorgDetector,
-		l2Setup.SimBackend.Client(),
+		etherman.NewDefaultEthClient(l2Setup.SimBackend.Client(), nil),
 		l1Setup.InfoTreeSync,
-		l1Setup.SimBackend.Client(),
+		etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil),
 	)
 	require.NoError(t, err)
 
@@ -230,7 +233,7 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 
 	lb, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
-	helpers.RequireProcessorUpdated(t, syncer, lb, l2Setup.SimBackend.Client())
+	helpers.RequireProcessorUpdated(t, syncer, lb, etherman.NewDefaultEthClient(l2Setup.SimBackend.Client(), nil))
 
 	e, err := syncer.GetFirstGERAfterL1InfoTreeIndex(ctx, uint32(i))
 	require.NoError(t, err, fmt.Sprintf("iteration: %d", i))

@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader"
@@ -91,8 +92,8 @@ type EnvironmentConfig struct {
 
 func DefaultEnvironmentConfig(l2GERManagerType L2GERManagerContractType) *EnvironmentConfig {
 	return &EnvironmentConfig{
-		L1RPCClient:      &aggkittypes.NoopRPCClient{},
-		L2RPCClient:      &aggkittypes.NoopRPCClient{},
+		L1RPCClient:      nil, // &aggkittypes.NoopRPCClient{},
+		L2RPCClient:      nil, // &aggkittypes.NoopRPCClient{},
 		L2GERManagerType: l2GERManagerType,
 		AggOracleCommitteeCfg: AggoraclecommitteeConfig{
 			EnableAggOracleCommittee: false,
@@ -128,7 +129,8 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 
 	// Reorg detector
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
-	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
+	l1EthClient := etherman.NewDefaultEthClient(l1Client.Client(), nil)
+	rdL1, err := reorgdetector.New(l1EthClient, reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
 		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
@@ -156,20 +158,21 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
+
 	var multidownloaderClient aggkittypes.MultiDownloader
 	if useMultidownloaderForTest {
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),
 			multidownloader.NewConfigDefault("l1", t.TempDir()),
 			"testMD",
-			l1Client.Client(),
+			l1EthClient,
 			nil, // RPC client is not simulated
 			nil,
 			nil,
 		)
 		require.NoError(t, err)
 	} else {
-		multidownloaderClient = aggkitsync.NewAdapterEthClientToMultidownloader(l1Client.Client())
+		multidownloaderClient = aggkitsync.NewAdapterEthClientToMultidownloader(l1EthClient)
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx,
@@ -287,7 +290,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", gerL2Addr, err)
 		}
 		sender, err = chaingersender.NewEVMChainGERSender(
-			log.GetDefaultLogger(), evmSenderCfg, l2Client.Client(), l2GERManager,
+			log.GetDefaultLogger(), evmSenderCfg, etherman.NewDefaultEthClient(l2Client.Client(), nil), l2GERManager,
 			ethTxManagerMock, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
 		)
 		require.NoError(t, err)
@@ -303,7 +306,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 
 	// Reorg detector
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
-	rdL2, err := reorgdetector.New(l2Client.Client(), reorgdetector.Config{
+	rdL2, err := reorgdetector.New(etherman.NewDefaultEthClient(l2Client.Client(), nil), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
 		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
 		FinalizedBlock:      aggkittypes.FinalizedBlock,

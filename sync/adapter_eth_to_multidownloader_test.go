@@ -66,11 +66,11 @@ func TestAdapterEthClientToMultidownloader_HeaderByNumber(t *testing.T) {
 	mockEthClient := mocks.NewBaseEthereumClienter(t)
 	sut := NewAdapterEthClientToMultidownloader(mockEthClient)
 
-	header := &types.Header{
-		Number: big.NewInt(12345),
+	header := &aggkittypes.BlockHeader{
+		Number: 12345,
 	}
-	mockEthClient.EXPECT().HeaderByNumber(t.Context(), big.NewInt(12345)).Return(header, nil)
-	blockHeader, err := sut.HeaderByNumber(t.Context(), big.NewInt(12345))
+	mockEthClient.EXPECT().CustomHeaderByNumber(t.Context(), aggkittypes.NewBlockNumber(12345)).Return(header, nil)
+	blockHeader, err := sut.HeaderByNumber(t.Context(), aggkittypes.NewBlockNumber(12345))
 	require.NoError(t, err)
 	require.Equal(t, uint64(12345), blockHeader.Number)
 }

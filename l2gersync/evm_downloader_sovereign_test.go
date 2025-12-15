@@ -71,10 +71,6 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		Number: big.NewInt(int64(latestBlock)),
 	}, nil).Maybe()
 	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
-	mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
-		&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
-		nil, nil, nil,
-	), nil).Maybe()
 
 	mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
 		L1InfoTreeIndex:   testL1InfoTreeIndex,
@@ -330,10 +326,6 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 				Number: big.NewInt(int64(latestBlock)),
 			}, nil).Maybe()
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
-			mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
-				&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
-				nil, nil, nil,
-			), nil).Maybe()
 
 			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
 			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mock.Anything).Return(tt.isUpToDateResult, tt.isUpToDateError).Maybe()

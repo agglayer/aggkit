@@ -197,14 +197,14 @@ func TestGetEventsByBlockRange(t *testing.T) {
 				ParentHash: common.HexToHash("foo"),
 			}
 			blockHash := header.Hash()
-			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
+			clientMock.EXPECT().HeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(10)).
 				Return(&aggkittypes.BlockHeader{
 					Number:     10,
 					Hash:       blockHash,
 					ParentHash: &parentHash,
 				}, nil).Once()
 			// Second call returns correct hash
-			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
+			clientMock.EXPECT().HeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(10)).
 				Return(&aggkittypes.BlockHeader{
 					Number:     10,
 					Hash:       blockHash,
@@ -228,7 +228,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 			// This will trigger the retry logic and eventually exceed max retries
 			for i := 0; i < MaxRetryCountBlockHashMismatch+1; i++ {
 				parentHash := common.HexToHash("bar") // Different parent hash to create different block hash
-				clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(15)).
+				clientMock.EXPECT().HeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(15)).
 					Return(&aggkittypes.BlockHeader{
 						Number:     15,
 						ParentHash: &parentHash, // Different parent hash to create different block hash
@@ -327,7 +327,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 						ParentHash: common.HexToHash("foo"),
 					}
 					blockHash := header.Hash()
-					clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(b.Num))).
+					clientMock.EXPECT().HeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(b.Num)).
 						Return(&aggkittypes.BlockHeader{
 							Number:     b.Num,
 							Hash:       blockHash,
@@ -477,18 +477,22 @@ func TestGetBlockHeader(t *testing.T) {
 	d, clientMock := NewTestDownloader(t, time.Millisecond)
 
 	blockNum := uint64(5)
-	blockNumBig := big.NewInt(5)
-	returnedBlockEth := &types.Header{
-		Number: blockNumBig,
+	blockNumBig := aggkittypes.NewBlockNumber(blockNum)
+	parentHash := common.HexToHash("0x4343")
+	returnedBlockEth := &aggkittypes.BlockHeader{
+		Number:     blockNum,
+		Hash:       common.HexToHash("0xabc"),
+		ParentHash: &parentHash,
 	}
 	returnedBlock := &aggkittypes.BlockHeader{
 		Number:     blockNum,
-		Hash:       returnedBlockEth.Hash(),
-		ParentHash: &returnedBlockEth.ParentHash,
+		Hash:       returnedBlockEth.Hash,
+		ParentHash: returnedBlockEth.ParentHash,
 	}
 	expectedBlock := EVMBlockHeader{
-		Num:  5,
-		Hash: returnedBlockEth.Hash(),
+		Num:        5,
+		Hash:       returnedBlockEth.Hash,
+		ParentHash: *returnedBlockEth.ParentHash,
 	}
 
 	// at first attempt
