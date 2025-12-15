@@ -74,7 +74,7 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context,
 	dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
 	defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	if !number.IsConstant() {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: only numeric blockNumber are not supported=%s",
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: only numeric blockNumbers are supported (got=%s)",
 			number.String())
 	}
 	blockNumber := number.Specific

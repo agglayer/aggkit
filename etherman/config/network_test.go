@@ -17,7 +17,7 @@ import (
 
 // Test for issue: 1389
 func TestEthClientExploratory(t *testing.T) {
-	t.Skip("explotaroty test")
+	t.Skip("exploratory test")
 	l2url := os.Getenv("L2URL")
 	ethRawClient, err := ethclient.Dial(l2url)
 	require.NoError(t, err)

@@ -93,12 +93,11 @@ func (c *DefaultEthClient) resolveBlockNumber(ctx context.Context,
 		return nil, err
 	}
 	num := number.CalculateBlockNumber(hdr.Number)
-	return big.NewInt(int64(num)), nil
+	return big.NewInt(0).SetUint64(num), nil
 }
 
 func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.Int) (*aggkittypes.BlockHeader, error) {
 	blockArg := rpc.BlockNumber(number.Int64()).String()
-	fmt.Printf("rpcGetBlockByNumber: requesting block %s via JSON RPC\n", blockArg)
 	var rawEthHeader *blockRawEth
 	err := c.CallContext(ctx, &rawEthHeader, "eth_getBlockByNumber", blockArg, false)
 	if err != nil {

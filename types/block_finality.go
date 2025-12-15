@@ -236,7 +236,7 @@ func (b *BlockNumberFinality) ToBigInt() *big.Int {
 		return nil
 	}
 	if b.Block.IsConstant() {
-		return big.NewInt(int64(b.Specific))
+		return big.NewInt(0).SetUint64(b.Specific)
 	}
 	return b.Block.ToBigInt()
 }
@@ -311,7 +311,7 @@ func (b *BlockNumberFinality) LessFinalThan(other BlockNumberFinality) (bool, er
 		return b.Specific < other.Specific, nil
 	}
 	if b.Block.IsConstant() || other.Block.IsConstant() {
-		return true, fmt.Errorf("cannot compare constant block with non-constant block")
+		return false, fmt.Errorf("cannot compare constant block with non-constant block")
 	}
 	if b == nil {
 		return true, nil
