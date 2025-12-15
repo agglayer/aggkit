@@ -12,10 +12,10 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/etherman"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,7 +35,7 @@ func TestExtractTxnAddressesExploratory(t *testing.T) {
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
-	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
 	bridgeAddr := common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede")
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethRawClient)
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestExtractCallDataCaseNotMatchingExploratory(t *testing.T) {
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
-	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
 	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
 		common.HexToHash("0x280334ea89e49380d29e3c3931b9217bf699eaa7fa23e126c74a05eea1258503"),
 		logger.WithFields("module", "test"), nil)
@@ -140,7 +140,7 @@ func TestExtractCallDataCaseMessageExploratory(t *testing.T) {
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
-	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
 	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
 		common.HexToHash("0x84a7e20778bd35231bfaefdcbb4ada9169b08658db49d69d38e3f467a799db38"),
 		logger.WithFields("module", "test"), nil)
