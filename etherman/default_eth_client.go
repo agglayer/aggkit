@@ -44,7 +44,7 @@ func NewDefaultEthClient(client aggkittypes.EthereumClienter,
 	cfg *ethermanconfig.RPCClientConfig,
 ) *DefaultEthClient {
 	if cfg == nil {
-		cfg = NewDefaultRPCClientConfig()
+		cfg = ethermanconfig.NewDefaultRPCClientConfig()
 	}
 	return &DefaultEthClient{
 		EthereumClienter: client,

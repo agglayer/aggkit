@@ -58,7 +58,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 			MaxBackoff:        types.NewDuration(10 * time.Second),
 			BackoffMultiplier: 2.0,
 		},
-		Mode: ethermanconfig.RPCModeBasic,
+		Mode:         ethermanconfig.RPCModeBasic,
+		HashFromJSON: true,
 	}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")

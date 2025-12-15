@@ -51,6 +51,7 @@ defaultDBQueryTimeout = "60s"
 	InitialBackoff = "2s"
 	MaxBackoff = "10s"
 	BackoffMultiplier = 2.0
+	HashFromJSON = true
 `
 
 // DefaultValues is the default configuration
@@ -74,12 +75,14 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 RollupManagerCreationBlock = {{L1Config.RollupManagerCreationBlock}}
 BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 	[L1NetworkConfig.RPC]
+		Mode = "basic"
 		URL = "{{L1Config.URL}}"
 		RetryMode = "backoff"
 		MaxRetries = 5
 		InitialBackoff = "2s"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
+		HashFromJSON = true
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"

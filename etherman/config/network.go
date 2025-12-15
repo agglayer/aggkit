@@ -92,7 +92,7 @@ type RPCClientConfig struct {
 	//
 	// If true, the block Hash is getted from JSON RPC
 	// if false, the block Hash is getted from go-ethereum RLP hashing of header
-	HashFromJSON bool
+	HashFromJSON bool `mapstructure:"HashFromJSON"`
 	//
 	// Params specific per client
 	// ExtraParams contains any additional parameters that may be needed for the RPC client
