@@ -229,7 +229,7 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_SimulatedBackend(t *
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil))
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil, nil))
 	require.NoError(t, err)
 
 	// Test with the simulated backend - need to mine some blocks first
@@ -254,7 +254,7 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithRealEvents(t *te
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil))
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil, nil))
 	require.NoError(t, err)
 
 	// Mine some blocks to create a valid range
@@ -282,7 +282,7 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_IteratorBehavior(t *
 	// Use the client from the simulated backend
 	client := simulatedBackend.Client()
 
-	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil))
+	reader, err := NewAgglayerBridgeL2Reader(bridgeAddr, etherman.NewDefaultEthClient(client, nil, nil))
 	require.NoError(t, err)
 
 	// Mine some blocks to create a valid range

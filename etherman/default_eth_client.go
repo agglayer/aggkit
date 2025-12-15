@@ -7,6 +7,7 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	commontypes "github.com/agglayer/aggkit/common/types"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -34,14 +35,21 @@ func DialWithRetry(ctx context.Context, url string,
 			if err != nil {
 				return nil, err
 			}
-			return NewDefaultEthClient(client, client.Client()), nil
+			return NewDefaultEthClient(client, client.Client(), nil), nil
 		})
 }
 
-func NewDefaultEthClient(client aggkittypes.EthereumClienter, rpcClient aggkittypes.RPCClienter) *DefaultEthClient {
+func NewDefaultEthClient(client aggkittypes.EthereumClienter,
+	rpcClient aggkittypes.RPCClienter,
+	cfg *ethermanconfig.RPCClientConfig,
+) *DefaultEthClient {
+	if cfg == nil {
+		cfg = NewDefaultRPCClientConfig()
+	}
 	return &DefaultEthClient{
 		EthereumClienter: client,
 		RPCClienter:      rpcClient,
+		HashFromJSON:     cfg.HashFromJSON,
 	}
 }
 

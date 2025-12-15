@@ -13,8 +13,12 @@ import (
 // It supports both basic RPC mode and OPNode mode.
 // In basic mode, it simply creates a client with the given URL.
 // In OPNode mode, it creates a client that uses the OPNode client to get the finalized block.
-func NewRPCClient(ctx context.Context, cfg ethermanconfig.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
-	switch cfg.Mode {
+func NewRPCClient(ctx context.Context, cfg ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
+	mode := cfg.Mode
+	if mode == ethermanconfig.RPCModeDefault {
+		mode = ethermanconfig.RPCModeBasic
+	}
+	switch mode {
 	case ethermanconfig.RPCModeBasic:
 		log.Debugf("Creating basic RPC client with URL %s", cfg.URL)
 		retryHandler, err := cfg.NewRetryHandler()

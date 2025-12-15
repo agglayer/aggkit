@@ -129,7 +129,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 
 	// Reorg detector
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
-	l1EthClient := etherman.NewDefaultEthClient(l1Client.Client(), nil)
+	l1EthClient := etherman.NewDefaultEthClient(l1Client.Client(), nil, nil)
 	rdL1, err := reorgdetector.New(l1EthClient, reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
 		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
@@ -290,7 +290,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", gerL2Addr, err)
 		}
 		sender, err = chaingersender.NewEVMChainGERSender(
-			log.GetDefaultLogger(), evmSenderCfg, etherman.NewDefaultEthClient(l2Client.Client(), nil), l2GERManager,
+			log.GetDefaultLogger(), evmSenderCfg, etherman.NewDefaultEthClient(l2Client.Client(), nil, nil), l2GERManager,
 			ethTxManagerMock, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
 		)
 		require.NoError(t, err)
@@ -306,7 +306,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 
 	// Reorg detector
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
-	rdL2, err := reorgdetector.New(etherman.NewDefaultEthClient(l2Client.Client(), nil), reorgdetector.Config{
+	rdL2, err := reorgdetector.New(etherman.NewDefaultEthClient(l2Client.Client(), nil, nil), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
 		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
 		FinalizedBlock:      aggkittypes.FinalizedBlock,

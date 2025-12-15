@@ -107,7 +107,7 @@ func start(cliCtx *cli.Context) error {
 		rpcServices = append(rpcServices, l1mdServices...)
 	}
 
-	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, l1Client)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
@@ -555,11 +555,10 @@ func runL1ClientIfNeeded(ctx context.Context,
 	}
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
 
-	ethClient, err := etherman.NewRPCClient(ctx,
-		ethermanconfig.L2RPCClientConfig{
-			Mode:            ethermanconfig.RPCModeBasic,
-			RPCClientConfig: rpcClientCfg,
-		})
+	if rpcClientCfg.Mode != ethermanconfig.RPCModeBasic {
+		log.Fatalf("only basic RPC mode is supported for L1 client, got: %s", rpcClientCfg.Mode)
+	}
+	ethClient, err := etherman.NewRPCClient(ctx, rpcClientCfg)
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
 	}
@@ -568,7 +567,7 @@ func runL1ClientIfNeeded(ctx context.Context,
 }
 
 func runL2ClientIfNeeded(ctx context.Context,
-	components []string, urlRPCL2 ethermanconfig.L2RPCClientConfig) aggkittypes.EthClienter {
+	components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
@@ -886,16 +885,9 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
 func createRollupDataQuerier(ctx context.Context,
 	cfg ethermanconfig.L1NetworkConfig,
+	l1Client aggkittypes.BaseEthereumClienter,
 ) (*ethermanquierier.RollupDataQuerier, error) {
-	ethClient, err := etherman.NewRPCClient(ctx,
-		ethermanconfig.L2RPCClientConfig{
-			Mode:            ethermanconfig.RPCModeBasic,
-			RPCClientConfig: cfg.RPC,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
-	}
-	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, ethClient,
+	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, l1Client,
 		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (ethermanquierier.RollupManagerContract, error) {
 			return agglayermanager.NewAgglayermanager(rollupManagerAddr, client)

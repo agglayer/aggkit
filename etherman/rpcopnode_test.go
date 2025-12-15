@@ -16,10 +16,8 @@ import (
 )
 
 func TestNewRPCClientModeOp(t *testing.T) {
-	cfg := ethermanconfig.L2RPCClientConfig{
-		RPCClientConfig: ethermanconfig.RPCClientConfig{
-			URL: "http://localhost:1234",
-		},
+	cfg := ethermanconfig.RPCClientConfig{
+		URL:  "http://localhost:1234",
 		Mode: ethermanconfig.RPCModeBasic,
 		ExtraParams: map[string]any{
 			ExtraParamFieldName: "http://anotherURL:1234",

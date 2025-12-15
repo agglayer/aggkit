@@ -8,10 +8,9 @@ import (
 )
 
 func TestNewRPCClient(t *testing.T) {
-	cfg := ethermanconfig.L2RPCClientConfig{
-		RPCClientConfig: ethermanconfig.RPCClientConfig{
-			URL: "http://localhost:1234",
-		},
+	cfg := ethermanconfig.RPCClientConfig{
+
+		URL:  "http://localhost:1234",
 		Mode: ethermanconfig.RPCModeBasic,
 		ExtraParams: map[string]any{
 			ExtraParamFieldName: "http://anotherURL:1234",
@@ -31,7 +30,16 @@ func TestNewRPCClient(t *testing.T) {
 	_, err = NewRPCClient(ctx, cfg)
 	require.ErrorContains(t, err, "no known transport for URL scheme \"noproto\"")
 
-	cfg = ethermanconfig.L2RPCClientConfig{}
+	cfg = ethermanconfig.RPCClientConfig{
+		Mode: "invalid_mode",
+	}
 	_, err = NewRPCClient(ctx, cfg)
 	require.ErrorContains(t, err, "invalid RPC mode")
+
+	cfg = ethermanconfig.RPCClientConfig{
+		Mode: "",
+	}
+	// This is the default mode
+	_, err = NewRPCClient(ctx, cfg)
+	require.ErrorContains(t, err, "dial unix: missing address")
 }

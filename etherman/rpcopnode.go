@@ -31,7 +31,7 @@ type RPCOpNodeDecorator struct {
 }
 
 // NewRPCClientModeOp creates a new RPC client that uses the OPNode client to get the finalized block
-func NewRPCClientModeOp(ctx context.Context, cfg ethermanconfig.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
+func NewRPCClientModeOp(ctx context.Context, cfg ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
 	opNodeURL, err := cfg.GetString(ExtraParamFieldName)
 	if err != nil {
 		opNodeURL, err = cfg.GetString(strings.ToLower(ExtraParamFieldName))

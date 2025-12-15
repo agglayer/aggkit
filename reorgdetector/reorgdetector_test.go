@@ -31,7 +31,7 @@ func Test_ReorgDetector(t *testing.T) {
 
 	// Create test DB dir
 	testDir := path.Join(t.TempDir(), "reorgdetectorTest_ReorgDetector.sqlite")
-	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil),
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil),
 		Config{
 			DBPath:              testDir,
 			CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
@@ -111,7 +111,7 @@ func Test_ReorgDetector(t *testing.T) {
 func TestGetTrackedBlocks(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetector_TestGetTrackedBlocks.sqlite")
-	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil), Config{
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), Config{
 		DBPath:              testDir,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 	}, L1)
@@ -212,7 +212,7 @@ func TestGetTrackedBlocks(t *testing.T) {
 func TestNotSubscribed(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestNotSubscribed.sqlite")
-	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil),
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil),
 		Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
 	require.NoError(t, err)
 	err = reorgDetector.AddBlockToTrack(context.Background(), "foo", 1, common.Hash{})
@@ -318,7 +318,7 @@ func TestDetectReorgs(t *testing.T) {
 func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestConcurrentSave.sqlite")
-	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil), Config{
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), Config{
 		DBPath:              testDir,
 		CheckReorgsInterval: cfgtypes.NewDuration(100 * time.Millisecond),
 	}, L1)
@@ -369,7 +369,7 @@ func TestGetTrackedBlockByBlockNumber(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetTrackedBlockByBlockNumber.sqlite")
 
-	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil), Config{
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), Config{
 		DBPath:              testDir,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 	}, L1)
@@ -407,7 +407,7 @@ func TestGetDB(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetDB.sqlite")
 
-	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil), Config{
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), Config{
 		DBPath:              testDir,
 		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 	}, L1)

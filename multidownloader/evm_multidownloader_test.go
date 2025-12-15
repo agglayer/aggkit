@@ -43,7 +43,7 @@ func TestEVMMultidownloader(t *testing.T) {
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
-	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client(), nil)
 	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 
@@ -187,7 +187,7 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	require.NoError(t, err)
 	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
-	ethClientWrapped := etherman.NewDefaultEthClient(ethClient, ethRPCClient)
+	ethClientWrapped := etherman.NewDefaultEthClient(ethClient, ethRPCClient, nil)
 
 	blockNumbersMap := make([]uint64, 0)
 	var blockNumbersSlice []uint64

@@ -16,10 +16,8 @@ import (
 func TestDefaultEthClientExploratory(t *testing.T) {
 	l2url := os.Getenv("L2URL")
 	ctx := t.Context()
-	cfg := ethermanconfig.L2RPCClientConfig{
-		RPCClientConfig: ethermanconfig.RPCClientConfig{
-			URL: l2url,
-		},
+	cfg := ethermanconfig.RPCClientConfig{
+		URL:  l2url,
 		Mode: ethermanconfig.RPCModeBasic,
 	}
 
@@ -40,7 +38,7 @@ func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 	mockEthClient := mocks.NewEthereumClienter(t)
 	mockRPCClient := mocks.NewRPCClienter(t)
 
-	client := NewDefaultEthClient(mockEthClient, mockRPCClient)
+	client := NewDefaultEthClient(mockEthClient, mockRPCClient, nil)
 	client.HashFromJSON = true
 	bn, err := aggkittypes.NewBlockNumberFinality("FinalizedBlock/5")
 	require.NoError(t, err)

@@ -590,7 +590,7 @@ func TestNewBlockNumberFinalityCte(t *testing.T) {
 	sut, err = aggkittypes.NewBlockNumberFinality("0x1234")
 	require.NoError(t, err)
 	require.Equal(t, "4660", sut.String())
-	sut, err = aggkittypes.NewBlockNumberFinality("BEEF")
+	sut, err = aggkittypes.NewBlockNumberFinality("0xBEEF")
 	require.NoError(t, err)
 	require.Equal(t, "48879", sut.String())
 }

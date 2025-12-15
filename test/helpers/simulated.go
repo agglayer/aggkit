@@ -49,7 +49,7 @@ type TestClientOption func(*TestClient)
 func NewTestClient(ethClient simulated.Client, opts ...TestClientOption) *TestClient {
 	tc := &TestClient{
 		Client:           ethClient,
-		defaultEthClient: etherman.NewDefaultEthClient(ethClient, nil),
+		defaultEthClient: etherman.NewDefaultEthClient(ethClient, nil, nil),
 	}
 
 	// Apply options

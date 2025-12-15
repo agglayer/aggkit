@@ -35,13 +35,12 @@ func TestEthClientExploratory(t *testing.T) {
 }
 
 func TestGetString(t *testing.T) {
-	cfg := L2RPCClientConfig{
-		RPCClientConfig: RPCClientConfig{
-			URL: "http://localhost:8123",
-			RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
-				MaxRetries:     3,
-				InitialBackoff: types.Duration{Duration: 1000},
-			},
+	cfg := RPCClientConfig{
+
+		URL: "http://localhost:8123",
+		RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+			MaxRetries:     3,
+			InitialBackoff: types.Duration{Duration: 1000},
 		},
 		ExtraParams: map[string]any{
 			"key":         "value",
@@ -168,47 +167,45 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 func TestL2RPCClientConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     L2RPCClientConfig
+		cfg     RPCClientConfig
 		wantErr error
 	}{
 		{
 			name:    "missing RPC config",
-			cfg:     L2RPCClientConfig{},
+			cfg:     RPCClientConfig{},
 			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
 		{
 			name: "missing RPC URL",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{
-					RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
-						// empty URL
-						MaxRetries: 1,
-					},
+			cfg: RPCClientConfig{
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					// empty URL
+					MaxRetries: 1,
 				},
 			},
 			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
 		{
 			name: "invalid RPC mode",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
-				Mode:            "invalid_mode",
+			cfg: RPCClientConfig{
+				URL:  "http://localhost:8545",
+				Mode: "invalid_mode",
 			},
 			wantErr: fmt.Errorf("invalid RPC mode: %s", "invalid_mode"),
 		},
 		{
 			name: "valid config with basic mode",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
-				Mode:            RPCModeBasic,
+			cfg: RPCClientConfig{
+				URL:  "http://localhost:8545",
+				Mode: RPCModeBasic,
 			},
 			wantErr: nil,
 		},
 		{
 			name: "valid config with OP mode",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
-				Mode:            RPCModeOp,
+			cfg: RPCClientConfig{
+				URL:  "http://localhost:8545",
+				Mode: RPCModeOp,
 			},
 			wantErr: nil,
 		},

@@ -21,7 +21,7 @@ var (
 // Config holds the common configuration for the Aggkit services
 type CommonConfig struct {
 	// L2URL is the URL of the L2 node
-	L2RPC L2RPCClientConfig `mapstructure:"L2RPC"`
+	L2RPC RPCClientConfig `mapstructure:"L2RPC"`
 }
 
 // L1NetworkConfig represents the configuration of the network used in L1
@@ -70,53 +70,61 @@ func (c *L1NetworkConfig) Validate() error {
 	return nil
 }
 
+type RPCMode string
+
+var (
+	RPCModeDefault RPCMode = ""
+	RPCModeBasic   RPCMode = "basic"
+	RPCModeOp      RPCMode = "op"
+)
+
 // RPCClientConfig represents the configuration of the RPC client
 type RPCClientConfig struct {
 	common.RetryPolicyGenericConfig `mapstructure:",squash"`
 	// URL is the URL of the RPC client
 	URL string `mapstructure:"URL"`
+	// Mode defines the mode of the RPC client (basic or op)
+	// In basic mode, the client connects to a standard RPC endpoint.
+	// In op mode, the client connects to an Optimistic RPC endpoint.
+	Mode RPCMode `jsonschema:"enum=basic, enum=op" mapstructure:"Mode"`
+	//
+	// Common params
+	//
+	// If true, the block Hash is getted from JSON RPC
+	// if false, the block Hash is getted from go-ethereum RLP hashing of header
+	HashFromJSON bool
+	//
+	// Params specific per client
+	// ExtraParams contains any additional parameters that may be needed for the RPC client
+	ExtraParams map[string]any `jsonschema:"omitempty" mapstructure:",remain"`
 }
 
-// Validate checks if the RPCClientConfig is valid
+// NewDefaultRPCClientConfig returns a new RPCClientConfig with default values
+func NewDefaultRPCClientConfig() *RPCClientConfig {
+	return &RPCClientConfig{
+		Mode:         RPCModeDefault,
+		HashFromJSON: true,
+		ExtraParams:  make(map[string]any),
+	}
+}
+
+// Validate checks if the L2RPCClientConfig is valid
 func (c *RPCClientConfig) Validate() error {
 	if c.URL == "" {
 		return ErrMissingRPCURL
 	}
 
-	return c.RetryPolicyGenericConfig.Validate()
-}
-
-type RPCMode string
-
-var (
-	RPCModeBasic RPCMode = "basic"
-	RPCModeOp    RPCMode = "op"
-)
-
-// L2RPCClientConfig represents the configuration of the L2 RPC client
-type L2RPCClientConfig struct {
-	// RPCClientConfig contains the basic RPC client configuration
-	RPCClientConfig `mapstructure:",squash"`
-	// Mode defines the mode of the RPC client (basic or op)
-	// In basic mode, the client connects to a standard RPC endpoint.
-	// In op mode, the client connects to an Optimistic RPC endpoint.
-	Mode RPCMode `jsonschema:"enum=basic, enum=op" mapstructure:"Mode"`
-	// ExtraParams contains any additional parameters that may be needed for the RPC client
-	ExtraParams map[string]any `jsonschema:"omitempty" mapstructure:",remain"`
-}
-
-// Validate checks if the L2RPCClientConfig is valid
-func (c *L2RPCClientConfig) Validate() error {
-	if err := c.RPCClientConfig.Validate(); err != nil {
+	if err := c.RetryPolicyGenericConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
+
 	if c.Mode != RPCModeBasic && c.Mode != RPCModeOp {
 		return fmt.Errorf("invalid RPC mode: %s", c.Mode)
 	}
 	return nil
 }
 
-func (c L2RPCClientConfig) GetString(key string) (string, error) {
+func (c RPCClientConfig) GetString(key string) (string, error) {
 	valueAny, ok := c.ExtraParams[key]
 	if !ok {
 		return "", fmt.Errorf("field %s not found in extra params of rpcclient config", key)
