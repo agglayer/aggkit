@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"regexp"
 	"strings"
@@ -561,6 +560,7 @@ func (b BridgeSyncRuntimeData) String() string {
 	}
 	return res
 }
+
 func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
 	tmp := sync.RuntimeData{
 		ChainID:   b.ChainID,
@@ -1220,25 +1220,50 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	// ---------------------------------------------------------------------
 	// 2. Restore bridge rows from archive for each interval
 	// ---------------------------------------------------------------------
+	restoredBridgesQuery := `SELECT * FROM bridge WHERE deposit_count > $1 AND deposit_count <= $2`
 	for _, backwardLET := range backwardLETs {
-		if backwardLET.PreviousDepositCount == nil || !backwardLET.PreviousDepositCount.IsUint64() {
-			return fmt.Errorf("invalid previous deposit count: %d", backwardLET.PreviousDepositCount)
+		prevDepositCount, err := aggkitcommon.SafeUint64(backwardLET.PreviousDepositCount)
+		if err != nil {
+			return fmt.Errorf("invalid previous deposit count %s: %w", backwardLET.PreviousDepositCount, err)
 		}
 
-		if backwardLET.NewDepositCount == nil || !backwardLET.NewDepositCount.IsUint64() {
-			return fmt.Errorf("invalid new deposit count: %d", backwardLET.NewDepositCount)
+		newDepositCount, err := aggkitcommon.SafeUint64(backwardLET.NewDepositCount)
+		if err != nil {
+			return fmt.Errorf("invalid new deposit count %s: %w", backwardLET.NewDepositCount, err)
 		}
 
-		prevDepositCount := backwardLET.PreviousDepositCount.Uint64()
-		newDepositCount := backwardLET.NewDepositCount.Uint64()
 		if _, err := tx.Exec(bridgeRestoreSQL, newDepositCount, prevDepositCount); err != nil {
-			return fmt.Errorf("failed to restore bridges from bridge archive (range %d..%d): %w",
+			return fmt.Errorf("failed to restore bridges from bridge archive (deposit counts range: %d..%d): %w",
 				newDepositCount, prevDepositCount, err)
 		}
 
-		// Remove restored rows from archive
-		_, err := tx.Exec(`DELETE FROM bridge_archive 
-		WHERE deposit_count > $1 AND deposit_count <= $2`, newDepositCount, prevDepositCount)
+		// ---------------------------------------------------------------------
+		// 3. Restore bridges in the exit tree
+		// ---------------------------------------------------------------------
+		var restoredBridges []*Bridge
+		err = meddler.QueryAll(tx, &restoredBridges, restoredBridgesQuery, newDepositCount, prevDepositCount)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve the restored bridges (deposit counts range: %d..%d): %w",
+				newDepositCount, prevDepositCount, err)
+		}
+
+		for _, restoredBridge := range restoredBridges {
+			if _, err = p.exitTree.PutLeaf(tx, restoredBridge.BlockNum, restoredBridge.BlockPos, types.Leaf{
+				Index: restoredBridge.DepositCount,
+				Hash:  restoredBridge.Hash(),
+			}); err != nil {
+				if errors.Is(err, tree.ErrInvalidIndex) {
+					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
+				}
+				return sync.ErrInconsistentState
+			}
+		}
+
+		// ---------------------------------------------------------------------
+		// 4. Remove restored bridges from the bridge_archive table
+		// ---------------------------------------------------------------------
+		_, err = tx.Exec(`DELETE FROM bridge_archive WHERE deposit_count > $1 AND deposit_count <= $2`,
+			newDepositCount, prevDepositCount)
 		if err != nil {
 			return fmt.Errorf("failed to delete restored rows from archive (range %d..%d): %w",
 				newDepositCount, prevDepositCount, err)
@@ -1375,32 +1400,32 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
-			newDepositCount := event.BackwardLET.NewDepositCount
-			if !newDepositCount.IsUint64() {
-				return fmt.Errorf("new deposit count=%s does not fit into uint64", newDepositCount)
+			newDepositCountU64, err := aggkitcommon.SafeUint64(event.BackwardLET.NewDepositCount)
+			if err != nil {
+				return fmt.Errorf("failed to convert new deposit count to uint64: %w", err)
 			}
 
-			newDepositCountU64 := newDepositCount.Uint64()
-			if newDepositCountU64 > math.MaxUint32 {
-				return fmt.Errorf("new deposit count=%d exceeds uint32 max (%d)", newDepositCountU64, uint32(math.MaxUint32))
-			}
-
-			// remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
+			// 1. remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
-			_, err := tx.Exec(deleteBridges, newDepositCountU64)
+			_, err = tx.Exec(deleteBridges, newDepositCountU64)
 			if err != nil {
 				p.log.Errorf("failed to remove bridges whose deposit count is greater than %d", newDepositCountU64)
 				return err
 			}
 
-			// remove all the indices after the provided leafIndex in the exit tree
-			leafIndex := uint32(newDepositCountU64)
+			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
+			leafIndex, err := aggkitcommon.SafeUint32(newDepositCountU64)
+			if err != nil {
+				return fmt.Errorf("failed to convert new deposit count (uint64) to leaf index (uint32): %w",
+					err)
+			}
 			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
 				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
 					leafIndex, newDepositCountU64)
 				return err
 			}
 
+			// 3. insert the backward let event to designated table
 			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
 				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
 				return err
