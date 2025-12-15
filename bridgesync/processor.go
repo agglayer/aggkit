@@ -1257,10 +1257,11 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 
 		for _, restoredBridge := range restoredBridges {
-			if _, err = p.exitTree.PutLeaf(tx, restoredBridge.BlockNum, restoredBridge.BlockPos, types.Leaf{
-				Index: restoredBridge.DepositCount,
-				Hash:  restoredBridge.Hash(),
-			}); err != nil {
+			if _, err = p.exitTree.PutLeaf(tx, restoredBridge.BlockNum, restoredBridge.BlockPos,
+				types.Leaf{
+					Index: restoredBridge.DepositCount,
+					Hash:  restoredBridge.Hash(),
+				}); err != nil {
 				if errors.Is(err, tree.ErrInvalidIndex) {
 					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
 				}
