@@ -120,21 +120,13 @@ var (
 		WHERE block_num >= $1 AND block_num <= $2
 		ORDER BY block_num ASC, block_pos ASC;
 	`, bridgeTableName)
+)
 
-	// bridgeRestoreSQL is SQL query that moves rows back from bridge_archive to bridge table
-	bridgeRestoreSQL = fmt.Sprintf(`
-            INSERT INTO %s (
-                block_num, block_pos, leaf_type, origin_network, origin_address,
-                destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count, from_address
-            )
-            SELECT
-                block_num, block_pos, leaf_type, origin_network, origin_address,
-                destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count, from_address
-            FROM bridge_archive
-            WHERE deposit_count > $1 AND deposit_count <= $2
-        `, bridgeTableName)
+type BridgeSource string
+
+const (
+	BridgeSourceBackwardLET BridgeSource = "backward_let"
+	BridgeSourceForwardLET  BridgeSource = "forward_let"
 )
 
 // Bridge is the representation of a bridge event
@@ -153,6 +145,7 @@ type Bridge struct {
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
 	TxnSender          common.Address `meddler:"txn_sender,address"`
+	Source             BridgeSource   `meddler:"source"`
 }
 
 func (b *Bridge) String() string {
@@ -163,11 +156,11 @@ func (b *Bridge) String() string {
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
-		"DepositCount: %d, TxnSender: %s}",
+		"DepositCount: %d, TxnSender: %s, Source: %s}",
 		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
 		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
-		b.DepositCount, b.TxnSender.String())
+		b.DepositCount, b.TxnSender.String(), b.Source)
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
@@ -1220,7 +1213,23 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	// ---------------------------------------------------------------------
 	// 2. Restore bridge rows from archive for each interval
 	// ---------------------------------------------------------------------
-	restoredBridgesQuery := `SELECT * FROM bridge WHERE deposit_count > $1 AND deposit_count <= $2`
+	restoredBridgesQuery := `SELECT * FROM bridge 
+		WHERE deposit_count > $1 AND deposit_count <= $2
+		ORDER BY deposit_count ASC;`
+	bridgeRestorationSQL := `
+            INSERT INTO bridge (
+                block_num, block_pos, leaf_type, origin_network, origin_address,
+                destination_network, destination_address, amount, metadata,
+                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, source
+            )
+            SELECT
+                block_num, block_pos, leaf_type, origin_network, origin_address,
+                destination_network, destination_address, amount, metadata,
+                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, $1
+            FROM bridge_archive
+            WHERE deposit_count > $2 AND deposit_count <= $3
+			ORDER BY deposit_count ASC;
+        `
 	for _, backwardLET := range backwardLETs {
 		prevDepositCount, err := aggkitcommon.SafeUint64(backwardLET.PreviousDepositCount)
 		if err != nil {
@@ -1232,7 +1241,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 			return fmt.Errorf("invalid new deposit count %s: %w", backwardLET.NewDepositCount, err)
 		}
 
-		if _, err := tx.Exec(bridgeRestoreSQL, newDepositCount, prevDepositCount); err != nil {
+		if _, err := tx.Exec(bridgeRestorationSQL, BridgeSourceBackwardLET, newDepositCount, prevDepositCount); err != nil {
 			return fmt.Errorf("failed to restore bridges from bridge archive (deposit counts range: %d..%d): %w",
 				newDepositCount, prevDepositCount, err)
 		}

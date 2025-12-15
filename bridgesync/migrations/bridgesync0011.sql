@@ -2,6 +2,7 @@
 DROP TRIGGER IF EXISTS archive_bridge_before_delete;
 DROP TABLE IF EXISTS bridge_archive;
 DROP TABLE IF EXISTS backward_let;
+ALTER TABLE bridge DROP COLUMN source;
 
 -- +migrate Up
 UPDATE bridge
@@ -87,3 +88,5 @@ BEGIN
         OLD.from_address
     );
 END;
+
+ALTER TABLE bridge ADD COLUMN source TEXT;
