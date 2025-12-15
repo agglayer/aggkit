@@ -163,8 +163,9 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM %s
-		WHERE txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL
-	`, tableName)
+		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		AND (source IS NULL OR (source != '%s' AND source != '%s'))
+	`, tableName, BridgeSourceBackwardLET, BridgeSourceForwardLET)
 
 	var count int
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
@@ -188,9 +189,10 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
-		WHERE txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL
+		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		AND (source IS NULL OR (source != '%s' AND source != '%s'))
 		LIMIT $1
-	`, tableName)
+	`, tableName, BridgeSourceBackwardLET, BridgeSourceForwardLET)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()

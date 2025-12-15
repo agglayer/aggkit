@@ -696,6 +696,7 @@ func buildForwardLETEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) fu
 			BlockNum:             b.Num,
 			BlockPos:             uint64(l.Index),
 			BlockTimestamp:       b.Timestamp,
+			TxnHash:              l.TxHash,
 			PreviousDepositCount: event.PreviousDepositCount,
 			PreviousRoot:         event.PreviousRoot,
 			NewDepositCount:      event.NewDepositCount,

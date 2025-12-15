@@ -143,9 +143,9 @@ type Bridge struct {
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address"`
+	OriginAddress      common.Address `meddler:"origin_address,address"`
 	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address"`
+	DestinationAddress common.Address `meddler:"destination_address,address"`
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
@@ -512,6 +512,7 @@ type ForwardLET struct {
 	BlockNum             uint64      `meddler:"block_num"`
 	BlockPos             uint64      `meddler:"block_pos"`
 	BlockTimestamp       uint64      `meddler:"block_timestamp"`
+	TxnHash              common.Hash `meddler:"tx_hash,hash"`
 	PreviousDepositCount *big.Int    `meddler:"previous_deposit_count,bigint"`
 	PreviousRoot         common.Hash `meddler:"previous_root,hash"`
 	NewDepositCount      *big.Int    `meddler:"new_deposit_count,bigint"`
@@ -532,9 +533,11 @@ func (f *ForwardLET) String() string {
 	}
 
 	return fmt.Sprintf("ForwardLET{BlockNum: %d, BlockPos: %d, "+
+		"BlockTimestamp: %d, TxnHash: %s, "+
 		"PreviousDepositCount: %s, PreviousRoot: %s, "+
 		"NewDepositCount: %s, NewRoot: %s, NewLeaves: %x}",
 		f.BlockNum, f.BlockPos,
+		f.BlockTimestamp, f.TxnHash.String(),
 		prevDepositCountStr, f.PreviousRoot.String(),
 		newDepositCountStr, f.NewRoot.String(), f.NewLeaves)
 }
@@ -1506,6 +1509,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return err
 	}
 
+	var blockPos *uint64
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
@@ -1514,6 +1518,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Bridge != nil {
+			if blockPos != nil {
+				// increment block position based on forward LET events processed so far
+				// in the current block
+				event.Bridge.BlockPos = *blockPos
+				*blockPos++
+			}
+
 			if _, err = p.exitTree.PutLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
 				Index: event.Bridge.DepositCount,
 				Hash:  event.Bridge.Hash(),
@@ -1601,10 +1612,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.ForwardLET != nil {
-			if err = p.handleForwardLETEvent(tx, event.ForwardLET); err != nil {
+			newBlockPos, err := p.handleForwardLETEvent(tx, event.ForwardLET, blockPos)
+			if err != nil {
 				p.log.Errorf("failed to handle forward LET event at block %d: %v", block.Num, err)
 				return err
 			}
+
+			blockPos = &newBlockPos
 		}
 	}
 
@@ -1693,44 +1707,129 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	return nil
 }
 
+// sanityCheckLatestLER checks if the provided local exit root matches the latest one in the exit tree
+func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error {
+	root, err := p.exitTree.GetLastRoot(tx)
+	if err != nil {
+		return fmt.Errorf("failed to get last root from exit tree: %w", err)
+	}
+	if root.Hash != ler {
+		return fmt.Errorf("local exit root mismatch: expected %s, got %s",
+			ler.String(), root.Hash.String())
+	}
+	return nil
+}
+
 // handleForwardLETEvent processes a ForwardLET event and updates the database accordingly
-func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET) error {
+func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, blockPos *uint64) (uint64, error) {
+	// first we sanity check that the previous root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.PreviousRoot); err != nil {
+		return 0, fmt.Errorf("failed to sanity check LER before processing ForwardLET: %w", err)
+	}
+
+	// first we decode the new LET leaves from the forward LET event
+	// they are basically bridge events, but without some fields set (tx hash, sender, from address)
 	decodedNewLeaves, err := decodeForwardLETLeaves(event.NewLeaves)
 	if err != nil {
-		return fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
+		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
 	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+	newBlockPos := event.BlockPos
+	if blockPos != nil {
+		newBlockPos = *blockPos
+	}
 
+	const getArchivedBridgesSQL = `
+		SELECT * FROM bridge_archive 
+		WHERE leaf_type = $1 
+			AND origin_network = $2 
+			AND origin_address = $3 
+			AND destination_network = $4 
+			AND destination_address = $5 
+			AND amount = $6 
+			AND metadata = $7
+	`
+
+	// now we process each new leaf to insert them into the exit tree and bridges table
 	for _, leaf := range decodedNewLeaves {
-		bridge := leaf.ToBridge(
-			event.BlockNum,
-			event.BlockPos,
-			event.BlockTimestamp,
-			newDepositCount,
+		var archivedBridges []*Bridge
+		err = meddler.QueryAll(tx, &archivedBridges, getArchivedBridgesSQL,
+			leaf.LeafType,
+			leaf.OriginNetwork,
+			leaf.OriginAddress.Hex(),
+			leaf.DestinationNetwork,
+			leaf.DestinationAddress.Hex(),
+			leaf.Amount.String(),
+			leaf.Metadata,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to query archived bridges: %w", err)
+		}
+
+		var (
+			txnHash             = event.TxnHash
+			txnSender, fromAddr common.Address
 		)
 
-		if _, err = p.exitTree.PutLeaf(tx, event.BlockNum, event.BlockPos, types.Leaf{
+		// let's see if we have exactly one archived bridge that matches the forward LET leaf
+		// usually we should have exactly one match since to recover the LET on L2,
+		// we must have a backwards LET done which archives the bridges,
+		// and then a forward LET that re-adds them to the exit tree after fixing it
+		// however, in case of multiple matches, we cannot be sure which one to use,
+		// so we will just log and leave the txnSender and fromAddr fields empty
+		if len(archivedBridges) == 1 {
+			archivedBridge := archivedBridges[0]
+			txnHash = archivedBridge.TxHash
+			txnSender = archivedBridge.TxnSender
+			fromAddr = archivedBridge.FromAddress
+		} else if len(archivedBridges) > 1 {
+			p.log.Debugf("multiple archived bridges found that match forward LET leaf %s;"+
+				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
+		}
+
+		// create the new bridge event from the forward LET leaf
+		bridge := leaf.ToBridge(
+			event.BlockNum,
+			newBlockPos,
+			event.BlockTimestamp,
+			newDepositCount,
+			txnHash,
+			txnSender,
+			fromAddr,
+		)
+
+		// insert the new bridge leaf into the local exit tree
+		if _, err = p.exitTree.PutLeaf(tx, event.BlockNum, newBlockPos, types.Leaf{
 			Index: newDepositCount,
 			Hash:  bridge.Hash(),
 		}); err != nil {
 			if errors.Is(err, tree.ErrInvalidIndex) {
 				p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
 			}
-			return sync.ErrInconsistentState
+			return 0, sync.ErrInconsistentState
 		}
-		if err = meddler.Insert(tx, bridgeTableName, bridge); err != nil {
-			return fmt.Errorf("failed to insert bridge event from ForwardLET: %w", err)
+
+		// insert the new bridge into the bridges table
+		if err = meddler.Insert(tx, bridgeTableName, &bridge); err != nil {
+			return 0, fmt.Errorf("failed to insert bridge event from ForwardLET: %w", err)
 		}
 
 		newDepositCount++
+		newBlockPos++
 	}
 
+	// after processing all new leaves, we sanity check that the new root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.NewRoot); err != nil {
+		return 0, fmt.Errorf("failed to sanity check LER before processing ForwardLET: %w", err)
+	}
+
+	// finally, insert the forward LET event into the designated table
 	if err = meddler.Insert(tx, forwardLETTableName, event); err != nil {
-		return fmt.Errorf("failed to insert forward local exit tree event: %w", err)
+		return 0, fmt.Errorf("failed to insert forward local exit tree event: %w", err)
 	}
 
-	return nil
+	return newBlockPos, nil
 }
 
 // GetTotalNumberOfRecords returns the total number of records in the given table

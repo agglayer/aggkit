@@ -20,13 +20,32 @@ type LeafData struct {
 	Metadata           []byte         `abiarg:"metadata"`
 }
 
-func (l LeafData) ToBridge(blockNum, blockPos, blockTimestamp uint64, depositCount uint32) Bridge {
+func (l LeafData) String() string {
+	return fmt.Sprintf("LeafData{LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
+		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x}",
+		l.LeafType,
+		l.OriginNetwork,
+		l.OriginAddress.Hex(),
+		l.DestinationNetwork,
+		l.DestinationAddress.Hex(),
+		l.Amount.String(),
+		l.Metadata,
+	)
+}
+
+func (l LeafData) ToBridge(
+	blockNum, blockPos, blockTimestamp uint64,
+	depositCount uint32,
+	txnHash common.Hash,
+	txnSender, fromAddr common.Address) Bridge {
 	return Bridge{
-		BlockNum: blockNum,
-		// for all leaves from ForwardLET, BlockPos is the same as they are in the same transaction
+		BlockNum:           blockNum,
 		BlockPos:           blockPos,
 		BlockTimestamp:     blockTimestamp,
 		DepositCount:       depositCount,
+		TxHash:             txnHash,
+		FromAddress:        fromAddr,
+		TxnSender:          txnSender,
 		LeafType:           l.LeafType,
 		OriginNetwork:      l.OriginNetwork,
 		OriginAddress:      l.OriginAddress,
@@ -34,8 +53,7 @@ func (l LeafData) ToBridge(blockNum, blockPos, blockTimestamp uint64, depositCou
 		DestinationAddress: l.DestinationAddress,
 		Amount:             l.Amount,
 		Metadata:           l.Metadata,
-		// FromAddress is always zero address, because this is a recovery mechanism bridge
-		// TxnSender is always zero address, because this is a recovery mechanism bridge
+		Source:             BridgeSourceForwardLET, // this leaf comes from ForwardLET event
 	}
 }
 
