@@ -404,57 +404,6 @@ func TestBlockNumberFinality_BlockNumber(t *testing.T) {
 	require.Equal(t, finalizedHeader.Number.Uint64(), number)
 }
 
-func TestBlockNumberFinality_BlockHeader(t *testing.T) {
-	ctx := t.Context()
-
-	t.Run("Success with offset", func(t *testing.T) {
-		mockClient := mocks.NewBaseEthereumClienter(t)
-		blockFinality := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
-
-		finalizedHeader := &types.Header{Number: big.NewInt(100)}
-		offsetHeader := &types.Header{Number: big.NewInt(95)}
-
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Once()
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(95)).Return(offsetHeader, nil).Once()
-
-		result, err := blockFinality.BlockHeader(ctx, mockClient)
-		require.NoError(t, err)
-		require.Equal(t, offsetHeader, result)
-	})
-
-	t.Run("Error on first call", func(t *testing.T) {
-		mockClient := mocks.NewBaseEthereumClienter(t)
-		blockFinality := aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 0}
-
-		testErr := fmt.Errorf("first call error")
-		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, testErr).Once()
-
-		result, err := blockFinality.BlockHeader(ctx, mockClient)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.Contains(t, err.Error(), testErr.Error())
-	})
-
-	t.Run("Error on second call", func(t *testing.T) {
-		mockClient := mocks.NewBaseEthereumClienter(t)
-		// Safe with positive offset so the resolved block differs from the base and triggers a second fetch
-		blockFinality := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 10}
-
-		safeHeader := &types.Header{Number: big.NewInt(100)}
-		testErr := fmt.Errorf("second call error")
-
-		// First call resolves base Safe header (100)
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.SafeBlockNumber))).Return(safeHeader, nil).Once()
-		// Second call attempts to fetch 110 and fails
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(110)).Return(nil, testErr).Once()
-
-		result, err := blockFinality.BlockHeader(ctx, mockClient)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.Contains(t, err.Error(), testErr.Error())
-	})
-}
-
 func TestBlockNumberFinality_Validate(t *testing.T) {
 	tests := []struct {
 		name          string

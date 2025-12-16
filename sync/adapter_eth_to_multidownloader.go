@@ -45,12 +45,12 @@ func (a *AdaptEthClientToMultidownloader) BlockNumber(ctx context.Context,
 
 func (a *AdaptEthClientToMultidownloader) BlockHeader(ctx context.Context,
 	finality aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
-	header, err := finality.BlockHeader(ctx, a.ethClient)
+	header, err := a.ethClient.CustomHeaderByNumber(ctx, &finality)
 	if err != nil {
 		return nil, fmt.Errorf("AdaptEthClient.BlockHeader: cannot get BlockHeader for finality=%s: %w",
 			finality.String(), err)
 	}
-	return aggkittypes.NewBlockHeaderFromEthHeader(header), nil
+	return header, nil
 }
 
 func (a *AdaptEthClientToMultidownloader) HeaderByNumber(ctx context.Context,

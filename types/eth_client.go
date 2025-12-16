@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -20,9 +19,9 @@ type EthClienter interface {
 
 // EthChainReader defines methods to read blocks and headers from the Ethereum chain.
 // it's based on ethereum.ChainReader
+// It have been removed HeaderByNumber in favour of CustomHeaderByNumber
 type EthChainReader interface {
 	HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 }
 
 type EthereumClienter interface {

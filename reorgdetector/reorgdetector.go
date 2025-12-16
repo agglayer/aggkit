@@ -154,7 +154,7 @@ func (rd *ReorgDetector) GetTrackedBlockByBlockNumber(id string, blockNumber uin
 // Notifies subscribers if reorg has happened
 func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 	// Get the latest finalized block
-	lastFinalizedBlock, err := rd.finalizedBlockType.BlockHeader(ctx, rd.client)
+	lastFinalizedBlock, err := rd.client.CustomHeaderByNumber(ctx, &rd.finalizedBlockType)
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
@@ -175,7 +175,8 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 			continue
 		}
 
-		rd.log.Debugf("Checking reorgs in all tracked blocks (finalized up to block %d)", lastFinalizedBlock.Number.Uint64())
+		rd.log.Debugf("Checking reorgs in all tracked blocks (finalized up to block %d)",
+			lastFinalizedBlock.Number)
 
 		errGroup.Go(func() error {
 			headers := hdrs.getSorted()
@@ -198,7 +199,7 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 				if hdr.Hash == oldHeader.Hash && currentHeader.Hash == hdr.Hash {
 					// Delete block from the tracked blocks list if it is less than or equal to the last finalized block
 					// and hashes matches. If higher than finalized block, we assume a reorg still might happen.
-					if hdr.Num <= lastFinalizedBlock.Number.Uint64() {
+					if hdr.Num <= lastFinalizedBlock.Number {
 						hdrs.removeRange(hdr.Num, hdr.Num)
 
 						if err := rd.removeTrackedBlockRange(id, hdr.Num, hdr.Num); err != nil {

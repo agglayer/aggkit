@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agglayer/aggkit/log"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/invopop/jsonschema"
 )
@@ -267,7 +265,7 @@ func (c *BlockNumberFinality) CalculateBlockNumber(baseBlockNumber uint64) uint6
 // BlockNumber gets the block number from RPC with offset taken into account
 func (b *BlockNumberFinality) BlockNumber(
 	ctx context.Context,
-	requester EthChainReader,
+	requester CustomEthereumClienter,
 ) (uint64, error) {
 	if b.IsEmpty() {
 		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: cannot get block number for empty finality")
@@ -276,33 +274,11 @@ func (b *BlockNumberFinality) BlockNumber(
 		return b.Specific, nil
 	}
 
-	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.ToBigInt())
+	blockHeader, err := requester.CustomHeaderByNumber(ctx, b)
 	if err != nil {
 		return 0, fmt.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %w", b.String(), err)
 	}
-	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
-}
-
-// BlockHeader gets the block header from RPC with offset taken into account
-func (b *BlockNumberFinality) BlockHeader(
-	ctx context.Context,
-	requester EthChainReader,
-) (*types.Header, error) {
-	numberBigInt := b.ToBigInt()
-	blockHeader, err := requester.HeaderByNumber(ctx, numberBigInt)
-	if err != nil {
-		log.Errorf(
-			"BlockNumberFinality.BlockHeader: Error getting base header (block=%s, offset=%d). Err: %s",
-			b.String(), b.Offset, err.Error(),
-		)
-		return nil, err
-	}
-
-	blockNum := b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset)
-	if blockNum == blockHeader.Number.Uint64() {
-		return blockHeader, nil
-	}
-	return requester.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
+	return blockHeader.Number, nil
 }
 
 // LessFinalThan returns true if b is less strict commitment level than other.
