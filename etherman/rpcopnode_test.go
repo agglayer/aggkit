@@ -8,6 +8,7 @@ import (
 
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -23,13 +24,14 @@ func TestNewRPCClientModeOp(t *testing.T) {
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
+	logger := log.WithFields("module", "test")
 	ctx := t.Context()
-	eth, err := NewRPCClientModeOp(ctx, cfg)
+	eth, err := NewRPCClientModeOp(ctx, logger, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
 	cfg.URL = "noproto://localhost"
-	_, err = NewRPCClientModeOp(ctx, cfg)
+	_, err = NewRPCClientModeOp(ctx, logger, cfg)
 	require.Error(t, err)
 }
 

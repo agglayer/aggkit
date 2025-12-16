@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	commontypes "github.com/agglayer/aggkit/common/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -23,23 +22,42 @@ type DefaultEthClient struct {
 	// If true, the block Hash is getted from JSON RPC
 	// if false, the block Hash is getted from go-ethereum RLP hashing of header
 	HashFromJSON bool
+	logger       aggkitcommon.Logger
 }
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
 // It returns an EthClienter on success or an error if all attempts fail.
-func DialWithRetry(ctx context.Context, url string,
-	retryHandler commontypes.RetryHandler) (aggkittypes.EthClienter, error) {
-	return aggkitcommon.Execute(retryHandler, ctx, log.Infof, fmt.Sprintf("dial %s rpc", url),
+func DialWithRetry(ctx context.Context,
+	logger aggkitcommon.Logger,
+	cfg *ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
+	retryHandler, err := cfg.NewRetryHandler()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create retry handler: %w", err)
+	}
+	if logger == nil {
+		logger = log.NewLoggerNil()
+	}
+	return aggkitcommon.Execute(retryHandler, ctx, log.Infof, fmt.Sprintf("dial %s rpc", cfg.URL),
 		func() (aggkittypes.EthClienter, error) {
-			client, err := ethclient.Dial(url)
+			client, err := ethclient.Dial(cfg.URL)
 			if err != nil {
 				return nil, err
 			}
-			return NewDefaultEthClient(client, client.Client(), nil), nil
+			return NewDefaultEthClientWithLogger(logger, client, client.Client(), cfg), nil
 		})
 }
 
+// This function is for legacy code that doesn't use logger
 func NewDefaultEthClient(client aggkittypes.EthereumClienter,
+	rpcClient aggkittypes.RPCClienter,
+	cfg *ethermanconfig.RPCClientConfig,
+) *DefaultEthClient {
+	return NewDefaultEthClientWithLogger(log.NewLoggerNil(), client, rpcClient, cfg)
+}
+
+func NewDefaultEthClientWithLogger(
+	logger aggkitcommon.Logger,
+	client aggkittypes.EthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
 	cfg *ethermanconfig.RPCClientConfig,
 ) *DefaultEthClient {
@@ -49,6 +67,7 @@ func NewDefaultEthClient(client aggkittypes.EthereumClienter,
 	hashFromJSON := cfg.HashFromJSON
 	// HashFromJSON requires rpcClient
 	if rpcClient == nil && cfg.HashFromJSON {
+		logger.Warnf("rpcClient is nil, cannot use HashFromJSON=true, setting to false")
 		hashFromJSON = false
 	}
 
@@ -56,6 +75,7 @@ func NewDefaultEthClient(client aggkittypes.EthereumClienter,
 		EthereumClienter: client,
 		RPCClienter:      rpcClient,
 		HashFromJSON:     hashFromJSON,
+		logger:           logger,
 	}
 }
 

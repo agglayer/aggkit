@@ -10,7 +10,9 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	commonmocks "github.com/agglayer/aggkit/common/mocks"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	ethmantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -24,7 +26,16 @@ func TestExploratoryBlockNotifierPolling(t *testing.T) {
 	t.Skip()
 	urlRPCL1 := os.Getenv("L1URL")
 	fmt.Println("URL=", urlRPCL1)
-	ethClient, err := etherman.DialWithRetry(t.Context(), urlRPCL1, nil)
+	cfg := &ethermanconfig.RPCClientConfig{
+		URL: urlRPCL1,
+		RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+			MaxRetries:        5,
+			InitialBackoff:    cfgtypes.NewDuration(time.Second * 1),
+			MaxBackoff:        cfgtypes.NewDuration(time.Second * 5),
+			BackoffMultiplier: 2.0,
+		},
+	}
+	ethClient, err := etherman.DialWithRetry(t.Context(), nil, cfg)
 	require.NoError(t, err)
 
 	sut, errSut := NewBlockNotifierPolling(ethClient,

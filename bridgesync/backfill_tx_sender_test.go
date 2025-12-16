@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -1741,13 +1742,15 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 
 	err = tx.Commit()
 	require.NoError(t, err)
-
+	logger := log.WithFields("module", "test")
 	// Create real client
-	client, err := etherman.DialWithRetry(t.Context(), rpcURL, nil)
+	client, err := etherman.DialWithRetry(t.Context(), logger, &ethermanconfig.RPCClientConfig{
+		URL: rpcURL,
+	})
 	require.NoError(t, err)
 
 	// Create backfill instance
-	logger := log.WithFields("module", "test")
+
 	backfiller, err := NewBackfillTxnSender(dbPath, client, common.HexToAddress("0x1234"), logger)
 	require.NoError(t, err)
 	defer backfiller.Close()

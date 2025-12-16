@@ -21,7 +21,7 @@ func TestDefaultEthClientExploratory(t *testing.T) {
 		Mode: ethermanconfig.RPCModeBasic,
 	}
 
-	client, err := NewRPCClient(ctx, cfg)
+	client, err := NewRPCClient(ctx, nil, cfg)
 	require.NoError(t, err)
 	clientEth, ok := client.(*DefaultEthClient)
 	require.True(t, ok)
