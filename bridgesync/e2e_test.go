@@ -25,6 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	ethClientConfig = &ethermanconfig.RPCClientConfig{
+		HashFromJSON: false,
+	}
+)
+
 func TestBridgeEventE2E(t *testing.T) {
 	const (
 		blockTime    = time.Millisecond * 10
@@ -176,9 +182,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, &ethermanconfig.RPCClientConfig{
-		HashFromJSON: false,
-	})
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
 
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
@@ -357,7 +361,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, nil)
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
@@ -468,7 +472,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, nil)
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
 	require.NoError(t, err)
