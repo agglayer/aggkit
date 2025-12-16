@@ -541,18 +541,7 @@ func runL1InfoTreeSyncerIfNeeded(
 
 func runL1ClientIfNeeded(ctx context.Context,
 	components []string, rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE,
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE,
-		aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.L1BRIDGESYNC,
-	}, components) {
-		return nil
-	}
+	// Always is required because is used to create a L1InfoTreeDataQuerier
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
 
 	if rpcClientCfg.Mode != ethermanconfig.RPCModeBasic {
