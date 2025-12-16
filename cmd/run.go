@@ -83,7 +83,7 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
-	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
+	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
@@ -540,7 +540,7 @@ func runL1InfoTreeSyncerIfNeeded(
 }
 
 func runL1ClientIfNeeded(ctx context.Context,
-	components []string, rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
+	rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
 	// Always is required because is used to create a L1InfoTreeDataQuerier
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
 

@@ -133,7 +133,7 @@ func (c *DefaultEthClient) resolveBlockNumber(ctx context.Context,
 func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.Int) (*aggkittypes.BlockHeader, error) {
 	var blockArg string
 	if number == nil {
-		blockArg = rpc.BlockNumber(rpc.LatestBlockNumber).String()
+		blockArg = rpc.LatestBlockNumber.String()
 	} else {
 		blockArg = rpc.BlockNumber(number.Int64()).String()
 	}
