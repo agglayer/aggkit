@@ -139,6 +139,13 @@ func (t *Transaction) From() common.Address {
 	return common.HexToAddress(t.FromRaw)
 }
 
+func (t *Transaction) ToAddress() common.Address {
+	if t.To == "" {
+		return common.Address{}
+	}
+	return common.HexToAddress(t.To)
+}
+
 func RPCTransactionByHash(client aggkittypes.EthClienter,
 	txHash common.Hash) (*Transaction, error) {
 	// Use client.Call to fetch transaction details using eth_getTransactionByHash
@@ -361,6 +368,15 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
 
+		// Extract transaction To address
+		var toAddress common.Address
+		tx, err := RPCTransactionByHash(client, l.TxHash)
+		if err != nil {
+			logger.Warnf("failed to get transaction by hash for to_address (tx hash: %s): %v", l.TxHash.Hex(), err)
+		} else {
+			toAddress = tx.ToAddress()
+		}
+
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
@@ -376,6 +392,7 @@ func buildBridgeEventHandler(
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
 			TxnSender:          txnSender,
+			ToAddress:          toAddress,
 		}})
 		return nil
 	}

@@ -135,6 +135,7 @@ type Bridge struct {
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
 	TxnSender          common.Address `meddler:"txn_sender,address"`
+	ToAddress          common.Address `meddler:"to_address,address"`
 }
 
 func (b *Bridge) String() string {
