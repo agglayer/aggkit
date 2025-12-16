@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS bridge_archive (
 		tx_hash VARCHAR,
 		block_timestamp INTEGER,
 		txn_sender VARCHAR,
-        from_address VARCHAR
+        from_address VARCHAR,
+        source TEXT
 	);
 
 ------------------------------------------------------------------------------
@@ -56,7 +57,8 @@ BEGIN
         tx_hash,
         block_timestamp,
         txn_sender,
-        from_address
+        from_address,
+        source
     )
     VALUES (
         OLD.deposit_count,
@@ -72,7 +74,8 @@ BEGIN
         OLD.tx_hash,
         OLD.block_timestamp,
         OLD.txn_sender,
-        OLD.from_address
+        OLD.from_address,
+        OLD.source
     );
 END;
 
