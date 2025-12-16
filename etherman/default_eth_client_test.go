@@ -14,6 +14,7 @@ import (
 )
 
 func TestDefaultEthClientExploratory(t *testing.T) {
+	t.Skip("Exploratory test, enable manually")
 	l2url := os.Getenv("L2URL")
 	ctx := t.Context()
 	cfg := ethermanconfig.RPCClientConfig{
