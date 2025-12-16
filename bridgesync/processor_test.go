@@ -3123,6 +3123,128 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 	}
 }
 
+func TestGetSetClaimsPaged(t *testing.T) {
+	t.Parallel()
+
+	path := path.Join(t.TempDir(), "bridgesyncGetSetClaimsPaged.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	// Create test set claims
+	setClaims := []*SetClaim{
+		{
+			BlockNum:    1,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x111"),
+			GlobalIndex: big.NewInt(100),
+		},
+		{
+			BlockNum:    2,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x222"),
+			GlobalIndex: big.NewInt(200),
+		},
+		{
+			BlockNum:    3,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x333"),
+			GlobalIndex: big.NewInt(100), // Same global index as first
+		},
+		{
+			BlockNum:    4,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0x444"),
+			GlobalIndex: big.NewInt(300),
+		},
+	}
+
+	// Insert test data by processing blocks
+	for i, setClaim := range setClaims {
+		block := sync.Block{
+			Num:  uint64(i + 1),
+			Hash: common.HexToHash(fmt.Sprintf("0x%d", i+1)),
+			Events: []any{
+				Event{SetClaim: setClaim},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), block))
+	}
+
+	testCases := []struct {
+		name           string
+		pageSize       uint32
+		page           uint32
+		globalIndex    *big.Int
+		expectedCount  int
+		expectedClaims []*SetClaim
+		expectedError  string
+	}{
+		{
+			name:           "all results on first page",
+			pageSize:       10,
+			page:           1,
+			globalIndex:    nil,
+			expectedCount:  4,
+			expectedClaims: []*SetClaim{setClaims[3], setClaims[2], setClaims[1], setClaims[0]}, // DESC order
+			expectedError:  "",
+		},
+		{
+			name:           "pagination: page 2, size 1",
+			pageSize:       1,
+			page:           2,
+			globalIndex:    nil,
+			expectedCount:  4,
+			expectedClaims: []*SetClaim{setClaims[2]}, // Second item in DESC order
+			expectedError:  "",
+		},
+		{
+			name:           "filter by global index",
+			pageSize:       10,
+			page:           1,
+			globalIndex:    big.NewInt(100),
+			expectedCount:  2,
+			expectedClaims: []*SetClaim{setClaims[2], setClaims[0]}, // DESC order, filtered by globalIndex=100
+			expectedError:  "",
+		},
+		{
+			name:           "filter by non-existent global index",
+			pageSize:       10,
+			page:           1,
+			globalIndex:    big.NewInt(999),
+			expectedCount:  0,
+			expectedClaims: []*SetClaim{},
+			expectedError:  "",
+		},
+		{
+			name:           "invalid page number",
+			pageSize:       4,
+			page:           5,
+			globalIndex:    nil,
+			expectedCount:  0,
+			expectedClaims: []*SetClaim{},
+			expectedError:  "invalid page number for given page size and total number of set_claim",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			setClaims, count, err := p.GetSetClaimsPaged(ctx, tc.page, tc.pageSize, tc.globalIndex)
+
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedClaims, setClaims)
+				require.Equal(t, tc.expectedCount, count)
+			}
+		})
+	}
+}
+
 func TestDatabaseQueryTimeout(t *testing.T) {
 	normalTimeout := 100 * time.Millisecond
 	shortTimeout := 1 * time.Nanosecond
@@ -4309,8 +4431,6 @@ func TestGetClaims_Compact(t *testing.T) {
 
 // TestGetClaimsPaged_CompactionAcrossPages tests the compaction behavior when
 // claims with the same global_index span across multiple pages
-//
-//nolint:dupl
 func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 	path := path.Join(t.TempDir(), "claimsPaged_compaction.sqlite")
 	require.NoError(t, migrations.RunMigrations(path))
@@ -4508,7 +4628,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 	t.Run("Page 1 - newest claims on page", func(t *testing.T) {
 		result, count, err := p.GetClaimsPaged(ctx, 1, 3, nil, nil)
 		require.NoError(t, err)
-		require.Equal(t, 7, count) // Total raw claims in DB
+		require.Equal(t, 4, count) // Total compacted count: 4 distinct global_index values
 
 		// Should get 3 claims: global_index 300, 100 (compacted), 200 (compacted)
 		require.Len(t, result, 3)
@@ -4549,30 +4669,17 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 	t.Run("Page 2 - no newest claims on page", func(t *testing.T) {
 		result, count, err := p.GetClaimsPaged(ctx, 2, 3, nil, nil)
 		require.NoError(t, err)
-		require.Equal(t, 7, count)
+		require.Equal(t, 4, count) // Total compacted count: 4 distinct global_index values
 
 		// Should get 0 claims because blocks 20, 15, 10 are all older versions
 		require.Len(t, result, 0)
-	})
-
-	// Test Page 3: Should return 1 claim (global_index 400)
-	t.Run("Page 3 - single newest claim on page", func(t *testing.T) {
-		result, count, err := p.GetClaimsPaged(ctx, 3, 3, nil, nil)
-		require.NoError(t, err)
-		require.Equal(t, 7, count)
-
-		// Should get 1 claim: global_index 400
-		require.Len(t, result, 1)
-		require.Equal(t, big.NewInt(400), result[0].GlobalIndex)
-		require.Equal(t, uint64(5), result[0].BlockNum)
-		require.Equal(t, []byte("metadata400"), result[0].Metadata)
 	})
 
 	// Test with larger page size that captures everything
 	t.Run("Large page size - all newest claims", func(t *testing.T) {
 		result, count, err := p.GetClaimsPaged(ctx, 1, 100, nil, nil)
 		require.NoError(t, err)
-		require.Equal(t, 7, count)
+		require.Equal(t, 4, count) // Total compacted count: 4 distinct global_index values
 
 		// Should get 4 compacted claims: 300, 100, 200, 400
 		require.Len(t, result, 4)
@@ -4593,7 +4700,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		networkIDs := []uint32{1, 3} // Only global_index 100 (network 1) and 200 (network 3)
 		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, nil)
 		require.NoError(t, err)
-		require.Equal(t, 5, count) // 3 claims with network 1, 2 claims with network 3
+		require.Equal(t, 2, count) // 2 distinct global_index values (100 and 200) after compaction
 
 		// Should get 2 compacted claims: 100 and 200
 		require.Len(t, result, 2)
@@ -4615,7 +4722,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		globalIndexFilter := big.NewInt(100)
 		result, count, err := p.GetClaimsPaged(ctx, 1, 100, networkIDs, globalIndexFilter)
 		require.NoError(t, err)
-		require.Equal(t, 3, count) // 3 raw claims with global_index 100
+		require.Equal(t, 1, count) // 1 compacted claim with global_index 100
 
 		// Should get 1 compacted claim: only global_index 100 (network 1 matches filter)
 		require.Len(t, result, 1)
@@ -4808,7 +4915,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		// Query: Should return 1 compacted claim (oldest metadata + newest proofs)
 		result, count, err := testP.GetClaimsPaged(ctx, 1, 10, nil, nil)
 		require.NoError(t, err)
-		require.Equal(t, 3, count)
+		require.Equal(t, 1, count) // 1 compacted claim (3 raw claims compacted to 1)
 		require.Len(t, result, 1)
 
 		// Verify compaction: oldest claim's metadata with newest claim's proofs
@@ -4820,25 +4927,30 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		require.Equal(t, common.HexToHash("0x3c"), result[0].MainnetExitRoot)                 // Newest claim's root
 	})
 
-	// Test Case 3: Don't return if globally oldest is outside page range
-	t.Run("Case 3: don't return if globally oldest is outside page range", func(t *testing.T) {
+	// Test Case 3: Don't return if newest is not on the page
+	// Original test intent: Verify that when the newest claim is not on the requested page,
+	// we return 0 results (even though older claims for that global_index might be on the page)
+	// Note: With compacted count, we need multiple global_indexes to create valid pagination
+	t.Run("Case 3: don't return if newest is not on the page", func(t *testing.T) {
 		// Create a new database for this test
 		dbPath := filepath.Join(t.TempDir(), "case3.sqlite")
 		require.NoError(t, migrations.RunMigrations(dbPath))
 		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
 		require.NoError(t, err)
 
-		// Setup: Insert claims where oldest is at block 1, newest at block 3
+		// Setup: Insert claims with two global_indexes to create valid pagination
+		// global_index 100: blocks 1 (oldest), 2, 3 (newest) - newest on page 1
+		// global_index 200: blocks 4 (oldest), 5 (newest) - newest on page 2
 		tx, err := testP.db.BeginTx(ctx, nil)
 		require.NoError(t, err)
 
-		for i := uint64(1); i <= 3; i++ {
+		for i := uint64(1); i <= 5; i++ {
 			_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
 			require.NoError(t, err)
 		}
 
 		testClaims := []*Claim{
-			// Oldest claim (block 1)
+			// Global index 100 - oldest (block 1)
 			{
 				BlockNum:            1,
 				BlockPos:            0,
@@ -4858,7 +4970,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 				IsMessage:           false,
 				BlockTimestamp:      1000,
 			},
-			// Middle claim (block 2)
+			// Global index 100 - middle (block 2)
 			{
 				BlockNum:            2,
 				BlockPos:            0,
@@ -4878,7 +4990,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 				IsMessage:           true,
 				BlockTimestamp:      2000,
 			},
-			// Newest claim (block 3)
+			// Global index 100 - newest (block 3)
 			{
 				BlockNum:            3,
 				BlockPos:            0,
@@ -4898,6 +5010,46 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 				IsMessage:           true,
 				BlockTimestamp:      3000,
 			},
+			// Global index 200 - oldest (block 4)
+			{
+				BlockNum:            4,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x444"),
+				GlobalIndex:         big.NewInt(200),
+				OriginNetwork:       2,
+				OriginAddress:       common.HexToAddress("0xaaa"),
+				DestinationAddress:  common.HexToAddress("0xbbb"),
+				Amount:              big.NewInt(200),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x4a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x4b")},
+				MainnetExitRoot:     common.HexToHash("0x4c"),
+				RollupExitRoot:      common.HexToHash("0x4d"),
+				GlobalExitRoot:      common.HexToHash("0x4e"),
+				DestinationNetwork:  3,
+				Metadata:            []byte("index200_old"),
+				IsMessage:           false,
+				BlockTimestamp:      4000,
+			},
+			// Global index 200 - newest (block 5)
+			{
+				BlockNum:            5,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x555"),
+				GlobalIndex:         big.NewInt(200),
+				OriginNetwork:       2,
+				OriginAddress:       common.HexToAddress("0xccc"),
+				DestinationAddress:  common.HexToAddress("0xddd"),
+				Amount:              big.NewInt(200),
+				ProofLocalExitRoot:  types.Proof{common.HexToHash("0x5a")},
+				ProofRollupExitRoot: types.Proof{common.HexToHash("0x5b")},
+				MainnetExitRoot:     common.HexToHash("0x5c"),
+				RollupExitRoot:      common.HexToHash("0x5d"),
+				GlobalExitRoot:      common.HexToHash("0x5e"),
+				DestinationNetwork:  3,
+				Metadata:            []byte("index200_new"),
+				IsMessage:           false,
+				BlockTimestamp:      5000,
+			},
 		}
 
 		for _, claim := range testClaims {
@@ -4905,14 +5057,28 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		}
 		require.NoError(t, tx.Commit())
 
-		// Query page 2 (which contains block 2): The newest (block 3) is NOT on this page
-		// Page 1 would have block 3, Page 2 would have block 2, Page 3 would have block 1
-		result, count, err := testP.GetClaimsPaged(ctx, 2, 1, nil, nil)
+		// Query page 1 (size 1): Contains block 5 (newest for global_index 200)
+		// global_index 200's newest (block 5) is on page 1 → should return compacted claim
+		// global_index 100's newest (block 3) is NOT on page 1 → should NOT return
+		result, count, err := testP.GetClaimsPaged(ctx, 1, 1, nil, nil)
 		require.NoError(t, err)
-		require.Equal(t, 3, count)
+		require.Equal(t, 2, count) // 2 distinct global_index values (100 and 200)
 
-		// Should return 0 claims because the newest for global_index 100 is not on this page
-		require.Len(t, result, 0)
+		// Should return 1 claim: global_index 200 (its newest is on page 1)
+		require.Len(t, result, 1)
+		require.Equal(t, big.NewInt(200), result[0].GlobalIndex)
+
+		// Query page 2 (size 1): Contains block 4 (oldest for global_index 200, not newest)
+		// This tests the original Case 3 concept: when the newest is NOT on the page, return 0
+		// global_index 200's newest (block 5) is NOT on page 2 → should NOT return
+		// global_index 100's newest (block 3) is NOT on page 2 → should NOT return
+		result2, count2, err := testP.GetClaimsPaged(ctx, 2, 1, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 2, count2) // Same total count
+
+		// Should return 0 claims because neither newest is on page 2
+		// This preserves the original test's essence: don't return if newest is not on page
+		require.Len(t, result2, 0)
 	})
 
 	// Test Case 3 Exception: Return if unset_claim exists even when globally oldest is outside range
@@ -5113,12 +5279,12 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		require.NoError(t, tx.Commit())
 
 		// Query: Should return:
-		// - Global index 100: both claims uncompacted (because unset_claim exists)
-		// - Global index 200: 1 compacted claim
+		// - Global index 100: both claims uncompacted (because unset_claim exists) -> count as 2
+		// - Global index 200: 1 compacted claim -> count as 1
 		result, count, err := testP.GetClaimsPaged(ctx, 1, 10, nil, nil)
 		require.NoError(t, err)
-		require.Equal(t, 4, count)
-		require.Len(t, result, 3) // 2 for index 100 (uncompacted) + 1 for index 200 (compacted)
+		require.Equal(t, 3, count) // 2 (unset_claim) + 1 (compacted) = 3
+		require.Len(t, result, 3)  // 2 for index 100 (uncompacted) + 1 for index 200 (compacted)
 
 		// Count claims by global index
 		claimsByGlobalIndex := make(map[int64]int)

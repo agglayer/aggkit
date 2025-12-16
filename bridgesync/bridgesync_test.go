@@ -596,6 +596,15 @@ func TestGetClaimPaged(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
+func TestGetSetClaimPaged(t *testing.T) {
+	s := BridgeSync{processor: &processor{
+		halted: true,
+		log:    log.WithFields("module", "L2BridgeSyncer"),
+	}}
+	_, _, err := s.GetSetClaimsPaged(context.Background(), 0, 0, nil)
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+}
+
 func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 	expectedReorgEvent := reorgdetector.ReorgEvent{
 		DetectedAt: int64(1710000000),

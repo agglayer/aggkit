@@ -25,6 +25,8 @@ type Bridger interface {
 		networkIDs []uint32, globalIndex *big.Int) ([]*bridgesync.Claim, int, error)
 	GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
 		globalIndex *big.Int) ([]*bridgesync.UnsetClaim, int, error)
+	GetSetClaimsPaged(ctx context.Context, page, pageSize uint32,
+		globalIndex *big.Int) ([]*bridgesync.SetClaim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)

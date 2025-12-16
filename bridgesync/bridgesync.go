@@ -339,6 +339,16 @@ func (s *BridgeSync) GetUnsetClaimsPaged(
 	return s.processor.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
 }
 
+func (s *BridgeSync) GetSetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32, globalIndex *big.Int) ([]*SetClaim, int, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get set claims")
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
+}
+
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	if s.processor.isHalted() {
 		s.processor.log.Error("processor is halted, cannot get last processed block")
