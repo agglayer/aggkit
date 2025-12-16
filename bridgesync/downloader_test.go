@@ -1029,6 +1029,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 		responseTransactionHashError error
 		expectedTxnSender            common.Address
 		expectedFrom                 common.Address
+		expectedTo                   common.Address
 		expectErr                    string
 	}{
 		{
@@ -1041,6 +1042,23 @@ func TestExtractTxnAddresses(t *testing.T) {
 			},
 			responseTransactionHashError: fmt.Errorf("RPC error"),
 			expectErr:                    "RPC error",
+		},
+		{
+			name: "messageLeaf: successful extraction with to address",
+			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeMessage,
+				OriginAddress:      common.HexToAddress("0x40"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x30"),
+				Amount:             big.NewInt(100),
+			},
+			responseTransactionHash: &Transaction{
+				FromRaw: "0x1111111111111111111111111111111111111111",
+				To:      "0x2222222222222222222222222222222222222222",
+			},
+			expectedTxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+			expectedFrom:      common.HexToAddress("0x40"),
+			expectedTo:        common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		},
 		{
 			name: "assetLeaf: error can't find From from calls",
@@ -1065,6 +1083,30 @@ func TestExtractTxnAddresses(t *testing.T) {
 				},
 			},
 			expectErr: "failed to extract",
+		},
+		{
+			name: "assetLeaf: successful extraction with to address from rootCall",
+			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeAsset,
+				OriginAddress:      common.HexToAddress("0x50"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x30"),
+				Amount:             big.NewInt(100),
+			},
+			responseDebugTrace: &Call{
+				From: common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				To:   common.HexToAddress("0x4444444444444444444444444444444444444444"),
+				Calls: []Call{
+					{
+						To:    bridgeAddr,
+						From:  common.HexToAddress("0x50"),
+						Input: append(BridgeAssetMethodID, make([]byte, 100)...),
+					},
+				},
+			},
+			expectedTxnSender: common.HexToAddress("0x3333333333333333333333333333333333333333"),
+			expectedFrom:      common.HexToAddress("0x50"),
+			expectedTo:        common.HexToAddress("0x4444444444444444444444444444444444444444"),
 		},
 	}
 	for _, tt := range tests {
@@ -1099,7 +1141,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedTxnSender, txnSender)
 				require.Equal(t, tt.expectedFrom, from)
-				_ = to // to address is extracted but not validated in this test
+				require.Equal(t, tt.expectedTo, to)
 			}
 		})
 	}
