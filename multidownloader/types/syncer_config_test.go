@@ -101,3 +101,114 @@ func TestContractConfigs_MultipleSyncersMultipleContracts(t *testing.T) {
 	require.True(t, found1)
 	require.True(t, found2)
 }
+func TestContractConfig_Update_FromBlock(t *testing.T) {
+	cc := &ContractConfig{
+		Address:   common.HexToAddress("0x1"),
+		FromBlock: 10,
+		ToBlock:   aggkittypes.FinalizedBlock,
+		Syncers:   []SyncerID{"syncer1"},
+	}
+
+	// Update with lower FromBlock
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer2",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     5,
+		ToBlock:       aggkittypes.FinalizedBlock,
+	})
+
+	require.Equal(t, uint64(5), cc.FromBlock)
+	require.Equal(t, []SyncerID{"syncer1", "syncer2"}, cc.Syncers)
+
+	// Update with higher FromBlock (should not change)
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer3",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     15,
+		ToBlock:       aggkittypes.FinalizedBlock,
+	})
+
+	require.Equal(t, uint64(5), cc.FromBlock)
+	require.Equal(t, []SyncerID{"syncer1", "syncer2", "syncer3"}, cc.Syncers)
+}
+
+func TestContractConfig_Update_ToBlock(t *testing.T) {
+	cc := &ContractConfig{
+		Address:   common.HexToAddress("0x1"),
+		FromBlock: 10,
+		ToBlock:   aggkittypes.FinalizedBlock,
+		Syncers:   []SyncerID{"syncer1"},
+	}
+
+	// Update with less final ToBlock (LatestBlock < FinalizedBlock)
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer2",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     15,
+		ToBlock:       aggkittypes.LatestBlock,
+	})
+
+	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
+	require.Equal(t, []SyncerID{"syncer1", "syncer2"}, cc.Syncers)
+
+	// Update with more final ToBlock (should not change)
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer3",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     20,
+		ToBlock:       aggkittypes.SafeBlock,
+	})
+
+	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
+	require.Equal(t, []SyncerID{"syncer1", "syncer2", "syncer3"}, cc.Syncers)
+}
+
+func TestContractConfig_Update_Syncers(t *testing.T) {
+	cc := &ContractConfig{
+		Address:   common.HexToAddress("0x1"),
+		FromBlock: 10,
+		ToBlock:   aggkittypes.FinalizedBlock,
+		Syncers:   []SyncerID{"syncer1", "syncer3"},
+	}
+
+	// Add new syncer
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer2",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     15,
+		ToBlock:       aggkittypes.FinalizedBlock,
+	})
+
+	require.Equal(t, []SyncerID{"syncer1", "syncer2", "syncer3"}, cc.Syncers)
+
+	// Add existing syncer (should not duplicate)
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer2",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     20,
+		ToBlock:       aggkittypes.FinalizedBlock,
+	})
+
+	require.Equal(t, []SyncerID{"syncer1", "syncer2", "syncer3"}, cc.Syncers)
+}
+
+func TestContractConfig_Update_Combined(t *testing.T) {
+	cc := &ContractConfig{
+		Address:   common.HexToAddress("0x1"),
+		FromBlock: 10,
+		ToBlock:   aggkittypes.FinalizedBlock,
+		Syncers:   []SyncerID{"syncer1"},
+	}
+
+	// Update all fields at once
+	cc.Update(aggkittypes.SyncerConfig{
+		SyncerID:      "syncer2",
+		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:     5,
+		ToBlock:       aggkittypes.LatestBlock,
+	})
+
+	require.Equal(t, uint64(5), cc.FromBlock)
+	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
+	require.Equal(t, []SyncerID{"syncer1", "syncer2"}, cc.Syncers)
+}
