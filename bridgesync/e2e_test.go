@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/helpers"
@@ -175,7 +176,9 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
-	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, nil)
+	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, &ethermanconfig.RPCClientConfig{
+		HashFromJSON: false,
+	})
 
 	// Create the bridge syncer with reorg detector
 	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
