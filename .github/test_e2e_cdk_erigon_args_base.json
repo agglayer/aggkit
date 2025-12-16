@@ -18,7 +18,7 @@
     "zkevm_use_real_verifier": false,
     "sp1_prover_key": "",
     "sequencer_type": "erigon",
-    "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.63.0-rc4",
+    "cdk_erigon_image": "europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/cdk-erigon:v2.65.0-RC1",
     "enable_normalcy": true,
     "erigon_strict_mode": false,
     "gas_token_enabled": false,
