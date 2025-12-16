@@ -512,3 +512,112 @@ func TestParseUint64HexOrDecimal(t *testing.T) {
 		})
 	}
 }
+
+func TestSafeUint64(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     *big.Int
+		want      uint64
+		expectErr bool
+	}{
+		{
+			name:      "nil value",
+			input:     nil,
+			expectErr: true,
+		},
+		{
+			name:      "zero",
+			input:     big.NewInt(0),
+			want:      0,
+			expectErr: false,
+		},
+		{
+			name:      "small positive number",
+			input:     big.NewInt(42),
+			want:      42,
+			expectErr: false,
+		},
+		{
+			name:      "max uint64",
+			input:     new(big.Int).SetUint64(math.MaxUint64),
+			want:      math.MaxUint64,
+			expectErr: false,
+		},
+		{
+			name:      "negative value",
+			input:     big.NewInt(-1),
+			expectErr: true,
+		},
+		{
+			name:      "overflow uint64",
+			input:     new(big.Int).Add(new(big.Int).SetUint64(math.MaxUint64), big.NewInt(1)),
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := SafeUint64(tt.input)
+
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestSafeUint32(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     uint64
+		want      uint32
+		expectErr bool
+	}{
+		{
+			name:      "zero",
+			input:     0,
+			want:      0,
+			expectErr: false,
+		},
+		{
+			name:      "small value",
+			input:     123,
+			want:      123,
+			expectErr: false,
+		},
+		{
+			name:      "max uint32",
+			input:     math.MaxUint32,
+			want:      math.MaxUint32,
+			expectErr: false,
+		},
+		{
+			name:      "just above max uint32",
+			input:     uint64(math.MaxUint32) + 1,
+			expectErr: true,
+		},
+		{
+			name:      "max uint64",
+			input:     math.MaxUint64,
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := SafeUint32(tt.input)
+
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
