@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/config/types"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
@@ -103,8 +105,15 @@ type RPCClientConfig struct {
 func NewDefaultRPCClientConfig() *RPCClientConfig {
 	return &RPCClientConfig{
 		Mode:         RPCModeDefault,
-		HashFromJSON: true,
+		HashFromJSON: false,
 		ExtraParams:  make(map[string]any),
+		RetryPolicyGenericConfig: common.RetryPolicyGenericConfig{
+			Mode:              common.RetryConfigModeBackoff,
+			MaxRetries:        5,
+			InitialBackoff:    types.Duration{Duration: 5 * time.Second},
+			MaxBackoff:        types.Duration{Duration: 60 * time.Second},
+			BackoffMultiplier: 2.0,
+		},
 	}
 }
 

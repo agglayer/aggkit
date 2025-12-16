@@ -329,3 +329,13 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestNewDefaultRPCClientConfig(t *testing.T) {
+	cfg := NewDefaultRPCClientConfig()
+	require.Equal(t, "", cfg.URL)
+	require.Equal(t, RPCModeDefault, cfg.Mode)
+	require.Equal(t, 5, cfg.MaxRetries)
+	require.Equal(t, time.Second*5, cfg.InitialBackoff.Duration)
+	require.Equal(t, time.Second*60, cfg.MaxBackoff.Duration)
+	require.Equal(t, 2.0, cfg.BackoffMultiplier)
+}
