@@ -241,10 +241,6 @@ func (b *BlockNumberFinality) ToBigInt() *big.Int {
 	return b.Block.ToBigInt()
 }
 
-func (b *BlockNumberFinality) ApplyOffset(blockNumber uint64) uint64 {
-	return b.Block.ApplyOffset(blockNumber, b.Offset)
-}
-
 func (b *BlockNumberFinality) BlockName() BlockName {
 	if b == nil {
 		return Empty
@@ -255,9 +251,6 @@ func (b *BlockNumberFinality) BlockName() BlockName {
 func (c *BlockNumberFinality) CalculateBlockNumber(baseBlockNumber uint64) uint64 {
 	if c == nil {
 		return 0
-	}
-	if c.IsConstant() {
-		return c.Specific
 	}
 	return c.Block.ApplyOffset(baseBlockNumber, c.Offset)
 }

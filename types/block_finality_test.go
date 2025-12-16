@@ -550,4 +550,52 @@ func TestConvertStringToNumber(t *testing.T) {
 	require.Equal(t, uint64(4660), num)
 	_, err = aggkittypes.ConvertStringToNumber[uint64]("123A")
 	require.Error(t, err)
+
+	_, err = aggkittypes.ConvertStringToNumber[uint8]("123A")
+	require.ErrorContains(t, err, "unsupported type ")
+}
+
+func TestBlockNumberFinality_HasOffset(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	require.True(t, bn.HasOffset())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 10}
+	require.True(t, bn.HasOffset())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Pending, Offset: 0}
+	require.False(t, bn.HasOffset())
+}
+
+func TestBlockNumberFinality_ToBigInt(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Constant, Specific: 0}
+	num := bn.ToBigInt()
+	require.Equal(t, "0", num.String())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Constant, Specific: 12345}
+	num = bn.ToBigInt()
+	require.Equal(t, "12345", num.String())
+	var bnNil *aggkittypes.BlockNumberFinality
+	num = bnNil.ToBigInt()
+	require.Nil(t, num)
+}
+
+func TestBlockNumberFinality_CalculateBlockNumber(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	result := bn.CalculateBlockNumber(100)
+	require.Equal(t, uint64(95), result)
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 10}
+	result = bn.CalculateBlockNumber(100)
+	require.Equal(t, uint64(110), result)
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 10}
+	result = bn.CalculateBlockNumber(100)
+	require.Equal(t, uint64(100), result)
+	var bnNil *aggkittypes.BlockNumberFinality
+	result = bnNil.CalculateBlockNumber(100)
+	require.Equal(t, uint64(0), result)
+}
+
+func TestBlockNumberFinality_BlockName(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	require.Equal(t, aggkittypes.Safe, bn.BlockName())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 10}
+	require.Equal(t, aggkittypes.Latest, bn.BlockName())
+	var bnNil *aggkittypes.BlockNumberFinality
+	require.Equal(t, aggkittypes.Empty, bnNil.BlockName())
 }
