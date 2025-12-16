@@ -3,7 +3,6 @@ package blocknotifier
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -249,14 +247,14 @@ func TestBlockGetCurrentBlockNumber(t *testing.T) {
 	testData := newBlockNotifierPollingTestData(t, nil)
 	bn := testData.sut.GetCurrentBlockNumber()
 	require.Equal(t, uint64(0), bn, "no block means block 0")
-	hdr0 := &types.Header{
-		Number: big.NewInt(int64(10)),
+	hdr0 := &aggkittypes.BlockHeader{
+		Number: 10,
 	}
-	hdr1 := &types.Header{
-		Number: big.NewInt(int64(100)),
+	hdr1 := &aggkittypes.BlockHeader{
+		Number: 100,
 	}
-	testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr0, nil).Once()
-	testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil)
+	testData.ethClientMock.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).Return(hdr0, nil).Once()
+	testData.ethClientMock.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go testData.sut.Start(ctx)
