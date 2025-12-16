@@ -1027,10 +1027,6 @@ func TestGetBridgesPaged(t *testing.T) {
 	}
 	require.NoError(t, tx.Commit())
 
-	depositCountPtr := func(i uint64) *uint64 {
-		return &i
-	}
-
 	testCases := []struct {
 		name            string
 		pageSize        uint32
@@ -1085,7 +1081,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t4",
 			pageSize:        1,
 			page:            1,
-			depositCount:    depositCountPtr(1),
+			depositCount:    uint64Ptr(1),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[1]},
 			expectedError:   "",
@@ -1094,7 +1090,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t5",
 			pageSize:        3,
 			page:            2,
-			depositCount:    depositCountPtr(1),
+			depositCount:    uint64Ptr(1),
 			expectedCount:   0,
 			expectedBridges: []*Bridge{},
 			expectedError:   "invalid page number for given page size and total number of bridges",
@@ -1112,7 +1108,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t7",
 			pageSize:        1,
 			page:            1,
-			depositCount:    depositCountPtr(0),
+			depositCount:    uint64Ptr(0),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[0]},
 			expectedError:   "",
@@ -1140,7 +1136,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:         "t9",
 			pageSize:     6,
 			page:         1,
-			depositCount: depositCountPtr(3),
+			depositCount: uint64Ptr(3),
 			networkIDs: []uint32{
 				bridges[0].DestinationNetwork,
 				bridges[2].DestinationNetwork,
@@ -1155,7 +1151,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:        1,
 			page:            1,
 			fromAddress:     "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:    depositCountPtr(0),
+			depositCount:    uint64Ptr(0),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[0]},
 			expectedError:   "",
@@ -1165,7 +1161,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:        1,
 			page:            1,
 			fromAddress:     "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:    depositCountPtr(0),
+			depositCount:    uint64Ptr(0),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[0]},
 			expectedError:   "",
@@ -2747,6 +2743,10 @@ func TestGetClaimsByGlobalIndex_Compact(t *testing.T) {
 }
 
 func intPtr(i int) *int {
+	return &i
+}
+
+func uint64Ptr(i uint64) *uint64 {
 	return &i
 }
 
@@ -5345,5 +5345,221 @@ func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 	for _, col := range meddlerColumns {
 		_, ok := sqlSet[col]
 		require.True(t, ok, "Missing SQL column for meddler-tag '%s'", col)
+	}
+}
+
+func TestProcessor_BackwardLET(t *testing.T) {
+	buildBlocksWithSequentialBridges := func(blocksCount, bridgesPerBlock uint64) []sync.Block {
+		blocks := make([]sync.Block, 0, blocksCount)
+		depositCount := uint32(0)
+		for i := range blocksCount {
+			blockNum := i + 1
+			block := sync.Block{
+				Num:  blockNum,
+				Hash: common.HexToHash(fmt.Sprintf("%x", blockNum)),
+			}
+			for blockPos := range bridgesPerBlock {
+				block.Events = append(block.Events,
+					Event{Bridge: &Bridge{
+						BlockNum:     blockNum,
+						BlockPos:     blockPos,
+						DepositCount: depositCount,
+					}})
+
+				depositCount++
+			}
+
+			blocks = append(blocks, block)
+		}
+		return blocks
+	}
+
+	collectExpectedBridgesUpTo := func(t *testing.T, blocks []sync.Block, targetDepositCount uint32) []Bridge {
+		t.Helper()
+
+		var bridges []Bridge
+		for _, b := range blocks {
+			for _, e := range b.Events {
+				evt, ok := e.(Event)
+				require.True(t, ok)
+				if evt.Bridge != nil {
+					bridges = append(bridges, *evt.Bridge)
+					if evt.Bridge.DepositCount == targetDepositCount {
+						return bridges
+					}
+				}
+			}
+		}
+		return bridges
+	}
+
+	testCases := []struct {
+		name                        string
+		setupBlocks                 func() []sync.Block
+		firstReorgedBlock           *uint64
+		targetDepositCount          uint32
+		restoredBridgeDepositCounts []uint32
+		processBlockErrMsg          string
+	}{
+		{
+			name: "backward let after a couple of bridges",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(3),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				})
+
+				return blocks
+			},
+			targetDepositCount: 2,
+		},
+		{
+			name: "backward let event with all the bridges",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(6),
+							NewDepositCount:      big.NewInt(0),
+						}},
+					},
+				})
+
+				return blocks
+			},
+			targetDepositCount: 0,
+		},
+		{
+			name: "backward let event (only the last bridge)",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(6),
+							NewDepositCount:      big.NewInt(5),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+
+				return blocks
+			},
+			targetDepositCount: 5,
+		},
+		{
+			name: "overlapping backward let events",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(6),
+							NewDepositCount:      big.NewInt(3),
+						}},
+					},
+				})
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 2),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+2)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 2),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(4),
+							NewDepositCount:      big.NewInt(3),
+						}},
+					},
+				})
+
+				return blocks
+			},
+			targetDepositCount: 3,
+		},
+		{
+			name: "backward let after a couple of bridges + reorg backward let",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             4,
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(6),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+
+				return blocks
+			},
+			firstReorgedBlock:           uint64Ptr(3),
+			targetDepositCount:          3,
+			restoredBridgeDepositCounts: []uint32{3},
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "backward_let_cases.sqlite")
+			require.NoError(t, migrations.RunMigrations(dbPath))
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			require.NoError(t, err)
+
+			blocks := c.setupBlocks()
+			for _, b := range blocks {
+				err = p.ProcessBlock(t.Context(), b)
+				if c.processBlockErrMsg != "" {
+					require.ErrorContains(t, err, c.processBlockErrMsg)
+				} else {
+					require.NoError(t, err)
+				}
+			}
+
+			if c.firstReorgedBlock != nil {
+				err = p.Reorg(t.Context(), *c.firstReorgedBlock)
+				require.NoError(t, err)
+			}
+
+			lastProcessedBlock, err := p.GetLastProcessedBlock(t.Context())
+			require.NoError(t, err)
+			expectedBridges := collectExpectedBridgesUpTo(t, blocks, c.targetDepositCount)
+			for i := range expectedBridges {
+				for _, restored := range c.restoredBridgeDepositCounts {
+					if expectedBridges[i].DepositCount == restored {
+						expectedBridges[i].Source = BridgeSourceBackwardLET
+					}
+				}
+			}
+
+			actualBridges, err := p.GetBridges(t.Context(), 0, lastProcessedBlock)
+			require.NoError(t, err)
+			require.Equal(t, expectedBridges, actualBridges)
+		})
 	}
 }
