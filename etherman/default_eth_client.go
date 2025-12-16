@@ -2,6 +2,7 @@ package etherman
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -13,7 +14,10 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-var _ aggkittypes.EthClienter = (*DefaultEthClient)(nil)
+var (
+	_                 aggkittypes.EthClienter = (*DefaultEthClient)(nil)
+	ErrNotImplemented                         = errors.New("not implemented")
+)
 
 type DefaultEthClient struct {
 	aggkittypes.EthereumClienter
