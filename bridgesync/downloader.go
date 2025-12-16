@@ -158,7 +158,6 @@ func RPCTransactionByHash(client aggkittypes.EthClienter,
 }
 
 // ExtractTxnAddresses extracts the txn_sender, from address, and to address from the transaction trace.
-// Return txnSender (same for all events in the same transaction), fromAddr (specific for the event), and toAddr (transaction recipient)
 func ExtractTxnAddresses(ctx context.Context,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
