@@ -46,10 +46,16 @@ func NewDefaultEthClient(client aggkittypes.EthereumClienter,
 	if cfg == nil {
 		cfg = ethermanconfig.NewDefaultRPCClientConfig()
 	}
+	hashFromJSON := cfg.HashFromJSON
+	// HashFromJSON requires rpcClient
+	if rpcClient == nil && cfg.HashFromJSON {
+		hashFromJSON = false
+	}
+
 	return &DefaultEthClient{
 		EthereumClienter: client,
 		RPCClienter:      rpcClient,
-		HashFromJSON:     cfg.HashFromJSON,
+		HashFromJSON:     hashFromJSON,
 	}
 }
 
