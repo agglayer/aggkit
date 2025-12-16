@@ -663,6 +663,33 @@ func TestBuildAppender(t *testing.T) {
 			},
 		},
 		{
+			name:           "forwardLETSignature appender",
+			eventSignature: forwardLETEventSignature,
+			deploymentKind: SovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(forwardLETEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				previousDepositCount := big.NewInt(15)
+				previousRoot := common.HexToHash("0xdeadbeef15")
+				newDepositCount := big.NewInt(20)
+				newRoot := common.HexToHash("0x5ca1e20")
+				newLeaves := []byte("leavesdata")
+				data, err := event.Inputs.Pack(previousDepositCount, previousRoot, newDepositCount, newRoot, newLeaves)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{forwardLETEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
 			name:           "unknown deployment kind",
 			deploymentKind: 100,
 			logBuilder:     func() (types.Log, error) { return types.Log{}, nil },
