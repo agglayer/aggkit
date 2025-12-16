@@ -118,7 +118,7 @@ func (c *RPCClientConfig) Validate() error {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
 
-	if c.Mode != RPCModeBasic && c.Mode != RPCModeOp {
+	if c.Mode != RPCModeDefault && c.Mode != RPCModeBasic && c.Mode != RPCModeOp {
 		return fmt.Errorf("invalid RPC mode: %s", c.Mode)
 	}
 	return nil

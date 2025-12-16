@@ -41,10 +41,10 @@ func TestAdapterEthClientToMultidownloader_BlockNumber(t *testing.T) {
 	mockEthClient := mocks.NewBaseEthereumClienter(t)
 	sut := NewAdapterEthClientToMultidownloader(mockEthClient)
 
-	header := &types.Header{
-		Number: big.NewInt(12345),
+	header := &aggkittypes.BlockHeader{
+		Number: 12345,
 	}
-	mockEthClient.EXPECT().HeaderByNumber(t.Context(), mock.Anything).Return(header, nil)
+	mockEthClient.EXPECT().CustomHeaderByNumber(t.Context(), mock.Anything).Return(header, nil)
 	blockNumber, err := sut.BlockNumber(t.Context(), aggkittypes.FinalizedBlock)
 	require.NoError(t, err)
 	require.Equal(t, uint64(12345), blockNumber)
@@ -54,10 +54,10 @@ func TestAdapterEthClientToMultidownloader_BlockHeader(t *testing.T) {
 	mockEthClient := mocks.NewBaseEthereumClienter(t)
 	sut := NewAdapterEthClientToMultidownloader(mockEthClient)
 
-	header := &types.Header{
-		Number: big.NewInt(12345),
+	header := &aggkittypes.BlockHeader{
+		Number: 12345,
 	}
-	mockEthClient.EXPECT().HeaderByNumber(t.Context(), mock.Anything).Return(header, nil)
+	mockEthClient.EXPECT().CustomHeaderByNumber(t.Context(), mock.Anything).Return(header, nil)
 	blockHeader, err := sut.BlockHeader(t.Context(), aggkittypes.FinalizedBlock)
 	require.NoError(t, err)
 	require.Equal(t, uint64(12345), blockHeader.Number)

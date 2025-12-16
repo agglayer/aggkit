@@ -173,12 +173,12 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 			}
 
 			if tt.headerByNumberError == false {
-				hdr1 := &types.Header{
-					Number: big.NewInt(int64(tt.headerByNumberErrorNumber)),
+				hdr1 := &aggkittypes.BlockHeader{
+					Number: tt.headerByNumberErrorNumber,
 				}
-				testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil).Once()
+				testData.ethClientMock.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil).Once()
 			} else {
-				testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error")).Once()
+				testData.ethClientMock.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error")).Once()
 			}
 
 			if tt.mockLoggerFn != nil {
@@ -229,14 +229,14 @@ func TestBlockNotifierPollingString(t *testing.T) {
 func TestBlockNotifierPollingStart(t *testing.T) {
 	testData := newBlockNotifierPollingTestData(t, nil)
 	ch := testData.sut.Subscribe("test")
-	hdr1 := &types.Header{
-		Number: big.NewInt(100),
+	hdr1 := &aggkittypes.BlockHeader{
+		Number: 100,
 	}
-	testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil).Once()
-	hdr2 := &types.Header{
-		Number: big.NewInt(101),
+	testData.ethClientMock.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil).Once()
+	hdr2 := &aggkittypes.BlockHeader{
+		Number: 101,
 	}
-	testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr2, nil).Once()
+	testData.ethClientMock.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).Return(hdr2, nil).Once()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go testData.sut.Start(ctx)

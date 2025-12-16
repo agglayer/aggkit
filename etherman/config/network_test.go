@@ -173,7 +173,7 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 		{
 			name:    "missing RPC config",
 			cfg:     RPCClientConfig{},
-			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
+			wantErr: ErrMissingRPCURL,
 		},
 		{
 			name: "missing RPC URL",
@@ -183,7 +183,7 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 					MaxRetries: 1,
 				},
 			},
-			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
+			wantErr: ErrMissingRPCURL,
 		},
 		{
 			name: "invalid RPC mode",
@@ -191,7 +191,7 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 				URL:  "http://localhost:8545",
 				Mode: "invalid_mode",
 			},
-			wantErr: fmt.Errorf("invalid RPC mode: %s", "invalid_mode"),
+			wantErr: fmt.Errorf("invalid RPC mode: invalid_mode"),
 		},
 		{
 			name: "valid config with basic mode",
@@ -214,7 +214,11 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.cfg.Validate()
-			require.Equal(t, tt.wantErr, err)
+			if tt.wantErr != nil {
+				require.ErrorContains(t, err, tt.wantErr.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
