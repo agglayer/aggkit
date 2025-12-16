@@ -38,7 +38,6 @@ func TestDefaultEthClientExploratory(t *testing.T) {
 }
 
 func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
-
 	mockEthClient := mocks.NewEthereumClienter(t)
 	mockRPCClient := mocks.NewRPCClienter(t)
 
@@ -76,7 +75,7 @@ func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 				rawEth, ok := result.(**blockRawEth)
 				require.True(t, ok)
 				*rawEth = blockRaw95
-			})
+			}).Once()
 
 		mockRPCClient.
 			EXPECT().
@@ -86,7 +85,7 @@ func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 				rawEth, ok := result.(**blockRawEth)
 				require.True(t, ok)
 				*rawEth = blockRaw100
-			})
+			}).Once()
 		// Call CustomHeaderByNumber
 		header, err := client.CustomHeaderByNumber(ctx, bnFinalized5)
 		require.NoError(t, err)
@@ -108,7 +107,7 @@ func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 				rawEth, ok := result.(**blockRawEth)
 				require.True(t, ok)
 				*rawEth = blockRaw95
-			})
+			}).Once()
 		header, err := client.CustomHeaderByNumber(ctx, nil)
 		require.NoError(t, err)
 		require.NotNil(t, header)
