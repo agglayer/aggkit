@@ -1833,7 +1833,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 
 	// after processing all new leaves, we sanity check that the new root matches the latest one in the exit tree
 	if err := p.sanityCheckLatestLER(tx, event.NewRoot); err != nil {
-		return 0, fmt.Errorf("failed to sanity check LER before processing ForwardLET: %w", err)
+		return 0, fmt.Errorf("failed to sanity check LER after processing ForwardLET: %w", err)
 	}
 
 	// finally, insert the forward LET event into the designated table

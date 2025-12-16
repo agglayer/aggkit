@@ -486,6 +486,8 @@ var (
 				BlockPos:             4,
 				PreviousDepositCount: big.NewInt(3),
 				NewDepositCount:      big.NewInt(2),
+				PreviousRoot:         common.HexToHash("0x15cd4b94cacc2cf50d055e1adb5fbfe5cd95485e121a5c411d73e263f2a66685"),
+				NewRoot:              common.HexToHash("0xa03113d9ce128863f29479689c82d0b37ebc9432c569c3a57f22d6c008256c5b"),
 			}},
 		},
 	}
