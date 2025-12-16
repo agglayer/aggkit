@@ -337,7 +337,8 @@ func (b *BackfillTxnSender) extractData(ctx context.Context,
 		return common.Address{}, common.Address{}, ctx.Err()
 	default:
 	}
-	return ExtractTxnSenderAndFrom(ctx, b.client, b.bridgeAddr, txHash, logEvent, b.log)
+	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash, logEvent, b.log)
+	return txnSender, fromAddr, err
 }
 
 // bulkUpdate performs a bulk update of multiple records

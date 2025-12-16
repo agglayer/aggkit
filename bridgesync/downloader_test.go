@@ -28,7 +28,7 @@ import (
 // mainnet:
 // case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985) -> fix
 // case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
-func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
+func TestExtractTxnAddressesExploratory(t *testing.T) {
 	t.Skip("Skipping exploratory test")
 	ctx := t.Context()
 	l1url := os.Getenv("L1URL")
@@ -1016,7 +1016,7 @@ func TestTxnSenderField(t *testing.T) {
 	}
 }
 
-func TestExtractTxnSenderAndFrom(t *testing.T) {
+func TestExtractTxnAddresses(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	txHash := common.HexToHash("0xabcde12345abcde12345abcde12345abcde12345abcde12345abcde12345abcd")
 
@@ -1091,7 +1091,7 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 				}).Return(nil).
 				Maybe()
 
-			txnSender, from, err := ExtractTxnSenderAndFrom(ctx, ethClient,
+			txnSender, from, to, err := ExtractTxnAddresses(ctx, ethClient,
 				bridgeAddr, txHash, tt.logEvent, logger)
 			if tt.expectErr != "" {
 				require.ErrorContains(t, err, tt.expectErr)
@@ -1099,6 +1099,7 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedTxnSender, txnSender)
 				require.Equal(t, tt.expectedFrom, from)
+				_ = to // to address is extracted but not validated in this test
 			}
 		})
 	}
