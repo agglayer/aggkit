@@ -109,10 +109,10 @@ func NewDefaultRPCClientConfig() *RPCClientConfig {
 		ExtraParams:  make(map[string]any),
 		RetryPolicyGenericConfig: common.RetryPolicyGenericConfig{
 			Mode:              common.RetryConfigModeBackoff,
-			MaxRetries:        5,
-			InitialBackoff:    types.Duration{Duration: 5 * time.Second},
-			MaxBackoff:        types.Duration{Duration: 60 * time.Second},
-			BackoffMultiplier: 2.0,
+			MaxRetries:        5,                                          //nolint: mnd
+			InitialBackoff:    types.Duration{Duration: 5 * time.Second},  //nolint: mnd
+			MaxBackoff:        types.Duration{Duration: 60 * time.Second}, //nolint: mnd
+			BackoffMultiplier: 2.0,                                        //nolint: mnd
 		},
 	}
 }
