@@ -3,13 +3,10 @@ package types_test
 import (
 	"bytes"
 	"fmt"
-	"math/big"
 	"testing"
 
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -393,15 +390,15 @@ func TestBlockNumberFinalityJSONSchema(t *testing.T) {
 func TestBlockNumberFinality_BlockNumber(t *testing.T) {
 	ctx := t.Context()
 	mockClient := mocks.NewBaseEthereumClienter(t)
-	finalizedHeader := &types.Header{Number: big.NewInt(100)}
-	mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Maybe()
+	finalizedHeader := &aggkittypes.BlockHeader{Number: 100}
+	mockClient.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).Return(finalizedHeader, nil).Maybe()
 	_, err := blockFinalityEmpty.BlockNumber(ctx, mockClient)
 	require.Error(t, err)
 	_, err = blockFinalityCreated.BlockNumber(ctx, mockClient)
 	require.Error(t, err)
 	number, err := aggkittypes.FinalizedBlock.BlockNumber(ctx, mockClient)
 	require.NoError(t, err)
-	require.Equal(t, finalizedHeader.Number.Uint64(), number)
+	require.Equal(t, finalizedHeader.Number, number)
 }
 
 func TestBlockNumberFinality_Validate(t *testing.T) {
