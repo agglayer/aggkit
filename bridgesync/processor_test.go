@@ -5377,7 +5377,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 	collectExpectedBridgesUpTo := func(t *testing.T, blocks []sync.Block, targetDepositCount uint32) []Bridge {
 		t.Helper()
 
-		var bridges []Bridge
+		bridges := make([]Bridge, 0)
 		for _, b := range blocks {
 			for _, e := range b.Events {
 				evt, ok := e.(Event)
@@ -5497,6 +5497,63 @@ func TestProcessor_BackwardLET(t *testing.T) {
 				return blocks
 			},
 			targetDepositCount: 3,
+		},
+		{
+			name: "backward let on empty bridge table",
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{BackwardLET: &BackwardLET{
+								BlockNum:             1,
+								BlockPos:             0,
+								PreviousDepositCount: big.NewInt(6),
+								NewDepositCount:      big.NewInt(3),
+							}},
+						},
+					}}
+			},
+			targetDepositCount: 0,
+		},
+		{
+			name: "backward let invalid new deposit count (outside of uint64 range)",
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{BackwardLET: &BackwardLET{
+								BlockNum:             1,
+								BlockPos:             0,
+								PreviousDepositCount: big.NewInt(0),
+								NewDepositCount:      big.NewInt(-3),
+							}},
+						},
+					}}
+			},
+			processBlockErrMsg: "failed to convert new deposit count to uint64",
+		},
+		{
+			name: "backward let invalid new deposit count (outside of uint32 range)",
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{BackwardLET: &BackwardLET{
+								BlockNum:             1,
+								BlockPos:             0,
+								PreviousDepositCount: big.NewInt(0),
+								NewDepositCount:      big.NewInt(4294967296),
+							}},
+						},
+					}}
+			},
+			processBlockErrMsg: "failed to convert new deposit count (uint64) to leaf index (uint32)",
 		},
 		{
 			name: "backward let after a couple of bridges + reorg backward let",

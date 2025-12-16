@@ -1464,6 +1464,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return fmt.Errorf("failed to convert new deposit count to uint64: %w", err)
 			}
 
+			leafIndex, err := aggkitcommon.SafeUint32(newDepositCountU64)
+			if err != nil {
+				return fmt.Errorf("failed to convert new deposit count (uint64) to leaf index (uint32): %w",
+					err)
+			}
+
 			// 1. remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
 			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
 			_, err = tx.Exec(deleteBridges, newDepositCountU64)
@@ -1473,11 +1479,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 
 			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
-			leafIndex, err := aggkitcommon.SafeUint32(newDepositCountU64)
-			if err != nil {
-				return fmt.Errorf("failed to convert new deposit count (uint64) to leaf index (uint32): %w",
-					err)
-			}
 			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
 				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
 					leafIndex, newDepositCountU64)
