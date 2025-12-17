@@ -535,6 +535,8 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
+				TxnSender:          common.HexToAddress("0x5555555555555555555555555555555555555555"),
+				ToAddress:          common.HexToAddress("0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"),
 			},
 		}
 
@@ -567,6 +569,11 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		require.Equal(t, bridgeResponses, response.Bridges)
 		require.Equal(t, len(expectedBridges), response.Count)
+
+		// Verify to_address is present in the response
+		require.NotNil(t, response.Bridges)
+		require.Len(t, response.Bridges, 1)
+		require.Equal(t, bridgetypes.Address("0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"), response.Bridges[0].ToAddress)
 	})
 
 	t.Run("GetBridges for L1 network error", func(t *testing.T) {
