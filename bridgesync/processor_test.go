@@ -5565,7 +5565,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 						},
 					}}
 			},
-			processBlockErrMsg: "failed to convert new deposit count to uint64",
+			processBlockErrMsg: "invalid deposit count: value=-3 does not fit in uint64",
 		},
 		{
 			name: "backward let invalid new deposit count (outside of uint32 range)",
@@ -5584,7 +5584,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 						},
 					}}
 			},
-			processBlockErrMsg: "failed to convert new deposit count (uint64) to leaf index (uint32)",
+			processBlockErrMsg: "invalid deposit count: value=4294967296 exceeds uint32 max",
 		},
 		{
 			name: "backward let after a couple of bridges + reorg backward let",

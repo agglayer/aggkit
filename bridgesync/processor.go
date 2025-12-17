@@ -1306,7 +1306,12 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 				newDepositCount, prevDepositCount, err)
 		}
 
+		restoredDepositCounts := make([]uint32, 0, len(restoredBridges))
 		for _, restoredBridge := range restoredBridges {
+			if p.log.IsEnabledLogLevel(zapcore.DebugLevel) {
+				restoredDepositCounts = append(restoredDepositCounts, restoredBridge.DepositCount)
+			}
+
 			if _, err = p.exitTree.PutLeaf(tx, restoredBridge.BlockNum, restoredBridge.BlockPos,
 				types.Leaf{
 					Index: restoredBridge.DepositCount,
@@ -1318,6 +1323,8 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 				return sync.ErrInconsistentState
 			}
 		}
+
+		p.log.Debugf("restored bridges with deposit counts: %v", restoredDepositCounts)
 
 		// ---------------------------------------------------------------------
 		// 4. Remove restored bridges from the bridge_archive table
@@ -1460,43 +1467,22 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
-			newDepositCountU64, err := aggkitcommon.SafeUint64(event.BackwardLET.NewDepositCount)
+			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
 			if err != nil {
-				return fmt.Errorf("failed to convert new deposit count to uint64: %w", err)
-			}
-
-			leafIndex, err := aggkitcommon.SafeUint32(newDepositCountU64)
-			if err != nil {
-				return fmt.Errorf("failed to convert new deposit count (uint64) to leaf index (uint32): %w",
-					err)
+				return err
 			}
 
 			// 1. remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
-			deleteBridgesSQL := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1 RETURNING deposit_count", bridgeTableName)
-			rows, err := tx.Query(deleteBridgesSQL, newDepositCountU64)
+			err = p.deleteBridgesAbove(ctx, tx, newDepositCount)
 			if err != nil {
-				return fmt.Errorf("failed to delete bridges: %w", err)
-			}
-			defer rows.Close()
-
-			var deleted []uint32
-			for rows.Next() {
-				var depositCount uint32
-				if err := rows.Scan(&depositCount); err != nil {
-					return err
-				}
-				deleted = append(deleted, depositCount)
-			}
-
-			if len(deleted) > 0 {
-				p.log.Debugf("deleted bridges with deposit_count > %d due to BackwardLET: %v",
-					newDepositCountU64, deleted)
+				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
+					newDepositCount, err)
 			}
 
 			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
 			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
 				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-					leafIndex, newDepositCountU64)
+					leafIndex, newDepositCount)
 				return err
 			}
 
@@ -1529,6 +1515,54 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				p.log.Debugf("%s", event.String())
 			}
 		}
+	}
+
+	return nil
+}
+
+// normalizeDepositCount checks whether given depositCount can fit into the uint64 and uint32 and downcasts it.
+// Otherwise it returns an error.
+func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
+	u64, err := aggkitcommon.SafeUint64(depositCount)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid deposit count: %w", err)
+	}
+
+	u32, err := aggkitcommon.SafeUint32(u64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid deposit count: %w", err)
+	}
+
+	return u64, u32, nil
+}
+
+// deleteBridgesAbove removes all the bridges whose depositCount is greater than the provided one.
+func (p *processor) deleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
+	query := fmt.Sprintf(`
+        DELETE FROM %s
+        WHERE deposit_count > $1
+        RETURNING deposit_count
+    `, bridgeTableName)
+
+	rows, err := tx.QueryContext(ctx, query, depositCount)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var deleted []uint32
+	for rows.Next() {
+		var dc uint32
+		if err := rows.Scan(&dc); err != nil {
+			return err
+		}
+		deleted = append(deleted, dc)
+	}
+
+	if len(deleted) > 0 {
+		p.log.Debugf("BackwardLET removed bridges with deposit_count > %d: %v",
+			depositCount, deleted,
+		)
 	}
 
 	return nil
