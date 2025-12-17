@@ -5349,11 +5349,12 @@ func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 }
 
 func TestProcessor_BackwardLET(t *testing.T) {
-	buildBlocksWithSequentialBridges := func(blocksCount, bridgesPerBlock uint64) []sync.Block {
+	buildBlocksWithSequentialBridges := func(blocksCount, bridgesPerBlock uint64,
+		blockNumOffset uint64, depositCountOffset uint32) []sync.Block {
 		blocks := make([]sync.Block, 0, blocksCount)
-		depositCount := uint32(0)
+		depositCount := depositCountOffset
 		for i := range blocksCount {
-			blockNum := i + 1
+			blockNum := i + 1 + blockNumOffset
 			block := sync.Block{
 				Num:  blockNum,
 				Hash: common.HexToHash(fmt.Sprintf("%x", blockNum)),
@@ -5374,11 +5375,16 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		return blocks
 	}
 
-	collectExpectedBridgesUpTo := func(t *testing.T, blocks []sync.Block, targetDepositCount uint32) []Bridge {
+	collectExpectedBridgesUpTo := func(t *testing.T, blocks []sync.Block,
+		skipBlocks []uint64, targetDepositCount uint32) []Bridge {
 		t.Helper()
 
 		bridges := make([]Bridge, 0)
 		for _, b := range blocks {
+			if slices.Contains(skipBlocks, b.Num) {
+				continue
+			}
+
 			for _, e := range b.Events {
 				evt, ok := e.(Event)
 				require.True(t, ok)
@@ -5398,13 +5404,14 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		setupBlocks                 func() []sync.Block
 		firstReorgedBlock           *uint64
 		targetDepositCount          uint32
+		skipBlocks                  []uint64
 		restoredBridgeDepositCounts []uint32
 		processBlockErrMsg          string
 	}{
 		{
 			name: "backward let after a couple of bridges",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				blocks = append(blocks, sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5425,7 +5432,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		{
 			name: "backward let event with all the bridges",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				blocks = append(blocks, sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5446,7 +5453,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		{
 			name: "backward let event (only the last bridge)",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				backwardLETBlock := sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5466,9 +5473,33 @@ func TestProcessor_BackwardLET(t *testing.T) {
 			targetDepositCount: 5,
 		},
 		{
+			name: "backward let event in the middle of bridges",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(2, 3, 0, 0)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 3)...)
+
+				return blocks
+			},
+			targetDepositCount: 8,
+			skipBlocks:         []uint64{2, 3}, // all the bridges from these blocks were backwarded
+		},
+		{
 			name: "overlapping backward let events",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				blocks = append(blocks, sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5558,7 +5589,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		{
 			name: "backward let after a couple of bridges + reorg backward let",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(3, 2)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				backwardLETBlock := sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5605,7 +5636,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 			lastProcessedBlock, err := p.GetLastProcessedBlock(t.Context())
 			require.NoError(t, err)
-			expectedBridges := collectExpectedBridgesUpTo(t, blocks, c.targetDepositCount)
+			expectedBridges := collectExpectedBridgesUpTo(t, blocks, c.skipBlocks, c.targetDepositCount)
 			for i := range expectedBridges {
 				for _, restored := range c.restoredBridgeDepositCounts {
 					if expectedBridges[i].DepositCount == restored {
