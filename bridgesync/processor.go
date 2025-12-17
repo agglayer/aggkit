@@ -1270,12 +1270,12 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
             INSERT INTO bridge (
                 block_num, block_pos, leaf_type, origin_network, origin_address,
                 destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, source
+                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, source, to_address
             )
             SELECT
                 block_num, block_pos, leaf_type, origin_network, origin_address,
                 destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, $1
+                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, $1, to_address
             FROM bridge_archive
             WHERE deposit_count > $2 AND deposit_count <= $3
 			ORDER BY deposit_count ASC;

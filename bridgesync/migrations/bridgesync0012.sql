@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS backward_let (
 		PRIMARY KEY (block_num, block_pos)
 	);
 
+ALTER TABLE bridge ADD COLUMN source TEXT;
+ALTER TABLE bridge ADD COLUMN to_address VARCHAR;
+
 ------------------------------------------------------------------------------
 -- Create bridge_archive table
 ------------------------------------------------------------------------------
@@ -34,7 +37,8 @@ CREATE TABLE IF NOT EXISTS bridge_archive (
 		block_timestamp INTEGER,
 		txn_sender VARCHAR,
         from_address VARCHAR,
-        source TEXT
+        source TEXT,
+        to_address VARCHAR
 	);
 
 ------------------------------------------------------------------------------
@@ -59,7 +63,8 @@ BEGIN
         block_timestamp,
         txn_sender,
         from_address,
-        source
+        source,
+        to_address
     )
     VALUES (
         OLD.deposit_count,
@@ -76,9 +81,7 @@ BEGIN
         OLD.block_timestamp,
         OLD.txn_sender,
         OLD.from_address,
-        OLD.source
+        OLD.source,
+        OLD.to_address
     );
 END;
-
-ALTER TABLE bridge ADD COLUMN source TEXT;
-ALTER TABLE bridge ADD COLUMN to_address VARCHAR;
