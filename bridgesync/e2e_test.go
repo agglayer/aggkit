@@ -78,6 +78,12 @@ func TestBridgeEventE2E(t *testing.T) {
 		bridge.BlockTimestamp = block.Time()
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+		// Extract ToAddress from the transaction
+		txDetails, _, err := simulatedClient.TransactionByHash(ctx, tx.Hash())
+		require.NoError(t, err)
+		if txDetails.To() != nil {
+			bridge.ToAddress = *txDetails.To()
+		}
 		expectedBridges = append(expectedBridges, bridge)
 		expectedRoot, err := l1Setup.BridgeContract.GetRoot(nil)
 		require.NoError(t, err)

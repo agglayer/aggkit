@@ -3,6 +3,7 @@ DROP TRIGGER IF EXISTS archive_bridge_before_delete;
 DROP TABLE IF EXISTS bridge_archive;
 DROP TABLE IF EXISTS backward_let;
 ALTER TABLE bridge DROP COLUMN source;
+ALTER TABLE bridge DROP COLUMN to_address;
 
 -- +migrate Up
 CREATE TABLE IF NOT EXISTS backward_let (
@@ -80,3 +81,4 @@ BEGIN
 END;
 
 ALTER TABLE bridge ADD COLUMN source TEXT;
+ALTER TABLE bridge ADD COLUMN to_address VARCHAR;

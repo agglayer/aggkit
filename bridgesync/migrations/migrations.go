@@ -45,6 +45,9 @@ func init() {
 	})
 }
 
+//go:embed bridgesync0012.sql
+var mig0012 string
+
 func RunMigrations(dbPath string) error {
 	// Pre-calculate total length
 	total := len(migrations) + len(treemigrations.Migrations)

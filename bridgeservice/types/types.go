@@ -140,6 +140,9 @@ type BridgeResponse struct {
 
 	// Address of the transaction sender who initiated the bridge transaction
 	TxnSender Address `json:"txn_sender" example:"0xabc1234567890abcdef1234567890abcdef12345"`
+
+	// Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.
+	ToAddress Address `json:"to_address" example:"0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"`
 }
 
 // ClaimsResult contains the list of claim records and the total count

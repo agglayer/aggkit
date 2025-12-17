@@ -337,7 +337,8 @@ func (b *BackfillTxnSender) extractData(ctx context.Context,
 		return common.Address{}, common.Address{}, ctx.Err()
 	default:
 	}
-	return ExtractTxnSenderAndFrom(ctx, b.client, b.bridgeAddr, txHash, logEvent, b.log)
+	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash, logEvent, b.log)
+	return txnSender, fromAddr, err
 }
 
 // bulkUpdate performs a bulk update of multiple records
@@ -370,7 +371,7 @@ func (b *BackfillTxnSender) bulkUpdate(
 
 	stmt, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
-		SET 
+		SET
 			txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
 			from_address = COALESCE(NULLIF(from_address, ''), ?)
 		WHERE block_num = ? AND block_pos = ?;

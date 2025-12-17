@@ -146,6 +146,7 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count"`
 	TxnSender          common.Address `meddler:"txn_sender,address"`
 	Source             BridgeSource   `meddler:"source"`
+	ToAddress          common.Address `meddler:"to_address,address"`
 }
 
 func (b *Bridge) String() string {
@@ -156,11 +157,11 @@ func (b *Bridge) String() string {
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
-		"DepositCount: %d, TxnSender: %s, Source: %s}",
+		"DepositCount: %d, TxnSender: %s, Source: %s, ToAddress: %s}",
 		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
 		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
-		b.DepositCount, b.TxnSender.String(), b.Source)
+		b.DepositCount, b.TxnSender.String(), b.Source, b.ToAddress.String())
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
