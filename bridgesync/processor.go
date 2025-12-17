@@ -1471,11 +1471,25 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 
 			// 1. remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
-			deleteBridges := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1", bridgeTableName)
-			_, err = tx.Exec(deleteBridges, newDepositCountU64)
+			deleteBridgesSQL := fmt.Sprintf("DELETE from %s WHERE deposit_count > $1 RETURNING deposit_count", bridgeTableName)
+			rows, err := tx.Query(deleteBridgesSQL, newDepositCountU64)
 			if err != nil {
-				p.log.Errorf("failed to remove bridges whose deposit count is greater than %d", newDepositCountU64)
-				return err
+				return fmt.Errorf("failed to delete bridges: %w", err)
+			}
+			defer rows.Close()
+
+			var deleted []uint32
+			for rows.Next() {
+				var depositCount uint32
+				if err := rows.Scan(&depositCount); err != nil {
+					return err
+				}
+				deleted = append(deleted, depositCount)
+			}
+
+			if len(deleted) > 0 {
+				p.log.Debugf("deleted bridges with deposit_count > %d due to BackwardLET: %v",
+					newDepositCountU64, deleted)
 			}
 
 			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
