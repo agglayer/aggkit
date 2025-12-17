@@ -26,38 +26,136 @@ permissions:
     contents: read
 
 jobs:
-    get-kurtosis-cdk-commit:
-        name: Get Kurtosis CDK Commit
-        runs-on: ubuntu-latest
-        outputs:
-            kurtosis-commit: ${{ steps.get-commit.outputs.commit }}
-        steps:
-            - name: Determine kurtosis-cdk ref
-              id: determine-ref
-              run: |
-                  if [[ "${{ github.event_name }}" == "schedule" ]]; then
-                    echo "ref=main" >> $GITHUB_OUTPUT
-                    echo "Using latest kurtosis-cdk main branch"
-                  else
-                    echo "ref=${{ env.KURTOSIS_CDK_COMMIT }}" >> $GITHUB_OUTPUT
-                    echo "Using fixed kurtosis-cdk commit: ${{ env.KURTOSIS_CDK_COMMIT }}"
-                  fi
+  get-kurtosis-cdk-commit:
+    name: Get Kurtosis CDK Commit
+    runs-on: ubuntu-latest
+    outputs:
+      kurtosis-commit: ${{ steps.get-commit.outputs.commit }}
+    steps:
+      - name: Determine kurtosis-cdk ref
+        id: determine-ref
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "ref=main" >> $GITHUB_OUTPUT
+            echo "Using latest kurtosis-cdk main branch"
+          else
+            echo "ref=${{ env.KURTOSIS_CDK_COMMIT }}" >> $GITHUB_OUTPUT
+            echo "Using fixed kurtosis-cdk commit: ${{ env.KURTOSIS_CDK_COMMIT }}"
+          fi
 
-            - name: Checkout kurtosis-cdk
-              uses: actions/checkout@v5
-              with:
-                  repository: 0xPolygon/kurtosis-cdk
-                  ref: ${{ steps.determine-ref.outputs.ref }}
+      - name: Checkout kurtosis-cdk
+        uses: actions/checkout@v5
+        with:
+          repository: 0xPolygon/kurtosis-cdk
+          ref: ${{ steps.determine-ref.outputs.ref }}
 
-            - name: Get kurtosis-cdk commit SHA
-              id: get-commit
-              run: |
-                  COMMIT=$(git rev-parse HEAD)
-                  echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
-                  echo "Using kurtosis-cdk commit: ${COMMIT}"
+      - name: Get kurtosis-cdk commit SHA
+        id: get-commit
+        run: |
+          COMMIT=$(git rev-parse HEAD)
+          echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "Using kurtosis-cdk commit: ${COMMIT}"
 
-    build-aggkit-image:
-        uses: ./.github/workflows/build-aggkit-image.yml
+  build-aggkit-image:
+    uses: ./.github/workflows/build-aggkit-image.yml
+    with:
+      go-version: 1.25.5
+      docker-image-name: aggkit
+
+  read-aggkit-args:
+    name: Read aggkit args
+    runs-on: ubuntu-latest
+    outputs:
+      # single l2 network (op-succinct)
+      kurtosis-cdk-args-single-op-succinct: ${{ steps.read-args.outputs.op_succinct_args }}
+      # single l2 network (op-succinct with aggoracle committee)
+      kurtosis-cdk-args-single-op-succinct-aggoracle-committee: ${{ steps.read-args.outputs.op_succinct_aggoracle_committee_args }}
+      # single l2 network (op, pessimistic)
+      kurtosis-cdk-args-single-op-pessimistic: ${{ steps.read-args.outputs.single_op_chain_pessimistic_args }}
+      # multi l2 networks
+      kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
+      kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
+      kurtosis-cdk-args-3: ${{ steps.read-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-4: ${{ steps.read-args.outputs.kurtosis-cdk-args-4 }}
+      kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Read kurtosis-cdk-args from file
+        id: read-args
+        run: |
+          BASE_OP=./.github/test_e2e_op_args_base.json
+          BASE_CDK_ERIGON=./.github/test_e2e_cdk_erigon_args_base.json
+
+          # Helper: merge provided JSON files, output to GITHUB_OUTPUT, and pretty print
+          put_args() {
+            local name="$1"
+            shift
+            local files=("$@")
+            local content
+
+            if [ "${#files[@]}" -eq 0 ]; then
+              echo "❌ Error: put_args requires at least one JSON file" >&2
+              exit 1
+            fi
+
+            # Verify that all files exist
+            for f in "${files[@]}"; do
+              if [ ! -f "$f" ]; then
+                echo "❌ Error: JSON file not found: $f" >&2
+                exit 1
+              fi
+            done
+
+            content=$(jq -s 'reduce .[] as $item ({}; . * $item)' "${files[@]}" | jq -c .)
+
+            echo "${name}=${content}" >> "$GITHUB_OUTPUT"
+            echo "### $name"
+            echo "$content" | jq .
+          }
+
+          # single l2 network (op-succinct)
+          put_args op_succinct_args "$BASE_OP" \
+            ./.github/test_e2e_op_succinct_args_base.json \
+            ./.github/test_e2e_single_chain_op_succinct_args.json
+
+          # single l2 network (op-succinct with aggoracle committee)
+          put_args op_succinct_aggoracle_committee_args "$BASE_OP" \
+            ./.github/test_e2e_op_succinct_args_base.json \
+            ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
+
+          # single l2 network (op, pessimistic)
+          put_args single_op_chain_pessimistic_args "$BASE_OP" \
+            ./.github/test_e2e_op_args_chain_1.json
+
+          # multi l2 networks
+          put_args kurtosis-cdk-args-1 "$BASE_OP" \
+            ./.github/test_e2e_op_args_chain_1.json
+
+          put_args kurtosis-cdk-args-2 "$BASE_OP" \
+            ./.github/test_e2e_op_args_chain_2.json
+
+          put_args kurtosis-cdk-args-3 "$BASE_CDK_ERIGON" \
+            ./.github/test_e2e_cdk_erigon_custom_gas_token.json
+
+          put_args kurtosis-cdk-args-4 "$BASE_CDK_ERIGON" \
+            ./.github/test_e2e_cdk_erigon_multi_chains_args_2.json \
+            ./.github/test_e2e_cdk_erigon_custom_gas_token.json
+
+          put_args kurtosis-cdk-args-5 "$BASE_CDK_ERIGON" \
+            ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
+
+  build-tools:
+    name: Build aggsender find imported bridge tool
+    needs:
+      - build-aggkit-image
+    runs-on: amd-runner-2204
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Install Go
+        uses: actions/setup-go@v6
         with:
             go-version: 1.25.5
             docker-image-name: aggkit
