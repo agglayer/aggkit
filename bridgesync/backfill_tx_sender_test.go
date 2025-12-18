@@ -458,7 +458,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 				2, 0, 1, 1, '0x1234567890123456789012345678901234567890',
 				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
 				'', 2, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-				1234567890, '', '', 'backward_let'
+				1234567890, '', '', 'restored_backward_let'
 			)
 		`)
 		require.NoError(t, err)

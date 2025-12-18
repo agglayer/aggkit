@@ -1721,13 +1721,21 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 
 // sanityCheckLatestLER checks if the provided local exit root matches the latest one in the exit tree
 func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error {
+	var lastRootHash common.Hash
+
 	root, err := p.exitTree.GetLastRoot(tx)
 	if err != nil {
-		return fmt.Errorf("failed to get last root from exit tree: %w", err)
+		// if there is no root yet, we consider the zero hash as the last root
+		if !errors.Is(err, db.ErrNotFound) {
+			return fmt.Errorf("failed to get last root from exit tree: %w", err)
+		}
+	} else {
+		lastRootHash = root.Hash
 	}
-	if root.Hash != ler {
+
+	if lastRootHash != ler {
 		return fmt.Errorf("local exit root mismatch: expected %s, got %s",
-			ler.String(), root.Hash.String())
+			ler.String(), lastRootHash.String())
 	}
 	return nil
 }

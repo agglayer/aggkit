@@ -5446,6 +5446,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(3),
 							NewDepositCount:      big.NewInt(2),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
 						}},
 					},
 				})
@@ -5468,6 +5470,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(0),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0x283c52c3d10a22d01f95f5bcab5e823675c9855bd40b1e82f32b0437b3b6a446"),
 						}},
 					},
 				})
@@ -5513,6 +5517,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
 						}},
 					},
 				}
@@ -5538,6 +5544,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(3),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
 						}},
 					},
 				})
@@ -5550,6 +5558,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(4),
 							NewDepositCount:      big.NewInt(3),
+							PreviousRoot:         common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
+							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
 						}},
 					},
 				})
@@ -5629,6 +5639,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
 						}},
 					},
 				}
@@ -5653,6 +5665,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
 						}},
 					},
 				}

@@ -243,17 +243,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			// Don't set Source - bridge_archive table doesn't have this column
 		}
 		// Insert manually to avoid Source field
-		_, err = tx.Exec(`
-			INSERT INTO bridge_archive (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13)
-		`, archivedBridge.BlockNum, archivedBridge.BlockPos, archivedBridge.LeafType,
-			archivedBridge.OriginNetwork, archivedBridge.OriginAddress,
-			archivedBridge.DestinationNetwork, archivedBridge.DestinationAddress,
-			archivedBridge.Amount.String(), archivedBridge.Metadata, archivedBridge.DepositCount,
-			archivedBridge.TxHash.Hex(), archivedBridge.FromAddress.Hex(), archivedBridge.TxnSender.Hex())
+		err = meddler.Insert(tx, "bridge_archive", archivedBridge)
 		require.NoError(t, err)
 
 		// Create forward LET event with matching leaf
@@ -371,17 +361,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 
 		// Insert both archived bridges manually (to avoid Source column)
 		for _, archived := range []*Bridge{archivedBridge1, archivedBridge2} {
-			_, err = tx.Exec(`
-				INSERT INTO bridge_archive (
-					block_num, block_pos, leaf_type, origin_network, origin_address,
-					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, txn_sender
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13)
-			`, archived.BlockNum, archived.BlockPos, archived.LeafType,
-				archived.OriginNetwork, archived.OriginAddress,
-				archived.DestinationNetwork, archived.DestinationAddress,
-				archived.Amount.String(), archived.Metadata, archived.DepositCount,
-				archived.TxHash.Hex(), archived.FromAddress.Hex(), archived.TxnSender.Hex())
+			err = meddler.Insert(tx, "bridge_archive", archived)
 			require.NoError(t, err)
 		}
 
