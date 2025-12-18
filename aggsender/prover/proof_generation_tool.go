@@ -97,7 +97,8 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer, aggkittypes.FinalizedBlock)
+	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer,
+		aggkittypes.FinalizedBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
 	}

@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var finalizedBlockBigInt = big.NewInt(int64(aggkittypes.Finalized))
+
 func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +84,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
@@ -180,7 +182,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)
@@ -264,7 +266,7 @@ func Test_GetProofForGER(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
@@ -375,7 +377,7 @@ func Test_IsGERFinalized(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
