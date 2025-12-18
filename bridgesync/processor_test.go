@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"path"
@@ -5579,7 +5580,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 								BlockNum:             1,
 								BlockPos:             0,
 								PreviousDepositCount: big.NewInt(0),
-								NewDepositCount:      big.NewInt(4294967296),
+								NewDepositCount:      new(big.Int).SetUint64(uint64(math.MaxUint32) + 1),
 							}},
 						},
 					}}

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS backward_let (
 		PRIMARY KEY (block_num, block_pos)
 	);
 
-ALTER TABLE bridge ADD COLUMN source TEXT;
+ALTER TABLE bridge ADD COLUMN source TEXT DEFAULT '';
 ALTER TABLE bridge ADD COLUMN to_address VARCHAR;
 
 ------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS bridge_archive (
 		block_timestamp INTEGER,
 		txn_sender VARCHAR,
         from_address VARCHAR,
-        source TEXT,
+        source TEXT DEFAULT '',
         to_address VARCHAR
 	);
 

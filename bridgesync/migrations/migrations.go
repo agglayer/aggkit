@@ -46,7 +46,7 @@ func init() {
 }
 
 func RunMigrations(dbPath string) error {
-	// Pre-calculate total length
+	// Allocate slice with exact capacity to avoid reallocations when combining migrations
 	total := len(migrations) + len(treemigrations.Migrations)
 
 	combined := make([]types.Migration, 0, total)

@@ -205,7 +205,7 @@ func SafeUint64(i *big.Int) (uint64, error) {
 // Otherwise it returns an error.
 func SafeUint32(v uint64) (uint32, error) {
 	if v > math.MaxUint32 {
-		return 0, fmt.Errorf("value=%d exceeds uint32 max (%d)", v, uint32(math.MaxUint32))
+		return 0, fmt.Errorf("value=%d exceeds uint32 max (%d)", v, math.MaxUint32)
 	}
 	return uint32(v), nil
 }
