@@ -125,8 +125,8 @@ var (
 type BridgeSource string
 
 const (
-	BridgeSourceBackwardLET BridgeSource = "backward_let"
-	BridgeSourceForwardLET  BridgeSource = "forward_let"
+	BridgeSourceRestoredBackwardLET BridgeSource = "restored_backward_let"
+	BridgeSourceForwardLET          BridgeSource = "forward_let"
 )
 
 // Bridge is the representation of a bridge event
@@ -1249,8 +1249,14 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	}()
 
 	// ---------------------------------------------------------------------
-	// 1. Load affected BackwardLETs BEFORE deleting blocks, bridges and BackwardLET entries
+	// 1. Load affected deposit counts and BackwardLETs BEFORE deleting blocks, bridges and BackwardLET entries
 	// ---------------------------------------------------------------------
+	depositCountsToRemove, err := loadReorgedDepositCounts(tx, firstReorgedBlock)
+	if err != nil {
+		p.log.Errorf("failed to retrieve reorged bridges: %v", err)
+		return err
+	}
+
 	backwardLETsQuery := `
 		SELECT previous_deposit_count, new_deposit_count
         FROM backward_let
@@ -1260,84 +1266,10 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		return fmt.Errorf("failed to retrieve the affected backward LETs: %w", err)
 	}
 
-	// ---------------------------------------------------------------------
-	// 2. Restore bridge rows from archive for each interval
-	// ---------------------------------------------------------------------
-	restoredBridgesQuery := `SELECT * FROM bridge 
-		WHERE deposit_count > $1 AND deposit_count <= $2
-		ORDER BY deposit_count ASC;`
-	bridgeRestorationSQL := `
-            INSERT INTO bridge (
-                block_num, block_pos, leaf_type, origin_network, origin_address,
-                destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, source, to_address
-            )
-            SELECT
-                block_num, block_pos, leaf_type, origin_network, origin_address,
-                destination_network, destination_address, amount, metadata,
-                tx_hash, block_timestamp, txn_sender, deposit_count, from_address, $1, to_address
-            FROM bridge_archive
-            WHERE deposit_count > $2 AND deposit_count <= $3
-			ORDER BY deposit_count ASC;
-        `
-	for _, backwardLET := range backwardLETs {
-		prevDepositCount, err := aggkitcommon.SafeUint64(backwardLET.PreviousDepositCount)
-		if err != nil {
-			return fmt.Errorf("invalid previous deposit count %s: %w", backwardLET.PreviousDepositCount, err)
-		}
-
-		newDepositCount, err := aggkitcommon.SafeUint64(backwardLET.NewDepositCount)
-		if err != nil {
-			return fmt.Errorf("invalid new deposit count %s: %w", backwardLET.NewDepositCount, err)
-		}
-
-		if _, err := tx.Exec(bridgeRestorationSQL, BridgeSourceBackwardLET, newDepositCount, prevDepositCount); err != nil {
-			return fmt.Errorf("failed to restore bridges from bridge archive (deposit counts range: %d..%d): %w",
-				newDepositCount, prevDepositCount, err)
-		}
-
-		// ---------------------------------------------------------------------
-		// 3. Restore bridges in the exit tree
-		// ---------------------------------------------------------------------
-		var restoredBridges []*Bridge
-		err = meddler.QueryAll(tx, &restoredBridges, restoredBridgesQuery, newDepositCount, prevDepositCount)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve the restored bridges (deposit counts range: %d..%d): %w",
-				newDepositCount, prevDepositCount, err)
-		}
-
-		restoredDepositCounts := make([]uint32, 0, len(restoredBridges))
-		for _, restoredBridge := range restoredBridges {
-			if p.log.IsEnabledLogLevel(zapcore.DebugLevel) {
-				restoredDepositCounts = append(restoredDepositCounts, restoredBridge.DepositCount)
-			}
-
-			if _, err = p.exitTree.PutLeaf(tx, restoredBridge.BlockNum, restoredBridge.BlockPos,
-				types.Leaf{
-					Index: restoredBridge.DepositCount,
-					Hash:  restoredBridge.Hash(),
-				}); err != nil {
-				if errors.Is(err, tree.ErrInvalidIndex) {
-					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
-				}
-				return sync.ErrInconsistentState
-			}
-		}
-
-		p.log.Debugf("restored bridges with deposit counts: %v", restoredDepositCounts)
-
-		// ---------------------------------------------------------------------
-		// 4. Remove restored bridges from the bridge_archive table
-		// ---------------------------------------------------------------------
-		_, err = tx.Exec(`DELETE FROM bridge_archive WHERE deposit_count > $1 AND deposit_count <= $2`,
-			newDepositCount, prevDepositCount)
-		if err != nil {
-			return fmt.Errorf("failed to delete restored rows from archive (range %d..%d): %w",
-				newDepositCount, prevDepositCount, err)
-		}
-	}
-
-	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	// ---------------------------------------------------------
+	// 2. Delete blocks (cascade delete everything else)
+	// ---------------------------------------------------------
+	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1`, firstReorgedBlock)
 	if err != nil {
 		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
@@ -1349,8 +1281,19 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		return err
 	}
 
-	if err = p.exitTree.Reorg(tx, firstReorgedBlock); err != nil {
+	// ---------------------------------------------------------
+	// 3. Reorg exit tree to clean state
+	// ---------------------------------------------------------
+	if err := p.exitTree.Reorg(tx, firstReorgedBlock); err != nil {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
+		return err
+	}
+
+	// ---------------------------------------------------------
+	// 4. Restore bridges removed by BackwardLET
+	// ---------------------------------------------------------
+	err = p.restoreBackwardLETBridges(tx, backwardLETs, depositCountsToRemove)
+	if err != nil {
 		return err
 	}
 
@@ -1368,6 +1311,89 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
 
 	return nil
+}
+
+// restoreBackwardLETBridges restores bridges that were previously removed by BackwardLET events
+func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*BackwardLET,
+	reorgedDepositCounts map[uint32]struct{}) error {
+	restoreQuery := `
+		SELECT *
+		FROM bridge_archive
+		WHERE deposit_count > $1 AND deposit_count <= $2
+		ORDER BY deposit_count ASC
+	`
+
+	for _, backwardLET := range backwardLETs {
+		prev, err := aggkitcommon.SafeUint64(backwardLET.PreviousDepositCount)
+		if err != nil {
+			return fmt.Errorf("invalid previous deposit count: %w", err)
+		}
+
+		next, err := aggkitcommon.SafeUint64(backwardLET.NewDepositCount)
+		if err != nil {
+			return fmt.Errorf("invalid new deposit count: %w", err)
+		}
+
+		var bridges []*Bridge
+		if err := meddler.QueryAll(tx, &bridges, restoreQuery, next, prev); err != nil {
+			return err
+		}
+
+		for _, b := range bridges {
+			if _, ok := reorgedDepositCounts[b.DepositCount]; ok {
+				// skip cascade-deleted bridges (prevent from restoring them)
+				continue
+			}
+
+			// tag the bridge as restored by reorged BackwardLET event
+			b.Source = BridgeSourceRestoredBackwardLET
+			if err := meddler.Insert(tx, bridgeTableName, b); err != nil {
+				return err
+			}
+
+			leaf := types.Leaf{
+				Index: b.DepositCount,
+				Hash:  b.Hash(),
+			}
+			if _, err := p.exitTree.PutLeaf(tx, b.BlockNum, b.BlockPos, leaf); err != nil {
+				return err
+			}
+		}
+
+		// cleanup bridge_archive
+		if _, err := tx.Exec(`
+			DELETE FROM bridge_archive
+			WHERE deposit_count > $1 AND deposit_count <= $2
+		`, next, prev); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// loadReorgedDepositCounts retrieves the bridges that are going to be deleted by the reorg,
+// and returns its deposit counts
+func loadReorgedDepositCounts(tx dbtypes.Txer, fromBlock uint64) (map[uint32]struct{}, error) {
+	rows, err := tx.Query(`
+		SELECT deposit_count
+		FROM bridge_archive
+		WHERE block_num >= $1
+	`, fromBlock)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uint32]struct{})
+	for rows.Next() {
+		var dc uint32
+		if err := rows.Scan(&dc); err != nil {
+			return nil, err
+		}
+		result[dc] = struct{}{}
+	}
+	return result, nil
 }
 
 // ProcessBlock process the events of the block to build the exit tree

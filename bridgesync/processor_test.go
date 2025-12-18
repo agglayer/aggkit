@@ -5597,7 +5597,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 						Event{BackwardLET: &BackwardLET{
 							BlockNum:             4,
 							BlockPos:             0,
-							PreviousDepositCount: big.NewInt(6),
+							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
 						}},
 					},
@@ -5610,13 +5610,38 @@ func TestProcessor_BackwardLET(t *testing.T) {
 			targetDepositCount:          3,
 			restoredBridgeDepositCounts: []uint32{3},
 		},
+		{
+			name: "backward let event in the middle of bridges + reorg backward let",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(2, 3, 0, 0)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 3)...)
+
+				return blocks
+			},
+			firstReorgedBlock:           uint64Ptr(3),
+			targetDepositCount:          5,
+			restoredBridgeDepositCounts: []uint32{3, 4, 5},
+		},
 	}
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			dbPath := filepath.Join(t.TempDir(), "backward_let_cases.sqlite")
 			require.NoError(t, migrations.RunMigrations(dbPath))
-			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), 2*time.Minute)
 			require.NoError(t, err)
 
 			blocks := c.setupBlocks()
@@ -5640,7 +5665,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 			for i := range expectedBridges {
 				for _, restored := range c.restoredBridgeDepositCounts {
 					if expectedBridges[i].DepositCount == restored {
-						expectedBridges[i].Source = BridgeSourceBackwardLET
+						expectedBridges[i].Source = BridgeSourceRestoredBackwardLET
 					}
 				}
 			}
