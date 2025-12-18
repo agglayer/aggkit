@@ -5641,7 +5641,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dbPath := filepath.Join(t.TempDir(), "backward_let_cases.sqlite")
 			require.NoError(t, migrations.RunMigrations(dbPath))
-			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), 2*time.Minute)
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
 			require.NoError(t, err)
 
 			blocks := c.setupBlocks()
