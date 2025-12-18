@@ -38,6 +38,7 @@ func NewVerifierFlow(
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
+			cfg.BlockFinalityForL1InfoTree,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -67,6 +68,7 @@ func NewVerifierFlow(
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
+			cfg.BlockFinalityForL1InfoTree,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)

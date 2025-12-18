@@ -18,24 +18,27 @@ var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 
 // L1InfoTreeDataQuerier is a struct that holds the logic to query the L1 Info tree data
 type L1InfoTreeDataQuerier struct {
-	l1Client         aggkittypes.BaseEthereumClienter
-	l1GERManager     *agglayerger.Agglayerger
-	l1InfoTreeSyncer types.L1InfoTreeSyncer
+	l1Client                   aggkittypes.BaseEthereumClienter
+	l1GERManager               *agglayerger.Agglayerger
+	l1InfoTreeSyncer           types.L1InfoTreeSyncer
+	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality
 }
 
 // NewL1InfoTreeDataQuerier returns a new instance of the L1InfoTreeDataQuery
 func NewL1InfoTreeDataQuerier(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l1GERAddr common.Address,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer) (*L1InfoTreeDataQuerier, error) {
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality) (*L1InfoTreeDataQuerier, error) {
 	l1GERManager, err := agglayerger.NewAgglayerger(l1GERAddr, l1Client)
 	if err != nil {
 		return nil, err
 	}
 	return &L1InfoTreeDataQuerier{
-		l1Client:         l1Client,
-		l1GERManager:     l1GERManager,
-		l1InfoTreeSyncer: l1InfoTreeSyncer,
+		l1Client:                   l1Client,
+		l1GERManager:               l1GERManager,
+		l1InfoTreeSyncer:           l1InfoTreeSyncer,
+		blockFinalityForL1InfoTree: blockFinalityForL1InfoTree,
 	}, nil
 }
 
@@ -140,7 +143,7 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 
 // getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
 func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
-	lastFinalizedL1Block, err := l.l1Client.CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock)
+	lastFinalizedL1Block, err := l.l1Client.CustomHeaderByNumber(ctx, &l.blockFinalityForL1InfoTree)
 	if err != nil {
 		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)
 	}

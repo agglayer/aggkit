@@ -8,6 +8,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -48,6 +49,9 @@ type Config struct {
 	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 	// GlobalExitRootL1Addr is the address of the GlobalExitRootManager contract on L1
 	GlobalExitRootL1Addr ethCommon.Address `mapstructure:"GlobalExitRootL1Addr"`
+	// BlockFinalityForL1InfoTree indicates the block finality to use when querying for L1InfoRoot to use
+	BlockFinalityForL1InfoTree aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinalityForL1InfoTree"` //nolint:lll
+
 }
 
 type PPConfig struct {
@@ -88,6 +92,10 @@ func (c *Config) Validate() error {
 
 	if err := c.AgglayerClient.Validate(); err != nil {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	if err := c.BlockFinalityForL1InfoTree.Validate(); err != nil {
+		return fmt.Errorf("invalid BlockFinalityForL1InfoTree configuration: %w", err)
 	}
 
 	return nil
