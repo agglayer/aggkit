@@ -11,6 +11,7 @@ import (
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -156,4 +157,13 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
 		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, nil)
 	require.Error(t, err)
+
+	cfg := Config{
+		AggkitProverClient:   aggkitgrpc.DefaultConfig(),
+		GlobalExitRootL2Addr: common.HexToAddress("0xbeef"),
+	}
+	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	_, err = NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
+		cfg, mockL1Client, mockL2Client, mockL2Syncer, mockL1InfoTreeSyncer)
+	require.ErrorContains(t, err, "L2 GER reader")
 }

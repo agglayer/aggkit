@@ -87,6 +87,12 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
 
+	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer,
+		aggkittypes.FinalizedBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
+	}
+
 	l2GERReader, err := l2gersync.NewL2EVMGERReader(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
 	if err != nil {
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
@@ -97,11 +103,6 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer,
-		aggkittypes.FinalizedBlock)
-	if err != nil {
-		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
-	}
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader)
 
 	baseFlow := flows.NewBaseFlow(
