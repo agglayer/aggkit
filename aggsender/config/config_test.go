@@ -77,8 +77,8 @@ func TestValidate(t *testing.T) {
 				AggkitProverClient: &grpc.ClientConfig{
 					URL: "",
 				},
-				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
+			expectedErr: "BlockFinalityForL1InfoTree",
 		},
 	}
 
