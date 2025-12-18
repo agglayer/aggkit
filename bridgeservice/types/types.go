@@ -140,6 +140,9 @@ type BridgeResponse struct {
 
 	// Address of the transaction sender who initiated the bridge transaction
 	TxnSender Address `json:"txn_sender" example:"0xabc1234567890abcdef1234567890abcdef12345"`
+
+	// Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.
+	ToAddress Address `json:"to_address" example:"0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"`
 }
 
 // ClaimsResult contains the list of claim records and the total count
@@ -408,4 +411,33 @@ type UnsetClaimResponse struct {
 
 	// Timestamp when the unset claim was created
 	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// SetClaimResponse represents a set claim event response
+// @Description Detailed information about a set claim event
+type SetClaimResponse struct {
+	// Block number where the set claim was processed
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the set claim event within the block
+	BlockPos uint64 `json:"block_pos" example:"2"`
+
+	// Transaction hash associated with the set claim
+	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+
+	// Global index of the claim that was set
+	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
+
+	// Timestamp when the set claim was created
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// SetClaimsResult contains the set claims and the total count
+// @Description Paginated response of set claim events (L2 networks only)
+type SetClaimsResult struct {
+	// List of set claim events
+	SetClaims []*SetClaimResponse `json:"set_claims"`
+
+	// Total number of set claim events
+	Count int `json:"count" example:"20"`
 }

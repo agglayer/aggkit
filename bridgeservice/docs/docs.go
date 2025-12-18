@@ -61,7 +61,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -69,21 +68,18 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page number (default 1)",
                         "name": "page_number",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page size (default 100)",
                         "name": "page_size",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "format": "int64",
                         "description": "Filter by deposit count",
                         "name": "deposit_count",
                         "in": "query"
@@ -97,8 +93,7 @@ const docTemplate = `{
                     {
                         "type": "array",
                         "items": {
-                            "type": "integer",
-                            "format": "int32"
+                            "type": "integer"
                         },
                         "collectionFormat": "csv",
                         "description": "Filter by one or more destination network IDs (maximum 5 allowed)",
@@ -141,7 +136,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -149,7 +143,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Index in the L1 info tree",
                         "name": "leaf_index",
                         "in": "query",
@@ -157,7 +150,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Number of deposits in the bridge",
                         "name": "deposit_count",
                         "in": "query",
@@ -199,7 +191,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -207,14 +198,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page number (default 1)",
                         "name": "page_number",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Page size (default 100)",
                         "name": "page_size",
                         "in": "query"
@@ -222,8 +211,7 @@ const docTemplate = `{
                     {
                         "type": "array",
                         "items": {
-                            "type": "integer",
-                            "format": "int32"
+                            "type": "integer"
                         },
                         "collectionFormat": "csv",
                         "description": "Filter by one or more source network IDs (maximum 5 allowed)",
@@ -238,7 +226,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "format": "int32",
                         "description": "Filter by global index",
                         "name": "global_index",
                         "in": "query"
@@ -344,8 +331,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "integer",
-                            "format": "int32"
+                            "type": "integer"
                         }
                     },
                     "400": {
@@ -502,6 +488,64 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/set-claims": {
+            "get": {
+                "description": "Returns set claims for the configured L2 network, paginated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "set-claims"
+                ],
+                "summary": "Get set claims",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by global index",
+                        "name": "global_index",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.SetClaimsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request - Invalid parameters",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable - L2 bridge syncer not available",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -756,6 +800,11 @@ const docTemplate = `{
                     "description": "ID of the network where the bridge transaction originated",
                     "type": "integer",
                     "example": 10
+                },
+                "to_address": {
+                    "description": "Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.",
+                    "type": "string",
+                    "example": "0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"
                 },
                 "tx_hash": {
                     "description": "Hash of the transaction that included the bridge event",
@@ -1136,6 +1185,55 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/types.RemoveGEREventResponse"
+                    }
+                }
+            }
+        },
+        "types.SetClaimResponse": {
+            "description": "Detailed information about a set claim event",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the set claim was processed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_pos": {
+                    "description": "Position of the set claim event within the block",
+                    "type": "integer",
+                    "example": 2
+                },
+                "created_at": {
+                    "description": "Timestamp when the set claim was created",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "global_index": {
+                    "description": "Global index of the claim that was set",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "tx_hash": {
+                    "description": "Transaction hash associated with the set claim",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                }
+            }
+        },
+        "types.SetClaimsResult": {
+            "description": "Paginated response of set claim events (L2 networks only)",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of set claim events",
+                    "type": "integer",
+                    "example": 20
+                },
+                "set_claims": {
+                    "description": "List of set claim events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.SetClaimResponse"
                     }
                 }
             }

@@ -80,6 +80,11 @@ definitions:
         description: ID of the network where the bridge transaction originated
         example: 10
         type: integer
+      to_address:
+        description: Address of the contract that was the recipient of the transaction.
+          This may differ from the bridge contract address.
+        example: 0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0
+        type: string
       tx_hash:
         description: Hash of the transaction that included the bridge event
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
@@ -371,6 +376,43 @@ definitions:
           $ref: '#/definitions/types.RemoveGEREventResponse'
         type: array
     type: object
+  types.SetClaimResponse:
+    description: Detailed information about a set claim event
+    properties:
+      block_num:
+        description: Block number where the set claim was processed
+        example: 1234
+        type: integer
+      block_pos:
+        description: Position of the set claim event within the block
+        example: 2
+        type: integer
+      created_at:
+        description: Timestamp when the set claim was created
+        example: 1684500000
+        type: integer
+      global_index:
+        description: Global index of the claim that was set
+        example: "1000000000000000000"
+        type: string
+      tx_hash:
+        description: Transaction hash associated with the set claim
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+    type: object
+  types.SetClaimsResult:
+    description: Paginated response of set claim events (L2 networks only)
+    properties:
+      count:
+        description: Total number of set claim events
+        example: 20
+        type: integer
+      set_claims:
+        description: List of set claim events
+        items:
+          $ref: '#/definitions/types.SetClaimResponse'
+        type: array
+    type: object
   types.SyncStatus:
     description: Bridge sync status comparing on-chain deposit counts with local database
       counts
@@ -514,23 +556,19 @@ paths:
       description: Returns a paginated list of bridge events for the specified network.
       parameters:
       - description: Origin network ID
-        format: int32
         in: query
         name: network_id
         required: true
         type: integer
       - description: Page number (default 1)
-        format: int32
         in: query
         name: page_number
         type: integer
       - description: Page size (default 100)
-        format: int32
         in: query
         name: page_size
         type: integer
       - description: Filter by deposit count
-        format: int64
         in: query
         name: deposit_count
         type: integer
@@ -542,7 +580,6 @@ paths:
         description: Filter by one or more destination network IDs (maximum 5 allowed)
         in: query
         items:
-          format: int32
           type: integer
         name: network_ids
         type: array
@@ -571,19 +608,16 @@ paths:
         the corresponding L1 info tree leaf needed to verify a claim.
       parameters:
       - description: Origin network ID
-        format: int32
         in: query
         name: network_id
         required: true
         type: integer
       - description: Index in the L1 info tree
-        format: int32
         in: query
         name: leaf_index
         required: true
         type: integer
       - description: Number of deposits in the bridge
-        format: int32
         in: query
         name: deposit_count
         required: true
@@ -611,18 +645,15 @@ paths:
       description: Returns a paginated list of claims for the specified network.
       parameters:
       - description: Origin network ID
-        format: int32
         in: query
         name: network_id
         required: true
         type: integer
       - description: Page number (default 1)
-        format: int32
         in: query
         name: page_number
         type: integer
       - description: Page size (default 100)
-        format: int32
         in: query
         name: page_size
         type: integer
@@ -630,7 +661,6 @@ paths:
         description: Filter by one or more source network IDs (maximum 5 allowed)
         in: query
         items:
-          format: int32
           type: integer
         name: network_ids
         type: array
@@ -639,7 +669,6 @@ paths:
         name: include_all_fields
         type: boolean
       - description: Filter by global index
-        format: int32
         in: query
         name: global_index
         type: integer
@@ -716,7 +745,6 @@ paths:
         "200":
           description: OK
           schema:
-            format: int32
             type: integer
         "400":
           description: Bad Request
@@ -827,6 +855,44 @@ paths:
       summary: Get remove GER events
       tags:
       - ger-events
+  /set-claims:
+    get:
+      description: Returns set claims for the configured L2 network, paginated.
+      parameters:
+      - description: Page number
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by global index
+        in: query
+        name: global_index
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SetClaimsResult'
+        "400":
+          description: Bad Request - Invalid parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable - L2 bridge syncer not available
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get set claims
+      tags:
+      - set-claims
   /sync-status:
     get:
       description: |-

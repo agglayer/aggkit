@@ -535,6 +535,8 @@ func TestGetBridgesHandler(t *testing.T) {
 				Amount:             common.Big0,
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
+				TxnSender:          common.HexToAddress("0x5555555555555555555555555555555555555555"),
+				ToAddress:          common.HexToAddress("0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"),
 			},
 		}
 
@@ -567,6 +569,11 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		require.Equal(t, bridgeResponses, response.Bridges)
 		require.Equal(t, len(expectedBridges), response.Count)
+
+		// Verify to_address is present in the response
+		require.NotNil(t, response.Bridges)
+		require.Len(t, response.Bridges, 1)
+		require.Equal(t, bridgetypes.Address("0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"), response.Bridges[0].ToAddress)
 	})
 
 	t.Run("GetBridges for L1 network error", func(t *testing.T) {
@@ -1189,6 +1196,204 @@ func TestGetClaimsHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "L2 bridge syncer is not available", response["error"])
 	})
+
+	t.Run("GetClaims count with compaction - multiple claims same global_index", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create 2 claims with the same global_index (should be compacted to 1)
+		globalIndex, _ := new(big.Int).SetString("18446744073709551617", 10)
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        globalIndex,
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+		}
+
+		expectedCount := 1
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, expectedCount, nil)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam: []string{"1"},
+			pageSizeParam:   []string{"10"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, expectedCount, response.Count)
+	})
+
+	t.Run("GetClaims count with unset_claim - all claims counted", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create 3 claims with the same global_index but with unset_claim (all should be returned)
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+			{
+				BlockNum:           2,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+			{
+				BlockNum:           3,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+		}
+
+		// The count should be 3 (all claims, no compaction when unset_claim exists)
+		expectedCount := 3
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, expectedCount, nil)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam: []string{"1"},
+			pageSizeParam:   []string{"10"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, expectedCount, response.Count)
+	})
+
+	t.Run("GetClaims count with mixed scenarios - compaction and unset_claim", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Mixed scenario:
+		// - global_index=100: 2 claims, no unset_claim → compacted to 1
+		// - global_index=200: 3 claims, has unset_claim → all 3 returned
+		// - global_index=300: 1 claim, no unset_claim → 1 returned
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(100),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+			},
+			{
+				BlockNum:           2,
+				GlobalIndex:        big.NewInt(200),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x3"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x4"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xabc...123"),
+			},
+			{
+				BlockNum:           3,
+				GlobalIndex:        big.NewInt(200),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x3"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x4"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xabc...123"),
+			},
+			{
+				BlockNum:           4,
+				GlobalIndex:        big.NewInt(200),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x3"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x4"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xabc...123"),
+			},
+			{
+				BlockNum:           5,
+				GlobalIndex:        big.NewInt(300),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x5"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x6"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0x456...def"),
+			},
+		}
+
+		// Expected count: 1 (compacted) + 3 (all with unset_claim) + 1 (single) = 5
+		expectedCount := 5
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, expectedCount, nil)
+
+		queryParams := url.Values{
+			networkIDParam:  []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam: []string{"1"},
+			pageSizeParam:   []string{"10"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, expectedCount, response.Count)
+	})
 }
 
 func TestGetUnsetClaimsHandler(t *testing.T) {
@@ -1263,6 +1468,161 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		require.Equal(t, "L2 bridge syncer is not available", response["error"])
+	})
+}
+
+func TestGetSetClaimsHandler(t *testing.T) {
+	t.Run("GetSetClaims for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedSetClaims := []*bridgesync.SetClaim{
+			{
+				BlockNum:    1,
+				BlockPos:    1,
+				TxHash:      common.HexToHash("0x1234567890abcdef"),
+				GlobalIndex: big.NewInt(1000000),
+				CreatedAt:   1617184800,
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetSetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
+			Return(expectedSetClaims, len(expectedSetClaims), nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SetClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedSetClaims), response.Count)
+		require.Len(t, response.SetClaims, len(expectedSetClaims))
+		require.Equal(t, expectedSetClaims[0].BlockNum, response.SetClaims[0].BlockNum)
+		require.Equal(t, expectedSetClaims[0].GlobalIndex.String(), string(response.SetClaims[0].GlobalIndex))
+		require.Equal(t, expectedSetClaims[0].CreatedAt, response.SetClaims[0].CreatedAt)
+	})
+
+	t.Run("GetSetClaims for L2 network with global_index filter", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		globalIndex := big.NewInt(2000000)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedSetClaims := []*bridgesync.SetClaim{
+			{
+				BlockNum:    2,
+				BlockPos:    0,
+				TxHash:      common.HexToHash("0xabcdef1234567890"),
+				GlobalIndex: globalIndex,
+				CreatedAt:   1617184900,
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetSetClaimsPaged(mock.Anything, page, pageSize, globalIndex).
+			Return(expectedSetClaims, len(expectedSetClaims), nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+		queryParams.Set(globalIndexParam, globalIndex.String())
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SetClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, len(expectedSetClaims), response.Count)
+		require.Len(t, response.SetClaims, len(expectedSetClaims))
+		require.Equal(t, expectedSetClaims[0].BlockNum, response.SetClaims[0].BlockNum)
+		require.Equal(t, expectedSetClaims[0].GlobalIndex.String(), string(response.SetClaims[0].GlobalIndex))
+	})
+
+	t.Run("GetSetClaims for L2 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL2.EXPECT().
+			GetSetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(barErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get set claims for the L2 network (ID=%d)", l2NetworkID))
+	})
+
+	t.Run("GetSetClaims with nil L2 syncer", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "L2 bridge syncer is not available", response["error"])
+	})
+
+	t.Run("GetSetClaims with invalid global_index parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "10")
+		queryParams.Set(globalIndexParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
+	})
+
+	t.Run("GetSetClaims with invalid page number parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "invalid")
+		queryParams.Set(pageSizeParam, "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
+	})
+
+	t.Run("GetSetClaims with invalid page size parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "1")
+		queryParams.Set(pageSizeParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageSizeParam))
 	})
 }
 
