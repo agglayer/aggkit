@@ -63,6 +63,24 @@ func TestParseMaxRangeFromError(t *testing.T) {
 			expectedMaxBlock:   0,
 			expectedIsMaxRange: false,
 		},
+		{
+			name:               "exceeded maximum block range format",
+			errorMsg:           "exceeded maximum block range: 5000",
+			expectedMaxBlock:   5000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "exceeded maximum block range with no spaces",
+			errorMsg:           "exceeded maximum block range:1000",
+			expectedMaxBlock:   1000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "exceeded maximum block range with extra spaces",
+			errorMsg:           "exceeded maximum block range:   2500",
+			expectedMaxBlock:   2500,
+			expectedIsMaxRange: true,
+		},
 	}
 
 	for _, tt := range tests {
