@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,7 @@ func TestValidate(t *testing.T) {
 					URL: "",
 				},
 				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedErr: "invalid agglayer client config",
 		},
@@ -44,6 +46,7 @@ func TestValidate(t *testing.T) {
 				AggkitProverClient: &grpc.ClientConfig{
 					URL: "",
 				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedErr: "invalid aggkit prover client config",
 		},
@@ -59,6 +62,22 @@ func TestValidate(t *testing.T) {
 				AggkitProverClient: &grpc.ClientConfig{
 					URL: "",
 				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			},
+		},
+		{
+			name: "nBlockFinalityForL1InfoTree not set",
+			config: Config{
+				Mode: aggsendertypes.PessimisticProofMode,
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
+					URL:               "http://localhost:9090",
+					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				},
+				},
+				AggkitProverClient: &grpc.ClientConfig{
+					URL: "",
+				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 		},
 	}

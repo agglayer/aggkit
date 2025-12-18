@@ -8,6 +8,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 		},
 		{
@@ -41,6 +43,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 		},
 		{
@@ -54,6 +57,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedErr: errInvalidSovereignRollupAddr.Error(),
 		},
@@ -65,6 +69,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedErr: "invalid mode invalid-mode, must be one of",
 		},
@@ -76,6 +81,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedErr: "invalid mode , must be one of",
 		},
@@ -86,6 +92,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL: "",
 				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedErr: "invalid agglayer client config",
 		},
