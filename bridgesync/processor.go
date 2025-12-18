@@ -1251,12 +1251,6 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	// ---------------------------------------------------------------------
 	// 1. Load affected deposit counts and BackwardLETs BEFORE deleting blocks, bridges and BackwardLET entries
 	// ---------------------------------------------------------------------
-	depositCountsToRemove, err := loadReorgedDepositCounts(tx, firstReorgedBlock)
-	if err != nil {
-		p.log.Errorf("failed to retrieve reorged bridges: %v", err)
-		return err
-	}
-
 	backwardLETsQuery := `
 		SELECT previous_deposit_count, new_deposit_count
         FROM backward_let
@@ -1264,6 +1258,15 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	var backwardLETs []*BackwardLET
 	if err := meddler.QueryAll(tx, &backwardLETs, backwardLETsQuery, firstReorgedBlock); err != nil {
 		return fmt.Errorf("failed to retrieve the affected backward LETs: %w", err)
+	}
+
+	var depositCountsToRemove map[uint32]struct{}
+	if len(backwardLETs) > 0 {
+		depositCountsToRemove, err = loadReorgedDepositCounts(tx, firstReorgedBlock)
+		if err != nil {
+			p.log.Errorf("failed to retrieve reorged bridges: %v", err)
+			return err
+		}
 	}
 
 	// ---------------------------------------------------------
@@ -1315,7 +1318,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 // restoreBackwardLETBridges restores bridges that were previously removed by BackwardLET events
 func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*BackwardLET,
-	reorgedDepositCounts map[uint32]struct{}) error {
+	removedDepositCounts map[uint32]struct{}) error {
 	restoreQuery := `
 		SELECT *
 		FROM bridge_archive
@@ -1340,7 +1343,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 		}
 
 		for _, b := range bridges {
-			if _, ok := reorgedDepositCounts[b.DepositCount]; ok {
+			if _, ok := removedDepositCounts[b.DepositCount]; ok {
 				// skip cascade-deleted bridges (prevent from restoring them)
 				continue
 			}
@@ -1373,7 +1376,9 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 }
 
 // loadReorgedDepositCounts retrieves the bridges that are going to be deleted by the reorg,
-// and returns its deposit counts
+// and returns its deposit counts.
+// The bridges are retrieved from the bridge_archive table, because in case there were BackwardLET events,
+// they would have already deleted the bridges from bridge table.
 func loadReorgedDepositCounts(tx dbtypes.Txer, fromBlock uint64) (map[uint32]struct{}, error) {
 	rows, err := tx.Query(`
 		SELECT deposit_count
@@ -1387,11 +1392,11 @@ func loadReorgedDepositCounts(tx dbtypes.Txer, fromBlock uint64) (map[uint32]str
 
 	result := make(map[uint32]struct{})
 	for rows.Next() {
-		var dc uint32
-		if err := rows.Scan(&dc); err != nil {
+		var depositCount uint32
+		if err := rows.Scan(&depositCount); err != nil {
 			return nil, err
 		}
-		result[dc] = struct{}{}
+		result[depositCount] = struct{}{}
 	}
 	return result, nil
 }
