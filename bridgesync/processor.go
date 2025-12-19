@@ -125,8 +125,8 @@ var (
 type BridgeSource string
 
 const (
-	BridgeSourceRestoredBackwardLET BridgeSource = "restored_backward_let"
-	BridgeSourceForwardLET          BridgeSource = "forward_let"
+	BridgeSourceBackwardLET BridgeSource = "backward_let"
+	BridgeSourceForwardLET  BridgeSource = "forward_let"
 )
 
 // Bridge is the representation of a bridge event
@@ -1348,8 +1348,8 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 				continue
 			}
 
-			// tag the bridge as restored by reorged BackwardLET event
-			b.Source = BridgeSourceRestoredBackwardLET
+			// reset source
+			b.Source = ""
 			if err := meddler.Insert(tx, bridgeTableName, b); err != nil {
 				return err
 			}
@@ -1503,8 +1503,9 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-			// 1. remove all the bridges whose deposit_count is greater than the one captured by the BackwardLET event
-			err = p.deleteBridgesAbove(ctx, tx, newDepositCount)
+			// 1. archive and remove all the bridges whose
+			// deposit_count is greater than the one captured by the BackwardLET event
+			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
 			if err != nil {
 				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
 					newDepositCount, err)
@@ -1567,32 +1568,43 @@ func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
 	return u64, u32, nil
 }
 
-// deleteBridgesAbove removes all the bridges whose depositCount is greater than the provided one.
-func (p *processor) deleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
-	query := fmt.Sprintf(`
-        DELETE FROM %s
-        WHERE deposit_count > $1
-        RETURNING deposit_count
-    `, bridgeTableName)
+// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than the provided one
+func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
+	// 1. Load candidates
+	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count > $1`, bridgeTableName)
+	var bridges []*Bridge
+	if err := meddler.QueryAll(tx, &bridges, query, depositCount); err != nil {
+		return err
+	}
 
-	rows, err := tx.QueryContext(ctx, query, depositCount)
+	if len(bridges) == 0 {
+		return nil
+	}
+
+	deletedDepositCounts := make([]uint32, 0, len(bridges))
+	// 2. Archive
+	for _, b := range bridges {
+		b.Source = BridgeSourceBackwardLET
+		if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
+			return err
+		}
+		deletedDepositCounts = append(deletedDepositCounts, b.DepositCount)
+	}
+
+	// 3. Delete originals
+	deleteQuery := fmt.Sprintf(`
+		DELETE FROM %s 
+		WHERE deposit_count > $1`,
+		bridgeTableName)
+
+	_, err := tx.ExecContext(ctx, deleteQuery, depositCount)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 
-	var deleted []uint32
-	for rows.Next() {
-		var dc uint32
-		if err := rows.Scan(&dc); err != nil {
-			return err
-		}
-		deleted = append(deleted, dc)
-	}
-
-	if len(deleted) > 0 {
-		p.log.Debugf("BackwardLET removed bridges with deposit_count > %d: %v",
-			depositCount, deleted,
+	if len(deletedDepositCounts) > 0 {
+		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
+			len(deletedDepositCounts), depositCount, deletedDepositCounts,
 		)
 	}
 

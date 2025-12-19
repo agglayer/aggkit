@@ -5401,13 +5401,13 @@ func TestProcessor_BackwardLET(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                        string
-		setupBlocks                 func() []sync.Block
-		firstReorgedBlock           *uint64
-		targetDepositCount          uint32
-		skipBlocks                  []uint64
-		restoredBridgeDepositCounts []uint32
-		processBlockErrMsg          string
+		name                  string
+		setupBlocks           func() []sync.Block
+		firstReorgedBlock     *uint64
+		targetDepositCount    uint32
+		skipBlocks            []uint64
+		archivedDepositCounts []uint32
+		processBlockErrMsg    string
 	}{
 		{
 			name: "backward let after a couple of bridges",
@@ -5428,10 +5428,11 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			targetDepositCount: 2,
+			targetDepositCount:    2,
+			archivedDepositCounts: []uint32{3},
 		},
 		{
-			name: "backward let event with all the bridges",
+			name: "backward let event with all the bridges, except the first one",
 			setupBlocks: func() []sync.Block {
 				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				blocks = append(blocks, sync.Block{
@@ -5441,7 +5442,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 						Event{BackwardLET: &BackwardLET{
 							BlockNum:             uint64(len(blocks) + 1),
 							BlockPos:             0,
-							PreviousDepositCount: big.NewInt(6),
+							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(0),
 						}},
 					},
@@ -5449,7 +5450,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			targetDepositCount: 0,
+			targetDepositCount:    0,
+			archivedDepositCounts: []uint32{1, 2, 3, 4, 5},
 		},
 		{
 			name: "backward let event (only the last bridge)",
@@ -5462,8 +5464,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 						Event{BackwardLET: &BackwardLET{
 							BlockNum:             uint64(len(blocks) + 1),
 							BlockPos:             0,
-							PreviousDepositCount: big.NewInt(6),
-							NewDepositCount:      big.NewInt(5),
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(4),
 						}},
 					},
 				}
@@ -5471,7 +5473,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			targetDepositCount: 5,
+			targetDepositCount:    4,
+			archivedDepositCounts: []uint32{5},
 		},
 		{
 			name: "backward let event in the middle of bridges",
@@ -5494,8 +5497,9 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			targetDepositCount: 8,
-			skipBlocks:         []uint64{2, 3}, // all the bridges from these blocks were backwarded
+			targetDepositCount:    8,
+			skipBlocks:            []uint64{2, 3}, // all the bridges from these blocks were backwarded
+			archivedDepositCounts: []uint32{3, 4, 5},
 		},
 		{
 			name: "overlapping backward let events",
@@ -5508,7 +5512,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 						Event{BackwardLET: &BackwardLET{
 							BlockNum:             uint64(len(blocks) + 1),
 							BlockPos:             0,
-							PreviousDepositCount: big.NewInt(6),
+							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(3),
 						}},
 					},
@@ -5528,7 +5532,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			targetDepositCount: 3,
+			targetDepositCount:    3,
+			archivedDepositCounts: []uint32{4, 5},
 		},
 		{
 			name: "backward let on empty bridge table",
@@ -5607,9 +5612,9 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			firstReorgedBlock:           uint64Ptr(3),
-			targetDepositCount:          3,
-			restoredBridgeDepositCounts: []uint32{3},
+			firstReorgedBlock:     uint64Ptr(3),
+			targetDepositCount:    3,
+			archivedDepositCounts: []uint32{3},
 		},
 		{
 			name: "backward let event in the middle of bridges + reorg backward let",
@@ -5632,9 +5637,9 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			firstReorgedBlock:           uint64Ptr(3),
-			targetDepositCount:          5,
-			restoredBridgeDepositCounts: []uint32{3, 4, 5},
+			firstReorgedBlock:     uint64Ptr(3),
+			targetDepositCount:    5,
+			archivedDepositCounts: []uint32{3, 4, 5},
 		},
 	}
 
@@ -5655,6 +5660,24 @@ func TestProcessor_BackwardLET(t *testing.T) {
 				}
 			}
 
+			if len(c.archivedDepositCounts) > 0 {
+				archivedBridgeQuery := `
+					SELECT * FROM bridge_archive 
+					WHERE deposit_count <= $1
+					ORDER BY deposit_count ASC`
+
+				maxDepositCount := slices.Max(c.archivedDepositCounts)
+				var archivedBridges []*Bridge
+				err = meddler.QueryAll(p.db, &archivedBridges, archivedBridgeQuery, maxDepositCount)
+				require.NoError(t, err)
+
+				require.Len(t, archivedBridges, len(c.archivedDepositCounts))
+				for i, b := range archivedBridges {
+					require.Equal(t, c.archivedDepositCounts[i], b.DepositCount)
+					require.Equal(t, BridgeSourceBackwardLET, b.Source)
+				}
+			}
+
 			if c.firstReorgedBlock != nil {
 				err = p.Reorg(t.Context(), *c.firstReorgedBlock)
 				require.NoError(t, err)
@@ -5663,13 +5686,6 @@ func TestProcessor_BackwardLET(t *testing.T) {
 			lastProcessedBlock, err := p.GetLastProcessedBlock(t.Context())
 			require.NoError(t, err)
 			expectedBridges := collectExpectedBridgesUpTo(t, blocks, c.skipBlocks, c.targetDepositCount)
-			for i := range expectedBridges {
-				for _, restored := range c.restoredBridgeDepositCounts {
-					if expectedBridges[i].DepositCount == restored {
-						expectedBridges[i].Source = BridgeSourceRestoredBackwardLET
-					}
-				}
-			}
 
 			actualBridges, err := p.GetBridges(t.Context(), 0, lastProcessedBlock)
 			require.NoError(t, err)
