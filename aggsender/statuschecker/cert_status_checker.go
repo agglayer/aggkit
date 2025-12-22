@@ -151,6 +151,24 @@ func (c *certStatusChecker) checkPendingCertificatesStatus(ctx context.Context) 
 			thereArePendingCerts = true
 		}
 	}
+
+	// Additional check: if no pending certs and no transition was detected,
+	// check if there are any InError certificates that need retry.
+	// This handles cases where:
+	// 1. The initial retry attempt failed to send a new cert
+	// 2. There were transient errors during the transition detection
+	// 3. The storage update failed, causing the transition to be missed
+	if !thereArePendingCerts && !appearsNewInErrorCert {
+		inErrorCerts, err := c.storage.GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError})
+		if err != nil {
+			c.log.Errorf("error getting InError certificates: %w", err)
+			// Don't fail the entire check, just log and continue without the additional InError detection
+		} else if len(inErrorCerts) > 0 {
+			c.log.Infof("found %d InError certificate(s) with no pending certs, enabling retry", len(inErrorCerts))
+			appearsNewInErrorCert = true
+		}
+	}
+
 	return types.CertStatus{
 		ExistPendingCerts:   thereArePendingCerts,
 		ExistNewInErrorCert: appearsNewInErrorCert,

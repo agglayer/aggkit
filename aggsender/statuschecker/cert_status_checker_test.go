@@ -118,6 +118,29 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			}
 
+			// If no errors and all certs are closed (not pending), expect the additional InError check
+			allClosed := true
+			hasInErrorTransition := false
+			if tt.getFromDBError == nil && tt.clientError == nil && tt.updateDBError == nil {
+				for certID, header := range tt.certificateHeaders {
+					for _, pendingCert := range tt.pendingCertificates {
+						if pendingCert.CertificateID == certID {
+							if !header.Status.IsClosed() {
+								allClosed = false
+							}
+							if !pendingCert.Status.IsInError() && header.Status.IsInError() {
+								hasInErrorTransition = true
+							}
+						}
+					}
+				}
+				if allClosed && !hasInErrorTransition {
+					// Expect the additional InError query
+					mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+						[]*types.CertificateHeader{}, nil)
+				}
+			}
+
 			sut := NewCertStatusChecker(mockLogger, mockStorage, mockAggLayerClient, nil, 1)
 			certStatusChecker, ok := sut.(*certStatusChecker)
 			require.True(t, ok)
