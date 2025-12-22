@@ -97,6 +97,16 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			},
 			expectedError: true,
 		},
+		{
+			name: "Certificate still pending - not closed",
+			pendingCertificates: []*types.CertificateHeader{
+				{CertificateID: common.HexToHash("0x1"), Height: 1, Status: agglayertypes.Pending},
+			},
+			certificateHeaders: map[common.Hash]*agglayertypes.CertificateHeader{
+				common.HexToHash("0x1"): {Status: agglayertypes.Pending}, // Still pending
+			},
+			expectedError: true, // ExistPendingCerts should be true
+		},
 	}
 
 	for _, tt := range tests {
@@ -112,9 +122,22 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			for certID, header := range tt.certificateHeaders {
 				mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything, certID).Return(header, tt.clientError)
 			}
+			// Check if status actually changes to determine if UpdateCertificateStatus should be called
+			statusChanges := false
+			if tt.clientError == nil && tt.getFromDBError == nil {
+				for certID, header := range tt.certificateHeaders {
+					for _, pendingCert := range tt.pendingCertificates {
+						if pendingCert.CertificateID == certID && pendingCert.Status != header.Status {
+							statusChanges = true
+							break
+						}
+					}
+				}
+			}
+
 			if tt.updateDBError != nil {
 				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tt.updateDBError)
-			} else if tt.clientError == nil && tt.getFromDBError == nil {
+			} else if statusChanges {
 				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			}
 
