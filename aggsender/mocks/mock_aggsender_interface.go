@@ -20,34 +20,34 @@ func (_m *AggsenderInterface) EXPECT() *AggsenderInterface_Expecter {
 	return &AggsenderInterface_Expecter{mock: &_m.Mock}
 }
 
-// ForceTriggerCertitificate provides a mock function with no fields
-func (_m *AggsenderInterface) ForceTriggerCertitificate() {
+// ForceTriggerCertificate provides a mock function with no fields
+func (_m *AggsenderInterface) ForceTriggerCertificate() {
 	_m.Called()
 }
 
-// AggsenderInterface_ForceTriggerCertitificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ForceTriggerCertitificate'
-type AggsenderInterface_ForceTriggerCertitificate_Call struct {
+// AggsenderInterface_ForceTriggerCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ForceTriggerCertificate'
+type AggsenderInterface_ForceTriggerCertificate_Call struct {
 	*mock.Call
 }
 
-// ForceTriggerCertitificate is a helper method to define mock.On call
-func (_e *AggsenderInterface_Expecter) ForceTriggerCertitificate() *AggsenderInterface_ForceTriggerCertitificate_Call {
-	return &AggsenderInterface_ForceTriggerCertitificate_Call{Call: _e.mock.On("ForceTriggerCertitificate")}
+// ForceTriggerCertificate is a helper method to define mock.On call
+func (_e *AggsenderInterface_Expecter) ForceTriggerCertificate() *AggsenderInterface_ForceTriggerCertificate_Call {
+	return &AggsenderInterface_ForceTriggerCertificate_Call{Call: _e.mock.On("ForceTriggerCertificate")}
 }
 
-func (_c *AggsenderInterface_ForceTriggerCertitificate_Call) Run(run func()) *AggsenderInterface_ForceTriggerCertitificate_Call {
+func (_c *AggsenderInterface_ForceTriggerCertificate_Call) Run(run func()) *AggsenderInterface_ForceTriggerCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *AggsenderInterface_ForceTriggerCertitificate_Call) Return() *AggsenderInterface_ForceTriggerCertitificate_Call {
+func (_c *AggsenderInterface_ForceTriggerCertificate_Call) Return() *AggsenderInterface_ForceTriggerCertificate_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *AggsenderInterface_ForceTriggerCertitificate_Call) RunAndReturn(run func()) *AggsenderInterface_ForceTriggerCertitificate_Call {
+func (_c *AggsenderInterface_ForceTriggerCertificate_Call) RunAndReturn(run func()) *AggsenderInterface_ForceTriggerCertificate_Call {
 	_c.Run(run)
 	return _c
 }
