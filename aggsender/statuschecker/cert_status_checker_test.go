@@ -26,6 +26,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 		getFromDBError           error
 		clientError              error
 		updateDBError            error
+		inErrorQueryError        error
 		expectedErrorLogMessages []string
 		expectedInfoMessages     []string
 		expectedError            bool
@@ -107,6 +108,20 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			},
 			expectedError: true, // ExistPendingCerts should be true
 		},
+		{
+			name: "Error getting InError certificates - should log but not fail",
+			pendingCertificates: []*types.CertificateHeader{
+				{CertificateID: common.HexToHash("0x1"), Height: 1, Status: agglayertypes.Pending},
+			},
+			certificateHeaders: map[common.Hash]*agglayertypes.CertificateHeader{
+				common.HexToHash("0x1"): {Status: agglayertypes.Settled}, // Becomes settled (closed)
+			},
+			inErrorQueryError: fmt.Errorf("query error"),
+			expectedErrorLogMessages: []string{
+				"error getting InError certificates: %w",
+			},
+			expectedError: false, // ExistPendingCerts should be false (cert is closed), gracefully handles error
+		},
 	}
 
 	for _, tt := range tests {
@@ -159,8 +174,13 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 				}
 				if allClosed && !hasInErrorTransition {
 					// Expect the additional InError query
-					mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
-						[]*types.CertificateHeader{}, nil)
+					if tt.inErrorQueryError != nil {
+						mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+							nil, tt.inErrorQueryError)
+					} else {
+						mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+							[]*types.CertificateHeader{}, nil)
+					}
 				}
 			}
 
