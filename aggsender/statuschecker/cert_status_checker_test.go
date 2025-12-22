@@ -566,6 +566,18 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 				CertificateID: common.HexToHash("0x1"),
 				Status:        agglayertypes.Settled,
 			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				// checkLastCertificateFromAgglayer will update the cert from InError to Settled
+				m.On("UpdateCertificateStatus", mock.Anything, mock.Anything, agglayertypes.Settled, mock.Anything).Return(nil).Once()
+
+				// After that, checkPendingCertificatesStatus will query twice:
+				// 1. For NonSettledStatuses - cert is Settled now, so return empty
+				m.On("GetCertificateHeadersByStatus", agglayertypes.NonSettledStatuses).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+				// 2. For InError - cert is Settled now, so return empty
+				m.On("GetCertificateHeadersByStatus", []agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+			},
 		},
 	}
 
@@ -592,14 +604,19 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 				storage:        mockStorage,
 				agglayerClient: mockAggLayerClient,
 			}
-			mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
-				[]*types.CertificateHeader{tt.localCert}, nil)
-			mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything,
-				mock.Anything).Return(tt.agglayerCert, nil)
-			mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything,
-				tt.localCert.CertificateID,
-				tt.agglayerCert.Status,
-				mock.Anything).Return(nil)
+
+			if tt.mockFn != nil {
+				tt.mockFn(mockStorage)
+			} else {
+				mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
+					[]*types.CertificateHeader{tt.localCert}, nil)
+				mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything,
+					mock.Anything).Return(tt.agglayerCert, nil)
+				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything,
+					tt.localCert.CertificateID,
+					tt.agglayerCert.Status,
+					mock.Anything).Return(nil)
+			}
 			status, err := certStatusChecker.CheckPeriodicallyStatus(ctx)
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
