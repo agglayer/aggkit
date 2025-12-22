@@ -579,6 +579,38 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 					[]*types.CertificateHeader{}, nil).Once()
 			},
 		},
+		{
+			name: "cert local InError, no pending certs - should detect InError",
+			localCert: &types.CertificateHeader{
+				CertificateID: common.HexToHash("0x1"),
+				Status:        agglayertypes.InError,
+			},
+			agglayerCert: &agglayertypes.CertificateHeader{
+				CertificateID: common.HexToHash("0x1"),
+				Status:        agglayertypes.InError,
+			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				// checkLastCertificateFromAgglayer won't update status (both InError)
+				// No UpdateCertificateStatus call expected
+
+				// checkPendingCertificatesStatus will query:
+				// 1. For NonSettledStatuses - InError is not in NonSettledStatuses, return empty
+				m.On("GetCertificateHeadersByStatus", agglayertypes.NonSettledStatuses).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+				// 2. For InError - should find the InError cert
+				m.On("GetCertificateHeadersByStatus", []agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+					[]*types.CertificateHeader{
+						{
+							CertificateID: common.HexToHash("0x1"),
+							Status:        agglayertypes.InError,
+						},
+					}, nil).Once()
+			},
+			expectedStatus: types.CertStatus{
+				ExistPendingCerts:   false,
+				ExistNewInErrorCert: true, // Should be true because InError cert was found
+			},
+		},
 	}
 
 	for _, tt := range tests {
