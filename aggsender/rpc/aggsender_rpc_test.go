@@ -16,10 +16,10 @@ func TestAggsenderRPCStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 }
-func TestAggsenderRPCTriggerCertitificate(t *testing.T) {
+func TestAggsenderRPCTriggerCertificate(t *testing.T) {
 	testData := newAggsenderData(t)
-	testData.mockAggsender.EXPECT().ForceTriggerCertitificate().Return()
-	res, err := testData.sut.TriggerCertitificate()
+	testData.mockAggsender.EXPECT().ForceTriggerCertificate().Return()
+	res, err := testData.sut.TriggerCertificate()
 	require.NoError(t, err)
 	require.Nil(t, res)
 }

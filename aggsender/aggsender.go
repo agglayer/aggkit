@@ -237,7 +237,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 	return res
 }
 
-func (a *AggSender) ForceTriggerCertitificate() {
+func (a *AggSender) ForceTriggerCertificate() {
 	a.certificateSendTrigger.ForceTriggerEvent()
 }
 
