@@ -664,28 +664,92 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 }
 
 func TestCheckInitialStatus(t *testing.T) {
-	ctx := t.Context()
-	mockLogger := log.WithFields("test", "unittest")
-	mockStorage := mocks.NewAggSenderStorage(t)
-	mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
-
-	newInitialStatusFn = func(_ context.Context,
-		_ types.Logger, _ uint32,
-		_ db.AggSenderStorage,
-		_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
-		return nil, fmt.Errorf("error")
+	tests := []struct {
+		name                string
+		initialStatusErr    error
+		storageErr          error
+		expectedLastError   string
+		shouldReturnQuickly bool
+	}{
+		{
+			name:              "error retrieving initial status - retries until context timeout",
+			initialStatusErr:  fmt.Errorf("error"),
+			storageErr:        fmt.Errorf("error"),
+			expectedLastError: "recovery: error retrieving initial status: error",
+		},
+		{
+			name:                "success - returns immediately",
+			initialStatusErr:    nil,
+			storageErr:          nil,
+			expectedLastError:   "",
+			shouldReturnQuickly: true,
+		},
 	}
 
-	certStatusChecker := &certStatusChecker{
-		log:            mockLogger,
-		storage:        mockStorage,
-		agglayerClient: mockAggLayerClient,
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			mockLogger := log.WithFields("test", "unittest")
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
+
+			mockInitialStatus := &initialStatus{
+				log:                     mockLogger,
+				LocalLastCert:           nil,
+				AgglayerLastSettledCert: nil,
+			}
+
+			newInitialStatusFn = func(_ context.Context,
+				_ types.Logger, _ uint32,
+				_ db.AggSenderStorage,
+				_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
+				if tt.initialStatusErr != nil {
+					return nil, tt.initialStatusErr
+				}
+				return mockInitialStatus, nil
+			}
+
+			certStatusChecker := &certStatusChecker{
+				log:            mockLogger,
+				storage:        mockStorage,
+				agglayerClient: mockAggLayerClient,
+			}
+
+			if tt.storageErr != nil {
+				mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
+					nil, tt.storageErr).Maybe()
+			} else {
+				// Success case: return empty lists
+				mockStorage.EXPECT().GetCertificateHeadersByStatus(agglayertypes.NonSettledStatuses).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+				mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+			}
+
+			aggsenderStatus := &types.AggsenderStatus{}
+
+			if tt.shouldReturnQuickly {
+				// Success case should return quickly
+				done := make(chan struct{})
+				go func() {
+					certStatusChecker.CheckInitialStatus(ctx, time.Millisecond*10, aggsenderStatus)
+					close(done)
+				}()
+
+				select {
+				case <-done:
+					// Success - function returned
+					require.Empty(t, aggsenderStatus.LastError)
+				case <-time.After(time.Second):
+					t.Fatal("CheckInitialStatus did not return in time for success case")
+				}
+			} else {
+				// Error case should retry until context timeout
+				ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
+				defer cancel()
+				certStatusChecker.CheckInitialStatus(ctx, time.Millisecond, aggsenderStatus)
+				require.Equal(t, tt.expectedLastError, aggsenderStatus.LastError)
+			}
+		})
 	}
-	mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
-		nil, fmt.Errorf("error"))
-	aggsenderStatus := &types.AggsenderStatus{}
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
-	defer cancel()
-	certStatusChecker.CheckInitialStatus(ctx, time.Millisecond, aggsenderStatus)
-	require.Equal(t, "recovery: error retrieving initial status: error", aggsenderStatus.LastError)
 }
