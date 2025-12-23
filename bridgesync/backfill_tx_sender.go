@@ -172,7 +172,7 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	defer cancel()
 
 	err := b.db.QueryRowContext(dbCtx, query,
-		BridgeSourceRestoredBackwardLET, BridgeSourceForwardLET).Scan(&count)
+		BridgeSourceBackwardLET, BridgeSourceForwardLET).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count records needing backfill: %w", err)
 	}
@@ -198,7 +198,7 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
 	rows, err := b.db.QueryContext(dbCtx, query,
-		BridgeSourceRestoredBackwardLET, BridgeSourceForwardLET, limit)
+		BridgeSourceBackwardLET, BridgeSourceForwardLET, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}

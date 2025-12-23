@@ -5494,6 +5494,8 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(4),
+							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
+							NewRoot:              common.HexToHash("0x44e1bf8449ecec2b8b1d123fab00d33c9acb308e590605adf5f6e2de4d1c1133"),
 						}},
 					},
 				}
