@@ -27,10 +27,10 @@ func TestUpdatableTreeExploratory(t *testing.T) {
 
 	tx, err := db.NewTx(ctx, treeDB)
 	require.NoError(t, err)
-	_, err = sut.UpsertLeaf(tx, blockNum, blockPosition, leaf1)
+	_, err = sut.PutLeaf(tx, blockNum, blockPosition, leaf1)
 	require.NoError(t, err)
 
-	root2, err := sut.UpsertLeaf(tx, blockNum, blockPosition, leaf2)
+	root2, err := sut.PutLeaf(tx, blockNum, blockPosition, leaf2)
 	require.NoError(t, err)
 	leaf1get, err := sut.GetLeaf(tx, leaf1.Index, root2)
 	require.NoError(t, err)
@@ -43,6 +43,6 @@ func TestUpdatableTreeExploratory(t *testing.T) {
 		Hash:  common.Hash{}, // 0x00000
 	}
 
-	_, err = sut.UpsertLeaf(tx, blockNum, blockPosition, leaf99)
+	_, err = sut.PutLeaf(tx, blockNum, blockPosition, leaf99)
 	require.Error(t, err, "insert 0x000 doesnt change root and return UNIQUE constraint failed: root.hash")
 }

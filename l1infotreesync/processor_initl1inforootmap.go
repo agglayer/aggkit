@@ -29,7 +29,7 @@ func processEventInitL1InfoRootMap(tx dbtypes.Txer, blockNumber uint64, event *I
 // GetInitL1InfoRootMap returns the initial L1 info root map, nil if no root map has been set
 func (p *processor) GetInitL1InfoRootMap(tx dbtypes.Txer) (*L1InfoTreeInitial, error) {
 	info := &L1InfoTreeInitial{}
-	err := meddler.QueryRow(p.getDBQuerier(tx), info, `SELECT block_num, leaf_count,l1_info_root  FROM l1info_initial`)
+	err := meddler.QueryRow(p.getDBQuerier(tx), info, `SELECT block_num, leaf_count,l1_info_root FROM l1info_initial`)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
