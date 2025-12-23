@@ -26,6 +26,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 		getFromDBError           error
 		clientError              error
 		updateDBError            error
+		inErrorQueryError        error
 		expectedErrorLogMessages []string
 		expectedInfoMessages     []string
 		expectedError            bool
@@ -97,6 +98,30 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			},
 			expectedError: true,
 		},
+		{
+			name: "Certificate still pending - not closed",
+			pendingCertificates: []*types.CertificateHeader{
+				{CertificateID: common.HexToHash("0x1"), Height: 1, Status: agglayertypes.Pending},
+			},
+			certificateHeaders: map[common.Hash]*agglayertypes.CertificateHeader{
+				common.HexToHash("0x1"): {Status: agglayertypes.Pending}, // Still pending
+			},
+			expectedError: true, // ExistPendingCerts should be true
+		},
+		{
+			name: "Error getting InError certificates - should log but not fail",
+			pendingCertificates: []*types.CertificateHeader{
+				{CertificateID: common.HexToHash("0x1"), Height: 1, Status: agglayertypes.Pending},
+			},
+			certificateHeaders: map[common.Hash]*agglayertypes.CertificateHeader{
+				common.HexToHash("0x1"): {Status: agglayertypes.Settled}, // Becomes settled (closed)
+			},
+			inErrorQueryError: fmt.Errorf("query error"),
+			expectedErrorLogMessages: []string{
+				"error getting InError certificates: %w",
+			},
+			expectedError: false, // ExistPendingCerts should be false (cert is closed), gracefully handles error
+		},
 	}
 
 	for _, tt := range tests {
@@ -112,10 +137,51 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			for certID, header := range tt.certificateHeaders {
 				mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything, certID).Return(header, tt.clientError)
 			}
+			// Check if status actually changes to determine if UpdateCertificateStatus should be called
+			statusChanges := false
+			if tt.clientError == nil && tt.getFromDBError == nil {
+				for certID, header := range tt.certificateHeaders {
+					for _, pendingCert := range tt.pendingCertificates {
+						if pendingCert.CertificateID == certID && pendingCert.Status != header.Status {
+							statusChanges = true
+							break
+						}
+					}
+				}
+			}
+
 			if tt.updateDBError != nil {
 				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tt.updateDBError)
-			} else if tt.clientError == nil && tt.getFromDBError == nil {
+			} else if statusChanges {
 				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			}
+
+			// If no errors and all certs are closed (not pending), expect the additional InError check
+			allClosed := true
+			hasInErrorTransition := false
+			if tt.getFromDBError == nil && tt.clientError == nil && tt.updateDBError == nil {
+				for certID, header := range tt.certificateHeaders {
+					for _, pendingCert := range tt.pendingCertificates {
+						if pendingCert.CertificateID == certID {
+							if !header.Status.IsClosed() {
+								allClosed = false
+							}
+							if !pendingCert.Status.IsInError() && header.Status.IsInError() {
+								hasInErrorTransition = true
+							}
+						}
+					}
+				}
+				if allClosed && !hasInErrorTransition {
+					// Expect the additional InError query
+					if tt.inErrorQueryError != nil {
+						mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+							nil, tt.inErrorQueryError)
+					} else {
+						mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+							[]*types.CertificateHeader{}, nil)
+					}
+				}
 			}
 
 			sut := NewCertStatusChecker(mockLogger, mockStorage, mockAggLayerClient, nil, 1)
@@ -543,6 +609,50 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 				CertificateID: common.HexToHash("0x1"),
 				Status:        agglayertypes.Settled,
 			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				// checkLastCertificateFromAgglayer will update the cert from InError to Settled
+				m.On("UpdateCertificateStatus", mock.Anything, mock.Anything, agglayertypes.Settled, mock.Anything).Return(nil).Once()
+
+				// After that, checkPendingCertificatesStatus will query twice:
+				// 1. For NonSettledStatuses - cert is Settled now, so return empty
+				m.On("GetCertificateHeadersByStatus", agglayertypes.NonSettledStatuses).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+				// 2. For InError - cert is Settled now, so return empty
+				m.On("GetCertificateHeadersByStatus", []agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+			},
+		},
+		{
+			name: "cert local InError, no pending certs - should detect InError",
+			localCert: &types.CertificateHeader{
+				CertificateID: common.HexToHash("0x1"),
+				Status:        agglayertypes.InError,
+			},
+			agglayerCert: &agglayertypes.CertificateHeader{
+				CertificateID: common.HexToHash("0x1"),
+				Status:        agglayertypes.InError,
+			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				// checkLastCertificateFromAgglayer won't update status (both InError)
+				// No UpdateCertificateStatus call expected
+
+				// checkPendingCertificatesStatus will query:
+				// 1. For NonSettledStatuses - InError is not in NonSettledStatuses, return empty
+				m.On("GetCertificateHeadersByStatus", agglayertypes.NonSettledStatuses).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+				// 2. For InError - should find the InError cert
+				m.On("GetCertificateHeadersByStatus", []agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+					[]*types.CertificateHeader{
+						{
+							CertificateID: common.HexToHash("0x1"),
+							Status:        agglayertypes.InError,
+						},
+					}, nil).Once()
+			},
+			expectedStatus: types.CertStatus{
+				ExistPendingCerts:   false,
+				ExistNewInErrorCert: true, // Should be true because InError cert was found
+			},
 		},
 	}
 
@@ -569,14 +679,19 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 				storage:        mockStorage,
 				agglayerClient: mockAggLayerClient,
 			}
-			mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
-				[]*types.CertificateHeader{tt.localCert}, nil)
-			mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything,
-				mock.Anything).Return(tt.agglayerCert, nil)
-			mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything,
-				tt.localCert.CertificateID,
-				tt.agglayerCert.Status,
-				mock.Anything).Return(nil)
+
+			if tt.mockFn != nil {
+				tt.mockFn(mockStorage)
+			} else {
+				mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
+					[]*types.CertificateHeader{tt.localCert}, nil)
+				mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything,
+					mock.Anything).Return(tt.agglayerCert, nil)
+				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything,
+					tt.localCert.CertificateID,
+					tt.agglayerCert.Status,
+					mock.Anything).Return(nil)
+			}
 			status, err := certStatusChecker.CheckPeriodicallyStatus(ctx)
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
@@ -592,28 +707,92 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 }
 
 func TestCheckInitialStatus(t *testing.T) {
-	ctx := t.Context()
-	mockLogger := log.WithFields("test", "unittest")
-	mockStorage := mocks.NewAggSenderStorage(t)
-	mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
-
-	newInitialStatusFn = func(_ context.Context,
-		_ types.Logger, _ uint32,
-		_ db.AggSenderStorage,
-		_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
-		return nil, fmt.Errorf("error")
+	tests := []struct {
+		name                string
+		initialStatusErr    error
+		storageErr          error
+		expectedLastError   string
+		shouldReturnQuickly bool
+	}{
+		{
+			name:              "error retrieving initial status - retries until context timeout",
+			initialStatusErr:  fmt.Errorf("error"),
+			storageErr:        fmt.Errorf("error"),
+			expectedLastError: "recovery: error retrieving initial status: error",
+		},
+		{
+			name:                "success - returns immediately",
+			initialStatusErr:    nil,
+			storageErr:          nil,
+			expectedLastError:   "",
+			shouldReturnQuickly: true,
+		},
 	}
 
-	certStatusChecker := &certStatusChecker{
-		log:            mockLogger,
-		storage:        mockStorage,
-		agglayerClient: mockAggLayerClient,
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			mockLogger := log.WithFields("test", "unittest")
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
+
+			mockInitialStatus := &initialStatus{
+				log:                     mockLogger,
+				LocalLastCert:           nil,
+				AgglayerLastSettledCert: nil,
+			}
+
+			newInitialStatusFn = func(_ context.Context,
+				_ types.Logger, _ uint32,
+				_ db.AggSenderStorage,
+				_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
+				if tt.initialStatusErr != nil {
+					return nil, tt.initialStatusErr
+				}
+				return mockInitialStatus, nil
+			}
+
+			certStatusChecker := &certStatusChecker{
+				log:            mockLogger,
+				storage:        mockStorage,
+				agglayerClient: mockAggLayerClient,
+			}
+
+			if tt.storageErr != nil {
+				mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
+					nil, tt.storageErr).Maybe()
+			} else {
+				// Success case: return empty lists
+				mockStorage.EXPECT().GetCertificateHeadersByStatus(agglayertypes.NonSettledStatuses).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+				mockStorage.EXPECT().GetCertificateHeadersByStatus([]agglayertypes.CertificateStatus{agglayertypes.InError}).Return(
+					[]*types.CertificateHeader{}, nil).Once()
+			}
+
+			aggsenderStatus := &types.AggsenderStatus{}
+
+			if tt.shouldReturnQuickly {
+				// Success case should return quickly
+				done := make(chan struct{})
+				go func() {
+					certStatusChecker.CheckInitialStatus(ctx, time.Millisecond*10, aggsenderStatus)
+					close(done)
+				}()
+
+				select {
+				case <-done:
+					// Success - function returned
+					require.Empty(t, aggsenderStatus.LastError)
+				case <-time.After(time.Second):
+					t.Fatal("CheckInitialStatus did not return in time for success case")
+				}
+			} else {
+				// Error case should retry until context timeout
+				ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
+				defer cancel()
+				certStatusChecker.CheckInitialStatus(ctx, time.Millisecond, aggsenderStatus)
+				require.Equal(t, tt.expectedLastError, aggsenderStatus.LastError)
+			}
+		})
 	}
-	mockStorage.EXPECT().GetCertificateHeadersByStatus(mock.Anything).Return(
-		nil, fmt.Errorf("error"))
-	aggsenderStatus := &types.AggsenderStatus{}
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*10)
-	defer cancel()
-	certStatusChecker.CheckInitialStatus(ctx, time.Millisecond, aggsenderStatus)
-	require.Equal(t, "recovery: error retrieving initial status: error", aggsenderStatus.LastError)
 }
