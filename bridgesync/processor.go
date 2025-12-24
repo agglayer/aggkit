@@ -76,7 +76,8 @@ const (
 		destination_network,
 		metadata,
 		is_message,
-		block_timestamp`
+		block_timestamp,
+		source`
 
 	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
 	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim

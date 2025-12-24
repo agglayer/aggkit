@@ -5110,7 +5110,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 	t.Parallel()
 
-	claimType := reflect.TypeOf(Claim{})
+	claimType := reflect.TypeFor[Claim]()
 
 	// Collect meddler-tagged column names
 	var meddlerColumns []string
