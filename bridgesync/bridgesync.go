@@ -177,7 +177,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
+	appender, err := buildAppender(ctx, ethClient, processor, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}

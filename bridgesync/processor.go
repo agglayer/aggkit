@@ -181,6 +181,13 @@ func (b *Bridge) Hash() common.Hash {
 	)
 }
 
+type ClaimSource string
+
+const (
+	ClaimEvent         ClaimSource = "ClaimEvent"
+	DetailedClaimEvent ClaimSource = "DetailedClaimEvent"
+)
+
 // Claim representation of a claim event
 type Claim struct {
 	BlockNum            uint64         `meddler:"block_num"`
@@ -200,6 +207,7 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	Source              ClaimSource    `meddler:"source"`
 }
 
 func (c *Claim) String() string {
@@ -576,6 +584,13 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 	}
 	return nil
 }
+
+type BridgeQuerier interface{
+	GetClaimsPaged(ctx context.Context, pageNumber, pageSize uint32,
+		networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error)
+}
+
+var _ BridgeQuerier = (*processor)(nil)
 
 type processor struct {
 	syncerID       string

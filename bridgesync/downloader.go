@@ -84,6 +84,7 @@ const (
 func buildAppender(
 	ctx context.Context,
 	client aggkittypes.EthClienter,
+	querier BridgeQuerier,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	bridgeDeployment *bridgeDeployment,
@@ -106,9 +107,13 @@ func buildAppender(
 	switch bridgeDeployment.kind {
 	case NonSovereignChain:
 		appender[claimEventSignature] = buildClaimEventHandler(
-			bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
+			bridgeDeployment.agglayerBridge, client, querier,
+			bridgeAddr, syncFullClaims, logger)
 
 	case SovereignChain:
+		appender[claimEventSignature] = buildClaimEventHandler(
+			bridgeDeployment.agglayerBridge, client, querier,
+			bridgeAddr, syncFullClaims, logger)
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
@@ -383,13 +388,29 @@ func buildBridgeEventHandler(
 
 // buildClaimEventHandler creates a handler for the Claim event log.
 func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool,
-	logger *logger.Logger,
+	client aggkittypes.EthClienter, querier BridgeQuerier, bridgeAddr common.Address,
+	syncFullClaims bool, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
+		}
+
+		// check if we already have passed the block which started indexing DetailedClaimEvent
+		existingClaims, _, err := querier.GetClaimsPaged(context.Background(), 1, 1, nil, nil)
+		if err != nil {
+			return fmt.Errorf("error querying existing claims: %w", err)
+		}
+
+		if len(existingClaims) > 0 {
+			claim := existingClaims[0]
+			if claim.Source == DetailedClaimEvent {
+				logger.Debugf(
+					"Skipping ClaimEvent indexing at block %d; DetailedClaimEvent indexing already started at block %d",
+					b.Num, claim.BlockNum)
+			}
+			return nil
 		}
 
 		claim := &Claim{
@@ -402,6 +423,7 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
+			Source:             ClaimEvent,
 		}
 
 		// Extract root call for txn_sender and error checking
@@ -452,6 +474,7 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
 			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
+			Source:              DetailedClaimEvent,
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})
