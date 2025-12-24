@@ -184,7 +184,6 @@ jobs:
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
-      event-name: ${{ github.event_name }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       fail-fast: false
 
@@ -213,7 +212,6 @@ jobs:
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       test-name: "test-single-l2-network-op-succinct"
-      event-name: ${{ github.event_name }}
       fail-fast: false
 
   check-single-network-op-succinct-tests-result:
@@ -241,7 +239,6 @@ jobs:
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
       test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
-      event-name: ${{ github.event_name }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       fail-fast: false
 
@@ -270,7 +267,6 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
-      fail-fast: false
 
   check-multi-l2-networks-2-chains-tests-result:
     name: Check results for multi l2 networks (OP, pessimistic, 2 chains)
@@ -299,7 +295,6 @@ jobs:
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
       kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
       number-of-chains: 3
-      fail-fast: false
 
   check-multi-l2-networks-3-chains-tests-result:
     name: Check results for multi l2 networks (CDK Erigon, pessimisstic, 3 chains)
