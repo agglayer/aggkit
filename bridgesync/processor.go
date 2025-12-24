@@ -98,7 +98,8 @@ const (
 		o.destination_network,
 		o.metadata,
 		o.is_message,
-		o.block_timestamp`
+		o.block_timestamp,
+		o.type`
 )
 
 var (
