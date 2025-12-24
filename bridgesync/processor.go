@@ -208,7 +208,7 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	Type                ClaimType    `meddler:"type"`
+	Type                ClaimType      `meddler:"type"`
 }
 
 func (c *Claim) String() string {
