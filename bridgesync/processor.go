@@ -585,7 +585,7 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 	return nil
 }
 
-type BridgeQuerier interface{
+type BridgeQuerier interface {
 	GetClaimsPaged(ctx context.Context, pageNumber, pageSize uint32,
 		networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error)
 }
