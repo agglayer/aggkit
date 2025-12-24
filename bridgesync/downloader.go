@@ -405,7 +405,7 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 
 		if len(existingClaims) > 0 {
 			claim := existingClaims[0]
-			if claim.Source == DetailedClaimEvent {
+			if claim.Type == DetailedClaimEvent {
 				logger.Debugf(
 					"Skipping ClaimEvent indexing at block %d; DetailedClaimEvent indexing already started at block %d",
 					b.Num, claim.BlockNum)
@@ -423,7 +423,7 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
-			Source:             ClaimEvent,
+			Type:             ClaimEvent,
 		}
 
 		// Extract root call for txn_sender and error checking
@@ -474,7 +474,7 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
 			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
-			Source:              DetailedClaimEvent,
+			Type:              DetailedClaimEvent,
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})

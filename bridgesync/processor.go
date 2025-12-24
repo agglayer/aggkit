@@ -77,7 +77,7 @@ const (
 		metadata,
 		is_message,
 		block_timestamp,
-		source`
+		type`
 
 	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
 	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
@@ -182,11 +182,11 @@ func (b *Bridge) Hash() common.Hash {
 	)
 }
 
-type ClaimSource string
+type ClaimType string
 
 const (
-	ClaimEvent         ClaimSource = "ClaimEvent"
-	DetailedClaimEvent ClaimSource = "DetailedClaimEvent"
+	ClaimEvent         ClaimType = "ClaimEvent"
+	DetailedClaimEvent ClaimType = "DetailedClaimEvent"
 )
 
 // Claim representation of a claim event
@@ -208,7 +208,7 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	Source              ClaimSource    `meddler:"source"`
+	Type                ClaimType    `meddler:"type"`
 }
 
 func (c *Claim) String() string {
@@ -226,12 +226,12 @@ func (c *Claim) String() string {
 		"OriginNetwork: %d, OriginAddress: %s, DestinationAddress: %s, Amount: %s, "+
 		"ProofLocalExitRoot: %v, ProofRollupExitRoot: %v, MainnetExitRoot: %s, "+
 		"RollupExitRoot: %s, GlobalExitRoot: %s, DestinationNetwork: %d, Metadata: %x, "+
-		"IsMessage: %t, BlockTimestamp: %d}",
+		"IsMessage: %t, BlockTimestamp: %d, Type: %s}",
 		c.BlockNum, c.BlockPos, c.TxHash.String(), globalIndexStr,
 		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), amountStr,
 		c.ProofLocalExitRoot.String(), c.ProofRollupExitRoot.String(), c.MainnetExitRoot.String(),
 		c.RollupExitRoot.String(), c.GlobalExitRoot.String(), c.DestinationNetwork, c.Metadata,
-		c.IsMessage, c.BlockTimestamp)
+		c.IsMessage, c.BlockTimestamp, c.Type)
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
