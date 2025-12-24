@@ -255,7 +255,6 @@ func TestBuildAppender(t *testing.T) {
 	require.NoError(t, err)
 
 	ethClient := mocks.NewEthClienter(t)
-
 	ethClient.EXPECT().
 		Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
@@ -264,6 +263,12 @@ func TestBuildAppender(t *testing.T) {
 			*arg = Call{To: bridgeAddr, Input: BridgeAssetMethodID}
 		}).
 		Return(nil).
+		Maybe()
+
+	querierMock := NewBridgeQuerierMock(t)
+	querierMock.EXPECT().
+		GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*Claim{}, 0, nil).
 		Maybe()
 
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
@@ -347,36 +352,35 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
-		// TODO: @Stefan-Ethernal fix
-		// {
-		// 	name:           "claimEventSignature appender",
-		// 	eventSignature: claimEventSignature,
-		// 	deploymentKind: NonSovereignChain,
-		// 	logBuilder: func() (types.Log, error) {
-		// 		event, err := bridgeL2Abi.EventByID(claimEventSignature)
-		// 		if err != nil {
-		// 			return types.Log{}, err
-		// 		}
+		{
+			name:           "claimEventSignature appender",
+			eventSignature: claimEventSignature,
+			deploymentKind: NonSovereignChain,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(claimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
 
-		// 		globalIndex := big.NewInt(5)
-		// 		originNetwork := uint32(6)
-		// 		originAddress := common.HexToAddress("0x20")
-		// 		destinationAddress := common.HexToAddress("0x30")
-		// 		amount := big.NewInt(10)
-		// 		data, err := event.Inputs.Pack(
-		// 			globalIndex, originNetwork,
-		// 			originAddress, destinationAddress, amount)
-		// 		if err != nil {
-		// 			return types.Log{}, err
-		// 		}
+				globalIndex := big.NewInt(5)
+				originNetwork := uint32(6)
+				originAddress := common.HexToAddress("0x20")
+				destinationAddress := common.HexToAddress("0x30")
+				amount := big.NewInt(10)
+				data, err := event.Inputs.Pack(
+					globalIndex, originNetwork,
+					originAddress, destinationAddress, amount)
+				if err != nil {
+					return types.Log{}, err
+				}
 
-		// 		l := types.Log{
-		// 			Topics: []common.Hash{claimEventSignature},
-		// 			Data:   data,
-		// 		}
-		// 		return l, nil
-		// 	},
-		// },
+				l := types.Log{
+					Topics: []common.Hash{claimEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
 		{
 			name:           "detailedClaimEventSignature appender",
 			eventSignature: detailedClaimEventSignature,
@@ -583,7 +587,7 @@ func TestBuildAppender(t *testing.T) {
 
 			logger := logger.WithFields("module", "test")
 			bridgeDeployment.kind = tt.deploymentKind
-			appenderMap, err := buildAppender(t.Context(), ethClient, nil, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -853,6 +857,12 @@ func TestTxnSenderField(t *testing.T) {
 	agglayerBridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
+	querierMock := NewBridgeQuerierMock(t)
+	querierMock.EXPECT().
+		GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*Claim{}, 0, nil).
+		Maybe()
+
 	tests := []struct {
 		name              string
 		eventSignature    common.Hash
@@ -906,49 +916,48 @@ func TestTxnSenderField(t *testing.T) {
 				return l, nil
 			},
 		},
-		// TODO: @Stefan-Ethernal fix
-		// {
-		// 	name:           "claimEventSignature with TxnSender",
-		// 	eventSignature: claimEventSignature,
-		// 	callFrame: Call{
-		// 		To:   common.HexToAddress("0x01"),
-		// 		From: expectedTxnSender,
-		// 		Err:  nil,
-		// 		Calls: []Call{
-		// 			{
-		// 				To:    bridgeAddr,
-		// 				From:  common.HexToAddress("0x20"),
-		// 				Err:   nil,
-		// 				Input: BridgeAssetMethodID,
-		// 			},
-		// 		},
-		// 	},
-		// 	expectedTxnSender: expectedTxnSender,
-		// 	logBuilder: func() (types.Log, error) {
-		// 		event, err := agglayerBridgeABI.EventByID(claimEventSignature)
-		// 		if err != nil {
-		// 			return types.Log{}, err
-		// 		}
+		{
+			name:           "claimEventSignature with TxnSender",
+			eventSignature: claimEventSignature,
+			callFrame: Call{
+				To:   common.HexToAddress("0x01"),
+				From: expectedTxnSender,
+				Err:  nil,
+				Calls: []Call{
+					{
+						To:    bridgeAddr,
+						From:  common.HexToAddress("0x20"),
+						Err:   nil,
+						Input: BridgeAssetMethodID,
+					},
+				},
+			},
+			expectedTxnSender: expectedTxnSender,
+			logBuilder: func() (types.Log, error) {
+				event, err := agglayerBridgeABI.EventByID(claimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
 
-		// 		globalIndex := big.NewInt(5)
-		// 		originNetwork := uint32(6)
-		// 		originAddress := common.HexToAddress("0x20")
-		// 		destinationAddress := common.HexToAddress("0x30")
-		// 		amount := big.NewInt(10)
-		// 		data, err := event.Inputs.Pack(
-		// 			globalIndex, originNetwork,
-		// 			originAddress, destinationAddress, amount)
-		// 		if err != nil {
-		// 			return types.Log{}, err
-		// 		}
+				globalIndex := big.NewInt(5)
+				originNetwork := uint32(6)
+				originAddress := common.HexToAddress("0x20")
+				destinationAddress := common.HexToAddress("0x30")
+				amount := big.NewInt(10)
+				data, err := event.Inputs.Pack(
+					globalIndex, originNetwork,
+					originAddress, destinationAddress, amount)
+				if err != nil {
+					return types.Log{}, err
+				}
 
-		// 		l := types.Log{
-		// 			Topics: []common.Hash{claimEventSignature},
-		// 			Data:   data,
-		// 		}
-		// 		return l, nil
-		// 	},
-		// },
+				l := types.Log{
+					Topics: []common.Hash{claimEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -995,7 +1004,7 @@ func TestTxnSenderField(t *testing.T) {
 				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, nil, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

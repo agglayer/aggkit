@@ -56,6 +56,12 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       ReorgDetector:
+      BridgeQuerier:
+        config:
+          dir: "{{ .InterfaceDir }}"
+          outpkg: "{{ .PackageName }}"
+          inpackage: true
+          mockname: "{{ .InterfaceName }}Mock"
   github.com/agglayer/aggkit/bridgeservice:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
