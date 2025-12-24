@@ -392,11 +392,6 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 	syncFullClaims bool, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
-		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
-		if err != nil {
-			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
-		}
-
 		// check if we already have passed the block which started indexing DetailedClaimEvent
 		existingClaims, _, err := querier.GetClaimsPaged(context.Background(), 1, 1, nil, nil)
 		if err != nil {
@@ -411,6 +406,11 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 					b.Num, claim.BlockNum)
 			}
 			return nil
+		}
+
+		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
+		if err != nil {
+			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
 		}
 
 		claim := &Claim{
