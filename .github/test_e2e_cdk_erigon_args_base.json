@@ -7,7 +7,7 @@
   },
   "args": {
     "consensus_contract_type": "ecdsa_multisig",
-    "agglayer_contracts_image": "europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer-contracts:v11.0.0",
+    "agglayer_contracts_image": "europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer-contracts:v12.1.0",
     "use_agg_sender_validator": false,
     "agg_sender_multisig_threshold": 1,
     "agg_sender_validator_total_number": 0,
@@ -23,6 +23,6 @@
     "enable_normalcy": true,
     "erigon_strict_mode": false,
     "gas_token_enabled": false,
-    "additional_services": []
+    "additional_services": [ ]
   }
 }
