@@ -100,8 +100,13 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
       all: false
     interfaces:
-      RollupManagerContract:
       OpNodeClienter:
+  github.com/agglayer/aggkit/etherman/querier:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: false
+    interfaces:
+      RollupManagerContract:
   github.com/agglayer/aggkit/aggsender/optimistic:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
