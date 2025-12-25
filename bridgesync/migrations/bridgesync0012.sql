@@ -1,5 +1,7 @@
 -- +migrate Down
-ALTER TABLE claim DROP COLUMN type;
+ALTER TABLE claim
+DROP COLUMN type;
 
 -- +migrate Up
-ALTER TABLE claim ADD COLUMN type VARCHAR DEFAULT '';
+ALTER TABLE claim
+ADD COLUMN type TEXT NOT NULL DEFAULT '';
