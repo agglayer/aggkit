@@ -837,10 +837,34 @@ type RemovedGER struct {
 	LogIndex       uint64      `json:"log_index"`
 }
 
+// String returns a string representation of the RemovedGER struct
+func (r *RemovedGER) String() string {
+	if r == nil {
+		return "RemovedGER{nil}"
+	}
+	return fmt.Sprintf("GlobalExitRoot: %s, BlockNumber: %d, LogIndex: %d",
+		r.GlobalExitRoot.String(), r.BlockNumber, r.LogIndex)
+}
+
 type Unclaim struct {
 	GlobalIndex *GlobalIndex `json:"global_index"`
 	BlockNumber uint64       `json:"block_number"`
 	LogIndex    uint64       `json:"log_index"`
+}
+
+// String returns a string representation of the Unclaim struct
+func (u *Unclaim) String() string {
+	if u == nil {
+		return "Unclaim{nil}"
+	}
+	var globalIndexStr string
+	if u.GlobalIndex == nil {
+		globalIndexStr = "nil"
+	} else {
+		globalIndexStr = u.GlobalIndex.String()
+	}
+	return fmt.Sprintf("GlobalIndex: %s, BlockNumber: %d, LogIndex: %d",
+		globalIndexStr, u.BlockNumber, u.LogIndex)
 }
 
 type ProvenInsertedGERWithBlockNumber struct {
@@ -849,9 +873,37 @@ type ProvenInsertedGERWithBlockNumber struct {
 	LogIndex              uint64            `json:"log_index"`
 }
 
+// String returns a string representation of the ProvenInsertedGERWithBlockNumber struct
+func (p *ProvenInsertedGERWithBlockNumber) String() string {
+	if p == nil {
+		return "ProvenInsertedGERWithBlockNumber{nil}"
+	}
+	return fmt.Sprintf("BlockNumber: %d, ProvenInsertedGERLeaf: %s, LogIndex: %d",
+		p.BlockNumber, p.ProvenInsertedGERLeaf.String(), p.LogIndex)
+}
+
 type ProvenInsertedGER struct {
 	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
 	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
+}
+
+// String returns a string representation of the ProvenInsertedGER struct
+func (p *ProvenInsertedGER) String() string {
+	if p == nil {
+		return "ProvenInsertedGER{nil}"
+	}
+	var proofStr, leafStr string
+	if p.ProofGERToL1Root == nil {
+		proofStr = "nil"
+	} else {
+		proofStr = p.ProofGERToL1Root.String()
+	}
+	if p.L1Leaf == nil {
+		leafStr = "nil"
+	} else {
+		leafStr = p.L1Leaf.String()
+	}
+	return fmt.Sprintf("ProofGERToL1Root: %s, L1Leaf: %s", proofStr, leafStr)
 }
 
 type ImportedBridgeExitWithBlockNumber struct {

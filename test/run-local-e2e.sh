@@ -173,7 +173,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats -f "Test inject invalid GER on L2 (bridges are valid)" || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats -f "Test inject invalid GER on L2 - bridges are valid" || exit 1
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats || exit 1
