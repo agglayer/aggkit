@@ -859,7 +859,7 @@ func (u *Unclaim) String() string {
 	}
 	var globalIndexStr string
 	if u.GlobalIndex == nil {
-		globalIndexStr = "nil"
+		globalIndexStr = nilStr
 	} else {
 		globalIndexStr = u.GlobalIndex.String()
 	}
@@ -894,12 +894,12 @@ func (p *ProvenInsertedGER) String() string {
 	}
 	var proofStr, leafStr string
 	if p.ProofGERToL1Root == nil {
-		proofStr = "nil"
+		proofStr = nilStr
 	} else {
 		proofStr = p.ProofGERToL1Root.String()
 	}
 	if p.L1Leaf == nil {
-		leafStr = "nil"
+		leafStr = nilStr
 	} else {
 		leafStr = p.L1Leaf.String()
 	}
