@@ -588,8 +588,7 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 }
 
 type BridgeQuerier interface {
-	GetClaimsPaged(ctx context.Context, pageNumber, pageSize uint32,
-		networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error)
+	GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error)
 }
 
 var _ BridgeQuerier = (*processor)(nil)
@@ -1005,6 +1004,25 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	return claims, claimsCount, nil
+}
+
+// GetBoundaryBlockForClaimType returns the max (latest) block number for a given claim type
+func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	query := `SELECT MAX(block_num) FROM claim WHERE type = $1;`
+	var blockNumber *uint64
+	if err := p.db.QueryRowContext(dbCtx, query, claimType).Scan(&blockNumber); err != nil {
+		return 0, err
+	}
+
+	if blockNumber == nil {
+		p.log.Debugf("no block found yet for claim type %s", claimType)
+		return 0, db.ErrNotFound
+	}
+
+	return *blockNumber, nil
 }
 
 // GetUnsetClaimsPaged returns a paginated list of unset claims

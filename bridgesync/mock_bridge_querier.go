@@ -4,7 +4,6 @@ package bridgesync
 
 import (
 	context "context"
-	big "math/big"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,71 +21,59 @@ func (_m *BridgeQuerierMock) EXPECT() *BridgeQuerierMock_Expecter {
 	return &BridgeQuerierMock_Expecter{mock: &_m.Mock}
 }
 
-// GetClaimsPaged provides a mock function with given fields: ctx, pageNumber, pageSize, networkIDs, globalIndex
-func (_m *BridgeQuerierMock) GetClaimsPaged(ctx context.Context, pageNumber uint32, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error) {
-	ret := _m.Called(ctx, pageNumber, pageSize, networkIDs, globalIndex)
+// GetBoundaryBlockForClaimType provides a mock function with given fields: ctx, claimType
+func (_m *BridgeQuerierMock) GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error) {
+	ret := _m.Called(ctx, claimType)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetClaimsPaged")
+		panic("no return value specified for GetBoundaryBlockForClaimType")
 	}
 
-	var r0 []*Claim
-	var r1 int
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, *big.Int) ([]*Claim, int, error)); ok {
-		return rf(ctx, pageNumber, pageSize, networkIDs, globalIndex)
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, ClaimType) (uint64, error)); ok {
+		return rf(ctx, claimType)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, *big.Int) []*Claim); ok {
-		r0 = rf(ctx, pageNumber, pageSize, networkIDs, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, ClaimType) uint64); ok {
+		r0 = rf(ctx, claimType)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*Claim)
-		}
+		r0 = ret.Get(0).(uint64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32, *big.Int) int); ok {
-		r1 = rf(ctx, pageNumber, pageSize, networkIDs, globalIndex)
+	if rf, ok := ret.Get(1).(func(context.Context, ClaimType) error); ok {
+		r1 = rf(ctx, claimType)
 	} else {
-		r1 = ret.Get(1).(int)
+		r1 = ret.Error(1)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32, *big.Int) error); ok {
-		r2 = rf(ctx, pageNumber, pageSize, networkIDs, globalIndex)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
+	return r0, r1
 }
 
-// BridgeQuerierMock_GetClaimsPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClaimsPaged'
-type BridgeQuerierMock_GetClaimsPaged_Call struct {
+// BridgeQuerierMock_GetBoundaryBlockForClaimType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBoundaryBlockForClaimType'
+type BridgeQuerierMock_GetBoundaryBlockForClaimType_Call struct {
 	*mock.Call
 }
 
-// GetClaimsPaged is a helper method to define mock.On call
+// GetBoundaryBlockForClaimType is a helper method to define mock.On call
 //   - ctx context.Context
-//   - pageNumber uint32
-//   - pageSize uint32
-//   - networkIDs []uint32
-//   - globalIndex *big.Int
-func (_e *BridgeQuerierMock_Expecter) GetClaimsPaged(ctx interface{}, pageNumber interface{}, pageSize interface{}, networkIDs interface{}, globalIndex interface{}) *BridgeQuerierMock_GetClaimsPaged_Call {
-	return &BridgeQuerierMock_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, pageNumber, pageSize, networkIDs, globalIndex)}
+//   - claimType ClaimType
+func (_e *BridgeQuerierMock_Expecter) GetBoundaryBlockForClaimType(ctx interface{}, claimType interface{}) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
+	return &BridgeQuerierMock_GetBoundaryBlockForClaimType_Call{Call: _e.mock.On("GetBoundaryBlockForClaimType", ctx, claimType)}
 }
 
-func (_c *BridgeQuerierMock_GetClaimsPaged_Call) Run(run func(ctx context.Context, pageNumber uint32, pageSize uint32, networkIDs []uint32, globalIndex *big.Int)) *BridgeQuerierMock_GetClaimsPaged_Call {
+func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) Run(run func(ctx context.Context, claimType ClaimType)) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].([]uint32), args[4].(*big.Int))
+		run(args[0].(context.Context), args[1].(ClaimType))
 	})
 	return _c
 }
 
-func (_c *BridgeQuerierMock_GetClaimsPaged_Call) Return(_a0 []*Claim, _a1 int, _a2 error) *BridgeQuerierMock_GetClaimsPaged_Call {
-	_c.Call.Return(_a0, _a1, _a2)
+func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) Return(_a0 uint64, _a1 error) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *BridgeQuerierMock_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, []uint32, *big.Int) ([]*Claim, int, error)) *BridgeQuerierMock_GetClaimsPaged_Call {
+func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) RunAndReturn(run func(context.Context, ClaimType) (uint64, error)) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
 	_c.Call.Return(run)
 	return _c
 }

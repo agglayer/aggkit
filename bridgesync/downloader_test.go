@@ -11,6 +11,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -267,8 +268,8 @@ func TestBuildAppender(t *testing.T) {
 
 	querierMock := NewBridgeQuerierMock(t)
 	querierMock.EXPECT().
-		GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]*Claim{}, 0, nil).
+		GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
+		Return(0, db.ErrNotFound).
 		Maybe()
 
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
@@ -859,8 +860,8 @@ func TestTxnSenderField(t *testing.T) {
 
 	querierMock := NewBridgeQuerierMock(t)
 	querierMock.EXPECT().
-		GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]*Claim{}, 0, nil).
+		GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
+		Return(0, db.ErrNotFound).
 		Maybe()
 
 	tests := []struct {

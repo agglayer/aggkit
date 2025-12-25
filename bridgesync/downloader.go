@@ -3,6 +3,7 @@ package bridgesync
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -386,18 +387,16 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		// check if we already have passed the block which started indexing DetailedClaimEvent
-		existingClaims, _, err := querier.GetClaimsPaged(context.Background(), 1, 1, nil, nil)
-		if err != nil {
-			return fmt.Errorf("error querying existing claims: %w", err)
+		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(context.Background(), DetailedClaimEvent)
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			return fmt.Errorf("failed checking DetailedClaimEvent boundary: %w", err)
 		}
 
-		if len(existingClaims) > 0 {
-			claim := existingClaims[0]
-			if claim.Type == DetailedClaimEvent {
-				logger.Debugf(
-					"Skipping ClaimEvent indexing at block %d; DetailedClaimEvent indexing already started at block %d",
-					b.Num, claim.BlockNum)
-			}
+		if err == nil && b.Num >= boundaryBlock {
+			logger.Debugf(
+				"Skipping ClaimEvent at block %d; DetailedClaimEvent indexing already started at block %d",
+				b.Num, boundaryBlock,
+			)
 			return nil
 		}
 
