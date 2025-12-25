@@ -297,7 +297,7 @@ func resolveBridgeDeployment(ctx context.Context,
 			agglayerBridgeL2: agglayerBridgeL2,
 		}, nil
 	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
-		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.BRIDGE_VERSION: %w", err)
+		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.lastUpdatedDepositCount: %w", err)
 	}
 
 	return nil, fmt.Errorf("unable to determine bridge contract type at address %s", bridgeAddr)

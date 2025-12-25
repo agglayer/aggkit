@@ -102,18 +102,11 @@ func buildAppender(
 		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
+	appender[claimEventSignature] = buildClaimEventHandler(bridgeDeployment.agglayerBridge, client, querier,
+		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
-	switch bridgeDeployment.kind {
-	case NonSovereignChain:
-		appender[claimEventSignature] = buildClaimEventHandler(
-			bridgeDeployment.agglayerBridge, client, querier,
-			bridgeAddr, syncFullClaims, logger)
-
-	case SovereignChain:
-		appender[claimEventSignature] = buildClaimEventHandler(
-			bridgeDeployment.agglayerBridge, client, querier,
-			bridgeAddr, syncFullClaims, logger)
+	if bridgeDeployment.kind == SovereignChain {
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
