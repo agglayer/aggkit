@@ -38,6 +38,10 @@ func DecodeABIEncodedStructArray[T any](encodedBytes []byte) ([]T, error) {
 		return nil, errors.New("unpacked data is empty")
 	}
 
-	decodedData := *abi.ConvertType(unpacked[0], new([]T)).(*[]T)
-	return decodedData, nil
+	decodedData, ok := abi.ConvertType(unpacked[0], new([]T)).(*[]T)
+	if !ok {
+		return nil, errors.New("failed to convert unpacked data to the expected type")
+	}
+
+	return *decodedData, nil
 }
