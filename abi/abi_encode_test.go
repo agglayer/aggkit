@@ -10,9 +10,9 @@ import (
 
 func TestEncodeABIStructArray(t *testing.T) {
 	type TestStruct struct {
-		Field1 uint8          `abiarg:"field1"`
-		Field2 uint32         `abiarg:"field2"`
-		Field3 common.Address `abiarg:"field3"`
+		Field1 uint8          `abi:"field1"`
+		Field2 uint32         `abi:"field2"`
+		Field3 common.Address `abi:"field3"`
 	}
 
 	items := []TestStruct{
@@ -32,20 +32,14 @@ func TestEncodeABIStructArray(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, encodedBytes)
 
-	// Decode to verify roundtrip
-	converter := func(item any) (TestStruct, error) {
-		// Simple converter for test verification
-		return TestStruct{}, nil
-	}
-
-	_, err = DecodeABIEncodedStructArray(encodedBytes, converter)
+	_, err = DecodeABIEncodedStructArray[TestStruct](encodedBytes)
 	require.NoError(t, err)
 }
 
 func TestEncodeABIStructArray_EmptySlice(t *testing.T) {
 	type TestStruct struct {
-		Field1 uint8  `abiarg:"field1"`
-		Field2 uint32 `abiarg:"field2"`
+		Field1 uint8  `abi:"field1"`
+		Field2 uint32 `abi:"field2"`
 	}
 
 	items := []TestStruct{}
@@ -57,7 +51,7 @@ func TestEncodeABIStructArray_EmptySlice(t *testing.T) {
 
 func TestEncodeABIStructArray_WithBigInt(t *testing.T) {
 	type TestStruct struct {
-		Amount *big.Int `abiarg:"amount,uint256"`
+		Amount *big.Int `abi:"amount"`
 	}
 
 	items := []TestStruct{

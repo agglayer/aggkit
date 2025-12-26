@@ -27,30 +27,23 @@ func BuildABIFields(structType any) ([]abi.ArgumentMarshaling, error) {
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		abiTag := field.Tag.Get("abiarg")
+		abiTag := field.Tag.Get("abi")
 		if abiTag == "" {
-			continue // Skip fields without abiarg tag
+			continue // Skip fields without abi tag
 		}
 
 		parts := strings.Split(abiTag, ",")
 		name := parts[0]
 
-		var abiType string
-		if len(parts) > 1 {
-			// Explicit type from tag
-			abiType = parts[1]
-		} else {
-			// Infer type from Go type
-			inferredType, err := inferABIType(field.Type)
-			if err != nil {
-				return nil, fmt.Errorf("field %s: %w", field.Name, err)
-			}
-			abiType = inferredType
+		// Infer type from Go type
+		inferredType, err := inferABIType(field.Type)
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", field.Name, err)
 		}
 
 		fields = append(fields, abi.ArgumentMarshaling{
 			Name: name,
-			Type: abiType,
+			Type: inferredType,
 		})
 	}
 

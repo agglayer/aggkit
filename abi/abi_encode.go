@@ -22,7 +22,7 @@ func EncodeABIStructArray[T any](items []T) ([]byte, error) {
 		return nil, fmt.Errorf("failed to build ABI fields: %w", err)
 	}
 
-	arrayType, err := abi.NewType("tuple[]", "", abiFields)
+	arrayType, err := abi.NewType(tupleArrayType, "", abiFields)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create array type: %w", err)
 	}
