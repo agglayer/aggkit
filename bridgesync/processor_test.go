@@ -5153,3 +5153,111 @@ func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 		require.True(t, ok, "Missing SQL column for meddler-tag '%s'", col)
 	}
 }
+
+func TestGetBoundaryBlock(t *testing.T) {
+	insertBlockQuery := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
+
+	cases := []struct {
+		name          string
+		claims        []*Claim
+		claimType     ClaimType
+		expectedBlock uint64
+		expectedErr   error
+	}{
+		{
+			name:        "no claims, not found error",
+			expectedErr: db.ErrNotFound,
+		},
+		{
+			name: "detailed claim event exists, return its block",
+			claims: []*Claim{
+				{
+					BlockNum:    1,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(100),
+					Type:        DetailedClaimEvent,
+				},
+				{
+					BlockNum:    6,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(101),
+					Type:        DetailedClaimEvent,
+				},
+			},
+			claimType:     DetailedClaimEvent,
+			expectedBlock: 6,
+		},
+		{
+			name: "mixed claim types exist, return detailed claim event block",
+			claims: []*Claim{
+				{
+					BlockNum:    1,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(100),
+					Type:        ClaimEvent,
+				},
+				{
+					BlockNum:    100,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(101),
+					Type:        DetailedClaimEvent,
+				},
+				{
+					BlockNum:    101,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(102),
+					Type:        DetailedClaimEvent,
+				},
+			},
+			claimType:     DetailedClaimEvent,
+			expectedBlock: 101,
+		},
+		{
+			name: "no corresponding claim types exist",
+			claims: []*Claim{
+				{
+					BlockNum:    1,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(100),
+					Type:        ClaimEvent,
+				},
+				{
+					BlockNum:    100,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(101),
+					Type:        ClaimEvent,
+				},
+			},
+			claimType:   DetailedClaimEvent,
+			expectedErr: db.ErrNotFound,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "get_boundary_block.sqlite")
+			require.NoError(t, migrations.RunMigrations(dbPath))
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			require.NoError(t, err)
+
+			// Insert claims if any
+			if len(tc.claims) > 0 {
+				tx, err := p.db.BeginTx(t.Context(), nil)
+				require.NoError(t, err)
+				for _, claim := range tc.claims {
+					_, err = tx.Exec(insertBlockQuery, claim.BlockNum, common.HexToHash("0x0"))
+					require.NoError(t, err)
+					require.NoError(t, meddler.Insert(tx, "claim", claim))
+				}
+				require.NoError(t, tx.Commit())
+			}
+
+			blockNum, err := p.GetBoundaryBlockForClaimType(t.Context(), tc.claimType)
+			if tc.expectedErr != nil {
+				require.ErrorIs(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBlock, blockNum)
+			}
+		})
+	}
+}
