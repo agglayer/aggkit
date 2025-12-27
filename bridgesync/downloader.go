@@ -392,10 +392,10 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			return fmt.Errorf("failed checking DetailedClaimEvent boundary: %w", err)
 		}
 
-		if err == nil && b.Num >= boundaryBlock {
+		if err == nil && l.BlockNumber >= boundaryBlock {
 			logger.Debugf(
 				"Skipping ClaimEvent at block %d; DetailedClaimEvent indexing already started at block %d",
-				b.Num, boundaryBlock,
+				l.BlockNumber, boundaryBlock,
 			)
 			return nil
 		}
