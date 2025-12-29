@@ -41,6 +41,9 @@ var mig0010 string
 //go:embed bridgesync0011.sql
 var mig0011 string
 
+//go:embed bridgesync0012.sql
+var mig0012 string
+
 func RunMigrations(dbPath string) error {
 	migrations := []types.Migration{
 		{
@@ -86,6 +89,10 @@ func RunMigrations(dbPath string) error {
 		{
 			ID:  "bridgesync0011",
 			SQL: mig0011,
+		},
+		{
+			ID:  "bridgesync0012",
+			SQL: mig0012,
 		},
 	}
 	migrations = append(migrations, treeMigrations.Migrations...)

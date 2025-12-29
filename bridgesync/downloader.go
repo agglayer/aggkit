@@ -139,6 +139,13 @@ func (t *Transaction) From() common.Address {
 	return common.HexToAddress(t.FromRaw)
 }
 
+func (t *Transaction) ToAddress() common.Address {
+	if t.To == "" {
+		return common.Address{}
+	}
+	return common.HexToAddress(t.To)
+}
+
 func RPCTransactionByHash(client aggkittypes.EthClienter,
 	txHash common.Hash) (*Transaction, error) {
 	// Use client.Call to fetch transaction details using eth_getTransactionByHash
@@ -150,33 +157,25 @@ func RPCTransactionByHash(client aggkittypes.EthClienter,
 	return &tx, nil
 }
 
-func extractTxnSender(
-	client aggkittypes.EthClienter,
-	txHash common.Hash) (common.Address, error) {
-	tx, err := RPCTransactionByHash(client, txHash)
-	if err != nil {
-		return common.Address{}, fmt.Errorf("failed to get transaction by hash for %s: %w", txHash.Hex(), err)
-	}
-	return tx.From(), nil
-}
-
-// ExtractTxnSenderAndFrom extracts the txn_sender and from address from the transaction trace.
-// Return txnSender (same for all events in the same transaction) and fromAddr (specific for the event)
-func ExtractTxnSenderAndFrom(ctx context.Context,
+// ExtractTxnAddresses extracts the txn_sender, from address, and to address from the transaction trace.
+func ExtractTxnAddresses(ctx context.Context,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
-	logger *logger.Logger) (txnSender common.Address, fromAddr common.Address, err error) {
+	logger *logger.Logger) (txnSender common.Address, fromAddr common.Address, toAddr common.Address, err error) {
 	// If event is a message, fromAddr is log.origin_address
 	// so we only need the txn_sender that can be obtained from hash_receipt
+	// and toAddr from the transaction receipt (same source as txn_sender)
 	if logEvent.LeafType == bridgeLeafTypeMessage {
-		txnSender, err = extractTxnSender(client, txHash)
+		tx, err := RPCTransactionByHash(client, txHash)
 		if err != nil {
-			return common.Address{}, common.Address{},
-				fmt.Errorf("extractTxnSenderAndFrom: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
+			return common.Address{}, common.Address{}, common.Address{},
+				fmt.Errorf("extractTxnAddresses: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
 		}
-		return txnSender, logEvent.OriginAddress, nil
+		txnSender = tx.From()
+		toAddr = tx.ToAddress()
+		return txnSender, logEvent.OriginAddress, toAddr, nil
 	}
 	foundCalls, rootCall, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
 		if logEvent.LeafType == bridgeLeafTypeAsset {
@@ -185,18 +184,19 @@ func ExtractTxnSenderAndFrom(ctx context.Context,
 		return false, nil
 	})
 	if err != nil {
-		return common.Address{}, common.Address{},
-			fmt.Errorf("extractTxnSenderAndFrom:failed to extract bridge event data (tx hash: %s): %w", txHash, err)
+		return common.Address{}, common.Address{}, common.Address{},
+			fmt.Errorf("extractTxnAddresses:failed to extract bridge event data (tx hash: %s): %w", txHash, err)
 	}
 	txnSender = rootCall.From
+	toAddr = rootCall.To
 	fromAddr, err = ExtractFromAddrFromCalls(foundCalls, logEvent)
 	if err != nil {
-		return common.Address{}, common.Address{},
-			fmt.Errorf("extractTxnSenderAndFrom: failed to extract fromAddr from tx_hash:%s calls: %w",
+		return common.Address{}, common.Address{}, common.Address{},
+			fmt.Errorf("extractTxnAddresses: failed to extract fromAddr from tx_hash:%s calls: %w",
 				txHash.Hex(), err)
 	}
 
-	return txnSender, fromAddr, nil
+	return txnSender, fromAddr, toAddr, nil
 }
 
 type bridgeCallParams struct {
@@ -355,7 +355,7 @@ func buildBridgeEventHandler(
 			"DestinationNetwork: %d, DestinationAddress: %s, DepositCount: %d, Amount: %s, ",
 			bridgeEvent.LeafType, bridgeEvent.OriginNetwork, bridgeEvent.OriginAddress.Hex(), bridgeEvent.DestinationNetwork,
 			bridgeEvent.DestinationAddress.Hex(), bridgeEvent.DepositCount, bridgeEvent.Amount.String())
-		txnSender, fromAddress, err := ExtractTxnSenderAndFrom(ctx, client, bridgeAddr, l.TxHash,
+		txnSender, fromAddress, toAddress, err := ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash,
 			bridgeEvent, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
@@ -376,6 +376,7 @@ func buildBridgeEventHandler(
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
 			TxnSender:          txnSender,
+			ToAddress:          toAddress,
 		}})
 		return nil
 	}
