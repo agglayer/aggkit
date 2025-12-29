@@ -135,7 +135,7 @@ func (t *Tree) getRHTNode(tx dbtypes.Querier, nodeHash common.Hash) (*types.Tree
 func (t *Tree) storeNodes(tx dbtypes.Txer, nodes []types.TreeNode) error {
 	for _, node := range nodes {
 		if err := meddler.Insert(tx, t.rhtTable, &node); err != nil {
-			if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.ExtendedCode == db.UniqueConstrain {
+			if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.ExtendedCode == db.UniqueConstraintErrCode {
 				// ignore repeated entries
 				continue
 			}
