@@ -22,6 +22,6 @@
     "enable_normalcy": true,
     "erigon_strict_mode": false,
     "gas_token_enabled": false,
-    "additional_services": [ ]
+    "additional_services": []
   }
 }
