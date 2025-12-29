@@ -29,7 +29,7 @@ import (
 // mainnet:
 // case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985) -> fix
 // case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
-func TestExtractTxnSenderAndFromExploratory(t *testing.T) {
+func TestExtractTxnAddressesExploratory(t *testing.T) {
 	t.Skip("Skipping exploratory test")
 	ctx := t.Context()
 	l1url := os.Getenv("L1URL")
@@ -1087,7 +1087,7 @@ func TestTxnSenderField(t *testing.T) {
 	}
 }
 
-func TestExtractTxnSenderAndFrom(t *testing.T) {
+func TestExtractTxnAddresses(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	txHash := common.HexToHash("0xabcde12345abcde12345abcde12345abcde12345abcde12345abcde12345abcd")
 
@@ -1100,6 +1100,7 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 		responseTransactionHashError error
 		expectedTxnSender            common.Address
 		expectedFrom                 common.Address
+		expectedTo                   common.Address
 		expectErr                    string
 	}{
 		{
@@ -1112,6 +1113,23 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 			},
 			responseTransactionHashError: fmt.Errorf("RPC error"),
 			expectErr:                    "RPC error",
+		},
+		{
+			name: "messageLeaf: successful extraction with to address",
+			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeMessage,
+				OriginAddress:      common.HexToAddress("0x40"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x30"),
+				Amount:             big.NewInt(100),
+			},
+			responseTransactionHash: &Transaction{
+				FromRaw: "0x1111111111111111111111111111111111111111",
+				To:      "0x2222222222222222222222222222222222222222",
+			},
+			expectedTxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+			expectedFrom:      common.HexToAddress("0x40"),
+			expectedTo:        common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		},
 		{
 			name: "assetLeaf: error can't find From from calls",
@@ -1136,6 +1154,30 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 				},
 			},
 			expectErr: "failed to extract",
+		},
+		{
+			name: "assetLeaf: successful extraction with to address from rootCall",
+			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
+				LeafType:           bridgeLeafTypeAsset,
+				OriginAddress:      common.HexToAddress("0x50"),
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x30"),
+				Amount:             big.NewInt(100),
+			},
+			responseDebugTrace: &Call{
+				From: common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				To:   common.HexToAddress("0x4444444444444444444444444444444444444444"),
+				Calls: []Call{
+					{
+						To:    bridgeAddr,
+						From:  common.HexToAddress("0x50"),
+						Input: append(BridgeAssetMethodID, make([]byte, 100)...),
+					},
+				},
+			},
+			expectedTxnSender: common.HexToAddress("0x3333333333333333333333333333333333333333"),
+			expectedFrom:      common.HexToAddress("0x50"),
+			expectedTo:        common.HexToAddress("0x4444444444444444444444444444444444444444"),
 		},
 	}
 	for _, tt := range tests {
@@ -1162,7 +1204,7 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 				}).Return(nil).
 				Maybe()
 
-			txnSender, from, err := ExtractTxnSenderAndFrom(ctx, ethClient,
+			txnSender, from, to, err := ExtractTxnAddresses(ctx, ethClient,
 				bridgeAddr, txHash, tt.logEvent, logger)
 			if tt.expectErr != "" {
 				require.ErrorContains(t, err, tt.expectErr)
@@ -1170,6 +1212,7 @@ func TestExtractTxnSenderAndFrom(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedTxnSender, txnSender)
 				require.Equal(t, tt.expectedFrom, from)
+				require.Equal(t, tt.expectedTo, to)
 			}
 		})
 	}

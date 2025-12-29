@@ -127,6 +127,7 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32,
 		DepositCount:       bridge.DepositCount,
 		BridgeHash:         bridgetypes.Hash(bridge.Hash().Hex()),
 		TxnSender:          bridgetypes.Address(bridge.TxnSender.Hex()),
+		ToAddress:          bridgetypes.Address(bridge.ToAddress.Hex()),
 	}
 }
 

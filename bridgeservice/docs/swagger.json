@@ -750,6 +750,11 @@
                     "type": "integer",
                     "example": 10
                 },
+                "to_address": {
+                    "description": "Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.",
+                    "type": "string",
+                    "example": "0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"
+                },
                 "tx_hash": {
                     "description": "Hash of the transaction that included the bridge event",
                     "type": "string",
