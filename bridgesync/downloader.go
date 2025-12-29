@@ -103,7 +103,7 @@ func buildAppender(
 		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
-	appender[claimEventSignature] = buildClaimEventHandler(bridgeDeployment.agglayerBridge, client, querier,
+	appender[claimEventSignature] = buildClaimEventHandler(ctx, bridgeDeployment.agglayerBridge, client, querier,
 		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
@@ -382,13 +382,13 @@ func buildBridgeEventHandler(
 }
 
 // buildClaimEventHandler creates a handler for the Claim event log.
-func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
+func buildClaimEventHandler(ctx context.Context, agglayerBridge *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter, querier BridgeQuerier, bridgeAddr common.Address,
 	syncFullClaims bool, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		// check if we already have passed the block which started indexing DetailedClaimEvent
-		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(context.Background(), DetailedClaimEvent)
+		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(ctx, DetailedClaimEvent)
 		if err != nil && !errors.Is(err, db.ErrNotFound) {
 			return fmt.Errorf("failed checking DetailedClaimEvent boundary: %w", err)
 		}
