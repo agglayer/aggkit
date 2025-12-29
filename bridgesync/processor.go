@@ -1019,7 +1019,7 @@ func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, claimType 
 	}
 
 	if blockNumber == nil {
-		p.log.Debugf("no block found yet for claim type %s", claimType)
+		p.log.Debugf("no boundary block found for claim type %s", claimType)
 		return 0, db.ErrNotFound
 	}
 
