@@ -8,8 +8,7 @@ ALTER TABLE bridge DROP COLUMN to_address;
 ALTER TABLE bridge DROP COLUMN to_address;
 
 -- +migrate Up
-ALTER TABLE claim
-ADD COLUMN type TEXT NOT NULL DEFAULT '';
+ALTER TABLE claim ADD COLUMN type TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_claim_type_block ON claim (type, block_num);
 
