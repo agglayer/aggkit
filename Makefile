@@ -46,13 +46,13 @@ check-curl: ## Check if curl is installed
 # Check for Golangci-lint
 .PHONY: check-golangci-lint
 check-golangci-lint:
-	@which golangci-lint > /dev/null || (echo "Error: golangci-lint is not installed" && exit 1)
+	@which golangci-lint-v2 > /dev/null || (echo "Error: golangci-lint-v2 is not installed. Please install it: https://github.com/golangci/golangci-lint" && exit 1)
 
 # Check for Swag
 .PHONY: check-swag
 check-swag:
 	@command -v swag >/dev/null 2>&1 || { \
-		echo >&2 "swag not installed. Please install it: https://github.com/swaggo/swag"; \
+		echo >&2 "Error: swag not installed. Please install it: https://github.com/swaggo/swag"; \
 		exit 1; \
 	}
 
@@ -98,7 +98,7 @@ test-unit: ## Runs the unit tests
 
 .PHONY: lint
 lint: ## Runs the linter
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
+	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint-v2 run --timeout 5m
 
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs

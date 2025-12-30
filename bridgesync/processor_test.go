@@ -65,6 +65,7 @@ func TestBigIntString(t *testing.T) {
 		RollupExitRoot:      common.Hash{},
 		GlobalExitRoot:      common.Hash{},
 		DestinationNetwork:  12,
+		Type:                ClaimEvent,
 	}
 
 	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, claim.BlockNum)
@@ -357,6 +358,7 @@ var (
 				DestinationAddress: common.HexToAddress("01"),
 				Amount:             big.NewInt(1),
 				MainnetExitRoot:    common.Hash{},
+				Type:               DetailedClaimEvent,
 			}},
 			Event{TokenMapping: &TokenMapping{
 				BlockNum:            1,
@@ -838,7 +840,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	require.NoError(t, err)
 
 	// insert test claim
-	testClaim := &Claim{
+	testClaim := Claim{
 		BlockNum:            1,
 		BlockPos:            0,
 		GlobalIndex:         GenerateGlobalIndexForNetworkID(0, 1093),
@@ -854,11 +856,12 @@ func TestInsertAndGetClaim(t *testing.T) {
 		DestinationNetwork:  12,
 		Metadata:            []byte("0x11"),
 		IsMessage:           false,
+		Type:                ClaimEvent,
 	}
 
 	_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, testClaim.BlockNum, fmt.Sprintf("0x%x", testClaim.BlockNum))
 	require.NoError(t, err)
-	require.NoError(t, meddler.Insert(tx, "claim", testClaim))
+	require.NoError(t, meddler.Insert(tx, "claim", &testClaim))
 
 	require.NoError(t, tx.Commit())
 
@@ -866,7 +869,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	claims, err := p.GetClaims(context.Background(), 1, 1)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
-	require.Equal(t, testClaim, &claims[0])
+	require.Equal(t, testClaim, claims[0])
 }
 
 func TestGetBridgesPublished(t *testing.T) {
@@ -3280,6 +3283,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("metadata1"),
 			IsMessage:           false,
 			BlockTimestamp:      1000,
+			Type:                ClaimEvent,
 		},
 		// claims[1] - Basic claim with GlobalIndex=2
 		{
@@ -3300,6 +3304,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("metadata2"),
 			IsMessage:           true,
 			BlockTimestamp:      2000,
+			Type:                ClaimEvent,
 		},
 		// claims[2] - Oldest claim with GlobalIndex=100 (block 1)
 		{
@@ -3320,6 +3325,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("original_metadata"),
 			IsMessage:           false,
 			BlockTimestamp:      1000,
+			Type:                ClaimEvent,
 		},
 		// claims[3] - Middle claim with GlobalIndex=100 (block 2)
 		{
@@ -3340,6 +3346,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("middle_metadata"),
 			IsMessage:           true,
 			BlockTimestamp:      2000,
+			Type:                ClaimEvent,
 		},
 		// claims[4] - Newest claim with GlobalIndex=100 (block 3)
 		{
@@ -3360,6 +3367,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("newest_metadata"),
 			IsMessage:           true,
 			BlockTimestamp:      3000,
+			Type:                DetailedClaimEvent,
 		},
 		// claims[5] - Oldest claim with GlobalIndex=100 (block 1, pos 0) - for multiple groups test
 		{
@@ -3380,6 +3388,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("index1_old"),
 			IsMessage:           false,
 			BlockTimestamp:      1000,
+			Type:                ClaimEvent,
 		},
 		// claims[6] - Oldest claim with GlobalIndex=200 (block 1, pos 1)
 		{
@@ -3400,6 +3409,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("index2_old"),
 			IsMessage:           true,
 			BlockTimestamp:      1001,
+			Type:                ClaimEvent,
 		},
 		// claims[7] - Newest claim with GlobalIndex=100 (block 2, pos 0)
 		{
@@ -3420,6 +3430,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("index1_new"),
 			IsMessage:           true,
 			BlockTimestamp:      2000,
+			Type:                ClaimEvent,
 		},
 		// claims[8] - Newest claim with GlobalIndex=200 (block 2, pos 1)
 		{
@@ -3440,6 +3451,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("index2_new"),
 			IsMessage:           false,
 			BlockTimestamp:      2001,
+			Type:                DetailedClaimEvent,
 		},
 		// claims[9] - Same block, pos 0 with GlobalIndex=123
 		{
@@ -3460,6 +3472,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("pos0"),
 			IsMessage:           false,
 			BlockTimestamp:      1000,
+			Type:                ClaimEvent,
 		},
 		// claims[10] - Same block, pos 1 with GlobalIndex=123
 		{
@@ -3480,6 +3493,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("pos1"),
 			IsMessage:           true,
 			BlockTimestamp:      1001,
+			Type:                ClaimEvent,
 		},
 		// claims[11] - Same block, pos 2 with GlobalIndex=123
 		{
@@ -3500,6 +3514,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("pos2"),
 			IsMessage:           false,
 			BlockTimestamp:      1002,
+			Type:                ClaimEvent,
 		},
 		// claims[12] - Partial range GlobalIndex=456 (block 1)
 		{
@@ -3520,6 +3535,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("block1"),
 			IsMessage:           false,
 			BlockTimestamp:      1000,
+			Type:                ClaimEvent,
 		},
 		// claims[13] - Partial range GlobalIndex=456 (block 2)
 		{
@@ -3540,6 +3556,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("block2"),
 			IsMessage:           true,
 			BlockTimestamp:      2000,
+			Type:                ClaimEvent,
 		},
 		// claims[14] - Partial range GlobalIndex=456 (block 3)
 		{
@@ -3560,6 +3577,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("block3"),
 			IsMessage:           false,
 			BlockTimestamp:      3000,
+			Type:                ClaimEvent,
 		},
 		// claims[15] - Ordering test GlobalIndex=200 (block 1)
 		{
@@ -3580,6 +3598,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("200"),
 			IsMessage:           false,
 			BlockTimestamp:      1000,
+			Type:                ClaimEvent,
 		},
 		// claims[16] - Ordering test GlobalIndex=100 (block 2)
 		{
@@ -3600,6 +3619,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("100"),
 			IsMessage:           true,
 			BlockTimestamp:      2000,
+			Type:                ClaimEvent,
 		},
 		// claims[17] - Ordering test GlobalIndex=150 (block 3)
 		{
@@ -3620,6 +3640,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("150"),
 			IsMessage:           false,
 			BlockTimestamp:      3000,
+			Type:                ClaimEvent,
 		},
 		// claims[18] - block 3, pos 1 with GlobalIndex=200
 		{
@@ -3640,6 +3661,7 @@ func TestGetClaims_Compact(t *testing.T) {
 			Metadata:            []byte("block3pos1"),
 			IsMessage:           true,
 			BlockTimestamp:      3001,
+			Type:                ClaimEvent,
 		},
 	}
 
@@ -5276,7 +5298,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 	t.Parallel()
 
-	claimType := reflect.TypeOf(Claim{})
+	claimType := reflect.TypeFor[Claim]()
 
 	// Collect meddler-tagged column names
 	var meddlerColumns []string
@@ -5317,5 +5339,113 @@ func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 	for _, col := range meddlerColumns {
 		_, ok := sqlSet[col]
 		require.True(t, ok, "Missing SQL column for meddler-tag '%s'", col)
+	}
+}
+
+func TestGetBoundaryBlock(t *testing.T) {
+	insertBlockQuery := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
+
+	cases := []struct {
+		name          string
+		claims        []*Claim
+		claimType     ClaimType
+		expectedBlock uint64
+		expectedErr   error
+	}{
+		{
+			name:        "no claims, not found error",
+			expectedErr: db.ErrNotFound,
+		},
+		{
+			name: "detailed claim event exists, return its block",
+			claims: []*Claim{
+				{
+					BlockNum:    1,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(100),
+					Type:        DetailedClaimEvent,
+				},
+				{
+					BlockNum:    6,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(101),
+					Type:        DetailedClaimEvent,
+				},
+			},
+			claimType:     DetailedClaimEvent,
+			expectedBlock: 6,
+		},
+		{
+			name: "mixed claim types exist, return detailed claim event block",
+			claims: []*Claim{
+				{
+					BlockNum:    1,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(100),
+					Type:        ClaimEvent,
+				},
+				{
+					BlockNum:    100,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(101),
+					Type:        DetailedClaimEvent,
+				},
+				{
+					BlockNum:    101,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(102),
+					Type:        DetailedClaimEvent,
+				},
+			},
+			claimType:     DetailedClaimEvent,
+			expectedBlock: 101,
+		},
+		{
+			name: "no corresponding claim types exist",
+			claims: []*Claim{
+				{
+					BlockNum:    1,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(100),
+					Type:        ClaimEvent,
+				},
+				{
+					BlockNum:    100,
+					BlockPos:    1,
+					GlobalIndex: big.NewInt(101),
+					Type:        ClaimEvent,
+				},
+			},
+			claimType:   DetailedClaimEvent,
+			expectedErr: db.ErrNotFound,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "get_boundary_block.sqlite")
+			require.NoError(t, migrations.RunMigrations(dbPath))
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			require.NoError(t, err)
+
+			// Insert claims if any
+			if len(tc.claims) > 0 {
+				tx, err := p.db.BeginTx(t.Context(), nil)
+				require.NoError(t, err)
+				for _, claim := range tc.claims {
+					_, err = tx.Exec(insertBlockQuery, claim.BlockNum, common.HexToHash("0x0"))
+					require.NoError(t, err)
+					require.NoError(t, meddler.Insert(tx, "claim", claim))
+				}
+				require.NoError(t, tx.Commit())
+			}
+
+			blockNum, err := p.GetBoundaryBlockForClaimType(t.Context(), tc.claimType)
+			if tc.expectedErr != nil {
+				require.ErrorIs(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBlock, blockNum)
+			}
+		})
 	}
 }

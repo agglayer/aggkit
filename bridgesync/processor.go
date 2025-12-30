@@ -76,7 +76,8 @@ const (
 		destination_network,
 		metadata,
 		is_message,
-		block_timestamp`
+		block_timestamp,
+		type`
 
 	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
 	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
@@ -97,7 +98,8 @@ const (
 		o.destination_network,
 		o.metadata,
 		o.is_message,
-		o.block_timestamp`
+		o.block_timestamp,
+		o.type`
 )
 
 var (
@@ -182,6 +184,13 @@ func (b *Bridge) Hash() common.Hash {
 	)
 }
 
+type ClaimType string
+
+const (
+	ClaimEvent         ClaimType = "ClaimEvent"
+	DetailedClaimEvent ClaimType = "DetailedClaimEvent"
+)
+
 // Claim representation of a claim event
 type Claim struct {
 	BlockNum            uint64         `meddler:"block_num"`
@@ -201,6 +210,7 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	Type                ClaimType      `meddler:"type"`
 }
 
 func (c *Claim) String() string {
@@ -218,12 +228,12 @@ func (c *Claim) String() string {
 		"OriginNetwork: %d, OriginAddress: %s, DestinationAddress: %s, Amount: %s, "+
 		"ProofLocalExitRoot: %v, ProofRollupExitRoot: %v, MainnetExitRoot: %s, "+
 		"RollupExitRoot: %s, GlobalExitRoot: %s, DestinationNetwork: %d, Metadata: %x, "+
-		"IsMessage: %t, BlockTimestamp: %d}",
+		"IsMessage: %t, BlockTimestamp: %d, Type: %s}",
 		c.BlockNum, c.BlockPos, c.TxHash.String(), globalIndexStr,
 		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), amountStr,
 		c.ProofLocalExitRoot.String(), c.ProofRollupExitRoot.String(), c.MainnetExitRoot.String(),
 		c.RollupExitRoot.String(), c.GlobalExitRoot.String(), c.DestinationNetwork, c.Metadata,
-		c.IsMessage, c.BlockTimestamp)
+		c.IsMessage, c.BlockTimestamp, c.Type)
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
@@ -577,6 +587,12 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 	}
 	return nil
 }
+
+type BridgeQuerier interface {
+	GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error)
+}
+
+var _ BridgeQuerier = (*processor)(nil)
 
 type processor struct {
 	syncerID       string
@@ -989,6 +1005,25 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	return claims, claimsCount, nil
+}
+
+// GetBoundaryBlockForClaimType returns the max (latest) block number for a given claim type
+func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	query := `SELECT MAX(block_num) FROM claim WHERE type = $1;`
+	var blockNumber *uint64
+	if err := p.db.QueryRowContext(dbCtx, query, claimType).Scan(&blockNumber); err != nil {
+		return 0, err
+	}
+
+	if blockNumber == nil {
+		p.log.Debugf("no boundary block found for claim type %s", claimType)
+		return 0, db.ErrNotFound
+	}
+
+	return *blockNumber, nil
 }
 
 // GetUnsetClaimsPaged returns a paginated list of unset claims
