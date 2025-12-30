@@ -11,6 +11,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -255,7 +256,6 @@ func TestBuildAppender(t *testing.T) {
 	require.NoError(t, err)
 
 	ethClient := mocks.NewEthClienter(t)
-
 	ethClient.EXPECT().
 		Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
@@ -278,15 +278,18 @@ func TestBuildAppender(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		eventSignature common.Hash
-		deploymentKind BridgeDeployment
-		logBuilder     func() (types.Log, error)
+		name                 string
+		eventSignature       common.Hash
+		deploymentKind       BridgeDeployment
+		logsCount            int
+		buildQuerierMockFunc func() *BridgeQuerierMock
+		logBuilder           func() (types.Log, error)
 	}{
 		{
 			name:           "bridgeEventSignature appender",
 			eventSignature: bridgeEventSignature,
 			deploymentKind: NonSovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(bridgeEventSignature)
 				if err != nil {
@@ -319,6 +322,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "claimEventSignaturePreEtrog appender",
 			eventSignature: claimEventSignaturePreEtrog,
 			deploymentKind: NonSovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				bridgeV1Abi, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
 				require.NoError(t, err)
@@ -351,6 +355,16 @@ func TestBuildAppender(t *testing.T) {
 			name:           "claimEventSignature appender",
 			eventSignature: claimEventSignature,
 			deploymentKind: NonSovereignChain,
+			logsCount:      1,
+			buildQuerierMockFunc: func() *BridgeQuerierMock {
+				querierMock := NewBridgeQuerierMock(t)
+				querierMock.EXPECT().
+					GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
+					Return(0, db.ErrNotFound).
+					Once()
+
+				return querierMock
+			},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(claimEventSignature)
 				if err != nil {
@@ -377,9 +391,50 @@ func TestBuildAppender(t *testing.T) {
 			},
 		},
 		{
+			name:           "claimEventSignature appender skipping due to boundary block",
+			eventSignature: claimEventSignature,
+			deploymentKind: SovereignChain,
+			logsCount:      0,
+			buildQuerierMockFunc: func() *BridgeQuerierMock {
+				querierMock := NewBridgeQuerierMock(t)
+				querierMock.EXPECT().
+					GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
+					Return(10, nil).
+					Once()
+
+				return querierMock
+			},
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(claimEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				globalIndex := big.NewInt(5)
+				originNetwork := uint32(6)
+				originAddress := common.HexToAddress("0x20")
+				destinationAddress := common.HexToAddress("0x30")
+				amount := big.NewInt(10)
+				data, err := event.Inputs.Pack(
+					globalIndex, originNetwork,
+					originAddress, destinationAddress, amount)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					BlockNumber: 12,
+					Topics:      []common.Hash{claimEventSignature},
+					Data:        data,
+				}
+				return l, nil
+			},
+		},
+		{
 			name:           "detailedClaimEventSignature appender",
 			eventSignature: detailedClaimEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(detailedClaimEventSignature)
 				if err != nil {
@@ -421,6 +476,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "tokenMappingEventSignature appender",
 			eventSignature: tokenMappingEventSignature,
 			deploymentKind: NonSovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(tokenMappingEventSignature)
 				if err != nil {
@@ -449,6 +505,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "setSovereignTokenAddress appender",
 			eventSignature: setSovereignTokenEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(setSovereignTokenEventSignature)
 				if err != nil {
@@ -477,6 +534,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "legacyTokenMigration appender",
 			eventSignature: migrateLegacyTokenEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(migrateLegacyTokenEventSignature)
 				if err != nil {
@@ -505,6 +563,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "removeLegacySovereignTokenAddress appender",
 			eventSignature: removeLegacySovereignTokenEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(removeLegacySovereignTokenEventSignature)
 				if err != nil {
@@ -528,6 +587,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "unsetClaimEventSignature appender",
 			eventSignature: unsetClaimEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(unsetClaimEventSignature)
 				if err != nil {
@@ -554,6 +614,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "setClaimEventSignature appender",
 			eventSignature: setClaimEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(setClaimEventSignature)
 				if err != nil {
@@ -582,7 +643,11 @@ func TestBuildAppender(t *testing.T) {
 
 			logger := logger.WithFields("module", "test")
 			bridgeDeployment.kind = tt.deploymentKind
-			appenderMap, err := buildAppender(t.Context(), ethClient, bridgeAddr, false, bridgeDeployment, logger)
+			var querierMock *BridgeQuerierMock
+			if tt.buildQuerierMockFunc != nil {
+				querierMock = tt.buildQuerierMockFunc()
+			}
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -593,7 +658,7 @@ func TestBuildAppender(t *testing.T) {
 
 			err = appenderFunc(block, log)
 			require.NoError(t, err)
-			require.Len(t, block.Events, 1)
+			require.Equal(t, tt.logsCount, len(block.Events))
 		})
 	}
 }
@@ -852,6 +917,12 @@ func TestTxnSenderField(t *testing.T) {
 	agglayerBridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
+	querierMock := NewBridgeQuerierMock(t)
+	querierMock.EXPECT().
+		GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
+		Return(0, db.ErrNotFound).
+		Maybe()
+
 	tests := []struct {
 		name              string
 		eventSignature    common.Hash
@@ -993,7 +1064,7 @@ func TestTxnSenderField(t *testing.T) {
 				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

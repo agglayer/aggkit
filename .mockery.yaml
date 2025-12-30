@@ -56,6 +56,12 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       ReorgDetector:
+      BridgeQuerier:
+        config:
+          dir: "{{ .InterfaceDir }}"
+          outpkg: "{{ .PackageName }}"
+          inpackage: true
+          mockname: "{{ .InterfaceName }}Mock"
   github.com/agglayer/aggkit/bridgeservice:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
@@ -100,8 +106,13 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
       all: false
     interfaces:
-      RollupManagerContract:
       OpNodeClienter:
+  github.com/agglayer/aggkit/etherman/querier:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: false
+    interfaces:
+      RollupManagerContract:
   github.com/agglayer/aggkit/aggsender/optimistic:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
