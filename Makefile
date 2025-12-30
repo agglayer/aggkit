@@ -46,13 +46,13 @@ check-curl: ## Check if curl is installed
 # Check for Golangci-lint
 .PHONY: check-golangci-lint
 check-golangci-lint:
-	@which golangci-lint > /dev/null || (echo "Error: golangci-lint is not installed" && exit 1)
+	@which golangci-lint > /dev/null || (echo "Error: golangci-lint is not installed. Please install it: https://github.com/golangci/golangci-lint" && exit 1)
 
 # Check for Swag
 .PHONY: check-swag
 check-swag:
 	@command -v swag >/dev/null 2>&1 || { \
-		echo >&2 "swag not installed. Please install it: https://github.com/swaggo/swag"; \
+		echo >&2 "Error: swag not installed. Please install it: https://github.com/swaggo/swag"; \
 		exit 1; \
 	}
 
