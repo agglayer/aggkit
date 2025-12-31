@@ -7,7 +7,6 @@ ALTER TABLE bridge DROP COLUMN to_address;
 DROP TABLE IF EXISTS bridge_archive;
 DROP TABLE IF EXISTS backward_let;
 ALTER TABLE bridge DROP COLUMN source;
-ALTER TABLE bridge DROP COLUMN to_address;
 
 -- +migrate Up
 ALTER TABLE claim ADD COLUMN type TEXT NOT NULL DEFAULT '';
@@ -26,7 +25,6 @@ CREATE TABLE IF NOT EXISTS backward_let (
 	);
 
 ALTER TABLE bridge ADD COLUMN source TEXT DEFAULT '';
-ALTER TABLE bridge ADD COLUMN to_address VARCHAR;
 
 ------------------------------------------------------------------------------
 -- Create bridge_archive table
