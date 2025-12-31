@@ -666,6 +666,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "forwardLETSignature appender",
 			eventSignature: forwardLETEventSignature,
 			deploymentKind: SovereignChain,
+			logsCount:      1,
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeL2Abi.EventByID(forwardLETEventSignature)
 				if err != nil {
