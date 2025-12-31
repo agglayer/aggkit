@@ -3,6 +3,7 @@ package bridgesync
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -85,6 +86,7 @@ const (
 func buildAppender(
 	ctx context.Context,
 	client aggkittypes.EthClienter,
+	querier BridgeQuerier,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	bridgeDeployment *bridgeDeployment,
@@ -102,14 +104,11 @@ func buildAppender(
 		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
+	appender[claimEventSignature] = buildClaimEventHandler(ctx, bridgeDeployment.agglayerBridge, client, querier,
+		bridgeAddr, syncFullClaims, logger)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
-	switch bridgeDeployment.kind {
-	case NonSovereignChain:
-		appender[claimEventSignature] = buildClaimEventHandler(
-			bridgeDeployment.agglayerBridge, client, bridgeAddr, syncFullClaims, logger)
-
-	case SovereignChain:
+	if bridgeDeployment.kind == SovereignChain {
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
@@ -118,7 +117,10 @@ func buildAppender(
 		appender[setClaimEventSignature] = buildSetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[backwardLETEventSignature] = buildBackwardLETEventHandler(bridgeDeployment.agglayerBridgeL2)
 
-	default:
+		return appender, nil
+	}
+
+	if bridgeDeployment.kind != NonSovereignChain {
 		return nil, fmt.Errorf("unsupported bridge deployment kind: %d", bridgeDeployment.kind)
 	}
 
@@ -388,11 +390,25 @@ func buildBridgeEventHandler(
 }
 
 // buildClaimEventHandler creates a handler for the Claim event log.
-func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool,
-	logger *logger.Logger,
+func buildClaimEventHandler(ctx context.Context, agglayerBridge *agglayerbridge.Agglayerbridge,
+	client aggkittypes.EthClienter, querier BridgeQuerier, bridgeAddr common.Address,
+	syncFullClaims bool, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
+		// check if we already have passed the block which started indexing DetailedClaimEvent
+		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(ctx, DetailedClaimEvent)
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			return fmt.Errorf("failed checking DetailedClaimEvent boundary: %w", err)
+		}
+
+		if err == nil && l.BlockNumber >= boundaryBlock {
+			logger.Debugf(
+				"Skipping ClaimEvent at block %d; DetailedClaimEvent indexing already started at block %d",
+				l.BlockNumber, boundaryBlock,
+			)
+			return nil
+		}
+
 		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
@@ -408,6 +424,7 @@ func buildClaimEventHandler(agglayerBridge *agglayerbridge.Agglayerbridge,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
+			Type:               ClaimEvent,
 		}
 
 		// Extract root call for txn_sender and error checking
@@ -458,6 +475,7 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
 			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
+			Type:                DetailedClaimEvent,
 		}
 
 		b.Events = append(b.Events, Event{Claim: claim})

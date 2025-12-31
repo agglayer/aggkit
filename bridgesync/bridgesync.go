@@ -177,7 +177,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
+	appender, err := buildAppender(ctx, ethClient, processor, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func resolveBridgeDeployment(ctx context.Context,
 			agglayerBridgeL2: agglayerBridgeL2,
 		}, nil
 	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
-		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.BRIDGE_VERSION: %w", err)
+		return nil, fmt.Errorf("unexpected error querying AgglayerBridge.lastUpdatedDepositCount: %w", err)
 	}
 
 	return nil, fmt.Errorf("unable to determine bridge contract type at address %s", bridgeAddr)

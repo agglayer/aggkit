@@ -1,10 +1,20 @@
 -- +migrate Down
+DROP INDEX IF EXISTS idx_claim_type_block;
+ALTER TABLE claim DROP COLUMN type;
+
+ALTER TABLE bridge DROP COLUMN to_address;
+
 DROP TABLE IF EXISTS bridge_archive;
 DROP TABLE IF EXISTS backward_let;
 ALTER TABLE bridge DROP COLUMN source;
 ALTER TABLE bridge DROP COLUMN to_address;
 
 -- +migrate Up
+ALTER TABLE claim ADD COLUMN type TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_claim_type_block ON claim (type, block_num);
+
+ALTER TABLE bridge ADD COLUMN to_address VARCHAR;
+
 CREATE TABLE IF NOT EXISTS backward_let (
 		block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,
 		block_pos INTEGER NOT NULL,
