@@ -1701,7 +1701,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 
 	// 3. Delete originals
 	deleteQuery := fmt.Sprintf(`
-		DELETE FROM %s 
+		DELETE FROM %s
 		WHERE deposit_count > $1`,
 		bridgeTableName)
 
@@ -1761,13 +1761,13 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 	}
 
 	const getArchivedBridgesSQL = `
-		SELECT * FROM bridge_archive 
-		WHERE leaf_type = $1 
-			AND origin_network = $2 
-			AND origin_address = $3 
-			AND destination_network = $4 
-			AND destination_address = $5 
-			AND amount = $6 
+		SELECT * FROM bridge_archive
+		WHERE leaf_type = $1
+			AND origin_network = $2
+			AND origin_address = $3
+			AND destination_network = $4
+			AND destination_address = $5
+			AND amount = $6
 			AND metadata = $7
 	`
 

@@ -5705,7 +5705,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 			if len(c.archivedDepositCounts) > 0 {
 				archivedBridgeQuery := `
-					SELECT * FROM bridge_archive 
+					SELECT * FROM bridge_archive
 					WHERE deposit_count <= $1
 					ORDER BY deposit_count ASC`
 
