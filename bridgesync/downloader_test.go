@@ -284,6 +284,7 @@ func TestBuildAppender(t *testing.T) {
 		logsCount            int
 		buildQuerierMockFunc func() *BridgeQuerierMock
 		logBuilder           func() (types.Log, error)
+		expectedErr          string
 	}{
 		{
 			name:           "bridgeEventSignature appender",
@@ -634,6 +635,39 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
+		{
+			name:           "backwardLETSignature appender",
+			eventSignature: backwardLETEventSignature,
+			deploymentKind: SovereignChain,
+			logsCount:      1,
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeL2Abi.EventByID(backwardLETEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				previousDepositCount := big.NewInt(10)
+				previousRoot := common.HexToHash("0xdeadbeef")
+				newDepositCount := big.NewInt(8)
+				newRoot := common.HexToHash("0x5ca1e")
+				data, err := event.Inputs.Pack(previousDepositCount, previousRoot, newDepositCount, newRoot)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{backwardLETEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
+			name:           "unknown deployment kind",
+			deploymentKind: 100,
+			logBuilder:     func() (types.Log, error) { return types.Log{}, nil },
+			expectedErr:    "unsupported bridge deployment kind: 100",
+		},
 	}
 
 	for _, tt := range tests {
@@ -648,17 +682,22 @@ func TestBuildAppender(t *testing.T) {
 				querierMock = tt.buildQuerierMockFunc()
 			}
 			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
-			require.NoError(t, err)
-			require.NotNil(t, appenderMap)
+			if tt.expectedErr == "" {
+				require.NoError(t, err)
+				require.NotNil(t, appenderMap)
+			} else {
+				require.ErrorContains(t, err, tt.expectedErr)
+			}
 
-			block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
+			if tt.expectedErr == "" {
+				block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
+				appenderFunc, exists := appenderMap[tt.eventSignature]
+				require.True(t, exists)
 
-			appenderFunc, exists := appenderMap[tt.eventSignature]
-			require.True(t, exists)
-
-			err = appenderFunc(block, log)
-			require.NoError(t, err)
-			require.Equal(t, tt.logsCount, len(block.Events))
+				err = appenderFunc(block, log)
+				require.NoError(t, err)
+				require.Equal(t, tt.logsCount, len(block.Events))
+			}
 		})
 	}
 }

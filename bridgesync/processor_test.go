@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"path"
@@ -20,6 +21,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -321,6 +323,18 @@ func TestProcessor(t *testing.T) {
 					eventsToClaims(block5.Events),
 				)),
 		},
+		&reorgAction{
+			p:                 p,
+			description:       "reorg the last block",
+			firstReorgedBlock: 5,
+		},
+		&getLastProcessedBlockAction{
+			p:                          p,
+			description:                "after last block reorged",
+			ctx:                        context.Background(),
+			expectedLastProcessedBlock: 4,
+			expectedErr:                nil,
+		},
 	}
 
 	for _, a := range actions {
@@ -340,13 +354,13 @@ var (
 			Event{Bridge: &Bridge{
 				BlockNum:           1,
 				BlockPos:           0,
-				LeafType:           1,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
 				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("01"),
+				OriginAddress:      common.HexToAddress("1"),
 				DestinationNetwork: 1,
-				DestinationAddress: common.HexToAddress("01"),
+				DestinationAddress: common.HexToAddress("1"),
 				Amount:             big.NewInt(1),
-				Metadata:           common.Hex2Bytes("01"),
+				Metadata:           common.Hex2Bytes("1"),
 				DepositCount:       0,
 			}},
 			Event{Claim: &Claim{
@@ -354,8 +368,8 @@ var (
 				BlockPos:           1,
 				GlobalIndex:        big.NewInt(1),
 				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("01"),
-				DestinationAddress: common.HexToAddress("01"),
+				OriginAddress:      common.HexToAddress("1"),
+				DestinationAddress: common.HexToAddress("1"),
 				Amount:             big.NewInt(1),
 				MainnetExitRoot:    common.Hash{},
 				Type:               DetailedClaimEvent,
@@ -392,26 +406,38 @@ var (
 			Event{Bridge: &Bridge{
 				BlockNum:           3,
 				BlockPos:           0,
-				LeafType:           2,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
 				OriginNetwork:      2,
-				OriginAddress:      common.HexToAddress("02"),
+				OriginAddress:      common.HexToAddress("2"),
 				DestinationNetwork: 2,
-				DestinationAddress: common.HexToAddress("02"),
+				DestinationAddress: common.HexToAddress("2"),
 				Amount:             big.NewInt(2),
-				Metadata:           common.Hex2Bytes("02"),
+				Metadata:           common.Hex2Bytes("2"),
 				DepositCount:       1,
 			}},
 			Event{Bridge: &Bridge{
 				BlockNum:           3,
 				BlockPos:           1,
-				LeafType:           3,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
 				OriginNetwork:      3,
-				OriginAddress:      common.HexToAddress("03"),
+				OriginAddress:      common.HexToAddress("3"),
 				DestinationNetwork: 3,
-				DestinationAddress: common.HexToAddress("03"),
+				DestinationAddress: common.HexToAddress("3"),
 				Amount:             big.NewInt(0),
-				Metadata:           common.Hex2Bytes("03"),
+				Metadata:           common.Hex2Bytes("3"),
 				DepositCount:       2,
+			}},
+			Event{Bridge: &Bridge{
+				BlockNum:           3,
+				BlockPos:           2,
+				LeafType:           bridgesynctypes.LeafTypeAsset.Uint8(),
+				OriginNetwork:      3,
+				OriginAddress:      common.HexToAddress("4"),
+				DestinationNetwork: 3,
+				DestinationAddress: common.HexToAddress("4"),
+				Amount:             big.NewInt(0),
+				Metadata:           common.Hex2Bytes("4"),
+				DepositCount:       3,
 			}},
 		},
 	}
@@ -454,6 +480,12 @@ var (
 				BlockNum:           5,
 				BlockPos:           3,
 				LegacyTokenAddress: common.HexToAddress("0x11"),
+			}},
+			Event{BackwardLET: &BackwardLET{
+				BlockNum:             5,
+				BlockPos:             4,
+				PreviousDepositCount: big.NewInt(3),
+				NewDepositCount:      big.NewInt(2),
 			}},
 		},
 	}
@@ -999,10 +1031,6 @@ func TestGetBridgesPaged(t *testing.T) {
 	}
 	require.NoError(t, tx.Commit())
 
-	depositCountPtr := func(i uint64) *uint64 {
-		return &i
-	}
-
 	testCases := []struct {
 		name            string
 		pageSize        uint32
@@ -1057,7 +1085,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t4",
 			pageSize:        1,
 			page:            1,
-			depositCount:    depositCountPtr(1),
+			depositCount:    uint64Ptr(1),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[1]},
 			expectedError:   "",
@@ -1066,7 +1094,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t5",
 			pageSize:        3,
 			page:            2,
-			depositCount:    depositCountPtr(1),
+			depositCount:    uint64Ptr(1),
 			expectedCount:   0,
 			expectedBridges: []*Bridge{},
 			expectedError:   "invalid page number for given page size and total number of bridges",
@@ -1084,7 +1112,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t7",
 			pageSize:        1,
 			page:            1,
-			depositCount:    depositCountPtr(0),
+			depositCount:    uint64Ptr(0),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[0]},
 			expectedError:   "",
@@ -1112,7 +1140,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:         "t9",
 			pageSize:     6,
 			page:         1,
-			depositCount: depositCountPtr(3),
+			depositCount: uint64Ptr(3),
 			networkIDs: []uint32{
 				bridges[0].DestinationNetwork,
 				bridges[2].DestinationNetwork,
@@ -1127,7 +1155,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:        1,
 			page:            1,
 			fromAddress:     "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:    depositCountPtr(0),
+			depositCount:    uint64Ptr(0),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[0]},
 			expectedError:   "",
@@ -1137,7 +1165,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:        1,
 			page:            1,
 			fromAddress:     "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
-			depositCount:    depositCountPtr(0),
+			depositCount:    uint64Ptr(0),
 			expectedCount:   1,
 			expectedBridges: []*Bridge{bridges[0]},
 			expectedError:   "",
@@ -2361,9 +2389,6 @@ func TestGetClaimsByGlobalIndex_Compact(t *testing.T) {
 	oldProof := types.Proof{}
 	oldProof[0] = common.HexToHash("0x01")
 
-	newProof := types.Proof{}
-	newProof[0] = common.HexToHash("0x02")
-
 	testCases := []struct {
 		name            string
 		globalIndex     *big.Int
@@ -2722,6 +2747,10 @@ func TestGetClaimsByGlobalIndex_Compact(t *testing.T) {
 }
 
 func intPtr(i int) *int {
+	return &i
+}
+
+func uint64Ptr(i uint64) *uint64 {
 	return &i
 }
 
@@ -5339,6 +5368,351 @@ func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 	for _, col := range meddlerColumns {
 		_, ok := sqlSet[col]
 		require.True(t, ok, "Missing SQL column for meddler-tag '%s'", col)
+	}
+}
+
+func TestProcessor_BackwardLET(t *testing.T) {
+	buildBlocksWithSequentialBridges := func(blocksCount, bridgesPerBlock uint64,
+		blockNumOffset uint64, depositCountOffset uint32) []sync.Block {
+		blocks := make([]sync.Block, 0, blocksCount)
+		depositCount := depositCountOffset
+		for i := range blocksCount {
+			blockNum := i + 1 + blockNumOffset
+			block := sync.Block{
+				Num:  blockNum,
+				Hash: common.HexToHash(fmt.Sprintf("%x", blockNum)),
+			}
+			for blockPos := range bridgesPerBlock {
+				block.Events = append(block.Events,
+					Event{Bridge: &Bridge{
+						BlockNum:     blockNum,
+						BlockPos:     blockPos,
+						DepositCount: depositCount,
+					}})
+
+				depositCount++
+			}
+
+			blocks = append(blocks, block)
+		}
+		return blocks
+	}
+
+	collectExpectedBridgesUpTo := func(t *testing.T, blocks []sync.Block,
+		skipBlocks []uint64, targetDepositCount uint32) []Bridge {
+		t.Helper()
+
+		bridges := make([]Bridge, 0)
+		for _, b := range blocks {
+			if slices.Contains(skipBlocks, b.Num) {
+				continue
+			}
+
+			for _, e := range b.Events {
+				evt, ok := e.(Event)
+				require.True(t, ok)
+				if evt.Bridge != nil {
+					bridges = append(bridges, *evt.Bridge)
+					if evt.Bridge.DepositCount == targetDepositCount {
+						return bridges
+					}
+				}
+			}
+		}
+		return bridges
+	}
+
+	testCases := []struct {
+		name                  string
+		setupBlocks           func() []sync.Block
+		firstReorgedBlock     *uint64
+		targetDepositCount    uint32
+		skipBlocks            []uint64
+		archivedDepositCounts []uint32
+		processBlockErrMsg    string
+	}{
+		{
+			name: "backward let after a couple of bridges",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(3),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				})
+
+				return blocks
+			},
+			targetDepositCount:    2,
+			archivedDepositCounts: []uint32{3},
+		},
+		{
+			name: "backward let event with all the bridges, except the first one",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(0),
+						}},
+					},
+				})
+
+				return blocks
+			},
+			targetDepositCount:    0,
+			archivedDepositCounts: []uint32{1, 2, 3, 4, 5},
+		},
+		{
+			name: "backward let event (only the last bridge)",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(4),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+
+				return blocks
+			},
+			targetDepositCount:    4,
+			archivedDepositCounts: []uint32{5},
+		},
+		{
+			name: "backward let event in the middle of bridges",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(2, 3, 0, 0)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 3)...)
+
+				return blocks
+			},
+			targetDepositCount:    8,
+			skipBlocks:            []uint64{2, 3}, // all the bridges from these blocks were backwarded
+			archivedDepositCounts: []uint32{3, 4, 5},
+		},
+		{
+			name: "overlapping backward let events",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(3),
+						}},
+					},
+				})
+				blocks = append(blocks, sync.Block{
+					Num:  uint64(len(blocks) + 2),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+2)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 2),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(4),
+							NewDepositCount:      big.NewInt(3),
+						}},
+					},
+				})
+
+				return blocks
+			},
+			targetDepositCount:    3,
+			archivedDepositCounts: []uint32{4, 5},
+		},
+		{
+			name: "backward let on empty bridge table",
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{BackwardLET: &BackwardLET{
+								BlockNum:             1,
+								BlockPos:             0,
+								PreviousDepositCount: big.NewInt(6),
+								NewDepositCount:      big.NewInt(3),
+							}},
+						},
+					}}
+			},
+			targetDepositCount: 0,
+		},
+		{
+			name: "backward let invalid new deposit count (outside of uint64 range)",
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{BackwardLET: &BackwardLET{
+								BlockNum:             1,
+								BlockPos:             0,
+								PreviousDepositCount: big.NewInt(0),
+								NewDepositCount:      big.NewInt(-3),
+							}},
+						},
+					}}
+			},
+			processBlockErrMsg: "invalid deposit count: value=-3 does not fit in uint64",
+		},
+		{
+			name: "backward let invalid new deposit count (outside of uint32 range)",
+			setupBlocks: func() []sync.Block {
+				return []sync.Block{
+					{
+						Num:  1,
+						Hash: common.HexToHash("0x1"),
+						Events: []any{
+							Event{BackwardLET: &BackwardLET{
+								BlockNum:             1,
+								BlockPos:             0,
+								PreviousDepositCount: big.NewInt(0),
+								NewDepositCount:      new(big.Int).SetUint64(uint64(math.MaxUint32) + 1),
+							}},
+						},
+					}}
+			},
+			processBlockErrMsg: "invalid deposit count: value=4294967296 exceeds uint32 max",
+		},
+		{
+			name: "backward let after a couple of bridges + reorg backward let",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             4,
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+
+				return blocks
+			},
+			firstReorgedBlock:     uint64Ptr(3),
+			targetDepositCount:    3,
+			archivedDepositCounts: []uint32{3},
+		},
+		{
+			name: "backward let event in the middle of bridges + reorg backward let",
+			setupBlocks: func() []sync.Block {
+				blocks := buildBlocksWithSequentialBridges(2, 3, 0, 0)
+				backwardLETBlock := sync.Block{
+					Num:  uint64(len(blocks) + 1),
+					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
+					Events: []any{
+						Event{BackwardLET: &BackwardLET{
+							BlockNum:             uint64(len(blocks) + 1),
+							BlockPos:             0,
+							PreviousDepositCount: big.NewInt(5),
+							NewDepositCount:      big.NewInt(2),
+						}},
+					},
+				}
+				blocks = append(blocks, backwardLETBlock)
+				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 3)...)
+
+				return blocks
+			},
+			firstReorgedBlock:     uint64Ptr(3),
+			targetDepositCount:    5,
+			archivedDepositCounts: []uint32{3, 4, 5},
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "backward_let_cases.sqlite")
+			require.NoError(t, migrations.RunMigrations(dbPath))
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			require.NoError(t, err)
+
+			blocks := c.setupBlocks()
+			for _, b := range blocks {
+				err = p.ProcessBlock(t.Context(), b)
+				if c.processBlockErrMsg != "" {
+					require.ErrorContains(t, err, c.processBlockErrMsg)
+				} else {
+					require.NoError(t, err)
+				}
+			}
+
+			if len(c.archivedDepositCounts) > 0 {
+				archivedBridgeQuery := `
+					SELECT * FROM bridge_archive 
+					WHERE deposit_count <= $1
+					ORDER BY deposit_count ASC`
+
+				maxDepositCount := slices.Max(c.archivedDepositCounts)
+				var archivedBridges []*Bridge
+				err = meddler.QueryAll(p.db, &archivedBridges, archivedBridgeQuery, maxDepositCount)
+				require.NoError(t, err)
+
+				require.Len(t, archivedBridges, len(c.archivedDepositCounts))
+				for i, b := range archivedBridges {
+					require.Equal(t, c.archivedDepositCounts[i], b.DepositCount)
+					require.Equal(t, BridgeSourceBackwardLET, b.Source)
+				}
+			}
+
+			if c.firstReorgedBlock != nil {
+				err = p.Reorg(t.Context(), *c.firstReorgedBlock)
+				require.NoError(t, err)
+			}
+
+			lastProcessedBlock, err := p.GetLastProcessedBlock(t.Context())
+			require.NoError(t, err)
+			expectedBridges := collectExpectedBridgesUpTo(t, blocks, c.skipBlocks, c.targetDepositCount)
+
+			actualBridges, err := p.GetBridges(t.Context(), 0, lastProcessedBlock)
+			require.NoError(t, err)
+			require.Equal(t, expectedBridges, actualBridges)
+		})
 	}
 }
 
