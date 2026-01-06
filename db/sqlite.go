@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	UniqueConstrain = 1555
+	UniqueConstraintErrCode = 1555
 )
 
 var (

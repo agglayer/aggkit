@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/ecdsa"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -185,4 +186,26 @@ func ParseUint64HexOrDecimal(str string) (uint64, error) {
 		return 0, fmt.Errorf("ParseUint64HexOrDecimal: invalid decimal string %s: %w", str, err)
 	}
 	return num, nil
+}
+
+// SafeUint64 converts big.Int into uint64, if it fits into it.
+// Otherwise it returns an error.
+func SafeUint64(i *big.Int) (uint64, error) {
+	if i == nil {
+		return 0, errors.New("value is undefined")
+	}
+
+	if !i.IsUint64() {
+		return 0, fmt.Errorf("value=%v does not fit in uint64", i)
+	}
+	return i.Uint64(), nil
+}
+
+// SafeUint32 downcasts the provided uint64 value to uint32, if it fits into it.
+// Otherwise it returns an error.
+func SafeUint32(v uint64) (uint32, error) {
+	if v > math.MaxUint32 {
+		return 0, fmt.Errorf("value=%d exceeds uint32 max (%d)", v, math.MaxUint32)
+	}
+	return uint32(v), nil
 }

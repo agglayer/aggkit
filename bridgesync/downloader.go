@@ -54,6 +54,7 @@ var (
 	setClaimEventSignature = crypto.Keccak256Hash([]byte(
 		"SetClaim(bytes32)",
 	))
+	backwardLETEventSignature = crypto.Keccak256Hash([]byte("BackwardLET(uint256,bytes32,uint256,bytes32)"))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
@@ -131,6 +132,13 @@ func buildAppender(
 		appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
 		appender[setClaimEventSignature] = buildSetClaimEventHandler(bridgeDeployment.agglayerBridgeL2)
+		appender[backwardLETEventSignature] = buildBackwardLETEventHandler(bridgeDeployment.agglayerBridgeL2)
+
+		return appender, nil
+	}
+
+	if bridgeDeployment.kind != NonSovereignChain {
+		return nil, fmt.Errorf("unsupported bridge deployment kind: %d", bridgeDeployment.kind)
 	}
 
 	return appender, nil
@@ -689,6 +697,26 @@ func buildSetClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func
 			BlockPos:    uint64(l.Index),
 			TxHash:      l.TxHash,
 			GlobalIndex: globalIndex,
+		}})
+		return nil
+	}
+}
+
+// buildBackwardLETEventHandler creates a handler for the BackwardLET event log
+func buildBackwardLETEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseBackwardLET(l)
+		if err != nil {
+			return fmt.Errorf("error parsing BackwardLET event log %+v: %w", l, err)
+		}
+
+		b.Events = append(b.Events, Event{BackwardLET: &BackwardLET{
+			BlockNum:             b.Num,
+			BlockPos:             uint64(l.Index),
+			PreviousDepositCount: event.PreviousDepositCount,
+			PreviousRoot:         event.PreviousRoot,
+			NewDepositCount:      event.NewDepositCount,
+			NewRoot:              event.NewRoot,
 		}})
 		return nil
 	}

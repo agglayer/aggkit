@@ -1,100 +1,70 @@
 package migrations
 
 import (
-	_ "embed"
+	"embed"
+	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/types"
-	treeMigrations "github.com/agglayer/aggkit/tree/migrations"
+	treemigrations "github.com/agglayer/aggkit/tree/migrations"
 )
 
-//go:embed bridgesync0001.sql
-var mig0001 string
+var (
+	//go:embed *.sql
+	migrationFS embed.FS
+	migrations  []types.Migration
+)
 
-//go:embed bridgesync0002.sql
-var mig0002 string
+func init() {
+	entries, err := migrationFS.ReadDir(".")
+	if err != nil {
+		panic(fmt.Errorf("failed to read embedded migrations: %w", err))
+	}
 
-//go:embed bridgesync0003.sql
-var mig0003 string
+	for _, e := range entries {
+		name := e.Name() // e.g. "bridgesync0004.sql"
 
-//go:embed bridgesync0004.sql
-var mig0004 string
+		sqlBytes, err := migrationFS.ReadFile(name)
+		if err != nil {
+			panic(err)
+		}
 
-//go:embed bridgesync0005.sql
-var mig0005 string
+		id := strings.TrimSuffix(name, ".sql") // "bridgesync0004"
 
-//go:embed bridgesync0006.sql
-var mig0006 string
+		migrations = append(migrations, types.Migration{
+			ID:  id,
+			SQL: string(sqlBytes),
+		})
+	}
 
-//go:embed bridgesync0007.sql
-var mig0007 string
-
-//go:embed bridgesync0008.sql
-var mig0008 string
-
-//go:embed bridgesync0009.sql
-var mig0009 string
-
-//go:embed bridgesync0010.sql
-var mig0010 string
-
-//go:embed bridgesync0011.sql
-var mig0011 string
-
-//go:embed bridgesync0012.sql
-var mig0012 string
+	// Ensure deterministic canonical order
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].ID < migrations[j].ID
+	})
+}
 
 func RunMigrations(dbPath string) error {
-	migrations := []types.Migration{
-		{
-			ID:  "bridgesync0001",
-			SQL: mig0001,
-		},
-		{
-			ID:  "bridgesync0002",
-			SQL: mig0002,
-		},
-		{
-			ID:  "bridgesync0003",
-			SQL: mig0003,
-		},
-		{
-			ID:  "bridgesync0004",
-			SQL: mig0004,
-		},
-		{
-			ID:  "bridgesync0005",
-			SQL: mig0005,
-		},
-		{
-			ID:  "bridgesync0006",
-			SQL: mig0006,
-		},
-		{
-			ID:  "bridgesync0007",
-			SQL: mig0007,
-		},
-		{
-			ID:  "bridgesync0008",
-			SQL: mig0008,
-		},
-		{
-			ID:  "bridgesync0009",
-			SQL: mig0009,
-		},
-		{
-			ID:  "bridgesync0010",
-			SQL: mig0010,
-		},
-		{
-			ID:  "bridgesync0011",
-			SQL: mig0011,
-		},
-		{
-			ID:  "bridgesync0012",
-			SQL: mig0012,
-		},
-	}
-	migrations = append(migrations, treeMigrations.Migrations...)
-	return db.RunMigrations(dbPath, migrations)
+	// Allocate slice with exact capacity to avoid reallocations when combining migrations
+	total := len(migrations) + len(treemigrations.Migrations)
+
+	combined := make([]types.Migration, 0, total)
+	// Copy migrations
+	combined = append(combined, migrations...)
+	combined = append(combined, treemigrations.Migrations...)
+
+	// Pass the copy to db.RunMigrations
+	return db.RunMigrations(dbPath, combined)
+}
+
+// GetUpTo returns all migrations up to and including the migration with the given ID.
+func GetUpTo(lastID string) []types.Migration {
+	idx := sort.Search(len(migrations), func(i int) bool {
+		return migrations[i].ID > lastID
+	})
+
+	out := make([]types.Migration, idx)
+	copy(out, migrations[:idx])
+	return out
 }

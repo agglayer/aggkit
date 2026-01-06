@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	migrate "github.com/rubenv/sql-migrate"
@@ -266,23 +265,10 @@ func TestMigration0004(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close()
 
-	// Define migrations up to 0003
-	migrations := []types.Migration{
-		{
-			ID:  "bridgesync0001",
-			SQL: mig0001,
-		},
-		{
-			ID:  "bridgesync0002",
-			SQL: mig0002,
-		},
-		{
-			ID:  "bridgesync0003",
-			SQL: mig0003,
-		},
-	}
+	// Define migrations up to bridgesync0003
+	migrations := GetUpTo("bridgesync0003")
 
-	// Run migrations up to 0003 (3 migrations)
+	// Run migrations up to bridgesync0003 (3 migrations)
 	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 3)
 	require.NoError(t, err)
 
@@ -458,29 +444,8 @@ func TestMigration0006(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close()
 
-	// Define migrations up to 0005
-	migrations := []types.Migration{
-		{
-			ID:  "bridgesync0001",
-			SQL: mig0001,
-		},
-		{
-			ID:  "bridgesync0002",
-			SQL: mig0002,
-		},
-		{
-			ID:  "bridgesync0003",
-			SQL: mig0003,
-		},
-		{
-			ID:  "bridgesync0004",
-			SQL: mig0004,
-		},
-		{
-			ID:  "bridgesync0005",
-			SQL: mig0005,
-		},
-	}
+	// Define migrations up to bridgesync0005
+	migrations := GetUpTo("bridgesync0005")
 
 	// Run migrations up to 0005 (5 migrations)
 	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 5)

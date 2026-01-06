@@ -51,6 +51,9 @@ const (
 	// setClaimTableName is the name of the table that stores set claim events
 	setClaimTableName = "set_claim"
 
+	// backwardLETTableName is the name of the table that stores backward local exit tree events
+	backwardLETTableName = "backward_let"
+
 	// nilStr holds nil string
 	nilStr = "nil"
 )
@@ -150,6 +153,13 @@ var (
 	`, bridgeTableName)
 )
 
+type BridgeSource string
+
+const (
+	BridgeSourceBackwardLET BridgeSource = "backward_let"
+	BridgeSourceForwardLET  BridgeSource = "forward_let"
+)
+
 // Bridge is the representation of a bridge event
 type Bridge struct {
 	BlockNum           uint64         `meddler:"block_num"`
@@ -166,6 +176,7 @@ type Bridge struct {
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
 	TxnSender          common.Address `meddler:"txn_sender,address"`
+	Source             BridgeSource   `meddler:"source"`
 	ToAddress          common.Address `meddler:"to_address,address"`
 }
 
@@ -177,11 +188,11 @@ func (b *Bridge) String() string {
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
-		"DepositCount: %d, TxnSender: %s, ToAddress: %s}",
+		"DepositCount: %d, TxnSender: %s, Source: %s, ToAddress: %s}",
 		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
 		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
-		b.DepositCount, b.TxnSender.String(), b.ToAddress.String())
+		b.DepositCount, b.TxnSender.String(), b.Source, b.ToAddress.String())
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
@@ -386,55 +397,6 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	return true, nil
 }
 
-type InvalidClaim struct {
-	// claim struct fields
-	BlockNum            uint64         `meddler:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash"`
-	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
-	OriginNetwork       uint32         `meddler:"origin_network"`
-	OriginAddress       common.Address `meddler:"origin_address"`
-	DestinationAddress  common.Address `meddler:"destination_address"`
-	Amount              *big.Int       `meddler:"amount,bigint"`
-	ProofLocalExitRoot  types.Proof    `meddler:"proof_local_exit_root,merkleproof"`
-	ProofRollupExitRoot types.Proof    `meddler:"proof_rollup_exit_root,merkleproof"`
-	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"`
-	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"`
-	GlobalExitRoot      common.Hash    `meddler:"global_exit_root,hash"`
-	DestinationNetwork  uint32         `meddler:"destination_network"`
-	Metadata            []byte         `meddler:"metadata"`
-	IsMessage           bool           `meddler:"is_message"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	// additional fields
-	Reason    string `meddler:"reason"`
-	CreatedAt uint64 `meddler:"created_at"`
-}
-
-// NewInvalidClaim creates a new InvalidClaim from a Claim and a reason
-func NewInvalidClaim(c *Claim, reason string) *InvalidClaim {
-	return &InvalidClaim{
-		BlockNum:            c.BlockNum,
-		BlockPos:            c.BlockPos,
-		TxHash:              c.TxHash,
-		GlobalIndex:         c.GlobalIndex,
-		OriginNetwork:       c.OriginNetwork,
-		OriginAddress:       c.OriginAddress,
-		DestinationAddress:  c.DestinationAddress,
-		Amount:              c.Amount,
-		ProofLocalExitRoot:  c.ProofLocalExitRoot,
-		ProofRollupExitRoot: c.ProofRollupExitRoot,
-		MainnetExitRoot:     c.MainnetExitRoot,
-		RollupExitRoot:      c.RollupExitRoot,
-		GlobalExitRoot:      c.GlobalExitRoot,
-		DestinationNetwork:  c.DestinationNetwork,
-		Metadata:            c.Metadata,
-		IsMessage:           c.IsMessage,
-		BlockTimestamp:      c.BlockTimestamp,
-		Reason:              reason,
-		CreatedAt:           uint64(time.Now().UTC().Unix()),
-	}
-}
-
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
 	BlockNum            uint64                       `meddler:"block_num"`
@@ -524,7 +486,7 @@ func (u *UnsetClaim) String() string {
 }
 
 // SetClaim representation of a SetClaim event,
-// that is emitted by the bridge contract when a claim is set.
+// that is emitted by the L2 bridge contract when a claim is set.
 type SetClaim struct {
 	BlockNum    uint64      `meddler:"block_num"`
 	BlockPos    uint64      `meddler:"block_pos"`
@@ -544,6 +506,32 @@ func (s *SetClaim) String() string {
 		globalIndexStr, s.CreatedAt)
 }
 
+// BackwardLET representation of a BackwardLET event,
+// that is emitted by the L2 bridge contract when a LET is rolled back.
+type BackwardLET struct {
+	BlockNum             uint64      `meddler:"block_num"`
+	BlockPos             uint64      `meddler:"block_pos"`
+	PreviousDepositCount *big.Int    `meddler:"previous_deposit_count,bigint"`
+	PreviousRoot         common.Hash `meddler:"previous_root,hash"`
+	NewDepositCount      *big.Int    `meddler:"new_deposit_count,bigint"`
+	NewRoot              common.Hash `meddler:"new_root,hash"`
+}
+
+// String returns a formatted string representation of BackwardLET for debugging and logging.
+func (b *BackwardLET) String() string {
+	previousDepositCountStr := nilStr
+	if b.PreviousDepositCount != nil {
+		previousDepositCountStr = b.PreviousDepositCount.String()
+	}
+	newDepositCountStr := nilStr
+	if b.NewDepositCount != nil {
+		newDepositCountStr = b.NewDepositCount.String()
+	}
+	return fmt.Sprintf("BackwardLET{BlockNum: %d, BlockPos: %d, "+
+		"PreviousDepositCount: %s, PreviousRoot: %s, NewDepositCount: %s, NewRoot: %s}",
+		b.BlockNum, b.BlockPos, previousDepositCountStr, b.PreviousRoot.String(), newDepositCountStr, b.NewRoot.String())
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
 	Bridge               *Bridge
@@ -553,6 +541,7 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 	UnsetClaim           *UnsetClaim
 	SetClaim             *SetClaim
+	BackwardLET          *BackwardLET
 }
 
 func (e Event) String() string {
@@ -578,6 +567,9 @@ func (e Event) String() string {
 	if e.SetClaim != nil {
 		parts = append(parts, e.SetClaim.String())
 	}
+	if e.BackwardLET != nil {
+		parts = append(parts, e.BackwardLET.String())
+	}
 	return "Event{" + strings.Join(parts, ", ") + "}"
 }
 
@@ -601,6 +593,7 @@ func (b BridgeSyncRuntimeData) String() string {
 	}
 	return res
 }
+
 func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
 	tmp := sync.RuntimeData{
 		ChainID:   b.ChainID,
@@ -626,7 +619,7 @@ var _ BridgeQuerier = (*processor)(nil)
 type processor struct {
 	syncerID       string
 	db             *sql.DB
-	exitTree       *tree.AppendOnlyTree
+	exitTree       types.FullTreer
 	log            *log.Logger
 	mu             mutex.RWMutex
 	halted         bool
@@ -1270,19 +1263,55 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
-	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	// ---------------------------------------------------------------------
+	// 1. Load affected deposit counts and BackwardLETs BEFORE deleting blocks, bridges and BackwardLET entries
+	// ---------------------------------------------------------------------
+	backwardLETsQuery := `
+		SELECT previous_deposit_count, new_deposit_count
+        FROM backward_let
+        WHERE block_num >= $1`
+	var backwardLETs []*BackwardLET
+	if err := meddler.QueryAll(tx, &backwardLETs, backwardLETsQuery, firstReorgedBlock); err != nil {
+		return fmt.Errorf("failed to retrieve the affected backward LETs: %w", err)
+	}
+
+	var depositCountsToRemove map[uint32]struct{}
+	if len(backwardLETs) > 0 {
+		depositCountsToRemove, err = loadReorgedDepositCounts(tx, firstReorgedBlock)
+		if err != nil {
+			p.log.Errorf("failed to retrieve reorged bridges: %v", err)
+			return err
+		}
+	}
+
+	// ---------------------------------------------------------
+	// 2. Delete blocks (cascade delete everything else)
+	// ---------------------------------------------------------
+	blocksRes, err := tx.Exec(`DELETE FROM block WHERE num >= $1`, firstReorgedBlock)
 	if err != nil {
 		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
 	}
+
 	rowsAffected, err := blocksRes.RowsAffected()
 	if err != nil {
 		p.log.Errorf("failed to get rows affected during reorg: %v", err)
 		return err
 	}
 
-	if err = p.exitTree.Reorg(tx, firstReorgedBlock); err != nil {
+	// ---------------------------------------------------------
+	// 3. Reorg exit tree to clean state
+	// ---------------------------------------------------------
+	if err := p.exitTree.Reorg(tx, firstReorgedBlock); err != nil {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
+		return err
+	}
+
+	// ---------------------------------------------------------
+	// 4. Restore bridges removed by BackwardLET
+	// ---------------------------------------------------------
+	err = p.restoreBackwardLETBridges(tx, backwardLETs, depositCountsToRemove)
+	if err != nil {
 		return err
 	}
 
@@ -1300,6 +1329,91 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
 
 	return nil
+}
+
+// restoreBackwardLETBridges restores bridges that were previously removed by BackwardLET events
+func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*BackwardLET,
+	removedDepositCounts map[uint32]struct{}) error {
+	restoreQuery := `
+		SELECT *
+		FROM bridge_archive
+		WHERE deposit_count > $1 AND deposit_count <= $2
+		ORDER BY deposit_count ASC
+	`
+
+	for _, backwardLET := range backwardLETs {
+		prev, err := aggkitcommon.SafeUint64(backwardLET.PreviousDepositCount)
+		if err != nil {
+			return fmt.Errorf("invalid previous deposit count: %w", err)
+		}
+
+		next, err := aggkitcommon.SafeUint64(backwardLET.NewDepositCount)
+		if err != nil {
+			return fmt.Errorf("invalid new deposit count: %w", err)
+		}
+
+		var bridges []*Bridge
+		if err := meddler.QueryAll(tx, &bridges, restoreQuery, next, prev); err != nil {
+			return err
+		}
+
+		for _, b := range bridges {
+			if _, ok := removedDepositCounts[b.DepositCount]; ok {
+				// skip cascade-deleted bridges (prevent from restoring them)
+				continue
+			}
+
+			// reset source
+			b.Source = ""
+			if err := meddler.Insert(tx, bridgeTableName, b); err != nil {
+				return err
+			}
+
+			leaf := types.Leaf{
+				Index: b.DepositCount,
+				Hash:  b.Hash(),
+			}
+			if _, err := p.exitTree.PutLeaf(tx, b.BlockNum, b.BlockPos, leaf); err != nil {
+				return err
+			}
+		}
+
+		// cleanup bridge_archive
+		if _, err := tx.Exec(`
+			DELETE FROM bridge_archive
+			WHERE deposit_count > $1 AND deposit_count <= $2
+		`, next, prev); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// loadReorgedDepositCounts retrieves the bridges that are going to be deleted by the reorg,
+// and returns its deposit counts.
+// The bridges are retrieved from the bridge_archive table, because in case there were BackwardLET events,
+// they would have already deleted the bridges from bridge table.
+func loadReorgedDepositCounts(tx dbtypes.Txer, fromBlock uint64) (map[uint32]struct{}, error) {
+	rows, err := tx.Query(`
+		SELECT deposit_count
+		FROM bridge_archive
+		WHERE block_num >= $1
+	`, fromBlock)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uint32]struct{})
+	for rows.Next() {
+		var depositCount uint32
+		if err := rows.Scan(&depositCount); err != nil {
+			return nil, err
+		}
+		result[depositCount] = struct{}{}
+	}
+	return result, nil
 }
 
 // ProcessBlock process the events of the block to build the exit tree
@@ -1397,6 +1511,34 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.BackwardLET != nil {
+			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
+			if err != nil {
+				return err
+			}
+
+			// 1. archive and remove all the bridges whose
+			// deposit_count is greater than the one captured by the BackwardLET event
+			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
+			if err != nil {
+				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
+					newDepositCount, err)
+			}
+
+			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
+			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
+				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+					leafIndex, newDepositCount)
+				return err
+			}
+
+			// 3. insert the backward let event to designated table
+			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
+				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1420,6 +1562,65 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				p.log.Debugf("%s", event.String())
 			}
 		}
+	}
+
+	return nil
+}
+
+// normalizeDepositCount checks whether given depositCount can fit into the uint64 and uint32 and downcasts it.
+// Otherwise it returns an error.
+func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
+	u64, err := aggkitcommon.SafeUint64(depositCount)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid deposit count: %w", err)
+	}
+
+	u32, err := aggkitcommon.SafeUint32(u64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid deposit count: %w", err)
+	}
+
+	return u64, u32, nil
+}
+
+// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than the provided one
+func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
+	// 1. Load candidates
+	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count > $1`, bridgeTableName)
+	var bridges []*Bridge
+	if err := meddler.QueryAll(tx, &bridges, query, depositCount); err != nil {
+		return err
+	}
+
+	if len(bridges) == 0 {
+		return nil
+	}
+
+	deletedDepositCounts := make([]uint32, 0, len(bridges))
+	// 2. Archive
+	for _, b := range bridges {
+		b.Source = BridgeSourceBackwardLET
+		if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
+			return err
+		}
+		deletedDepositCounts = append(deletedDepositCounts, b.DepositCount)
+	}
+
+	// 3. Delete originals
+	deleteQuery := fmt.Sprintf(`
+		DELETE FROM %s 
+		WHERE deposit_count > $1`,
+		bridgeTableName)
+
+	_, err := tx.ExecContext(ctx, deleteQuery, depositCount)
+	if err != nil {
+		return err
+	}
+
+	if len(deletedDepositCounts) > 0 {
+		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
+			len(deletedDepositCounts), depositCount, deletedDepositCounts,
+		)
 	}
 
 	return nil

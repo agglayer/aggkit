@@ -25,6 +25,7 @@ type LeafWriter interface {
 type ReorganizeTreer interface {
 	ReadTreer
 	Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error
+	BackwardToIndex(ctx context.Context, tx dbtypes.Txer, targetIndex uint32) error
 }
 
 // FullTreer = fully-capable tree (read, write, reorg)

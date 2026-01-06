@@ -133,14 +133,11 @@ func (t *Tree) getRHTNode(tx dbtypes.Querier, nodeHash common.Hash) (*types.Tree
 }
 
 func (t *Tree) storeNodes(tx dbtypes.Txer, nodes []types.TreeNode) error {
-	for i := 0; i < len(nodes); i++ {
-		if err := meddler.Insert(tx, t.rhtTable, &nodes[i]); err != nil {
-			if sqliteErr, ok := db.SQLiteErr(err); ok {
-				if sqliteErr.ExtendedCode == db.UniqueConstrain {
-					// ignore repeated entries. This is likely to happen due to not
-					// cleaning RHT when reorg
-					continue
-				}
+	for _, node := range nodes {
+		if err := meddler.Insert(tx, t.rhtTable, &node); err != nil {
+			if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.ExtendedCode == db.UniqueConstraintErrCode {
+				// ignore repeated entries
+				continue
 			}
 			return err
 		}
@@ -246,12 +243,22 @@ func (t *Tree) Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error {
 	return err
 }
 
+// BackwardToIndex deletes all the roots with index higher than targetIndex
+func (t *Tree) BackwardToIndex(ctx context.Context, tx dbtypes.Txer, targetIndex uint32) error {
+	_, err := tx.ExecContext(
+		ctx,
+		fmt.Sprintf(`DELETE FROM %s WHERE position > $1`, t.rootTable),
+		targetIndex,
+	)
+	return err
+}
+
 // CalculateRoot calculates the Merkle Root based on the leaf and proof	of inclusion
 func CalculateRoot(leafHash common.Hash, proof [types.DefaultHeight]common.Hash, index uint32) common.Hash {
 	node := leafHash
 
 	// Compute the Merkle root
-	for height := uint8(0); height < types.DefaultHeight; height++ {
+	for height := range types.DefaultHeight {
 		if (index>>height)&1 == 1 {
 			node = crypto.Keccak256Hash(proof[height].Bytes(), node.Bytes())
 		} else {
