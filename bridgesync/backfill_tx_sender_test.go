@@ -406,6 +406,112 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 		require.Equal(t, 1, count)
 	})
 
+	t.Run("excludes backward_let and forward_let sources", func(t *testing.T) {
+		tempDir := t.TempDir()
+		dbPath := filepath.Join(tempDir, "test.db")
+
+		// Run migrations
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		// Create test data
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer database.Close()
+
+		ctx := context.Background()
+		tx, err := db.NewTx(ctx, database)
+		require.NoError(t, err)
+
+		// Insert test data
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1), (2), (3), (4)`)
+		require.NoError(t, err)
+
+		// Insert bridge with empty txn_sender and NULL source (should be counted)
+		_, err = tx.Exec(`
+			INSERT INTO bridge (
+				block_num, block_pos, leaf_type, origin_network, origin_address,
+				destination_network, destination_address, amount, metadata, deposit_count,
+				tx_hash, block_timestamp, from_address, txn_sender, source
+			) VALUES (
+				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
+				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
+				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+				1234567890, '0x1111111111111111111111111111111111111111', '', NULL
+			)
+		`)
+		require.NoError(t, err)
+
+		// Insert bridge with empty txn_sender and backward_let source (should NOT be counted)
+		_, err = tx.Exec(`
+			INSERT INTO bridge (
+				block_num, block_pos, leaf_type, origin_network, origin_address,
+				destination_network, destination_address, amount, metadata, deposit_count,
+				tx_hash, block_timestamp, from_address, txn_sender, source
+			) VALUES (
+				2, 0, 1, 1, '0x1234567890123456789012345678901234567890',
+				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
+				'', 2, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
+				1234567890, '', '', 'backward_let'
+			)
+		`)
+		require.NoError(t, err)
+
+		// Insert bridge with empty txn_sender and forward_let source (should NOT be counted)
+		_, err = tx.Exec(`
+			INSERT INTO bridge (
+				block_num, block_pos, leaf_type, origin_network, origin_address,
+				destination_network, destination_address, amount, metadata, deposit_count,
+				tx_hash, block_timestamp, from_address, txn_sender, source
+			) VALUES (
+				3, 0, 1, 1, '0x1234567890123456789012345678901234567890',
+				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
+				'', 3, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892',
+				1234567890, '', '', 'forward_let'
+			)
+		`)
+		require.NoError(t, err)
+
+		// Insert bridge with empty txn_sender and no source field (should be counted)
+		_, err = tx.Exec(`
+			INSERT INTO bridge (
+				block_num, block_pos, leaf_type, origin_network, origin_address,
+				destination_network, destination_address, amount, metadata, deposit_count,
+				tx_hash, block_timestamp, from_address, txn_sender
+			) VALUES (
+				4, 0, 1, 1, '0x1234567890123456789012345678901234567890',
+				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
+				'', 4, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567893',
+				1234567890, '', ''
+			)
+		`)
+		require.NoError(t, err)
+
+		err = tx.Commit()
+		require.NoError(t, err)
+
+		mockClient := mocks.NewEthClienter(t)
+		logger := log.WithFields("module", "test")
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		require.NoError(t, err)
+		defer backfiller.Close()
+
+		// Should only count the 2 records without backward_let or forward_let source
+		count, err := backfiller.getRecordsNeedingBackfillCount(ctx, "bridge")
+		require.NoError(t, err)
+		require.Equal(t, 2, count)
+
+		// Verify getRecordsNeedingBackfill also excludes these sources
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+
+		// Verify the correct records were returned (block_num 1 and 4)
+		blockNums := []uint64{records[0].BlockNum, records[1].BlockNum}
+		require.Contains(t, blockNums, uint64(1))
+		require.Contains(t, blockNums, uint64(4))
+	})
+
 	t.Run("database error", func(t *testing.T) {
 		tempDir := t.TempDir()
 		dbPath := filepath.Join(tempDir, "test.db")
