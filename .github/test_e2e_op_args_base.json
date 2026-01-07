@@ -1,7 +1,7 @@
 {
   "deployment_stages": {
     "deploy_op_succinct": false,
-    "deploy_cdk_bridge_infra": false
+    "deploy_cdk_bridge_infra": true
   },
   "args": {
     "aggkit_image": "aggkit:local",
