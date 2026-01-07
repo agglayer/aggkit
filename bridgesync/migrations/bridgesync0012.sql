@@ -6,6 +6,7 @@ ALTER TABLE bridge DROP COLUMN to_address;
 
 DROP TABLE IF EXISTS bridge_archive;
 DROP TABLE IF EXISTS backward_let;
+DROP TABLE IF EXISTS forward_let;
 ALTER TABLE bridge DROP COLUMN source;
 
 -- +migrate Up
@@ -26,6 +27,18 @@ CREATE TABLE IF NOT EXISTS backward_let (
 
 ALTER TABLE bridge ADD COLUMN source TEXT DEFAULT '';
 
+CREATE TABLE IF NOT EXISTS forward_let (
+        block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,
+        block_pos INTEGER NOT NULL,
+        block_timestamp INTEGER NOT NULL,
+        tx_hash VARCHAR NOT NULL,
+        previous_deposit_count TEXT NOT NULL,
+		previous_root VARCHAR NOT NULL,
+		new_deposit_count TEXT NOT NULL,
+		new_root VARCHAR NOT NULL,
+		new_leaves BLOB NOT NULL,
+		PRIMARY KEY (block_num, block_pos)
+	);
 ------------------------------------------------------------------------------
 -- Create bridge_archive table
 ------------------------------------------------------------------------------

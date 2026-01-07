@@ -163,14 +163,16 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM %s
-		WHERE txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL
+		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		AND (source IS NULL OR (source != $1 AND source != $2))
 	`, tableName)
 
 	var count int
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
 
-	err := b.db.QueryRowContext(dbCtx, query).Scan(&count)
+	err := b.db.QueryRowContext(dbCtx, query,
+		BridgeSourceBackwardLET, BridgeSourceForwardLET).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count records needing backfill: %w", err)
 	}
@@ -188,13 +190,15 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
-		WHERE txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL
-		LIMIT $1
+		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		AND (source IS NULL OR (source != $1 AND source != $2))
+		LIMIT $3
 	`, tableName)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
-	rows, err := b.db.QueryContext(dbCtx, query, limit)
+	rows, err := b.db.QueryContext(dbCtx, query,
+		BridgeSourceBackwardLET, BridgeSourceForwardLET, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
