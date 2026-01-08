@@ -1405,12 +1405,12 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 	`
 
 	for _, backwardLET := range backwardLETs {
-		prev, err := aggkitcommon.SafeUint64(backwardLET.PreviousDepositCount)
+		prev, err := aggkitcommon.SafeUint64(new(big.Int).Sub(backwardLET.PreviousDepositCount, big.NewInt(1)))
 		if err != nil {
 			return fmt.Errorf("invalid previous deposit count: %w", err)
 		}
 
-		next, err := aggkitcommon.SafeUint64(backwardLET.NewDepositCount)
+		next, err := aggkitcommon.SafeUint64(new(big.Int).Sub(backwardLET.NewDepositCount, big.NewInt(1)))
 		if err != nil {
 			return fmt.Errorf("invalid new deposit count: %w", err)
 		}
@@ -1590,7 +1590,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
+			newDepositCount, leafIndex, err := normalizeDepositCount(new(big.Int).Sub(event.BackwardLET.NewDepositCount, big.NewInt(1)))
 			if err != nil {
 				return err
 			}
@@ -1609,6 +1609,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					leafIndex, newDepositCount)
 				return err
 			}
+
+			fmt.Printf("backward let event %s\n", event.BackwardLET.String())
 
 			// 4. sanity check that the new root matches the latest one in the exit tree
 			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.NewRoot); err != nil {

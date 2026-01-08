@@ -406,7 +406,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         ;;
     single-l2-network-op-pessimistic)
         # bats ./tests/aggkit/bridge-e2e.bats || exit 1
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats -f "Test backwardLET feature" || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats -f "Test backwardlet, forwardlet feature" || exit 1
         # bats ./tests/op/optimistic-mode.bats || exit 1
         # bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
         # bats ./tests/aggkit/internal-claims.bats || exit 1

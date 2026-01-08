@@ -236,14 +236,46 @@ function create_dest_folder() {
 }
 ###############################################################################
 function download_kurtosis_artifacts() {
-    kurtosis files download $KURTOSIS_ENCLAVE aggkit-sequencer-keystore $DEST
+    # Construct artifact name from service name (e.g., aggkit-001 -> aggkit-config-001)
+    # Allow override via environment variable, otherwise construct from AGGKIT_SERVICE
+    local AGGKIT_CONFIG_ARTIFACT
+    if [ -n "${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-}" ]; then
+        AGGKIT_CONFIG_ARTIFACT="$KURTOSIS_ARTIFACT_AGGKIT_CONFIG"
+    else
+        # Extract service number from AGGKIT_SERVICE (e.g., aggkit-001 -> 001)
+        local SERVICE_NUMBER=$(echo "$AGGKIT_SERVICE" | sed 's/.*-//')
+        AGGKIT_CONFIG_ARTIFACT="aggkit-config-${SERVICE_NUMBER}"
+    fi
+
+    kurtosis files download "$KURTOSIS_ENCLAVE" "aggkit-sequencer-keystore" "$DEST"
     ok_or_fatal "Error downloading kurtosis artifact aggkit-sequencer-keystore to $DEST"
     export zkevm_l2_sequencer_keystore_file_path=$DEST/sequencer.keystore
 
-    kurtosis files download $KURTOSIS_ENCLAVE aggkit-config-artifact $DEST
-    ok_or_fatal "Error downloading kurtosis artifact aggkit-config-artifact to $DEST"
+    if ! kurtosis files download "$KURTOSIS_ENCLAVE" "$AGGKIT_CONFIG_ARTIFACT" "$DEST" 2>/dev/null; then
+        log_error "Failed to download kurtosis artifact '$AGGKIT_CONFIG_ARTIFACT' from enclave '$KURTOSIS_ENCLAVE'"
+        log_error "This artifact is expected to be created by the Kurtosis CDK setup."
+        log_error ""
+        log_error "Current configuration:"
+        log_error "  AGGKIT_SERVICE: $AGGKIT_SERVICE"
+        log_error "  Constructed artifact name: $AGGKIT_CONFIG_ARTIFACT"
+        log_error ""
+        log_error "Possible solutions:"
+        log_error "1. Ensure the Kurtosis environment was started correctly"
+        log_error "2. Check that the Kurtosis CDK version matches the expected commit"
+        log_error "3. Verify the enclave name is correct (current: $KURTOSIS_ENCLAVE)"
+        log_error "4. Try restarting the Kurtosis environment:"
+        log_error "   kurtosis clean --all"
+        log_error "   kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file params.yml --image-download always ."
+        log_error ""
+        log_error "You can override the artifact name by setting:"
+        log_error "   export KURTOSIS_ARTIFACT_AGGKIT_CONFIG=<artifact-name>"
+        log_error ""
+        log_error "You can check available artifacts with:"
+        log_error "   kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep aggkit"
+        log_fatal "Error downloading kurtosis artifact $AGGKIT_CONFIG_ARTIFACT to $DEST"
+    fi
 
-    kurtosis files download $KURTOSIS_ENCLAVE aggoracle-keystore $DEST
+    kurtosis files download "$KURTOSIS_ENCLAVE" "aggoracle-keystore" "$DEST"
     ok_or_fatal "Error downloading kurtosis artifact aggoracle to $DEST"
     export zkevm_aggoracle_privatekey_path=$DEST/aggoracle.keystore
 }
