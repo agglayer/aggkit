@@ -1590,7 +1590,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-			newDepositCount, leafIndex, err := normalizeDepositCount(new(big.Int).Sub(event.BackwardLET.NewDepositCount, big.NewInt(1)))
+			adjustedCount := new(big.Int).Sub(event.BackwardLET.NewDepositCount, big.NewInt(1))
+			newDepositCount, leafIndex, err := normalizeDepositCount(adjustedCount)
 			if err != nil {
 				return err
 			}
@@ -1609,8 +1610,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					leafIndex, newDepositCount)
 				return err
 			}
-
-			fmt.Printf("backward let event %s\n", event.BackwardLET.String())
 
 			// 4. sanity check that the new root matches the latest one in the exit tree
 			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.NewRoot); err != nil {
