@@ -6,7 +6,7 @@
   "args": {
     "deployment_suffix": "-002",
     "l2_chain_id": 20202,
-    "zkevm_rollup_id": 2
+    "l2_network_id": 2
   },
   "optimism_package": {
     "chains": {
