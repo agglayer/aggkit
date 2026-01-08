@@ -18,7 +18,7 @@ concurrency:
 
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
-  KURTOSIS_CDK_COMMIT: "8ad1a72ccf5212219cabc67e0d7f542658295185"
+  KURTOSIS_CDK_COMMIT: "507e4e8e6581ab5ecbb44444f9b7f1d05e3dcd1c"
 
 permissions:
   packages: write
