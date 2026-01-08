@@ -1,6 +1,6 @@
 {
   "args": {
-    "zkevm_rollup_chain_id": 20201
+    "l2_chain_id": 20201
   },
   "optimism_package": {
     "predeployed_contracts": true,
