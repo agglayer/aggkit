@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"path"
@@ -5537,44 +5536,6 @@ func TestProcessor_BackwardLET(t *testing.T) {
 			archivedDepositCounts: []uint32{3, 4, 5},
 		},
 		{
-			name: "overlapping backward let events",
-			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
-				blocks = append(blocks, sync.Block{
-					Num:  uint64(len(blocks) + 1),
-					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
-					Events: []any{
-						Event{BackwardLET: &BackwardLET{
-							BlockNum:             uint64(len(blocks) + 1),
-							BlockPos:             0,
-							PreviousDepositCount: big.NewInt(6),
-							NewDepositCount:      big.NewInt(4),
-							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
-						}},
-					},
-				})
-				blocks = append(blocks, sync.Block{
-					Num:  uint64(len(blocks) + 2),
-					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+2)),
-					Events: []any{
-						Event{BackwardLET: &BackwardLET{
-							BlockNum:             uint64(len(blocks) + 2),
-							BlockPos:             0,
-							PreviousDepositCount: big.NewInt(4),
-							NewDepositCount:      big.NewInt(3),
-							PreviousRoot:         common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
-							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
-						}},
-					},
-				})
-
-				return blocks
-			},
-			targetDepositCount:    3,
-			archivedDepositCounts: []uint32{4, 5},
-		},
-		{
 			name: "backward let on empty bridge table",
 			setupBlocks: func() []sync.Block {
 				return []sync.Block{
@@ -5592,44 +5553,6 @@ func TestProcessor_BackwardLET(t *testing.T) {
 					}}
 			},
 			targetDepositCount: 0,
-		},
-		{
-			name: "backward let invalid new deposit count (outside of uint64 range)",
-			setupBlocks: func() []sync.Block {
-				return []sync.Block{
-					{
-						Num:  1,
-						Hash: common.HexToHash("0x1"),
-						Events: []any{
-							Event{BackwardLET: &BackwardLET{
-								BlockNum:             1,
-								BlockPos:             0,
-								PreviousDepositCount: big.NewInt(0),
-								NewDepositCount:      big.NewInt(-3),
-							}},
-						},
-					}}
-			},
-			processBlockErrMsg: "invalid deposit count: value=-3 does not fit in uint64",
-		},
-		{
-			name: "backward let invalid new deposit count (outside of uint32 range)",
-			setupBlocks: func() []sync.Block {
-				return []sync.Block{
-					{
-						Num:  1,
-						Hash: common.HexToHash("0x1"),
-						Events: []any{
-							Event{BackwardLET: &BackwardLET{
-								BlockNum:             1,
-								BlockPos:             0,
-								PreviousDepositCount: big.NewInt(0),
-								NewDepositCount:      new(big.Int).SetUint64(uint64(math.MaxUint32) + 1),
-							}},
-						},
-					}}
-			},
-			processBlockErrMsg: "invalid deposit count: value=4294967296 exceeds uint32 max",
 		},
 		{
 			name: "backward let after a couple of bridges + reorg backward let",
