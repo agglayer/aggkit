@@ -168,10 +168,10 @@ single-l2-network-op-succinct-aggoracle-committee)
     ENCLAVE_NAME="op"
     ;;
 single-l2-network-op-pessimistic)
-    ENCLAVE_NAME="aggkit"
+    ENCLAVE_NAME="op"
     ;;
 multi-l2-networks-2-chains-op-pessimistic)
-    ENCLAVE_NAME="aggkit"
+    ENCLAVE_NAME="op"
     ;;
 multi-l2-networks-3-chains-cdk-erigon-pessimistic)
     ENCLAVE_NAME="aggkit"
