@@ -4,7 +4,7 @@
     "use_agg_oracle_committee": true,
     "agg_oracle_committee_quorum": 2,
     "agg_oracle_committee_total_members": 3,
-    "zkevm_rollup_chain_id": 20201
+    "l2_chain_id": 20201
   },
   "optimism_package": {
     "chains": {
