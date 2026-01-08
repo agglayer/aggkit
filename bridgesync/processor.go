@@ -1756,7 +1756,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
-	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+	newDepositCount := uint32(event.PreviousDepositCount.Uint64())
 	newBlockPos := event.BlockPos
 	if blockPos != nil {
 		newBlockPos = *blockPos
