@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var finalizedBlockBigInt = big.NewInt(int64(aggkittypes.Finalized))
+var finalizedBlockBigInt = &aggkittypes.FinalizedBlock
 
 func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 	t.Parallel()
@@ -103,8 +103,6 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 		})
 	}
 }
-
-var finalizedBlockBigInt = &aggkittypes.FinalizedBlock
 
 func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 	t.Parallel()
