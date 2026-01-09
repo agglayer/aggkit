@@ -43,13 +43,13 @@ func TestEVMMultidownloader(t *testing.T) {
 	l1url := os.Getenv("L1URL")
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
-	ethClient := aggkittypes.NewDefaultEthClient(ethRawClient, ethRawClient.Client())
+	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client(), nil)
 	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
 
-	block, err := ethClient.BlockByNumber(t.Context(), nil) // Test connection
+	block, err := ethClient.CustomHeaderByNumber(t.Context(), nil) // Test connection
 	require.NoError(t, err)
-	log.Infof("Connected to Ethereum. Current block: %d", block.Number().Uint64())
+	log.Infof("Connected to Ethereum. Current block: %d", block.Number)
 
 	logger := log.WithFields("test", "test")
 
@@ -187,6 +187,7 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	require.NoError(t, err)
 	ethRPCClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
+	ethClientWrapped := etherman.NewDefaultEthClient(ethClient, ethRPCClient, nil)
 
 	blockNumbersMap := make([]uint64, 0)
 	var blockNumbersSlice []uint64
@@ -204,7 +205,7 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 	log.Infof("BatchMode took %s", durationBatch.String())
 
 	start = time.Now()
-	headersParallel, err := etherman.RetrieveBlockHeaders(t.Context(), logger, ethClient, nil, blockNumbersMap, 20)
+	headersParallel, err := etherman.RetrieveBlockHeaders(t.Context(), logger, ethClientWrapped, nil, blockNumbersMap, 20)
 	require.NoError(t, err)
 	durationParallel := time.Since(start)
 	log.Infof("Parallel RPC took %s", durationParallel.String())

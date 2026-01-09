@@ -11,7 +11,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -63,9 +62,9 @@ func TestEVMMultidownloader_BlockHeader(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, true)
 	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
 		Return(uint64(123456), nil)
-	testData.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(123456)).
-		Return(&types.Header{
-			Number: big.NewInt(123456),
+	testData.mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(123456)).
+		Return(&aggkittypes.BlockHeader{
+			Number: 123456,
 		}, nil)
 	header, err := testData.mdr.BlockHeader(t.Context(), aggkittypes.LatestBlock)
 	require.NoError(t, err)
@@ -78,12 +77,12 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 
 		// Test
-		result, err := testData.mdr.HeaderByNumber(context.Background(), big.NewInt(-1))
+		result, err := testData.mdr.HeaderByNumber(context.Background(), &aggkittypes.FinalizedBlock)
 
 		// Assertions
 		require.Nil(t, result)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "negative block numbers are not supported")
+		require.Contains(t, err.Error(), "only numeric")
 	})
 
 	t.Run("storage error returns error", func(t *testing.T) {
@@ -93,7 +92,7 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 			Return(nil, false, errStorageExample)
 
 		// Test
-		result, err := testData.mdr.HeaderByNumber(context.Background(), big.NewInt(123))
+		result, err := testData.mdr.HeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(123))
 
 		// Assertions
 		require.Nil(t, result)
@@ -112,8 +111,8 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, expectedBlock.Number).
 			Return(expectedBlock, false, nil)
 
-		// Test
-		result, err := testData.mdr.HeaderByNumber(context.Background(), big.NewInt(123))
+			// Test
+		result, err := testData.mdr.HeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(123))
 
 		// Assertions
 		require.NoError(t, err)
@@ -128,11 +127,11 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 			Return(nil, false, nil) // Block not found in storage
 
 		ethClientErr := errors.New("eth client error")
-		testData.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(123)).
+		testData.mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(123)).
 			Return(nil, ethClientErr)
 
 		// Test
-		result, err := testData.mdr.HeaderByNumber(context.Background(), big.NewInt(123))
+		result, err := testData.mdr.HeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(123))
 
 		// Assertions
 		require.Nil(t, result)
@@ -148,14 +147,14 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(123)).
 			Return(nil, false, nil) // Block not found in storage
 
-		ethHeader := &types.Header{
-			Number: big.NewInt(123),
+		ethHeader := &aggkittypes.BlockHeader{
+			Number: 123,
 		}
-		testData.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(123)).
+		testData.mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(123)).
 			Return(ethHeader, nil)
 
 		// Test
-		result, err := testData.mdr.HeaderByNumber(context.Background(), big.NewInt(123))
+		result, err := testData.mdr.HeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(123))
 
 		// Assertions
 		require.NoError(t, err)

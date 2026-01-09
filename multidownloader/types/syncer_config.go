@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,7 +35,13 @@ func (c *ContractConfig) Update(syncerConfig aggkittypes.SyncerConfig) {
 	if syncerConfig.FromBlock < c.FromBlock {
 		c.FromBlock = syncerConfig.FromBlock
 	}
-	if syncerConfig.ToBlock.LessFinalThan(c.ToBlock) {
+	lessFinal, err := syncerConfig.ToBlock.LessFinalThan(c.ToBlock)
+	if err != nil {
+		// In case of error, we do not update ToBlock
+		log.Warnf("ContractConfig.Update: cannot compare ToBlock finality: %v", err)
+		return
+	}
+	if lessFinal {
 		c.ToBlock = syncerConfig.ToBlock
 	}
 	if !elementMatch(c.Syncers, syncerConfig.SyncerID) {

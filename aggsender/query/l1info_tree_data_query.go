@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"fmt"
-	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -14,8 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-var finalizedBlockBigInt = big.NewInt(int64(aggkittypes.Finalized))
 
 var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 
@@ -143,13 +140,13 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 
 // getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
 func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
-	lastFinalizedL1Block, err := l.l1Client.HeaderByNumber(ctx, finalizedBlockBigInt)
+	lastFinalizedL1Block, err := l.l1Client.CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock)
 	if err != nil {
 		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)
 	}
 
 	lastProcessedBlockNum, lastProcessedBlockHash, err := l.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
-		lastFinalizedL1Block.Number.Uint64())
+		lastFinalizedL1Block.Number)
 	if err != nil {
 		return 0, fmt.Errorf("error getting latest processed block from l1infotreesyncer: %w", err)
 	}
@@ -158,25 +155,25 @@ func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Con
 		return 0, fmt.Errorf("l1infotreesyncer did not process any block yet")
 	}
 
-	if lastFinalizedL1Block.Number.Uint64() > lastProcessedBlockNum {
+	if lastFinalizedL1Block.Number > lastProcessedBlockNum {
 		// syncer has a lower block than the finalized block, so we need to get that block from the l1 node
-		lastFinalizedL1Block, err = l.l1Client.HeaderByNumber(ctx, new(big.Int).SetUint64(lastProcessedBlockNum))
+		lastFinalizedL1Block, err = l.l1Client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(lastProcessedBlockNum))
 		if err != nil {
 			return 0, fmt.Errorf("error getting latest processed finalized block: %d: %w",
 				lastProcessedBlockNum, err)
 		}
 	}
 
-	if (lastProcessedBlockHash == common.Hash{}) || (lastProcessedBlockHash == lastFinalizedL1Block.Hash()) {
+	if (lastProcessedBlockHash == common.Hash{}) || (lastProcessedBlockHash == lastFinalizedL1Block.Hash) {
 		// if the hash is empty it means that this is an old block that was processed before this
 		// feature was added, so we will consider it finalized
-		return lastFinalizedL1Block.Number.Uint64(), nil
+		return lastFinalizedL1Block.Number, nil
 	}
 
 	return 0, fmt.Errorf("l1infotreesyncer returned a different hash for "+
 		"the latest finalized block: %d. Might be that syncer did not process a reorg yet. "+
 		"Expected hash: %s, got: %s", lastProcessedBlockNum,
-		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
+		lastFinalizedL1Block.Hash.String(), lastProcessedBlockHash.String())
 }
 
 // GetInfoByIndex returns the L1 Info tree leaf for the given index

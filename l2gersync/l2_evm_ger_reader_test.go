@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	aggoraclemocks "github.com/agglayer/aggkit/aggoracle/mocks"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync/mocks"
 	"github.com/agglayer/aggkit/test/helpers"
@@ -85,7 +86,7 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 		l1InfoTreeSync := mocks.NewL1InfoTreeQuerier(t)
 		l1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 1}, nil).Maybe()
 
-		gerReader, err := NewL2EVMGERReader(l2.GERAddr, l2.SimBackend.Client(), l1InfoTreeSync)
+		gerReader, err := NewL2EVMGERReader(l2.GERAddr, etherman.NewDefaultEthClient(l2.SimBackend.Client(), nil, nil), l1InfoTreeSync)
 		require.NoError(t, err)
 
 		// Ensure we have enough blocks by committing several times
@@ -233,7 +234,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 
 		l1InfoTreeSync := mocks.NewL1InfoTreeQuerier(t)
 
-		gerReader, err := NewL2EVMGERReader(l2.GERAddr, l2.SimBackend.Client(), l1InfoTreeSync)
+		gerReader, err := NewL2EVMGERReader(l2.GERAddr, etherman.NewDefaultEthClient(l2.SimBackend.Client(), nil, nil), l1InfoTreeSync)
 		require.NoError(t, err)
 
 		// commit one block so the current block is block 6
@@ -256,7 +257,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 
 		l1InfoTreeSync := mocks.NewL1InfoTreeQuerier(t)
 
-		gerReader, err := NewL2EVMGERReader(l2.GERAddr, l2.SimBackend.Client(), l1InfoTreeSync)
+		gerReader, err := NewL2EVMGERReader(l2.GERAddr, etherman.NewDefaultEthClient(l2.SimBackend.Client(), nil, nil), l1InfoTreeSync)
 		require.NoError(t, err)
 
 		// First insert a GER
@@ -300,7 +301,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 
 		l1InfoTreeSync := mocks.NewL1InfoTreeQuerier(t)
 
-		gerReader, err := NewL2EVMGERReader(l2.GERAddr, l2.SimBackend.Client(), l1InfoTreeSync)
+		gerReader, err := NewL2EVMGERReader(l2.GERAddr, etherman.NewDefaultEthClient(l2.SimBackend.Client(), nil, nil), l1InfoTreeSync)
 		require.NoError(t, err)
 
 		// Insert and remove multiple GERs
@@ -372,7 +373,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 
 		l1InfoTreeSync := mocks.NewL1InfoTreeQuerier(t)
 
-		gerReader, err := NewL2EVMGERReader(l2.GERAddr, l2.SimBackend.Client(), l1InfoTreeSync)
+		gerReader, err := NewL2EVMGERReader(l2.GERAddr, etherman.NewDefaultEthClient(l2.SimBackend.Client(), nil, nil), l1InfoTreeSync)
 		require.NoError(t, err)
 
 		// Test with a valid range that should not cause iterator errors

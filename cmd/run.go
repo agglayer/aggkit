@@ -83,7 +83,7 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
-	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
+	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
@@ -107,7 +107,7 @@ func start(cliCtx *cli.Context) error {
 		rpcServices = append(rpcServices, l1mdServices...)
 	}
 
-	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, l1Client)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
@@ -540,27 +540,15 @@ func runL1InfoTreeSyncerIfNeeded(
 }
 
 func runL1ClientIfNeeded(ctx context.Context,
-	components []string, rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE,
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE,
-		aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.L1BRIDGESYNC,
-	}, components) {
-		return nil
-	}
+	rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
+	// Always is required because is used to create a L1InfoTreeDataQuerier
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
 
-	retryHandler, err := rpcClientCfg.NewRetryHandler()
-	if err != nil {
-		log.Fatalf("failed to create retry handler: %w", err)
+	if rpcClientCfg.Mode != ethermanconfig.RPCModeBasic {
+		log.Fatalf("only basic RPC mode is supported for L1 client, got: %s", rpcClientCfg.Mode)
 	}
-
-	ethClient, err := aggkittypes.DialWithRetry(ctx, rpcClientCfg.URL, retryHandler)
+	logger := log.WithFields("module", "l1client")
+	ethClient, err := etherman.NewRPCClient(ctx, logger, rpcClientCfg)
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
 	}
@@ -569,7 +557,7 @@ func runL1ClientIfNeeded(ctx context.Context,
 }
 
 func runL2ClientIfNeeded(ctx context.Context,
-	components []string, urlRPCL2 ethermanconfig.L2RPCClientConfig) aggkittypes.EthClienter {
+	components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
@@ -580,7 +568,8 @@ func runL2ClientIfNeeded(ctx context.Context,
 		aggkitcommon.L2GERSYNC}, components) {
 		return nil
 	}
-	l2Client, err := etherman.NewRPCClient(ctx, urlRPCL2)
+	logger := log.WithFields("module", "l2client")
+	l2Client, err := etherman.NewRPCClient(ctx, logger, urlRPCL2)
 	if err != nil {
 		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
 	}
@@ -887,17 +876,9 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
 func createRollupDataQuerier(ctx context.Context,
 	cfg ethermanconfig.L1NetworkConfig,
+	l1Client aggkittypes.BaseEthereumClienter,
 ) (*ethermanquierier.RollupDataQuerier, error) {
-	retryHandler, err := cfg.RPC.NewRetryHandler()
-	if err != nil {
-		log.Fatalf("failed to create retry handler: %w", err)
-	}
-
-	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.RPC.URL, retryHandler)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
-	}
-	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, ethClient,
+	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, l1Client,
 		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (ethermanquierier.RollupManagerContract, error) {
 			return agglayermanager.NewAgglayermanager(rollupManagerAddr, client)

@@ -3,13 +3,10 @@ package types_test
 import (
 	"bytes"
 	"fmt"
-	"math/big"
 	"testing"
 
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -74,6 +71,9 @@ func TestBlockNumberFinalityReadFromConfigFile(t *testing.T) {
 	require.Error(t, err)
 	_, err = readConfigFile[configTest](t, "BlockFinality = \"\"")
 	require.Error(t, err)
+	cfg, err = readConfigFile[configTest](t, "BlockFinality = \"123\"")
+	require.NoError(t, err)
+	require.Equal(t, "123", cfg.BlockFinality.String())
 }
 
 func TestBlockNumberFinalityWithOffset(t *testing.T) {
@@ -121,6 +121,7 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 		firstFinality  aggkittypes.BlockNumberFinality
 		secondFinality aggkittypes.BlockNumberFinality
 		isLessFinal    bool
+		expectedError  string
 	}{
 		{
 			name:           "empty finality less final than pending block type",
@@ -206,12 +207,40 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 			},
 			isLessFinal: false,
 		},
+		{
+			name:           "compare 2 cte",
+			firstFinality:  *aggkittypes.NewBlockNumber(234),
+			secondFinality: *aggkittypes.NewBlockNumber(345),
+			isLessFinal:    true,
+		},
+		{
+			name:           "compare 2 cte",
+			firstFinality:  *aggkittypes.NewBlockNumber(345),
+			secondFinality: *aggkittypes.NewBlockNumber(234),
+			isLessFinal:    false,
+		},
+		{
+			name:           "compare cte vs non-cte",
+			firstFinality:  *aggkittypes.NewBlockNumber(234),
+			secondFinality: aggkittypes.LatestBlock,
+			expectedError:  "cannot compare constant block with non-constant block",
+		},
+		{
+			name:           "compare cte vs non-cte",
+			firstFinality:  aggkittypes.LatestBlock,
+			secondFinality: *aggkittypes.NewBlockNumber(234),
+			expectedError:  "cannot compare constant block with non-constant block",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.firstFinality.LessFinalThan(tt.secondFinality)
-			require.Equal(t, tt.isLessFinal, result)
+			result, err := tt.firstFinality.LessFinalThan(tt.secondFinality)
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+			} else {
+				require.Equal(t, tt.isLessFinal, result)
+			}
 		})
 	}
 }
@@ -219,7 +248,7 @@ func TestBlockNumberFinality_LessFinalThan(t *testing.T) {
 func TestBlockNumber_ApplyOffset(t *testing.T) {
 	tests := []struct {
 		name           string
-		blockType      aggkittypes.BlockNumber
+		blockType      aggkittypes.BlockName
 		blockNumber    uint64
 		offset         int64
 		expectedResult uint64
@@ -262,6 +291,13 @@ func TestBlockNumber_ApplyOffset(t *testing.T) {
 		{
 			name:           "latest block ignores positive offset",
 			blockType:      aggkittypes.Latest,
+			blockNumber:    500,
+			offset:         10,
+			expectedResult: 500,
+		},
+		{
+			name:           "const block ignore offset",
+			blockType:      aggkittypes.Constant,
 			blockNumber:    500,
 			offset:         10,
 			expectedResult: 500,
@@ -325,6 +361,11 @@ func TestBlockNumberFinality(t *testing.T) {
 			input:       "InvalidBlock",
 			expectedErr: fmt.Errorf("invalid finality keyword: InvalidBlock"),
 		},
+		{
+			name:           "cte block",
+			input:          "1234",
+			expectedResult: *aggkittypes.NewBlockNumber(1234),
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -349,66 +390,15 @@ func TestBlockNumberFinalityJSONSchema(t *testing.T) {
 func TestBlockNumberFinality_BlockNumber(t *testing.T) {
 	ctx := t.Context()
 	mockClient := mocks.NewBaseEthereumClienter(t)
-	finalizedHeader := &types.Header{Number: big.NewInt(100)}
-	mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Maybe()
+	finalizedHeader := &aggkittypes.BlockHeader{Number: 100}
+	mockClient.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).Return(finalizedHeader, nil).Maybe()
 	_, err := blockFinalityEmpty.BlockNumber(ctx, mockClient)
 	require.Error(t, err)
 	_, err = blockFinalityCreated.BlockNumber(ctx, mockClient)
 	require.Error(t, err)
 	number, err := aggkittypes.FinalizedBlock.BlockNumber(ctx, mockClient)
 	require.NoError(t, err)
-	require.Equal(t, finalizedHeader.Number.Uint64(), number)
-}
-
-func TestBlockNumberFinality_BlockHeader(t *testing.T) {
-	ctx := t.Context()
-
-	t.Run("Success with offset", func(t *testing.T) {
-		mockClient := mocks.NewBaseEthereumClienter(t)
-		blockFinality := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
-
-		finalizedHeader := &types.Header{Number: big.NewInt(100)}
-		offsetHeader := &types.Header{Number: big.NewInt(95)}
-
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(finalizedHeader, nil).Once()
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(95)).Return(offsetHeader, nil).Once()
-
-		result, err := blockFinality.BlockHeader(ctx, mockClient)
-		require.NoError(t, err)
-		require.Equal(t, offsetHeader, result)
-	})
-
-	t.Run("Error on first call", func(t *testing.T) {
-		mockClient := mocks.NewBaseEthereumClienter(t)
-		blockFinality := aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 0}
-
-		testErr := fmt.Errorf("first call error")
-		mockClient.EXPECT().HeaderByNumber(ctx, (*big.Int)(nil)).Return(nil, testErr).Once()
-
-		result, err := blockFinality.BlockHeader(ctx, mockClient)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.Contains(t, err.Error(), testErr.Error())
-	})
-
-	t.Run("Error on second call", func(t *testing.T) {
-		mockClient := mocks.NewBaseEthereumClienter(t)
-		// Safe with positive offset so the resolved block differs from the base and triggers a second fetch
-		blockFinality := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 10}
-
-		safeHeader := &types.Header{Number: big.NewInt(100)}
-		testErr := fmt.Errorf("second call error")
-
-		// First call resolves base Safe header (100)
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(int64(rpc.SafeBlockNumber))).Return(safeHeader, nil).Once()
-		// Second call attempts to fetch 110 and fails
-		mockClient.EXPECT().HeaderByNumber(ctx, big.NewInt(110)).Return(nil, testErr).Once()
-
-		result, err := blockFinality.BlockHeader(ctx, mockClient)
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.Contains(t, err.Error(), testErr.Error())
-	})
+	require.Equal(t, finalizedHeader.Number, number)
 }
 
 func TestBlockNumberFinality_Validate(t *testing.T) {
@@ -495,7 +485,7 @@ func TestBlockNumberFinality_Validate(t *testing.T) {
 		},
 		{
 			name:          "Unknown block type should fail validation",
-			finality:      aggkittypes.BlockNumberFinality{Block: aggkittypes.BlockNumber(999), Offset: 0},
+			finality:      aggkittypes.BlockNumberFinality{Block: aggkittypes.BlockName(999), Offset: 0},
 			expectedError: "block type must be one of LatestBlock, SafeBlock, FinalizedBlock, or PendingBlock",
 		},
 		{
@@ -528,9 +518,84 @@ func TestBlockNumberFinalityEqual(t *testing.T) {
 	bn2 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
 	bn3 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 0}
 	bn4 := aggkittypes.BlockNumberFinality{Block: aggkittypes.Finalized, Offset: -5}
-
+	bn5 := aggkittypes.NewBlockNumber(1234)
+	bn6 := aggkittypes.NewBlockNumber(12345)
 	require.False(t, blockFinalityEmpty.Equal(bn1), "bn1 should not be equal to empty finality")
 	require.True(t, bn1.Equal(bn2), "bn1 should be equal to bn2")
 	require.False(t, bn1.Equal(bn3), "bn1 should not be equal to bn3")
 	require.False(t, bn1.Equal(bn4), "bn1 should not be equal to bn4")
+	require.False(t, bn5.Equal(bn3))
+	require.False(t, bn3.Equal(*bn5))
+	require.True(t, bn5.Equal(*bn5))
+	require.False(t, bn5.Equal(*bn6))
+}
+func TestNewBlockNumberFinalityCte(t *testing.T) {
+	sut, err := aggkittypes.NewBlockNumberFinality("1234")
+	require.NoError(t, err)
+	require.Equal(t, "1234", sut.String())
+	sut, err = aggkittypes.NewBlockNumberFinality("0x1234")
+	require.NoError(t, err)
+	require.Equal(t, "4660", sut.String())
+	sut, err = aggkittypes.NewBlockNumberFinality("0xBEEF")
+	require.NoError(t, err)
+	require.Equal(t, "48879", sut.String())
+}
+
+func TestConvertStringToNumber(t *testing.T) {
+	num, err := aggkittypes.ConvertStringToNumber[uint64]("1234")
+	require.NoError(t, err)
+	require.Equal(t, uint64(1234), num)
+	num, err = aggkittypes.ConvertStringToNumber[uint64]("0x1234")
+	require.NoError(t, err)
+	require.Equal(t, uint64(4660), num)
+	_, err = aggkittypes.ConvertStringToNumber[uint64]("123A")
+	require.Error(t, err)
+
+	_, err = aggkittypes.ConvertStringToNumber[uint8]("123A")
+	require.ErrorContains(t, err, "unsupported type ")
+}
+
+func TestBlockNumberFinality_HasOffset(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	require.True(t, bn.HasOffset())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 10}
+	require.True(t, bn.HasOffset())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Pending, Offset: 0}
+	require.False(t, bn.HasOffset())
+}
+
+func TestBlockNumberFinality_ToBigInt(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Constant, Specific: 0}
+	num := bn.ToBigInt()
+	require.Equal(t, "0", num.String())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Constant, Specific: 12345}
+	num = bn.ToBigInt()
+	require.Equal(t, "12345", num.String())
+	var bnNil *aggkittypes.BlockNumberFinality
+	num = bnNil.ToBigInt()
+	require.Nil(t, num)
+}
+
+func TestBlockNumberFinality_CalculateBlockNumber(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	result := bn.CalculateBlockNumber(100)
+	require.Equal(t, uint64(95), result)
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: 10}
+	result = bn.CalculateBlockNumber(100)
+	require.Equal(t, uint64(110), result)
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 10}
+	result = bn.CalculateBlockNumber(100)
+	require.Equal(t, uint64(100), result)
+	var bnNil *aggkittypes.BlockNumberFinality
+	result = bnNil.CalculateBlockNumber(100)
+	require.Equal(t, uint64(0), result)
+}
+
+func TestBlockNumberFinality_BlockName(t *testing.T) {
+	bn := aggkittypes.BlockNumberFinality{Block: aggkittypes.Safe, Offset: -5}
+	require.Equal(t, aggkittypes.Safe, bn.BlockName())
+	bn = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: 10}
+	require.Equal(t, aggkittypes.Latest, bn.BlockName())
+	var bnNil *aggkittypes.BlockNumberFinality
+	require.Equal(t, aggkittypes.Empty, bnNil.BlockName())
 }

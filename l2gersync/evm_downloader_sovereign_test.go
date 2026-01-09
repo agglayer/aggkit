@@ -37,17 +37,14 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	testGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 	testHashChainValue := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 	testL1InfoTreeIndex := uint32(42)
-	testBlockHeader := &ethtypes.Header{
-		Number:      big.NewInt(int64(fromBlock)),
-		ParentHash:  common.HexToHash("0xabc123"),
-		Root:        common.HexToHash("0xdef456"),
-		TxHash:      common.HexToHash("0x789abc"),
-		ReceiptHash: common.HexToHash("0x101112"),
-		Time:        uint64(time.Now().Unix()),
-		GasLimit:    8000000,
-		GasUsed:     21000,
+	parentHash := common.HexToHash("0xabc123")
+	testBlockHeader := &aggkittypes.BlockHeader{
+		Number:     fromBlock,
+		ParentHash: &parentHash,
+		Hash:       common.HexToHash("0xdef456"),
+		Time:       uint64(time.Now().Unix()),
 	}
-	testBlockHash := testBlockHeader.Hash()
+	testBlockHash := testBlockHeader.Hash
 	testLogs := []ethtypes.Log{
 		{
 			Address:     l2GERAddr,
@@ -63,18 +60,17 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 
 	mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
 	// First call to get latest block header (with nil)
-	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
-		Number: big.NewInt(int64(latestBlock)),
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, (*aggkittypes.BlockNumberFinality)(nil)).Return(&aggkittypes.BlockHeader{
+		Number: latestBlock,
+	}, nil).Maybe()
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).Return(&aggkittypes.BlockHeader{
+		Number: latestBlock,
 	}, nil).Maybe()
 	// Second call to get the offset block header (with latestBlock since offset is 0)
-	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(latestBlock))).Return(&ethtypes.Header{
-		Number: big.NewInt(int64(latestBlock)),
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(latestBlock)).Return(&aggkittypes.BlockHeader{
+		Number: latestBlock,
 	}, nil).Maybe()
-	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
-	mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
-		&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
-		nil, nil, nil,
-	), nil).Maybe()
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(fromBlock)).Return(testBlockHeader, nil).Maybe()
 
 	mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
 		L1InfoTreeIndex:   testL1InfoTreeIndex,
@@ -330,10 +326,6 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 				Number: big.NewInt(int64(latestBlock)),
 			}, nil).Maybe()
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
-			mockL1Client.EXPECT().BlockByNumber(mock.Anything, mock.Anything).Return(ethtypes.NewBlock(
-				&ethtypes.Header{Number: big.NewInt(int64(latestBlock))},
-				nil, nil, nil,
-			), nil).Maybe()
 
 			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
 			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mock.Anything).Return(tt.isUpToDateResult, tt.isUpToDateError).Maybe()

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strings"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
@@ -31,7 +32,9 @@ type RPCOpNodeDecorator struct {
 }
 
 // NewRPCClientModeOp creates a new RPC client that uses the OPNode client to get the finalized block
-func NewRPCClientModeOp(ctx context.Context, cfg ethermanconfig.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
+func NewRPCClientModeOp(ctx context.Context,
+	logger aggkitcommon.Logger,
+	cfg ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
 	opNodeURL, err := cfg.GetString(ExtraParamFieldName)
 	if err != nil {
 		opNodeURL, err = cfg.GetString(strings.ToLower(ExtraParamFieldName))
@@ -41,11 +44,7 @@ func NewRPCClientModeOp(ctx context.Context, cfg ethermanconfig.L2RPCClientConfi
 	}
 
 	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
-	retryHandler, err := cfg.NewRetryHandler()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create retry handler: %w", err)
-	}
-	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, retryHandler)
+	ethClient, err := DialWithRetry(ctx, logger, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)
 	}

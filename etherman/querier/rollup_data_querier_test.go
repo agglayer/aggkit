@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	"github.com/agglayer/aggkit/test/helpers"
@@ -245,7 +246,7 @@ func TestRollupDataQuerier_GetUpgradeBlock(t *testing.T) {
 	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
 
 	upgradedMap, err := populateAgglayerManagerInitializedMap(t.Context(),
-		l1Setup.AgglayerManagerContract, l1Setup.SimBackend.Client(), startBlock, blocksChunkSize)
+		l1Setup.AgglayerManagerContract, etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil, nil), startBlock, blocksChunkSize)
 	require.NoError(t, err)
 	require.Len(t, upgradedMap, 1)
 	require.Contains(t, upgradedMap, latestAgglayerManagerVersion)

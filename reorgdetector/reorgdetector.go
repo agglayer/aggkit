@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/agglayer/aggkit/reorgdetector/migrations"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -40,7 +38,7 @@ type ReorgDetector struct {
 
 	subscriptionsLock sync.RWMutex
 	subscriptions     map[string]*Subscription
-	headersCache      map[uint64]*types.Header
+	headersCache      map[uint64]*aggkittypes.BlockHeader
 	headersCacheLock  sync.Mutex
 
 	log *log.Logger
@@ -70,7 +68,7 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 		trackedBlocks:      make(map[string]*headersList),
 		subscriptions:      make(map[string]*Subscription),
 		log:                log,
-		headersCache:       make(map[uint64]*types.Header),
+		headersCache:       make(map[uint64]*aggkittypes.BlockHeader),
 	}, nil
 }
 
@@ -156,7 +154,7 @@ func (rd *ReorgDetector) GetTrackedBlockByBlockNumber(id string, blockNumber uin
 // Notifies subscribers if reorg has happened
 func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 	// Get the latest finalized block
-	lastFinalizedBlock, err := rd.finalizedBlockType.BlockHeader(ctx, rd.client)
+	lastFinalizedBlock, err := rd.client.CustomHeaderByNumber(ctx, &rd.finalizedBlockType)
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
@@ -177,13 +175,14 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 			continue
 		}
 
-		rd.log.Debugf("Checking reorgs in all tracked blocks (finalized up to block %d)", lastFinalizedBlock.Number.Uint64())
+		rd.log.Debugf("Checking reorgs in all tracked blocks (finalized up to block %d)",
+			lastFinalizedBlock.Number)
 
 		errGroup.Go(func() error {
 			headers := hdrs.getSorted()
 			for _, hdr := range headers {
 				// Get the actual header from the network or from the cache
-				currentHeader, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(hdr.Num))
+				currentHeader, err := rd.client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(hdr.Num))
 				if err != nil {
 					return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
 				}
@@ -197,10 +196,10 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 				rd.headersCacheLock.Unlock()
 
 				// Check if the block hash matches with the actual block hash
-				if hdr.Hash == oldHeader.Hash() && currentHeader.Hash() == hdr.Hash {
+				if hdr.Hash == oldHeader.Hash && currentHeader.Hash == hdr.Hash {
 					// Delete block from the tracked blocks list if it is less than or equal to the last finalized block
 					// and hashes matches. If higher than finalized block, we assume a reorg still might happen.
-					if hdr.Num <= lastFinalizedBlock.Number.Uint64() {
+					if hdr.Num <= lastFinalizedBlock.Number {
 						hdrs.removeRange(hdr.Num, hdr.Num)
 
 						if err := rd.removeTrackedBlockRange(id, hdr.Num, hdr.Num); err != nil {
@@ -216,7 +215,7 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 					FromBlock:    hdr.Num,
 					ToBlock:      headers[len(headers)-1].Num,
 					SubscriberID: id,
-					CurrentHash:  currentHeader.Hash(),
+					CurrentHash:  currentHeader.Hash,
 					TrackedHash:  hdr.Hash,
 				}
 				if err := rd.insertReorgEvent(event); err != nil {

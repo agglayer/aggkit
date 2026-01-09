@@ -8,7 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/metrics"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
-	"github.com/ethereum/go-ethereum"
+	"github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -29,7 +29,7 @@ type ChainSender interface {
 type AggOracle struct {
 	logger            *log.Logger
 	waitPeriodNextGER time.Duration
-	l1Client          ethereum.ChainReader
+	l1Client          types.EthChainReader
 	l1Info            L1InfoTreeSyncer
 	chainSender       ChainSender
 }
@@ -38,7 +38,7 @@ type AggOracle struct {
 func New(
 	logger *log.Logger,
 	chainSender ChainSender,
-	l1Client ethereum.ChainReader,
+	l1Client types.EthChainReader,
 	l1InfoTreeSyncer L1InfoTreeSyncer,
 	waitPeriodNextGER time.Duration,
 ) (*AggOracle, error) {

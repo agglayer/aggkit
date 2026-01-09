@@ -3,15 +3,14 @@ package query
 import (
 	"context"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
-	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -103,6 +102,8 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 	}
 }
 
+var finalizedBlockBigInt = &aggkittypes.FinalizedBlock
+
 func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 	t.Parallel()
 
@@ -117,45 +118,45 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "error getting latest finalized L1 block",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
-				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(nil, errors.New("some error"))
+				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting latest finalized L1 block: some error",
 		},
 		{
 			name: "error getting latest processed block from l1infotreesyncer",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
-				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
-				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(0), common.Hash{}, errors.New("some error"))
+				l1Header := &aggkittypes.BlockHeader{Number: 10}
+				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
+				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number).Return(uint64(0), common.Hash{}, errors.New("some error"))
 			},
 			expectedError: "error getting latest processed block from l1infotreesyncer: some error",
 		},
 		{
 			name: "l1infotreesyncer did not process any block yet",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
-				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
-				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(0), common.Hash{}, nil)
+				l1Header := &aggkittypes.BlockHeader{Number: 10}
+				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
+				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number).Return(uint64(0), common.Hash{}, nil)
 			},
 			expectedError: "l1infotreesyncer did not process any block yet",
 		},
 		{
 			name: "error getting latest processed finalized block",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
-				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
-				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(9), common.Hash{}, nil)
-				mockL1Client.On("HeaderByNumber", ctx, big.NewInt(9)).Return(nil, errors.New("some error"))
+				l1Header := &aggkittypes.BlockHeader{Number: 10}
+				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
+				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number).Return(uint64(9), common.Hash{}, nil)
+				mockL1Client.On("CustomHeaderByNumber", ctx, aggkittypes.NewBlockNumber(9)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting latest processed finalized block: 9: some error",
 		},
 		{
 			name: "l1infotreesyncer returned a different hash for the latest finalized block",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
-				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
-				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(
-					l1Header.Number.Uint64(), common.HexToHash("0x2"), nil)
+				l1Header := &aggkittypes.BlockHeader{Number: 10, Hash: common.HexToHash("0xabc")}
+				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
+				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number).Return(
+					l1Header.Number, common.HexToHash("0x2"), nil)
 			},
 			expectedError: "l1infotreesyncer returned a different hash for the latest finalized block: 10. " +
 				"Might be that syncer did not process a reorg yet.",
@@ -163,10 +164,10 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "success",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
-				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
-				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(
-					l1Header.Number.Uint64(), l1Header.Hash(), nil)
+				l1Header := &aggkittypes.BlockHeader{Number: 10}
+				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
+				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number).Return(
+					l1Header.Number, l1Header.Hash, nil)
 			},
 			expectedBlock: 10,
 		},

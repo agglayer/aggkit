@@ -3,23 +3,44 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math/big"
+	"os"
 	"testing"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
+// Test for issue: 1389
+func TestEthClientExploratory(t *testing.T) {
+	t.Skip("exploratory test")
+	l2url := os.Getenv("L2URL")
+	ethRawClient, err := ethclient.Dial(l2url)
+	require.NoError(t, err)
+	defer ethRawClient.Close()
+	ctx := t.Context()
+	number := big.NewInt(34797856)
+	header, err := ethRawClient.HeaderByNumber(ctx, number)
+	require.NoError(t, err)
+	fmt.Printf("block number: %d\n", header.Number.Uint64())
+	hash := header.Hash()
+	fmt.Printf("block hash: %s\n", hash.Hex())
+
+	err = ethRawClient.Client().BatchCall(nil)
+	require.NoError(t, err)
+}
+
 func TestGetString(t *testing.T) {
-	cfg := L2RPCClientConfig{
-		RPCClientConfig: RPCClientConfig{
-			URL: "http://localhost:8123",
-			RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
-				MaxRetries:     3,
-				InitialBackoff: types.Duration{Duration: 1000},
-			},
+	cfg := RPCClientConfig{
+
+		URL: "http://localhost:8123",
+		RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+			MaxRetries:     3,
+			InitialBackoff: types.Duration{Duration: 1000},
 		},
 		ExtraParams: map[string]any{
 			"key":         "value",
@@ -146,47 +167,45 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 func TestL2RPCClientConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     L2RPCClientConfig
+		cfg     RPCClientConfig
 		wantErr error
 	}{
 		{
 			name:    "missing RPC config",
-			cfg:     L2RPCClientConfig{},
-			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
+			cfg:     RPCClientConfig{},
+			wantErr: ErrMissingRPCURL,
 		},
 		{
 			name: "missing RPC URL",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{
-					RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
-						// empty URL
-						MaxRetries: 1,
-					},
+			cfg: RPCClientConfig{
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					// empty URL
+					MaxRetries: 1,
 				},
 			},
-			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
+			wantErr: ErrMissingRPCURL,
 		},
 		{
 			name: "invalid RPC mode",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
-				Mode:            "invalid_mode",
+			cfg: RPCClientConfig{
+				URL:  "http://localhost:8545",
+				Mode: "invalid_mode",
 			},
-			wantErr: fmt.Errorf("invalid RPC mode: %s", "invalid_mode"),
+			wantErr: fmt.Errorf("invalid RPC mode: invalid_mode"),
 		},
 		{
 			name: "valid config with basic mode",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
-				Mode:            RPCModeBasic,
+			cfg: RPCClientConfig{
+				URL:  "http://localhost:8545",
+				Mode: RPCModeBasic,
 			},
 			wantErr: nil,
 		},
 		{
 			name: "valid config with OP mode",
-			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
-				Mode:            RPCModeOp,
+			cfg: RPCClientConfig{
+				URL:  "http://localhost:8545",
+				Mode: RPCModeOp,
 			},
 			wantErr: nil,
 		},
@@ -195,7 +214,11 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.cfg.Validate()
-			require.Equal(t, tt.wantErr, err)
+			if tt.wantErr != nil {
+				require.ErrorContains(t, err, tt.wantErr.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
@@ -305,4 +328,14 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewDefaultRPCClientConfig(t *testing.T) {
+	cfg := NewDefaultRPCClientConfig()
+	require.Equal(t, "", cfg.URL)
+	require.Equal(t, RPCModeDefault, cfg.Mode)
+	require.Equal(t, 5, cfg.MaxRetries)
+	require.Equal(t, time.Second*5, cfg.InitialBackoff.Duration)
+	require.Equal(t, time.Second*60, cfg.MaxBackoff.Duration)
+	require.Equal(t, 2.0, cfg.BackoffMultiplier)
 }

@@ -127,6 +127,65 @@ func (_c *RPCClienter_Call_Call) RunAndReturn(run func(any, string, ...any) erro
 	return _c
 }
 
+// CallContext provides a mock function with given fields: ctx, result, method, args
+func (_m *RPCClienter) CallContext(ctx context.Context, result interface{}, method string, args ...interface{}) error {
+	var _ca []interface{}
+	_ca = append(_ca, ctx, result, method)
+	_ca = append(_ca, args...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CallContext")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, interface{}, string, ...interface{}) error); ok {
+		r0 = rf(ctx, result, method, args...)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// RPCClienter_CallContext_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CallContext'
+type RPCClienter_CallContext_Call struct {
+	*mock.Call
+}
+
+// CallContext is a helper method to define mock.On call
+//   - ctx context.Context
+//   - result interface{}
+//   - method string
+//   - args ...interface{}
+func (_e *RPCClienter_Expecter) CallContext(ctx interface{}, result interface{}, method interface{}, args ...interface{}) *RPCClienter_CallContext_Call {
+	return &RPCClienter_CallContext_Call{Call: _e.mock.On("CallContext",
+		append([]interface{}{ctx, result, method}, args...)...)}
+}
+
+func (_c *RPCClienter_CallContext_Call) Run(run func(ctx context.Context, result interface{}, method string, args ...interface{})) *RPCClienter_CallContext_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]interface{}, len(args)-3)
+		for i, a := range args[3:] {
+			if a != nil {
+				variadicArgs[i] = a.(interface{})
+			}
+		}
+		run(args[0].(context.Context), args[1].(interface{}), args[2].(string), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *RPCClienter_CallContext_Call) Return(_a0 error) *RPCClienter_CallContext_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *RPCClienter_CallContext_Call) RunAndReturn(run func(context.Context, interface{}, string, ...interface{}) error) *RPCClienter_CallContext_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewRPCClienter creates a new instance of RPCClienter. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewRPCClienter(t interface {
