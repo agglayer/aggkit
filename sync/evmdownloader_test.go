@@ -33,6 +33,11 @@ const (
 
 type testEvent common.Hash
 
+func TestFinality(t *testing.T) {
+	d, _ := NewTestDownloader(t, time.Millisecond*100)
+	require.Equal(t, aggkittypes.LatestBlock, d.Finality())
+}
+
 func TestGetEventsByBlockRange(t *testing.T) {
 	type testCase struct {
 		description        string
