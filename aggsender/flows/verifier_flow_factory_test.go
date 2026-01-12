@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,6 +34,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				Mode:                            types.PessimisticProofMode,
 				Signer:                          signertypes.SignerConfig{Method: signertypes.MethodNone},
 				RequireCommitteeMembershipCheck: true,
+				BlockFinalityForL1InfoTree:      aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
@@ -47,6 +49,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				Mode:                            types.PessimisticProofMode,
 				Signer:                          signertypes.SignerConfig{Method: signertypes.MethodNone},
 				RequireCommitteeMembershipCheck: true,
+				BlockFinalityForL1InfoTree:      aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("test error")).Once()
@@ -61,6 +64,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				FEPConfig: validator.FEPConfig{
 					OpNodeURL: "http://localhost:8545",
 				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
@@ -78,6 +82,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				FEPConfig: validator.FEPConfig{
 					OpNodeURL: "http://localhost:8545",
 				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("test error")).Once()
@@ -87,8 +92,9 @@ func TestNewVerifierFlow(t *testing.T) {
 		{
 			name: "unsupported mode",
 			cfg: validator.Config{
-				Mode:   "unsupported-mode",
-				Signer: signertypes.SignerConfig{Method: signertypes.MethodNone},
+				Mode:                       "unsupported-mode",
+				Signer:                     signertypes.SignerConfig{Method: signertypes.MethodNone},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedError: "unsupported Aggsender Validator mode: unsupported-mode",
 		},
@@ -107,6 +113,7 @@ func TestNewVerifierFlow(t *testing.T) {
 			mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
 			mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
 
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
 			mockRollupDataQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil).Maybe()
 			mockL2Syncer.EXPECT().OriginNetwork().Return(1).Maybe()
 
