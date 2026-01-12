@@ -66,7 +66,7 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "nBlockFinalityForL1InfoTree not set",
+			name: "BlockFinalityForL1InfoTree not set",
 			config: Config{
 				Mode: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
