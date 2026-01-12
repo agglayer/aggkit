@@ -16,6 +16,51 @@ import (
 
 var finalizedBlockBigInt = &aggkittypes.FinalizedBlock
 
+func Test_NewL1InfoTreeDataQuerier_WrongFinality(t *testing.T) {
+	testCases := []struct {
+		name                         string
+		l1InfoTreeSyncerFinality     aggkittypes.BlockNumberFinality
+		blockFinalityForAggsender    aggkittypes.BlockNumberFinality
+		expectedErrorContainsMessage string
+	}{
+		{
+			name:                         "aggsender finality > l1InfoTreeSyncer finality",
+			l1InfoTreeSyncerFinality:     aggkittypes.FinalizedBlock,
+			blockFinalityForAggsender:    aggkittypes.LatestBlock,
+			expectedErrorContainsMessage: "missconfigured block finality",
+		},
+		{
+			name:                      "aggsender finality == l1InfoTreeSyncer finality",
+			l1InfoTreeSyncerFinality:  aggkittypes.LatestBlock,
+			blockFinalityForAggsender: aggkittypes.LatestBlock,
+		},
+		{
+			name:                      "aggsender finality < l1InfoTreeSyncer finality",
+			l1InfoTreeSyncerFinality:  aggkittypes.LatestBlock,
+			blockFinalityForAggsender: aggkittypes.FinalizedBlock,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(tc.l1InfoTreeSyncerFinality).Maybe()
+
+			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+			_, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{},
+				mockL1InfoTreeSyncer,
+				tc.blockFinalityForAggsender)
+			if tc.expectedErrorContainsMessage != "" {
+				require.ErrorContains(t, err, tc.expectedErrorContainsMessage)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 	t.Parallel()
 
@@ -83,10 +128,11 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
-
 			tc.mockFn(mockL1InfoTreeSyncer)
 
 			proof, leaf, err := l1InfoTreeDataQuery.GetFinalizedL1InfoTreeData(ctx,

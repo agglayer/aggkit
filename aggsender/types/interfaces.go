@@ -91,6 +91,7 @@ type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
+	Finality() aggkittypes.BlockNumberFinality
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement

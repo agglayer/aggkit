@@ -36,8 +36,9 @@ var (
 )
 
 type L1InfoTreeSync struct {
-	processor *processor
-	driver    *sync.EVMDriver
+	processor  *processor
+	driver     *sync.EVMDriver
+	downloader *sync.EVMDownloader
 }
 
 func NewReadOnly(
@@ -140,9 +141,15 @@ func New(
 	}
 
 	return &L1InfoTreeSync{
-		processor: processor,
-		driver:    driver,
+		processor:  processor,
+		driver:     driver,
+		downloader: downloader,
 	}, nil
+}
+
+// Finality returns the block finality of the downloader
+func (d *L1InfoTreeSync) Finality() aggkittypes.BlockNumberFinality {
+	return d.downloader.Finality()
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes

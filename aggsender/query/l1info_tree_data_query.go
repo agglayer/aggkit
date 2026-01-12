@@ -34,6 +34,18 @@ func NewL1InfoTreeDataQuerier(
 	if err != nil {
 		return nil, err
 	}
+	l1InfoTreeFinality := l1InfoTreeSyncer.Finality()
+	lessFinal, err := blockFinalityForL1InfoTree.LessFinalThan(l1InfoTreeFinality)
+	if err != nil {
+		return nil, fmt.Errorf("error comparing block finalities (target: %s and l1infotreeFinality: %s): %w",
+			blockFinalityForL1InfoTree.String(), l1InfoTreeFinality.String(), err)
+	}
+	if lessFinal {
+		return nil, fmt.Errorf("missconfigured block finality (%s) because l1infotreeSyncer has a lower finality (%s) so it "+
+			"never going to be fulfilled",
+			blockFinalityForL1InfoTree.String(), l1InfoTreeFinality.String())
+	}
+
 	return &L1InfoTreeDataQuerier{
 		l1Client:                   l1Client,
 		l1GERManager:               l1GERManager,
