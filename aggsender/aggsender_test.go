@@ -82,6 +82,8 @@ func TestAggSenderStart(t *testing.T) {
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
 	rollupQuerierMock := mocks.NewRollupDataQuerier(t)
 	committeQuerierMock := mocks.NewMultisigQuerier(t)
+	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
 	sendTrigger := mocks.NewCertificateSendTrigger(t)
 	sendTrigger.EXPECT().Setup(ctx)
 	ch := make(chan aggsendertypes.CertificateTriggerEvent)
@@ -105,9 +107,10 @@ func TestAggSenderStart(t *testing.T) {
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
+			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 		},
 		aggLayerMock,
-		nil, // l1 info tree syncer
+		mockL1InfoTreeSyncer, // l1 info tree syncer
 		bridgeL2SyncerMock,
 		nil, // l1 client
 		nil, // l2 client
@@ -523,6 +526,10 @@ func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
 	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
 	mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
+
+	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
 	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})},
@@ -535,10 +542,11 @@ func TestNewAggSender(t *testing.T) {
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
-			Mode: aggsendertypes.PessimisticProofMode,
+			Mode:                       aggsendertypes.PessimisticProofMode,
+			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 		},
 		mockAgglayerClient,
-		nil, // l1 info tree syncer
+		mockL1InfoTreeSyncer, // l1 info tree syncer
 		mockBridgeSyncer,
 		nil, // l1 client
 		nil, // l2 client
