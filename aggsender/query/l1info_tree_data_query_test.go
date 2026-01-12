@@ -43,8 +43,6 @@ func Test_NewL1InfoTreeDataQuerier_WrongFinality(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1InfoTreeSyncer.EXPECT().Finality().Return(tc.l1InfoTreeSyncerFinality).Maybe()
 
