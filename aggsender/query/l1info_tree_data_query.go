@@ -61,7 +61,7 @@ func (l *L1InfoTreeDataQuerier) GetTargetL1InfoRoot(ctx context.Context) (
 	lastFinalizedProcessedBlock, err := l.getTargetL1BlockNumber(ctx)
 	if err != nil {
 		return nil, nil,
-			fmt.Errorf("error getting latest processed finalized block: %w", err)
+			fmt.Errorf("error getting getTargetL1BlockNumber: %w", err)
 	}
 
 	l1InfoLeaf, err := l.l1InfoTreeSyncer.GetLatestL1InfoLeafUntilBlock(ctx, lastFinalizedProcessedBlock)
@@ -164,7 +164,8 @@ func (l *L1InfoTreeDataQuerier) getTargetL1BlockNumber(ctx context.Context) (uin
 	lastProcessedBlockNum, lastProcessedBlockHash, err := l.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
 		lastFinalizedL1Block.Number)
 	if err != nil {
-		return 0, fmt.Errorf("error getting latest processed block from l1infotreesyncer: %w", err)
+		return 0, fmt.Errorf("error getting latest processed block until %d from l1infotreesyncer: %w",
+			lastFinalizedL1Block.Number, err)
 	}
 
 	if lastProcessedBlockNum == 0 {

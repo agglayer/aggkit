@@ -164,7 +164,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error getting latest finalized L1 block: some error",
+			expectedError: "error getting target block (FinalizedBlock) from L1: some error",
 		},
 		{
 			name: "error getting latest processed block from l1infotreesyncer",
@@ -173,7 +173,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 				mockL1Client.On("CustomHeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number).Return(uint64(0), common.Hash{}, errors.New("some error"))
 			},
-			expectedError: "error getting latest processed block from l1infotreesyncer: some error",
+			expectedError: "error getting latest processed block until 10 from l1infotreesyncer: some error",
 		},
 		{
 			name: "l1infotreesyncer did not process any block yet",
@@ -223,6 +223,8 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(mockL1Client, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
@@ -308,6 +310,8 @@ func Test_GetProofForGER(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
 
@@ -419,6 +423,8 @@ func Test_IsGERFinalized(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 			l1InfoTreeDataQuery, err := NewL1InfoTreeDataQuerier(nil, common.Address{}, mockL1InfoTreeSyncer, aggkittypes.FinalizedBlock)
 			require.NoError(t, err)
 
