@@ -185,7 +185,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)
 
-			block, err := l1InfoTreeDataQuery.getLatestProcessedFinalizedBlock(ctx)
+			block, err := l1InfoTreeDataQuery.getTargetL1BlockNumber(ctx)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

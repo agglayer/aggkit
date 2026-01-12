@@ -42,11 +42,11 @@ func NewL1InfoTreeDataQuerier(
 	}, nil
 }
 
-// GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
+// GetTargetL1InfoRoot returns the latest processed l1 info tree root
 // based on the latest finalized l1 block
-func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context) (
+func (l *L1InfoTreeDataQuerier) GetTargetL1InfoRoot(ctx context.Context) (
 	*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error) {
-	lastFinalizedProcessedBlock, err := l.getLatestProcessedFinalizedBlock(ctx)
+	lastFinalizedProcessedBlock, err := l.getTargetL1BlockNumber(ctx)
 	if err != nil {
 		return nil, nil,
 			fmt.Errorf("error getting latest processed finalized block: %w", err)
@@ -141,11 +141,12 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 	return l1Info, gerToL1Proof, nil
 }
 
-// getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
-func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
+// getTargetL1BlockNumber returns the latest processed block from the l1infotreesyncer
+// up to target block (blockFinalityForL1InfoTree)
+func (l *L1InfoTreeDataQuerier) getTargetL1BlockNumber(ctx context.Context) (uint64, error) {
 	lastFinalizedL1Block, err := l.l1Client.CustomHeaderByNumber(ctx, &l.blockFinalityForL1InfoTree)
 	if err != nil {
-		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)
+		return 0, fmt.Errorf("error getting target block (%s) from L1: %w", l.blockFinalityForL1InfoTree.String(), err)
 	}
 
 	lastProcessedBlockNum, lastProcessedBlockHash, err := l.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
