@@ -6,8 +6,10 @@ import (
 	"math/big"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/sync"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -294,4 +296,26 @@ func TestIsUpToDate(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, result)
 	})
+}
+
+func TestFinality(t *testing.T) {
+	downloader, err := sync.NewEVMDownloader(
+		"test-downloader",
+		nil, // l1Client
+		0,   // syncBlockChunkSize
+		aggkittypes.LatestBlock,
+		time.Second,
+		nil,                // logAppender
+		[]common.Address{}, // monitoredContracts
+		nil,                // RetryHandler
+		aggkittypes.LatestBlock,
+		nil, // reorgDetector,
+		"reorg-id",
+	)
+	require.NoError(t, err)
+
+	s := L1InfoTreeSync{
+		downloader: downloader,
+	}
+	require.Equal(t, aggkittypes.LatestBlock, s.Finality())
 }
