@@ -23,14 +23,14 @@ import (
 func TestNewRunner(t *testing.T) {
 	tests := []struct {
 		name                string
-		mode                types.AggsenderMode
+		mode                types.CertificateSendTriggerMode
 		setupMocks          func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock)
 		expectError         bool
 		expectedErrorString string
 	}{
 		{
 			name: "PreconfPP mode returns preconfRunner",
-			mode: types.PreconfPPMode,
+			mode: types.NewBridgeMode,
 			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
 				logger := mocks.NewLogger(t)
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -43,7 +43,7 @@ func TestNewRunner(t *testing.T) {
 		},
 		{
 			name: "Default mode returns epochBasedRunner successfully",
-			mode: types.AutoMode,
+			mode: types.EpochBasedMode,
 			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
 				logger := mocks.NewLogger(t)
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -66,7 +66,7 @@ func TestNewRunner(t *testing.T) {
 		},
 		{
 			name: "EpochBasedRunner creation fails due to agglayer client error",
-			mode: types.AutoMode,
+			mode: types.EpochBasedMode,
 			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
 				logger := mocks.NewLogger(t)
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -87,8 +87,10 @@ func TestNewRunner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			cfg := config.Config{
-				Mode:                        tt.mode,
-				EpochNotificationPercentage: 75.0,
+				TriggerCertMode: tt.mode,
+				TriggerEpochBased: config.TriggerEpochBasedConfig{
+					EpochNotificationPercentage: 75.0,
+				},
 			}
 
 			logger, l1Client, l2BridgeSync, agglayerClient := tt.setupMocks()
@@ -113,7 +115,9 @@ func TestNewEpochBasedRunner(t *testing.T) {
 	t.Run("successful creation", func(t *testing.T) {
 		ctx := context.Background()
 		cfg := config.Config{
-			EpochNotificationPercentage: 80.0,
+			TriggerEpochBased: config.TriggerEpochBasedConfig{
+				EpochNotificationPercentage: 80.0,
+			},
 		}
 		logger := mocks.NewLogger(t)
 		l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -129,7 +133,7 @@ func TestNewEpochBasedRunner(t *testing.T) {
 		// Mock successful block notifier creation (HeaderByNumber might be called)
 		l1Client.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
-		runner, err := newEpochBasedTrigger(ctx, cfg, logger, l1Client, agglayerClient)
+		runner, err := newEpochBasedTrigger(ctx, cfg.TriggerEpochBased, logger, l1Client, agglayerClient)
 
 		require.NoError(t, err)
 		require.NotNil(t, runner)
@@ -139,7 +143,7 @@ func TestNewEpochBasedRunner(t *testing.T) {
 
 	t.Run("fails when agglayer client returns error", func(t *testing.T) {
 		ctx := context.Background()
-		cfg := config.Config{
+		cfg := config.TriggerEpochBasedConfig{
 			EpochNotificationPercentage: 80.0,
 		}
 		logger := mocks.NewLogger(t)

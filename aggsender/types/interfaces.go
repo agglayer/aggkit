@@ -381,6 +381,28 @@ type CertificateTriggerEvent interface {
 	fmt.Stringer
 }
 
+type CertificateSendTriggerMode string
+
+const (
+	// NewBridgeMode indicates a new bridge trigger it.
+	NewBridgeMode CertificateSendTriggerMode = "NewBridge"
+	// EpochBasedMode indicates an epoch-based mode for certificate sending triggers.
+	EpochBasedMode CertificateSendTriggerMode = "EpochBased"
+)
+
+func (c CertificateSendTriggerMode) String() string {
+	return string(c)
+}
+
+func (c CertificateSendTriggerMode) Validate() error {
+	switch c {
+	case NewBridgeMode, EpochBasedMode:
+		return nil
+	default:
+		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", c)
+	}
+}
+
 // CertificateSendTrigger is an interface that defines methods for setting up and managing
 // certificate sending triggers based on specific events.
 type CertificateSendTrigger interface {

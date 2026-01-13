@@ -16,6 +16,19 @@ import (
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
+type TriggerEpochBasedConfig struct {
+	// EpochNotificationPercentage indicates the percentage of the epoch
+	// the AggSender should send the certificate
+	// 0 -> Begin
+	// 50 -> Middle
+	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
+}
+
+// String returns a string representation of the Config
+func (c TriggerEpochBasedConfig) String() string {
+	return fmt.Sprintf("EpochNotificationPercentage: %d", c.EpochNotificationPercentage)
+}
+
 // Config is the configuration for the AggSender
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
@@ -30,11 +43,6 @@ type Config struct {
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
-	// EpochNotificationPercentage indicates the percentage of the epoch
-	// the AggSender should send the certificate
-	// 0 -> Begin
-	// 50 -> Middle
-	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
@@ -99,6 +107,10 @@ type Config struct {
 	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 	// BlockFinalityForL1InfoTree indicates the block finality to use when querying for L1InfoRoot to use
 	BlockFinalityForL1InfoTree aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinalityForL1InfoTree"` //nolint:lll
+	// TriggerCertMode is the mode used to trigger certificate sending
+	TriggerCertMode aggsendertypes.CertificateSendTriggerMode `jsonschema:"enum=EpochBased, enum=NewBridge" mapstructure:"TriggerCertMode"` //nolint:lll
+	// TriggerEpochBased is the configuration for the EpochBased trigger mode (TriggerCertMode==EpochBased)
+	TriggerEpochBased TriggerEpochBasedConfig `mapstructure:"TriggerEpochBased"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -111,7 +123,6 @@ func (c Config) String() string {
 		"CertificatesDir: " + c.CertificatesDir + "\n" +
 		"AgglayerClient: " + c.AgglayerClient.String() + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
-		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
 		"AggkitProverClient: " + c.AggkitProverClient.String() + "\n" +
@@ -122,7 +133,9 @@ func (c Config) String() string {
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
 		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n" +
 		"StorageRetainCertificatesPolicy: " + c.StorageRetainCertificatesPolicy.String() + "\n" +
-		"BlockFinalityForL1InfoTree: " + c.BlockFinalityForL1InfoTree.String() + "\n"
+		"BlockFinalityForL1InfoTree: " + c.BlockFinalityForL1InfoTree.String() + "\n" +
+		"TriggerCertMode: " + c.TriggerCertMode.String() + "\n" +
+		"TriggerEpochBased: " + c.TriggerEpochBased.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
@@ -144,6 +157,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.BlockFinalityForL1InfoTree.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinalityForL1InfoTree configuration: %w", err)
+	}
+	if err := c.TriggerCertMode.Validate(); err != nil {
+		return fmt.Errorf("invalid TriggerCertMode config: %w", err)
 	}
 	return nil
 }

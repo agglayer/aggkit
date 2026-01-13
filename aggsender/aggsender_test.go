@@ -45,21 +45,22 @@ const (
 
 func TestConfigString(t *testing.T) {
 	config := config.Config{
-		StoragePath:                 "/path/to/storage",
-		AgglayerClient:              agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
-		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                    "http://l2.rpc.url",
-		EpochNotificationPercentage: 50,
-		Mode:                        "PP",
-		SovereignRollupAddr:         common.HexToAddress("0x1"),
-		BlockFinalityForL1InfoTree:  aggkittypes.FinalizedBlock,
+		StoragePath:         "/path/to/storage",
+		AgglayerClient:      agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
+		AggsenderPrivateKey: signer.NewLocalSignerConfig("/path/to/key", "password"),
+		URLRPCL2:            "http://l2.rpc.url",
+		TriggerEpochBased: config.TriggerEpochBasedConfig{
+			EpochNotificationPercentage: 50,
+		},
+		Mode:                       "PP",
+		SovereignRollupAddr:        common.HexToAddress("0x1"),
+		BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
 		"CertificatesDir: \n"+
 		"AgglayerClient: %s\n"+
 		"AggsenderPrivateKey: local\n"+
-		"EpochNotificationPercentage: 50\n"+
 		"DryRun: false\n"+
 		"EnableRPC: false\n"+
 		"AggkitProverClient: none\n"+
@@ -70,6 +71,7 @@ func TestConfigString(t *testing.T) {
 		"RequireNoFEPBlockGap: false\n"+
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
 		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n"+
+		"TriggerCertMode: \nTriggerEpochBased: EpochNotificationPercentage: 50\n"+
 		"BlockFinalityForL1InfoTree: FinalizedBlock\n",
 		config.AgglayerClient.String())
 

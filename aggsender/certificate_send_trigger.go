@@ -26,21 +26,22 @@ func NewCertificateSendTrigger(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2BridgeSync types.L2BridgeSyncer,
 	agglayerClient agglayer.AgglayerClientInterface) (types.CertificateSendTrigger, error) {
-	switch cfg.Mode {
-	case types.PreconfPPMode:
+	switch cfg.TriggerCertMode {
+	case types.NewBridgeMode:
 		return newPreconfTrigger(
 			log,
 			l2BridgeSync,
 		), nil
-	default:
+	case types.EpochBasedMode:
 		return newEpochBasedTrigger(
 			ctx,
-			cfg,
+			cfg.TriggerEpochBased,
 			log,
 			l1Client,
 			agglayerClient,
 		)
 	}
+	return nil, fmt.Errorf("unsupported CertificateSendTriggerMode: %s", cfg.TriggerCertMode)
 }
 
 // epochBasedTrigger is a trigger implementation that executes operations based on epoch transitions.
@@ -68,7 +69,7 @@ type epochBasedTrigger struct {
 //   - Epoch notifier creation fails
 func newEpochBasedTrigger(
 	ctx context.Context,
-	cfg config.Config,
+	cfg config.TriggerEpochBasedConfig,
 	log aggkitcommon.Logger,
 	l1Client aggkittypes.BaseEthereumClienter,
 	agglayerClient agglayer.AgglayerClientInterface) (*epochBasedTrigger, error) {

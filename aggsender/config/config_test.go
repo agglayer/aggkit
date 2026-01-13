@@ -100,9 +100,11 @@ func TestConfigString(t *testing.T) {
 	t.Parallel()
 
 	config := Config{
-		StoragePath:                    "/path/to/storage.sqlite",
-		CertificatesDir:                "/path/to/certificates/",
-		EpochNotificationPercentage:    75,
+		StoragePath:     "/path/to/storage.sqlite",
+		CertificatesDir: "/path/to/certificates/",
+		TriggerEpochBased: TriggerEpochBasedConfig{
+			EpochNotificationPercentage: 75,
+		},
 		DryRun:                         true,
 		EnableRPC:                      false,
 		Mode:                           aggsendertypes.PessimisticProofMode,
