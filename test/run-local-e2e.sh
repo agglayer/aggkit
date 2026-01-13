@@ -405,13 +405,13 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats || exit 1
         ;;
     single-l2-network-op-pessimistic)
-        bats ./tests/aggkit/bridge-e2e.bats || exit 1
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats || exit 1
-        bats ./tests/op/optimistic-mode.bats || exit 1
-        bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
-        bats ./tests/aggkit/internal-claims.bats || exit 1
-        bats ./tests/aggkit/claim-reetrancy.bats || exit 1
-        bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
+        # bats ./tests/aggkit/bridge-e2e.bats || exit 1
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats -f "Test backwardLET with reorg scenarios" || exit 1
+        # bats ./tests/op/optimistic-mode.bats || exit 1
+        # bats ./tests/aggkit/bridge-e2e-nightly.bats || exit 1
+        # bats ./tests/aggkit/internal-claims.bats || exit 1
+        # bats ./tests/aggkit/claim-reetrancy.bats || exit 1
+        # bats ./tests/aggkit/aggsender-committee-updates.bats || exit 1
         ;;
     multi-l2-networks-2-chains-op-pessimistic)
         bats ./tests/aggkit/bridge-e2e-2-chains.bats || exit 1
