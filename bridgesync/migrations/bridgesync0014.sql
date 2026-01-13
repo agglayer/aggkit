@@ -18,11 +18,11 @@ CREATE TABLE IF NOT EXISTS backward_let (
 ALTER TABLE bridge ADD COLUMN source TEXT DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS forward_let (
-        block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,
-        block_pos INTEGER NOT NULL,
-        block_timestamp INTEGER NOT NULL,
-        tx_hash VARCHAR NOT NULL,
-        previous_deposit_count TEXT NOT NULL,
+		block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,
+		block_pos INTEGER NOT NULL,
+		block_timestamp INTEGER NOT NULL,
+		tx_hash VARCHAR NOT NULL,
+		previous_deposit_count TEXT NOT NULL,
 		previous_root VARCHAR NOT NULL,
 		new_deposit_count TEXT NOT NULL,
 		new_root VARCHAR NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS bridge_archive (
 		tx_hash VARCHAR,
 		block_timestamp INTEGER,
 		txn_sender VARCHAR,
-        from_address VARCHAR,
-        source TEXT DEFAULT '',
-        to_address VARCHAR
+		from_address VARCHAR,
+		source TEXT DEFAULT '',
+		to_address VARCHAR
 	);
