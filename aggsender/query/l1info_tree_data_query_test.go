@@ -27,7 +27,7 @@ func Test_NewL1InfoTreeDataQuerier_WrongFinality(t *testing.T) {
 			name:                         "aggsender finality > l1InfoTreeSyncer finality",
 			l1InfoTreeSyncerFinality:     aggkittypes.FinalizedBlock,
 			blockFinalityForAggsender:    aggkittypes.LatestBlock,
-			expectedErrorContainsMessage: "misconfigured block finality",
+			expectedErrorContainsMessage: "block finality misconfiguration",
 		},
 		{
 			name:                      "aggsender finality == l1InfoTreeSyncer finality",
