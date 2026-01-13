@@ -52,6 +52,7 @@ func NewBuilderFlow(
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
+			cfg.BlockFinalityForL1InfoTree,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -100,6 +101,7 @@ func NewBuilderFlow(
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
+			cfg.BlockFinalityForL1InfoTree,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -166,6 +168,7 @@ func CreateCommonFlowComponents(
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
 	globalExitRootL1Addr ethCommon.Address,
+	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
@@ -184,7 +187,8 @@ func CreateCommonFlowComponents(
 	}
 
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, delayBetweenRetries, agglayerBridgeL2Reader)
-	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, globalExitRootL1Addr, l1InfoTreeSyncer)
+	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, globalExitRootL1Addr, l1InfoTreeSyncer,
+		blockFinalityForL1InfoTree)
 	if err != nil {
 		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
 	}

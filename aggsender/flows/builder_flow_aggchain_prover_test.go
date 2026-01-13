@@ -191,7 +191,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
@@ -217,7 +217,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
@@ -239,7 +239,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10, Index: 10}, nil, nil)
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{
@@ -294,7 +294,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10, Index: 10}, nil, nil)
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(

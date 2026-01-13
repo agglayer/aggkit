@@ -307,7 +307,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
@@ -320,7 +320,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
@@ -335,7 +335,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
@@ -351,7 +351,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
@@ -390,7 +390,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: mer2,
 					}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(1)).Return(true, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(1)).Return(false, nil).Once()
@@ -436,7 +436,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: mer,
 					}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
 			},
@@ -465,7 +465,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
@@ -477,13 +477,13 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError: "GER mismatch",
 		},
 		{
-			name: "error GetLatestFinalizedL1InfoRoot",
+			name: "error GetTargetL1InfoRoot",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL1InfoTreeQuerier.On("GetLatestFinalizedL1InfoRoot", ctx).Return(nil, nil, errors.New("some error"))
+				mockL1InfoTreeQuerier.On("GetTargetL1InfoRoot", ctx).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "error generating pre build params: error getting latest finalized L1 info root: some error",
 		},
@@ -504,7 +504,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: mer,
 					}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgetypes.Unclaim{}, nil)
-				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
 			},

@@ -18,35 +18,50 @@ var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 
 // L1InfoTreeDataQuerier is a struct that holds the logic to query the L1 Info tree data
 type L1InfoTreeDataQuerier struct {
-	l1Client         aggkittypes.BaseEthereumClienter
-	l1GERManager     *agglayerger.Agglayerger
-	l1InfoTreeSyncer types.L1InfoTreeSyncer
+	l1Client                   aggkittypes.BaseEthereumClienter
+	l1GERManager               *agglayerger.Agglayerger
+	l1InfoTreeSyncer           types.L1InfoTreeSyncer
+	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality
 }
 
 // NewL1InfoTreeDataQuerier returns a new instance of the L1InfoTreeDataQuery
 func NewL1InfoTreeDataQuerier(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l1GERAddr common.Address,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer) (*L1InfoTreeDataQuerier, error) {
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality) (*L1InfoTreeDataQuerier, error) {
 	l1GERManager, err := agglayerger.NewAgglayerger(l1GERAddr, l1Client)
 	if err != nil {
 		return nil, err
 	}
+	l1InfoTreeFinality := l1InfoTreeSyncer.Finality()
+	lessFinal, err := blockFinalityForL1InfoTree.LessFinalThan(l1InfoTreeFinality)
+	if err != nil {
+		return nil, fmt.Errorf("error comparing block finalities (target: %s and l1infotreeFinality: %s): %w",
+			blockFinalityForL1InfoTree.String(), l1InfoTreeFinality.String(), err)
+	}
+	if lessFinal {
+		return nil, fmt.Errorf("block finality misconfiguration (%s): l1infotreeSyncer finality (%s) is lower; "+
+			"will never be fulfilled",
+			blockFinalityForL1InfoTree.String(), l1InfoTreeFinality.String())
+	}
+
 	return &L1InfoTreeDataQuerier{
-		l1Client:         l1Client,
-		l1GERManager:     l1GERManager,
-		l1InfoTreeSyncer: l1InfoTreeSyncer,
+		l1Client:                   l1Client,
+		l1GERManager:               l1GERManager,
+		l1InfoTreeSyncer:           l1InfoTreeSyncer,
+		blockFinalityForL1InfoTree: blockFinalityForL1InfoTree,
 	}, nil
 }
 
-// GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
+// GetTargetL1InfoRoot returns the latest processed l1 info tree root
 // based on the latest finalized l1 block
-func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context) (
+func (l *L1InfoTreeDataQuerier) GetTargetL1InfoRoot(ctx context.Context) (
 	*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error) {
-	lastFinalizedProcessedBlock, err := l.getLatestProcessedFinalizedBlock(ctx)
+	lastFinalizedProcessedBlock, err := l.getTargetL1BlockNumber(ctx)
 	if err != nil {
 		return nil, nil,
-			fmt.Errorf("error getting latest processed finalized block: %w", err)
+			fmt.Errorf("error getting getTargetL1BlockNumber: %w", err)
 	}
 
 	l1InfoLeaf, err := l.l1InfoTreeSyncer.GetLatestL1InfoLeafUntilBlock(ctx, lastFinalizedProcessedBlock)
@@ -138,17 +153,19 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 	return l1Info, gerToL1Proof, nil
 }
 
-// getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
-func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
-	lastFinalizedL1Block, err := l.l1Client.CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock)
+// getTargetL1BlockNumber returns the latest processed block from the l1infotreesyncer
+// up to target block (blockFinalityForL1InfoTree)
+func (l *L1InfoTreeDataQuerier) getTargetL1BlockNumber(ctx context.Context) (uint64, error) {
+	lastFinalizedL1Block, err := l.l1Client.CustomHeaderByNumber(ctx, &l.blockFinalityForL1InfoTree)
 	if err != nil {
-		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)
+		return 0, fmt.Errorf("error getting target block (%s) from L1: %w", l.blockFinalityForL1InfoTree.String(), err)
 	}
 
 	lastProcessedBlockNum, lastProcessedBlockHash, err := l.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
 		lastFinalizedL1Block.Number)
 	if err != nil {
-		return 0, fmt.Errorf("error getting latest processed block from l1infotreesyncer: %w", err)
+		return 0, fmt.Errorf("error getting latest processed block until %d from l1infotreesyncer: %w",
+			lastFinalizedL1Block.Number, err)
 	}
 
 	if lastProcessedBlockNum == 0 {
