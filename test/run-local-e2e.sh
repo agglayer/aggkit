@@ -68,14 +68,14 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 single-l2-network-op-succinct /path/to/kurtosis -                # Use Kurtosis, skip E2E"
             exit 0
             ;;
+        -|*)
+            ARGS+=("$1")
+            shift
+            ;;
         -*)
             echo "Unknown option: $1"
             echo "Use -h or --help for usage information"
             exit 1
-            ;;
-        *)
-            ARGS+=("$1")
-            shift
             ;;
     esac
 done

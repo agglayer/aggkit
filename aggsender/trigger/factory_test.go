@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/log"
 	ethmanmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -93,7 +94,8 @@ func TestNewRunner(t *testing.T) {
 				},
 			}
 
-			logger, l1Client, l2BridgeSync, agglayerClient := tt.setupMocks()
+			_, l1Client, l2BridgeSync, agglayerClient := tt.setupMocks()
+			logger := log.WithFields("module", "test")
 
 			runner, err := NewCertificateSendTrigger(ctx, cfg, logger, l1Client, l2BridgeSync, agglayerClient)
 
