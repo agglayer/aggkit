@@ -13,9 +13,6 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
-    concurrency:
-      group: claude-review-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
