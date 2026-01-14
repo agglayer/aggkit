@@ -62,7 +62,7 @@ func defaultTriggerForAggsenderMode(
 	case types.AggchainProofMode, types.PessimisticProofMode:
 		return types.EpochBasedTriggerMode
 	case types.AutoMode:
-		panic("auto mode should be handled separately, this is a development issue... fix it")
+		panic("AutoMode should be resolved before calling this function; this indicates a development error")
 	default:
 		return types.EpochBasedTriggerMode
 	}
