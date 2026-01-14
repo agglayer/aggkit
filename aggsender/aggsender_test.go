@@ -56,6 +56,7 @@ func TestConfigString(t *testing.T) {
 		Mode:                       "PP",
 		SovereignRollupAddr:        common.HexToAddress("0x1"),
 		BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+		TriggerCertMode:            aggsendertypes.AutoTriggerMode,
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
@@ -73,7 +74,7 @@ func TestConfigString(t *testing.T) {
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
 		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n"+
 		"BlockFinalityForL1InfoTree: FinalizedBlock\n"+
-		"TriggerCertMode: \nTriggerEpochBased: EpochNotificationPercentage: 50\n",
+		"TriggerCertMode: Auto\nTriggerEpochBased: EpochNotificationPercentage: 50\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -111,6 +112,7 @@ func TestAggSenderStart(t *testing.T) {
 				Method: signertypes.MethodNone,
 			},
 			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			TriggerCertMode:            aggsendertypes.AutoTriggerMode,
 		},
 		aggLayerMock,
 		mockL1InfoTreeSyncer, // l1 info tree syncer
@@ -547,6 +549,7 @@ func TestNewAggSender(t *testing.T) {
 			},
 			Mode:                       aggsendertypes.PessimisticProofMode,
 			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			TriggerCertMode:            aggsendertypes.AutoTriggerMode,
 		},
 		mockAgglayerClient,
 		mockL1InfoTreeSyncer, // l1 info tree syncer

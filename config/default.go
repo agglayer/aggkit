@@ -215,7 +215,7 @@ StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 BlockFinalityForL1InfoTree = "FinalizedBlock"
-TriggerCertMode = "EpochBased"
+TriggerCertMode = "Auto"
 [AggSender.TriggerEpochBased]
 	# Percentage of epoch completion to trigger certificate sending
 	EpochNotificationPercentage = 50
