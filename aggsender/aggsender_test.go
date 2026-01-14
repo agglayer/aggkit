@@ -21,6 +21,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	triggertypes "github.com/agglayer/aggkit/aggsender/trigger/types"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
@@ -71,8 +72,8 @@ func TestConfigString(t *testing.T) {
 		"RequireNoFEPBlockGap: false\n"+
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
 		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n"+
-		"TriggerCertMode: \nTriggerEpochBased: EpochNotificationPercentage: 50\n"+
-		"BlockFinalityForL1InfoTree: FinalizedBlock\n",
+		"BlockFinalityForL1InfoTree: FinalizedBlock\n"+
+		"TriggerCertMode: \nTriggerEpochBased: EpochNotificationPercentage: 50\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -124,7 +125,7 @@ func TestAggSenderStart(t *testing.T) {
 	require.NotNil(t, aggSender)
 
 	go aggSender.Start(ctx)
-	ch <- aggsendertypes.EpochEvent{
+	ch <- triggertypes.EpochEvent{
 		Epoch: 1,
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -627,9 +628,9 @@ func TestRetrySendCertificates(t *testing.T) {
 		Return(nil, errors.New("err")).Times(expectedNumAttempts)
 	go func() {
 		fmt.Println("send epoch 1")
-		chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+		chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 		fmt.Println("send epoch 2")
-		chEpoch <- aggsendertypes.EpochEvent{Epoch: 2}
+		chEpoch <- triggertypes.EpochEvent{Epoch: 2}
 	}()
 	aggSender.sendCertificates(ctx, 2)
 }
@@ -652,7 +653,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 			name: "fails CheckPeriodicallyStatus",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow, mockSendTrigger *mocks.CertificateSendTrigger) {
 				chEpoch := make(chan aggsendertypes.CertificateTriggerEvent, 1)
-				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+				chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 				mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
 				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{}, errors.New("some error")).Once()
 			},
@@ -685,7 +686,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 			name: "epoch received with no pending certificates",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow, mockSendTrigger *mocks.CertificateSendTrigger) {
 				chEpoch := make(chan aggsendertypes.CertificateTriggerEvent, 1)
-				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+				chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 				mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
 				mockSendTrigger.EXPECT().Status().Return("test status").Once()
 				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
@@ -700,7 +701,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 			name: "epoch received with pending certificates",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow, mockSendTrigger *mocks.CertificateSendTrigger) {
 				chEpoch := make(chan aggsendertypes.CertificateTriggerEvent, 1)
-				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+				chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 				mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
 				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: true,

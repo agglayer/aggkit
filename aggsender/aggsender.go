@@ -18,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
+	"github.com/agglayer/aggkit/aggsender/trigger"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -81,7 +82,7 @@ func New(
 		cfg.Mode = mode
 	}
 
-	certificateSendTrigger, err := NewCertificateSendTrigger(
+	certificateSendTrigger, err := trigger.NewCertificateSendTrigger(
 		ctx,
 		cfg,
 		logger,
@@ -336,14 +337,17 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
 			}
-			if !checkResult.ExistPendingCerts && !checkResult.ExistNewInErrorCert {
-				a.log.Debugf("No pending or InError certificates found, so AggSender is waiting for trigger")
-			}
 
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
 				a.log.Warnf("reached number of iterations, so we are going to return")
 				return
 			}
+
+			if !checkResult.ExistPendingCerts && !checkResult.ExistNewInErrorCert {
+				a.log.Debugf("No pending or InError certificates found, so aggsender is waiting for trigger")
+				a.certificateSendTrigger.OnAggsenderWaitingTrigger()
+			}
+
 		case triggerEvent := <-sendTriggerCh:
 			iteration++
 			a.log.Infof("Certificate send trigger event received: %s", triggerEvent.String())

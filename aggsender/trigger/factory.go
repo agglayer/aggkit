@@ -1,0 +1,66 @@
+package trigger
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/config"
+	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	aggkittypes "github.com/agglayer/aggkit/types"
+)
+
+// NewCertificateSendTrigger creates and returns a new CertificateSendTrigger instance
+// based on the provided configuration mode.
+// It supports two modes: PreconfPPMode which returns a preconfTrigger, and all other modes
+// which return an epochBasedTrigger.
+func NewCertificateSendTrigger(
+	ctx context.Context,
+	cfg config.Config,
+	log aggkitcommon.Logger,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2BridgeSync types.L2BridgeSyncer,
+	agglayerClient agglayer.AgglayerClientInterface) (types.CertificateSendTrigger, error) {
+	mode := cfg.TriggerCertMode
+	if mode == types.AutoTriggerMode {
+		mode = defaultTriggerForAggsenderMode(cfg.Mode)
+	}
+
+	switch mode {
+	case types.NewBridgeTriggerMode:
+		return newPreconfTrigger(
+			log,
+			l2BridgeSync,
+		), nil
+	case types.EpochBasedTriggerMode:
+		return newEpochBasedTrigger(
+			ctx,
+			cfg.TriggerEpochBased,
+			log,
+			l1Client,
+			agglayerClient,
+		)
+	case types.ASAPTriggerMode:
+		return newASAPTrigger(
+			log,
+		), nil
+	default:
+		return nil, fmt.Errorf("unsupported trigger mode: %s", mode)
+	}
+}
+
+func defaultTriggerForAggsenderMode(
+	mode types.AggsenderMode,
+) types.CertificateSendTriggerMode {
+	switch mode {
+	case types.PreconfPPMode:
+		return types.NewBridgeTriggerMode
+	case types.AggchainProofMode, types.PessimisticProofMode:
+		return types.EpochBasedTriggerMode
+	case types.AutoMode:
+		panic("auto mode should be handled separately, this is a development issue... fix it")
+	default:
+		return types.EpochBasedTriggerMode
+	}
+}

@@ -384,10 +384,14 @@ type CertificateTriggerEvent interface {
 type CertificateSendTriggerMode string
 
 const (
-	// NewBridgeMode indicates that new bridge events trigger certificate sending.
-	NewBridgeMode CertificateSendTriggerMode = "NewBridge"
-	// EpochBasedMode indicates an epoch-based mode for certificate sending triggers.
-	EpochBasedMode CertificateSendTriggerMode = "EpochBased"
+	// NewBridgeTriggerMode indicates that new bridge events trigger certificate sending.
+	NewBridgeTriggerMode CertificateSendTriggerMode = "NewBridge"
+	// EpochBasedTriggerMode indicates an epoch-based mode for certificate sending triggers.
+	EpochBasedTriggerMode CertificateSendTriggerMode = "EpochBased"
+	// ASAPTriggerMode indicates that certificates are sent as soon as possible.
+	ASAPTriggerMode CertificateSendTriggerMode = "ASAP"
+	// AutoTriggerMode decides it based on aggsender mode configuration.
+	AutoTriggerMode CertificateSendTriggerMode = "Auto"
 )
 
 func (c CertificateSendTriggerMode) String() string {
@@ -396,7 +400,7 @@ func (c CertificateSendTriggerMode) String() string {
 
 func (c CertificateSendTriggerMode) Validate() error {
 	switch c {
-	case NewBridgeMode, EpochBasedMode:
+	case NewBridgeTriggerMode, EpochBasedTriggerMode, ASAPTriggerMode, AutoTriggerMode:
 		return nil
 	default:
 		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", c)
@@ -410,4 +414,6 @@ type CertificateSendTrigger interface {
 	Status() string
 	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
 	ForceTriggerEvent()
+	// OnAggsenderWaitingTrigger Aggsender is waiting for a trigger to generate a new certificate
+	OnAggsenderWaitingTrigger()
 }
