@@ -53,6 +53,7 @@ type EVMDownloader struct {
 	syncBlockChunkSize          uint64
 	log                         *log.Logger
 	addressesToQuery            []common.Address
+	finality                    aggkittypes.BlockNumberFinality
 	stopDownloaderOnIterationN  int
 	stopOnFinalizedBlockReached bool
 }
@@ -92,6 +93,7 @@ func NewEVMDownloader(
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
 		addressesToQuery:   addressesToQuery,
+		finality:           finality,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
 			ethClient,
@@ -105,6 +107,11 @@ func NewEVMDownloader(
 			reorgDetectorID,
 		),
 	}, nil
+}
+
+// Finality returns the block finality of the downloader
+func (d *EVMDownloader) Finality() aggkittypes.BlockNumberFinality {
+	return d.finality
 }
 
 // setStopDownloaderOnIterationN sets the block number to stop the downloader (just for unittest)

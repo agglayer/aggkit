@@ -30,6 +30,7 @@ import (
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -51,6 +52,7 @@ func TestConfigString(t *testing.T) {
 		EpochNotificationPercentage: 50,
 		Mode:                        "PP",
 		SovereignRollupAddr:         common.HexToAddress("0x1"),
+		BlockFinalityForL1InfoTree:  aggkittypes.FinalizedBlock,
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
@@ -67,7 +69,8 @@ func TestConfigString(t *testing.T) {
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n"+
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
-		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n",
+		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n"+
+		"BlockFinalityForL1InfoTree: FinalizedBlock\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -79,6 +82,8 @@ func TestAggSenderStart(t *testing.T) {
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
 	rollupQuerierMock := mocks.NewRollupDataQuerier(t)
 	committeQuerierMock := mocks.NewMultisigQuerier(t)
+	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
 	sendTrigger := mocks.NewCertificateSendTrigger(t)
 	sendTrigger.EXPECT().Setup(ctx)
 	ch := make(chan aggsendertypes.CertificateTriggerEvent)
@@ -102,9 +107,10 @@ func TestAggSenderStart(t *testing.T) {
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
+			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 		},
 		aggLayerMock,
-		nil, // l1 info tree syncer
+		mockL1InfoTreeSyncer, // l1 info tree syncer
 		bridgeL2SyncerMock,
 		nil, // l1 client
 		nil, // l2 client
@@ -266,7 +272,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		},
 	}, []bridgesync.Claim{}, nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, uint64(11), uint64(50)).Return([]bridgetypes.Unclaim{}, nil).Once()
-	mockL1Querier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
+	mockL1Querier.EXPECT().GetTargetL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(common.Hash{}, nil).Once()
 	mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 	mockAggLayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, nil).Once()
@@ -520,6 +526,10 @@ func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
 	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
 	mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
+
+	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
 	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})},
@@ -532,10 +542,11 @@ func TestNewAggSender(t *testing.T) {
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
-			Mode: aggsendertypes.PessimisticProofMode,
+			Mode:                       aggsendertypes.PessimisticProofMode,
+			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 		},
 		mockAgglayerClient,
-		nil, // l1 info tree syncer
+		mockL1InfoTreeSyncer, // l1 info tree syncer
 		mockBridgeSyncer,
 		nil, // l1 client
 		nil, // l2 client

@@ -182,7 +182,8 @@ func newAggsender(
 		return nil, fmt.Errorf("error creating verifier flow: %w", err)
 	}
 
-	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer)
+	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, cfg.GlobalExitRootL1Addr, l1InfoTreeSyncer,
+		cfg.BlockFinalityForL1InfoTree)
 	if err != nil {
 		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
 	}

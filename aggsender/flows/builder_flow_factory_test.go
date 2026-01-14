@@ -12,6 +12,7 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,10 +34,11 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "success with PessimisticProofMode",
 			cfg: config.Config{
-				Mode:                types.PessimisticProofMode,
-				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
-				MaxCertSize:         100,
-				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
+				Mode:                       types.PessimisticProofMode,
+				AggsenderPrivateKey:        signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:                100,
+				AggkitProverClient:         aggkitgrpc.DefaultConfig(),
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
@@ -53,6 +55,7 @@ func TestNewFlow(t *testing.T) {
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
 				RequireCommitteeMembershipCheck: true,
+				BlockFinalityForL1InfoTree:      aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(nil, errors.New("test error")).Maybe()
@@ -67,6 +70,7 @@ func TestNewFlow(t *testing.T) {
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
 				RequireCommitteeMembershipCheck: false,
+				BlockFinalityForL1InfoTree:      aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(nil, errors.New("test error")).Maybe()
@@ -80,6 +84,7 @@ func TestNewFlow(t *testing.T) {
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
 				RequireCommitteeMembershipCheck: false,
+				BlockFinalityForL1InfoTree:      aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				signers := []*types.SignerInfo{
@@ -101,6 +106,7 @@ func TestNewFlow(t *testing.T) {
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
 				RequireCommitteeMembershipCheck: true,
+				BlockFinalityForL1InfoTree:      aggkittypes.FinalizedBlock,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				signers := []*types.SignerInfo{
@@ -122,7 +128,8 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
-				AggkitProverClient: aggkitgrpc.DefaultConfig(),
+				AggkitProverClient:         aggkitgrpc.DefaultConfig(),
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedError: "error signer.Initialize",
 		},
@@ -146,6 +153,7 @@ func TestNewFlow(t *testing.T) {
 					TrustedSequencerKey:             keyConfig,
 					RequireKeyMatchTrustedSequencer: true,
 				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
 			},
 			expectedError: "failed to fetch the aggchain signers from the AggchainFEP contract",
 		},
@@ -166,7 +174,7 @@ func TestNewFlow(t *testing.T) {
 
 			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1).Maybe()
 			mockLogger := log.WithFields("test", "NewFlow")
-
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
 			mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 			mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 			mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()

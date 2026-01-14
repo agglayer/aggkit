@@ -146,7 +146,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("error getting next certificate block range: %w", err)
 	}
-	l1InfoRoot, _, err := f.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
+	l1InfoRoot, _, err := f.l1InfoTreeDataQuerier.GetTargetL1InfoRoot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting latest finalized L1 info root: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -96,6 +97,8 @@ type Config struct {
 	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
 	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
 	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
+	// BlockFinalityForL1InfoTree indicates the block finality to use when querying for L1InfoRoot to use
+	BlockFinalityForL1InfoTree aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinalityForL1InfoTree"` //nolint:lll
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -118,7 +121,8 @@ func (c Config) String() string {
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
 		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n" +
-		"StorageRetainCertificatesPolicy: " + c.StorageRetainCertificatesPolicy.String() + "\n"
+		"StorageRetainCertificatesPolicy: " + c.StorageRetainCertificatesPolicy.String() + "\n" +
+		"BlockFinalityForL1InfoTree: " + c.BlockFinalityForL1InfoTree.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
@@ -137,6 +141,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.StorageRetainCertificatesPolicy.Validate(); err != nil {
 		return fmt.Errorf("invalid StorageRetainCertificatesPolicy config: %w", err)
+	}
+	if err := c.BlockFinalityForL1InfoTree.Validate(); err != nil {
+		return fmt.Errorf("invalid BlockFinalityForL1InfoTree configuration: %w", err)
 	}
 	return nil
 }

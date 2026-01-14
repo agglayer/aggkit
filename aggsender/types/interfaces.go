@@ -91,6 +91,7 @@ type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
+	Finality() aggkittypes.BlockNumberFinality
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
@@ -137,9 +138,9 @@ type AgglayerBridgeL2Reader interface {
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
 // It is used to query data from the L1 Info tree
 type L1InfoTreeDataQuerier interface {
-	// GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
-	// based on the latest finalized l1 block
-	GetLatestFinalizedL1InfoRoot(ctx context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)
+	// GetTargetL1InfoRoot returns the latest processed l1 info tree root
+	// based on the target block (blockFinalityForL1InfoTree)
+	GetTargetL1InfoRoot(ctx context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)
 
 	// GetFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
 	// l1InfoTreeData is:

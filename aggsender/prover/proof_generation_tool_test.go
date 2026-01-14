@@ -10,7 +10,9 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -153,7 +155,19 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, nil)
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, mockL1InfoTreeSyncer)
 	require.Error(t, err)
+
+	cfg := Config{
+		AggkitProverClient:   aggkitgrpc.DefaultConfig(),
+		GlobalExitRootL2Addr: common.HexToAddress("0xbeef"),
+	}
+
+	_, err = NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
+		cfg, mockL1Client, mockL2Client, mockL2Syncer, mockL1InfoTreeSyncer)
+	require.ErrorContains(t, err, "L2 GER reader")
 }

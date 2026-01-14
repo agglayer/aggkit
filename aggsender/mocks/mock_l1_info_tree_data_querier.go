@@ -270,73 +270,6 @@ func (_c *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call) RunAndReturn(run 
 	return _c
 }
 
-// GetLatestFinalizedL1InfoRoot provides a mock function with given fields: ctx
-func (_m *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error) {
-	ret := _m.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetLatestFinalizedL1InfoRoot")
-	}
-
-	var r0 *treetypes.Root
-	var r1 *l1infotreesync.L1InfoTreeLeaf
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)); ok {
-		return rf(ctx)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context) *treetypes.Root); ok {
-		r0 = rf(ctx)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*treetypes.Root)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context) *l1infotreesync.L1InfoTreeLeaf); ok {
-		r1 = rf(ctx)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*l1infotreesync.L1InfoTreeLeaf)
-		}
-	}
-
-	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
-		r2 = rf(ctx)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
-}
-
-// L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestFinalizedL1InfoRoot'
-type L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call struct {
-	*mock.Call
-}
-
-// GetLatestFinalizedL1InfoRoot is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *L1InfoTreeDataQuerier_Expecter) GetLatestFinalizedL1InfoRoot(ctx interface{}) *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call {
-	return &L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call{Call: _e.mock.On("GetLatestFinalizedL1InfoRoot", ctx)}
-}
-
-func (_c *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call) Run(run func(ctx context.Context)) *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
-	})
-	return _c
-}
-
-func (_c *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call) Return(_a0 *treetypes.Root, _a1 *l1infotreesync.L1InfoTreeLeaf, _a2 error) *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call {
-	_c.Call.Return(_a0, _a1, _a2)
-	return _c
-}
-
-func (_c *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call) RunAndReturn(run func(context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeDataQuerier_GetLatestFinalizedL1InfoRoot_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetProofForGER provides a mock function with given fields: ctx, ger, rootFromWhichToProve
 func (_m *L1InfoTreeDataQuerier) GetProofForGER(ctx context.Context, ger common.Hash, rootFromWhichToProve common.Hash) (*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error) {
 	ret := _m.Called(ctx, ger, rootFromWhichToProve)
@@ -402,6 +335,73 @@ func (_c *L1InfoTreeDataQuerier_GetProofForGER_Call) Return(_a0 *l1infotreesync.
 }
 
 func (_c *L1InfoTreeDataQuerier_GetProofForGER_Call) RunAndReturn(run func(context.Context, common.Hash, common.Hash) (*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error)) *L1InfoTreeDataQuerier_GetProofForGER_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTargetL1InfoRoot provides a mock function with given fields: ctx
+func (_m *L1InfoTreeDataQuerier) GetTargetL1InfoRoot(ctx context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTargetL1InfoRoot")
+	}
+
+	var r0 *treetypes.Root
+	var r1 *l1infotreesync.L1InfoTreeLeaf
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) *treetypes.Root); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*treetypes.Root)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) *l1infotreesync.L1InfoTreeLeaf); ok {
+		r1 = rf(ctx)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*l1infotreesync.L1InfoTreeLeaf)
+		}
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = rf(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTargetL1InfoRoot'
+type L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call struct {
+	*mock.Call
+}
+
+// GetTargetL1InfoRoot is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *L1InfoTreeDataQuerier_Expecter) GetTargetL1InfoRoot(ctx interface{}) *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call {
+	return &L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call{Call: _e.mock.On("GetTargetL1InfoRoot", ctx)}
+}
+
+func (_c *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call) Run(run func(ctx context.Context)) *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call) Return(_a0 *treetypes.Root, _a1 *l1infotreesync.L1InfoTreeLeaf, _a2 error) *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call) RunAndReturn(run func(context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeDataQuerier_GetTargetL1InfoRoot_Call {
 	_c.Call.Return(run)
 	return _c
 }

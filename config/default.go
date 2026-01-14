@@ -215,6 +215,7 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+BlockFinalityForL1InfoTree = "FinalizedBlock"
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
@@ -296,6 +297,7 @@ Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578
