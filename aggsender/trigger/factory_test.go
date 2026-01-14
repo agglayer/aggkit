@@ -19,13 +19,15 @@ func TestNewRunner(t *testing.T) {
 	tests := []struct {
 		name                string
 		mode                types.AggsenderMode
+		triggerMode         types.CertificateSendTriggerMode
 		setupMocks          func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock)
 		expectError         bool
 		expectedErrorString string
 	}{
 		{
-			name: "PreconfPP mode returns preconfRunner",
-			mode: types.PreconfPPMode,
+			name:        "PreconfPP mode returns preconfRunner",
+			mode:        types.PreconfPPMode,
+			triggerMode: types.AutoTriggerMode,
 			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
 				logger := mocks.NewLogger(t)
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -37,8 +39,9 @@ func TestNewRunner(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "Default mode returns epochBasedRunner successfully",
-			mode: types.AutoMode,
+			name:        "AggchainProofMode mode returns epochBasedRunner successfully",
+			mode:        types.AggchainProofMode,
+			triggerMode: types.AutoTriggerMode,
 			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
 				logger := mocks.NewLogger(t)
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -60,8 +63,9 @@ func TestNewRunner(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "EpochBasedRunner creation fails due to agglayer client error",
-			mode: types.AutoMode,
+			name:        "PessimisticProofMode creation fails due to agglayer client error",
+			mode:        types.PessimisticProofMode,
+			triggerMode: types.AutoTriggerMode,
 			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
 				logger := mocks.NewLogger(t)
 				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
@@ -82,7 +86,8 @@ func TestNewRunner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			cfg := config.Config{
-				Mode: tt.mode,
+				Mode:            tt.mode,
+				TriggerCertMode: tt.triggerMode,
 				TriggerEpochBased: config.TriggerEpochBasedConfig{
 					EpochNotificationPercentage: 75.0,
 				},

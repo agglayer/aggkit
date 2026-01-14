@@ -13,7 +13,6 @@ import (
 	types "github.com/agglayer/aggkit/aggsender/trigger/types"
 	"github.com/agglayer/aggkit/aggsender/trigger/types/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
-
 	ethermantypesmocks "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/log"
 	ethmanmocks "github.com/agglayer/aggkit/types/mocks"
