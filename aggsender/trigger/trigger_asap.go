@@ -18,8 +18,8 @@ func (e *asapTriggerEvent) String() string {
 }
 
 // asapTrigger is a trigger implementation that executes operations as soon as possible.
-// It try to generate a new cert after last cert is in a final state (settled or inError)
-// you can configure an offset
+// It tries to generate a new cert after the last cert is in a final state (settled or inError).
+// An offset delay can be configured.
 type asapTrigger struct {
 	log                aggkitcommon.Logger
 	ch                 chan types.CertificateTriggerEvent

@@ -101,14 +101,14 @@ type Config struct {
 	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 	// RequireCommitteeMembershipCheck indicates whether to check if the signer is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
-	// It allow to change committee URL for testing purposes
+	// Allows changing the committee URL for testing purposes
 	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
 	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
 	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
 	// BlockFinalityForL1InfoTree indicates the block finality to use when querying for L1InfoRoot to use
 	BlockFinalityForL1InfoTree aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinalityForL1InfoTree"` //nolint:lll
 	// TriggerCertMode is the mode used to trigger certificate sending
-	TriggerCertMode aggsendertypes.CertificateSendTriggerMode `jsonschema:"enum=EpochBased, enum=NewBridge" mapstructure:"TriggerCertMode"` //nolint:lll
+	TriggerCertMode aggsendertypes.CertificateSendTriggerMode `jsonschema:"enum=EpochBased, enum=NewBridge, enum=ASAP, enum=Auto" mapstructure:"TriggerCertMode"` //nolint:lll
 	// TriggerEpochBased is the configuration for the EpochBased trigger mode (TriggerCertMode==EpochBased)
 	TriggerEpochBased TriggerEpochBasedConfig `mapstructure:"TriggerEpochBased"`
 }

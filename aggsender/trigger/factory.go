@@ -13,8 +13,11 @@ import (
 
 // NewCertificateSendTrigger creates and returns a new CertificateSendTrigger instance
 // based on the provided configuration mode.
-// It supports two modes: PreconfPPMode which returns a preconfTrigger, and all other modes
-// which return an epochBasedTrigger.
+// It supports three trigger modes:
+// - NewBridgeTriggerMode: triggers on new bridge events (preconfTrigger)
+// - EpochBasedTriggerMode: triggers based on epoch progression (epochBasedTrigger)
+// - ASAPTriggerMode: triggers as soon as possible (asapTrigger)
+// AutoTriggerMode is resolved to one of the above based on the AggsenderMode.
 func NewCertificateSendTrigger(
 	ctx context.Context,
 	cfg config.Config,

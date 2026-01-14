@@ -173,7 +173,8 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | AggsenderPrivateKey               | [SignerConfig](./common_config.md#signerconfig)           | Configuration of the signer used to sign the certificate on the Aggsender before sending it to the Agglayer. It can be a local private key, or an external one. |
 | URLRPCL2                          | string                                                    | L2 RPC                                                                                                          |
 | BlockFinality                     | string                                                    | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock) you can add an offset e.g: "FinalizedBlock/20" or "FinalizedBlock/-20" |
-| EpochNotificationPercentage       | uint                                                      | Indicates the percentage of the epoch on which the AggSender should send the certificate. 0 = begin, 50 = middle |
+| TriggerCertMode                   | string                                                    | Mode used to trigger certificate sending. Options: "EpochBased", "NewBridge", "ASAP", "Auto" (default: "Auto") |
+| TriggerEpochBased                 | [TriggerEpochBasedConfig](#triggerepochbasedconfig)      | Configuration for EpochBased trigger mode (used when TriggerCertMode is "EpochBased")                          |
 | MaxRetriesStoreCertificate        | int                                                       | Number of retries if Aggsender fails to store certificates on DB. 0 = infinite retries                           |
 | DelayBetweenRetries              | Duration                                                   | Delay between retries for storing certificate and initial status check                                           |
 | MaxCertSize                       | uint                                                      | The maximum size of the certificate. 0 means infinite size                                                      |
@@ -200,6 +201,35 @@ The `StorageRetainCertificatesPolicy` structure configures the certificate retai
 |-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
 | RetainCertificatesCount       | uint32 | If it is 0, all certificates are stored. If it is greater than 0, it is the number of certificates stored in the DB. The last certificate sent is always saved because it is necessary for proper operation.
 | KeepCertificatesHistory           | bool                                                      | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
+
+## TriggerEpochBasedConfig
+
+The `TriggerEpochBasedConfig` structure configures the epoch-based trigger mode for certificate sending. This configuration is used when `TriggerCertMode` is set to "EpochBased" (or when "Auto" mode resolves to epoch-based triggering).
+
+| Field Name                    | Type                | Description                                                                                                     |
+|-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| EpochNotificationPercentage   | uint                | Indicates the percentage of the epoch at which the AggSender should send the certificate. 0 = begin, 50 = middle, 100 = end |
+
+Example:
+```
+[AggSender]
+    TriggerCertMode = "EpochBased"
+    [AggSender.TriggerEpochBased]
+        EpochNotificationPercentage = 50
+```
+
+The epoch-based trigger waits for a specific percentage of the epoch to elapse before sending certificates to the Agglayer. This allows for coordinated certificate submission aligned with L1 epoch boundaries.
+
+### Trigger Modes
+
+The `TriggerCertMode` field supports the following modes:
+
+- **EpochBased**: Triggers certificate sending based on epoch progression. Uses the `TriggerEpochBased` configuration to determine when in the epoch to send certificates.
+- **NewBridge**: Triggers certificate sending immediately when new bridge events are detected on L2.
+- **ASAP**: Triggers certificate sending as soon as possible after the last certificate reaches a final state (settled or in error).
+- **Auto**: Automatically selects the appropriate trigger mode based on the AggSender mode:
+  - PreconfPP mode → NewBridge trigger
+  - PessimisticProof and AggchainProof modes → EpochBased trigger
 
 ## OptimisticConfig
 
