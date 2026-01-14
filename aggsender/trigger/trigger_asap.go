@@ -83,5 +83,4 @@ func (r *asapTrigger) OnAggsenderWaitingTrigger() {
 			r.triggerRunning.Store(false)
 		}
 	}()
-
 }
