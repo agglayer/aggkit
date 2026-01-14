@@ -27,7 +27,12 @@ func NewCertificateSendTrigger(
 	agglayerClient agglayer.AgglayerClientInterface) (types.CertificateSendTrigger, error) {
 	mode := cfg.TriggerCertMode
 	if mode == types.AutoTriggerMode {
-		mode = defaultTriggerForAggsenderMode(cfg.Mode)
+		var err error
+		mode, err = defaultTriggerForAggsenderMode(cfg.Mode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve Auto TriggerCertMode: %w", err)
+		}
+		log.Infof("Resolved Auto TriggerCertMode to %s based on AggsenderMode %s", mode.String(), cfg.Mode.String())
 	}
 
 	switch mode {
@@ -55,15 +60,15 @@ func NewCertificateSendTrigger(
 
 func defaultTriggerForAggsenderMode(
 	mode types.AggsenderMode,
-) types.CertificateSendTriggerMode {
+) (types.CertificateSendTriggerMode, error) {
 	switch mode {
 	case types.PreconfPPMode:
-		return types.NewBridgeTriggerMode
+		return types.NewBridgeTriggerMode, nil
 	case types.AggchainProofMode, types.PessimisticProofMode:
-		return types.EpochBasedTriggerMode
+		return types.EpochBasedTriggerMode, nil
 	case types.AutoMode:
-		panic("AutoMode should be resolved before calling this function; this indicates a development error")
+		return "", fmt.Errorf("aggsender AutoMode should be resolved before calling this function")
 	default:
-		return types.EpochBasedTriggerMode
+		return "", fmt.Errorf("unknown trigger mode: %s", mode)
 	}
 }
