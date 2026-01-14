@@ -384,7 +384,7 @@ type CertificateTriggerEvent interface {
 type CertificateSendTriggerMode string
 
 const (
-	// NewBridgeMode indicates a new bridge trigger it.
+	// NewBridgeMode indicates that new bridge events trigger certificate sending.
 	NewBridgeMode CertificateSendTriggerMode = "NewBridge"
 	// EpochBasedMode indicates an epoch-based mode for certificate sending triggers.
 	EpochBasedMode CertificateSendTriggerMode = "EpochBased"

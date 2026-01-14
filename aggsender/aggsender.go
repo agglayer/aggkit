@@ -336,6 +336,9 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
 			}
+			if !checkResult.ExistPendingCerts && !checkResult.ExistNewInErrorCert {
+				a.log.Debugf("No pending or InError certificates found, so AggSender is waiting for trigger")
+			}
 
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
 				a.log.Warnf("reached number of iterations, so we are going to return")

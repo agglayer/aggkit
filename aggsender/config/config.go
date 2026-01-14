@@ -18,7 +18,7 @@ import (
 
 type TriggerEpochBasedConfig struct {
 	// EpochNotificationPercentage indicates the percentage of the epoch
-	// the AggSender should send the certificate
+	// at which the AggSender should send the certificate
 	// 0 -> Begin
 	// 50 -> Middle
 	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`

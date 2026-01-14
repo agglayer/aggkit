@@ -148,6 +148,9 @@ func (r *epochBasedTrigger) ForceTriggerEvent() {
 	r.epochNotifier.ForcePublishEpochEvent()
 }
 
+func (r *epochBasedTrigger) OnAggsenderWaitingTrigger() {
+}
+
 // preconfTrigger handles preconfirmation operations by listening to L2 bridge synchronization
 // and maintaining subscription state to the synchronized L2 bridge events.
 type preconfTrigger struct {
@@ -224,4 +227,7 @@ func (r *preconfTrigger) ForceTriggerEvent() {
 		return
 	}
 	r.ch <- aggkitsync.Block{Num: blockNumber}
+}
+
+func (r *preconfTrigger) OnAggsenderWaitingTrigger() {
 }
