@@ -81,6 +81,23 @@ func TestNewRunner(t *testing.T) {
 			expectError:         true,
 			expectedErrorString: "failed to generate Epoch Notifier config",
 		},
+		{
+			name:        "AggchainProofMode/ASAPTriggerMode mode returns ASAPTriggerMode successfully",
+			mode:        types.AggchainProofMode,
+			triggerMode: types.ASAPTriggerMode,
+			setupMocks: func() (*mocks.Logger, *ethmanmocks.BaseEthereumClienter, *mocks.L2BridgeSyncer, *agglayermocks.AgglayerClientMock) {
+				logger := mocks.NewLogger(t)
+				l1Client := ethmanmocks.NewBaseEthereumClienter(t)
+				l2BridgeSync := mocks.NewL2BridgeSyncer(t)
+				agglayerClient := agglayermocks.NewAgglayerClientMock(t)
+
+				// Mock successful block notifier creation (will be called internally)
+				l1Client.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+				return logger, l1Client, l2BridgeSync, agglayerClient
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {
