@@ -240,8 +240,8 @@ function download_kurtosis_artifacts() {
     ok_or_fatal "Error downloading kurtosis artifact aggkit-sequencer-keystore to $DEST"
     export zkevm_l2_sequencer_keystore_file_path=$DEST/sequencer.keystore
 
-    kurtosis files download $KURTOSIS_ENCLAVE aggkit-config-artifact $DEST
-    ok_or_fatal "Error downloading kurtosis artifact aggkit-config-artifact to $DEST"
+    kurtosis files download $KURTOSIS_ENCLAVE $AGGKIT_CONFIG_ARTIFACT_NAME $DEST
+    ok_or_fatal "Error downloading kurtosis artifact $AGGKIT_CONFIG_ARTIFACT_NAME to $DEST"
 
     kurtosis files download $KURTOSIS_ENCLAVE aggoracle-keystore $DEST
     ok_or_fatal "Error downloading kurtosis artifact aggoracle to $DEST"

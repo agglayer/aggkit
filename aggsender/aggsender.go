@@ -320,7 +320,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Debugf("Checking perodical certificates status (%s)",
 				a.cfg.CheckCertConfigBriefString())
 
-			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx)
+			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx, a.log.Debugf)
 			if err != nil {
 				a.status.SetLastError(err)
 				a.log.Errorf("error checking last certificate from agglayer: %v", err)
@@ -351,7 +351,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 		case triggerEvent := <-sendTriggerCh:
 			iteration++
 			a.log.Infof("Certificate send trigger event received: %s", triggerEvent.String())
-			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx)
+			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx, a.log.Debugf)
 			if err != nil {
 				a.log.Errorf("Certificate send trigger: error checking certificate status: %v", err)
 				a.status.SetLastError(err)

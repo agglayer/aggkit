@@ -192,10 +192,11 @@ type Logger interface {
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
 }
+type EmitLogFunc func(template string, args ...interface{})
 
 // CertificateStatusChecker is an interface defining functions that a CertificateStatusChecker should implement
 type CertificateStatusChecker interface {
-	CheckPeriodicallyStatus(ctx context.Context) (CertStatus, error)
+	CheckPeriodicallyStatus(ctx context.Context, logFn EmitLogFunc) (CertStatus, error)
 	CheckInitialStatus(
 		ctx context.Context,
 		delayBetweenRetries time.Duration,
@@ -395,6 +396,10 @@ const (
 )
 
 func (c CertificateSendTriggerMode) String() string {
+	err := c.Validate()
+	if err != nil {
+		return "???"
+	}
 	return string(c)
 }
 
@@ -403,7 +408,7 @@ func (c CertificateSendTriggerMode) Validate() error {
 	case NewBridgeTriggerMode, EpochBasedTriggerMode, ASAPTriggerMode, AutoTriggerMode:
 		return nil
 	default:
-		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", c)
+		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", string(c))
 	}
 }
 
