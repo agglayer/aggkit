@@ -6,7 +6,6 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -323,10 +322,9 @@ func TestRegularCases(t *testing.T) {
 
 func runTestCases(t *testing.T, tests []testCaseData) {
 	t.Helper()
-	logger := log.WithFields("module", "unit-test")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sut := initialStatus{log: logger}
+			sut := initialStatus{}
 			if tt.localCert != nil {
 				sut.LocalLastCert = &types.CertificateHeader{
 					CertificateID: tt.localCert.CertificateID,

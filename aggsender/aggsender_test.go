@@ -622,7 +622,7 @@ func TestRetrySendCertificates(t *testing.T) {
 	chEpoch := make(chan aggsendertypes.CertificateTriggerEvent)
 	mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
 	expectedNumAttempts := 4
-	mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+	mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything, mock.Anything).Return(aggsendertypes.CertStatus{
 		ExistPendingCerts:   false,
 		ExistNewInErrorCert: false,
 	}, nil).Times(2)
@@ -658,7 +658,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 				chEpoch := make(chan aggsendertypes.CertificateTriggerEvent, 1)
 				chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 				mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
-				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{}, errors.New("some error")).Once()
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything, mock.Anything).Return(aggsendertypes.CertStatus{}, errors.New("some error")).Once()
 			},
 			returnAfterNIterations: 1,
 		},
@@ -673,7 +673,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 		{
 			name: "retry certificate after in-error",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderBuilderFlow, mockSendTrigger *mocks.CertificateSendTrigger) {
-				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything, mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts:   false,
 					ExistNewInErrorCert: true,
 				}, nil).Once()
@@ -692,7 +692,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 				chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 				mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
 				mockSendTrigger.EXPECT().Status().Return("test status").Once()
-				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything, mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: false,
 				}, nil).Once()
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
@@ -706,7 +706,7 @@ func TestSendEpochBasedCertificates(t *testing.T) {
 				chEpoch := make(chan aggsendertypes.CertificateTriggerEvent, 1)
 				chEpoch <- triggertypes.EpochEvent{Epoch: 1}
 				mockSendTrigger.EXPECT().TriggerCh(mock.Anything).Return(chEpoch).Once()
-				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+				mockCertStatusChecker.EXPECT().CheckPeriodicallyStatus(mock.Anything, mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: true,
 				}, nil).Once()
 			},
