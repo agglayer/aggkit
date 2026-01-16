@@ -219,6 +219,9 @@ TriggerCertMode = "Auto"
 [AggSender.TriggerEpochBased]
 	# Percentage of epoch completion to trigger certificate sending
 	EpochNotificationPercentage = 50
+[AggSender.TriggerASAP]
+	DelayBeetweenCertificates = "1s"
+	MinimumNewCertificateInterval = "1h"
 
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"

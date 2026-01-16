@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/aggsender/config"
+	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +17,7 @@ func TestASAPTrigger_DefaultDelay(t *testing.T) {
 
 func TestASAPTrigger_ForceTriggerEvent(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
-	trigger := newASAPTrigger(logger)
+	trigger := newASAPTrigger(logger, nil)
 
 	// Test when channel is nil
 	trigger.ForceTriggerEvent() // Should log a warning, but no panic
@@ -40,7 +42,7 @@ func TestASAPTrigger_ForceTriggerEvent(t *testing.T) {
 
 func TestASAPTrigger_OnAggsenderWaitingTrigger(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
-	trigger := newASAPTrigger(logger)
+	trigger := newASAPTrigger(logger, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -62,8 +64,20 @@ func TestASAPTrigger_OnAggsenderWaitingTrigger(t *testing.T) {
 }
 func TestASAPTrigger_Status(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
-	trigger := newASAPTrigger(logger)
+	trigger := newASAPTrigger(logger, nil)
 
 	status := trigger.Status()
 	require.Equal(t, "ASAP Runner: trying to generate certs as soon as possible", status, "Unexpected status message")
+}
+
+func TestASAPTrigger_MinInterval(t *testing.T) {
+	logger := log.WithFields("aggsender-test", "ut")
+	cfg := config.NewTriggerASAPConfigDefault()
+	cfg.MinimumNewCertificateInterval = types.Duration{
+		Duration: 2 * time.Millisecond,
+	}
+	trigger := newASAPTrigger(logger, cfg)
+	ch := trigger.TriggerCh(t.Context())
+	event := <-ch
+	require.NotNil(t, event, "Expected a trigger event")
 }

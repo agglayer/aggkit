@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db"
@@ -15,6 +16,36 @@ import (
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
+
+type TriggerASAPConfig struct {
+	// DelayBeetweenCertificates is the delay to wait before sending a new certificate after the previous one is settled
+	DelayBeetweenCertificates types.Duration `mapstructure:"DelayBeetweenCertificates"`
+	// MinimumNewCertificateInterval is the minimum interval between two new certificates triggers
+	MinimumNewCertificateInterval types.Duration `mapstructure:"MinimumNewCertificateInterval"`
+}
+
+func NewTriggerASAPConfigDefault() *TriggerASAPConfig {
+	return &TriggerASAPConfig{
+		DelayBeetweenCertificates:     types.Duration{Duration: time.Second},
+		MinimumNewCertificateInterval: types.Duration{Duration: time.Hour},
+	}
+}
+
+func (c *TriggerASAPConfig) String() string {
+	return fmt.Sprintf("DelayBeetweenCertificates: %s, MinimumNewCertificateInterval: %s",
+		c.DelayBeetweenCertificates.String(),
+		c.MinimumNewCertificateInterval.String())
+}
+
+func (c *TriggerASAPConfig) Validate() error {
+	if c.DelayBeetweenCertificates.Duration < 0 {
+		return fmt.Errorf("DelayBeetweenCertificates cannot be negative")
+	}
+	if c.MinimumNewCertificateInterval.Duration <= 0 {
+		return fmt.Errorf("MinimumNewCertificateInterval must be >= 0")
+	}
+	return nil
+}
 
 type TriggerEpochBasedConfig struct {
 	// EpochNotificationPercentage indicates the percentage of the epoch
@@ -111,6 +142,8 @@ type Config struct {
 	TriggerCertMode aggsendertypes.CertificateSendTriggerMode `jsonschema:"enum=EpochBased, enum=NewBridge, enum=ASAP, enum=Auto" mapstructure:"TriggerCertMode"` //nolint:lll
 	// TriggerEpochBased is the configuration for the EpochBased trigger mode (TriggerCertMode==EpochBased)
 	TriggerEpochBased TriggerEpochBasedConfig `mapstructure:"TriggerEpochBased"`
+	// TriggerASAP is the configuration for the ASAP trigger mode (TriggerCertMode==ASAP)
+	TrriggerASAP TriggerASAPConfig `mapstructure:"TriggerASAP"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
