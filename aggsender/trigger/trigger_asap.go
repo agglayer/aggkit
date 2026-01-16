@@ -124,7 +124,8 @@ func (r *asapTrigger) fulfillMinimumInterval() {
 				r.log.Debugf("ASAP Trigger: minimum interval elapsed but trigger already programmed, skipping")
 				return
 			}
-			r.log.Infof("ASAP Trigger: minimum interval elapsed (%s), sending trigger", r.cfg.MinimumNewCertificateInterval.Duration.String())
+			r.log.Infof("ASAP Trigger: minimum interval elapsed (%s), sending trigger",
+				r.cfg.MinimumNewCertificateInterval.String())
 			r.trigger()
 		}
 	}()

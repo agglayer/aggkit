@@ -67,7 +67,7 @@ func TestASAPTrigger_Status(t *testing.T) {
 	trigger := newASAPTrigger(logger, nil)
 
 	status := trigger.Status()
-	require.Equal(t, "ASAP Runner: trying to generate certs as soon as possible", status, "Unexpected status message")
+	require.Equal(t, "ASAP Runner: cfg: DelayBeetweenCertificates: 1s, MinimumNewCertificateInterval: 1h0m0s", status, "Unexpected status message")
 }
 
 func TestASAPTrigger_MinInterval(t *testing.T) {
