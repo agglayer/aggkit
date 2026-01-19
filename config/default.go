@@ -343,6 +343,7 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	MaxParallelBlockHeaderRetrieval = 30
 	BlockFinality = "FinalizedBlock"
 	WaitPeriodToCheckCatchUp = "10s"
+	PeriodToCheckReorgs = "5s"
 
 [L2Multidownloader]
 	Enabled = false
@@ -351,4 +352,5 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	MaxParallelBlockHeaderRetrieval = 30
 	BlockFinality = "LatestBlock"
 	WaitPeriodToCheckCatchUp = "10s"
+	PeriodToCheckReorgs = "5s"
 `

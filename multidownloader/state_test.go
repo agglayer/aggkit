@@ -34,13 +34,13 @@ func TestStateInitial(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, state)
 	logQuery := mdtypes.NewLogQuery(
-		123, 456, []common.Address{addr1})
+		1, 456, []common.Address{addr1})
 
 	err = state.OnNewSyncedLogQuery(&logQuery)
 	require.NoError(t, err)
 	pendingSegments := state.SyncedSegmentsByContract([]common.Address{addr1})
 	require.Equal(t, 1, len(pendingSegments))
 	require.Equal(t, addr1, pendingSegments[0].ContractAddr)
-	require.Equal(t, aggkitcommon.NewBlockRange(0, 1000), pendingSegments[0].BlockRange)
+	require.Equal(t, aggkitcommon.NewBlockRange(0, 456), pendingSegments[0].BlockRange)
 	require.Equal(t, aggkittypes.FinalizedBlock, pendingSegments[0].TargetToBlock)
 }
