@@ -60,15 +60,6 @@ func NewLogRowsFromEthLogs(logs []types.Log) []*logRow {
 	return rows
 }
 
-type syncStatusRow struct {
-	Address         common.Address `meddler:"contract_address,address"`
-	TargetFromBlock uint64         `meddler:"target_from_block"`
-	TargetToBlock   string         `meddler:"target_to_block"`
-	SyncedFromBlock uint64         `meddler:"synced_from_block"`
-	SyncedToBlock   uint64         `meddler:"synced_to_block"`
-	SyncersIDs      string         `meddler:"syncers_id"`
-}
-
 func NewLogRowFromEthLog(log types.Log) *logRow {
 	topicsJSON, err := json.Marshal(log.Topics)
 	if err != nil {

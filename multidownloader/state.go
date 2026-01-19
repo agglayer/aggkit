@@ -18,6 +18,13 @@ type State struct {
 	Pending mdrtypes.SetSyncSegment
 }
 
+func NewEmptyState() *State {
+	return &State{
+		Synced:  mdrtypes.NewSetSyncSegment(),
+		Pending: mdrtypes.NewSetSyncSegment(),
+	}
+}
+
 func NewState(synced *mdrtypes.SetSyncSegment, pending *mdrtypes.SetSyncSegment) *State {
 	return &State{
 		Synced:  *synced,

@@ -1,0 +1,150 @@
+package multidownloader
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	dbtypes "github.com/agglayer/aggkit/db/types"
+	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
+)
+
+type ReorgPorter interface {
+	NewTx(ctx context.Context) (dbtypes.Txer, error)
+	GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querier, blockNumber uint64) (*compareBlockHeaders, error)
+	GetLastBlockNumberInStorage(tx dbtypes.Querier) (uint64, error)
+	// Return ChainID of the inserted reorg
+	MoveReorgedBlocks(tx dbtypes.Querier, reorgData mdtypes.ReorgData) (uint64, error)
+	// Return latest block number in RPC
+	GetLatestBlockNumberInRPC(ctx context.Context) (uint64, error)
+}
+
+type ReorgProcessor struct {
+	log     aggkitcommon.Logger
+	port    ReorgPorter
+	funcNow func() uint64
+}
+
+func NewReorgProcessor(log aggkitcommon.Logger,
+	ethClient aggkittypes.BaseEthereumClienter,
+	rpcClient aggkittypes.RPCClienter,
+	storage mdtypes.Storager) *ReorgProcessor {
+	return &ReorgProcessor{
+		log: log,
+		port: &ReorgPort{
+			ethClient: ethClient,
+			rpcClient: rpcClient,
+			storage:   storage,
+		},
+		funcNow: func() uint64 {
+			return uint64(time.Now().Unix())
+		},
+	}
+}
+
+// After detecting a reorg at offendingBlockNumber,
+// - find affected blocks
+// - store the reorg info in storage
+func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
+	offendingBlockNumber uint64) error {
+	// We known that offendingBlockNumber is affected, so we go backwards until we find
+	// the first unaffected block
+	currentBlockNumber := offendingBlockNumber
+	tx, err := rm.port.NewTx(ctx)
+	if err != nil {
+		return fmt.Errorf("ProcessReorg: error starting new tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			rm.log.Debugf("ProcessReorg: rolling back tx")
+			if err := tx.Rollback(); err != nil {
+				rm.log.Errorf("ProcessReorg: error rolling back tx: %v", err)
+			}
+		}
+	}()
+
+	firstUnaffectedBlock, err := rm.findFirstUnaffectedBlock(ctx, tx, currentBlockNumber-1)
+	if err != nil {
+		return fmt.Errorf("ProcessReorg: error finding first unaffected block: %w", err)
+	}
+	lastBlockNumberInStorage, err := rm.port.GetLastBlockNumberInStorage(tx)
+	if err != nil {
+		return fmt.Errorf("ProcessReorg: error getting last block number in storage: %w", err)
+	}
+	latestBlockNumberInRPC, err := rm.port.GetLatestBlockNumberInRPC(ctx)
+	if err != nil {
+		return fmt.Errorf("ProcessReorg: error getting latest block number in RPC: %w", err)
+	}
+	rm.log.Infof("ProcessReorg: reorg detected from block %d to block %d",
+		currentBlockNumber+1, lastBlockNumberInStorage)
+
+	reorgData := mdtypes.ReorgData{
+		BlockRangeAffected:        aggkitcommon.NewBlockRange(firstUnaffectedBlock+1, lastBlockNumberInStorage),
+		DetectedAtBlock:           lastBlockNumberInStorage,
+		DetectedTimestamp:         rm.funcNow(),
+		NetworkLatestBlock:        latestBlockNumberInRPC,
+		NetworkFinalizedBlock:     firstUnaffectedBlock,
+		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
+	}
+	chainID, err := rm.port.MoveReorgedBlocks(tx, reorgData)
+	if err != nil {
+		return fmt.Errorf("ProcessReorg: error moving reorged blocks: %w", err)
+	}
+	reorgData.ChainID = chainID
+	committed = true
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ProcessReorg: cannot commit tx: %w", err)
+	}
+	rm.log.Warnf("ProcessReorg: finalized reorgProcess: %s", reorgData.String())
+	return nil
+}
+
+func (rm *ReorgProcessor) findFirstUnaffectedBlock(ctx context.Context,
+	tx dbtypes.Querier,
+	startBlockNumber uint64) (uint64, error) {
+	currentBlockNumber := startBlockNumber
+	for {
+		if currentBlockNumber == 0 {
+			// Genesis block reached, stop here
+			return 0, fmt.Errorf("findFirstUnaffectedBlock: genesis block reached while checking reorgs, "+
+				"cannot find unaffected block. First block checked: %d", startBlockNumber)
+		}
+		data, err := rm.port.GetBlockStorageAndRPC(ctx, tx, currentBlockNumber)
+		if err != nil {
+			return 0, err
+		}
+		match, err := rm.checkBlocks(data)
+		if err != nil {
+			return 0, err
+		}
+		if match {
+			// Found the first unaffected block
+			return currentBlockNumber, nil
+		}
+		currentBlockNumber--
+	}
+}
+
+// checkBlocks compares storage and rpc block headers and returns true if they match
+func (rm *ReorgProcessor) checkBlocks(blocks *compareBlockHeaders) (bool, error) {
+	if blocks == nil || blocks.StorageHeader == nil || blocks.RpcHeader == nil {
+		// Block not in storage, so it is a reorg
+		return false, fmt.Errorf("checkBlocks bad input data (nil)")
+	}
+	if blocks.StorageHeader.Number != blocks.RpcHeader.Number {
+		return false, fmt.Errorf("checkBlocks block numbers do not match: storage=%d rpc=%d",
+			blocks.StorageHeader.Number, blocks.RpcHeader.Number)
+	}
+	// This is a sanity check, never have to happen because we trust in finalized  blocks!
+	if blocks.StorageHeader.Hash != blocks.RpcHeader.Hash {
+		if blocks.IsFinalized == mdtypes.Finalized {
+			rm.log.Warnf("checkBlocks: block %d is finalized and mismatch hash %s!=%s", blocks.StorageHeader.Number,
+				blocks.StorageHeader.Hash.Hex(), blocks.RpcHeader.Hash.Hex())
+		}
+		return false, nil
+	}
+	return true, nil
+}

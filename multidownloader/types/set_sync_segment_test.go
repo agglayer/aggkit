@@ -364,7 +364,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 		require.Equal(t, uint64(100), res.BlockRange.ToBlock)
 	})
 
-	t.Run("remove totally a  segment", func(t *testing.T) {
+	t.Run("fulfill totally a  segment,set it as empty ", func(t *testing.T) {
 		set := NewSetSyncSegment()
 		addr := common.HexToAddress("0x123")
 		segment := SyncSegment{
@@ -380,8 +380,9 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 
 		err := set.SubtractLogQuery(logQuery)
 		require.NoError(t, err)
-		_, exists := set.GetByContract(addr)
-		require.False(t, exists)
+		segment, exists := set.GetByContract(addr)
+		require.True(t, segment.IsEmpty(), "segment is empty")
+		require.True(t, exists, "is empty but exists")
 	})
 
 	t.Run("bad removed segment (middle segment)", func(t *testing.T) {

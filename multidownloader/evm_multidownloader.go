@@ -43,9 +43,8 @@ type EVMMultidownloader struct {
 	syncersConfig        mdrtypes.SetSyncerConfig
 	reorgProcessor       mdrtypes.ReorgProcessor
 
-	mutex         sync.Mutex
-	isInitialized bool
-	state         *State // current state of synced and pending segments
+	mutex sync.Mutex
+	state *State // current state of synced and pending segments if nil not initialized
 
 	statistics *Statistics
 }
@@ -108,9 +107,10 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 
-	if dh.isInitialized {
+	if dh.isInitializedNoMutex() {
 		return fmt.Errorf("registerSyncer: cannot add new syncer config after initialization")
 	}
+
 	dh.syncersConfig.Add(data)
 	return nil
 }
@@ -226,7 +226,7 @@ func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
 func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
-	if dh.isInitialized {
+	if dh.isInitializedNoMutex() {
 		return fmt.Errorf("initialize: already initialized")
 	}
 	dh.log.Infof("Initializing multidownloader...")
@@ -263,7 +263,6 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	}
 	// What is pending to download?
 	dh.state = newState
-	dh.isInitialized = true
 	dh.log.Infof("Initialization completed. state: %s",
 		dh.state.String())
 	return nil
@@ -278,6 +277,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 		if err != nil {
 			reorgErr := mdrtypes.CastReorgError(err)
 			if reorgErr == nil {
+				// TODO: Remove this panic and handle properly
 				panic("Error running multidownloader: " + err.Error())
 			}
 			dh.log.Warnf("Reorg detected: %s", reorgErr.Error())
@@ -398,6 +398,15 @@ func getBlockNumbers(logs []types.Log) []uint64 {
 	}
 	return result
 }
+func (dh *EVMMultidownloader) IsInitialized() bool {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+	return dh.state != nil
+}
+
+func (dh *EVMMultidownloader) isInitializedNoMutex() bool {
+	return dh.state != nil
+}
 
 func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 	dh.mutex.Lock()
@@ -476,6 +485,7 @@ func (dh *EVMMultidownloader) checkIntegrityNewLogsBlockHeaders(logs []types.Log
 	return nil
 }
 
+// TODO: ??? why I did this function??
 func (dh *EVMMultidownloader) checkParent(blockHeader *aggkittypes.BlockHeader) error {
 	if blockHeader.Number == 0 {
 		return nil

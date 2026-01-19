@@ -34,6 +34,9 @@ func NewBlockHeaderFromEthHeader(ethHeader *types.Header) *BlockHeader {
 		ethHeader.Time,
 		&ethHeader.ParentHash)
 }
+func (gb *BlockHeader) Empty() bool {
+	return gb == nil || gb.Number == 0
+}
 
 func (gb *BlockHeader) String() string {
 	if gb == nil {

@@ -63,6 +63,7 @@ func (s *SetSyncSegment) Add(segment SyncSegment) {
 }
 
 // GetByContract returns the SyncSegment for the given contract address
+
 func (s *SetSyncSegment) GetByContract(addr common.Address) (SyncSegment, bool) {
 	if s == nil {
 		return SyncSegment{}, false

@@ -45,6 +45,9 @@ func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
 
 // FilterLogs filters the logs. It gets them from storage or waits until they are available
 func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+	if !dh.IsInitialized() {
+		return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: multidownloader not initialized")
+	}
 	dh.log.Debugf("EVMMultidownloader.FilterLogs: received query: %+v", query)
 	defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)
 	logQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)

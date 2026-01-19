@@ -3,6 +3,7 @@ package multidownloader
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"os"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
 	mockethermantypes "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -30,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const runL1InfoTree = false
+const runL1InfoTree = true
 const l1InfoTreeUseMultidownloader = true
 const storagePath = "../tmp/ut/"
 
@@ -453,6 +455,26 @@ type testDataEVMMultidownloader struct {
 	mockBlockNotifierManager *mockethermantypes.BlockNotifierManager
 }
 
+func (td *testDataEVMMultidownloader) FakeInitialized(t *testing.T) {
+	t.Helper()
+	td.mdr.state = NewEmptyState()
+}
+
+func (td *testDataEVMMultidownloader) MockInitialize(t *testing.T, chainID uint64) {
+	t.Helper()
+	chainIDBig := big.NewInt(0).SetUint64(chainID)
+	td.mockEthClient.EXPECT().ChainID(mock.Anything).Return(chainIDBig, nil).Maybe()
+	if td.mockStorage != nil {
+		td.mockStorage.EXPECT().GetValue(mock.Anything, mock.Anything, mock.Anything).Return("", db.ErrNotFound).Maybe()
+		td.mockStorage.EXPECT().InsertValue(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+		td.mockStorage.EXPECT().UpsertSyncerConfigs(mock.Anything, mock.Anything).Return(nil).Maybe()
+		td.mockStorage.EXPECT().GetSyncedBlockRangePerContract(mock.Anything).Return(mdrtypes.NewSetSyncSegment(), nil).Maybe()
+	}
+	if td.mockBlockNotifierManager != nil {
+		td.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).Return(uint64(200), nil).Maybe()
+	}
+}
+
 func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMMultidownloader {
 	t.Helper()
 	logger := log.WithFields("test", "evm_multidownloader_test")
@@ -478,7 +500,6 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		require.NoError(t, err)
 		useDB = realDB
 	}
-	// TODO: Add mock for ethRPCClient if needed
 	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, mockBlockNotifierManager, nil)
 	require.NoError(t, err)
 	return &testDataEVMMultidownloader{

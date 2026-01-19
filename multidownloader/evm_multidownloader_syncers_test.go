@@ -167,7 +167,7 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 	t.Run("FilterLogs context canceled waiting to catch up", func(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
-
+		testData.FakeInitialized(t)
 		query := ethereum.FilterQuery{
 			Addresses: []common.Address{addr1},
 			FromBlock: big.NewInt(100),
@@ -194,6 +194,9 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 			FromBlock:     100,
 			ToBlock:       aggkittypes.LatestBlock,
 		})
+		require.NoError(t, err)
+		testData.MockInitialize(t, 1)
+		err = testData.mdr.Initialize(t.Context())
 		require.NoError(t, err)
 
 		query := ethereum.FilterQuery{
