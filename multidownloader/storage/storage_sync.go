@@ -28,7 +28,7 @@ func (r *syncStatusRow) ToSyncSegment() (mdrtypes.SyncSegment, error) {
 	}
 	return mdrtypes.SyncSegment{
 		ContractAddr:  r.Address,
-		TargetToBlock: targetToBlock,
+		TargetToBlock: *targetToBlock,
 		BlockRange:    aggkitcommon.NewBlockRange(r.SyncedFromBlock, r.SyncedToBlock),
 	}, nil
 }

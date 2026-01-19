@@ -486,32 +486,34 @@ func (dh *EVMMultidownloader) checkIntegrityNewLogsBlockHeaders(logs []types.Log
 }
 
 // TODO: ??? why I did this function??
-func (dh *EVMMultidownloader) checkParent(blockHeader *aggkittypes.BlockHeader) error {
-	if blockHeader.Number == 0 {
-		return nil
-	}
-	parentHeader, isFinalized, err := dh.storage.GetBlockHeaderByNumber(nil, blockHeader.Number-1)
-	if err != nil {
-		return fmt.Errorf("checkParent: cannot get parent block header for block number %d: %w", blockHeader.Number, err)
-	}
-	if parentHeader == nil {
-		return fmt.Errorf("checkParent: parent block header for block number %d not found in storage", blockHeader.Number-1)
-	}
-	// Parenthash (from DB) doesn't match parent Hash of first blockHeader, but parent is finalized
-	// so the discrepancy is the new block that is discarded without reorg (still not in DB)
-	if isFinalized && blockHeader.ParentHash != nil && parentHeader.Hash != *blockHeader.ParentHash {
-		return fmt.Errorf("checkParent: "+
-			"parent hash mismatch for block number %d: expected %s, got %s (but parent is finalized)",
-			blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String())
-	}
-	if blockHeader.ParentHash != nil && parentHeader.Hash != *blockHeader.ParentHash {
-		// Parenthash mismatch, reorg detected
-		return mdrtypes.NewReorgError(parentHeader.Number, parentHeader.Hash,
-			*blockHeader.ParentHash, fmt.Sprintf("checkParent: parent hash mismatch for block number %d: expected %s, got %s",
-				blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String()))
-	}
-	return nil
-}
+// TODO: remove
+// func (dh *EVMMultidownloader) checkParent(blockHeader *aggkittypes.BlockHeader) error {
+// 	if blockHeader.Number == 0 {
+// 		return nil
+// 	}
+// 	parentHeader, isFinalized, err := dh.storage.GetBlockHeaderByNumber(nil, blockHeader.Number-1)
+// 	if err != nil {
+// 		return fmt.Errorf("checkParent: cannot get parent block header for block number %d: %w", blockHeader.Number, err)
+// 	}
+// 	if parentHeader == nil {
+// 		return fmt.Errorf("checkParent: parent block header for block number %d not found in storage",
+//  blockHeader.Number-1)
+// 	}
+// 	// Parenthash (from DB) doesn't match parent Hash of first blockHeader, but parent is finalized
+// 	// so the discrepancy is the new block that is discarded without reorg (still not in DB)
+// 	if isFinalized && blockHeader.ParentHash != nil && parentHeader.Hash != *blockHeader.ParentHash {
+// 		return fmt.Errorf("checkParent: "+
+// 			"parent hash mismatch for block number %d: expected %s, got %s (but parent is finalized)",
+// 			blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String())
+// 	}
+// 	if blockHeader.ParentHash != nil && parentHeader.Hash != *blockHeader.ParentHash {
+// 		// Parenthash mismatch, reorg detected
+// 		return mdrtypes.NewReorgError(parentHeader.Number, parentHeader.Hash,
+// 			*blockHeader.ParentHash, fmt.Sprintf("checkParent: parent hash mismatch for block number %d: expected %s, got %s",
+// 				blockHeader.Number, blockHeader.ParentHash.String(), parentHeader.Hash.String()))
+// 	}
+// 	return nil
+// }
 
 func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	if err := ctx.Err(); err != nil {

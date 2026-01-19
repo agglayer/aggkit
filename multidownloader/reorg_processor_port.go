@@ -3,7 +3,6 @@ package multidownloader
 import (
 	"context"
 	"fmt"
-	"math/big"
 
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
@@ -32,15 +31,14 @@ func (r *ReorgPort) GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querie
 	if err != nil {
 		return nil, err
 	}
-	number := big.NewInt(0).SetUint64(blockNumber)
-	rpcBlock, err := r.ethClient.BlockByNumber(ctx, number)
+	rpcBlock, err := r.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
 	if err != nil {
 		return nil, err
 	}
 	return &compareBlockHeaders{
 		StorageHeader: currentStorageBlock,
 		IsFinalized:   finalized,
-		RpcHeader:     aggkittypes.NewBlockHeaderFromEthHeader(rpcBlock.Header()),
+		RpcHeader:     rpcBlock,
 	}, nil
 }
 
