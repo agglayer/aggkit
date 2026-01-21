@@ -367,3 +367,20 @@ func (c *Certificate) String() string {
 		aggchainProof,
 	)
 }
+
+func (c CertificateSendTriggerMode) String() string {
+	err := c.Validate()
+	if err != nil {
+		return "???"
+	}
+	return string(c)
+}
+
+func (c CertificateSendTriggerMode) Validate() error {
+	switch c {
+	case NewBridgeTriggerMode, EpochBasedTriggerMode, ASAPTriggerMode, AutoTriggerMode:
+		return nil
+	default:
+		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", string(c))
+	}
+}

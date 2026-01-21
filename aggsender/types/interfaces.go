@@ -395,23 +395,6 @@ const (
 	AutoTriggerMode CertificateSendTriggerMode = "Auto"
 )
 
-func (c CertificateSendTriggerMode) String() string {
-	err := c.Validate()
-	if err != nil {
-		return "???"
-	}
-	return string(c)
-}
-
-func (c CertificateSendTriggerMode) Validate() error {
-	switch c {
-	case NewBridgeTriggerMode, EpochBasedTriggerMode, ASAPTriggerMode, AutoTriggerMode:
-		return nil
-	default:
-		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", string(c))
-	}
-}
-
 // CertificateSendTrigger is an interface that defines methods for setting up and managing
 // certificate sending triggers based on specific events.
 type CertificateSendTrigger interface {
