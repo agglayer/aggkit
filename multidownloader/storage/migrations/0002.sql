@@ -1,5 +1,7 @@
 -- +migrate Down
 DROP TABLE IF EXISTS logs_reorged;
+DROP TABLE IF EXISTS blocks_reorged;
+DROP TABLE IF EXISTS reorgs;
 -- +migrate Up
 
 CREATE TABLE logs_reorged (
@@ -35,5 +37,5 @@ CREATE TABLE reorgs (
     network_latest_block INTEGER NOT NULL,  -- which was the latest block in the detection moment
     network_finalized_block INTEGER NOT NULL, -- which was the finalized block in the detection moment
     network_finalized_block_name TEXT NOT NULL, -- name of the finalized block (e.g., "finalized", "safe", etc.)
-    description TEXT -- extran information, can be null
+    description TEXT -- extra information, can be null
 );

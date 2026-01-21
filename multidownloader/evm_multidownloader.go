@@ -268,12 +268,15 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	return nil
 }
 func (dh *EVMMultidownloader) Start(ctx context.Context) error {
-	err := dh.Initialize(ctx)
-	if err != nil {
-		return err
+	if !dh.IsInitialized() {
+		dh.log.Infof("EVMMultidownloader.Start: multidownloader not initialized, initializing...")
+		err := dh.Initialize(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	for {
-		err = dh.StartStep(ctx)
+		err := dh.StartStep(ctx)
 		if err != nil {
 			reorgErr := mdrtypes.CastReorgError(err)
 			if reorgErr == nil {
@@ -287,7 +290,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 			}
 		}
 		// Breathing, just in case
-		dh.log.Infof("relauncing sync loop... (waiting 1 second)")
+		dh.log.Infof("relaunching sync loop... (waiting 1 second)")
 		time.Sleep(1 * time.Second)
 	}
 }

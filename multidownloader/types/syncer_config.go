@@ -79,7 +79,7 @@ func (f *SetSyncerConfig) Addresses(blockRange aggkitcommon.BlockRange) []common
 
 	for _, filter := range f.filters {
 		if filter.FromBlock >= blockRange.FromBlock {
-			for _, addr := range filter.ContractsAddr {
+			for _, addr := range filter.ContractAddresses {
 				if _, exists := dups[addr]; !exists {
 					addresses = append(addresses, addr)
 					dups[addr] = struct{}{}
@@ -106,7 +106,7 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 	}
 	contractMap := make(map[common.Address]*ContractConfig)
 	for _, filter := range f.filters {
-		for _, addr := range filter.ContractsAddr {
+		for _, addr := range filter.ContractAddresses {
 			cc, exists := contractMap[addr]
 			if !exists {
 				contractMap[addr] = NewContractConfigFromSyncerConfig(addr, filter)
@@ -135,7 +135,7 @@ func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
 	// contract address and block range
 	for _, filter := range f.filters {
 		// TODO: instead of calling RPC use block_notifier_values
-		for _, addr := range filter.ContractsAddr {
+		for _, addr := range filter.ContractAddresses {
 			segment := SyncSegment{
 				ContractAddr: addr,
 				// Initially set ToBlock as 0; it will be updated later

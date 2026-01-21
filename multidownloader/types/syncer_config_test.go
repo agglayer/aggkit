@@ -22,10 +22,10 @@ func TestContractConfigs_SingleSyncerSingleContract(t *testing.T) {
 	addr := common.HexToAddress("0x1")
 	set := NewSetSyncerConfig()
 	set.Add(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer1",
-		ContractsAddr: []common.Address{addr},
-		FromBlock:     10,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{addr},
+		FromBlock:         10,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 
 	configs := set.ContractConfigs()
@@ -41,16 +41,16 @@ func TestContractConfigs_MultipleSyncersSameContract(t *testing.T) {
 	addr := common.HexToAddress("0x2")
 	set := NewSetSyncerConfig()
 	set.Add(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer1",
-		ContractsAddr: []common.Address{addr},
-		FromBlock:     15,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{addr},
+		FromBlock:         15,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 	set.Add(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{addr},
-		FromBlock:     5,
-		ToBlock:       aggkittypes.LatestBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{addr},
+		FromBlock:         5,
+		ToBlock:           aggkittypes.LatestBlock,
 	})
 
 	configs := set.ContractConfigs()
@@ -69,16 +69,16 @@ func TestContractConfigs_MultipleSyncersMultipleContracts(t *testing.T) {
 	addr2 := common.HexToAddress("0x4")
 	set := NewSetSyncerConfig()
 	set.Add(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer1",
-		ContractsAddr: []common.Address{addr1, addr2},
-		FromBlock:     1,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{addr1, addr2},
+		FromBlock:         1,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 	set.Add(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{addr2},
-		FromBlock:     2,
-		ToBlock:       aggkittypes.LatestBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{addr2},
+		FromBlock:         2,
+		ToBlock:           aggkittypes.LatestBlock,
 	})
 
 	configs := set.ContractConfigs()
@@ -111,10 +111,10 @@ func TestContractConfig_Update_FromBlock(t *testing.T) {
 
 	// Update with lower FromBlock
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     5,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         5,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 
 	require.Equal(t, uint64(5), cc.FromBlock)
@@ -122,10 +122,10 @@ func TestContractConfig_Update_FromBlock(t *testing.T) {
 
 	// Update with higher FromBlock (should not change)
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer3",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     15,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer3",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         15,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 
 	require.Equal(t, uint64(5), cc.FromBlock)
@@ -142,10 +142,10 @@ func TestContractConfig_Update_ToBlock(t *testing.T) {
 
 	// Update with less final ToBlock (LatestBlock < FinalizedBlock)
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     15,
-		ToBlock:       aggkittypes.LatestBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         15,
+		ToBlock:           aggkittypes.LatestBlock,
 	})
 
 	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
@@ -153,10 +153,10 @@ func TestContractConfig_Update_ToBlock(t *testing.T) {
 
 	// Update with more final ToBlock (should not change)
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer3",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     20,
-		ToBlock:       aggkittypes.SafeBlock,
+		SyncerID:          "syncer3",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         20,
+		ToBlock:           aggkittypes.SafeBlock,
 	})
 
 	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
@@ -173,20 +173,20 @@ func TestContractConfig_Update_Syncers(t *testing.T) {
 
 	// Add new syncer
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     15,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         15,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 
 	require.Equal(t, []SyncerID{"syncer1", "syncer2", "syncer3"}, cc.Syncers)
 
 	// Add existing syncer (should not duplicate)
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     20,
-		ToBlock:       aggkittypes.FinalizedBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         20,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
 
 	require.Equal(t, []SyncerID{"syncer1", "syncer2", "syncer3"}, cc.Syncers)
@@ -202,10 +202,10 @@ func TestContractConfig_Update_Combined(t *testing.T) {
 
 	// Update all fields at once
 	cc.Update(aggkittypes.SyncerConfig{
-		SyncerID:      "syncer2",
-		ContractsAddr: []common.Address{common.HexToAddress("0x1")},
-		FromBlock:     5,
-		ToBlock:       aggkittypes.LatestBlock,
+		SyncerID:          "syncer2",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         5,
+		ToBlock:           aggkittypes.LatestBlock,
 	})
 
 	require.Equal(t, uint64(5), cc.FromBlock)

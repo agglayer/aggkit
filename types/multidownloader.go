@@ -11,8 +11,8 @@ import (
 type SyncerConfig struct {
 	// SyncerID is the unique identifier for the syncer
 	SyncerID string
-	// ContractAddr is list of contract addresses to sync
-	ContractsAddr []common.Address
+	// ContractAddresses is list of contract addresses to sync
+	ContractAddresses []common.Address
 	// Starting block
 	FromBlock uint64
 	// Target for final block (e.g. LatestBlock, SafeBlock, FinalizedBlock)

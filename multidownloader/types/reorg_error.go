@@ -8,8 +8,9 @@ import (
 )
 
 // ReorgError is an error that is raised when a reorg is detected
+// The block is one of the blocks that were reorged, but not necessarily the first one
 type ReorgError struct {
-	OffendingBlockNumber uint64
+	OffendingBlockNumber uint64 // Important: is not the first reorged block, but one of them
 	OldHash              common.Hash
 	NewHash              common.Hash
 	Message              string

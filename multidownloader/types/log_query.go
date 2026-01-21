@@ -46,6 +46,9 @@ func NewLogQueryFromEthereumFilter(query ethereum.FilterQuery) LogQuery {
 		}
 		return NewLogQueryBlockHash(blockNumber, *query.BlockHash, query.Addresses)
 	}
+	if query.ToBlock == nil {
+		panic("NewLogQueryFromEthereumFilter: unsupported nil ToBlock")
+	}
 	return NewLogQuery(query.FromBlock.Uint64(), query.ToBlock.Uint64(), query.Addresses)
 }
 

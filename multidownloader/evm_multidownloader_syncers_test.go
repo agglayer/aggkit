@@ -189,10 +189,10 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 
 		err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
-			SyncerID:      "test_syncer",
-			ContractsAddr: []common.Address{addr1},
-			FromBlock:     100,
-			ToBlock:       aggkittypes.LatestBlock,
+			SyncerID:          "test_syncer",
+			ContractAddresses: []common.Address{addr1},
+			FromBlock:         100,
+			ToBlock:           aggkittypes.LatestBlock,
 		})
 		require.NoError(t, err)
 		testData.MockInitialize(t, 1)

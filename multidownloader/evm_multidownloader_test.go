@@ -37,7 +37,7 @@ const l1InfoTreeUseMultidownloader = true
 const storagePath = "../tmp/ut/"
 
 func TestEVMMultidownloader(t *testing.T) {
-	// t.Skip("code to test/debug not real unittest")
+	t.Skip("code to test/debug not real unittest")
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -76,7 +76,7 @@ func TestEVMMultidownloader(t *testing.T) {
 	require.NotNil(t, mdr)
 	err = mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 		SyncerID: "test_syncer",
-		ContractsAddr: []common.Address{
+		ContractAddresses: []common.Address{
 			common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"), // GERManager
 			common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"), // RollupManager
 		},
@@ -278,7 +278,7 @@ func TestEVMMultidownloader_RegisterSyncer(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, false)
 		err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 			SyncerID: "syncer1",
-			ContractsAddr: []common.Address{
+			ContractAddresses: []common.Address{
 				common.HexToAddress("0x1"),
 			},
 			FromBlock: 100,
@@ -376,7 +376,7 @@ func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
 	err := testData.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
 		SyncerID: "syncer1",
-		ContractsAddr: []common.Address{
+		ContractAddresses: []common.Address{
 			common.HexToAddress("0x1"),
 		},
 		FromBlock: 100,
@@ -431,20 +431,36 @@ func TestEVMMultidownloader_sync(t *testing.T) {
 	})
 }
 
-/*
 func TestEVMMultidownloader_Start(t *testing.T) {
-	testData := newEVMMultidownloaderTestData(t)
-	testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil).Maybe()
-	err := testData.mdr.Initialize(t.Context())
-	require.NoError(t, err)
+	t.Run("initialization error is returned", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, true)
 
-	start := time.Now()
-	err = testData.mdr.Start(t.Context())
-	duration := time.Since(start)
-	log.Infof("Multidownloader Start took %s", duration.String())
-	require.NoError(t, err)
+		// Verify not initialized
+		require.False(t, testData.mdr.IsInitialized())
+
+		// Mock ChainID to fail
+		expectedErr := fmt.Errorf("chain ID error")
+		testData.mockEthClient.EXPECT().ChainID(mock.Anything).Return(nil, expectedErr).Once()
+
+		ctx := context.Background()
+
+		// Start should try to initialize and return the error
+		err := testData.mdr.Start(ctx)
+
+		// Should return the initialization error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "chain ID error")
+
+		// Verify it was not initialized
+		require.False(t, testData.mdr.IsInitialized())
+	})
+
+	// Note: Testing the full Start() loop with auto-initialization is complex because Start()
+	// has an infinite loop and requires extensive mocking. The key behavior is tested above:
+	// - If not initialized, Start() calls Initialize()
+	// - If Initialize() fails, Start() returns the error
+	// For integration testing of the full Start() flow, see e2e_test.go
 }
-*/
 
 type testDataEVMMultidownloader struct {
 	mockEthClient            *mocktypes.BaseEthereumClienter
