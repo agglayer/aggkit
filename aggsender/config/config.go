@@ -143,7 +143,7 @@ type Config struct {
 	// TriggerEpochBased is the configuration for the EpochBased trigger mode (TriggerCertMode==EpochBased)
 	TriggerEpochBased TriggerEpochBasedConfig `mapstructure:"TriggerEpochBased"`
 	// TriggerASAP is the configuration for the ASAP trigger mode (TriggerCertMode==ASAP)
-	TrriggerASAP TriggerASAPConfig `mapstructure:"TriggerASAP"`
+	TriggerASAP TriggerASAPConfig `mapstructure:"TriggerASAP"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

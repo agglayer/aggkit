@@ -175,6 +175,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | BlockFinality                     | string                                                    | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock) you can add an offset e.g: "FinalizedBlock/20" or "FinalizedBlock/-20" |
 | TriggerCertMode                   | string                                                    | Mode used to trigger certificate sending. Options: "EpochBased", "NewBridge", "ASAP", "Auto" (default: "Auto") |
 | TriggerEpochBased                 | [TriggerEpochBasedConfig](#triggerepochbasedconfig)      | Configuration for EpochBased trigger mode (used when TriggerCertMode is "EpochBased")                          |
+| TriggerASAP                       | [TriggerASAPConfig](#triggerasapconfig)                  | Configuration for ASAP trigger mode (used when TriggerCertMode is "ASAP")                                      |
 | MaxRetriesStoreCertificate        | int                                                       | Number of retries if Aggsender fails to store certificates on DB. 0 = infinite retries                           |
 | DelayBetweenRetries              | Duration                                                   | Delay between retries for storing certificate and initial status check                                           |
 | MaxCertSize                       | uint                                                      | The maximum size of the certificate. 0 means infinite size                                                      |
@@ -219,6 +220,26 @@ Example:
 ```
 
 The epoch-based trigger waits for a specific percentage of the epoch to elapse before sending certificates to the Agglayer. This allows for coordinated certificate submission aligned with L1 epoch boundaries.
+
+## TriggerASAPConfig
+
+The `TriggerASAPConfig` structure configures the ASAP (As Soon As Possible) trigger mode for certificate sending. This configuration is used when `TriggerCertMode` is set to "ASAP".
+
+| Field Name                         | Type                | Description                                                                                                     |
+|------------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| DelayBeetweenCertificates          | Duration            | The delay to wait before sending a new certificate after the previous one is settled                            |
+| MinimumNewCertificateInterval      | Duration            | The minimum interval between two new certificate triggers (0 = no minimum interval)                             |
+
+Example:
+```
+[AggSender]
+    TriggerCertMode = "ASAP"
+    [AggSender.TriggerASAP]
+        DelayBeetweenCertificates = "1s"
+        MinimumNewCertificateInterval = "1h"
+```
+
+The ASAP trigger sends certificates as soon as possible after the last certificate reaches a final state (settled or in error). The `DelayBeetweenCertificates` parameter adds a configurable delay before sending, while `MinimumNewCertificateInterval` ensures a minimum time gap between certificate submissions to prevent excessive certificate generation.
 
 ### Trigger Modes
 

@@ -34,7 +34,10 @@ func TestASAPTrigger_ForceTriggerEvent(t *testing.T) {
 	select {
 	case event := <-ch:
 		require.NotNil(t, event, "Expected a trigger event")
-		require.Equal(t, "ASAP Event", event.String(), "Unexpected event string")
+		asapEvent, ok := event.(*asapTriggerEvent)
+		require.True(t, ok, "Expected event to be *asapTriggerEvent")
+		require.Equal(t, uint(1), asapEvent.ID, "Expected event to have ID 1")
+		require.Equal(t, "ForceTrigger", asapEvent.Source, "Expected source to be ForceTrigger")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Expected a trigger event, but none received")
 	}
@@ -54,7 +57,10 @@ func TestASAPTrigger_OnAggsenderWaitingTrigger(t *testing.T) {
 	select {
 	case event := <-ch:
 		require.NotNil(t, event, "Expected a trigger event")
-		require.Equal(t, "ASAP Event", event.String(), "Unexpected event string")
+		asapEvent, ok := event.(*asapTriggerEvent)
+		require.True(t, ok, "Expected event to be *asapTriggerEvent")
+		require.Equal(t, uint(1), asapEvent.ID, "Expected event to have ID 1")
+		require.Equal(t, "Idle", asapEvent.Source, "Expected source to be Idle")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Expected a trigger event, but none received")
 	}

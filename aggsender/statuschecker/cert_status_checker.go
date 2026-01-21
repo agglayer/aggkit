@@ -104,7 +104,7 @@ func (c *certStatusChecker) CheckInitialStatus(
 // and the last certificate from the aggregation layer.
 // It returns the status of pending certificates and any error encountered
 // while checking the last certificate from the aggregation layer.
-// emitLog generate logs about the initial status as INFO, for the recurrent call you can void it
+// emitLog generates logs about the initial status as INFO, for recurrent calls you can omit it
 func (c *certStatusChecker) CheckPeriodicallyStatus(
 	ctx context.Context,
 	logFn types.EmitLogFunc,
@@ -222,7 +222,7 @@ func (c *certStatusChecker) updateCertificateStatus(ctx context.Context,
 }
 
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
-// emitLog generate logs about the initial status as INFO, for the recurrent call you can void it
+// emitLog generates logs about the initial status as INFO, for recurrent calls you can omit it
 func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context, logFn types.EmitLogFunc) error {
 	initialStatus, err := newInitialStatusFn(ctx, logFn, c.l2OriginNetwork, c.storage, c.agglayerClient)
 	if err != nil {

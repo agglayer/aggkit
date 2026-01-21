@@ -52,7 +52,7 @@ func NewCertificateSendTrigger(
 	case types.ASAPTriggerMode:
 		return newASAPTrigger(
 			log,
-			&cfg.TrriggerASAP,
+			&cfg.TriggerASAP,
 		), nil
 	default:
 		return nil, fmt.Errorf("unsupported trigger mode: %s", mode)

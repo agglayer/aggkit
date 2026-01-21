@@ -14,10 +14,23 @@ import (
 // defaultDelay is the default delay before sending a trigger event
 const defaultDelay = 1 * time.Second
 
-type asapTriggerEvent struct{}
+type asapTriggerEvent struct {
+	ID     uint
+	Source string
+	Parent *asapTriggerEvent
+}
 
 func (e *asapTriggerEvent) String() string {
-	return "ASAP Event"
+	if e == nil {
+		return "ASAP Event{nil}"
+	}
+	res := fmt.Sprintf("ASAP Event{%d/%s", e.ID, e.Source)
+	if e.Parent != nil {
+		res += fmt.Sprintf(" <- %d/%s}", e.Parent.ID, e.Parent.Source)
+	} else {
+		res += "}"
+	}
+	return res
 }
 
 // asapTrigger is a trigger implementation that executes operations as soon as possible.
@@ -26,11 +39,13 @@ func (e *asapTriggerEvent) String() string {
 type asapTrigger struct {
 	log aggkitcommon.Logger
 	cfg config.TriggerASAPConfig
-	// mut protects triggerRunning and ch
+	// mut protects triggerRunning, ch, eventID, and lastEventTime
 	mut            sync.Mutex
 	ch             chan types.CertificateTriggerEvent
 	ctx            context.Context
 	triggerRunning bool
+	eventID        uint
+	lastEventTime  time.Time
 }
 
 func newASAPTrigger(log aggkitcommon.Logger, cfg *config.TriggerASAPConfig) *asapTrigger {
@@ -55,7 +70,9 @@ func (r *asapTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTri
 	ch := make(chan types.CertificateTriggerEvent)
 	r.ch = ch
 	r.ctx = ctx
-	r.fulfillMinimumInterval()
+	// Initialize lastEventTime to now so the minimum interval starts from TriggerCh creation
+	r.lastEventTime = time.Now()
+	r.fulfillMinimumInterval(nil)
 	return ch
 }
 
@@ -65,24 +82,27 @@ func (r *asapTrigger) ForceTriggerEvent() {
 		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")
 		return
 	}
-	r.ch <- &asapTriggerEvent{}
+	r.mut.Lock()
+	event := r.createEvent("ForceTrigger", nil)
+	r.lastEventTime = time.Now()
+	r.mut.Unlock()
+	r.ch <- event
 }
 
 // OnAggsenderWaitingTrigger Aggsender is waiting for a trigger to generate a new certificate
 func (r *asapTrigger) OnAggsenderWaitingTrigger() {
-	// send a event to channel r.ch after r.delay. Also check if r.ctx is done
-	r.log.Debugf("ASAP Trigger: sending a trigger in %s", r.cfg.DelayBeetweenCertificates.String())
+	// send an event to channel r.ch after r.delay. Also check if r.ctx is done
 	if r.ch == nil {
 		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")
 		return
 	}
 
-	// This call is going to set to true r.triggerRunning if it's not already set
+	// This call will set r.triggerRunning to true if it's not already set
 	if r.isTriggerProgrammed(true) {
-		r.mut.Unlock()
 		r.log.Debugf("ASAP Trigger: trigger already running, skipping")
 		return
 	}
+	r.log.Debugf("ASAP Trigger: sending a trigger in %s", r.cfg.DelayBeetweenCertificates.String())
 
 	go func() {
 		select {
@@ -94,22 +114,37 @@ func (r *asapTrigger) OnAggsenderWaitingTrigger() {
 			r.triggerRunning = false
 			return
 		case <-time.After(r.cfg.DelayBeetweenCertificates.Duration):
-			r.trigger()
+			r.trigger("Idle", nil)
 		}
 	}()
 }
 
-func (r *asapTrigger) trigger() {
+func (r *asapTrigger) trigger(source string, parent *asapTriggerEvent) {
 	r.mut.Lock()
-	defer r.mut.Unlock()
-	r.ch <- &asapTriggerEvent{}
 	r.triggerRunning = false
-	r.fulfillMinimumInterval()
+	event := r.createEvent(source, parent)
+	r.lastEventTime = time.Now()
+	r.fulfillMinimumInterval(event)
+	ch := r.ch
+
+	r.mut.Unlock()
+	ch <- event
 }
 
-// fulfillMinimumInterval try to send a trigger after cfg.MinimumNewCertificateInterval
-// unless there are a new trigger already programmed
-func (r *asapTrigger) fulfillMinimumInterval() {
+// createEvent creates a new trigger event with an auto-incremental ID and the specified source.
+// Must be called with r.mut locked.
+func (r *asapTrigger) createEvent(source string, parent *asapTriggerEvent) *asapTriggerEvent {
+	r.eventID++
+	return &asapTriggerEvent{
+		ID:     r.eventID,
+		Source: source,
+		Parent: parent,
+	}
+}
+
+// fulfillMinimumInterval tries to send a trigger after cfg.MinimumNewCertificateInterval
+// unless there is a new trigger already programmed
+func (r *asapTrigger) fulfillMinimumInterval(event *asapTriggerEvent) {
 	if r.cfg.MinimumNewCertificateInterval.Duration == 0 {
 		return
 	}
@@ -118,20 +153,32 @@ func (r *asapTrigger) fulfillMinimumInterval() {
 		case <-r.ctx.Done():
 			return
 		case <-time.After(r.cfg.MinimumNewCertificateInterval.Duration):
-			// We just check if there are a trigger programmed, if not we send a new trigger that is going
-			// to program a new one after the minimum interval
+			// Check if a trigger is already programmed
 			if r.isTriggerProgrammed(false) {
-				r.log.Debugf("ASAP Trigger: minimum interval elapsed but trigger already programmed, skipping")
+				r.log.Debugf("ASAP Trigger(%s): minimum interval elapsed but trigger already programmed, skipping",
+					event.String())
 				return
 			}
-			r.log.Infof("ASAP Trigger: minimum interval elapsed (%s), sending trigger",
-				r.cfg.MinimumNewCertificateInterval.String())
-			r.trigger()
+
+			// Check if enough time has passed since the last event
+			r.mut.Lock()
+			timeSinceLastEvent := time.Since(r.lastEventTime)
+			r.mut.Unlock()
+
+			if timeSinceLastEvent < r.cfg.MinimumNewCertificateInterval.Duration {
+				r.log.Debugf("ASAP Trigger(%s): minimum interval not yet elapsed (elapsed: %s, required: %s), skipping",
+					event.String(), timeSinceLastEvent, r.cfg.MinimumNewCertificateInterval.Duration)
+				return
+			}
+
+			r.log.Infof("ASAP Trigger(%s): minimum interval elapsed (%s), sending trigger from event: %s",
+				event.String(), r.cfg.MinimumNewCertificateInterval.String(), event.String())
+			r.trigger("MinimalTime", event)
 		}
 	}()
 }
 
-// isTriggerProgrammed checks if a trigger is already programmed (running) and set if if setIt is true
+// isTriggerProgrammed checks if a trigger is already programmed (running) and sets it if setIt is true
 func (r *asapTrigger) isTriggerProgrammed(setIt bool) bool {
 	r.mut.Lock()
 	defer r.mut.Unlock()

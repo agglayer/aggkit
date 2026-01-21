@@ -300,6 +300,8 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 
 // sendCertificates sends certificates to the aggLayer
 func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
+	sendTriggerCh := a.certificateSendTrigger.TriggerCh(ctx)
+
 	var checkCertChannel <-chan time.Time
 	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
 		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
@@ -308,9 +310,10 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 	} else {
 		a.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
 		checkCertChannel = make(chan time.Time)
+		a.log.Debugf("AggSender: OnAggsenderWaitingTrigger")
+		a.certificateSendTrigger.OnAggsenderWaitingTrigger()
 	}
 
-	sendTriggerCh := a.certificateSendTrigger.TriggerCh(ctx)
 	a.status.Status = types.StatusCertificateStage
 	iteration := 0
 	for {
