@@ -54,34 +54,34 @@ func (_c *CertificateSendTrigger_ForceTriggerEvent_Call) RunAndReturn(run func()
 	return _c
 }
 
-// OnAggsenderWaitingTrigger provides a mock function with no fields
-func (_m *CertificateSendTrigger) OnAggsenderWaitingTrigger() {
+// OnIdle provides a mock function with no fields
+func (_m *CertificateSendTrigger) OnIdle() {
 	_m.Called()
 }
 
-// CertificateSendTrigger_OnAggsenderWaitingTrigger_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OnAggsenderWaitingTrigger'
-type CertificateSendTrigger_OnAggsenderWaitingTrigger_Call struct {
+// CertificateSendTrigger_OnIdle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OnIdle'
+type CertificateSendTrigger_OnIdle_Call struct {
 	*mock.Call
 }
 
-// OnAggsenderWaitingTrigger is a helper method to define mock.On call
-func (_e *CertificateSendTrigger_Expecter) OnAggsenderWaitingTrigger() *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call {
-	return &CertificateSendTrigger_OnAggsenderWaitingTrigger_Call{Call: _e.mock.On("OnAggsenderWaitingTrigger")}
+// OnIdle is a helper method to define mock.On call
+func (_e *CertificateSendTrigger_Expecter) OnIdle() *CertificateSendTrigger_OnIdle_Call {
+	return &CertificateSendTrigger_OnIdle_Call{Call: _e.mock.On("OnIdle")}
 }
 
-func (_c *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call) Run(run func()) *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call {
+func (_c *CertificateSendTrigger_OnIdle_Call) Run(run func()) *CertificateSendTrigger_OnIdle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call) Return() *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call {
+func (_c *CertificateSendTrigger_OnIdle_Call) Return() *CertificateSendTrigger_OnIdle_Call {
 	_c.Call.Return()
 	return _c
 }
 
-func (_c *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call) RunAndReturn(run func()) *CertificateSendTrigger_OnAggsenderWaitingTrigger_Call {
+func (_c *CertificateSendTrigger_OnIdle_Call) RunAndReturn(run func()) *CertificateSendTrigger_OnIdle_Call {
 	_c.Run(run)
 	return _c
 }

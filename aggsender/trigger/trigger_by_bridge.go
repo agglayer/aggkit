@@ -86,6 +86,6 @@ func (r *preconfTrigger) ForceTriggerEvent() {
 	r.ch <- aggkitsync.Block{Num: blockNumber}
 }
 
-// OnAggsenderWaitingTrigger Aggsender is waiting for a trigger to generate a new certificate
-func (r *preconfTrigger) OnAggsenderWaitingTrigger() {
+// OnIdle Aggsender is waiting for a trigger to generate a new certificate
+func (r *preconfTrigger) OnIdle() {
 }

@@ -402,6 +402,6 @@ type CertificateSendTrigger interface {
 	Status() string
 	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
 	ForceTriggerEvent()
-	// OnAggsenderWaitingTrigger Aggsender is waiting for a trigger to generate a new certificate
-	OnAggsenderWaitingTrigger()
+	// OnIdle Aggsender is waiting for a trigger to generate a new certificate
+	OnIdle()
 }

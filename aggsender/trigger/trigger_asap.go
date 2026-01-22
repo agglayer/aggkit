@@ -89,8 +89,8 @@ func (r *asapTrigger) ForceTriggerEvent() {
 	r.ch <- event
 }
 
-// OnAggsenderWaitingTrigger Aggsender is waiting for a trigger to generate a new certificate
-func (r *asapTrigger) OnAggsenderWaitingTrigger() {
+// OnIdle Aggsender is waiting for a trigger to generate a new certificate
+func (r *asapTrigger) OnIdle() {
 	// send an event to channel r.ch after r.delay. Also check if r.ctx is done
 	if r.ch == nil {
 		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")

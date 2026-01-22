@@ -43,7 +43,7 @@ func TestASAPTrigger_ForceTriggerEvent(t *testing.T) {
 	}
 }
 
-func TestASAPTrigger_OnAggsenderWaitingTrigger(t *testing.T) {
+func TestASAPTrigger_OnIdle(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
 	trigger := newASAPTrigger(logger, nil)
 
@@ -52,7 +52,7 @@ func TestASAPTrigger_OnAggsenderWaitingTrigger(t *testing.T) {
 	ch := trigger.TriggerCh(ctx)
 
 	// Test sending a trigger
-	trigger.OnAggsenderWaitingTrigger()
+	trigger.OnIdle()
 
 	select {
 	case event := <-ch:
@@ -66,7 +66,7 @@ func TestASAPTrigger_OnAggsenderWaitingTrigger(t *testing.T) {
 	}
 
 	// Test when trigger is already running
-	trigger.OnAggsenderWaitingTrigger() // Should skip sending another trigger
+	trigger.OnIdle() // Should skip sending another trigger
 }
 func TestASAPTrigger_Status(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")

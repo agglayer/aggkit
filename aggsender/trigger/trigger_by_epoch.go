@@ -119,6 +119,6 @@ func (r *epochBasedTrigger) ForceTriggerEvent() {
 	r.epochNotifier.ForcePublishEpochEvent()
 }
 
-// OnAggsenderWaitingTrigger Aggsender is waiting for a trigger to generate a new certificate
-func (r *epochBasedTrigger) OnAggsenderWaitingTrigger() {
+// OnIdle Aggsender is waiting for a trigger to generate a new certificate
+func (r *epochBasedTrigger) OnIdle() {
 }

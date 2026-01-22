@@ -310,8 +310,8 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 	} else {
 		a.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
 		checkCertChannel = make(chan time.Time)
-		a.log.Debugf("AggSender: OnAggsenderWaitingTrigger")
-		a.certificateSendTrigger.OnAggsenderWaitingTrigger()
+		a.log.Debugf("AggSender: OnIdle")
+		a.certificateSendTrigger.OnIdle()
 	}
 
 	a.status.Status = types.StatusCertificateStage
@@ -348,7 +348,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 
 			if !checkResult.ExistPendingCerts && !checkResult.ExistNewInErrorCert {
 				a.log.Debugf("No pending or InError certificates found, so aggsender is waiting for trigger")
-				a.certificateSendTrigger.OnAggsenderWaitingTrigger()
+				a.certificateSendTrigger.OnIdle()
 			}
 
 		case triggerEvent := <-sendTriggerCh:
