@@ -1,7 +1,7 @@
 name: Claude Code Review
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened]
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -49,6 +49,8 @@ jobs:
             ---
             ## 🚀 What's New
             [Provide a concise summary of the changes in this PR here.]
+            ## 🐛 Bug Fixes
+            [List any bug fixes made in this PR here, or state "None".]
             ## 📋 Config Updates
             [List any configuration changes made in this PR here with examples and default values, or state "None".]
             ## ⚠️ Breaking Changes
