@@ -149,6 +149,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	GenerateAggchainProofTimeout = "1h"
 	DelayBeetweenRetries = "1s"
 	RequireValidatorCall = true
+	EpochNotificationPercentage = 80
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -212,4 +213,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 	require.ErrorContains(t, err, urlRPCL1DeprecatedHint)
+	require.ErrorContains(t, err, aggsenderEpochPercentageHint)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
+	"github.com/agglayer/aggkit/aggsender/trigger"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -81,7 +82,7 @@ func New(
 		cfg.Mode = mode
 	}
 
-	certificateSendTrigger, err := NewCertificateSendTrigger(
+	certificateSendTrigger, err := trigger.NewCertificateSendTrigger(
 		ctx,
 		cfg,
 		logger,
@@ -299,6 +300,8 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 
 // sendCertificates sends certificates to the aggLayer
 func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
+	sendTriggerCh := a.certificateSendTrigger.TriggerCh(ctx)
+
 	var checkCertChannel <-chan time.Time
 	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
 		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
@@ -307,9 +310,10 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 	} else {
 		a.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
 		checkCertChannel = make(chan time.Time)
+		a.log.Debugf("AggSender: OnIdle")
+		a.certificateSendTrigger.OnIdle()
 	}
 
-	sendTriggerCh := a.certificateSendTrigger.TriggerCh(ctx)
 	a.status.Status = types.StatusCertificateStage
 	iteration := 0
 	for {
@@ -319,7 +323,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Debugf("Checking perodical certificates status (%s)",
 				a.cfg.CheckCertConfigBriefString())
 
-			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx)
+			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx, a.log.Debugf)
 			if err != nil {
 				a.status.SetLastError(err)
 				a.log.Errorf("error checking last certificate from agglayer: %v", err)
@@ -341,10 +345,16 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 				a.log.Warnf("reached number of iterations, so we are going to return")
 				return
 			}
+
+			if !checkResult.ExistPendingCerts && !checkResult.ExistNewInErrorCert {
+				a.log.Debugf("No pending or InError certificates found, so aggsender is waiting for trigger")
+				a.certificateSendTrigger.OnIdle()
+			}
+
 		case triggerEvent := <-sendTriggerCh:
 			iteration++
 			a.log.Infof("Certificate send trigger event received: %s", triggerEvent.String())
-			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx)
+			checkResult, err := a.certStatusChecker.CheckPeriodicallyStatus(ctx, a.log.Debugf)
 			if err != nil {
 				a.log.Errorf("Certificate send trigger: error checking certificate status: %v", err)
 				a.status.SetLastError(err)

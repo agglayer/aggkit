@@ -2,6 +2,8 @@ package types
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestHealthCheckResponse_IsHealthy(t *testing.T) {
@@ -41,4 +43,10 @@ func TestHealthCheckResponse_String(t *testing.T) {
 	if nilResp.String() != expectedNil {
 		t.Errorf("unexpected String() output for nil receiver: got %q, want %q", nilResp.String(), expectedNil)
 	}
+}
+
+func TestCertificateSendTriggerMode_String(t *testing.T) {
+	var mode CertificateSendTriggerMode = ""
+	require.Equal(t, "???", mode.String())
+	require.Equal(t, string(NewBridgeTriggerMode), NewBridgeTriggerMode.String())
 }

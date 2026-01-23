@@ -74,8 +74,9 @@ const (
 	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
-	networkIDDeprecatedHint = "Common.NetworkID is deprecated, remove it from configuration"
-	urlRPCL1DeprecatedHint  = "URLRPCL1 field is deprecated, remove it from configuration"
+	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
+	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
+	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
 )
 
 type DeprecatedFieldsError struct {
@@ -232,6 +233,10 @@ var (
 		{
 			FieldNamePattern: "L1InfoTreeSync.URLRPCL1",
 			Reason:           urlRPCL1DeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggSender.EpochNotificationPercentage",
+			Reason:           aggsenderEpochPercentageHint,
 		},
 	}
 )

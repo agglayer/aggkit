@@ -105,6 +105,7 @@ type L2BridgeSyncer interface {
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
 	SubscribeToSync(subscriberID string) <-chan sync.Block
+	SubscribeToNewBridge(subscriberID string) <-chan uint64
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -192,10 +193,11 @@ type Logger interface {
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
 }
+type EmitLogFunc func(template string, args ...interface{})
 
 // CertificateStatusChecker is an interface defining functions that a CertificateStatusChecker should implement
 type CertificateStatusChecker interface {
-	CheckPeriodicallyStatus(ctx context.Context) (CertStatus, error)
+	CheckPeriodicallyStatus(ctx context.Context, logFn EmitLogFunc) (CertStatus, error)
 	CheckInitialStatus(
 		ctx context.Context,
 		delayBetweenRetries time.Duration,
@@ -381,6 +383,19 @@ type CertificateTriggerEvent interface {
 	fmt.Stringer
 }
 
+type CertificateSendTriggerMode string
+
+const (
+	// NewBridgeTriggerMode indicates that new bridge events trigger certificate sending.
+	NewBridgeTriggerMode CertificateSendTriggerMode = "NewBridge"
+	// EpochBasedTriggerMode indicates an epoch-based mode for certificate sending triggers.
+	EpochBasedTriggerMode CertificateSendTriggerMode = "EpochBased"
+	// ASAPTriggerMode indicates that certificates are sent as soon as possible.
+	ASAPTriggerMode CertificateSendTriggerMode = "ASAP"
+	// AutoTriggerMode decides it based on aggsender mode configuration.
+	AutoTriggerMode CertificateSendTriggerMode = "Auto"
+)
+
 // CertificateSendTrigger is an interface that defines methods for setting up and managing
 // certificate sending triggers based on specific events.
 type CertificateSendTrigger interface {
@@ -388,4 +403,6 @@ type CertificateSendTrigger interface {
 	Status() string
 	TriggerCh(ctx context.Context) <-chan CertificateTriggerEvent
 	ForceTriggerEvent()
+	// OnIdle Aggsender is waiting for a trigger to generate a new certificate
+	OnIdle()
 }

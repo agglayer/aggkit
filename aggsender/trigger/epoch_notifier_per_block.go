@@ -1,11 +1,11 @@
-package aggsender
+package trigger
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/agglayer/aggkit/agglayer"
-	"github.com/agglayer/aggkit/aggsender/types"
+	triggertypes "github.com/agglayer/aggkit/aggsender/trigger/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 )
@@ -75,15 +75,15 @@ type EpochNotifierPerBlock struct {
 	lastStartingEpochBlock uint64
 
 	Config ConfigEpochNotifierPerBlock
-	aggkitcommon.PubSub[types.EpochEvent]
+	aggkitcommon.PubSub[triggertypes.EpochEvent]
 }
 
 func NewEpochNotifierPerBlock(blockNotifier ethermantypes.BlockNotifier,
 	logger aggkitcommon.Logger,
 	config ConfigEpochNotifierPerBlock,
-	subscriber aggkitcommon.PubSub[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
+	subscriber aggkitcommon.PubSub[triggertypes.EpochEvent]) (*EpochNotifierPerBlock, error) {
 	if subscriber == nil {
-		subscriber = aggkitcommon.NewGenericSubscriber[types.EpochEvent]()
+		subscriber = aggkitcommon.NewGenericSubscriber[triggertypes.EpochEvent]()
 	}
 
 	err := config.Validate()
@@ -116,9 +116,9 @@ func (e *EpochNotifierPerBlock) Start(ctx context.Context) {
 }
 
 // GetCurrentStatus returns the current status of the epoch
-func (e *EpochNotifierPerBlock) GetEpochStatus() types.EpochStatus {
+func (e *EpochNotifierPerBlock) GetEpochStatus() triggertypes.EpochStatus {
 	currentBlock := e.blockNotifier.GetCurrentBlockNumber()
-	return types.EpochStatus{
+	return triggertypes.EpochStatus{
 		Epoch:        e.epochNumber(currentBlock),
 		PercentEpoch: e.percentEpoch(currentBlock),
 	}
@@ -127,7 +127,7 @@ func (e *EpochNotifierPerBlock) GetEpochStatus() types.EpochStatus {
 func (e *EpochNotifierPerBlock) ForcePublishEpochEvent() {
 	currentBlock := e.blockNotifier.GetCurrentBlockNumber()
 	info := e.infoEpoch(currentBlock, e.epochNumber(currentBlock))
-	event := &types.EpochEvent{
+	event := &triggertypes.EpochEvent{
 		Epoch:     e.epochNumber(currentBlock),
 		ExtraInfo: info,
 	}
@@ -145,7 +145,7 @@ func (e *EpochNotifierPerBlock) startInternal(ctx context.Context,
 		case <-ctx.Done():
 			return
 		case newBlock := <-eventNewBlockChannel:
-			var event *types.EpochEvent
+			var event *triggertypes.EpochEvent
 			status, event = e.step(status, newBlock)
 			if event != nil {
 				e.logger.Debugf("new Epoch Event: %s", event.String())
@@ -161,7 +161,7 @@ type internalStatus struct {
 }
 
 func (e *EpochNotifierPerBlock) step(status internalStatus,
-	newBlock ethermantypes.EventNewBlock) (internalStatus, *types.EpochEvent) {
+	newBlock ethermantypes.EventNewBlock) (internalStatus, *triggertypes.EpochEvent) {
 	currentBlock := newBlock.BlockNumber
 	if currentBlock < e.Config.StartingEpochBlock {
 		// This is a bit strange, the first epoch is in the future
@@ -188,7 +188,7 @@ func (e *EpochNotifierPerBlock) step(status internalStatus,
 		// Notify the epoch has started
 		info := e.infoEpoch(currentBlock, closingEpoch)
 		status.waitingForEpoch = closingEpoch + 1
-		return status, &types.EpochEvent{
+		return status, &triggertypes.EpochEvent{
 			Epoch:     closingEpoch,
 			ExtraInfo: info,
 		}

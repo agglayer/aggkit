@@ -9,7 +9,6 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/common"
 	aggkitdb "github.com/agglayer/aggkit/db"
 )
 
@@ -33,7 +32,6 @@ type initialStatus struct {
 	AgglayerLastPendingCert *agglayertypes.CertificateHeader
 	LocalLastCert           *types.CertificateHeader
 	LocalLastSettledCert    *types.CertificateHeader
-	log                     common.Logger
 }
 
 type initialStatusAction int
@@ -76,16 +74,16 @@ func (i *initialStatusResult) String() string {
 
 // newInitialStatus creates a new initialStatus object, get the data from AggLayer and local storage
 func newInitialStatus(ctx context.Context,
-	log types.Logger, networkID uint32,
+	logFn types.EmitLogFunc, networkID uint32,
 	storage db.AggSenderStorage,
 	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
-	log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)
+	logFn("recovery: checking last settled certificate from AggLayer for network %d", networkID)
 	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestSettledCertificateHeader from agglayer: %w", err)
 	}
 
-	log.Infof("recovery: checking last pending certificate from AggLayer for network %d", networkID)
+	logFn("recovery: checking last pending certificate from AggLayer for network %d", networkID)
 	aggLayerLastPendingCert, err := aggLayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestPendingCertificateHeader from agglayer: %w", err)
@@ -106,16 +104,15 @@ func newInitialStatus(ctx context.Context,
 		AgglayerLastPendingCert: aggLayerLastPendingCert, // from Agglayer
 		LocalLastSettledCert:    localSettledCert,        // from local storage
 		LocalLastCert:           localLastCert,           // from local storage
-		log:                     log,
 	}, nil
 }
 
 // logData logs the data from the initialStatus object
-func (i *initialStatus) logData() {
-	i.log.Infof("recovery: settled certificate from AggLayer: %s", i.AgglayerLastSettledCert.ID())
-	i.log.Infof("recovery: pending certificate from AggLayer: %s / status: %s",
+func (i *initialStatus) logData(logFn types.EmitLogFunc) {
+	logFn("recovery: settled certificate from AggLayer: %s", i.AgglayerLastSettledCert.ID())
+	logFn("recovery: pending certificate from AggLayer: %s / status: %s",
 		i.AgglayerLastPendingCert.ID(), i.AgglayerLastPendingCert.StatusString())
-	i.log.Infof("recovery: certificate from Local           : %s / status: %s",
+	logFn("recovery: certificate from Local           : %s / status: %s",
 		i.LocalLastCert.ID(), i.LocalLastCert.StatusString())
 }
 
@@ -124,8 +121,6 @@ func (i *initialStatus) logData() {
 // and processes the settled certificate. It returns a slice of initialStatusResult
 // which contains the action to take, a message, and the certificate if applicable.
 func (i *initialStatus) process() ([]*initialStatusResult, error) {
-	i.logData()
-
 	// Check that agglayer data is consistent.
 	if err := i.checkAgglayerConsistenceCerts(); err != nil {
 		return nil, err
@@ -180,7 +175,6 @@ func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
 		}
 	}
 	aggLayerLastCert := i.getLatestAggLayerCert()
-	i.log.Infof("recovery: last certificate from AggLayer: %s", aggLayerLastCert.String())
 	localLastCert := i.LocalLastCert
 
 	// CASE 1: No certificates in local storage and agglayer

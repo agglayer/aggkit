@@ -192,7 +192,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 CertificatesDir = "{{PathRWData}}/certificates/"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
-EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
 # MaxSize of the certificate to 8Mb
@@ -216,6 +215,15 @@ StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 BlockFinalityForL1InfoTree = "FinalizedBlock"
+TriggerCertMode = "Auto"
+[AggSender.TriggerEpochBased]
+	# Percentage of epoch completion to trigger certificate sending
+	EpochNotificationPercentage = 50
+[AggSender.TriggerASAP]
+	DelayBeetweenCertificates = "1s"
+	MinimumNewCertificateInterval = "5m"
+	OnNewL2Bridge = false
+
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]

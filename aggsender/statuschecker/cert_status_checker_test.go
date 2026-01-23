@@ -484,7 +484,7 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 				certQuerier: mockCertQuerier,
 			}
 
-			err := certStatusChecker.executeInitialStatusAction(ctx, tt.action, tt.localCert)
+			err := certStatusChecker.executeInitialStatusAction(ctx, tt.action, tt.localCert, log.Infof)
 
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
@@ -554,13 +554,12 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 			}
 
 			mockInitialStatus := &initialStatus{
-				log:                     mockLogger,
 				LocalLastCert:           tt.localCert,
 				AgglayerLastSettledCert: tt.agglayerCert,
 			}
 
 			newInitialStatusFn = func(_ context.Context,
-				_ types.Logger, _ uint32,
+				_logFn types.EmitLogFunc, _ uint32,
 				_ db.AggSenderStorage,
 				_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
 				return mockInitialStatus, tt.newInitialErr
@@ -572,7 +571,7 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 				agglayerClient: mockAggLayerClient,
 			}
 
-			err := certStatusChecker.checkLastCertificateFromAgglayer(ctx)
+			err := certStatusChecker.checkLastCertificateFromAgglayer(ctx, log.Infof)
 
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
@@ -663,12 +662,11 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
 			mockInitialStatus := &initialStatus{
-				log:                     mockLogger,
 				LocalLastCert:           tt.localCert,
 				AgglayerLastSettledCert: tt.agglayerCert,
 			}
 			newInitialStatusFn = func(_ context.Context,
-				_ types.Logger, _ uint32,
+				_ types.EmitLogFunc, _ uint32,
 				_ db.AggSenderStorage,
 				_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
 				return mockInitialStatus, tt.newInitialErr
@@ -692,7 +690,7 @@ func TestCheckPeriodicallyStatus(t *testing.T) {
 					tt.agglayerCert.Status,
 					mock.Anything).Return(nil)
 			}
-			status, err := certStatusChecker.CheckPeriodicallyStatus(ctx)
+			status, err := certStatusChecker.CheckPeriodicallyStatus(ctx, log.Infof)
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
 			} else {
@@ -737,13 +735,12 @@ func TestCheckInitialStatus(t *testing.T) {
 			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
 
 			mockInitialStatus := &initialStatus{
-				log:                     mockLogger,
 				LocalLastCert:           nil,
 				AgglayerLastSettledCert: nil,
 			}
 
 			newInitialStatusFn = func(_ context.Context,
-				_ types.Logger, _ uint32,
+				_ types.EmitLogFunc, _ uint32,
 				_ db.AggSenderStorage,
 				_ agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
 				if tt.initialStatusErr != nil {

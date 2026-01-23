@@ -31,6 +31,7 @@ func TestValidate(t *testing.T) {
 				},
 				},
 				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+				TriggerCertMode:            aggsendertypes.AutoTriggerMode,
 			},
 			expectedErr: "invalid agglayer client config",
 		},
@@ -47,6 +48,7 @@ func TestValidate(t *testing.T) {
 					URL: "",
 				},
 				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+				TriggerCertMode:            aggsendertypes.AutoTriggerMode,
 			},
 			expectedErr: "invalid aggkit prover client config",
 		},
@@ -63,6 +65,7 @@ func TestValidate(t *testing.T) {
 					URL: "",
 				},
 				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+				TriggerCertMode:            aggsendertypes.AutoTriggerMode,
 			},
 		},
 		{
@@ -77,6 +80,7 @@ func TestValidate(t *testing.T) {
 				AggkitProverClient: &grpc.ClientConfig{
 					URL: "",
 				},
+				TriggerCertMode: aggsendertypes.AutoTriggerMode,
 			},
 			expectedErr: "BlockFinalityForL1InfoTree",
 		},
@@ -100,9 +104,11 @@ func TestConfigString(t *testing.T) {
 	t.Parallel()
 
 	config := Config{
-		StoragePath:                    "/path/to/storage.sqlite",
-		CertificatesDir:                "/path/to/certificates/",
-		EpochNotificationPercentage:    75,
+		StoragePath:     "/path/to/storage.sqlite",
+		CertificatesDir: "/path/to/certificates/",
+		TriggerEpochBased: TriggerEpochBasedConfig{
+			EpochNotificationPercentage: 75,
+		},
 		DryRun:                         true,
 		EnableRPC:                      false,
 		Mode:                           aggsendertypes.PessimisticProofMode,

@@ -59,9 +59,9 @@ func (_c *CertificateStatusChecker_CheckInitialStatus_Call) RunAndReturn(run fun
 	return _c
 }
 
-// CheckPeriodicallyStatus provides a mock function with given fields: ctx
-func (_m *CertificateStatusChecker) CheckPeriodicallyStatus(ctx context.Context) (types.CertStatus, error) {
-	ret := _m.Called(ctx)
+// CheckPeriodicallyStatus provides a mock function with given fields: ctx, logFn
+func (_m *CertificateStatusChecker) CheckPeriodicallyStatus(ctx context.Context, logFn types.EmitLogFunc) (types.CertStatus, error) {
+	ret := _m.Called(ctx, logFn)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CheckPeriodicallyStatus")
@@ -69,17 +69,17 @@ func (_m *CertificateStatusChecker) CheckPeriodicallyStatus(ctx context.Context)
 
 	var r0 types.CertStatus
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (types.CertStatus, error)); ok {
-		return rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, types.EmitLogFunc) (types.CertStatus, error)); ok {
+		return rf(ctx, logFn)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) types.CertStatus); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, types.EmitLogFunc) types.CertStatus); ok {
+		r0 = rf(ctx, logFn)
 	} else {
 		r0 = ret.Get(0).(types.CertStatus)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, types.EmitLogFunc) error); ok {
+		r1 = rf(ctx, logFn)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -94,13 +94,14 @@ type CertificateStatusChecker_CheckPeriodicallyStatus_Call struct {
 
 // CheckPeriodicallyStatus is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *CertificateStatusChecker_Expecter) CheckPeriodicallyStatus(ctx interface{}) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
-	return &CertificateStatusChecker_CheckPeriodicallyStatus_Call{Call: _e.mock.On("CheckPeriodicallyStatus", ctx)}
+//   - logFn types.EmitLogFunc
+func (_e *CertificateStatusChecker_Expecter) CheckPeriodicallyStatus(ctx interface{}, logFn interface{}) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
+	return &CertificateStatusChecker_CheckPeriodicallyStatus_Call{Call: _e.mock.On("CheckPeriodicallyStatus", ctx, logFn)}
 }
 
-func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) Run(run func(ctx context.Context)) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
+func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) Run(run func(ctx context.Context, logFn types.EmitLogFunc)) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run(args[0].(context.Context), args[1].(types.EmitLogFunc))
 	})
 	return _c
 }
@@ -110,7 +111,7 @@ func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) Return(_a0 type
 	return _c
 }
 
-func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) RunAndReturn(run func(context.Context) (types.CertStatus, error)) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
+func (_c *CertificateStatusChecker_CheckPeriodicallyStatus_Call) RunAndReturn(run func(context.Context, types.EmitLogFunc) (types.CertStatus, error)) *CertificateStatusChecker_CheckPeriodicallyStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }

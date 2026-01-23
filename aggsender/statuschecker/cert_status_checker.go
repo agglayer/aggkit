@@ -84,7 +84,7 @@ func (c *certStatusChecker) CheckInitialStatus(
 
 	for {
 		c.checkPendingCertificatesStatus(ctx)
-		err := c.checkLastCertificateFromAgglayer(ctx)
+		err := c.checkLastCertificateFromAgglayer(ctx, c.log.Infof)
 		aggsenderStatus.SetLastError(err)
 		if err != nil {
 			c.log.Errorf("error checking initial status: %w, retrying in %s", err, delayBetweenRetries.String())
@@ -104,10 +104,12 @@ func (c *certStatusChecker) CheckInitialStatus(
 // and the last certificate from the aggregation layer.
 // It returns the status of pending certificates and any error encountered
 // while checking the last certificate from the aggregation layer.
+// emitLog generates logs about the initial status as INFO, for recurrent calls you can omit it
 func (c *certStatusChecker) CheckPeriodicallyStatus(
 	ctx context.Context,
+	logFn types.EmitLogFunc,
 ) (types.CertStatus, error) {
-	err := c.checkLastCertificateFromAgglayer(ctx)
+	err := c.checkLastCertificateFromAgglayer(ctx, logFn)
 	return c.checkPendingCertificatesStatus(ctx), err
 }
 
@@ -220,39 +222,40 @@ func (c *certStatusChecker) updateCertificateStatus(ctx context.Context,
 }
 
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
-func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context) error {
-	initialStatus, err := newInitialStatusFn(ctx, c.log, c.l2OriginNetwork, c.storage, c.agglayerClient)
+// emitLog generates logs about the initial status as INFO, for recurrent calls you can omit it
+func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context, logFn types.EmitLogFunc) error {
+	initialStatus, err := newInitialStatusFn(ctx, logFn, c.l2OriginNetwork, c.storage, c.agglayerClient)
 	if err != nil {
 		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}
-	initialStatus.logData()
+	initialStatus.logData(logFn)
+
 	actions, err := initialStatus.process()
 	if err != nil {
 		return fmt.Errorf("recovery: error processing initial status: %w", err)
 	}
 
 	for _, action := range actions {
-		if err := c.executeInitialStatusAction(ctx, action, initialStatus.LocalLastCert); err != nil {
+		if err := c.executeInitialStatusAction(ctx, action, initialStatus.LocalLastCert, logFn); err != nil {
 			return fmt.Errorf("recovery: error executing initial status action: %w", err)
 		}
 	}
-
-	c.log.Info("recovery: initial status actions executed successfully")
-
+	logFn("recovery: initial status actions executed successfully")
 	return nil
 }
 
 func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
-	action *initialStatusResult, localCert *types.CertificateHeader) error {
-	c.log.Infof("recovery: action: %s", action.String())
+	action *initialStatusResult, localCert *types.CertificateHeader, logFn types.EmitLogFunc) error {
+	logFn("recovery: action: %s", action.String())
 	switch action.action {
 	case InitialStatusActionNone:
-		c.log.Info("recovery: no action needed")
+		logFn("recovery: no action needed")
 	case InitialStatusActionUpdateCurrentCert:
 		if err := c.updateCertificateStatus(ctx, localCert, action.cert); err != nil {
 			return fmt.Errorf("recovery: error updating local storage with agglayer certificate: %w", err)
 		}
 	case InitialStatusActionInsertNewCert:
+		c.log.Infof("recovery: action: %s cert.Status: %s", action.String(), action.cert.Status.String())
 		if action.cert.Status.IsInError() {
 			// we will not save the last certificate if it is in error on startup
 			// it will be rebuilt by the aggsender and sent again
@@ -275,6 +278,7 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 			return fmt.Errorf("recovery: error new local storage with agglayer certificate: %w", err)
 		}
 	default:
+		c.log.Warnf("recovery: error unknown action: %s", action.String())
 		return fmt.Errorf("recovery: unknown action: %s", action.action)
 	}
 	return nil
