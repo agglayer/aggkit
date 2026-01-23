@@ -13,7 +13,8 @@ jobs:
       pull-requests: read
       issues: write
       id-token: write
-      actions: read
+      statuses: write
+      actions: write
     steps:
       - uses: actions/checkout@v5
         with:
