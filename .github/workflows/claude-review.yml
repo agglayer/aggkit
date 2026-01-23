@@ -1,0 +1,63 @@
+name: Claude Code Review
+on:
+  pull_request:
+    types: [opened, reopened]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@63cff77972af4131bf3ccfa88a9f6d8207e78341 # v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
+          track_progress: true
+          use_sticky_comment: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            REVIEW this pull request with a focus on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Security implications
+            - Performance considerations
+
+            Priority levels for feedback:
+            - 🔴 Required: Security issues, breaking changes, major bugs
+            - 🟡 Suggested: Code quality improvements, optimizations
+            - 🟢 Optional: Style preferences, alternative approaches
+
+            Also fill next template with a brief summary of the changes made in this PR:
+            ---
+            ## 🚀 What's New
+            [Provide a concise summary of the changes in this PR here.]
+            ## 🐛 Bug Fixes
+            [List any bug fixes made in this PR here, or state "None".]
+            ## 📋 Config Updates
+            [List any configuration changes made in this PR here with examples and default values, or state "None".]
+            ## ⚠️ Breaking Changes
+            [List any breaking changes introduced by this PR here, or state "None".]
+            ---
+
+            Use the MCP inline comment tool for specific code issues.
+            Use gh pr comment to post an overall summary.
+          claude_args: |
+            --model claude-sonnet-4-5-20250929
