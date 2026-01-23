@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run Claude Code Review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@63cff77972af4131bf3ccfa88a9f6d8207e78341 # v1
         with:
           anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
           track_progress: true
