@@ -477,6 +477,11 @@ func (s *BridgeSync) SubscribeToSync(subscriberID string) <-chan sync.Block {
 	return s.driver.SubscribeToNewBlocks(subscriberID)
 }
 
+// SubscribeToNewBridge allows a subscriber to receive block number notifications when new bridge events occur
+func (s *BridgeSync) SubscribeToNewBridge(subscriberID string) <-chan uint64 {
+	return s.processor.bridgeSubscriber.Subscribe(subscriberID)
+}
+
 type LastReorg struct {
 	DetectedAt int64  `json:"detected_at"`
 	FromBlock  uint64 `json:"from_block"`

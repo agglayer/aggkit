@@ -631,14 +631,15 @@ type BridgeQuerier interface {
 var _ BridgeQuerier = (*processor)(nil)
 
 type processor struct {
-	syncerID       string
-	db             *sql.DB
-	exitTree       types.FullTreer
-	log            *log.Logger
-	mu             mutex.RWMutex
-	halted         bool
-	haltedReason   string
-	dbQueryTimeout time.Duration
+	syncerID         string
+	db               *sql.DB
+	exitTree         types.FullTreer
+	log              *log.Logger
+	mu               mutex.RWMutex
+	halted           bool
+	haltedReason     string
+	dbQueryTimeout   time.Duration
+	bridgeSubscriber aggkitcommon.PubSub[uint64]
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -660,11 +661,12 @@ func newProcessor(
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
-		syncerID:       syncerID,
-		db:             database,
-		exitTree:       exitTree,
-		log:            logger,
-		dbQueryTimeout: dbQueryTimeout,
+		syncerID:         syncerID,
+		db:               database,
+		exitTree:         exitTree,
+		log:              logger,
+		dbQueryTimeout:   dbQueryTimeout,
+		bridgeSubscriber: aggkitcommon.NewGenericSubscriber[uint64](),
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			syncerID,
@@ -1510,6 +1512,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 
 	var blockPos *uint64
+	var hasAnyBridge bool
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
@@ -1538,6 +1541,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				p.log.Errorf("failed to insert bridge event at block %d: %v", block.Num, err)
 				return err
 			}
+			// Mark that this block has at least one bridge
+			hasAnyBridge = true
 		}
 
 		if event.Claim != nil {
@@ -1639,6 +1644,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return err
 	}
 	shouldRollback = false
+
+	// Publish block number to bridge subscribers if this block contains any bridge
+	if hasAnyBridge {
+		p.bridgeSubscriber.Publish(block.Num)
+	}
 
 	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
 	if len(block.Events) > 0 {

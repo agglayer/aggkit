@@ -53,7 +53,8 @@ func NewCertificateSendTrigger(
 		return newASAPTrigger(
 			log,
 			&cfg.TriggerASAP,
-		), nil
+			l2BridgeSync,
+		)
 	default:
 		return nil, fmt.Errorf("unsupported trigger mode: %s", mode)
 	}

@@ -483,6 +483,54 @@ func (_c *L2BridgeSyncer_OriginNetwork_Call) RunAndReturn(run func() uint32) *L2
 	return _c
 }
 
+// SubscribeToNewBridge provides a mock function with given fields: subscriberID
+func (_m *L2BridgeSyncer) SubscribeToNewBridge(subscriberID string) <-chan uint64 {
+	ret := _m.Called(subscriberID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SubscribeToNewBridge")
+	}
+
+	var r0 <-chan uint64
+	if rf, ok := ret.Get(0).(func(string) <-chan uint64); ok {
+		r0 = rf(subscriberID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(<-chan uint64)
+		}
+	}
+
+	return r0
+}
+
+// L2BridgeSyncer_SubscribeToNewBridge_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SubscribeToNewBridge'
+type L2BridgeSyncer_SubscribeToNewBridge_Call struct {
+	*mock.Call
+}
+
+// SubscribeToNewBridge is a helper method to define mock.On call
+//   - subscriberID string
+func (_e *L2BridgeSyncer_Expecter) SubscribeToNewBridge(subscriberID interface{}) *L2BridgeSyncer_SubscribeToNewBridge_Call {
+	return &L2BridgeSyncer_SubscribeToNewBridge_Call{Call: _e.mock.On("SubscribeToNewBridge", subscriberID)}
+}
+
+func (_c *L2BridgeSyncer_SubscribeToNewBridge_Call) Run(run func(subscriberID string)) *L2BridgeSyncer_SubscribeToNewBridge_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string))
+	})
+	return _c
+}
+
+func (_c *L2BridgeSyncer_SubscribeToNewBridge_Call) Return(_a0 <-chan uint64) *L2BridgeSyncer_SubscribeToNewBridge_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *L2BridgeSyncer_SubscribeToNewBridge_Call) RunAndReturn(run func(string) <-chan uint64) *L2BridgeSyncer_SubscribeToNewBridge_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SubscribeToSync provides a mock function with given fields: subscriberID
 func (_m *L2BridgeSyncer) SubscribeToSync(subscriberID string) <-chan sync.Block {
 	ret := _m.Called(subscriberID)

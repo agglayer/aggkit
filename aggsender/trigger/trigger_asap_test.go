@@ -17,8 +17,8 @@ func TestASAPTrigger_DefaultDelay(t *testing.T) {
 
 func TestASAPTrigger_ForceTriggerEvent(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
-	trigger := newASAPTrigger(logger, nil)
-
+	trigger, err := newASAPTrigger(logger, nil, nil)
+	require.NoError(t, err, "Failed to create ASAP trigger")
 	// Test when channel is nil
 	trigger.ForceTriggerEvent() // Should log a warning, but no panic
 
@@ -45,7 +45,8 @@ func TestASAPTrigger_ForceTriggerEvent(t *testing.T) {
 
 func TestASAPTrigger_OnIdle(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
-	trigger := newASAPTrigger(logger, nil)
+	trigger, err := newASAPTrigger(logger, nil, nil)
+	require.NoError(t, err, "Failed to create ASAP trigger")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -70,10 +71,11 @@ func TestASAPTrigger_OnIdle(t *testing.T) {
 }
 func TestASAPTrigger_Status(t *testing.T) {
 	logger := log.WithFields("aggsender-test", "ut")
-	trigger := newASAPTrigger(logger, nil)
+	trigger, err := newASAPTrigger(logger, nil, nil)
+	require.NoError(t, err, "Failed to create ASAP trigger")
 
 	status := trigger.Status()
-	require.Equal(t, "ASAP Runner: cfg: DelayBeetweenCertificates: 1s, MinimumNewCertificateInterval: 1h0m0s", status, "Unexpected status message")
+	require.Equal(t, "ASAP Runner: cfg: DelayBeetweenCertificates: 1s, MinimumNewCertificateInterval: 1h0m0s, OnNewL2Bridge: false", status, "Unexpected status message")
 }
 
 func TestASAPTrigger_MinInterval(t *testing.T) {
@@ -82,7 +84,8 @@ func TestASAPTrigger_MinInterval(t *testing.T) {
 	cfg.MinimumNewCertificateInterval = types.Duration{
 		Duration: 2 * time.Millisecond,
 	}
-	trigger := newASAPTrigger(logger, cfg)
+	trigger, err := newASAPTrigger(logger, cfg, nil)
+	require.NoError(t, err, "Failed to create ASAP trigger")
 	ch := trigger.TriggerCh(t.Context())
 	event := <-ch
 	require.NotNil(t, event, "Expected a trigger event")

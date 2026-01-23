@@ -222,6 +222,7 @@ TriggerCertMode = "Auto"
 [AggSender.TriggerASAP]
 	DelayBeetweenCertificates = "1s"
 	MinimumNewCertificateInterval = "5m"
+	OnNewL2Bridge = false
 
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"

@@ -37,8 +37,9 @@ func (e *asapTriggerEvent) String() string {
 // It tries to generate a new cert after the last cert is in a final state (settled or inError).
 // An offset delay can be configured.
 type asapTrigger struct {
-	log aggkitcommon.Logger
-	cfg config.TriggerASAPConfig
+	log          aggkitcommon.Logger
+	l2BridgeSync types.L2BridgeSyncer
+	cfg          config.TriggerASAPConfig
 	// mut protects triggerRunning, ch, eventID, and lastEventTime
 	mut            sync.Mutex
 	ch             chan types.CertificateTriggerEvent
@@ -48,16 +49,20 @@ type asapTrigger struct {
 	lastEventTime  time.Time
 }
 
-func newASAPTrigger(log aggkitcommon.Logger, cfg *config.TriggerASAPConfig) *asapTrigger {
+func newASAPTrigger(log aggkitcommon.Logger, cfg *config.TriggerASAPConfig, l2BridgeSync types.L2BridgeSyncer) (*asapTrigger, error) {
 	if cfg == nil {
 		cfg = config.NewTriggerASAPConfigDefault()
 	}
-	return &asapTrigger{
-		log: log,
-		cfg: *cfg,
+	if cfg.OnNewL2Bridge && l2BridgeSync == nil {
+		return nil, fmt.Errorf("L2 Bridge Syncer must be provided when OnNewL2Bridge is enabled in ASAP Trigger config")
 	}
+	return &asapTrigger{
+		log:          log,
+		cfg:          *cfg,
+		l2BridgeSync: l2BridgeSync,
+	}, nil
 }
-func (r *asapTrigger) Setup(_ context.Context) {
+func (r *asapTrigger) Setup(ctx context.Context) {
 }
 
 func (r *asapTrigger) Status() string {
@@ -73,7 +78,26 @@ func (r *asapTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTri
 	// Initialize lastEventTime to now so the minimum interval starts from TriggerCh creation
 	r.lastEventTime = time.Now()
 	r.fulfillMinimumInterval(nil)
+	r.subscribeNewBridge(ctx)
 	return ch
+}
+
+func (r *asapTrigger) subscribeNewBridge(ctx context.Context) {
+	if !r.cfg.OnNewL2Bridge || r.l2BridgeSync == nil {
+		return
+	}
+	r.log.Infof("ASAP Trigger: subscribing to new L2 bridge events")
+	bridgeSub := r.l2BridgeSync.SubscribeToNewBridge("aggsender-asap-trigger")
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case bridgeEvent := <-bridgeSub:
+				r.onNewBridge(bridgeEvent)
+			}
+		}
+	}()
 }
 
 // ForceTriggerEvent forces to emit a synchronization event unconditionally.
@@ -87,6 +111,23 @@ func (r *asapTrigger) ForceTriggerEvent() {
 	r.lastEventTime = time.Now()
 	r.mut.Unlock()
 	r.ch <- event
+}
+func (r *asapTrigger) onNewBridge(blockNum uint64) {
+	// send an event to channel r.ch after r.delay. Also check if r.ctx is done
+	if r.ch == nil {
+		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")
+		return
+	}
+
+	// This call will set r.triggerRunning to true if it's not already set
+	if r.isTriggerProgrammed(true) {
+		r.log.Debugf("ASAP Trigger: trigger already programmed, skipping new bridge event at block %d", blockNum)
+		return
+	}
+	r.log.Debugf("ASAP Trigger: sending a trigger due new bridge event at block %d", blockNum)
+	go func() {
+		r.trigger("newBridge", nil)
+	}()
 }
 
 // OnIdle Aggsender is waiting for a trigger to generate a new certificate
