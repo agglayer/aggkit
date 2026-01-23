@@ -49,7 +49,8 @@ type asapTrigger struct {
 	lastEventTime  time.Time
 }
 
-func newASAPTrigger(log aggkitcommon.Logger, cfg *config.TriggerASAPConfig, l2BridgeSync types.L2BridgeSyncer) (*asapTrigger, error) {
+func newASAPTrigger(log aggkitcommon.Logger, cfg *config.TriggerASAPConfig,
+	l2BridgeSync types.L2BridgeSyncer) (*asapTrigger, error) {
 	if cfg == nil {
 		cfg = config.NewTriggerASAPConfigDefault()
 	}
