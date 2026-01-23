@@ -9,8 +9,8 @@ jobs:
     if: contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
       issues: write
       id-token: write
       actions: read
