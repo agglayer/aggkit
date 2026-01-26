@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -615,13 +616,13 @@ func TestEVMMultidownloader_StartStop(t *testing.T) {
 
 		// Start in background
 		ctx := context.Background()
-		startCompleted := false
+		var startCompleted atomic.Bool
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			_ = data.mdr.Start(ctx)
-			startCompleted = true
+			startCompleted.Store(true)
 		}()
 
 		// Give it time to start
@@ -634,7 +635,7 @@ func TestEVMMultidownloader_StartStop(t *testing.T) {
 		stopDuration := time.Since(stopStartTime)
 
 		require.NoError(t, err)
-		require.True(t, startCompleted, "Start should have completed before Stop returns")
+		require.True(t, startCompleted.Load(), "Start should have completed before Stop returns")
 		require.Greater(t, stopDuration, time.Duration(0), "Stop should take some time waiting for Start")
 
 		wg.Wait()

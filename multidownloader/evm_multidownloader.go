@@ -323,7 +323,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 			reorgErr := mdrtypes.CastReorgError(err)
 			if reorgErr == nil {
 				dh.log.Warnf("Error running multidownloader: %s ", err.Error())
-				time.Sleep(100 * time.Millisecond) // Brief pause before retry
+				time.Sleep(time.Millisecond) // Brief pause before retry
 				continue
 			}
 			dh.log.Warnf("Reorg detected: %s", reorgErr.Error())
@@ -391,7 +391,6 @@ func (dh *EVMMultidownloader) checkReorgsUnsafeZone(ctx context.Context) error {
 		return fmt.Errorf("checkReorgsUnsafeZone: cannot get unsafe blocks: %w", err)
 	}
 	return dh.detectReorgs(ctx, blockInUnsafeZone)
-
 }
 
 func (dh *EVMMultidownloader) StartStep(ctx context.Context) error {
@@ -482,7 +481,7 @@ func (dh *EVMMultidownloader) waitForNewBlocks(ctx context.Context,
 	dh.log.Debugf("waitForNewBlocks: waiting for new blocks %s after %d. Check each %s...",
 		blockTag.String(),
 		latestSyncedBlock,
-		dh.cfg.PeriodToCheckReorgs.Duration.String())
+		dh.cfg.PeriodToCheckReorgs.String())
 	for {
 		select {
 		case <-ctx.Done():

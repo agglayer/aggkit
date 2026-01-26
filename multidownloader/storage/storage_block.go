@@ -42,7 +42,7 @@ func (b *Blocks) Get(number uint64) (*aggkittypes.BlockHeader, bool, error) {
 }
 
 func (b *Blocks) ListHeaders() aggkittypes.ListBlockHeaders {
-	headers := aggkittypes.NewListBlockHeaders(len(b.Headers))
+	headers := aggkittypes.NewListBlockHeadersEmpty(len(b.Headers))
 	for _, header := range b.Headers {
 		headers = append(headers, header)
 	}

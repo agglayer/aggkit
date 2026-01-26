@@ -145,6 +145,7 @@ func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber u
 		return false, chainID, nil
 	}
 	// Not found anywhere, consider invalid
-	return false, 0, fmt.Errorf("EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s not found in storage or blocks_reorged",
+	return false, 0, fmt.Errorf(
+		"EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s not found in storage or blocks_reorged",
 		blockNumber, blockHash.Hex())
 }

@@ -16,10 +16,9 @@ type compareBlockHeaders struct {
 }
 
 type ReorgPort struct {
-	ethClient         aggkittypes.BaseEthereumClienter
-	rpcClient         aggkittypes.RPCClienter
-	storage           mdtypes.Storager
-	finalizedBlockTag aggkittypes.BlockNumberFinality
+	ethClient aggkittypes.BaseEthereumClienter
+	rpcClient aggkittypes.RPCClienter
+	storage   mdtypes.Storager
 }
 
 func (r *ReorgPort) NewTx(ctx context.Context) (dbtypes.Txer, error) {
@@ -54,7 +53,9 @@ func (r *ReorgPort) MoveReorgedBlocks(tx dbtypes.Querier, reorgData mdtypes.Reor
 	return r.storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 }
 
-func (r *ReorgPort) GetBlockNumberInRPC(ctx context.Context, blockFinality aggkittypes.BlockNumberFinality) (uint64, error) {
+func (r *ReorgPort) GetBlockNumberInRPC(
+	ctx context.Context, blockFinality aggkittypes.BlockNumberFinality,
+) (uint64, error) {
 	blockNumber, err := r.ethClient.CustomHeaderByNumber(ctx, &blockFinality)
 	if err != nil {
 		return 0, fmt.Errorf("GetBlockNumberInRPC: error getting block number for %s from RPC: %w",

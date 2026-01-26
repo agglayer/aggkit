@@ -99,6 +99,43 @@ func testBlockWithOffsetHelper(
 	require.Equal(t, bn, header.RequestedBlock)
 }
 
+// testBlockWithOffsetHelperGeth is a helper function for testing block tag resolution with offsets using geth client
+func testBlockWithOffsetHelperGeth(
+	t *testing.T,
+	ctx context.Context,
+	blockNumFinality string,
+	firstCallArg *big.Int,
+	firstBlockNum uint64,
+	secondBlockNum uint64,
+) {
+	t.Helper()
+	mockEthClient := mocks.NewEthereumClienter(t)
+	mockRPCClient := mocks.NewRPCClienter(t)
+	client := NewDefaultEthClient(mockEthClient, mockRPCClient, nil)
+	client.HashFromJSON = false
+
+	bn, err := aggkittypes.NewBlockNumberFinality(blockNumFinality)
+	require.NoError(t, err)
+
+	mockEthClient.EXPECT().
+		HeaderByNumber(ctx, firstCallArg).
+		Return(&types.Header{
+			Number: big.NewInt(int64(firstBlockNum)),
+		}, nil).Once()
+
+	mockEthClient.EXPECT().
+		HeaderByNumber(ctx, big.NewInt(int64(secondBlockNum))).
+		Return(&types.Header{
+			Number: big.NewInt(int64(secondBlockNum)),
+		}, nil).Once()
+
+	header, err := client.CustomHeaderByNumber(ctx, bn)
+	require.NoError(t, err)
+	require.NotNil(t, header)
+	require.Equal(t, secondBlockNum, header.Number)
+	require.Equal(t, bn, header.RequestedBlock)
+}
+
 func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 	ctx := context.Background()
 
@@ -182,92 +219,14 @@ func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 	})
 
 	t.Run("LatestBlock with negative offset (HashFromJSON=false)", func(t *testing.T) {
-		mockEthClient := mocks.NewEthereumClienter(t)
-		mockRPCClient := mocks.NewRPCClienter(t)
-		client := NewDefaultEthClient(mockEthClient, mockRPCClient, nil)
-		client.HashFromJSON = false
-
-		bnLatestMinus10, err := aggkittypes.NewBlockNumberFinality("LatestBlock/-10")
-		require.NoError(t, err)
-
-		// First call to resolve latest block (returns 100)
-		mockEthClient.EXPECT().
-			HeaderByNumber(ctx, (*big.Int)(nil)).
-			Return(&types.Header{
-				Number: big.NewInt(100),
-			}, nil).Once()
-
-		// Second call to get block 90 (100 - 10)
-		mockEthClient.EXPECT().
-			HeaderByNumber(ctx, big.NewInt(90)).
-			Return(&types.Header{
-				Number: big.NewInt(90),
-			}, nil).Once()
-
-		header, err := client.CustomHeaderByNumber(ctx, bnLatestMinus10)
-		require.NoError(t, err)
-		require.NotNil(t, header)
-		require.Equal(t, uint64(90), header.Number)
-		require.Equal(t, bnLatestMinus10, header.RequestedBlock)
+		testBlockWithOffsetHelperGeth(t, ctx, "LatestBlock/-10", nil, 100, 90)
 	})
 
 	t.Run("FinalizedBlock with negative offset (HashFromJSON=false)", func(t *testing.T) {
-		mockEthClient := mocks.NewEthereumClienter(t)
-		mockRPCClient := mocks.NewRPCClienter(t)
-		client := NewDefaultEthClient(mockEthClient, mockRPCClient, nil)
-		client.HashFromJSON = false
-
-		bnFinalizedMinus5, err := aggkittypes.NewBlockNumberFinality("FinalizedBlock/-5")
-		require.NoError(t, err)
-
-		// First call to resolve finalized block (returns 100)
-		mockEthClient.EXPECT().
-			HeaderByNumber(ctx, big.NewInt(-3)).
-			Return(&types.Header{
-				Number: big.NewInt(100),
-			}, nil).Once()
-
-		// Second call to get block 95 (100 - 5)
-		mockEthClient.EXPECT().
-			HeaderByNumber(ctx, big.NewInt(95)).
-			Return(&types.Header{
-				Number: big.NewInt(95),
-			}, nil).Once()
-
-		header, err := client.CustomHeaderByNumber(ctx, bnFinalizedMinus5)
-		require.NoError(t, err)
-		require.NotNil(t, header)
-		require.Equal(t, uint64(95), header.Number)
-		require.Equal(t, bnFinalizedMinus5, header.RequestedBlock)
+		testBlockWithOffsetHelperGeth(t, ctx, "FinalizedBlock/-5", big.NewInt(-3), 100, 95)
 	})
 
 	t.Run("SafeBlock with negative offset (HashFromJSON=false)", func(t *testing.T) {
-		mockEthClient := mocks.NewEthereumClienter(t)
-		mockRPCClient := mocks.NewRPCClienter(t)
-		client := NewDefaultEthClient(mockEthClient, mockRPCClient, nil)
-		client.HashFromJSON = false
-
-		bnSafeMinus3, err := aggkittypes.NewBlockNumberFinality("SafeBlock/-3")
-		require.NoError(t, err)
-
-		// First call to resolve safe block (returns 50)
-		mockEthClient.EXPECT().
-			HeaderByNumber(ctx, big.NewInt(-4)).
-			Return(&types.Header{
-				Number: big.NewInt(50),
-			}, nil).Once()
-
-		// Second call to get block 47 (50 - 3)
-		mockEthClient.EXPECT().
-			HeaderByNumber(ctx, big.NewInt(47)).
-			Return(&types.Header{
-				Number: big.NewInt(47),
-			}, nil).Once()
-
-		header, err := client.CustomHeaderByNumber(ctx, bnSafeMinus3)
-		require.NoError(t, err)
-		require.NotNil(t, header)
-		require.Equal(t, uint64(47), header.Number)
-		require.Equal(t, bnSafeMinus3, header.RequestedBlock)
+		testBlockWithOffsetHelperGeth(t, ctx, "SafeBlock/-3", big.NewInt(-4), 50, 47)
 	})
 }
