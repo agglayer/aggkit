@@ -89,7 +89,7 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 		ctx,
 		log,
 		func(ctx context.Context, blocks []uint64) (aggkittypes.ListBlockHeaders, error) {
-			result := aggkittypes.NewListBlockHeadersEmpty(len(blocks))
+			result := aggkittypes.NewListBlockHeaders(len(blocks))
 			for i, blockNumber := range blocks {
 				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
 				if err != nil {

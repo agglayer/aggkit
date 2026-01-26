@@ -6,6 +6,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
@@ -93,4 +94,26 @@ func (a *MultidownloaderStorage) moveReorgedBlocksAndLogsNoMutex(tx dbtypes.Quer
 		return fmt.Errorf("moveReorgedBlocks: error moving reorged blocks to block_reorged: %w", err)
 	}
 	return nil
+}
+
+func (a *MultidownloaderStorage) GetBlockReorgedChainID(tx dbtypes.Querier,
+	blockNumber uint64, blockHash common.Hash) (uint64, bool, error) {
+	if tx == nil {
+		tx = a.db
+	}
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+	var chainIDRow struct {
+		ChainID *uint64 `meddler:"chain_id"`
+	}
+	query := `SELECT chain_id FROM blocks_reorged
+	WHERE block_number = ? AND block_hash = ? LIMIT 1;`
+	err := tx.QueryRow(query, blockNumber, blockHash.Hex()).Scan(&chainIDRow.ChainID)
+	if err != nil {
+		return 0, false, fmt.Errorf("GetBlockReorgedChainID: error querying blocks_reorged: %w", err)
+	}
+	if chainIDRow.ChainID == nil {
+		return 0, false, nil
+	}
+	return *chainIDRow.ChainID, true, nil
 }

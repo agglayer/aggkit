@@ -17,8 +17,7 @@ type ReorgPorter interface {
 	GetLastBlockNumberInStorage(tx dbtypes.Querier) (uint64, error)
 	// Return ChainID of the inserted reorg
 	MoveReorgedBlocks(tx dbtypes.Querier, reorgData mdtypes.ReorgData) (uint64, error)
-	// Return latest block number in RPC
-	GetLatestBlockNumberInRPC(ctx context.Context) (uint64, error)
+	GetBlockNumberInRPC(ctx context.Context, blockFinality aggkittypes.BlockNumberFinality) (uint64, error)
 }
 
 type ReorgProcessor struct {
@@ -74,19 +73,24 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error getting last block number in storage: %w", err)
 	}
-	latestBlockNumberInRPC, err := rm.port.GetLatestBlockNumberInRPC(ctx)
+	latestBlockNumberInRPC, err := rm.port.GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error getting latest block number in RPC: %w", err)
 	}
-	rm.log.Infof("ProcessReorg: reorg detected from block %d to block %d",
-		currentBlockNumber+1, lastBlockNumberInStorage)
 
+	finalizedBlockNumberInRPC, err := rm.port.GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock)
+	if err != nil {
+		return fmt.Errorf("ProcessReorg: error getting finalized block number in RPC: %w", err)
+	}
+	rm.log.Infof("ProcessReorg: reorg detected from block %d to block %d",
+		firstUnaffectedBlock+1, lastBlockNumberInStorage)
+	// TODO: Add hash to blockNumbers
 	reorgData := mdtypes.ReorgData{
 		BlockRangeAffected:        aggkitcommon.NewBlockRange(firstUnaffectedBlock+1, lastBlockNumberInStorage),
 		DetectedAtBlock:           lastBlockNumberInStorage,
 		DetectedTimestamp:         rm.funcNow(),
 		NetworkLatestBlock:        latestBlockNumberInRPC,
-		NetworkFinalizedBlock:     firstUnaffectedBlock,
+		NetworkFinalizedBlock:     finalizedBlockNumberInRPC,
 		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
 	}
 	chainID, err := rm.port.MoveReorgedBlocks(tx, reorgData)

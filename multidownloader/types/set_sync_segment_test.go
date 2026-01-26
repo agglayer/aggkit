@@ -436,3 +436,77 @@ func TestSetSyncSegment_AfterFullySync(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, "From: 101, To: 150 (50)", segment.BlockRange.String())
 }
+
+func TestSetSyncSegment_GetTotalPendingBlockRange_WithEmptySegments(t *testing.T) {
+	t.Run("single empty segment returns nil", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr:  addr,
+			BlockRange:    aggkitcommon.NewBlockRange(1, 100),
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+		set.Add(segment)
+
+		// Sync everything
+		logQuery := &LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		err := set.SubtractLogQuery(logQuery)
+		require.NoError(t, err)
+
+		// Verify segment is empty
+		segment, exists := set.GetByContract(addr)
+		require.True(t, exists)
+		require.True(t, segment.IsEmpty())
+
+		// GetTotalPendingBlockRange should return nil, not an invalid range
+		totalRange := set.GetTotalPendingBlockRange()
+		require.Nil(t, totalRange, "should return nil when all segments are empty")
+	})
+
+	t.Run("multiple segments with some empty", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr1 := common.HexToAddress("0x111")
+		addr2 := common.HexToAddress("0x222")
+
+		// Add two segments
+		segment1 := SyncSegment{
+			ContractAddr:  addr1,
+			BlockRange:    aggkitcommon.NewBlockRange(1, 100),
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+		segment2 := SyncSegment{
+			ContractAddr:  addr2,
+			BlockRange:    aggkitcommon.NewBlockRange(50, 150),
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+		set.Add(segment1)
+		set.Add(segment2)
+
+		// Sync first segment completely
+		logQuery := &LogQuery{
+			Addrs:      []common.Address{addr1},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		err := set.SubtractLogQuery(logQuery)
+		require.NoError(t, err)
+
+		// First segment should be empty
+		seg1, exists := set.GetByContract(addr1)
+		require.True(t, exists)
+		require.True(t, seg1.IsEmpty())
+
+		// Second segment should not be empty
+		seg2, exists := set.GetByContract(addr2)
+		require.True(t, exists)
+		require.False(t, seg2.IsEmpty())
+
+		// GetTotalPendingBlockRange should return only the non-empty segment range
+		totalRange := set.GetTotalPendingBlockRange()
+		require.NotNil(t, totalRange)
+		require.Equal(t, uint64(50), totalRange.FromBlock)
+		require.Equal(t, uint64(150), totalRange.ToBlock)
+	})
+}

@@ -266,6 +266,7 @@ func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows
 		tx = a.db
 	}
 	for _, blockRow := range blockRows {
+		a.logger.Debugf("Inserting block header row: %d %s final=%v", blockRow.BlockNumber, blockRow.BlockHash.Hex(), blockRow.IsFinal)
 		if err := meddler.Insert(tx, "blocks", blockRow); err != nil {
 			return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", blockRow.String(), err)
 		}

@@ -42,7 +42,7 @@ func (b *Blocks) Get(number uint64) (*aggkittypes.BlockHeader, bool, error) {
 }
 
 func (b *Blocks) ListHeaders() aggkittypes.ListBlockHeaders {
-	headers := aggkittypes.NewListBlockHeadersEmpty(len(b.Headers))
+	headers := aggkittypes.NewListBlockHeaders(len(b.Headers))
 	for _, header := range b.Headers {
 		headers = append(headers, header)
 	}
@@ -87,6 +87,22 @@ func (a *MultidownloaderStorage) UpdateBlockToFinalized(tx dbtypes.Querier, bloc
 		return fmt.Errorf("UpdateIsFinal: error updating block bases: %w", err)
 	}
 	return nil
+}
+
+func (a *MultidownloaderStorage) GetHighestBlockNumber(tx dbtypes.Querier) (uint64, error) {
+	query := "SELECT MAX(block_number) as max_block_number FROM blocks"
+	if tx == nil {
+		tx = a.db
+	}
+	var maxBlockNumber sql.NullInt64
+	err := tx.QueryRow(query).Scan(&maxBlockNumber)
+	if err != nil {
+		return 0, fmt.Errorf("GetHighestBlockNumber: error querying highest block number: %w", err)
+	}
+	if maxBlockNumber.Valid {
+		return uint64(maxBlockNumber.Int64), nil
+	}
+	return 0, nil
 }
 
 // GetRangeBlockHeader retrieves the highest block header stored in the database
@@ -165,14 +181,23 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
 }
 
 // GetBlockHeadersNotFinalized retrieves all block headers that are not finalized <= maxBlock
+// if maxBlock is 0, retrieves all not finalized blocks
 func (a *MultidownloaderStorage) GetBlockHeadersNotFinalized(tx dbtypes.Querier,
-	maxBlock uint64) (aggkittypes.ListBlockHeaders, error) {
+	maxBlock *uint64) (aggkittypes.ListBlockHeaders, error) {
 	if tx == nil {
 		tx = a.db
 	}
+	var blocks Blocks
+	var err error
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
-	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0 AND block_number <= ?", maxBlock)
+
+	if maxBlock != nil {
+		blocks, err = a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0 AND block_number <= ?", *maxBlock)
+	} else {
+		blocks, err = a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0")
+	}
+
 	if err != nil {
 		return nil, err
 	}

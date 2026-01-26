@@ -527,3 +527,116 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		mockBlockNotifierManager: mockBlockNotifierManager,
 	}
 }
+
+func TestEVMMultidownloader_StartStop(t *testing.T) {
+	t.Run("Stop without Start returns error", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+		err := data.mdr.Stop(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not running")
+	})
+
+	t.Run("Start and Stop successfully", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+
+		// Setup mocks for Start loop
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(nil, fmt.Errorf("stop test")).Maybe()
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+		// Start in background
+		ctx := context.Background()
+		var startErr error
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startErr = data.mdr.Start(ctx)
+		}()
+
+		// Give it time to start and run a few iterations
+		time.Sleep(50 * time.Millisecond)
+
+		// Stop should succeed
+		stopCtx := context.Background()
+		err := data.mdr.Stop(stopCtx)
+		require.NoError(t, err)
+
+		// Wait for Start to finish
+		wg.Wait()
+		// Start should return context.Canceled (clean shutdown via context cancellation)
+		require.ErrorIs(t, startErr, context.Canceled)
+	})
+
+	t.Run("Start twice returns error", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+
+		// Setup mocks
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(nil, fmt.Errorf("stop test")).Maybe()
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+		// Start first time
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = data.mdr.Start(ctx)
+		}()
+
+		// Give it time to start
+		time.Sleep(50 * time.Millisecond)
+
+		// Try to start again - should fail
+		err := data.mdr.Start(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "already running")
+
+		// Cleanup
+		_ = data.mdr.Stop(ctx)
+		wg.Wait()
+	})
+
+	t.Run("Stop waits for Start to complete", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+
+		// Setup mocks
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(nil, fmt.Errorf("mock error")).Maybe()
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+		// Start in background
+		ctx := context.Background()
+		startCompleted := false
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = data.mdr.Start(ctx)
+			startCompleted = true
+		}()
+
+		// Give it time to start
+		time.Sleep(50 * time.Millisecond)
+
+		// Stop and verify it waits
+		stopStartTime := time.Now()
+		stopCtx := context.Background()
+		err := data.mdr.Stop(stopCtx)
+		stopDuration := time.Since(stopStartTime)
+
+		require.NoError(t, err)
+		require.True(t, startCompleted, "Start should have completed before Stop returns")
+		require.Greater(t, stopDuration, time.Duration(0), "Stop should take some time waiting for Start")
+
+		wg.Wait()
+	})
+}

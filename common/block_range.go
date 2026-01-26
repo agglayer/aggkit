@@ -202,3 +202,30 @@ func (b BlockRange) ListBlockNumbers() []uint64 {
 	}
 	return blockNumbers
 }
+
+// SplitByBlockNumber splits a BlockRange into two parts at the given block number
+// The first range includes blocks from FromBlock to blockNumber (inclusive)
+// The second range includes blocks from blockNumber+1 to ToBlock (inclusive)
+// If blockNumber is outside the range, one of the returned ranges will be empty
+func (b BlockRange) SplitByBlockNumber(blockNumber uint64) (BlockRange, BlockRange) {
+	// If the original range is empty, return two empty ranges
+	if b.IsEmpty() {
+		return BlockRangeZero, BlockRangeZero
+	}
+
+	// If blockNumber is before FromBlock, first range is empty
+	if blockNumber < b.FromBlock {
+		return BlockRangeZero, b
+	}
+
+	// If blockNumber is at or after ToBlock, second range is empty
+	if blockNumber >= b.ToBlock {
+		return b, BlockRangeZero
+	}
+
+	// Split in the middle
+	first := NewBlockRange(b.FromBlock, blockNumber)
+	second := NewBlockRange(blockNumber+1, b.ToBlock)
+
+	return first, second
+}

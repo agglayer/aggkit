@@ -41,10 +41,20 @@ func NewStateFromStorageSyncedBlocks(storageSynced mdrtypes.SetSyncSegment,
 	return NewState(&storageSynced, &totalToSync), nil
 }
 
+// Clone creates a deep copy of the State
+// This ensures that modifications to the cloned state don't affect the original
 func (s *State) Clone() *State {
+	if s == nil {
+		return nil
+	}
+
+	// Use Clone() from SetSyncSegment which does deep copy
+	clonedSynced := s.Synced.Clone()
+	clonedPending := s.Pending.Clone()
+
 	return &State{
-		Synced:  s.Synced,
-		Pending: s.Pending,
+		Synced:  *clonedSynced,
+		Pending: *clonedPending,
 	}
 }
 func (s *State) String() string {
@@ -79,15 +89,37 @@ func (s *State) TotalBlocksPendingToSync() uint64 {
 	return s.Pending.TotalBlocks()
 }
 
+// OnNewSyncedLogQuery updates the state to mark a LogQuery as synced
+// This function is transactional - if either operation fails, the state remains unchanged
 func (s *State) OnNewSyncedLogQuery(logQuery *mdrtypes.LogQuery) error {
-	err := s.Synced.AddLogQuery(logQuery)
-	if err != nil {
-		return fmt.Errorf("OnNewSyncedLogQuery: addding syned segment: %w", err)
+	if s == nil {
+		return fmt.Errorf("OnNewSyncedLogQuery: state is nil")
 	}
-	err = s.Pending.SubtractLogQuery(logQuery)
+	if logQuery == nil {
+		return fmt.Errorf("OnNewSyncedLogQuery: logQuery is nil")
+	}
+
+	// Clone both sets to ensure atomicity
+	// If either operation fails, the original state remains unchanged
+	clonedSynced := s.Synced.Clone()
+	clonedPending := s.Pending.Clone()
+
+	// Try to add to synced
+	err := clonedSynced.AddLogQuery(logQuery)
+	if err != nil {
+		return fmt.Errorf("OnNewSyncedLogQuery: adding synced segment: %w", err)
+	}
+
+	// Try to subtract from pending
+	err = clonedPending.SubtractLogQuery(logQuery)
 	if err != nil {
 		return fmt.Errorf("OnNewSyncedLogQuery: subtracting pending segment: %w", err)
 	}
+
+	// Both operations succeeded, commit the changes
+	s.Synced = *clonedSynced
+	s.Pending = *clonedPending
+
 	return nil
 }
 

@@ -16,9 +16,10 @@ type compareBlockHeaders struct {
 }
 
 type ReorgPort struct {
-	ethClient aggkittypes.BaseEthereumClienter
-	rpcClient aggkittypes.RPCClienter
-	storage   mdtypes.Storager
+	ethClient         aggkittypes.BaseEthereumClienter
+	rpcClient         aggkittypes.RPCClienter
+	storage           mdtypes.Storager
+	finalizedBlockTag aggkittypes.BlockNumberFinality
 }
 
 func (r *ReorgPort) NewTx(ctx context.Context) (dbtypes.Txer, error) {
@@ -43,24 +44,21 @@ func (r *ReorgPort) GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querie
 }
 
 func (r *ReorgPort) GetLastBlockNumberInStorage(tx dbtypes.Querier) (uint64, error) {
-	highestBlock, _, err := r.storage.GetRangeBlockHeader(nil, mdtypes.NotFinalized)
+	highestBlock, err := r.storage.GetHighestBlockNumber(nil)
 	if err != nil {
 		return 0, fmt.Errorf("GetLastBlockNumberInStorage: error getting highest block from storage: %w", err)
 	}
-	if highestBlock == nil {
-		return 0, fmt.Errorf("GetLastBlockNumberInStorage: error getting highest block (=nil) from storage")
-	}
-	return highestBlock.Number, nil
+	return highestBlock, nil
 }
-
 func (r *ReorgPort) MoveReorgedBlocks(tx dbtypes.Querier, reorgData mdtypes.ReorgData) (uint64, error) {
 	return r.storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 }
 
-func (r *ReorgPort) GetLatestBlockNumberInRPC(ctx context.Context) (uint64, error) {
-	latestBlockNumber, err := r.ethClient.BlockNumber(ctx)
+func (r *ReorgPort) GetBlockNumberInRPC(ctx context.Context, blockFinality aggkittypes.BlockNumberFinality) (uint64, error) {
+	blockNumber, err := r.ethClient.CustomHeaderByNumber(ctx, &blockFinality)
 	if err != nil {
-		return 0, fmt.Errorf("GetLatestBlockNumber: error getting latest block number from RPC: %w", err)
+		return 0, fmt.Errorf("GetBlockNumberInRPC: error getting block number for %s from RPC: %w",
+			blockFinality.String(), err)
 	}
-	return latestBlockNumber, nil
+	return blockNumber.Number, nil
 }

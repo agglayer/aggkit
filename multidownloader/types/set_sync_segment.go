@@ -226,6 +226,10 @@ func (f *SetSyncSegment) GetTotalPendingBlockRange() *aggkitcommon.BlockRange {
 	}
 	var totalRange *aggkitcommon.BlockRange
 	for _, segment := range f.segments {
+		// Skip empty segments to avoid creating invalid BlockRanges
+		if segment.IsEmpty() {
+			continue
+		}
 		if totalRange == nil {
 			br := segment.BlockRange
 			totalRange = &br

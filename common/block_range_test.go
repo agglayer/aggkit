@@ -480,3 +480,153 @@ func TestBlockRange_ListBlockNumbers(t *testing.T) {
 	bn3 := NewBlockRange(0, 0)
 	require.Equal(t, []uint64{}, bn3.ListBlockNumbers())
 }
+
+func TestBlockRange_SplitByBlockNumber(t *testing.T) {
+	tests := []struct {
+		name            string
+		blockRange      BlockRange
+		splitBlock      uint64
+		expectedFirst   BlockRange
+		expectedSecond  BlockRange
+		descriptionFirst string
+		descriptionSecond string
+	}{
+		{
+			name:            "split in the middle",
+			blockRange:      NewBlockRange(100, 200),
+			splitBlock:      150,
+			expectedFirst:   NewBlockRange(100, 150),
+			expectedSecond:  NewBlockRange(151, 200),
+			descriptionFirst: "first half includes split block",
+			descriptionSecond: "second half starts after split block",
+		},
+		{
+			name:            "split at FromBlock",
+			blockRange:      NewBlockRange(100, 200),
+			splitBlock:      100,
+			expectedFirst:   NewBlockRange(100, 100),
+			expectedSecond:  NewBlockRange(101, 200),
+			descriptionFirst: "first range is single block",
+			descriptionSecond: "second range is rest of blocks",
+		},
+		{
+			name:            "split at ToBlock",
+			blockRange:      NewBlockRange(100, 200),
+			splitBlock:      200,
+			expectedFirst:   NewBlockRange(100, 200),
+			expectedSecond:  BlockRangeZero,
+			descriptionFirst: "first range is entire range",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:            "split before FromBlock",
+			blockRange:      NewBlockRange(100, 200),
+			splitBlock:      50,
+			expectedFirst:   BlockRangeZero,
+			expectedSecond:  NewBlockRange(100, 200),
+			descriptionFirst: "first range is empty",
+			descriptionSecond: "second range is entire original range",
+		},
+		{
+			name:            "split after ToBlock",
+			blockRange:      NewBlockRange(100, 200),
+			splitBlock:      250,
+			expectedFirst:   NewBlockRange(100, 200),
+			expectedSecond:  BlockRangeZero,
+			descriptionFirst: "first range is entire range",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:            "split single block range at that block",
+			blockRange:      NewBlockRange(100, 100),
+			splitBlock:      100,
+			expectedFirst:   NewBlockRange(100, 100),
+			expectedSecond:  BlockRangeZero,
+			descriptionFirst: "first range is the single block",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:            "split single block range before",
+			blockRange:      NewBlockRange(100, 100),
+			splitBlock:      50,
+			expectedFirst:   BlockRangeZero,
+			expectedSecond:  NewBlockRange(100, 100),
+			descriptionFirst: "first range is empty",
+			descriptionSecond: "second range is the single block",
+		},
+		{
+			name:            "split single block range after",
+			blockRange:      NewBlockRange(100, 100),
+			splitBlock:      150,
+			expectedFirst:   NewBlockRange(100, 100),
+			expectedSecond:  BlockRangeZero,
+			descriptionFirst: "first range is the single block",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:            "split empty range",
+			blockRange:      BlockRangeZero,
+			splitBlock:      100,
+			expectedFirst:   BlockRangeZero,
+			expectedSecond:  BlockRangeZero,
+			descriptionFirst: "first range is empty",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:            "split two block range at first",
+			blockRange:      NewBlockRange(100, 101),
+			splitBlock:      100,
+			expectedFirst:   NewBlockRange(100, 100),
+			expectedSecond:  NewBlockRange(101, 101),
+			descriptionFirst: "first range is first block",
+			descriptionSecond: "second range is second block",
+		},
+		{
+			name:            "split two block range at second",
+			blockRange:      NewBlockRange(100, 101),
+			splitBlock:      101,
+			expectedFirst:   NewBlockRange(100, 101),
+			expectedSecond:  BlockRangeZero,
+			descriptionFirst: "first range is both blocks",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:            "split at ToBlock minus 1",
+			blockRange:      NewBlockRange(100, 200),
+			splitBlock:      199,
+			expectedFirst:   NewBlockRange(100, 199),
+			expectedSecond:  NewBlockRange(200, 200),
+			descriptionFirst: "first range is all but last block",
+			descriptionSecond: "second range is last block only",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			first, second := tt.blockRange.SplitByBlockNumber(tt.splitBlock)
+
+			require.Equal(t, tt.expectedFirst, first,
+				"SplitByBlockNumber() first range for %s: expected %v, got %v (%s)",
+				tt.name, tt.expectedFirst, first, tt.descriptionFirst)
+
+			require.Equal(t, tt.expectedSecond, second,
+				"SplitByBlockNumber() second range for %s: expected %v, got %v (%s)",
+				tt.name, tt.expectedSecond, second, tt.descriptionSecond)
+
+			// Verify that the split is valid
+			if !first.IsEmpty() && !second.IsEmpty() {
+				// Verify there's no gap between ranges
+				require.Equal(t, first.ToBlock+1, second.FromBlock,
+					"There should be no gap between first and second ranges")
+			}
+
+			// Verify that combined ranges equal original
+			if !first.IsEmpty() && !second.IsEmpty() {
+				require.Equal(t, tt.blockRange.FromBlock, first.FromBlock,
+					"First range should start at original FromBlock")
+				require.Equal(t, tt.blockRange.ToBlock, second.ToBlock,
+					"Second range should end at original ToBlock")
+			}
+		})
+	}
+}

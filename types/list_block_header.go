@@ -6,7 +6,12 @@ type ListBlockHeaders []*BlockHeader
 
 // NewListBlockHeadersEmpty creates a new ListBlockHeaders with pre-allocated items set to nil
 func NewListBlockHeadersEmpty(preAllocatedSize int) ListBlockHeaders {
-	return ListBlockHeaders(make([]*BlockHeader, preAllocatedSize, preAllocatedSize))
+	return ListBlockHeaders(make([]*BlockHeader, 0, preAllocatedSize))
+}
+
+// NewListBlockHeaders creates a new ListBlockHeaders with the given size to zero element
+func NewListBlockHeaders(size int) ListBlockHeaders {
+	return ListBlockHeaders(make([]*BlockHeader, size))
 }
 func (lbs ListBlockHeaders) Len() int {
 	return len(lbs)
