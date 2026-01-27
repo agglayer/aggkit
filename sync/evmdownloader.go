@@ -324,7 +324,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockHeader, err := d.ethClient.BlockHeader(ctx, d.blockFinality)
+			blockHeader, err := d.ethClient.HeaderByNumber(ctx, &d.blockFinality)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++

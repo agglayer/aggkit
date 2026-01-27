@@ -65,6 +65,9 @@ func buildL1Simulated(t *testing.T) *mdrE2ESimulatedEnv {
 }
 
 func TestE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping E2E test in short mode")
+	}
 	// Simulated L1
 	testData := buildL1Simulated(t)
 

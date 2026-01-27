@@ -30,22 +30,6 @@ func (dh *EVMMultidownloader) BlockNumber(ctx context.Context,
 	return dh.blockNotifierManager.GetCurrentBlockNumber(ctx, finality)
 }
 
-// BlockHeader gets the block header for the given finality type
-func (dh *EVMMultidownloader) BlockHeader(ctx context.Context,
-	finality aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
-	number, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, finality)
-	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get block number for finality=%s: %w",
-			finality.String(), err)
-	}
-	header, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(number))
-	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.BlockHeader: cannot get header for block number=%d: %w",
-			number, err)
-	}
-	return header, nil
-}
-
 // FilterLogs filters the logs. It gets them from storage or waits until they are available
 func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	if !dh.IsInitialized() {
@@ -86,11 +70,16 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context,
 		dh.log.Debugf("EVMMultidownloader.HeaderByNumber: received number: %s", number.String())
 		defer dh.log.Debugf("EVMMultidownloader.HeaderByNumber: finished number: %s", number.String())
 	}
-	if !number.IsConstant() {
-		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: only numeric blockNumbers are supported (got=%s)",
-			number.String())
+	if number == nil {
+		number = &aggkittypes.LatestBlock
 	}
-	blockNumber := number.Specific
+	// Resolve blockNumber
+	blockNumber, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, *number)
+	if err != nil {
+		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get block number for finality=%s: %w",
+			number.String(), err)
+	}
+	// Is this block in storage?
 	block, _, err := dh.storage.GetBlockHeaderByNumber(nil, blockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: cannot get BlockHeader number=%s: %w",
@@ -103,7 +92,8 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context,
 		dh.log.Debugf("EVMMultidownloader.HeaderByNumber: block number=%s not found in storage, fetching from ethClient",
 			number.String())
 	}
-	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, number)
+	// Get from ethClient
+	blockHeader, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.HeaderByNumber: ethClient.HeaderByNumber(%s) failed. Err: %w",
 			number.String(), err)

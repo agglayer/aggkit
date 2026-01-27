@@ -66,7 +66,7 @@ func TestEVMMultidownloader_BlockHeader(t *testing.T) {
 		Return(&aggkittypes.BlockHeader{
 			Number: 123456,
 		}, nil)
-	header, err := testData.mdr.BlockHeader(t.Context(), aggkittypes.LatestBlock)
+	header, err := testData.mdr.HeaderByNumber(t.Context(), &aggkittypes.LatestBlock)
 	require.NoError(t, err)
 	require.Equal(t, uint64(123456), header.Number)
 }
