@@ -73,7 +73,7 @@ func TestHealthCheck(t *testing.T) {
 	t.Run("handles server error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = w.Write([]byte("internal error"))
+			_, _ = w.Write([]byte("internal error"))
 		}))
 		defer server.Close()
 
@@ -176,7 +176,7 @@ func TestGetBridges(t *testing.T) {
 	t.Run("handles bad request", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = w.Write([]byte("invalid network_id"))
+			_, _ = w.Write([]byte("invalid network_id"))
 		}))
 		defer server.Close()
 
@@ -533,7 +533,7 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 	t.Run("handles error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			_ = w.Write([]byte("not found"))
+			_, _ = w.Write([]byte("not found"))
 		}))
 		defer server.Close()
 
@@ -741,7 +741,7 @@ func TestDoRequest_Errors(t *testing.T) {
 	t.Run("handles malformed JSON response", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_ = w.Write([]byte("{invalid json"))
+			_, _ = w.Write([]byte("{invalid json"))
 		}))
 		defer server.Close()
 
@@ -768,7 +768,7 @@ func TestDoRequest_Errors(t *testing.T) {
 	t.Run("handles service unavailable", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = w.Write([]byte("service unavailable"))
+			_, _ = w.Write([]byte("service unavailable"))
 		}))
 		defer server.Close()
 
