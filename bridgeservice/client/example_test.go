@@ -12,14 +12,14 @@ import (
 
 func ExampleNew() {
 	// Create a client with default timeout (30 seconds)
-	c := client.New(client.Config{
+	_ = client.New(client.Config{
 		BaseURL: "http://localhost:8080",
 	})
 
 	fmt.Printf("Client created with base URL: %s\n", "http://localhost:8080")
 
 	// Create a client with custom timeout
-	c = client.New(client.Config{
+	c := client.New(client.Config{
 		BaseURL: "http://localhost:8080",
 		Timeout: 10 * time.Second,
 	})

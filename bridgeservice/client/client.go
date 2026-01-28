@@ -16,6 +16,11 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 )
 
+const (
+	// DefaultTimeout is the default HTTP client timeout
+	DefaultTimeout = 30 * time.Second
+)
+
 // Client is a client for the bridgeservice REST API
 type Client struct {
 	baseURL    string
@@ -31,7 +36,7 @@ type Config struct {
 // New creates a new bridgeservice client
 func New(cfg Config) *Client {
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = DefaultTimeout
 	}
 
 	return &Client{
@@ -100,7 +105,7 @@ type GetRemoveGEREventsParams struct {
 // HealthCheck performs a health check
 func (c *Client) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
 	var resp types.HealthCheckResponse
-	if err := c.doRequest(ctx, "GET", "/", nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -132,7 +137,7 @@ func (c *Client) GetBridges(ctx context.Context, params GetBridgesParams) (*type
 	}
 
 	var resp types.BridgesResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/bridges?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/bridges?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -164,7 +169,7 @@ func (c *Client) GetClaims(ctx context.Context, params GetClaimsParams) (*types.
 	}
 
 	var resp types.ClaimsResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/claims?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/claims?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -185,7 +190,7 @@ func (c *Client) GetUnsetClaims(ctx context.Context, params GetUnsetClaimsParams
 	}
 
 	var resp types.UnsetClaimsResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/unset-claims?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/unset-claims?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -206,14 +211,16 @@ func (c *Client) GetSetClaims(ctx context.Context, params GetSetClaimsParams) (*
 	}
 
 	var resp types.SetClaimsResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/set-claims?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/set-claims?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 // GetTokenMappings retrieves token mappings
-func (c *Client) GetTokenMappings(ctx context.Context, params GetTokenMappingsParams) (*types.TokenMappingsResult, error) {
+func (c *Client) GetTokenMappings(
+	ctx context.Context, params GetTokenMappingsParams,
+) (*types.TokenMappingsResult, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.Itoa(params.NetworkID))
 
@@ -228,14 +235,16 @@ func (c *Client) GetTokenMappings(ctx context.Context, params GetTokenMappingsPa
 	}
 
 	var resp types.TokenMappingsResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/token-mappings?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/token-mappings?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 // GetLegacyTokenMigrations retrieves legacy token migrations
-func (c *Client) GetLegacyTokenMigrations(ctx context.Context, params GetLegacyTokenMigrationsParams) (*types.LegacyTokenMigrationsResult, error) {
+func (c *Client) GetLegacyTokenMigrations(
+	ctx context.Context, params GetLegacyTokenMigrationsParams,
+) (*types.LegacyTokenMigrationsResult, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.Itoa(params.NetworkID))
 
@@ -247,7 +256,7 @@ func (c *Client) GetLegacyTokenMigrations(ctx context.Context, params GetLegacyT
 	}
 
 	var resp types.LegacyTokenMigrationsResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/legacy-token-migrations?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/legacy-token-migrations?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -260,34 +269,38 @@ func (c *Client) GetL1InfoTreeIndex(ctx context.Context, networkID, depositCount
 	query.Set("deposit_count", strconv.Itoa(depositCount))
 
 	var index uint32
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/l1-info-tree-index?"+query.Encode(), nil, &index); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/l1-info-tree-index?"+query.Encode(), nil, &index); err != nil {
 		return 0, err
 	}
 	return index, nil
 }
 
 // GetInjectedL1InfoLeaf retrieves an injected L1 info tree leaf
-func (c *Client) GetInjectedL1InfoLeaf(ctx context.Context, networkID, leafIndex int) (*types.L1InfoTreeLeafResponse, error) {
+func (c *Client) GetInjectedL1InfoLeaf(
+	ctx context.Context, networkID, leafIndex int,
+) (*types.L1InfoTreeLeafResponse, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.Itoa(networkID))
 	query.Set("leaf_index", strconv.Itoa(leafIndex))
 
 	var resp types.L1InfoTreeLeafResponse
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/injected-l1-info-leaf?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/injected-l1-info-leaf?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 // GetClaimProof retrieves Merkle proofs for claim verification
-func (c *Client) GetClaimProof(ctx context.Context, networkID, leafIndex, depositCount uint32) (*types.ClaimProof, error) {
+func (c *Client) GetClaimProof(
+	ctx context.Context, networkID, leafIndex, depositCount uint32,
+) (*types.ClaimProof, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
 	query.Set("leaf_index", strconv.FormatUint(uint64(leafIndex), 10))
 	query.Set("deposit_count", strconv.FormatUint(uint64(depositCount), 10))
 
 	var resp types.ClaimProof
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/claim-proof?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/claim-proof?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -299,7 +312,7 @@ func (c *Client) GetLastReorgEvent(ctx context.Context, networkID int) (*bridges
 	query.Set("network_id", strconv.Itoa(networkID))
 
 	var resp bridgesync.LastReorg
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/last-reorg-event?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/last-reorg-event?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -308,14 +321,16 @@ func (c *Client) GetLastReorgEvent(ctx context.Context, networkID int) (*bridges
 // GetSyncStatus retrieves the bridge synchronization status
 func (c *Client) GetSyncStatus(ctx context.Context) (*types.SyncStatus, error) {
 	var resp types.SyncStatus
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/sync-status", nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/sync-status", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 // GetRemoveGEREvents retrieves removed GER (Global Exit Root) events
-func (c *Client) GetRemoveGEREvents(ctx context.Context, params GetRemoveGEREventsParams) (*types.RemoveGEREventsResult, error) {
+func (c *Client) GetRemoveGEREvents(
+	ctx context.Context, params GetRemoveGEREventsParams,
+) (*types.RemoveGEREventsResult, error) {
 	query := url.Values{}
 
 	if params.GlobalExitRoot != nil {
@@ -326,17 +341,17 @@ func (c *Client) GetRemoveGEREvents(ctx context.Context, params GetRemoveGEREven
 	}
 
 	var resp types.RemoveGEREventsResult
-	if err := c.doRequest(ctx, "GET", "/bridge/v1/removed-gers?"+query.Encode(), nil, &resp); err != nil {
+	if err := c.doRequest(ctx, "/bridge/v1/removed-gers?"+query.Encode(), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-// doRequest performs an HTTP request and decodes the response
-func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader, result interface{}) error {
+// doRequest performs an HTTP GET request and decodes the response
+func (c *Client) doRequest(ctx context.Context, path string, body io.Reader, result interface{}) error {
 	reqURL := c.baseURL + path
 
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, body)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

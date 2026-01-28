@@ -57,7 +57,7 @@ func TestHealthCheck(t *testing.T) {
 			require.Equal(t, "/", r.URL.Path)
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -73,7 +73,7 @@ func TestHealthCheck(t *testing.T) {
 	t.Run("handles server error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("internal error"))
+			_ = w.Write([]byte("internal error"))
 		}))
 		defer server.Close()
 
@@ -120,7 +120,7 @@ func TestGetBridges(t *testing.T) {
 			require.Equal(t, "1", r.URL.Query().Get("network_id"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -155,7 +155,7 @@ func TestGetBridges(t *testing.T) {
 			require.Equal(t, "2,3", r.URL.Query().Get("network_ids"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -176,7 +176,7 @@ func TestGetBridges(t *testing.T) {
 	t.Run("handles bad request", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid network_id"))
+			_ = w.Write([]byte("invalid network_id"))
 		}))
 		defer server.Close()
 
@@ -208,7 +208,7 @@ func TestGetClaims(t *testing.T) {
 			require.Equal(t, "1", r.URL.Query().Get("network_id"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -242,7 +242,7 @@ func TestGetClaims(t *testing.T) {
 			require.Equal(t, "123", r.URL.Query().Get("global_index"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -277,7 +277,7 @@ func TestGetUnsetClaims(t *testing.T) {
 			require.Equal(t, "/bridge/v1/unset-claims", r.URL.Path)
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -305,7 +305,7 @@ func TestGetUnsetClaims(t *testing.T) {
 			require.Equal(t, "456", r.URL.Query().Get("global_index"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -337,7 +337,7 @@ func TestGetSetClaims(t *testing.T) {
 			require.Equal(t, "/bridge/v1/set-claims", r.URL.Path)
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -365,7 +365,7 @@ func TestGetSetClaims(t *testing.T) {
 			require.Equal(t, "999", r.URL.Query().Get("global_index"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -398,7 +398,7 @@ func TestGetTokenMappings(t *testing.T) {
 			require.Equal(t, "1", r.URL.Query().Get("network_id"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -429,7 +429,7 @@ func TestGetTokenMappings(t *testing.T) {
 			require.Equal(t, tokenAddr, r.URL.Query().Get("origin_token_address"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -463,7 +463,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 			require.Equal(t, "2", r.URL.Query().Get("network_id"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -492,7 +492,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 			require.Equal(t, "30", r.URL.Query().Get("page_size"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -519,7 +519,7 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 			require.Equal(t, "10", r.URL.Query().Get("deposit_count"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedIndex)
+			_ = json.NewEncoder(w).Encode(expectedIndex)
 		}))
 		defer server.Close()
 
@@ -533,7 +533,7 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 	t.Run("handles error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("not found"))
+			_ = w.Write([]byte("not found"))
 		}))
 		defer server.Close()
 
@@ -559,7 +559,7 @@ func TestGetInjectedL1InfoLeaf(t *testing.T) {
 			require.Equal(t, "5", r.URL.Query().Get("leaf_index"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -597,7 +597,7 @@ func TestGetClaimProof(t *testing.T) {
 			require.Equal(t, "5", r.URL.Query().Get("deposit_count"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -625,7 +625,7 @@ func TestGetLastReorgEvent(t *testing.T) {
 			require.Equal(t, "0", r.URL.Query().Get("network_id"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -661,7 +661,7 @@ func TestGetSyncStatus(t *testing.T) {
 			require.Equal(t, "/bridge/v1/sync-status", r.URL.Path)
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -696,7 +696,7 @@ func TestGetRemoveGEREvents(t *testing.T) {
 			require.Equal(t, "/bridge/v1/removed-gers", r.URL.Path)
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -722,7 +722,7 @@ func TestGetRemoveGEREvents(t *testing.T) {
 			require.Equal(t, "25", r.URL.Query().Get("limit"))
 
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(expectedResp)
+			_ = json.NewEncoder(w).Encode(expectedResp)
 		}))
 		defer server.Close()
 
@@ -741,7 +741,7 @@ func TestDoRequest_Errors(t *testing.T) {
 	t.Run("handles malformed JSON response", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("{invalid json"))
+			_ = w.Write([]byte("{invalid json"))
 		}))
 		defer server.Close()
 
@@ -768,7 +768,7 @@ func TestDoRequest_Errors(t *testing.T) {
 	t.Run("handles service unavailable", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("service unavailable"))
+			_ = w.Write([]byte("service unavailable"))
 		}))
 		defer server.Close()
 
