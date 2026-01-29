@@ -192,6 +192,7 @@ func TestGetBridges(t *testing.T) {
 }
 
 func TestGetClaims(t *testing.T) {
+	//nolint:dupl
 	t.Run("successful request with minimal params", func(t *testing.T) {
 		expectedResp := &types.ClaimsResult{
 			Claims: []*types.ClaimResponse{
@@ -261,6 +262,7 @@ func TestGetClaims(t *testing.T) {
 	})
 }
 
+//nolint:dupl
 func TestGetUnsetClaims(t *testing.T) {
 	t.Run("successful request with no params", func(t *testing.T) {
 		expectedResp := &types.UnsetClaimsResult{
@@ -321,6 +323,7 @@ func TestGetUnsetClaims(t *testing.T) {
 	})
 }
 
+//nolint:dupl
 func TestGetSetClaims(t *testing.T) {
 	t.Run("successful request with no params", func(t *testing.T) {
 		expectedResp := &types.SetClaimsResult{
@@ -382,6 +385,7 @@ func TestGetSetClaims(t *testing.T) {
 }
 
 func TestGetTokenMappings(t *testing.T) {
+	//nolint:dupl
 	t.Run("successful request with minimal params", func(t *testing.T) {
 		expectedResp := &types.TokenMappingsResult{
 			TokenMappings: []*types.TokenMappingResponse{
@@ -447,6 +451,7 @@ func TestGetTokenMappings(t *testing.T) {
 }
 
 func TestGetLegacyTokenMigrations(t *testing.T) {
+	//nolint:dupl
 	t.Run("successful request with minimal params", func(t *testing.T) {
 		expectedResp := &types.LegacyTokenMigrationsResult{
 			TokenMigrations: []*types.LegacyTokenMigrationResponse{
