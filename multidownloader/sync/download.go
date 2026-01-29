@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agglayer/aggkit/common"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
@@ -68,44 +69,32 @@ func (d *Downloader) DownloadNextBlocks(ctx context.Context,
 	}
 	maxLogQuery := d.newMaxLogQuery(lastBlockHeader, maxBlocks, syncerConfig)
 	var result *mdrsynctypes.DownloadResult
-
-	// Create timeout timer once for the entire retry period
-	timeoutTimer := time.NewTimer(d.waitPeriodToCatchUpMaximumLogRange)
-	defer timeoutTimer.Stop()
-	waitingForLogs := true
-	// Retry loop: wait pullingPeriod between retries
-	for waitingForLogs {
-		pullingTimer := time.NewTimer(d.pullingPeriod)
+	conditionMet, err := common.PollingWithTimeout(ctx, d.pullingPeriod, d.waitPeriodToCatchUpMaximumLogRange, func() (bool, error) {
+		var err error
 		err = d.checkReorgedBlock(ctx, lastBlockHeader)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
-		// Retry the query
 		result, err = d.executeLogQuery(ctx, maxLogQuery)
-		// Loop continues to check condition
-		if err == nil {
-			waitingForLogs = false
-			break
+		if err != nil {
+			// The only allowed error is ErrLogsNotAvailable
+			if errors.Is(err, ErrLogsNotAvailable) {
+				return false, nil
+			}
+			return false, err
 		}
-		// The only allowed error is ErrLogsNotAvailable
-		if err != nil && !errors.Is(err, ErrLogsNotAvailable) {
-			return nil, err
-		}
-		select {
-		case <-pullingTimer.C:
-			pullingTimer.Stop()
-			// Check for reorg before retrying
-
-		case <-timeoutTimer.C:
-			pullingTimer.Stop()
-			return nil, fmt.Errorf("DownloadNextBlocks: logs not available after waiting %s for %s: %w",
-				d.waitPeriodToCatchUpMaximumLogRange.String(), maxLogQuery.String(), ErrLogsNotAvailable)
-		case <-ctx.Done():
-			pullingTimer.Stop()
-			return nil, fmt.Errorf("DownloadNextBlocks: "+
-				"context done while waiting for logs %s to be available: %w",
-				maxLogQuery.String(), ctx.Err())
-		}
+		return true, nil
+	})
+	if errors.Is(err, common.ErrTimeoutReached) {
+		return nil, fmt.Errorf("Downloader.DownloadNextBlocks: logs not available for query: %s after waiting %s: %w",
+			maxLogQuery.String(), d.waitPeriodToCatchUpMaximumLogRange.String(), ErrLogsNotAvailable)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !conditionMet {
+		return nil, fmt.Errorf("Downloader.DownloadNextBlocks: logs not available for query: %s. Err: %w",
+			maxLogQuery.String(), ErrLogsNotAvailable)
 	}
 
 	// TODO: Add extra empty block is is in unsafe zone
