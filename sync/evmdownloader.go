@@ -60,7 +60,7 @@ type EVMDownloader struct {
 
 func NewEVMDownloader(
 	syncerID string,
-	ethClient aggkittypes.MultiDownloader,
+	ethClient aggkittypes.MultiDownloaderLegacy,
 	syncBlockChunkSize uint64,
 	finality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -252,7 +252,7 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 }
 
 type EVMDownloaderImplementation struct {
-	ethClient              aggkittypes.MultiDownloader
+	ethClient              aggkittypes.MultiDownloaderLegacy
 	blockFinality          aggkittypes.BlockNumberFinality
 	waitForNewBlocksPeriod time.Duration
 	appender               LogAppenderMap
@@ -269,7 +269,7 @@ type EVMDownloaderImplementation struct {
 // finalizedBlockType can be nil, in this case, it means that the reorgs are not happening on the network
 func NewEVMDownloaderImplementation(
 	syncerID string,
-	ethClient aggkittypes.MultiDownloader,
+	ethClient aggkittypes.MultiDownloaderLegacy,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,

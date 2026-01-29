@@ -145,6 +145,11 @@ func (b BlockRange) Contains(other BlockRange) bool {
 	return b.FromBlock <= other.FromBlock && b.ToBlock >= other.ToBlock
 }
 
+// ContainsBlockNumber returns true if the given block number is within the BlockRange (inclusive).
+func (b BlockRange) ContainsBlockNumber(number uint64) bool {
+	return b.FromBlock <= number && number <= b.ToBlock
+}
+
 func (b BlockRange) Overlaps(other BlockRange) bool {
 	return b.FromBlock <= other.ToBlock && other.FromBlock <= b.ToBlock
 }

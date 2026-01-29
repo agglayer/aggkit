@@ -316,6 +316,85 @@ func TestBlockRange_Contains(t *testing.T) {
 	}
 }
 
+func TestBlockRange_ContainsBlockNumber(t *testing.T) {
+	tests := []struct {
+		name        string
+		blockRange  BlockRange
+		blockNumber uint64
+		expected    bool
+	}{
+		{
+			name:        "block in the middle of range",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 15,
+			expected:    true,
+		},
+		{
+			name:        "block at FromBlock boundary",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 10,
+			expected:    true,
+		},
+		{
+			name:        "block at ToBlock boundary",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 20,
+			expected:    true,
+		},
+		{
+			name:        "block before range",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 5,
+			expected:    false,
+		},
+		{
+			name:        "block after range",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 25,
+			expected:    false,
+		},
+		{
+			name:        "single block range contains itself",
+			blockRange:  NewBlockRange(15, 15),
+			blockNumber: 15,
+			expected:    true,
+		},
+		{
+			name:        "single block range does not contain other",
+			blockRange:  NewBlockRange(15, 15),
+			blockNumber: 16,
+			expected:    false,
+		},
+		{
+			name:        "empty range does not contain block",
+			blockRange:  NewBlockRange(0, 0),
+			blockNumber: 5,
+			expected:    false,
+		},
+		{
+			name:        "empty range with block 0",
+			blockRange:  NewBlockRange(0, 0),
+			blockNumber: 0,
+			expected:    true,
+		},
+		{
+			name:        "invalid range (from > to) does not contain",
+			blockRange:  NewBlockRange(20, 10),
+			blockNumber: 15,
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.blockRange.ContainsBlockNumber(tt.blockNumber)
+			require.Equal(t, tt.expected, got,
+				"ContainsBlockNumber() for %s: expected %v, got %v",
+				tt.name, tt.expected, got)
+		})
+	}
+}
+
 func TestBlockRange_Subtract(t *testing.T) {
 	bn := NewBlockRange(10, 50)
 	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Subtract(NewBlockRange(20, 30)))

@@ -198,6 +198,213 @@ func TestSetSyncSegment_IsAvailable(t *testing.T) {
 	})
 }
 
+func TestSetSyncSegment_IsPartiallyAvailable(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var set *SetSyncSegment
+		query := LogQuery{
+			Addrs:      []common.Address{common.HexToAddress("0x123")},
+			BlockRange: aggkitcommon.NewBlockRange(1, 10),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("empty addresses in query", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		query := LogQuery{
+			Addrs:      []common.Address{},
+			BlockRange: aggkitcommon.NewBlockRange(1, 10),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("address not synced at all", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		query := LogQuery{
+			Addrs:      []common.Address{common.HexToAddress("0x123")},
+			BlockRange: aggkitcommon.NewBlockRange(1, 10),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("no overlap between query and segment", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(50, 100),
+		}
+		set.Add(segment)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 10),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("gap at the beginning - segment starts after FromBlock", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(5, 100),
+		}
+		set.Add(segment)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 50),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("partially available - segment covers beginning but not all", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 50),
+		}
+		set.Add(segment)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.True(t, available)
+		require.NotNil(t, result)
+		require.Equal(t, uint64(1), result.BlockRange.FromBlock)
+		require.Equal(t, uint64(50), result.BlockRange.ToBlock)
+		require.Equal(t, []common.Address{addr}, result.Addrs)
+	})
+
+	t.Run("fully available - segment covers entire query range", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
+		}
+		set.Add(segment)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 50),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.True(t, available)
+		require.NotNil(t, result)
+		require.Equal(t, uint64(1), result.BlockRange.FromBlock)
+		require.Equal(t, uint64(50), result.BlockRange.ToBlock)
+		require.Equal(t, []common.Address{addr}, result.Addrs)
+	})
+
+	t.Run("multiple addresses - all have partial data, find bottleneck", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr1 := common.HexToAddress("0x111")
+		addr2 := common.HexToAddress("0x222")
+
+		segment1 := SyncSegment{
+			ContractAddr: addr1,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 70),
+		}
+		segment2 := SyncSegment{
+			ContractAddr: addr2,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 50), // Bottleneck
+		}
+		set.Add(segment1)
+		set.Add(segment2)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr1, addr2},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.True(t, available)
+		require.NotNil(t, result)
+		require.Equal(t, uint64(1), result.BlockRange.FromBlock)
+		require.Equal(t, uint64(50), result.BlockRange.ToBlock)
+		require.Equal(t, []common.Address{addr1, addr2}, result.Addrs)
+	})
+
+	t.Run("multiple addresses - one has gap at beginning", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr1 := common.HexToAddress("0x111")
+		addr2 := common.HexToAddress("0x222")
+
+		segment1 := SyncSegment{
+			ContractAddr: addr1,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
+		}
+		segment2 := SyncSegment{
+			ContractAddr: addr2,
+			BlockRange:   aggkitcommon.NewBlockRange(10, 100), // Gap at beginning
+		}
+		set.Add(segment1)
+		set.Add(segment2)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr1, addr2},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("multiple addresses - one not synced at all", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr1 := common.HexToAddress("0x111")
+		addr2 := common.HexToAddress("0x222")
+
+		segment1 := SyncSegment{
+			ContractAddr: addr1,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 100),
+		}
+		set.Add(segment1)
+		// addr2 not added
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr1, addr2},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.False(t, available)
+		require.Nil(t, result)
+	})
+
+	t.Run("segment extends beyond query range", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(1, 200),
+		}
+		set.Add(segment)
+
+		query := LogQuery{
+			Addrs:      []common.Address{addr},
+			BlockRange: aggkitcommon.NewBlockRange(1, 100),
+		}
+		available, result := set.IsPartiallyAvailable(query)
+		require.True(t, available)
+		require.NotNil(t, result)
+		require.Equal(t, uint64(1), result.BlockRange.FromBlock)
+		require.Equal(t, uint64(100), result.BlockRange.ToBlock)
+	})
+}
+
 func TestSetSyncSegment_NextQuery(t *testing.T) {
 	t.Run("nil or empty segments", func(t *testing.T) {
 		var set *SetSyncSegment

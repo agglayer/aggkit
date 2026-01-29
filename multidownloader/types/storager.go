@@ -23,10 +23,12 @@ type Storager interface {
 	GetSyncedBlockRangePerContract(tx dbtypes.Querier) (SetSyncSegment, error)
 	SaveEthLogsWithHeaders(tx dbtypes.Querier, blockHeaders aggkittypes.ListBlockHeaders,
 		logs []types.Log, isFinal bool) error
+	// TODO: Deprecate GetEthLogs and use LogQuery instead
 	GetEthLogs(tx dbtypes.Querier, query LogQuery) ([]types.Log, error)
+	LogQuery(tx dbtypes.Querier, query LogQuery) (LogQueryResponse, error)
 	UpdateSyncedStatus(tx dbtypes.Querier, segments []SyncSegment) error
 	UpsertSyncerConfigs(tx dbtypes.Querier, configs []ContractConfig) error
-	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, bool, error)
+	GetBlockHeaderByNumber(tx dbtypes.Querier, blockNumber uint64) (*aggkittypes.BlockHeader, FinalizedType, error)
 	NewTx(ctx context.Context) (dbtypes.Txer, error)
 	// GetBlockHeadersNotFinalized retrieves all block headers that are not finalized <= maxBlock
 	// if maxBlock is nil, retrieves all not finalized blocks
@@ -40,6 +42,8 @@ type Storager interface {
 	// second return value indicates if the block is reorged
 	GetBlockReorgedChainID(tx dbtypes.Querier,
 		blockNumber uint64, blockHash common.Hash) (uint64, bool, error)
+	GetReorgedDataByChainID(tx dbtypes.Querier,
+		reorgedChainID uint64) (*ReorgData, error)
 }
 
 type StoragerForReorg interface {

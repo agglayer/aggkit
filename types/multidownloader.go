@@ -19,7 +19,7 @@ type SyncerConfig struct {
 	ToBlock BlockNumberFinality
 }
 
-type MultiDownloader interface {
+type MultiDownloaderLegacy interface {
 	ChainID(ctx context.Context) (uint64, error)
 	BlockNumber(ctx context.Context, finality BlockNumberFinality) (uint64, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)

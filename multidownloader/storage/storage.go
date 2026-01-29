@@ -180,6 +180,7 @@ type logAndBlockRow struct {
 	BlockHash       common.Hash    `meddler:"block_hash,hash"`
 	BlockTimestamp  uint64         `meddler:"block_timestamp"`
 	BlockParentHash *common.Hash   `meddler:"block_parent_hash,hash"`
+	IsFinal         bool           `meddler:"is_final"`
 }
 
 func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.LogQuery) ([]types.Log, error) {
@@ -230,6 +231,87 @@ func (a *MultidownloaderStorage) GetEthLogs(tx dbtypes.Querier, query mdrtypes.L
 		logs = append(logs, log)
 	}
 	return logs, nil
+}
+
+func (a *MultidownloaderStorage) LogQuery(tx dbtypes.Querier,
+	query mdrtypes.LogQuery) (mdrtypes.LogQueryResponse, error) {
+	if tx == nil {
+		tx = a.db
+	}
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	dbRows := make([]*logAndBlockRow, 0)
+	sqlQuery := `
+	SELECT * FROM logs
+	LEFT JOIN blocks ON logs.block_number = blocks.block_number
+	WHERE address IN (?)
+	AND logs.block_number>=? AND logs.block_number<=?
+	ORDER BY logs.block_number ASC, log_index ASC
+	`
+	addrs := make([]string, 0, len(query.Addrs))
+	for _, addr := range query.Addrs {
+		addrs = append(addrs, addr.Hex())
+	}
+	// This is used to extend the address slice into the query
+	queryStr, args, err := sqlx.In(sqlQuery, addrs, query.BlockRange.FromBlock, query.BlockRange.ToBlock)
+	if err != nil {
+		return mdrtypes.LogQueryResponse{}, fmt.Errorf("error building SQL query: %w", err)
+	}
+	err = meddler.QueryAll(tx, &dbRows, queryStr, args...)
+	if err != nil {
+		return mdrtypes.LogQueryResponse{}, fmt.Errorf("error querying logs: %w", err)
+	}
+
+	// Group logs by block number
+	blockLogsMap := make(map[uint64]*mdrtypes.BlockWithLogs)
+	blockOrder := make([]uint64, 0)
+
+	for _, dbRow := range dbRows {
+		var topics []common.Hash
+		if err := json.Unmarshal([]byte(dbRow.Topics), &topics); err != nil {
+			return mdrtypes.LogQueryResponse{}, fmt.Errorf("error unmarshaling topics: %w", err)
+		}
+		log := mdrtypes.Log{
+			Address:        dbRow.Address,
+			Topics:         topics,
+			Data:           dbRow.Data,
+			BlockNumber:    dbRow.BlockNumber,
+			TxHash:         dbRow.TxHash,
+			TxIndex:        dbRow.TxIndex,
+			Index:          dbRow.Index,
+			BlockTimestamp: dbRow.BlockTimestamp,
+			Removed:        false,
+		}
+
+		// Add block to map if not already present
+		if _, exists := blockLogsMap[dbRow.BlockNumber]; !exists {
+			blockLogsMap[dbRow.BlockNumber] = &mdrtypes.BlockWithLogs{
+				Header: aggkittypes.BlockHeader{
+					Number:     dbRow.BlockNumber,
+					Hash:       dbRow.BlockHash,
+					Time:       dbRow.BlockTimestamp,
+					ParentHash: dbRow.BlockParentHash,
+				},
+				IsFinal: dbRow.IsFinal,
+				Logs:    make([]mdrtypes.Log, 0),
+			}
+			blockOrder = append(blockOrder, dbRow.BlockNumber)
+		}
+
+		blockLogsMap[dbRow.BlockNumber].Logs = append(blockLogsMap[dbRow.BlockNumber].Logs, log)
+	}
+
+	// Build response maintaining block order
+	blocks := make([]mdrtypes.BlockWithLogs, 0, len(blockOrder))
+	for _, blockNum := range blockOrder {
+		blocks = append(blocks, *blockLogsMap[blockNum])
+	}
+
+	return mdrtypes.LogQueryResponse{
+		Blocks:        blocks,
+		ResponseRange: query.BlockRange,
+	}, nil
 }
 
 // tx dbtypes.Txer

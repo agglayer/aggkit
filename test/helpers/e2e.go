@@ -159,7 +159,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
 
-	var multidownloaderClient aggkittypes.MultiDownloader
+	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	if useMultidownloaderForTest {
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),

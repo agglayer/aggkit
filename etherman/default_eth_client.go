@@ -156,6 +156,9 @@ func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.
 	if err != nil {
 		return nil, fmt.Errorf("rpcGetBlockByNumber: CallContext error: %w", err)
 	}
+	if rawEthHeader == nil {
+		return nil, fmt.Errorf("rpcGetBlockByNumber:not found:  %s", blockArg)
+	}
 	return rawEthHeader.ToBlockHeader()
 }
 

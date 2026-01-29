@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
@@ -116,4 +119,47 @@ func (a *MultidownloaderStorage) GetBlockReorgedChainID(tx dbtypes.Querier,
 		return 0, false, nil
 	}
 	return *chainIDRow.ChainID, true, nil
+}
+
+func (a *MultidownloaderStorage) GetReorgedDataByChainID(tx dbtypes.Querier,
+	reorgedChainID uint64) (*mdrtypes.ReorgData, error) {
+	if tx == nil {
+		tx = a.db
+	}
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	var row reorgRow
+	query := `SELECT chain_id, detected_at_block, reorged_from_block, reorged_to_block,
+		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name
+		FROM reorgs WHERE chain_id = ? LIMIT 1;`
+
+	err := meddler.QueryRow(tx, &row, query, reorgedChainID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetReorgedDataByChainID: error querying reorgs table: %w", err)
+	}
+
+	// Convert string to BlockNumberFinality
+	blockFinality, err := aggkittypes.NewBlockNumberFinality(row.NetworkFinalizedBlockName)
+	if err != nil {
+		return nil, fmt.Errorf("GetReorgedDataByChainID: error parsing NetworkFinalizedBlockName: %w", err)
+	}
+
+	reorgData := &mdrtypes.ReorgData{
+		ChainID: row.ChainID,
+		BlockRangeAffected: aggkitcommon.BlockRange{
+			FromBlock: row.ReorgedFromBlock,
+			ToBlock:   row.ReorgedToBlock,
+		},
+		DetectedAtBlock:           row.DetectedAtBlock,
+		DetectedTimestamp:         row.DetectedTimestamp,
+		NetworkLatestBlock:        row.NetworkLatestBlock,
+		NetworkFinalizedBlock:     row.NetworkFinalizedBlock,
+		NetworkFinalizedBlockName: *blockFinality,
+	}
+
+	return reorgData, nil
 }

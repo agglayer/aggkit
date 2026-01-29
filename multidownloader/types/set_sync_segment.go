@@ -178,6 +178,60 @@ func (f *SetSyncSegment) IsAvailable(query LogQuery) bool {
 	return true
 }
 
+// IsPartiallyAvailable checks if some part of the LogQuery is already synced
+// always starting from FromBlock
+// If there are any data avaible, it returns true and the LogQuery with the available data
+func (f *SetSyncSegment) IsPartiallyAvailable(query LogQuery) (bool, *LogQuery) {
+	if f == nil || len(query.Addrs) == 0 {
+		return false, nil
+	}
+
+	// Find the maximum contiguous range starting from FromBlock that is available
+	// for all addresses in the query
+	var maxAvailableToBlock *uint64
+
+	for _, addr := range query.Addrs {
+		segment, exists := f.GetByContract(addr)
+		if !exists {
+			// If any address is not synced at all, nothing is available
+			return false, nil
+		}
+
+		// Calculate the intersection between the segment and the query range
+		intersection := segment.BlockRange.Intersect(query.BlockRange)
+		if intersection.IsEmpty() {
+			// If there's no overlap, nothing is available
+			return false, nil
+		}
+
+		// Check if the intersection starts at FromBlock
+		// If not, there's a gap at the beginning, so nothing is available
+		if intersection.FromBlock != query.BlockRange.FromBlock {
+			return false, nil
+		}
+
+		// Update the minimum ToBlock (the bottleneck across all addresses)
+		if maxAvailableToBlock == nil || intersection.ToBlock < *maxAvailableToBlock {
+			maxAvailableToBlock = &intersection.ToBlock
+		}
+	}
+
+	if maxAvailableToBlock == nil {
+		return false, nil
+	}
+
+	// Create the available LogQuery
+	availableQuery := &LogQuery{
+		Addrs: query.Addrs,
+		BlockRange: aggkitcommon.NewBlockRange(
+			query.BlockRange.FromBlock,
+			*maxAvailableToBlock,
+		),
+	}
+
+	return true, availableQuery
+}
+
 // NextQuery generates the next LogQuery to sync based on the lowest FromBlock pending
 // to synchronize
 func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uint64) (*LogQuery, error) {

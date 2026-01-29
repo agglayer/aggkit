@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
@@ -251,6 +252,19 @@ func (p *processor) getInfoByIndexWithTx(tx dbtypes.DBer, index uint32) (*L1Info
 // GetLastProcessedBlock returns the last processed block
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return p.getLastProcessedBlockWithTx(p.db)
+}
+
+// GetLastProcessedBlock returns the last processed block
+func (p *processor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittypes.BlockHeader, error) {
+	var lastProcessedBlockNum uint64
+	var hash *string
+	row := p.db.QueryRow("SELECT num, hash FROM BLOCK ORDER BY num DESC LIMIT 1;")
+	err := row.Scan(&lastProcessedBlockNum, &hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	hdr := aggkittypes.NewBlockHeader(lastProcessedBlockNum, common.HexToHash(*hash), 0, nil)
+	return hdr, err
 }
 
 func (p *processor) getLastProcessedBlockWithTx(tx dbtypes.Querier) (uint64, error) {

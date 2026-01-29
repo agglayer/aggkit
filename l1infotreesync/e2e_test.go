@@ -80,7 +80,7 @@ func TestE2E(t *testing.T) {
 	mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
-	var multidownloaderClient aggkittypes.MultiDownloader
+	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	var err error
 	if useMultidownloaderForTests {
 		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
@@ -166,7 +166,7 @@ func TestWithReorgs(t *testing.T) {
 	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil, nil), rdConfig, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
-	var multidownloaderClient aggkittypes.MultiDownloader
+	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	if useMultidownloaderForTests {
 		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 		cfgMD.Enabled = true
@@ -320,7 +320,7 @@ func TestStressAndReorgs(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
-	var multidownloaderClient aggkittypes.MultiDownloader
+	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	if useMultidownloaderForTests {
 		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 		cfgMD.Enabled = true

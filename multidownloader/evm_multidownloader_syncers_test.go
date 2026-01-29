@@ -62,6 +62,8 @@ func TestEVMMultidownloader_BlockHeader(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, true)
 	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
 		Return(uint64(123456), nil)
+	testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(123456)).
+		Return(nil, false, nil) // Block not found in storage, will fetch from ethClient
 	testData.mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(123456)).
 		Return(&aggkittypes.BlockHeader{
 			Number: 123456,
@@ -75,6 +77,9 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 	t.Run("negative block number returns error", func(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
+		// FinalizedBlock is not a numeric finality, so GetCurrentBlockNumber will fail
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+			Return(uint64(0), errors.New("only numeric block finalities are supported"))
 
 		// Test
 		result, err := testData.mdr.HeaderByNumber(context.Background(), &aggkittypes.FinalizedBlock)
@@ -88,6 +93,8 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 	t.Run("storage error returns error", func(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(123), nil)
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(123)).
 			Return(nil, false, errStorageExample)
 
@@ -108,10 +115,12 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		expectedBlock := &aggkittypes.BlockHeader{
 			Number: 123,
 		}
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(expectedBlock.Number, nil)
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, expectedBlock.Number).
 			Return(expectedBlock, false, nil)
 
-			// Test
+		// Test
 		result, err := testData.mdr.HeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(123))
 
 		// Assertions
@@ -123,6 +132,8 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
 
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(123), nil)
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(123)).
 			Return(nil, false, nil) // Block not found in storage
 
@@ -144,6 +155,8 @@ func TestEVMMultidownloader_HeaderByNumber(t *testing.T) {
 		// Setup
 		testData := newEVMMultidownloaderTestData(t, true)
 
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(123), nil)
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(123)).
 			Return(nil, false, nil) // Block not found in storage
 

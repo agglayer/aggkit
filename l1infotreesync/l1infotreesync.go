@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -35,10 +38,18 @@ var (
 	ErrNotFound = errors.New("l1infotreesync: not found")
 )
 
+type DriverInterface interface {
+	Sync(ctx context.Context)
+}
+
+type DownloaderInterface interface {
+	Finality() aggkittypes.BlockNumberFinality
+}
+
 type L1InfoTreeSync struct {
 	processor  *processor
-	driver     *sync.EVMDriver
-	downloader *sync.EVMDownloader
+	driver     DriverInterface
+	downloader DownloaderInterface
 }
 
 func NewReadOnly(
@@ -56,10 +67,63 @@ func NewReadOnly(
 }
 
 // New creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
+func NewMultidownloadBased(
+	ctx context.Context,
+	cfg Config,
+	l1Multidownloader *multidownloader.EVMMultidownloader,
+	flags CreationFlags,
+) (*L1InfoTreeSync, error) {
+	processor, err := newProcessor(cfg.DBPath)
+	if err != nil {
+		return nil, err
+	}
+	rh := &sync.RetryHandler{
+		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
+		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
+	}
+
+	appender, err := buildAppender(l1Multidownloader.EthClient(), cfg.GlobalExitRootAddr, cfg.RollupManagerAddr, flags)
+	if err != nil {
+		return nil, err
+	}
+	addressesToQuery := []common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr}
+	syncerConfig := aggkittypes.SyncerConfig{
+		SyncerID:          "l1infotreesync",
+		ContractAddresses: addressesToQuery,
+		FromBlock:         cfg.InitialBlock,
+		ToBlock:           cfg.BlockFinality,
+	}
+	err = l1Multidownloader.RegisterSyncer(syncerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register l1infotreesync in multidownloader: %w", err)
+	}
+	logger := log.WithFields("syncer", syncerID)
+	downloader := mdrsync.NewDownloader(
+		l1Multidownloader,
+		logger,
+		rh,
+		appender,
+		5*time.Second,
+		time.Second,
+	)
+
+	driver := mdrsync.NewEVMDriver(processor, downloader, syncerConfig,
+		cfg.SyncBlockChunkSize, rh, logger)
+	if err != nil {
+		return nil, err
+	}
+	return &L1InfoTreeSync{
+		processor:  processor,
+		driver:     driver,
+		downloader: downloader,
+	}, nil
+}
+
+// New creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
 func New(
 	ctx context.Context,
 	cfg Config,
-	l1Client aggkittypes.MultiDownloader,
+	l1Client aggkittypes.MultiDownloaderLegacy,
 	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
 ) (*L1InfoTreeSync, error) {

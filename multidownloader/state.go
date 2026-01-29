@@ -74,6 +74,10 @@ func (s *State) IsAvailable(query mdrtypes.LogQuery) bool {
 	return s.Synced.IsAvailable(query)
 }
 
+func (s *State) IsPartiallyAvailable(query mdrtypes.LogQuery) (bool, *mdrtypes.LogQuery) {
+	return s.Synced.IsPartiallyAvailable(query)
+}
+
 func (s *State) GetTotalPendingBlockRange() *aggkitcommon.BlockRange {
 	return s.Pending.GetTotalPendingBlockRange()
 }

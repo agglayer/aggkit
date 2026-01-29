@@ -54,7 +54,7 @@ type EVMMultidownloader struct {
 	cancel        context.CancelFunc
 }
 
-var _ aggkittypes.MultiDownloader = (*EVMMultidownloader)(nil)
+var _ aggkittypes.MultiDownloaderLegacy = (*EVMMultidownloader)(nil)
 
 // NewEVMMultidownloader creates a new EVM multidownloader instance with proper validation
 func NewEVMMultidownloader(log aggkitcommon.Logger,
@@ -196,7 +196,7 @@ func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
 			return fmt.Errorf("detectReorgs: block number %d not found in storage", number)
 		}
 		if storageBlock.Hash != rpcBlock.Hash {
-			return mdrtypes.NewReorgError(storageBlock.Number, storageBlock.Hash, rpcBlock.Hash,
+			return mdrtypes.NewDetectedReorgError(storageBlock.Number, storageBlock.Hash, rpcBlock.Hash,
 				fmt.Sprintf("detectReorgs: reorg detected at block number %d: storage hash %s != rpc hash %s",
 					number, storageBlock.Hash.String(), rpcBlock.Hash.String()))
 		}
@@ -320,7 +320,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 
 		err := dh.StartStep(runCtx)
 		if err != nil {
-			reorgErr := mdrtypes.CastReorgError(err)
+			reorgErr := mdrtypes.CastDetectedReorgError(err)
 			if reorgErr == nil {
 				dh.log.Warnf("Error running multidownloader: %s ", err.Error())
 				time.Sleep(time.Millisecond) // Brief pause before retry
@@ -454,7 +454,7 @@ func (dh *EVMMultidownloader) StartStepOld(ctx context.Context) error {
 		if err = dh.sync(ctx, dh.StepUnsafe, "unsafe"); err != nil {
 			return err
 		}
-		dh.log.Infof("waiting new block...")
+
 		if err = dh.WaitForNewLatestBlocks(ctx); err != nil {
 			return err
 		}
@@ -468,6 +468,7 @@ func (dh *EVMMultidownloader) StartStepOld(ctx context.Context) error {
 
 func (dh *EVMMultidownloader) WaitForNewLatestBlocks(ctx context.Context) error {
 	latestSyncedBlock := dh.state.GetHighestBlockNumberPendingToSync()
+	dh.log.Infof("waiting new block (latest>%d)...", latestSyncedBlock)
 	_, err := dh.waitForNewBlocks(ctx, aggkittypes.LatestBlock, latestSyncedBlock)
 	return err
 }
@@ -600,6 +601,13 @@ func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	return dh.state.IsAvailable(query)
+}
+
+// Check if the given log query is partially available
+func (dh *EVMMultidownloader) IsPartiallyAvailable(query mdrtypes.LogQuery) (bool, *mdrtypes.LogQuery) {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+	return dh.state.IsPartiallyAvailable(query)
 }
 
 // getTotalPendingBlockRange returns the full pending block range without taking in

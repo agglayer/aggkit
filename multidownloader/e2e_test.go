@@ -145,7 +145,7 @@ func TestE2E(t *testing.T) {
 	_, err = testData.LogEmitterContract.EmitPing(testData.auth, big.NewInt(123), "block 4")
 	require.NoError(t, err)
 	testData.SimulatedL1.Commit() // Block 4
-	_, err = mdr.FilterLogs(ctx, ethereum.FilterQuery{
+	logs, err = mdr.FilterLogs(ctx, ethereum.FilterQuery{
 		Addresses: []common.Address{testData.LogEmitterAddr},
 		FromBlock: big.NewInt(0),
 		ToBlock:   big.NewInt(int64(latestBlock + 2)),

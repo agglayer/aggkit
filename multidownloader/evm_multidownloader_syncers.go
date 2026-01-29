@@ -9,7 +9,6 @@ import (
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -101,41 +100,59 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context,
 	return blockHeader, nil
 }
 
+// HeaderByNumber gets the block header for the given block number from storage or ethClient
+func (dh *EVMMultidownloader) StorageHeaderByNumber(ctx context.Context,
+	number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, mdrtypes.FinalizedType, error) {
+	if number == nil {
+		number = &aggkittypes.LatestBlock
+	}
+	// Resolve blockNumber
+	blockNumber, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, *number)
+	if err != nil {
+		return nil, false, fmt.Errorf("EVMMultidownloader.StorageHeaderByNumber: cannot get block number for finality=%s: %w",
+			number.String(), err)
+	}
+	// Is this block in storage?
+	block, finalized, err := dh.storage.GetBlockHeaderByNumber(nil, blockNumber)
+	if err != nil {
+		return nil, false, fmt.Errorf("EVMMultidownloader.StorageHeaderByNumber: cannot get BlockHeader number=%s: %w",
+			number.String(), err)
+	}
+	return block, finalized, nil
+}
+
 // EthClient returns the underlying eth client
 func (dh *EVMMultidownloader) EthClient() aggkittypes.BaseEthereumClienter {
 	return dh.ethClient
 }
 
-// CheckValidBlock checks if the given blockNumber and blockHash are still valid
-// returns: isValid bool, reorgChainID uint64, err error
-func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber uint64,
-	blockHash common.Hash) (bool, uint64, error) {
-	// Check if is stored as valid block
-	storedBlock, _, err := dh.storage.GetBlockHeaderByNumber(nil, blockNumber)
+func (dh *EVMMultidownloader) LogQuery(ctx context.Context,
+	query mdrtypes.LogQuery) (mdrtypes.LogQueryResponse, error) {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+	isAval, availQuery := dh.state.IsPartiallyAvailable(query)
+	if !isAval {
+		return mdrtypes.LogQueryResponse{},
+			fmt.Errorf("EVMMultidownloader.LogQuery: logs not synced for query: %s",
+				query.String())
+	}
+	finalizedBlockNumber, err := dh.GetFinalizedBlockNumber(ctx)
 	if err != nil {
-		return true, 0, fmt.Errorf("EVMMultidownloader.CheckValidBlock: cannot get BlockHeader number=%d: %w",
-			blockNumber, err)
+		return mdrtypes.LogQueryResponse{},
+			fmt.Errorf("EVMMultidownloader.LogQuery: cannot get finalized block number: %w",
+				err)
 	}
-	if storedBlock != nil {
-		// Is valid?
-		if storedBlock.Hash == blockHash {
-			return true, 0, nil
-		}
-	}
-	// From this point is invalid or unknown
-	// Check in blocks_reorged
-	chainID, found, err := dh.storage.GetBlockReorgedChainID(nil, blockNumber, blockHash)
+	// Calculate UnsafeRange
+
+	result, err := dh.storage.LogQuery(nil, *availQuery)
 	if err != nil {
-		return true, 0, fmt.Errorf("EVMMultidownloader.CheckValidBlock: cannot check blocks_reorged for blockNumber=%d: %w",
-			blockNumber, err)
+		// Calculate UnsafeRange
+		_, unsafePendingBlockRange := result.ResponseRange.SplitByBlockNumber(finalizedBlockNumber)
+		result.UnsafeRange = unsafePendingBlockRange
 	}
-	if found {
-		dh.log.Infof("EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s found in blocks_reorged (chainID=%d)",
-			blockNumber, blockHash.Hex(), chainID)
-		return false, chainID, nil
-	}
-	// Not found anywhere, consider invalid
-	return false, 0, fmt.Errorf(
-		"EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s not found in storage or blocks_reorged",
-		blockNumber, blockHash.Hex())
+	return result, err
+}
+
+func (dh *EVMMultidownloader) Finality() aggkittypes.BlockNumberFinality {
+	return dh.cfg.BlockFinality
 }

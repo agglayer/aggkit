@@ -4,41 +4,45 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/etherman"
 	mockethermantypes "github.com/agglayer/aggkit/etherman/types/mocks"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
-	"github.com/agglayer/aggkit/reorgdetector"
-	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-const runL1InfoTree = true
-const l1InfoTreeUseMultidownloader = true
-const storagePath = "../tmp/ut/"
+// Imports below are only used in skipped tests but need to remain commented to avoid import cycles:
+// jRPC "github.com/0xPolygon/cdk-rpc/rpc"
+// "github.com/agglayer/aggkit/etherman"
+// "github.com/agglayer/aggkit/l1infotreesync"
+// "github.com/agglayer/aggkit/reorgdetector"
+// aggkitsync "github.com/agglayer/aggkit/sync"
+// "github.com/ethereum/go-ethereum/ethclient"
+// "github.com/ethereum/go-ethereum/rpc"
+// "os"
+
+// Commented out constants only used in skipped tests
+// const runL1InfoTree = true
+// const l1InfoTreeUseMultidownloader = true
+// const storagePath = "../tmp/ut/"
 
 func TestEVMMultidownloader(t *testing.T) {
-	t.Skip("code to test/debug not real unittest")
+	t.Skip("code to test/debug not real unittest - requires external dependencies (l1infotreesync causes import cycle)")
+	/* Commented out to avoid import cycles
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -89,7 +93,7 @@ func TestEVMMultidownloader(t *testing.T) {
 	ctx := context.TODO()
 	var l1infotree *l1infotreesync.L1InfoTreeSync
 	if runL1InfoTree == true {
-		var multidownloader aggkittypes.MultiDownloader
+		var multidownloader aggkittypes.MultiDownloaderLegacy
 		var dbPath string
 		if l1InfoTreeUseMultidownloader {
 			multidownloader = mdr
@@ -169,10 +173,12 @@ func TestEVMMultidownloader(t *testing.T) {
 		log.Infof("L1InfoTree sync finished in %s", timer.String())
 	}()
 	wg.Wait()
+	*/
 }
 
 func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
-	t.Skip("it's a exploratory test for batch requests")
+	t.Skip("it's a exploratory test for batch requests - requires external dependencies")
+	/* Commented out to avoid import cycles
 	l1url := os.Getenv("L1URL")
 	ethClient, err := rpc.DialContext(t.Context(), l1url)
 	require.NoError(t, err)
@@ -206,10 +212,12 @@ func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
 
 	log.Infof("blockNumber: %s, chainID: %s", blockNumber, chainID)
 	log.Infof("latestBlock: %+v", latestBlock)
+	*/
 }
 
 func TestDownloaderParellelvsBatch(t *testing.T) {
-	t.Skip("it's a benchmarking test")
+	t.Skip("it's a benchmarking test - requires external dependencies")
+	/* Commented out to avoid import cycles
 	l1url := os.Getenv("L1URL")
 	ethClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
@@ -246,16 +254,18 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 		require.NotNil(t, headerB)
 		require.Equal(t, headerP.Hash, headerB.Hash)
 	}
+	*/
 }
 
-func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
-	for _, h := range headers {
-		if h.Number == bn {
-			return h
-		}
-	}
-	return nil
-}
+// getBlockHeader is only used in skipped tests
+// func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
+// 	for _, h := range headers {
+// 		if h.Number == bn {
+// 			return h
+// 		}
+// 	}
+// 	return nil
+// }
 
 func TestEVMMultidownloader_NewEVMMultidownloader(t *testing.T) {
 	logger := log.WithFields("test", "evm_multidownloader_test")
