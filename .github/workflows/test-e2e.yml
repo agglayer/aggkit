@@ -59,7 +59,7 @@ jobs:
   build-aggkit-image:
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
-      go-version: 1.25.5
+      go-version: 1.25.6
       docker-image-name: aggkit
 
   read-aggkit-args:
@@ -157,7 +157,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.5
+          go-version: 1.25.6
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
       - name: Upload Binary
