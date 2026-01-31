@@ -37,6 +37,8 @@ type Config struct {
 	// PeriodToCheckReorgs is the duration to wait before checking for reorgs
 	// If is 0 reorgs are checked only when a new block appears
 	PeriodToCheckReorgs types.Duration
+	// DeveloperMode enables developer mode features like forcing reorgs
+	DeveloperMode bool
 }
 
 const (

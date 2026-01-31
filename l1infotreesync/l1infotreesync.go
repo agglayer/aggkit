@@ -98,6 +98,7 @@ func NewMultidownloadBased(
 		return nil, fmt.Errorf("failed to register l1infotreesync in multidownloader: %w", err)
 	}
 	logger := log.WithFields("syncer", syncerID)
+	// TODO: move the durations to config file (mdrsync.NewDownloader)
 	downloader := mdrsync.NewDownloader(
 		l1Multidownloader,
 		logger,

@@ -56,7 +56,9 @@ reset:
 			lastBlockHeader,
 			d.syncBlockChunkSize,
 			d.syncerConfig)
-
+		if err != nil {
+			d.logger.Error("error downloading next blocks: ", err)
+		}
 		if err != nil && mdrtypes.IsReorgedError(err) {
 			err := d.handleReorg(ctx, mdrtypes.CastReorgedError(err))
 			if err != nil {

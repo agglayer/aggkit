@@ -404,42 +404,10 @@ func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, finished)
 
-	err = testData.mdr.sync(t.Context(), testData.mdr.StepSafe, "safe")
-	require.NoError(t, err)
-	require.True(t, finished)
-
 	ctx, cancel := context.WithCancel(context.TODO())
 	cancel()
 	_, err = testData.mdr.StepSafe(ctx)
 	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestEVMMultidownloader_sync(t *testing.T) {
-	testData := newEVMMultidownloaderTestData(t, false)
-	t.Run("context canceled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.TODO())
-		cancel()
-		err := testData.mdr.sync(ctx, func(ctx context.Context) (bool, error) {
-			return false, nil
-		}, "test_sync")
-		require.ErrorIs(t, err, context.Canceled)
-	})
-	t.Run("sync func returns an error", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.TODO())
-		cancel()
-		returnedErr := fmt.Errorf("sync function error")
-		err := testData.mdr.sync(ctx, func(ctx context.Context) (bool, error) {
-			return false, returnedErr
-		}, "test_sync")
-		require.ErrorIs(t, err, returnedErr)
-	})
-
-	t.Run("sync func finished no errors", func(t *testing.T) {
-		err := testData.mdr.sync(t.Context(), func(ctx context.Context) (bool, error) {
-			return true, nil
-		}, "test_sync")
-		require.NoError(t, err)
-	})
 }
 
 func TestEVMMultidownloader_Start(t *testing.T) {

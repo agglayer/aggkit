@@ -140,7 +140,7 @@ func TestE2E(t *testing.T) {
 		Id:      big.NewInt(123),
 		Message: "hello world",
 	}, emitterLogs[1])
-	timeStart := time.Now()
+
 	testData.SimulatedL1.Commit() // Block 3
 	_, err = testData.LogEmitterContract.EmitPing(testData.auth, big.NewInt(123), "block 4")
 	require.NoError(t, err)
@@ -152,13 +152,13 @@ func TestE2E(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, len(logs))
-	elapsed := time.Since(timeStart)
-	logger.Infof("E2E test completed in %s", elapsed.String())
+
 	showChainStatus(t, ctx, logger, testData.SimulatedL1)
 	blk4, err := mdr.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(4))
 	require.NoError(t, err)
 
 	// Forking at block 3 -> so block 4 will be reorged
+	// ---------- FORKING POINT ----------------------------------------
 	forkAt(t, ctx, logger, testData.SimulatedL1, 3)
 
 	// Now se have to create a longer chain to force reorg

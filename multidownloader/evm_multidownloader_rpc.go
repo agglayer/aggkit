@@ -53,3 +53,16 @@ func (b *EVMMultidownloaderRPC) Status() (interface{}, rpc.Error) {
 	}
 	return info, nil
 }
+
+func (b *EVMMultidownloaderRPC) Reorg(mismatchingBlockNumber uint64) (interface{}, rpc.Error) {
+	if b.downloader.debug == nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.ForceReorg: debug is not enabled")
+	}
+	b.downloader.debug.ForceRorg(mismatchingBlockNumber)
+	return struct {
+		Message string `json:"message"`
+	}{
+		Message: "Reorg forced successfully",
+	}, nil
+}

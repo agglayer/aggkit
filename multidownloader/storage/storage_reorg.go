@@ -67,6 +67,11 @@ func (a *MultidownloaderStorage) InsertReorgAndMoveReorgedBlocksAndLogs(tx dbtyp
 		reorgData.BlockRangeAffected); err != nil {
 		return 0, fmt.Errorf("InsertNewReorg: error moving reorged blocks to block_reorged: %w", err)
 	}
+	// Adjust sync_status table to reflect the reorg
+	err = a.adjustSyncStatusForReorgNoMutex(tx, reorgData)
+	if err != nil {
+		return 0, fmt.Errorf("InsertNewReorg: error adjusting sync_status for reorg: %w", err)
+	}
 	return reorgRow.ChainID, nil
 }
 
@@ -162,4 +167,42 @@ func (a *MultidownloaderStorage) GetReorgedDataByChainID(tx dbtypes.Querier,
 	}
 
 	return reorgData, nil
+}
+
+// AdjustSyncStatusForReorg adjusts the sync_status table after a reorg by setting
+// synced_to_block to the block before the reorg started for all affected contracts
+func (a *MultidownloaderStorage) adjustSyncStatusForReorgNoMutex(tx dbtypes.Querier,
+	reorgData mdrtypes.ReorgData) error {
+	if tx == nil {
+		return fmt.Errorf("AdjustSyncStatusForReorg: require a tx to ensure atomicity")
+	}
+	// Calculate the new synced_to_block (one block before the reorg)
+	var newSyncedToBlock uint64
+	if reorgData.BlockRangeAffected.FromBlock > 0 {
+		newSyncedToBlock = reorgData.BlockRangeAffected.FromBlock - 1
+	} else {
+		newSyncedToBlock = 0
+	}
+
+	// Update all contracts that have synced beyond the reorg point
+	query := `UPDATE sync_status
+		SET synced_to_block = ?
+		WHERE synced_to_block >= ?`
+
+	result, err := tx.Exec(query, newSyncedToBlock, reorgData.BlockRangeAffected.FromBlock)
+	if err != nil {
+		return fmt.Errorf("AdjustSyncStatusForReorg: error updating sync_status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("AdjustSyncStatusForReorg: error getting rows affected: %w", err)
+	}
+
+	a.logger.Infof("AdjustSyncStatusForReorg: adjusted %d contract(s) to synced_to_block=%d "+
+		"due to reorg at blocks [%d-%d]",
+		rowsAffected, newSyncedToBlock,
+		reorgData.BlockRangeAffected.FromBlock, reorgData.BlockRangeAffected.ToBlock)
+
+	return nil
 }

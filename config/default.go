@@ -338,6 +338,7 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 
 [L1Multidownloader]
 	Enabled = false
+	DeveloperMode = false
 	StoragePath = "{{PathRWData}}/l1_multidownloader.sqlite"
 	BlockChunkSize = 10000
 	MaxParallelBlockHeaderRetrieval = 30
@@ -347,6 +348,7 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 
 [L2Multidownloader]
 	Enabled = false
+	DeveloperMode = false
 	StoragePath = "{{PathRWData}}/l2_multidownloader.sqlite"
 	BlockChunkSize = 10000
 	MaxParallelBlockHeaderRetrieval = 30

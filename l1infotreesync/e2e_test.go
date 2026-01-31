@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const useMultidownloaderForTests = false
+const useMultidownloaderForTests = true
 
 func newSimulatedClient(t *testing.T) (
 	*simulated.Backend,
@@ -158,33 +158,6 @@ func TestWithReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rdConfig := reorgdetector.Config{
-		DBPath:              dbPathReorg,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
-		FinalizedBlock:      aggkittypes.FinalizedBlock,
-	}
-	rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil, nil), rdConfig, reorgdetector.L1)
-	require.NoError(t, err)
-	require.NoError(t, rd.Start(ctx))
-	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
-	if useMultidownloaderForTests {
-		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
-		cfgMD.Enabled = true
-		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
-			log.WithFields("module", "multidownloader"),
-			cfgMD,
-			"testMD",
-			etherman.NewDefaultEthClient(client.Client(), nil, nil),
-			nil, // rpcClient
-			nil, // Storage will be created internally
-			nil, // blockNotifierManager will be created internally
-			nil, // reorgProcessor will be created internally
-		)
-		require.NoError(t, err)
-	} else {
-		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil, nil))
-	}
-
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPathSyncer,
 		InitialBlock:                       0,
@@ -197,8 +170,48 @@ func TestWithReorgs(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
-	require.NoError(t, err)
+
+	var syncer *l1infotreesync.L1InfoTreeSync
+	var err error
+	var evmMultidownloader *multidownloader.EVMMultidownloader
+	if useMultidownloaderForTests {
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.Enabled = true
+		finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-15")
+		require.NoError(t, err)
+		cfgMD.BlockFinality = *finality
+		cfgMD.WaitPeriodToCheckCatchUp = cfgtypes.NewDuration(time.Millisecond * 100)
+		cfgMD.PeriodToCheckReorgs = cfgtypes.NewDuration(time.Millisecond * 100)
+		evmMultidownloader, err = multidownloader.NewEVMMultidownloader(
+			log.WithFields("module", "multidownloader"),
+			cfgMD,
+			"testMD",
+			etherman.NewDefaultEthClient(client.Client(), nil, nil),
+			nil, // rpcClient
+			nil, // Storage will be created internally
+			nil, // blockNotifierManager will be created internally
+			nil, // reorgProcessor will be created internally
+		)
+		require.NoError(t, err)
+		syncer, err = l1infotreesync.NewMultidownloadBased(ctx, cfg, evmMultidownloader, l1infotreesync.FlagAllowWrongContractsAddrs)
+		require.NoError(t, err)
+		go func() {
+			err = evmMultidownloader.Start(ctx)
+			require.NoError(t, err)
+		}()
+	} else {
+		rdConfig := reorgdetector.Config{
+			DBPath:              dbPathReorg,
+			CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+			FinalizedBlock:      aggkittypes.FinalizedBlock,
+		}
+		rd, err := reorgdetector.New(etherman.NewDefaultEthClient(client.Client(), nil, nil), rdConfig, reorgdetector.L1)
+		require.NoError(t, err)
+		require.NoError(t, rd.Start(ctx))
+		multidownloaderClient := sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil, nil))
+		syncer, err = l1infotreesync.New(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
+		require.NoError(t, err)
+	}
 	go syncer.Start(ctx)
 
 	// Commit block 6
@@ -261,6 +274,7 @@ func TestWithReorgs(t *testing.T) {
 	require.NoError(t, err)
 
 	blockNum, err := client.Client().BlockNumber(ctx)
+	log.Infof("Current block number after fork: %d", blockNum)
 	require.NoError(t, err)
 	require.Equal(t, header.Number.Uint64(), blockNum)
 
@@ -270,17 +284,28 @@ func TestWithReorgs(t *testing.T) {
 	// Assert rollup exit root after committing new blocks on the fork
 	expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
+	// TODO: Remove ths sleep
+	time.Sleep(time.Second * 1) // wait for syncer to process the reorg
+	checkBlocks(t, ctx, client.Client(), evmMultidownloader, 0, 10)
+
+	lastProcessedBlock, err := syncer.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	log.Infof("Last processed block after reorg: %d", lastProcessedBlock)
 	actualRollupExitRoot, err = syncer.GetLastRollupExitRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
 
+	showLeafs(t, ctx, syncer, "Before second fork: ")
+
 	// Forking from block 6 again
+	log.Infof("🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖🖖 Forking again from block (6) %d", reorgFrom.Hex())
 	err = client.Fork(reorgFrom)
 	require.NoError(t, err)
 	time.Sleep(time.Millisecond * 500)
-
+	// wait for syncer to process the reorg
 	helpers.CommitBlocks(t, client, 1, time.Millisecond*100) // Commit block 7
-
+	// TODO: Remove ths sleep
+	time.Sleep(time.Second * 1)
 	// create some events and update the trees
 	updateL1InfoTreeAndRollupExitTree(2, 1)
 	helpers.CommitBlocks(t, client, 1, time.Millisecond*100)
@@ -293,7 +318,38 @@ func TestWithReorgs(t *testing.T) {
 	require.NoError(t, err)
 	actualRollupExitRoot, err = syncer.GetLastRollupExitRoot(ctx)
 	require.NoError(t, err)
+	showLeafs(t, ctx, syncer, "After second fork: ")
+	checkBlocks(t, ctx, client.Client(), evmMultidownloader, 0, 10)
+
 	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
+}
+
+func checkBlocks(t *testing.T, ctx context.Context, rawClient simulated.Client, mdr *multidownloader.EVMMultidownloader, fromBlock, toBlock uint64) {
+	t.Helper()
+	if mdr == nil {
+		log.Warn("checkBlocks: multidownloader is nil, skipping block check")
+		return
+	}
+	for i := fromBlock; i <= toBlock; i++ {
+		block, errRaw := rawClient.BlockByNumber(ctx, big.NewInt(int64(i)))
+		blockMDR, errMDR := mdr.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(i))
+		require.Equal(t, errRaw == nil, errMDR == nil, "block number %d: errRaw=%v, errMDR=%v blockMDR=%s", i, errRaw, errMDR, blockMDR.String())
+		if errRaw == nil && errMDR == nil {
+			require.Equal(t, block.Hash(), blockMDR.Hash, "block number %d", i)
+		}
+	}
+}
+
+func showLeafs(t *testing.T, ctx context.Context, syncer *l1infotreesync.L1InfoTreeSync, prefix string) {
+	t.Helper()
+	for i := 0; i < 6; i++ {
+		leaf, err := syncer.GetInfoByIndex(ctx, uint32(i))
+		if err != nil {
+			log.Infof(prefix+"Leaf %d: error: %s", i, err.Error())
+		} else {
+			log.Infof(prefix+"Leaf %d: %+v", i, leaf)
+		}
+	}
 }
 
 func TestStressAndReorgs(t *testing.T) {

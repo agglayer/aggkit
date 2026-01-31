@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/common"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
@@ -69,23 +68,24 @@ func (d *Downloader) DownloadNextBlocks(ctx context.Context,
 	}
 	maxLogQuery := d.newMaxLogQuery(lastBlockHeader, maxBlocks, syncerConfig)
 	var result *mdrsynctypes.DownloadResult
-	conditionMet, err := common.PollingWithTimeout(ctx, d.pullingPeriod, d.waitPeriodToCatchUpMaximumLogRange, func() (bool, error) {
-		var err error
-		err = d.checkReorgedBlock(ctx, lastBlockHeader)
-		if err != nil {
-			return false, err
-		}
-		result, err = d.executeLogQuery(ctx, maxLogQuery)
-		if err != nil {
-			// The only allowed error is ErrLogsNotAvailable
-			if errors.Is(err, ErrLogsNotAvailable) {
-				return false, nil
+	conditionMet, err := aggkitcommon.PollingWithTimeout(ctx, d.pullingPeriod,
+		d.waitPeriodToCatchUpMaximumLogRange, func() (bool, error) {
+			var err error
+			err = d.checkReorgedBlock(ctx, lastBlockHeader)
+			if err != nil {
+				return false, err
 			}
-			return false, err
-		}
-		return true, nil
-	})
-	if errors.Is(err, common.ErrTimeoutReached) {
+			result, err = d.executeLogQuery(ctx, maxLogQuery)
+			if err != nil {
+				// The only allowed error is ErrLogsNotAvailable
+				if errors.Is(err, ErrLogsNotAvailable) {
+					return false, nil
+				}
+				return false, err
+			}
+			return true, nil
+		})
+	if errors.Is(err, aggkitcommon.ErrTimeoutReached) {
 		return nil, fmt.Errorf("Downloader.DownloadNextBlocks: logs not available for query: %s after waiting %s: %w",
 			maxLogQuery.String(), d.waitPeriodToCatchUpMaximumLogRange.String(), ErrLogsNotAvailable)
 	}
@@ -188,7 +188,8 @@ func (d *Downloader) addLastBlockIfNotIncluded(ctx context.Context,
 	if hdr.ParentHash != nil {
 		emptyBlock.ParentHash = *hdr.ParentHash
 	}
-	d.logger.Debugf("Downloader.addLastBlockIfNotIncluded: adding empty block number %d / %s",
+	d.logger.Debugf("Downloader.addLastBlockIfNotIncluded: to response %s adding empty block number %d / %s",
+		responseRange.String(),
 		lastBlockNumber, hdr.Hash.Hex())
 	result.Data = append(result.Data, emptyBlock)
 	return nil
@@ -291,7 +292,7 @@ func (d *Downloader) checkReorgedBlock(ctx context.Context,
 			return fmt.Errorf("reorg data not found for chain ID %d", reorgChainID)
 		}
 		return mdrtypes.NewReorgedError(reorgData.BlockRangeAffected, reorgChainID,
-			fmt.Sprintf("block number %d is reorged", blockHeader.Number),
+			fmt.Sprintf("detected at block number %d", blockHeader.Number),
 		)
 	}
 	return nil

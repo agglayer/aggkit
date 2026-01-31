@@ -7,6 +7,7 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -261,17 +262,19 @@ func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uin
 		BlockRange: br,
 	}, nil
 }
-func (f *SetSyncSegment) GetHighestBlockNumber() uint64 {
+func (f *SetSyncSegment) GetHighestBlockNumber() (uint64, aggkittypes.BlockNumberFinality) {
 	if f == nil || len(f.segments) == 0 {
-		return 0
+		return 0, aggkittypes.LatestBlock
 	}
 	highest := uint64(0)
+	finality := aggkittypes.LatestBlock
 	for _, segment := range f.segments {
 		if segment.BlockRange.ToBlock > highest {
 			highest = segment.BlockRange.ToBlock
+			finality = segment.TargetToBlock
 		}
 	}
-	return highest
+	return highest, finality
 }
 
 func (f *SetSyncSegment) GetTotalPendingBlockRange() *aggkitcommon.BlockRange {

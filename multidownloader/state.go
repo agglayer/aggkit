@@ -7,6 +7,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -66,7 +67,7 @@ func (s *State) UpdateTargetBlockToNumber(ctx context.Context, blockNotifier typ
 	return s.Pending.UpdateTargetBlockToNumber(ctx, blockNotifier)
 }
 
-func (s *State) GetHighestBlockNumberPendingToSync() uint64 {
+func (s *State) GetHighestBlockNumberPendingToSync() (uint64, aggkittypes.BlockNumberFinality) {
 	return s.Pending.GetHighestBlockNumber()
 }
 

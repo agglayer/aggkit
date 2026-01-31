@@ -118,11 +118,11 @@ func (rm *ReorgProcessor) findFirstUnaffectedBlock(ctx context.Context,
 		}
 		data, err := rm.port.GetBlockStorageAndRPC(ctx, tx, currentBlockNumber)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("findFirstUnaffectedBlock: error getting block storage and RPC: %w", err)
 		}
 		match, err := rm.checkBlocks(data)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("findFirstUnaffectedBlock: error checking blocks: %w", err)
 		}
 		if match {
 			// Found the first unaffected block
@@ -134,9 +134,14 @@ func (rm *ReorgProcessor) findFirstUnaffectedBlock(ctx context.Context,
 
 // checkBlocks compares storage and rpc block headers and returns true if they match
 func (rm *ReorgProcessor) checkBlocks(blocks *compareBlockHeaders) (bool, error) {
-	if blocks == nil || blocks.StorageHeader == nil || blocks.RpcHeader == nil {
-		// Block not in storage, so it is a reorg
-		return false, fmt.Errorf("checkBlocks bad input data (nil)")
+	if blocks == nil {
+		return false, fmt.Errorf("checkBlocks: blocks is nil")
+	}
+	if blocks.StorageHeader == nil || blocks.RpcHeader == nil {
+		// Block not in storage or not in RPC so is a missmatch
+		rm.log.Warnf("checkBlocks: block %d missing storage=%t and rpc=%t",
+			blocks.BlockNumber, blocks.ExistsStorageBlock(), blocks.ExistsRPCBlock())
+		return false, nil
 	}
 	if blocks.StorageHeader.Number != blocks.RpcHeader.Number {
 		return false, fmt.Errorf("checkBlocks block numbers do not match: storage=%d rpc=%d",

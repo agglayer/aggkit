@@ -19,15 +19,14 @@ func PollingWithTimeout(
 	checkCondition func() (bool, error)) (bool, error) {
 	timeoutTimer := time.NewTimer(timeoutPeriod)
 	defer timeoutTimer.Stop()
-	waitingForCondition := true
-	for waitingForCondition {
+
+	for {
 		pollingTimer := time.NewTimer(pollingPeriod)
 		conditionMet, err := checkCondition()
 		if err != nil {
 			return false, err
 		}
 		if conditionMet {
-			waitingForCondition = false
 			pollingTimer.Stop()
 			return true, nil
 		}

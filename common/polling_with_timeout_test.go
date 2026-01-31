@@ -31,7 +31,7 @@ func TestPollingWithTimeout(t *testing.T) {
 					return true, nil
 				}
 			},
-			setupContext:   func() context.Context { return context.Background() },
+			setupContext:   context.Background,
 			expectedResult: true,
 			expectedError:  nil,
 		},
@@ -49,7 +49,7 @@ func TestPollingWithTimeout(t *testing.T) {
 					return false, nil
 				}
 			},
-			setupContext:   func() context.Context { return context.Background() },
+			setupContext:   context.Background,
 			expectedResult: true,
 			expectedError:  nil,
 		},
@@ -62,7 +62,7 @@ func TestPollingWithTimeout(t *testing.T) {
 					return false, nil
 				}
 			},
-			setupContext:     func() context.Context { return context.Background() },
+			setupContext:     context.Background,
 			expectedResult:   false,
 			expectedError:    ErrTimeoutReached,
 			expectedErrorMsg: "pollingWithTimeout: condition not met after waiting",
@@ -96,7 +96,7 @@ func TestPollingWithTimeout(t *testing.T) {
 					return false, testErr
 				}
 			},
-			setupContext:     func() context.Context { return context.Background() },
+			setupContext:     context.Background,
 			expectedResult:   false,
 			expectedErrorMsg: "check function error",
 		},
@@ -115,7 +115,7 @@ func TestPollingWithTimeout(t *testing.T) {
 					return false, nil
 				}
 			},
-			setupContext:   func() context.Context { return context.Background() },
+			setupContext:   context.Background,
 			expectedResult: true,
 			expectedError:  nil,
 		},
