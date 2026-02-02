@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/db"
@@ -99,13 +98,17 @@ func NewMultidownloadBased(
 	}
 	logger := log.WithFields("syncer", syncerID)
 	// TODO: move the durations to config file (mdrsync.NewDownloader)
+	logger.Infof("Creating L1 Info Tree Syncer with WaitForNewBlocksPeriod: %s, RetryAfterErrorPeriod: %s",
+		cfg.WaitForNewBlocksPeriod.Duration.String(),
+		cfg.RetryAfterErrorPeriod.Duration.String(),
+	)
 	downloader := mdrsync.NewDownloader(
 		l1Multidownloader,
 		logger,
 		rh,
 		appender,
-		5*time.Second,
-		time.Second,
+		cfg.RetryAfterErrorPeriod.Duration,
+		cfg.WaitForNewBlocksPeriod.Duration,
 	)
 
 	driver := mdrsync.NewEVMDriver(processor, downloader, syncerConfig,
