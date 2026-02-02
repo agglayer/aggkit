@@ -28,4 +28,6 @@ type MultidownloaderInterface interface {
 		number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error)
 	StorageHeaderByNumber(ctx context.Context,
 		number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, mdrtypes.FinalizedType, error)
+	// ChainID returns the chain ID of the EVM chain
+	ChainID(ctx context.Context) (uint64, error)
 }

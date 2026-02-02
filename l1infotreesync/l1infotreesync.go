@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -50,6 +51,8 @@ type L1InfoTreeSync struct {
 	driver     DriverInterface
 	downloader DownloaderInterface
 }
+
+type RuntimeData = mdrsync.RuntimeData
 
 func NewReadOnly(
 	ctx context.Context,
@@ -111,8 +114,25 @@ func NewMultidownloadBased(
 		cfg.WaitForNewBlocksPeriod.Duration,
 	)
 
-	driver := mdrsync.NewEVMDriver(processor, downloader, syncerConfig,
-		cfg.SyncBlockChunkSize, rh, logger)
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		cfg.RequireStorageContentCompatibility,
+		func(ctx context.Context) (RuntimeData, error) {
+			chainID, err := downloader.ChainID(ctx)
+			if err != nil {
+				return RuntimeData{}, err
+			}
+			return RuntimeData{
+				ChainID:   chainID,
+				Addresses: addressesToQuery,
+			}, nil
+		},
+		compatibility.NewKeyValueToCompatibilityStorage[RuntimeData](
+			db.NewKeyValueStorage(processor.getDB()),
+			aggkitcommon.L1INFOTREESYNC,
+		))
+
+	driver := mdrsync.NewEVMDriver(logger, processor, downloader, syncerConfig,
+		cfg.SyncBlockChunkSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +220,10 @@ func New(
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		downloader.RuntimeData,
-		processor)
+		compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(processor.getDB()),
+			aggkitcommon.L1INFOTREESYNC,
+		))
 
 	driver, err := sync.NewEVMDriver(reorgDetector, processor, downloader, syncerID,
 		downloadBufferSize, rh, compatibilityChecker)

@@ -47,4 +47,5 @@ type DownloaderInterface interface {
 		fromBlockHeader *aggkittypes.BlockHeader,
 		maxBlocks uint64,
 		syncerConfig aggkittypes.SyncerConfig) (*DownloadResult, error)
+	ChainID(ctx context.Context) (uint64, error)
 }

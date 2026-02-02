@@ -112,6 +112,10 @@ func (d *Downloader) DownloadNextBlocks(ctx context.Context,
 	return result, nil
 }
 
+func (d *Downloader) ChainID(ctx context.Context) (uint64, error) {
+	return d.mdr.ChainID(ctx)
+}
+
 // executeLogQuery executes the log query, checking for partial availability
 // if there are no logs available returns an error
 func (d *Downloader) executeLogQuery(ctx context.Context,

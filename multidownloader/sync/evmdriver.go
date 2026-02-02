@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db/compatibility"
 	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	"github.com/agglayer/aggkit/sync"
@@ -12,34 +13,52 @@ import (
 )
 
 type EVMDriver struct {
-	processor    mdrsynctypes.ProcessorInterface
-	downloader   mdrsynctypes.DownloaderInterface
-	syncerConfig aggkittypes.SyncerConfig
-	rh           *sync.RetryHandler
-	logger       aggkitcommon.Logger
-
-	syncBlockChunkSize uint64
+	processor            mdrsynctypes.ProcessorInterface
+	downloader           mdrsynctypes.DownloaderInterface
+	syncerConfig         aggkittypes.SyncerConfig
+	rh                   *sync.RetryHandler
+	logger               aggkitcommon.Logger
+	compatibilityChecker compatibility.CompatibilityChecker
+	syncBlockChunkSize   uint64
 }
 
-func NewEVMDriver(processor mdrsynctypes.ProcessorInterface,
+func NewEVMDriver(
+	logger aggkitcommon.Logger,
+	processor mdrsynctypes.ProcessorInterface,
 	downloader mdrsynctypes.DownloaderInterface,
 	syncerConfig aggkittypes.SyncerConfig,
 	syncBlockChunkSize uint64,
 	rh *sync.RetryHandler,
-	logger aggkitcommon.Logger) *EVMDriver {
+	compatibilityChecker compatibility.CompatibilityChecker,
+) *EVMDriver {
 	return &EVMDriver{
-		processor:          processor,
-		downloader:         downloader,
-		syncerConfig:       syncerConfig,
-		syncBlockChunkSize: syncBlockChunkSize,
-		rh:                 rh,
-		logger:             logger,
+		processor:            processor,
+		downloader:           downloader,
+		syncerConfig:         syncerConfig,
+		syncBlockChunkSize:   syncBlockChunkSize,
+		rh:                   rh,
+		logger:               logger,
+		compatibilityChecker: compatibilityChecker,
 	}
 }
 
 func (d *EVMDriver) Sync(ctx context.Context) {
+	var (
+		err      error
+		attempts int
+	)
+
 reset:
-	// TODO: Add if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
+	for {
+		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
+			attempts++
+			d.logger.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
+			d.rh.Handle(ctx, "CompatibilityChecker", attempts)
+			continue
+		}
+		break
+	}
+
 	for {
 		if ctx.Err() != nil {
 			d.logger.Info("context cancelled")

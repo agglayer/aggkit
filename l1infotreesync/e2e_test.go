@@ -109,9 +109,9 @@ func TestE2E(t *testing.T) {
 		syncer, err = l1infotreesync.NewMultidownloadBased(ctx, cfg, evmMultidownloader, l1infotreesync.FlagAllowWrongContractsAddrs)
 		require.NoError(t, err)
 		go func() {
+			// This always return an error becase at the end of the test the context is cancelled
 			err = evmMultidownloader.Start(ctx)
 			log.Infof("Multidownloader exited with error: %v", err)
-			//require.NoError(t, err)
 		}()
 	} else {
 		mockReorgDetector := mocks.NewReorgDetectorMock(t)

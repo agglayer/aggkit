@@ -9,7 +9,6 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/l1infotreesync/migrations"
 	"github.com/agglayer/aggkit/log"
@@ -35,7 +34,6 @@ type processor struct {
 	halted         bool
 	haltedReason   string
 	log            *log.Logger
-	compatibility.CompatibilityDataStorager[sync.RuntimeData]
 }
 
 // UpdateL1InfoTree representation of the UpdateL1InfoTree event
@@ -153,11 +151,11 @@ func newProcessor(dbPath string) (*processor, error) {
 		l1InfoTree:     tree.NewAppendOnlyTree(database, migrations.L1InfoTreePrefix),
 		rollupExitTree: tree.NewUpdatableTree(database, migrations.RollupExitTreePrefix),
 		log:            log.WithFields("processor", "l1infotreesync"),
-		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
-			db.NewKeyValueStorage(database),
-			aggkitcommon.L1INFOTREESYNC,
-		),
 	}, nil
+}
+
+func (p *processor) getDB() *sql.DB {
+	return p.db
 }
 
 // GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
