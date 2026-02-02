@@ -73,33 +73,7 @@ func TestE2E(t *testing.T) {
 	ctx := t.Context()
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestE2E.sqlite")
 
-	mockReorgDetector := mocks.NewReorgDetectorMock(t)
-	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(&reorgdetector.Subscription{}, nil)
-	mockReorgDetector.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(aggkittypes.FinalizedBlock).Once()
-	mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
-
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
-	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
-	var err error
-	if useMultidownloaderForTests {
-		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
-		cfgMD.Enabled = true
-		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
-			log.WithFields("module", "multidownloader"),
-			cfgMD,
-			"testMD",
-			etherman.NewDefaultEthClient(client.Client(), nil, nil),
-			nil, // rpcClient
-			nil,
-			nil,
-			nil, // reorgProcessor will be created internally
-		)
-		require.NoError(t, err)
-	} else {
-		multidownloaderClient = sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil, nil))
-	}
-
 	cfg := l1infotreesync.Config{
 		DBPath:                             dbPath,
 		InitialBlock:                       0,
@@ -112,9 +86,45 @@ func TestE2E(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, multidownloaderClient, mockReorgDetector,
-		l1infotreesync.FlagAllowWrongContractsAddrs)
-	require.NoError(t, err)
+	var syncer *l1infotreesync.L1InfoTreeSync
+	var err error
+	var evmMultidownloader *multidownloader.EVMMultidownloader
+	if useMultidownloaderForTests {
+		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.Enabled = true
+		finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-15")
+		require.NoError(t, err)
+		cfgMD.BlockFinality = *finality
+		evmMultidownloader, err = multidownloader.NewEVMMultidownloader(
+			log.WithFields("module", "multidownloader"),
+			cfgMD,
+			"testMD",
+			etherman.NewDefaultEthClient(client.Client(), nil, nil),
+			nil, // rpcClient
+			nil,
+			nil,
+			nil, // reorgProcessor will be created internally
+		)
+		require.NoError(t, err)
+		syncer, err = l1infotreesync.NewMultidownloadBased(ctx, cfg, evmMultidownloader, l1infotreesync.FlagAllowWrongContractsAddrs)
+		require.NoError(t, err)
+		go func() {
+			err = evmMultidownloader.Start(ctx)
+			log.Infof("Multidownloader exited with error: %v", err)
+			//require.NoError(t, err)
+		}()
+	} else {
+		mockReorgDetector := mocks.NewReorgDetectorMock(t)
+		mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(&reorgdetector.Subscription{}, nil)
+		mockReorgDetector.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(aggkittypes.FinalizedBlock).Once()
+		mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
+
+		multidownloaderClient := sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil, nil))
+		syncer, err = l1infotreesync.New(ctx, cfg, multidownloaderClient, mockReorgDetector,
+			l1infotreesync.FlagAllowWrongContractsAddrs)
+		require.NoError(t, err)
+	}
 
 	go syncer.Start(ctx)
 
@@ -149,6 +159,7 @@ func TestE2E(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, common.Hash(expectedGER), latestGER)
 	}
+	log.Infof("FINISH TEST OK!!!!!!!!!!!!!!!!!!!!!!")
 }
 
 func TestWithReorgs(t *testing.T) {
