@@ -14,18 +14,6 @@ type DownloadResult struct {
 	PercentComplete float64
 }
 
-func (d *DownloadResult) AnyUnsafeBlock() bool {
-	if d == nil || len(d.Data) == 0 {
-		return false
-	}
-	for _, b := range d.Data {
-		if !b.IsFinalizedBlock {
-			return true
-		}
-	}
-	return false
-}
-
 type DownloaderInterface interface {
 	// DownloadNextBlocks downloads the next blocks starting from fromBlockHeader
 	// up to maxBlocks, according to the syncerConfig
