@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,37 +13,51 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/etherman"
 	mockethermantypes "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
+	aggkitsync "github.com/agglayer/aggkit/sync"
+
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// Imports below are only used in skipped tests but need to remain commented to avoid import cycles:
-// jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-// "github.com/agglayer/aggkit/etherman"
-// "github.com/agglayer/aggkit/l1infotreesync"
-// "github.com/agglayer/aggkit/reorgdetector"
-// aggkitsync "github.com/agglayer/aggkit/sync"
-// "github.com/ethereum/go-ethereum/ethclient"
-// "github.com/ethereum/go-ethereum/rpc"
-// "os"
+const storagePath = "../tmp/ut/"
+const runASyncer = true
 
-// Commented out constants only used in skipped tests
-// const runL1InfoTree = true
-// const l1InfoTreeUseMultidownloader = true
-// const storagePath = "../tmp/ut/"
+type testProcessor struct {
+	lastBlock *aggkittypes.BlockHeader
+}
+
+func (tp *testProcessor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittypes.BlockHeader, error) {
+	return tp.lastBlock, nil
+}
+func (tp *testProcessor) ProcessBlock(ctx context.Context, block aggkitsync.Block) error {
+	log.Infof("PROCESSOR: Processing block number %d", block.Num)
+	tp.lastBlock = &aggkittypes.BlockHeader{
+		Number: block.Num,
+		Hash:   block.Hash,
+	}
+	return nil
+}
+func (tp *testProcessor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
+	log.Infof("PROCESSOR: Reorg from block number %d", firstReorgedBlock)
+	return nil
+}
 
 func TestEVMMultidownloader(t *testing.T) {
-	t.Skip("code to test/debug not real unittest - requires external dependencies (l1infotreesync causes import cycle)")
-	/* Commented out to avoid import cycles
+	//t.Skip("code to test/debug not real unittest - requires external dependencies (l1infotreesync causes import cycle)")
+
 	cfgLog := log.Config{
 		Environment: "development",
 		Level:       "info",
@@ -73,7 +88,7 @@ func TestEVMMultidownloader(t *testing.T) {
 		WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
 		PeriodToCheckReorgs:             types.NewDuration(time.Second * 10),
 	}
-	var rpcServices []jRPC.Service
+
 	mdr, err := NewEVMMultidownloader(logger,
 		cfg, "l1", ethClient, ethRPCClient,
 		db, nil, nil)
@@ -89,64 +104,36 @@ func TestEVMMultidownloader(t *testing.T) {
 		ToBlock:   aggkittypes.LatestBlock,
 	})
 	require.NoError(t, err)
-	rpcServices = append(rpcServices, mdr.GetRPCServices()...)
-	ctx := context.TODO()
-	var l1infotree *l1infotreesync.L1InfoTreeSync
-	if runL1InfoTree == true {
-		var multidownloader aggkittypes.MultiDownloaderLegacy
-		var dbPath string
-		if l1InfoTreeUseMultidownloader {
-			multidownloader = mdr
-			dbPath = storagePath + "l1infotree_md.sqlite"
-		} else {
-			multidownloader = aggkitsync.NewAdapterEthClientToMultidownloader(ethClient)
-			dbPath = storagePath + "l1infotree_eth.sqlite"
-		}
-		reorgDetector, err := reorgdetector.New(ethClient, reorgdetector.Config{
-			DBPath:              storagePath + "l1_reorgdetector.sqlite",
-			CheckReorgsInterval: types.NewDuration(time.Second * 10),
-			FinalizedBlock:      aggkittypes.FinalizedBlock,
-		}, reorgdetector.L1)
-		require.NoError(t, err)
 
-		l1infotree, err = l1infotreesync.New(
-			ctx,
-			l1infotreesync.Config{
-				DBPath:             dbPath,
-				InitialBlock:       5157574,
-				GlobalExitRootAddr: common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"),
-				RollupManagerAddr:  common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"),
-				SyncBlockChunkSize: 6500,
-				WaitForNewBlocksPeriod: types.Duration{
-					Duration: 5 * time.Second,
-				},
-				BlockFinality: aggkittypes.FinalizedBlock,
-			},
-			multidownloader,
-			reorgDetector,
-			// l1infotreesync.FlagStopOnFinalizedBlockReached,
-			l1infotreesync.FlagNone,
+	ctx := context.TODO()
+
+	var syncer *mdrsync.EVMDriver
+	if runASyncer == true {
+		logger := log.WithFields("syncer", "test")
+		rh := &aggkitsync.RetryHandler{
+			RetryAfterErrorPeriod:      time.Second,
+			MaxRetryAttemptsAfterError: 0,
+		}
+		downloader := mdrsync.NewDownloader(
+			mdr,
+			logger,
+			rh,
+			nil, // appender,
+			time.Second,
+			time.Second,
 		)
-		require.NoError(t, err)
-		rpcServices = append(rpcServices, l1infotree.GetRPCServices()...)
-	}
-	if len(rpcServices) > 0 {
-		log.Infof("Registering %d RPC services", len(rpcServices))
-		logger := log.WithFields("module", "RPC")
-		jRPCServer := jRPC.NewServer(
-			jRPC.Config{
-				Host:                      "127.0.0.1",
-				Port:                      5576,
-				MaxRequestsPerIPAndSecond: 10000.0,
+		syncerConfig := aggkittypes.SyncerConfig{
+			SyncerID: "l1infotree_syncer_test",
+			ContractAddresses: []common.Address{
+				common.HexToAddress("0x2968d6d736178f8fe7393cc33c87f29d9c287e78"), // GlobalExitRootAddr
+				common.HexToAddress("0xe2ef6215adc132df6913c8dd16487abf118d1764"), // RollupManager
 			},
-			rpcServices,
-			jRPC.WithLogger(logger.GetSugaredLogger()),
-		)
-		go func() {
-			if err := jRPCServer.Start(); err != nil {
-				log.Fatal(err)
-			}
-		}()
+			FromBlock: 5157574,
+			ToBlock:   aggkittypes.LatestBlock,
+		}
+		processor := &testProcessor{}
+		syncer = mdrsync.NewEVMDriver(logger, processor, downloader, syncerConfig,
+			100, rh, nil)
 	}
 
 	var wg sync.WaitGroup
@@ -166,14 +153,14 @@ func TestEVMMultidownloader(t *testing.T) {
 		defer wg.Done()
 		timer := aggkitcommon.TimeTracker{}
 		timer.Start()
-		if l1infotree != nil {
-			l1infotree.Start(t.Context())
+		if syncer != nil {
+			syncer.Sync(t.Context())
 		}
 		timer.Stop()
 		log.Infof("L1InfoTree sync finished in %s", timer.String())
 	}()
 	wg.Wait()
-	*/
+
 }
 
 func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {

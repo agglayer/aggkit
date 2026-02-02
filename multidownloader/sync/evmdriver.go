@@ -3,6 +3,7 @@ package multidownloader
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -43,72 +44,60 @@ func NewEVMDriver(
 }
 
 func (d *EVMDriver) Sync(ctx context.Context) {
-	var (
-		err      error
-		attempts int
-	)
-
-reset:
-	for {
-		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
-			attempts++
-			d.logger.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
-			d.rh.Handle(ctx, "CompatibilityChecker", attempts)
-			continue
-		}
-		break
-	}
-
+	attempts := 0
 	for {
 		if ctx.Err() != nil {
 			d.logger.Info("context cancelled")
 			return
 		}
-		lastBlockHeader := d.getLastProcessedBlock(ctx)
-		if lastBlockHeader == nil {
-			d.logger.Info("no last processed block found, starting from beginning")
-		} else {
-			d.logger.Infof("EVMDriver.Sync: starting sync from last processed block: %d", lastBlockHeader.Number)
-		}
-
-		blocks, err := d.downloader.DownloadNextBlocks(ctx,
-			lastBlockHeader,
-			d.syncBlockChunkSize,
-			d.syncerConfig)
-		if err != nil {
-			d.logger.Error("error downloading next blocks: ", err)
-		}
-		if err != nil && mdrtypes.IsReorgedError(err) {
-			err := d.handleReorg(ctx, mdrtypes.CastReorgedError(err))
-			if err != nil {
-				d.logger.Error("error handling reorg: ", err)
-				d.rh.Handle(ctx, "Sync", 0)
-				continue
-			}
-			goto reset
-		}
-
-		if err != nil && !errors.Is(err, ErrLogsNotAvailable) {
-			d.logger.Error("error downloading next blocks: ", err)
-			d.rh.Handle(ctx, "Sync", 0)
-			continue
-		}
-		if errors.Is(err, ErrLogsNotAvailable) {
-			// No logs available yet, wait and retry
-			d.logger.Debugf("no logs available yet, waiting to retry")
-			d.rh.Handle(ctx, "Sync", 0)
-			continue
-		}
-		err = d.ProcessBlocks(ctx, blocks)
-		if err != nil {
-			d.logger.Error("error processing blocks: ", err)
-			d.rh.Handle(ctx, "Sync", 0)
+		if err := d.syncStep(ctx); err != nil {
+			attempts++
+			d.logger.Error("error during syncing ", err)
+			d.rh.Handle(ctx, "Sync", attempts)
 			continue
 		}
 	}
 }
 
-func (d *EVMDriver) ProcessBlocks(ctx context.Context, b *mdrsynctypes.DownloadResult) error {
+func (d *EVMDriver) syncStep(ctx context.Context) error {
+	if d.compatibilityChecker != nil {
+		if err := d.compatibilityChecker.Check(ctx, nil); err != nil {
+			err := fmt.Errorf("EVMDriver: error checking compatibility data between downloader (runtime) and processor (db): %w", err)
+			return err
+		}
+		d.compatibilityChecker = nil // only check once per Sync run
+	}
+
+	lastBlockHeader, err := d.processor.GetLastProcessedBlockHeader(ctx)
+	if err != nil {
+		return fmt.Errorf("EVMDriver: error getting last processed block from processor: %w", err)
+	}
+	d.logger.Infof("EVMDriver: starting sync from last processed block: %s", lastBlockHeader.Brief())
+	blocks, err := d.downloader.DownloadNextBlocks(ctx,
+		lastBlockHeader,
+		d.syncBlockChunkSize,
+		d.syncerConfig)
+
+	if err != nil {
+		switch {
+		case mdrtypes.IsReorgedError(err):
+			if reorgErr := d.handleReorg(ctx, mdrtypes.CastReorgedError(err)); reorgErr != nil {
+				return fmt.Errorf("EVMDriver: error handling reorg: %w", reorgErr)
+			}
+			// Reorg processed
+			return nil
+		case errors.Is(err, ErrLogsNotAvailable):
+			d.logger.Debug("EVMDriver: no logs available yet, waiting to retry")
+			return nil
+		}
+	}
+	if err = d.processBlocks(ctx, blocks); err != nil {
+		return fmt.Errorf("EVMDriver: error processing blocks: %w", err)
+	}
+	return nil
+}
+
+func (d *EVMDriver) processBlocks(ctx context.Context, b *mdrsynctypes.DownloadResult) error {
 	if b == nil || len(b.Data) == 0 {
 		return nil
 	}
@@ -137,21 +126,6 @@ func (d *EVMDriver) handleReorg(ctx context.Context, err *mdrtypes.ReorgedError)
 	return d.withRetry(ctx, "handleReorg", func() error {
 		return d.processor.Reorg(ctx, err.BlockRangeReorged.FromBlock)
 	})
-}
-
-func (d *EVMDriver) getLastProcessedBlock(ctx context.Context) *aggkittypes.BlockHeader {
-	attempts := 0
-	for {
-		// TODO: Case header == nil -> ?
-		header, err := d.processor.GetLastProcessedBlockHeader(ctx)
-		if err != nil {
-			attempts++
-			d.logger.Error("error getting last processed block: ", err)
-			d.rh.Handle(ctx, "Sync", attempts)
-			continue
-		}
-		return header
-	}
 }
 
 // withRetry is a helper wrapper function that invokes the fn callback on failed attempts

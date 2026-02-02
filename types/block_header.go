@@ -16,6 +16,13 @@ type BlockHeader struct {
 	RequestedBlock *BlockNumberFinality
 }
 
+func (gb *BlockHeader) Brief() string {
+	if gb == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("BlockHeader{Number: %d, Hash: %s}", gb.Number, gb.Hash.Hex())
+}
+
 func NewBlockHeader(number uint64, hash common.Hash, time uint64, parentHash *common.Hash) *BlockHeader {
 	return &BlockHeader{
 		Number:     number,
