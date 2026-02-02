@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/common"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	compatibilityMocks "github.com/agglayer/aggkit/db/compatibility/mocks"
 	"github.com/agglayer/aggkit/log"
@@ -23,11 +22,12 @@ type evmDriverTestData struct {
 	mockDownloader           *mocks.DownloaderInterface
 	mockCompatibilityChecker *compatibilityMocks.CompatibilityChecker
 	syncerConfig             aggkittypes.SyncerConfig
-	logger                   common.Logger
+	logger                   aggkitcommon.Logger
 	rh                       *sync.RetryHandler
 }
 
 func newEVMDriverTestData(t *testing.T, compatibilityCheckExpectations bool) *evmDriverTestData {
+	t.Helper()
 	mockProcessor := mocks.NewProcessorInterface(t)
 	mockDownloader := mocks.NewDownloaderInterface(t)
 	mockCompatibilityChecker := compatibilityMocks.NewCompatibilityChecker(t)
@@ -110,5 +110,4 @@ func TestNewEVMDriver(t *testing.T) {
 		err := testData.driver.syncStep(t.Context())
 		require.NoError(t, err)
 	})
-
 }

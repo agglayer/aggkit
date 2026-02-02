@@ -21,7 +21,6 @@ import (
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	aggkitsync "github.com/agglayer/aggkit/sync"
-
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocktypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -56,7 +55,7 @@ func (tp *testProcessor) Reorg(ctx context.Context, firstReorgedBlock uint64) er
 }
 
 func TestEVMMultidownloader(t *testing.T) {
-	//t.Skip("code to test/debug not real unittest - requires external dependencies (l1infotreesync causes import cycle)")
+	t.Skip("code to test/debug not real unittest - requires external dependencies (l1infotreesync causes import cycle)")
 
 	cfgLog := log.Config{
 		Environment: "development",
@@ -160,7 +159,6 @@ func TestEVMMultidownloader(t *testing.T) {
 		log.Infof("L1InfoTree sync finished in %s", timer.String())
 	}()
 	wg.Wait()
-
 }
 
 func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {

@@ -62,10 +62,11 @@ func (d *EVMDriver) Sync(ctx context.Context) {
 func (d *EVMDriver) syncStep(ctx context.Context) error {
 	if d.compatibilityChecker != nil {
 		if err := d.compatibilityChecker.Check(ctx, nil); err != nil {
-			err := fmt.Errorf("EVMDriver: error checking compatibility data between downloader (runtime) and processor (db): %w", err)
+			err := fmt.Errorf("EVMDriver: error checking compatibility data between downloader (runtime)"+
+				" and processor (db): %w", err)
 			return err
 		}
-		d.compatibilityChecker = nil // only check once per Sync run
+		d.compatibilityChecker = nil // only check once
 	}
 
 	lastBlockHeader, err := d.processor.GetLastProcessedBlockHeader(ctx)
