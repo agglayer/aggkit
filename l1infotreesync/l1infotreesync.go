@@ -99,8 +99,8 @@ func NewMultidownloadBased(
 	logger := log.WithFields("syncer", syncerID)
 	// TODO: move the durations to config file (mdrsync.NewDownloader)
 	logger.Infof("Creating L1 Info Tree Syncer with WaitForNewBlocksPeriod: %s, RetryAfterErrorPeriod: %s",
-		cfg.WaitForNewBlocksPeriod.Duration.String(),
-		cfg.RetryAfterErrorPeriod.Duration.String(),
+		cfg.WaitForNewBlocksPeriod.String(),
+		cfg.RetryAfterErrorPeriod.String(),
 	)
 	downloader := mdrsync.NewDownloader(
 		l1Multidownloader,
