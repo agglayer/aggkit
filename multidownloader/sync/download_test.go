@@ -294,17 +294,17 @@ func TestDownloadNextBlocks_LogsNotAvailableInitially(t *testing.T) {
 		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
 	}
 
-	// First call: checkReorgedBlock returns valid
+	// First call: checkReorgedBlock before PollingWithTimeout (line 65)
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
 
-	// First executeLogQuery: logs not available
+	// First iteration: PollingWithTimeout calls checkCondition immediately
+	// This calls checkReorgedBlock (line 74) and executeLogQuery
+	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
 	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(false).Once()
 	mockMdr.EXPECT().IsPartiallyAvailable(mock.Anything).Return(false, nil).Once()
 
-	// Second iteration in retry loop
+	// Second iteration in polling loop
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
-
-	// Second executeLogQuery: logs now available
 	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(true).Once()
 	mockMdr.EXPECT().LogQuery(ctx, mock.Anything).Return(mdrtypes.LogQueryResponse{
 		Blocks: []mdrtypes.BlockWithLogs{
@@ -333,6 +333,9 @@ func TestDownloadNextBlocks_LogsNotAvailableInitially(t *testing.T) {
 		Hash:   common.HexToHash("0xblock110"),
 		Time:   1100,
 	}, mdrtypes.Finalized, nil).Once()
+
+	// Final checkReorgedBlock after PollingWithTimeout completes (line 101)
+	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
 
 	result, err := download.DownloadNextBlocks(ctx, lastBlockHeader, 10, syncerConfig)
 
@@ -371,24 +374,22 @@ func TestDownloadNextBlocks_TimeoutWaitingForLogs(t *testing.T) {
 		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
 	}
 
-	// First call: checkReorgedBlock returns valid
+	// First call: checkReorgedBlock before PollingWithTimeout (line 65)
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
 
-	// executeLogQuery called twice: once initially (line 40), once in for loop header (line 45)
-	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(false).Times(2)
-	mockMdr.EXPECT().IsPartiallyAvailable(mock.Anything).Return(false, nil).Times(2)
-
-	// After timeout breaks the loop, calls final checkReorgedBlock
-	// which overwrites err. If checkReorgedBlock succeeds, returns result (nil) with nil error
+	// PollingWithTimeout calls checkCondition multiple times until timeout
+	// Each call includes checkReorgedBlock and executeLogQuery
+	// Since timeout is 100ms and polling period is 200ms, it will try only once before timeout
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
+	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(false).Once()
+	mockMdr.EXPECT().IsPartiallyAvailable(mock.Anything).Return(false, nil).Once()
 
 	result, err := download.DownloadNextBlocks(ctx, lastBlockHeader, 10, syncerConfig)
 
-	// After timeout and successful checkReorgedBlock, returns empty result with nil error
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Nil(t, result.Data)
-	require.Equal(t, 100.0, result.PercentComplete)
+	// After timeout, should return error
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Contains(t, err.Error(), "logs not available")
 }
 
 func TestDownloadNextBlocks_ContextCancelledDuringRetry(t *testing.T) {
@@ -420,10 +421,9 @@ func TestDownloadNextBlocks_ContextCancelledDuringRetry(t *testing.T) {
 		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
 	}
 
-	// First call: checkReorgedBlock returns valid
-	mockMdr.EXPECT().CheckValidBlock(mock.Anything, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
-
-	// executeLogQuery: logs not available (may be called multiple times depending on timing)
+	// checkReorgedBlock and executeLogQuery may be called multiple times before context is cancelled
+	// Using Maybe() to allow flexible number of calls depending on timing
+	mockMdr.EXPECT().CheckValidBlock(mock.Anything, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Maybe()
 	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(false).Maybe()
 	mockMdr.EXPECT().IsPartiallyAvailable(mock.Anything).Return(false, nil).Maybe()
 
@@ -474,14 +474,15 @@ func TestDownloadNextBlocks_ReorgDetectedDuringRetry(t *testing.T) {
 		DetectedAtBlock:    106,
 	}
 
-	// First call: checkReorgedBlock returns valid
+	// First call: checkReorgedBlock before PollingWithTimeout (line 65)
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
 
-	// executeLogQuery called twice: once initially (line 40), once in for loop header (line 45)
-	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(false).Times(2)
-	mockMdr.EXPECT().IsPartiallyAvailable(mock.Anything).Return(false, nil).Times(2)
+	// First iteration: PollingWithTimeout calls checkCondition immediately
+	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
+	mockMdr.EXPECT().IsAvailable(mock.Anything).Return(false).Once()
+	mockMdr.EXPECT().IsPartiallyAvailable(mock.Anything).Return(false, nil).Once()
 
-	// In retry loop after timer fires: reorg detected during checkReorgedBlock
+	// Second iteration: reorg detected during checkReorgedBlock
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(false, uint64(1), nil).Once()
 	mockMdr.EXPECT().GetReorgedDataByChainID(ctx, uint64(1)).Return(reorgData, nil).Once()
 
@@ -609,10 +610,11 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 		},
 		ResponseRange: aggkitcommon.BlockRange{FromBlock: 100, ToBlock: 105},
 	}, nil)
+	// When using partial query, addLastBlockIfNotIncluded uses responseRange.ToBlock (105)
 	mockMdr.EXPECT().StorageHeaderByNumber(ctx, mock.Anything).Return(&aggkittypes.BlockHeader{
-		Number: 110,
-		Hash:   common.HexToHash("0xblock110"),
-		Time:   2100,
+		Number: 105,
+		Hash:   common.HexToHash("0xblock105"),
+		Time:   2050,
 	}, mdrtypes.Finalized, nil)
 
 	result, err := download.executeLogQuery(ctx, logQuery)
@@ -621,7 +623,7 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 	require.NotNil(t, result)
 	require.Len(t, result.Data, 2)
 	require.Equal(t, uint64(103), result.Data[0].Num)
-	require.Equal(t, uint64(110), result.Data[1].Num)
+	require.Equal(t, uint64(105), result.Data[1].Num) // Last block is from partial response range
 }
 
 func TestExecuteLogQuery_NotAvailable(t *testing.T) {
