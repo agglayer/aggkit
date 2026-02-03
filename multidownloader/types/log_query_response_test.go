@@ -28,7 +28,7 @@ func TestLogQueryResponse_CountLogs_EmptyBlocks(t *testing.T) {
 func TestLogQueryResponse_CountLogs_SingleBlockWithLogs(t *testing.T) {
 	parentHash := common.HexToHash("0x1234")
 	block := BlockWithLogs{
-		Header: *aggkittypes.NewBlockHeader(100, common.HexToHash("0xabc"), 1234567890, &parentHash),
+		Header:  *aggkittypes.NewBlockHeader(100, common.HexToHash("0xabc"), 1234567890, &parentHash),
 		IsFinal: true,
 		Logs: []Log{
 			{
@@ -71,7 +71,7 @@ func TestLogQueryResponse_CountLogs_MultipleBlocksWithLogs(t *testing.T) {
 	parentHash2 := common.HexToHash("0x5678")
 
 	block1 := BlockWithLogs{
-		Header: *aggkittypes.NewBlockHeader(100, common.HexToHash("0xabc"), 1234567890, &parentHash1),
+		Header:  *aggkittypes.NewBlockHeader(100, common.HexToHash("0xabc"), 1234567890, &parentHash1),
 		IsFinal: true,
 		Logs: []Log{
 			{
@@ -100,7 +100,7 @@ func TestLogQueryResponse_CountLogs_MultipleBlocksWithLogs(t *testing.T) {
 	}
 
 	block2 := BlockWithLogs{
-		Header: *aggkittypes.NewBlockHeader(101, common.HexToHash("0xdef"), 1234567900, &parentHash2),
+		Header:  *aggkittypes.NewBlockHeader(101, common.HexToHash("0xdef"), 1234567900, &parentHash2),
 		IsFinal: false,
 		Logs: []Log{
 			{
@@ -133,7 +133,7 @@ func TestLogQueryResponse_CountLogs_MixedBlocks(t *testing.T) {
 	parentHash3 := common.HexToHash("0x9abc")
 
 	blockWithLogs := BlockWithLogs{
-		Header: *aggkittypes.NewBlockHeader(100, common.HexToHash("0xabc"), 1234567890, &parentHash1),
+		Header:  *aggkittypes.NewBlockHeader(100, common.HexToHash("0xabc"), 1234567890, &parentHash1),
 		IsFinal: true,
 		Logs: []Log{
 			{
@@ -157,7 +157,7 @@ func TestLogQueryResponse_CountLogs_MixedBlocks(t *testing.T) {
 	}
 
 	blockWithMultipleLogs := BlockWithLogs{
-		Header: *aggkittypes.NewBlockHeader(102, common.HexToHash("0xghi"), 1234567910, &parentHash3),
+		Header:  *aggkittypes.NewBlockHeader(102, common.HexToHash("0xghi"), 1234567910, &parentHash3),
 		IsFinal: false,
 		Logs: []Log{
 			{

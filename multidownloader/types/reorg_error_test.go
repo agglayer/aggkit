@@ -51,28 +51,28 @@ func TestReorgDetectionReason_String(t *testing.T) {
 	}
 }
 
+const testReorgMsg = "test message"
+
 func TestNewDetectedReorgError(t *testing.T) {
 	blockNum := uint64(100)
 	reason := ReorgDetectionReason_BlockHashMismatch
 	oldHash := common.HexToHash("0x1234")
 	newHash := common.HexToHash("0x5678")
-	msg := "test message"
 
-	err := NewDetectedReorgError(blockNum, reason, oldHash, newHash, msg)
+	err := NewDetectedReorgError(blockNum, reason, oldHash, newHash, testReorgMsg)
 
 	require.NotNil(t, err)
 	require.Equal(t, blockNum, err.OffendingBlockNumber)
 	require.Equal(t, reason, err.ReorgDetectionReason)
 	require.Equal(t, oldHash, err.OldHash)
 	require.Equal(t, newHash, err.NewHash)
-	require.Equal(t, msg, err.Message)
+	require.Equal(t, testReorgMsg, err.Message)
 }
 
 func TestDetectedReorgError_Error(t *testing.T) {
 	blockNum := uint64(100)
 	oldHash := common.HexToHash("0x1234")
 	newHash := common.HexToHash("0x5678")
-	msg := "test message"
 
 	tests := []struct {
 		name           string
@@ -108,7 +108,7 @@ func TestDetectedReorgError_Error(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := NewDetectedReorgError(blockNum, tt.reason, oldHash, newHash, msg)
+			err := NewDetectedReorgError(blockNum, tt.reason, oldHash, newHash, testReorgMsg)
 			result := err.Error()
 			require.Equal(t, tt.expectedPrefix, result)
 		})
@@ -202,14 +202,13 @@ func TestCastDetectedReorgError(t *testing.T) {
 func TestNewReorgedError(t *testing.T) {
 	blockRange := aggkitcommon.NewBlockRange(100, 200)
 	chainID := uint64(1)
-	msg := "test message"
 
-	err := NewReorgedError(blockRange, chainID, msg)
+	err := NewReorgedError(blockRange, chainID, testReorgMsg)
 
 	require.NotNil(t, err)
 	require.Equal(t, blockRange, err.BlockRangeReorged)
 	require.Equal(t, chainID, err.ReorgedChainID)
-	require.Equal(t, msg, err.Message)
+	require.Equal(t, testReorgMsg, err.Message)
 }
 
 func TestReorgedError_Error(t *testing.T) {
@@ -217,7 +216,7 @@ func TestReorgedError_Error(t *testing.T) {
 	chainID := uint64(1)
 	msg := "test message"
 
-	err := NewReorgedError(blockRange, chainID, msg)
+	err := NewReorgedError(blockRange, chainID, testReorgMsg)
 	result := err.Error()
 
 	expected := fmt.Sprintf("reorgedError: chainID=%d blockRangeReorged=%s: %s", chainID, blockRange.String(), msg)

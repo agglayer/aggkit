@@ -10,26 +10,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
-type compareBlockHeaders struct {
-	BlockNumber   uint64
-	StorageHeader *aggkittypes.BlockHeader
-	IsFinalized   mdtypes.FinalizedType
-	RpcHeader     *aggkittypes.BlockHeader
-}
-
-func (c *compareBlockHeaders) ExistsRPCBlock() bool {
-	if c == nil {
-		return false
-	}
-	return c.RpcHeader != nil
-}
-func (c *compareBlockHeaders) ExistsStorageBlock() bool {
-	if c == nil {
-		return false
-	}
-	return c.StorageHeader != nil
-}
-
 type ReorgPort struct {
 	ethClient aggkittypes.BaseEthereumClienter
 	rpcClient aggkittypes.RPCClienter
@@ -41,7 +21,7 @@ func (r *ReorgPort) NewTx(ctx context.Context) (dbtypes.Txer, error) {
 }
 
 func (r *ReorgPort) GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querier,
-	blockNumber uint64) (*compareBlockHeaders, error) {
+	blockNumber uint64) (*mdtypes.CompareBlockHeaders, error) {
 	currentStorageBlock, finalized, err := r.storage.GetBlockHeaderByNumber(tx, blockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("error getting block in storage: %w", err)
@@ -50,7 +30,7 @@ func (r *ReorgPort) GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querie
 	if err != nil && !etherman.IsErrNotFound(err) {
 		return nil, fmt.Errorf("error getting block in RPC: %w", err)
 	}
-	return &compareBlockHeaders{
+	return &mdtypes.CompareBlockHeaders{
 		BlockNumber:   blockNumber,
 		StorageHeader: currentStorageBlock,
 		IsFinalized:   finalized,

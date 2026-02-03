@@ -11,18 +11,9 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
-type ReorgPorter interface {
-	NewTx(ctx context.Context) (dbtypes.Txer, error)
-	GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querier, blockNumber uint64) (*compareBlockHeaders, error)
-	GetLastBlockNumberInStorage(tx dbtypes.Querier) (uint64, error)
-	// Return ChainID of the inserted reorg
-	MoveReorgedBlocks(tx dbtypes.Querier, reorgData mdtypes.ReorgData) (uint64, error)
-	GetBlockNumberInRPC(ctx context.Context, blockFinality aggkittypes.BlockNumberFinality) (uint64, error)
-}
-
 type ReorgProcessor struct {
 	log     aggkitcommon.Logger
-	port    ReorgPorter
+	port    mdtypes.ReorgPorter
 	funcNow func() uint64
 }
 
@@ -133,7 +124,7 @@ func (rm *ReorgProcessor) findFirstUnaffectedBlock(ctx context.Context,
 }
 
 // checkBlocks compares storage and rpc block headers and returns true if they match
-func (rm *ReorgProcessor) checkBlocks(blocks *compareBlockHeaders) (bool, error) {
+func (rm *ReorgProcessor) checkBlocks(blocks *mdtypes.CompareBlockHeaders) (bool, error) {
 	if blocks == nil {
 		return false, fmt.Errorf("checkBlocks: blocks is nil")
 	}
