@@ -172,6 +172,277 @@ func TestStorage_SaveEthLogsWithHeaders(t *testing.T) {
 	require.Equal(t, logs[1], readLogs[1])
 }
 
+func TestStorage_LogQuery(t *testing.T) {
+	t.Run("returns empty response when no logs exist", func(t *testing.T) {
+		storage := newStorageForTest(t, nil)
+		query := mdrtypes.NewLogQuery(1000, 2000, []common.Address{exampleAddr1})
+
+		response, err := storage.LogQuery(nil, query)
+
+		require.NoError(t, err)
+		require.Empty(t, response.Blocks)
+		require.Equal(t, query.BlockRange, response.ResponseRange)
+	})
+
+	t.Run("returns logs grouped by blocks with correct ordering", func(t *testing.T) {
+		storage := newStorageForTest(t, nil)
+		tx, err := storage.NewTx(t.Context())
+		require.NoError(t, err)
+
+		// Create block headers
+		blockHeaders := []*aggkittypes.BlockHeader{
+			aggkittypes.NewBlockHeader(1000, exampleTestHash[0], 1630000000, nil),
+			aggkittypes.NewBlockHeader(1001, exampleTestHash[1], 1630000060, &exampleTestHash[0]),
+			aggkittypes.NewBlockHeader(1002, exampleTestHash[2], 1630000120, &exampleTestHash[1]),
+		}
+
+		// Create logs - multiple logs per block and across different blocks
+		logs := []types.Log{
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    1000,
+				BlockHash:      exampleTestHash[0],
+				BlockTimestamp: 1630000000,
+				Topics:         []common.Hash{exampleTestHash[3]},
+				Data:           []byte{0x01},
+				TxHash:         exampleTestHash[5],
+				TxIndex:        0,
+				Index:          0,
+			},
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    1000,
+				BlockHash:      exampleTestHash[0],
+				BlockTimestamp: 1630000000,
+				Topics:         []common.Hash{exampleTestHash[4]},
+				Data:           []byte{0x02},
+				TxHash:         exampleTestHash[5],
+				TxIndex:        1,
+				Index:          1,
+			},
+			{
+				Address:        exampleAddr2,
+				BlockNumber:    1001,
+				BlockHash:      exampleTestHash[1],
+				BlockTimestamp: 1630000060,
+				Topics:         []common.Hash{exampleTestHash[6]},
+				Data:           []byte{0x03},
+				TxHash:         exampleTestHash[7],
+				TxIndex:        0,
+				Index:          0,
+			},
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    1002,
+				BlockHash:      exampleTestHash[2],
+				BlockTimestamp: 1630000120,
+				Topics:         []common.Hash{exampleTestHash[8]},
+				Data:           []byte{0x04},
+				TxHash:         exampleTestHash[9],
+				TxIndex:        0,
+				Index:          0,
+			},
+		}
+
+		err = storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, true)
+		require.NoError(t, err)
+		err = tx.Commit()
+		require.NoError(t, err)
+
+		// Query for logs from both addresses
+		query := mdrtypes.NewLogQuery(1000, 1002, []common.Address{exampleAddr1, exampleAddr2})
+		response, err := storage.LogQuery(nil, query)
+
+		require.NoError(t, err)
+		require.Equal(t, query.BlockRange, response.ResponseRange)
+		require.Len(t, response.Blocks, 3, "expected 3 blocks")
+
+		// Verify first block (block 1000) - has 2 logs from exampleAddr1
+		require.Equal(t, uint64(1000), response.Blocks[0].Header.Number)
+		require.Equal(t, exampleTestHash[0], response.Blocks[0].Header.Hash)
+		require.Equal(t, uint64(1630000000), response.Blocks[0].Header.Time)
+		require.True(t, response.Blocks[0].IsFinal)
+		require.Len(t, response.Blocks[0].Logs, 2)
+		require.Equal(t, exampleAddr1, response.Blocks[0].Logs[0].Address)
+		require.Equal(t, uint(0), response.Blocks[0].Logs[0].Index)
+		require.Equal(t, exampleAddr1, response.Blocks[0].Logs[1].Address)
+		require.Equal(t, uint(1), response.Blocks[0].Logs[1].Index)
+
+		// Verify second block (block 1001) - has 1 log from exampleAddr2
+		require.Equal(t, uint64(1001), response.Blocks[1].Header.Number)
+		require.Equal(t, exampleTestHash[1], response.Blocks[1].Header.Hash)
+		require.True(t, response.Blocks[1].IsFinal)
+		require.Len(t, response.Blocks[1].Logs, 1)
+		require.Equal(t, exampleAddr2, response.Blocks[1].Logs[0].Address)
+
+		// Verify third block (block 1002) - has 1 log from exampleAddr1
+		require.Equal(t, uint64(1002), response.Blocks[2].Header.Number)
+		require.Equal(t, exampleTestHash[2], response.Blocks[2].Header.Hash)
+		require.True(t, response.Blocks[2].IsFinal)
+		require.Len(t, response.Blocks[2].Logs, 1)
+		require.Equal(t, exampleAddr1, response.Blocks[2].Logs[0].Address)
+	})
+
+	t.Run("filters logs by single address", func(t *testing.T) {
+		storage := newStorageForTest(t, nil)
+		tx, err := storage.NewTx(t.Context())
+		require.NoError(t, err)
+
+		blockHeaders := []*aggkittypes.BlockHeader{
+			aggkittypes.NewBlockHeader(2000, exampleTestHash[0], 1630001000, nil),
+		}
+
+		logs := []types.Log{
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    2000,
+				BlockHash:      exampleTestHash[0],
+				BlockTimestamp: 1630001000,
+				Topics:         []common.Hash{exampleTestHash[1]},
+				Data:           []byte{0xAA},
+				Index:          0,
+			},
+			{
+				Address:        exampleAddr2,
+				BlockNumber:    2000,
+				BlockHash:      exampleTestHash[0],
+				BlockTimestamp: 1630001000,
+				Topics:         []common.Hash{exampleTestHash[2]},
+				Data:           []byte{0xBB},
+				Index:          1,
+			},
+		}
+
+		err = storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, false)
+		require.NoError(t, err)
+		err = tx.Commit()
+		require.NoError(t, err)
+
+		// Query only for exampleAddr1
+		query := mdrtypes.NewLogQuery(2000, 2000, []common.Address{exampleAddr1})
+		response, err := storage.LogQuery(nil, query)
+
+		require.NoError(t, err)
+		require.Len(t, response.Blocks, 1)
+		require.Len(t, response.Blocks[0].Logs, 1)
+		require.Equal(t, exampleAddr1, response.Blocks[0].Logs[0].Address)
+		require.Equal(t, []byte{0xAA}, response.Blocks[0].Logs[0].Data)
+		require.False(t, response.Blocks[0].IsFinal, "expected block to not be final")
+	})
+
+	t.Run("respects block range boundaries", func(t *testing.T) {
+		storage := newStorageForTest(t, nil)
+		tx, err := storage.NewTx(t.Context())
+		require.NoError(t, err)
+
+		blockHeaders := []*aggkittypes.BlockHeader{
+			aggkittypes.NewBlockHeader(3000, exampleTestHash[0], 1630002000, nil),
+			aggkittypes.NewBlockHeader(3001, exampleTestHash[1], 1630002060, &exampleTestHash[0]),
+			aggkittypes.NewBlockHeader(3002, exampleTestHash[2], 1630002120, &exampleTestHash[1]),
+		}
+
+		logs := []types.Log{
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    3000,
+				BlockHash:      exampleTestHash[0],
+				BlockTimestamp: 1630002000,
+				Topics:         []common.Hash{},
+				Index:          0,
+			},
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    3001,
+				BlockHash:      exampleTestHash[1],
+				BlockTimestamp: 1630002060,
+				Topics:         []common.Hash{},
+				Index:          0,
+			},
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    3002,
+				BlockHash:      exampleTestHash[2],
+				BlockTimestamp: 1630002120,
+				Topics:         []common.Hash{},
+				Index:          0,
+			},
+		}
+
+		err = storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, true)
+		require.NoError(t, err)
+		err = tx.Commit()
+		require.NoError(t, err)
+
+		// Query for middle block only
+		query := mdrtypes.NewLogQuery(3001, 3001, []common.Address{exampleAddr1})
+		response, err := storage.LogQuery(nil, query)
+
+		require.NoError(t, err)
+		require.Len(t, response.Blocks, 1, "expected only 1 block in range")
+		require.Equal(t, uint64(3001), response.Blocks[0].Header.Number)
+	})
+
+	t.Run("preserves log field values correctly", func(t *testing.T) {
+		storage := newStorageForTest(t, nil)
+		tx, err := storage.NewTx(t.Context())
+		require.NoError(t, err)
+
+		parentHash := exampleTestHash[9]
+		blockHeaders := []*aggkittypes.BlockHeader{
+			aggkittypes.NewBlockHeader(4000, exampleTestHash[0], 1630003000, &parentHash),
+		}
+
+		expectedTopics := []common.Hash{exampleTestHash[1], exampleTestHash[2], exampleTestHash[3]}
+		expectedData := []byte{0xDE, 0xAD, 0xBE, 0xEF}
+		expectedTxHash := exampleTestHash[5]
+
+		logs := []types.Log{
+			{
+				Address:        exampleAddr1,
+				BlockNumber:    4000,
+				BlockHash:      exampleTestHash[0],
+				BlockTimestamp: 1630003000,
+				Topics:         expectedTopics,
+				Data:           expectedData,
+				TxHash:         expectedTxHash,
+				TxIndex:        42,
+				Index:          7,
+			},
+		}
+
+		err = storage.SaveEthLogsWithHeaders(tx, blockHeaders, logs, true)
+		require.NoError(t, err)
+		err = tx.Commit()
+		require.NoError(t, err)
+
+		query := mdrtypes.NewLogQuery(4000, 4000, []common.Address{exampleAddr1})
+		response, err := storage.LogQuery(nil, query)
+
+		require.NoError(t, err)
+		require.Len(t, response.Blocks, 1)
+		require.Len(t, response.Blocks[0].Logs, 1)
+
+		log := response.Blocks[0].Logs[0]
+		require.Equal(t, exampleAddr1, log.Address)
+		require.Equal(t, expectedTopics, log.Topics)
+		require.Equal(t, expectedData, log.Data)
+		require.Equal(t, expectedTxHash, log.TxHash)
+		require.Equal(t, uint(42), log.TxIndex)
+		require.Equal(t, uint(7), log.Index)
+		require.Equal(t, uint64(4000), log.BlockNumber)
+		require.Equal(t, uint64(1630003000), log.BlockTimestamp)
+		require.False(t, log.Removed)
+
+		// Verify block header fields
+		header := response.Blocks[0].Header
+		require.Equal(t, uint64(4000), header.Number)
+		require.Equal(t, exampleTestHash[0], header.Hash)
+		require.Equal(t, uint64(1630003000), header.Time)
+		require.NotNil(t, header.ParentHash)
+		require.Equal(t, parentHash, *header.ParentHash)
+	})
+}
+
 func TestStorage_UpdateIsFinal(t *testing.T) {
 	storage := newStorageForTest(t, nil)
 	block := aggkittypes.NewBlockHeader(4000, exampleTestHash[5], 1630002000, nil)
