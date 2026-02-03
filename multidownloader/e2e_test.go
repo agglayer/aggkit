@@ -3,7 +3,10 @@ package multidownloader
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
+	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,9 +14,10 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
+	mdsync "github.com/agglayer/aggkit/multidownloader/sync"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/test/contracts/logemitter"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,6 +37,140 @@ type mdrE2ESimulatedEnv struct {
 	LogEmitterContract *logemitter.Logemitter
 	ethClient          *etherman.DefaultEthClient
 	auth               *bind.TransactOpts
+}
+
+type PingEvent struct {
+	BlockPosition uint64
+	From          common.Address
+	Id            uint64
+	Message       string
+}
+
+type LogemitterEvent struct {
+	PingEvent *PingEvent
+}
+
+func logemitterAppender(contract *logemitter.Logemitter) aggkitsync.LogAppenderMap {
+	appender := make(aggkitsync.LogAppenderMap)
+	appender[pingSignature] = func(b *aggkitsync.EVMBlock, l types.Log) error {
+		event, err := contract.ParsePing(l)
+		b.Events = append(b.Events, &LogemitterEvent{PingEvent: &PingEvent{
+			BlockPosition: uint64(l.Index),
+			From:          event.From,
+			Id:            event.Id.Uint64(),
+			Message:       event.Message,
+		}})
+		return err
+	}
+	return appender
+}
+
+type logemitterProcessor struct {
+	logger    *log.Logger
+	mdr       *EVMMultidownloader
+	mutex     sync.Mutex
+	lastBlock *aggkittypes.BlockHeader
+	events    map[uint64]*aggkitsync.Block
+}
+
+func (p *logemitterProcessor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittypes.BlockHeader, error) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	return p.lastBlock, nil
+}
+func (p *logemitterProcessor) ProcessBlock(ctx context.Context, block aggkitsync.Block) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.lastBlock = &aggkittypes.BlockHeader{
+		Number: block.Num,
+		Hash:   block.Hash,
+	}
+	p.logger.Infof("Processed block number %d / %s with %d events",
+		block.Num, block.Hash.Hex(), len(block.Events))
+	if p.events == nil {
+		p.events = make(map[uint64]*aggkitsync.Block)
+	}
+	p.events[block.Num] = &block
+	return nil
+}
+func (p *logemitterProcessor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.logger.Infof("Processing reorg from block number %d", firstReorgedBlock)
+	hdr, err := p.mdr.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(firstReorgedBlock-1))
+	if err != nil {
+		return err
+	}
+	p.logger.Infof("New last block after reorg: %s", hdr.String())
+	p.lastBlock = hdr
+	// remove reorged events from p.events
+	for blkNum := range p.events {
+		if blkNum >= firstReorgedBlock {
+			delete(p.events, blkNum)
+		}
+	}
+	return nil
+}
+
+func (p *logemitterProcessor) lastPingEvent() *PingEvent {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	var lastEvent *PingEvent
+	var lastBlockNum uint64
+	for blkNum, block := range p.events {
+		for _, ev := range block.Events {
+			logEv, ok := ev.(*LogemitterEvent)
+			if !ok {
+				continue
+			}
+			if logEv.PingEvent != nil {
+				if blkNum >= lastBlockNum {
+					lastBlockNum = blkNum
+					lastEvent = logEv.PingEvent
+				}
+			}
+		}
+	}
+	return lastEvent
+}
+
+func newLogemitterSyncer(t *testing.T, mdr *EVMMultidownloader,
+	contract *logemitter.Logemitter,
+	syncerConfig aggkittypes.SyncerConfig) (*mdsync.EVMDriver,
+	*logemitterProcessor, *mdsync.EVMDownloader) {
+	t.Helper()
+	logger := log.WithFields("module", "sync_logemitter")
+	downloader := mdsync.NewEVMDownloader(
+		mdr,
+		logger,
+		&aggkitsync.RetryHandler{
+			MaxRetryAttemptsAfterError: 5,
+		},
+		logemitterAppender(contract),
+		1*time.Minute,
+		1*time.Second,
+	)
+
+	processor := &logemitterProcessor{
+		logger: logger,
+		mdr:    mdr,
+	}
+
+	driver := mdsync.NewEVMDriver(
+		logger,
+		processor,
+		downloader,
+		syncerConfig,
+		100,
+		&aggkitsync.RetryHandler{
+			MaxRetryAttemptsAfterError: 5,
+		},
+		nil,
+	)
+	// TODO: Register syncer must be done by driver?
+	err := mdr.RegisterSyncer(syncerConfig)
+	require.NoError(t, err)
+	return driver, processor, downloader
 }
 
 func buildL1Simulated(t *testing.T) *mdrE2ESimulatedEnv {
@@ -64,15 +202,16 @@ func buildL1Simulated(t *testing.T) *mdrE2ESimulatedEnv {
 	}
 }
 
-func TestE2E(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping E2E test in short mode")
-	}
-	// Simulated L1
-	testData := buildL1Simulated(t)
-
-	logger := log.WithFields("module", "mdr_e2e")
+func newMultidownloader(t *testing.T, testData *mdrE2ESimulatedEnv) *EVMMultidownloader {
+	t.Helper()
 	cfg := NewConfigDefault("e2e_test", t.TempDir())
+	//logger := log.WithFields("module", "mdr_e2e_custom_syncer")
+	logger, _, err := log.NewLogger(log.Config{
+		Level:       "error",
+		Environment: "development",
+		Outputs:     []string{"stdout"},
+	})
+	require.NoError(t, err)
 	store, err := storage.NewMultidownloaderStorage(logger,
 		storage.MultidownloaderStorageConfig{
 			DBPath: cfg.StoragePath,
@@ -84,14 +223,13 @@ func TestE2E(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg.BlockFinality = *simulatedFinalized
-	cfg.WaitPeriodToCheckCatchUp = configtypes.Duration{Duration: 1 * time.Millisecond}
-	cfg.PeriodToCheckReorgs = configtypes.Duration{Duration: 1 * time.Millisecond}
-	require.NoError(t, err)
+	cfg.WaitPeriodToCheckCatchUp = configtypes.Duration{Duration: 100 * time.Millisecond}
+	cfg.PeriodToCheckReorgs = configtypes.Duration{Duration: 500 * time.Millisecond}
 
 	mdr, err := NewEVMMultidownloader(
 		logger,
 		cfg,
-		"mdr_e2e",
+		"mdr_e2e_custom_syncer",
 		testData.ethClient,
 		nil, // rpcClient
 		store,
@@ -100,112 +238,91 @@ func TestE2E(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, mdr)
-	// Generate some logs
-	_, err = testData.LogEmitterContract.EmitPing(testData.auth, big.NewInt(123), "hello world")
-	require.NoError(t, err)
-	testData.SimulatedL1.Commit()
+	return mdr
+}
 
-	err = mdr.RegisterSyncer(aggkittypes.SyncerConfig{
-		SyncerID: "log_emitter_e2e_test",
+func TestE2E_CustomSyncer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping E2E test in short mode")
+	}
+	var err error
+	testData := buildL1Simulated(t)
+	mdr := newMultidownloader(t, testData)
+	syncerConfig := aggkittypes.SyncerConfig{
+		SyncerID: "log_emitter_e2e_test_custom_syncer",
 		ContractAddresses: []common.Address{
 			testData.LogEmitterAddr,
 		},
 		FromBlock: 0,
 		ToBlock:   aggkittypes.LatestBlock,
-	})
-	require.NoError(t, err)
-	ctx := t.Context()
+	}
+
+	driver, processor, _ := newLogemitterSyncer(t, mdr, testData.LogEmitterContract, syncerConfig)
+	ctx := context.TODO()
 	err = mdr.Initialize(ctx)
 	require.NoError(t, err)
 
+	// It's important, mdr must be started
 	go func() {
 		err := mdr.Start(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			require.NoError(t, err)
 		}
 	}()
-	latestBlock, err := mdr.BlockNumber(ctx, aggkittypes.LatestBlock)
-	require.NoError(t, err)
-	logs, err := mdr.FilterLogs(ctx, ethereum.FilterQuery{
-		Addresses: []common.Address{testData.LogEmitterAddr},
-		FromBlock: big.NewInt(0),
-		ToBlock:   big.NewInt(int64(latestBlock)),
-	})
-	require.NoError(t, err)
-	emitterLogs := processEvents(t, testData.LogEmitterContract, logs)
-	require.Equal(t, 2, len(logs))
-	require.Equal(t, testData.LogEmitterAddr, logs[0].Address)
-	require.Equal(t, logEmitterEvent{
-		From:    testData.auth.From,
-		Id:      big.NewInt(123),
-		Message: "hello world",
-	}, emitterLogs[1])
+	go func() {
+		driver.Sync(ctx)
+	}()
 
-	testData.SimulatedL1.Commit() // Block 3
-	_, err = testData.LogEmitterContract.EmitPing(testData.auth, big.NewInt(123), "block 4")
-	require.NoError(t, err)
-	testData.SimulatedL1.Commit() // Block 4
-	logs, err = mdr.FilterLogs(ctx, ethereum.FilterQuery{
-		Addresses: []common.Address{testData.LogEmitterAddr},
-		FromBlock: big.NewInt(0),
-		ToBlock:   big.NewInt(int64(latestBlock + 2)),
-	})
-	require.NoError(t, err)
-	require.Equal(t, 3, len(logs))
-
-	showChainStatus(t, ctx, logger, testData.SimulatedL1)
-	blk4, err := mdr.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(4))
-	require.NoError(t, err)
-
-	// Forking at block 3 -> so block 4 will be reorged
-	// ---------- FORKING POINT ----------------------------------------
-	forkAt(t, ctx, logger, testData.SimulatedL1, 3)
-
-	// Now se have to create a longer chain to force reorg
-	testData.SimulatedL1.Commit() // reorg chain: Block 4
-	testData.SimulatedL1.Commit() // reorg chain: Block 5
-	showChainStatus(t, ctx, logger, testData.SimulatedL1)
-	_, err = mdr.FilterLogs(ctx, ethereum.FilterQuery{
-		Addresses: []common.Address{testData.LogEmitterAddr},
-		FromBlock: big.NewInt(0),
-		ToBlock:   big.NewInt(int64(5)),
-	})
-	require.NoError(t, err)
-	blkReorged4, err := mdr.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(4))
-	require.NoError(t, err)
-	logger.Infof("Block 4 hash after reorg: %s", blkReorged4.Hash.Hex())
-	require.NotEqual(t, blk4.Hash, blkReorged4.Hash, "block 4 hash should be different after reorg")
-	time.Sleep(1 * time.Second)
-	err = mdr.Stop(ctx)
-	require.NoError(t, err)
-	isValid, reorgChainID, err := mdr.CheckValidBlock(ctx, blk4.Number, blk4.Hash)
-	require.NoError(t, err)
-	require.False(t, isValid, "block 4 should not be valid after reorg")
-	require.Equal(t, uint64(1), reorgChainID, "reorgChainID should be 1")
-}
-
-func forkAt(t *testing.T, ctx context.Context, logger *log.Logger, sim *simulated.Backend, blockNumber uint64) {
-	t.Helper()
-	blk, err := sim.Client().HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
-	require.NoError(t, err)
-	require.NoError(t, err)
-	logger.Infof("Forking L1 at block %d (%s)... This will generate new block for reorg >%d", blockNumber, blk.Hash().Hex(), blockNumber)
-
-	err = sim.Fork(blk.Hash())
-	require.NoError(t, err)
-}
-
-func showChainStatus(t *testing.T, ctx context.Context, logger *log.Logger, sim *simulated.Backend) {
-	t.Helper()
-	latestBlock, err := sim.Client().BlockNumber(ctx)
-
-	require.NoError(t, err)
-	logger.Infof("Current chain latest block: %d", latestBlock)
-	for i := uint64(0); i <= latestBlock; i++ {
-		blk, err := sim.Client().HeaderByNumber(ctx, big.NewInt(int64(i)))
+	for numReorgs := 0; numReorgs < 3; numReorgs++ {
+		var blocks []*types.Header
+		var lastBlock *types.Header
+		var logIndex int64
+		for i := 0; i < 10; i++ {
+			logIndex++
+			log.Infof("Emitting ping %d", logIndex)
+			_, err = testData.LogEmitterContract.EmitPing(testData.auth,
+				big.NewInt(logIndex),
+				fmt.Sprintf("iteration %d", logIndex))
+			require.NoError(t, err)
+			testData.SimulatedL1.Commit() // Block 3
+			hdr, err := testData.ethClient.HeaderByNumber(ctx, nil)
+			require.NoError(t, err)
+			if blocks == nil {
+				blocks = make([]*types.Header, 0)
+			}
+			if lastBlock == nil || (lastBlock.Number.Uint64() != hdr.Number.Uint64()) {
+				blocks = append(blocks, hdr)
+				lastBlock = hdr
+			}
+		}
+		// Catch up
+		for {
+			lastPing := processor.lastPingEvent()
+			log.Infof("Catching up: last ping id: %+v", lastPing)
+			if lastPing != nil && lastPing.Id == uint64(logIndex) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		lastProcessedBlock, err := processor.GetLastProcessedBlockHeader(ctx)
 		require.NoError(t, err)
-		logger.Infof(" Block %d: %s", i, blk.Hash().Hex())
+		// Pick a random  index to fork (minimum 1 block must be refactored)
+		chooseBlockIndex := rand.Intn(len(blocks) - 2)
+		err = testData.SimulatedL1.Fork(blocks[chooseBlockIndex].Hash())
+		require.NoError(t, err)
+		testData.SimulatedL1.Commit() // reorg chain: Block 4
+		for {
+			currentBlock, err := processor.GetLastProcessedBlockHeader(ctx)
+			require.NoError(t, err)
+			log.Infof("Catching up after reorg: previousLastBlock (%d) !=  currentLastBlock=%d", lastProcessedBlock.Number, currentBlock.Number)
+			if currentBlock.Number != lastProcessedBlock.Number {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		log.Infof("Finish reorg %d", numReorgs)
 	}
+	log.Info("Finish tests")
 }
 
 type logEmitterEvent struct {

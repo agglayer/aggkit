@@ -116,10 +116,16 @@ func (a *MultidownloaderStorage) GetBlockReorgedChainID(tx dbtypes.Querier,
 	var chainIDRow struct {
 		ChainID *uint64 `meddler:"chain_id"`
 	}
-	query := `SELECT chain_id FROM blocks_reorged
-	WHERE block_number = ? AND block_hash = ? LIMIT 1;`
+	query := `SELECT br.chain_id FROM blocks_reorged br
+	INNER JOIN reorgs r ON br.chain_id = r.chain_id
+	WHERE br.block_number = ? AND br.block_hash = ?
+	ORDER BY r.reorged_from_block ASC
+	LIMIT 1;`
 	err := tx.QueryRow(query, blockNumber, blockHash.Hex()).Scan(&chainIDRow.ChainID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, false, nil
+		}
 		return 0, false, fmt.Errorf("GetBlockReorgedChainID: error querying blocks_reorged: %w", err)
 	}
 	if chainIDRow.ChainID == nil {
