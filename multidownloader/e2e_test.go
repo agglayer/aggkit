@@ -205,7 +205,7 @@ func buildL1Simulated(t *testing.T) *mdrE2ESimulatedEnv {
 func newMultidownloader(t *testing.T, testData *mdrE2ESimulatedEnv) *EVMMultidownloader {
 	t.Helper()
 	cfg := NewConfigDefault("e2e_test", t.TempDir())
-	//logger := log.WithFields("module", "mdr_e2e_custom_syncer")
+	// This log logger will only log errors to avoid cluttering the test output
 	logger, _, err := log.NewLogger(log.Config{
 		Level:       "error",
 		Environment: "development",
@@ -323,31 +323,4 @@ func TestE2E_CustomSyncer(t *testing.T) {
 		log.Infof("Finish reorg %d", numReorgs)
 	}
 	log.Info("Finish tests")
-}
-
-type logEmitterEvent struct {
-	From    common.Address
-	Id      *big.Int
-	Message string
-}
-
-func processEvents(t *testing.T, contract *logemitter.Logemitter, logs []types.Log) []logEmitterEvent {
-	t.Helper()
-	result := make([]logEmitterEvent, 0)
-	for _, lg := range logs {
-		if lg.Topics[0] == pingSignature {
-			event, err := contract.ParsePing(lg)
-			require.NoError(t, err)
-			log.Infof("Processed Ping event: From=%s, Id=%s, Message=%s",
-				event.From, event.Id, event.Message)
-			result = append(result, logEmitterEvent{
-				From:    event.From,
-				Id:      event.Id,
-				Message: event.Message,
-			})
-		} else {
-			t.Fatalf("Unknown event signature: %s", lg.Topics[0].Hex())
-		}
-	}
-	return result
 }

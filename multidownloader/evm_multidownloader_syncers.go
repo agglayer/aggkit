@@ -146,10 +146,12 @@ func (dh *EVMMultidownloader) LogQuery(ctx context.Context,
 
 	result, err := dh.storage.LogQuery(nil, *availQuery)
 	if err != nil {
-		// Calculate UnsafeRange
-		_, unsafePendingBlockRange := result.ResponseRange.SplitByBlockNumber(finalizedBlockNumber)
-		result.UnsafeRange = unsafePendingBlockRange
+		return mdrtypes.LogQueryResponse{}, fmt.Errorf("EVMMultidownloader.LogQuery: error executing log query %s: %w",
+			availQuery.String(), err)
 	}
+	// Calculate UnsafeRange
+	_, unsafePendingBlockRange := result.ResponseRange.SplitByBlockNumber(finalizedBlockNumber)
+	result.UnsafeRange = unsafePendingBlockRange
 	return result, err
 }
 

@@ -520,6 +520,11 @@ func TestExecuteLogQuery_FullyAvailable(t *testing.T) {
 
 	logQuery := mdrtypes.NewLogQuery(100, 110, []common.Address{common.HexToAddress("0x123")})
 
+	syncerConfig := aggkittypes.SyncerConfig{
+		FromBlock:         50,
+		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
+	}
+
 	mockMdr.EXPECT().IsAvailable(logQuery).Return(true)
 	mockMdr.EXPECT().LogQuery(ctx, logQuery).Return(mdrtypes.LogQueryResponse{
 		Blocks: []mdrtypes.BlockWithLogs{
@@ -549,7 +554,7 @@ func TestExecuteLogQuery_FullyAvailable(t *testing.T) {
 		Time:   2100,
 	}, mdrtypes.Finalized, nil)
 
-	result, err := download.executeLogQuery(ctx, logQuery)
+	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -586,6 +591,11 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 	logQuery := mdrtypes.NewLogQuery(100, 110, []common.Address{common.HexToAddress("0x123")})
 	partialQuery := mdrtypes.NewLogQuery(100, 105, []common.Address{common.HexToAddress("0x123")})
 
+	syncerConfig := aggkittypes.SyncerConfig{
+		FromBlock:         50,
+		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
+	}
+
 	mockMdr.EXPECT().IsAvailable(logQuery).Return(false)
 	mockMdr.EXPECT().IsPartiallyAvailable(logQuery).Return(true, &partialQuery)
 	mockMdr.EXPECT().LogQuery(ctx, partialQuery).Return(mdrtypes.LogQueryResponse{
@@ -617,7 +627,7 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 		Time:   2050,
 	}, mdrtypes.Finalized, nil)
 
-	result, err := download.executeLogQuery(ctx, logQuery)
+	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -646,10 +656,15 @@ func TestExecuteLogQuery_NotAvailable(t *testing.T) {
 
 	logQuery := mdrtypes.NewLogQuery(100, 110, []common.Address{common.HexToAddress("0x123")})
 
+	syncerConfig := aggkittypes.SyncerConfig{
+		FromBlock:         50,
+		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
+	}
+
 	mockMdr.EXPECT().IsAvailable(logQuery).Return(false)
 	mockMdr.EXPECT().IsPartiallyAvailable(logQuery).Return(false, nil)
 
-	result, err := download.executeLogQuery(ctx, logQuery)
+	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
 
 	require.Error(t, err)
 	require.Nil(t, result)
@@ -676,10 +691,15 @@ func TestExecuteLogQuery_GetEthLogsError(t *testing.T) {
 
 	logQuery := mdrtypes.NewLogQuery(100, 110, []common.Address{common.HexToAddress("0x123")})
 
+	syncerConfig := aggkittypes.SyncerConfig{
+		FromBlock:         50,
+		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
+	}
+
 	mockMdr.EXPECT().IsAvailable(logQuery).Return(true)
 	mockMdr.EXPECT().LogQuery(ctx, logQuery).Return(mdrtypes.LogQueryResponse{}, fmt.Errorf("database error"))
 
-	result, err := download.executeLogQuery(ctx, logQuery)
+	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
 
 	require.Error(t, err)
 	require.Nil(t, result)
