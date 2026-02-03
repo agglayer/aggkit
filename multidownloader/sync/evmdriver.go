@@ -95,9 +95,11 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 	if err = d.processBlocks(ctx, blocks); err != nil {
 		return fmt.Errorf("EVMDriver: error processing blocks: %w", err)
 	}
-	LastProcessedBlock := blocks.Data.LastBlock()
-	d.logger.Infof("EVMDriver: processed %d blocks, percent %.2f%% complete. LastBlock: %s",
-		len(blocks.Data), blocks.PercentComplete, LastProcessedBlock.Brief())
+	if blocks != nil {
+		LastProcessedBlock := blocks.Data.LastBlock()
+		d.logger.Infof("EVMDriver: processed %d blocks, percent %.2f%% complete. LastBlock: %s",
+			len(blocks.Data), blocks.PercentComplete, LastProcessedBlock.Brief())
+	}
 	return nil
 }
 
