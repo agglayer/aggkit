@@ -34,14 +34,14 @@ func NewReorgProcessor(log aggkitcommon.Logger,
 	}
 }
 
-// After detecting a reorg at offendingBlockNumber,
+// After detecting a reorg at detectedReorgError.OffendingBlockNumber,
 // - find affected blocks
 // - store the reorg info in storage
 func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
-	offendingBlockNumber uint64) error {
+	detectedReorgError mdtypes.DetectedReorgError) error {
 	// We known that offendingBlockNumber is affected, so we go backwards until we find
 	// the first unaffected block
-	currentBlockNumber := offendingBlockNumber
+	currentBlockNumber := detectedReorgError.OffendingBlockNumber
 	tx, err := rm.port.NewTx(ctx)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error starting new tx: %w", err)
@@ -83,6 +83,7 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 		NetworkLatestBlock:        latestBlockNumberInRPC,
 		NetworkFinalizedBlock:     finalizedBlockNumberInRPC,
 		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
+		Description:               detectedReorgError.Error(),
 	}
 	chainID, err := rm.port.MoveReorgedBlocks(tx, reorgData)
 	if err != nil {

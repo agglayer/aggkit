@@ -22,6 +22,7 @@ type reorgRow struct {
 	NetworkLatestBlock        uint64 `meddler:"network_latest_block"`
 	NetworkFinalizedBlock     uint64 `meddler:"network_finalized_block"`
 	NetworkFinalizedBlockName string `meddler:"network_finalized_block_name"`
+	Description               string `meddler:"description"`
 }
 
 func newReorgRowFromReorgData(reorgData mdrtypes.ReorgData) *reorgRow {
@@ -34,6 +35,7 @@ func newReorgRowFromReorgData(reorgData mdrtypes.ReorgData) *reorgRow {
 		NetworkLatestBlock:        reorgData.NetworkLatestBlock,
 		NetworkFinalizedBlock:     reorgData.NetworkFinalizedBlock,
 		NetworkFinalizedBlockName: reorgData.NetworkFinalizedBlockName.String(),
+		Description:               reorgData.Description,
 	}
 }
 
@@ -136,7 +138,7 @@ func (a *MultidownloaderStorage) GetReorgedDataByChainID(tx dbtypes.Querier,
 
 	var row reorgRow
 	query := `SELECT chain_id, detected_at_block, reorged_from_block, reorged_to_block,
-		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name
+		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name, description
 		FROM reorgs WHERE chain_id = ? LIMIT 1;`
 
 	err := meddler.QueryRow(tx, &row, query, reorgedChainID)
@@ -164,6 +166,7 @@ func (a *MultidownloaderStorage) GetReorgedDataByChainID(tx dbtypes.Querier,
 		NetworkLatestBlock:        row.NetworkLatestBlock,
 		NetworkFinalizedBlock:     row.NetworkFinalizedBlock,
 		NetworkFinalizedBlockName: *blockFinality,
+		Description:               row.Description,
 	}
 
 	return reorgData, nil

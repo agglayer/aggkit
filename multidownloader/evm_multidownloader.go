@@ -359,7 +359,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 				}
 
 				dh.log.Infof("Processing reorg at block number %d...", reorgErr.OffendingBlockNumber)
-				err = dh.reorgProcessor.ProcessReorg(runCtx, reorgErr.OffendingBlockNumber)
+				err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr)
 				if err != nil {
 					dh.log.Warnf("Error running reorg multidownloader: %s", err.Error())
 					time.Sleep(1 * time.Second)

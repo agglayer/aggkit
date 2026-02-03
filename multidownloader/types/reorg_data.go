@@ -15,16 +15,18 @@ type ReorgData struct {
 	NetworkLatestBlock        uint64
 	NetworkFinalizedBlock     uint64
 	NetworkFinalizedBlockName aggkittypes.BlockNumberFinality
+	Description               string
 }
 
 func (r *ReorgData) String() string {
 	return fmt.Sprintf("ReorgData{ChainID: %d, BlockRangeAffected: %s, DetectedAtBlock: %d, DetectedTimestamp: %d, "+
-		"NetworkLatestBlock: %d, NetworkFinalizedBlock: %d (%s)}",
+		"NetworkLatestBlock: %d, NetworkFinalizedBlock: %d (%s), Description: %s}",
 		r.ChainID,
 		r.BlockRangeAffected.String(),
 		r.DetectedAtBlock,
 		r.DetectedTimestamp,
 		r.NetworkLatestBlock,
 		r.NetworkFinalizedBlock,
-		r.NetworkFinalizedBlockName.String())
+		r.NetworkFinalizedBlockName.String(),
+		r.Description)
 }
