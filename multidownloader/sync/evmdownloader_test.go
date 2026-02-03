@@ -46,7 +46,7 @@ func TestDownloadNextBlocks_Success(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -117,7 +117,7 @@ func TestDownloadNextBlocks_ContextCancellation(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -152,7 +152,7 @@ func TestDownloadNextBlocks_ReorgDetected(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -206,7 +206,7 @@ func TestDownloadNextBlocks_NilLastBlockHeader(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -275,7 +275,7 @@ func TestDownloadNextBlocks_LogsNotAvailableInitially(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -355,7 +355,7 @@ func TestDownloadNextBlocks_TimeoutWaitingForLogs(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -402,7 +402,7 @@ func TestDownloadNextBlocks_ContextCancelledDuringRetry(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -449,7 +449,7 @@ func TestDownloadNextBlocks_ReorgDetectedDuringRetry(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -509,7 +509,7 @@ func TestExecuteLogQuery_FullyAvailable(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -574,7 +574,7 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -635,7 +635,7 @@ func TestExecuteLogQuery_NotAvailable(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -665,7 +665,7 @@ func TestExecuteLogQuery_GetEthLogsError(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -693,7 +693,7 @@ func TestNewMaxLogQuery_WithLastBlockHeader(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                nil,
 		logger:                             logger,
 		rh:                                 rh,
@@ -726,7 +726,7 @@ func TestNewMaxLogQuery_WithoutLastBlockHeader(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                nil,
 		logger:                             logger,
 		rh:                                 rh,
@@ -756,7 +756,7 @@ func TestCheckReorgedBlock_NilBlockHeader(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -780,7 +780,7 @@ func TestCheckReorgedBlock_ValidBlock(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -810,7 +810,7 @@ func TestCheckReorgedBlock_InvalidBlock(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -852,7 +852,7 @@ func TestCheckReorgedBlock_ContextCancellation(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -881,7 +881,7 @@ func TestCheckReorgedBlock_CheckValidBlockError(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -912,7 +912,7 @@ func TestCheckReorgedBlock_GetReorgedDataError(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -944,7 +944,7 @@ func TestCheckReorgedBlock_NilReorgData(t *testing.T) {
 		MaxRetryAttemptsAfterError: 3,
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -984,7 +984,7 @@ func TestAppendLog_Success(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                nil,
 		logger:                             logger,
 		rh:                                 rh,
@@ -1033,7 +1033,7 @@ func TestAppendLog_RetryOnError(t *testing.T) {
 		},
 	}
 
-	download := &Downloader{
+	download := &EVMDownloader{
 		mdr:                                nil,
 		logger:                             logger,
 		rh:                                 rh,

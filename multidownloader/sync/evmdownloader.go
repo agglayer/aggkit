@@ -22,7 +22,7 @@ var (
 	ErrLogsNotAvailable = fmt.Errorf("logs not available")
 )
 
-type Downloader struct {
+type EVMDownloader struct {
 	mdr      mdrsynctypes.MultidownloaderInterface
 	logger   aggkitcommon.Logger
 	rh       *sync.RetryHandler
@@ -32,15 +32,15 @@ type Downloader struct {
 	pullingPeriod                      time.Duration
 }
 
-func NewDownloader(
+func NewEVMDownloader(
 	mdr mdrsynctypes.MultidownloaderInterface,
 	logger aggkitcommon.Logger,
 	rh *sync.RetryHandler,
 	appender sync.LogAppenderMap,
 	waitPeriodToCatchUpMaximumLogRange time.Duration,
 	pullingPeriod time.Duration,
-) *Downloader {
-	return &Downloader{
+) *EVMDownloader {
+	return &EVMDownloader{
 		mdr:                                mdr,
 		logger:                             logger,
 		rh:                                 rh,
@@ -50,11 +50,11 @@ func NewDownloader(
 	}
 }
 
-func (d *Downloader) Finality() aggkittypes.BlockNumberFinality {
+func (d *EVMDownloader) Finality() aggkittypes.BlockNumberFinality {
 	return d.mdr.Finality()
 }
 
-func (d *Downloader) DownloadNextBlocks(ctx context.Context,
+func (d *EVMDownloader) DownloadNextBlocks(ctx context.Context,
 	lastBlockHeader *aggkittypes.BlockHeader,
 	maxBlocks uint64,
 	syncerConfig aggkittypes.SyncerConfig) (*mdrsynctypes.DownloadResult, error) {
@@ -86,14 +86,14 @@ func (d *Downloader) DownloadNextBlocks(ctx context.Context,
 			return true, nil
 		})
 	if errors.Is(err, aggkitcommon.ErrTimeoutReached) {
-		return nil, fmt.Errorf("Downloader.DownloadNextBlocks: logs not available for query: %s after waiting %s: %w",
+		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: logs not available for query: %s after waiting %s: %w",
 			maxLogQuery.String(), d.waitPeriodToCatchUpMaximumLogRange.String(), ErrLogsNotAvailable)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !conditionMet {
-		return nil, fmt.Errorf("Downloader.DownloadNextBlocks: logs not available for query: %s. Err: %w",
+		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: logs not available for query: %s. Err: %w",
 			maxLogQuery.String(), ErrLogsNotAvailable)
 	}
 
@@ -103,7 +103,7 @@ func (d *Downloader) DownloadNextBlocks(ctx context.Context,
 		return nil, err
 	}
 	if result == nil {
-		d.logger.Debugf("Downloader.DownloadNextBlocks: no logs found for blocks %s", maxLogQuery.BlockRange.String())
+		d.logger.Debugf("EVMDownloader.DownloadNextBlocks: no logs found for blocks %s", maxLogQuery.BlockRange.String())
 		result = &mdrsynctypes.DownloadResult{
 			Data:            nil,
 			PercentComplete: percentComplete,
@@ -112,13 +112,13 @@ func (d *Downloader) DownloadNextBlocks(ctx context.Context,
 	return result, nil
 }
 
-func (d *Downloader) ChainID(ctx context.Context) (uint64, error) {
+func (d *EVMDownloader) ChainID(ctx context.Context) (uint64, error) {
 	return d.mdr.ChainID(ctx)
 }
 
 // executeLogQuery executes the log query, checking for partial availability
 // if there are no logs available returns an error
-func (d *Downloader) executeLogQuery(ctx context.Context,
+func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 	fullLogQuery mdrtypes.LogQuery) (*mdrsynctypes.DownloadResult, error) {
 	logQuery := fullLogQuery
 	if !d.mdr.IsAvailable(fullLogQuery) {
@@ -143,12 +143,12 @@ func (d *Downloader) executeLogQuery(ctx context.Context,
 	err = d.addLastBlockIfNotIncluded(ctx, result,
 		logQueryResponse.ResponseRange, logQueryResponse.UnsafeRange)
 	if err != nil {
-		return nil, fmt.Errorf("Downloader.executeLogQuery: adding last block: %w", err)
+		return nil, fmt.Errorf("EVMDownloader.executeLogQuery: adding last block: %w", err)
 	}
-	d.logger.Infof("Downloader.executeLogQuery(block:%s): len(logs)= %d", logQuery.BlockRange.String(), totalLogs)
+	d.logger.Infof("EVMDownloader.executeLogQuery(block:%s): len(logs)= %d", logQuery.BlockRange.String(), totalLogs)
 	return result, nil
 }
-func (d *Downloader) addLastBlockIfNotIncluded(ctx context.Context,
+func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 	result *mdrsynctypes.DownloadResult,
 	responseRange aggkitcommon.BlockRange,
 	unsafeRange aggkitcommon.BlockRange) error {
@@ -162,14 +162,14 @@ func (d *Downloader) addLastBlockIfNotIncluded(ctx context.Context,
 
 	hdr, _, err := d.mdr.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(lastBlockNumber))
 	if err != nil {
-		d.logger.Errorf("Downloader: error getting block header for block number %d: %v", lastBlockNumber, err)
+		d.logger.Errorf("EVMDownloader: error getting block header for block number %d: %v", lastBlockNumber, err)
 		return nil
 	}
 	if hdr == nil {
 		// Check that we are not in the unsafe zone. Because in that case we can't fake the Hash and it's an error
 		// because the block must in in storage
 		if unsafeRange.ContainsBlockNumber(lastBlockNumber) {
-			err := fmt.Errorf("Downloader: cannot get block header for block number %d in unsafe zone", lastBlockNumber)
+			err := fmt.Errorf("EVMDownloader: cannot get block header for block number %d in unsafe zone", lastBlockNumber)
 			d.logger.Error(err)
 			return err
 		}
@@ -192,14 +192,14 @@ func (d *Downloader) addLastBlockIfNotIncluded(ctx context.Context,
 	if hdr.ParentHash != nil {
 		emptyBlock.ParentHash = *hdr.ParentHash
 	}
-	d.logger.Debugf("Downloader.addLastBlockIfNotIncluded: to response %s adding empty block number %d / %s",
+	d.logger.Debugf("EVMDownloader.addLastBlockIfNotIncluded: to response %s adding empty block number %d / %s",
 		responseRange.String(),
 		lastBlockNumber, hdr.Hash.Hex())
 	result.Data = append(result.Data, emptyBlock)
 	return nil
 }
 
-func (d *Downloader) logQueryResponseToEVMBlocks(
+func (d *EVMDownloader) logQueryResponseToEVMBlocks(
 	ctx context.Context, response mdrtypes.LogQueryResponse) sync.EVMBlocks {
 	blocks := make(sync.EVMBlocks, 0, len(response.Blocks))
 	for _, blockWithLogs := range response.Blocks {
@@ -236,7 +236,7 @@ func (d *Downloader) logQueryResponseToEVMBlocks(
 	return blocks
 }
 
-func (d *Downloader) appendLog(ctx context.Context, block *sync.EVMBlock, log types.Log) {
+func (d *EVMDownloader) appendLog(ctx context.Context, block *sync.EVMBlock, log types.Log) {
 	appenderFn := d.appender[log.Topics[0]]
 	if appenderFn == nil {
 		// d.logger.Debugf("no appender function found for topic: %s", log.Topics[0].Hex())
@@ -256,7 +256,7 @@ func (d *Downloader) appendLog(ctx context.Context, block *sync.EVMBlock, log ty
 }
 
 // newMaxLogQuery creates a new LogQuery based on the syncerConfig and maxBlocks
-func (d *Downloader) newMaxLogQuery(lastBlockHeader *aggkittypes.BlockHeader,
+func (d *EVMDownloader) newMaxLogQuery(lastBlockHeader *aggkittypes.BlockHeader,
 	maxBlocks uint64,
 	syncerConfig aggkittypes.SyncerConfig) mdrtypes.LogQuery {
 	var fromBlock uint64
@@ -270,7 +270,7 @@ func (d *Downloader) newMaxLogQuery(lastBlockHeader *aggkittypes.BlockHeader,
 	return logQuery
 }
 
-func (d *Downloader) checkReorgedBlock(ctx context.Context,
+func (d *EVMDownloader) checkReorgedBlock(ctx context.Context,
 	blockHeader *aggkittypes.BlockHeader) error {
 	// Check Context cancellation
 	if ctx.Err() != nil {

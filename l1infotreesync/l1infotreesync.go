@@ -100,12 +100,12 @@ func NewMultidownloadBased(
 		return nil, fmt.Errorf("failed to register l1infotreesync in multidownloader: %w", err)
 	}
 	logger := log.WithFields("syncer", syncerID)
-	// TODO: move the durations to config file (mdrsync.NewDownloader)
+	// TODO: move the durations to config file (mdrsync.NewEVMDownloader)
 	logger.Infof("Creating L1 Info Tree Syncer with WaitForNewBlocksPeriod: %s, RetryAfterErrorPeriod: %s",
 		cfg.WaitForNewBlocksPeriod.String(),
 		cfg.RetryAfterErrorPeriod.String(),
 	)
-	downloader := mdrsync.NewDownloader(
+	downloader := mdrsync.NewEVMDownloader(
 		l1Multidownloader,
 		logger,
 		rh,

@@ -113,7 +113,7 @@ func TestEVMMultidownloader(t *testing.T) {
 			RetryAfterErrorPeriod:      time.Second,
 			MaxRetryAttemptsAfterError: 0,
 		}
-		downloader := mdrsync.NewDownloader(
+		downloader := mdrsync.NewEVMDownloader(
 			mdr,
 			logger,
 			rh,
