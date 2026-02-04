@@ -95,7 +95,11 @@ func TestDownloadNextBlocks_Success(t *testing.T) {
 		Hash:   common.HexToHash("0xblock110"),
 		Time:   1100,
 	}, mdrtypes.Finalized, nil)
-
+	mockMdr.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(&aggkittypes.BlockHeader{
+		Number: 110,
+		Hash:   common.HexToHash("0xblock110"),
+		Time:   2100,
+	}, nil)
 	result, err := download.DownloadNextBlocks(ctx, lastBlockHeader, 10, syncerConfig)
 
 	require.NoError(t, err)
@@ -249,7 +253,11 @@ func TestDownloadNextBlocks_NilLastBlockHeader(t *testing.T) {
 		Hash:   common.HexToHash("0xblock59"),
 		Time:   1090,
 	}, mdrtypes.Finalized, nil)
-
+	mockMdr.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(&aggkittypes.BlockHeader{
+		Number: 110,
+		Hash:   common.HexToHash("0xblock110"),
+		Time:   2100,
+	}, nil)
 	result, err := download.DownloadNextBlocks(ctx, nil, 10, syncerConfig)
 
 	require.NoError(t, err)
@@ -333,7 +341,11 @@ func TestDownloadNextBlocks_LogsNotAvailableInitially(t *testing.T) {
 		Hash:   common.HexToHash("0xblock110"),
 		Time:   1100,
 	}, mdrtypes.Finalized, nil).Once()
-
+	mockMdr.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(&aggkittypes.BlockHeader{
+		Number: 110,
+		Hash:   common.HexToHash("0xblock110"),
+		Time:   2100,
+	}, nil)
 	// Final checkReorgedBlock after PollingWithTimeout completes (line 101)
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(true, uint64(0), nil).Once()
 
@@ -553,7 +565,11 @@ func TestExecuteLogQuery_FullyAvailable(t *testing.T) {
 		Hash:   common.HexToHash("0xblock110"),
 		Time:   2100,
 	}, mdrtypes.Finalized, nil)
-
+	mockMdr.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(&aggkittypes.BlockHeader{
+		Number: 110,
+		Hash:   common.HexToHash("0xblock110"),
+		Time:   2100,
+	}, nil)
 	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
 
 	require.NoError(t, err)
@@ -626,7 +642,11 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 		Hash:   common.HexToHash("0xblock105"),
 		Time:   2050,
 	}, mdrtypes.Finalized, nil)
-
+	mockMdr.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(&aggkittypes.BlockHeader{
+		Number: 110,
+		Hash:   common.HexToHash("0xblock110"),
+		Time:   2100,
+	}, nil)
 	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
 
 	require.NoError(t, err)
