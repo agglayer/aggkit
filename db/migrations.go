@@ -27,6 +27,11 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 	if err != nil {
 		return fmt.Errorf("error creating DB %w", err)
 	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.GetDefaultLogger().Errorf("error closing DB: %w", err)
+		}
+	}()
 	return RunMigrationsDB(log.GetDefaultLogger(), db, migrations)
 }
 
@@ -35,6 +40,11 @@ func RunMigrationsDown(dbPath string, migrations []types.Migration, maxMigration
 	if err != nil {
 		return fmt.Errorf("error creating DB %w", err)
 	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.GetDefaultLogger().Errorf("error closing DB: %w", err)
+		}
+	}()
 	return RunMigrationsDBExtended(log.GetDefaultLogger(), db, migrations, migrate.Down, maxMigrations)
 }
 

@@ -42,6 +42,25 @@ func TestProcessBlock(t *testing.T) {
 		expectedErr   string
 	}{
 		{
+			name: "Multiple GERs in same block",
+			blocks: []sync.Block{
+				{
+					Num: 1,
+					Events: []any{
+						&Event{
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0x1111"), 10, 1, 0),
+							EventType: GEREventTypeInsert,
+						},
+						&Event{
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0x2222"), 11, 1, 1),
+							EventType: GEREventTypeInsert,
+						},
+					},
+				},
+			},
+			expectedIndex: 11,
+		},
+		{
 			name: "Add GERInfo",
 			blocks: []sync.Block{
 				{
