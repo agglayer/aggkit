@@ -56,7 +56,7 @@ func (b *Blocks) Len() int {
 	return len(b.Headers)
 }
 
-func (a *MultidownloaderStorage) saveAggkitBlock(tx dbtypes.Querier, //nolint:unparam
+func (a *MultidownloaderStorage) saveAggkitBlock(tx dbtypes.Querier,
 	header *aggkittypes.BlockHeader, isFinal bool) error {
 	blockRows := map[uint64]*blockRow{
 		header.Number: newBlockRowFromAggkitBlock(header, isFinal),

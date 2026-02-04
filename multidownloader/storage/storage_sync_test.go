@@ -111,3 +111,58 @@ func TestStorage_UpdateSyncedStatus(t *testing.T) {
 	require.Equal(t, aggkitcommon.NewBlockRange(1500, 2500), seg2.BlockRange)
 	require.Equal(t, aggkittypes.LatestBlock, seg2.TargetToBlock)
 }
+
+func TestSyncStatusRow_ToSyncSegment(t *testing.T) {
+	t.Run("converts row to sync segment successfully with finalized block", func(t *testing.T) {
+		row := syncStatusRow{
+			Address:         exampleAddr1,
+			TargetFromBlock: 1000,
+			TargetToBlock:   "FinalizedBlock",
+			SyncedFromBlock: 1000,
+			SyncedToBlock:   2000,
+			SyncersIDs:      "syncer1,syncer2",
+		}
+
+		segment, err := row.ToSyncSegment()
+
+		require.NoError(t, err)
+		require.Equal(t, exampleAddr1, segment.ContractAddr)
+		require.Equal(t, aggkitcommon.NewBlockRange(1000, 2000), segment.BlockRange)
+		require.Equal(t, aggkittypes.FinalizedBlock, segment.TargetToBlock)
+	})
+
+	t.Run("converts row to sync segment successfully with latest block", func(t *testing.T) {
+		row := syncStatusRow{
+			Address:         exampleAddr2,
+			TargetFromBlock: 500,
+			TargetToBlock:   "LatestBlock",
+			SyncedFromBlock: 500,
+			SyncedToBlock:   1500,
+			SyncersIDs:      "syncer3",
+		}
+
+		segment, err := row.ToSyncSegment()
+
+		require.NoError(t, err)
+		require.Equal(t, exampleAddr2, segment.ContractAddr)
+		require.Equal(t, aggkitcommon.NewBlockRange(500, 1500), segment.BlockRange)
+		require.Equal(t, aggkittypes.LatestBlock, segment.TargetToBlock)
+	})
+
+	t.Run("returns error for invalid target to block finality", func(t *testing.T) {
+		row := syncStatusRow{
+			Address:         exampleAddr1,
+			TargetFromBlock: 1000,
+			TargetToBlock:   "invalid_finality",
+			SyncedFromBlock: 1000,
+			SyncedToBlock:   2000,
+			SyncersIDs:      "syncer1",
+		}
+
+		segment, err := row.ToSyncSegment()
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error parsing target to block finality")
+		require.Equal(t, mdrtypes.SyncSegment{}, segment)
+	})
+}

@@ -180,8 +180,6 @@ func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) er
 
 func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
 	blocks aggkittypes.ListBlockHeaders) error {
-	// TODO: optimize this to don't check all blocks
-	// TODO: Find the first block to reorg
 	if blocks.Len() == 0 {
 		dh.log.Debugf("detectReorgs: no blocks to check for reorgs")
 		return nil

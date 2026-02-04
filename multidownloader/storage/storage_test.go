@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"path"
 	"testing"
 
@@ -555,4 +556,176 @@ func populateLogsAndBlocksForTest(t *testing.T, storage *MultidownloaderStorage,
 
 	err := storage.SaveEthLogsWithHeaders(nil, blocks, logs, true)
 	require.NoError(t, err, "cannot populate logs and blocks")
+}
+
+func TestNewLogRowFromEthLog(t *testing.T) {
+	ethLog := types.Log{
+		Address:        exampleAddr1,
+		BlockNumber:    1234,
+		BlockHash:      exampleTestHash[0],
+		BlockTimestamp: 1630000000,
+		Topics: []common.Hash{
+			exampleTestHash[1],
+			exampleTestHash[2],
+		},
+		Data:    []byte{0xDE, 0xAD, 0xBE, 0xEF},
+		TxHash:  exampleTestHash[3],
+		TxIndex: 42,
+		Index:   7,
+	}
+
+	row := NewLogRowFromEthLog(ethLog)
+
+	require.NotNil(t, row)
+	require.Equal(t, ethLog.Address, row.Address)
+	require.Equal(t, ethLog.BlockNumber, row.BlockNumber)
+	require.Equal(t, ethLog.Data, row.Data)
+	require.Equal(t, ethLog.TxHash, row.TxHash)
+	require.Equal(t, ethLog.TxIndex, row.TxIndex)
+	require.Equal(t, ethLog.Index, row.Index)
+
+	// Verify topics are correctly marshaled as JSON
+	var topics []common.Hash
+	err := json.Unmarshal([]byte(row.Topics), &topics)
+	require.NoError(t, err)
+	require.Equal(t, ethLog.Topics, topics)
+}
+
+func TestNewLogRowsFromEthLogs(t *testing.T) {
+	ethLogs := []types.Log{
+		{
+			Address:        exampleAddr1,
+			BlockNumber:    1000,
+			BlockHash:      exampleTestHash[0],
+			BlockTimestamp: 1630000000,
+			Topics:         []common.Hash{exampleTestHash[1]},
+			Data:           []byte{0x01},
+			TxHash:         exampleTestHash[2],
+			TxIndex:        10,
+			Index:          0,
+		},
+		{
+			Address:        exampleAddr2,
+			BlockNumber:    1001,
+			BlockHash:      exampleTestHash[1],
+			BlockTimestamp: 1630000060,
+			Topics:         []common.Hash{exampleTestHash[3], exampleTestHash[4]},
+			Data:           []byte{0x02, 0x03},
+			TxHash:         exampleTestHash[5],
+			TxIndex:        20,
+			Index:          1,
+		},
+	}
+
+	rows := NewLogRowsFromEthLogs(ethLogs)
+
+	require.Len(t, rows, 2)
+	require.Equal(t, ethLogs[0].Address, rows[0].Address)
+	require.Equal(t, ethLogs[0].BlockNumber, rows[0].BlockNumber)
+	require.Equal(t, ethLogs[1].Address, rows[1].Address)
+	require.Equal(t, ethLogs[1].BlockNumber, rows[1].BlockNumber)
+}
+
+func TestNewBlockRowFromEthLog(t *testing.T) {
+	ethLog := types.Log{
+		Address:        exampleAddr1,
+		BlockNumber:    5000,
+		BlockHash:      exampleTestHash[0],
+		BlockTimestamp: 1630002000,
+		Topics:         []common.Hash{exampleTestHash[1]},
+		Data:           []byte{0x01},
+	}
+
+	row := NewBlockRowFromEthLog(ethLog, true)
+
+	require.NotNil(t, row)
+	require.Equal(t, ethLog.BlockNumber, row.BlockNumber)
+	require.Equal(t, ethLog.BlockHash, row.BlockHash)
+	require.Equal(t, ethLog.BlockTimestamp, row.BlockTimestamp)
+	require.Nil(t, row.BlockParentHash)
+	require.True(t, row.IsFinal)
+
+	rowNotFinal := NewBlockRowFromEthLog(ethLog, false)
+	require.False(t, rowNotFinal.IsFinal)
+}
+
+func TestNewBlockRowFromAggkitBlock(t *testing.T) {
+	parentHash := exampleTestHash[0]
+	block := aggkittypes.NewBlockHeader(3000, exampleTestHash[1], 1630003000, &parentHash)
+
+	row := newBlockRowFromAggkitBlock(block, true)
+
+	require.NotNil(t, row)
+	require.Equal(t, block.Number, row.BlockNumber)
+	require.Equal(t, block.Hash, row.BlockHash)
+	require.Equal(t, block.Time, row.BlockTimestamp)
+	require.NotNil(t, row.BlockParentHash)
+	require.Equal(t, parentHash, *row.BlockParentHash)
+	require.True(t, row.IsFinal)
+}
+
+func TestNewBlockRowsFromLogs(t *testing.T) {
+	logs := []types.Log{
+		{
+			Address:        exampleAddr1,
+			BlockNumber:    1000,
+			BlockHash:      exampleTestHash[0],
+			BlockTimestamp: 1630000000,
+			Topics:         []common.Hash{exampleTestHash[1]},
+			Data:           []byte{0x01},
+		},
+		{
+			Address:        exampleAddr1,
+			BlockNumber:    1000,
+			BlockHash:      exampleTestHash[0],
+			BlockTimestamp: 1630000000,
+			Topics:         []common.Hash{exampleTestHash[2]},
+			Data:           []byte{0x02},
+		},
+		{
+			Address:        exampleAddr2,
+			BlockNumber:    1001,
+			BlockHash:      exampleTestHash[1],
+			BlockTimestamp: 1630000060,
+			Topics:         []common.Hash{exampleTestHash[3]},
+			Data:           []byte{0x03},
+		},
+	}
+
+	blockRows := NewBlockRowsFromLogs(logs, true)
+
+	require.Len(t, blockRows, 2, "expected 2 unique blocks")
+	require.NotNil(t, blockRows[1000])
+	require.Equal(t, uint64(1000), blockRows[1000].BlockNumber)
+	require.Equal(t, exampleTestHash[0], blockRows[1000].BlockHash)
+	require.True(t, blockRows[1000].IsFinal)
+	require.NotNil(t, blockRows[1001])
+	require.Equal(t, uint64(1001), blockRows[1001].BlockNumber)
+	require.Equal(t, exampleTestHash[1], blockRows[1001].BlockHash)
+	require.True(t, blockRows[1001].IsFinal)
+}
+
+func TestNewBlockRowsFromAggkitBlock(t *testing.T) {
+	parentHash1 := exampleTestHash[0]
+	parentHash2 := exampleTestHash[1]
+	blockHeaders := aggkittypes.ListBlockHeaders{
+		aggkittypes.NewBlockHeader(2000, exampleTestHash[1], 1630001000, &parentHash1),
+		aggkittypes.NewBlockHeader(2001, exampleTestHash[2], 1630001060, &parentHash2),
+	}
+
+	blockRows := NewBlockRowsFromAggkitBlock(blockHeaders, false)
+
+	require.Len(t, blockRows, 2)
+	require.NotNil(t, blockRows[2000])
+	require.Equal(t, uint64(2000), blockRows[2000].BlockNumber)
+	require.Equal(t, exampleTestHash[1], blockRows[2000].BlockHash)
+	require.NotNil(t, blockRows[2000].BlockParentHash)
+	require.Equal(t, parentHash1, *blockRows[2000].BlockParentHash)
+	require.False(t, blockRows[2000].IsFinal)
+
+	require.NotNil(t, blockRows[2001])
+	require.Equal(t, uint64(2001), blockRows[2001].BlockNumber)
+	require.NotNil(t, blockRows[2001].BlockParentHash)
+	require.Equal(t, parentHash2, *blockRows[2001].BlockParentHash)
+	require.False(t, blockRows[2001].IsFinal)
 }

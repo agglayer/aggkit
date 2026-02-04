@@ -571,7 +571,7 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 		require.Equal(t, uint64(100), res.BlockRange.ToBlock)
 	})
 
-	t.Run("fulfill totally a  segment,set it as empty ", func(t *testing.T) {
+	t.Run("fulfill totally a segment,set it as empty", func(t *testing.T) {
 		set := NewSetSyncSegment()
 		addr := common.HexToAddress("0x123")
 		segment := SyncSegment{
