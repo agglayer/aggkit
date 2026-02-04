@@ -94,7 +94,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 
 	if reorgProcessor == nil {
 		log.Infof("NewEVMMultidownloader: creating default ReorgProcessor for multidownloader (%s)", name)
-		reorgProcessor = NewReorgProcessor(log, ethClient, rpcClient, storageDB, false)
+		reorgProcessor = NewReorgProcessor(log, ethClient, rpcClient, storageDB, cfg.DeveloperMode)
 	}
 	var debug *EVMMultidownloaderDebug
 	if cfg.DeveloperMode {
