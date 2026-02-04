@@ -709,6 +709,36 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 }
 
 func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
+	testCases := []struct {
+		name                      string
+		developerMode             bool
+		expectedReorgStartBlock   uint64
+		expectedReorgDescription  string
+	}{
+		{
+			name:                     "with developerMode enabled - reorgs from detected block",
+			developerMode:            true,
+			expectedReorgStartBlock:  100,
+			expectedReorgDescription: "Reorgs from detected block (overriding first unaffected block)",
+		},
+		{
+			name:                     "with developerMode disabled - reorgs from first unaffected block",
+			developerMode:            false,
+			expectedReorgStartBlock:  99,
+			expectedReorgDescription: "Reorgs from first unaffected block + 1",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			testForcedReorg(t, tc.developerMode, tc.expectedReorgStartBlock)
+		})
+	}
+}
+
+func testForcedReorg(t *testing.T, developerMode bool, expectedReorgStartBlock uint64) {
+	t.Helper()
+
 	logger := log.WithFields("module", "test")
 	mockPort := mdmocks.NewReorgPorter(t)
 	mockTx := dbmocks.NewTxer(t)
@@ -716,21 +746,28 @@ func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
 	processor := &ReorgProcessor{
 		log:           logger,
 		port:          mockPort,
-		developerMode: true,
+		developerMode: developerMode,
 	}
 
 	ctx := context.Background()
-	//rollbackErr := fmt.Errorf("rollback failed")
+	detectedReorgBlock := uint64(100)
 	reorgErr := mdtypes.NewDetectedReorgError(
-		100,
+		detectedReorgBlock,
 		mdtypes.ReorgDetectionReason_Forced,
 		common.Hash{},
 		common.Hash{},
 		"test reorg",
 	)
 	nowTimestamp := uint64(1234567890)
+	lastBlockInStorage := uint64(110)
+	latestBlockInRPC := uint64(115)
+	finalizedBlockInRPC := uint64(100)
+
+	// Setup mock expectations
 	mockPort.EXPECT().TimeNowUnix().Return(nowTimestamp).Maybe()
 	mockPort.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+
+	// Mock block 99 - mismatch
 	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(99)).
 		Return(&types.CompareBlockHeaders{
 			BlockNumber: 99,
@@ -743,6 +780,8 @@ func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
 				Hash:   common.HexToHash("0x5678"),
 			},
 		}, nil).Once()
+
+	// Mock block 98 - match (first unaffected block)
 	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(98)).
 		Return(&types.CompareBlockHeaders{
 			BlockNumber: 98,
@@ -755,24 +794,26 @@ func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
 				Hash:   common.HexToHash("0x1234"),
 			},
 		}, nil).Once()
-	mockPort.EXPECT().GetLastBlockNumberInStorage(mockTx).Return(uint64(110), nil).Once()
-	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock).Return(uint64(115), nil).Once()
-	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock).Return(uint64(100), nil).Once()
+
+	mockPort.EXPECT().GetLastBlockNumberInStorage(mockTx).Return(lastBlockInStorage, nil).Once()
+	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock).Return(latestBlockInRPC, nil).Once()
+	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock).Return(finalizedBlockInRPC, nil).Once()
+
 	expectedReorgData := mdtypes.ReorgData{
-		BlockRangeAffected:        aggkitcommon.NewBlockRange(100, 110),
-		DetectedAtBlock:           100,
+		BlockRangeAffected:        aggkitcommon.NewBlockRange(expectedReorgStartBlock, lastBlockInStorage),
+		DetectedAtBlock:           detectedReorgBlock,
 		DetectedTimestamp:         nowTimestamp,
-		NetworkLatestBlock:        115,
-		NetworkFinalizedBlock:     100,
+		NetworkLatestBlock:        latestBlockInRPC,
+		NetworkFinalizedBlock:     finalizedBlockInRPC,
 		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
 		Description:               reorgErr.Error(),
 	}
 	mockPort.EXPECT().MoveReorgedBlocks(mockTx, expectedReorgData).Return(uint64(1), nil).Once()
 	mockTx.EXPECT().Commit().Return(nil).Once()
+
 	err := processor.ProcessReorg(ctx, *reorgErr)
 
 	require.NoError(t, err)
 	mockPort.AssertExpectations(t)
 	mockTx.AssertExpectations(t)
-
 }

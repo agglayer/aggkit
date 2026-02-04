@@ -67,10 +67,10 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 				currentBlockNumber, currentBlockNumber, firstUnaffectedBlock)
 			firstUnaffectedBlock = currentBlockNumber - 1
 		} else {
-			rm.log.Warnf("ProcessReorg: forced reorg at block %d but developerMode is disabled, "+
-				"so is going to use the first unaffected block found %d",
+			rm.log.Warnf("ProcessReorg: forced reorg at block %d with developerMode disabled, "+
+				"using the first unaffected block found %d",
 				currentBlockNumber, firstUnaffectedBlock)
-			return nil
+			// Continue with the reorg using the firstUnaffectedBlock found
 		}
 	}
 
