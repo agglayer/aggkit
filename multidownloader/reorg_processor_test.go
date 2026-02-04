@@ -9,7 +9,6 @@ import (
 	commonmocks "github.com/agglayer/aggkit/common/mocks"
 	dbmocks "github.com/agglayer/aggkit/db/mocks"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/multidownloader/types"
 	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
 	mdmocks "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -710,10 +709,10 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 
 func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
 	testCases := []struct {
-		name                      string
-		developerMode             bool
-		expectedReorgStartBlock   uint64
-		expectedReorgDescription  string
+		name                     string
+		developerMode            bool
+		expectedReorgStartBlock  uint64
+		expectedReorgDescription string
 	}{
 		{
 			name:                     "with developerMode enabled - reorgs from detected block",
@@ -769,7 +768,7 @@ func testForcedReorg(t *testing.T, developerMode bool, expectedReorgStartBlock u
 
 	// Mock block 99 - mismatch
 	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(99)).
-		Return(&types.CompareBlockHeaders{
+		Return(&mdtypes.CompareBlockHeaders{
 			BlockNumber: 99,
 			StorageHeader: &aggkittypes.BlockHeader{
 				Number: 99,
@@ -783,7 +782,7 @@ func testForcedReorg(t *testing.T, developerMode bool, expectedReorgStartBlock u
 
 	// Mock block 98 - match (first unaffected block)
 	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(98)).
-		Return(&types.CompareBlockHeaders{
+		Return(&mdtypes.CompareBlockHeaders{
 			BlockNumber: 98,
 			StorageHeader: &aggkittypes.BlockHeader{
 				Number: 98,
