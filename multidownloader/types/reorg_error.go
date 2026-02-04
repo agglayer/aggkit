@@ -14,6 +14,8 @@ const (
 	ReorgDetectionReason_BlockHashMismatch ReorgDetectionReason = iota + 1
 	ReorgDetectionReason_ParentHashMismatch
 	ReorgDetectionReason_MissingBlock
+	// Forced act as MissingBlock but without checking it is basically a debug mode
+	// to produce reorgs scenario (it must have enabled the develMode)
 	ReorgDetectionReason_Forced
 )
 

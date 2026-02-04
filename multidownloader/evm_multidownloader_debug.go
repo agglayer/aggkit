@@ -25,7 +25,7 @@ func (dh *EVMMultidownloaderDebug) ForceRorg(mismatchingBlockNumber uint64) {
 	defer dh.mutexDebug.Unlock()
 	dh.debugStepForcedReturnError = mdrtypes.NewDetectedReorgError(
 		mismatchingBlockNumber,
-		mdrtypes.ReorgDetectionReason_BlockHashMismatch,
+		mdrtypes.ReorgDetectionReason_Forced,
 		common.Hash{},
 		common.Hash{},
 		fmt.Sprintf("ForceRorg: forced reorg at block number %d", mismatchingBlockNumber),

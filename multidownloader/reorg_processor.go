@@ -3,7 +3,6 @@ package multidownloader
 import (
 	"context"
 	"fmt"
-	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	dbtypes "github.com/agglayer/aggkit/db/types"
@@ -12,15 +11,16 @@ import (
 )
 
 type ReorgProcessor struct {
-	log     aggkitcommon.Logger
-	port    mdtypes.ReorgPorter
-	funcNow func() uint64
+	log           aggkitcommon.Logger
+	port          mdtypes.ReorgPorter
+	developerMode bool
 }
 
 func NewReorgProcessor(log aggkitcommon.Logger,
 	ethClient aggkittypes.BaseEthereumClienter,
 	rpcClient aggkittypes.RPCClienter,
-	storage mdtypes.Storager) *ReorgProcessor {
+	storage mdtypes.Storager,
+	developerMode bool) *ReorgProcessor {
 	return &ReorgProcessor{
 		log: log,
 		port: &ReorgPort{
@@ -28,9 +28,7 @@ func NewReorgProcessor(log aggkitcommon.Logger,
 			rpcClient: rpcClient,
 			storage:   storage,
 		},
-		funcNow: func() uint64 {
-			return uint64(time.Now().Unix())
-		},
+		developerMode: developerMode,
 	}
 }
 
@@ -39,6 +37,7 @@ func NewReorgProcessor(log aggkitcommon.Logger,
 // - store the reorg info in storage
 func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	detectedReorgError mdtypes.DetectedReorgError) error {
+	var err error
 	// We known that offendingBlockNumber is affected, so we go backwards until we find
 	// the first unaffected block
 	currentBlockNumber := detectedReorgError.OffendingBlockNumber
@@ -55,11 +54,26 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 			}
 		}
 	}()
-
 	firstUnaffectedBlock, err := rm.findFirstUnaffectedBlock(ctx, tx, currentBlockNumber-1)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error finding first unaffected block: %w", err)
 	}
+	if detectedReorgError.ReorgDetectionReason == mdtypes.ReorgDetectionReason_Forced {
+		if rm.developerMode {
+			rm.log.Warnf("ProcessReorg: executing a forcedReorg in block %d "+
+				"It acts as missing blocks, so is going to delete blocks > %d."+
+				"Overriding real unaffected block found %d."+
+				"(forbidden in production! but developerMode is enabled))!!. ",
+				currentBlockNumber, currentBlockNumber, firstUnaffectedBlock)
+			firstUnaffectedBlock = currentBlockNumber - 1
+		} else {
+			rm.log.Warnf("ProcessReorg: forced reorg at block %d but developerMode is disabled, "+
+				"so is going to use the first unaffected block found %d",
+				currentBlockNumber, firstUnaffectedBlock)
+			return nil
+		}
+	}
+
 	lastBlockNumberInStorage, err := rm.port.GetLastBlockNumberInStorage(tx)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error getting last block number in storage: %w", err)
@@ -78,8 +92,8 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	// TODO: Add hash to blockNumbers
 	reorgData := mdtypes.ReorgData{
 		BlockRangeAffected:        aggkitcommon.NewBlockRange(firstUnaffectedBlock+1, lastBlockNumberInStorage),
-		DetectedAtBlock:           lastBlockNumberInStorage,
-		DetectedTimestamp:         rm.funcNow(),
+		DetectedAtBlock:           detectedReorgError.OffendingBlockNumber,
+		DetectedTimestamp:         rm.port.TimeNowUnix(),
 		NetworkLatestBlock:        latestBlockNumberInRPC,
 		NetworkFinalizedBlock:     finalizedBlockNumberInRPC,
 		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,

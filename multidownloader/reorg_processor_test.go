@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"testing"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	commonmocks "github.com/agglayer/aggkit/common/mocks"
 	dbmocks "github.com/agglayer/aggkit/db/mocks"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader/types"
 	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
 	mdmocks "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -351,11 +354,8 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		processor := &ReorgProcessor{
 			log:  mockLogger,
 			port: mockPort,
-			funcNow: func() uint64 {
-				return nowValue
-			},
 		}
-
+		mockPort.EXPECT().TimeNowUnix().Return(nowValue).Maybe()
 		ctx := context.Background()
 		matchingHash := common.HexToHash("0xabcd")
 		offendingBlockNumber := uint64(105)
@@ -452,11 +452,10 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		mockTx := dbmocks.NewTxer(t)
 
 		processor := &ReorgProcessor{
-			log:     mockLogger,
-			port:    mockPort,
-			funcNow: func() uint64 { return 1234567890 },
+			log:  mockLogger,
+			port: mockPort,
 		}
-
+		mockPort.EXPECT().TimeNowUnix().Return(1234567890).Maybe()
 		ctx := context.Background()
 		matchingHash := common.HexToHash("0xabcd")
 		expectedErr := fmt.Errorf("move blocks error")
@@ -598,11 +597,8 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		processor := &ReorgProcessor{
 			log:  mockLogger,
 			port: mockPort,
-			funcNow: func() uint64 {
-				return nowValue
-			},
 		}
-
+		mockPort.EXPECT().TimeNowUnix().Return(nowValue).Maybe()
 		ctx := context.Background()
 		matchingHash := common.HexToHash("0xabcd")
 		expectedErr := fmt.Errorf("commit failed")
@@ -710,4 +706,73 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		require.Contains(t, err.Error(), "error finding first unaffected block")
 		mockPort.AssertExpectations(t)
 	})
+}
+
+func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
+	logger := log.WithFields("module", "test")
+	mockPort := mdmocks.NewReorgPorter(t)
+	mockTx := dbmocks.NewTxer(t)
+
+	processor := &ReorgProcessor{
+		log:           logger,
+		port:          mockPort,
+		developerMode: true,
+	}
+
+	ctx := context.Background()
+	//rollbackErr := fmt.Errorf("rollback failed")
+	reorgErr := mdtypes.NewDetectedReorgError(
+		100,
+		mdtypes.ReorgDetectionReason_Forced,
+		common.Hash{},
+		common.Hash{},
+		"test reorg",
+	)
+	nowTimestamp := uint64(1234567890)
+	mockPort.EXPECT().TimeNowUnix().Return(nowTimestamp).Maybe()
+	mockPort.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(99)).
+		Return(&types.CompareBlockHeaders{
+			BlockNumber: 99,
+			StorageHeader: &aggkittypes.BlockHeader{
+				Number: 99,
+				Hash:   common.HexToHash("0x1234"),
+			},
+			RpcHeader: &aggkittypes.BlockHeader{
+				Number: 99,
+				Hash:   common.HexToHash("0x5678"),
+			},
+		}, nil).Once()
+	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(98)).
+		Return(&types.CompareBlockHeaders{
+			BlockNumber: 98,
+			StorageHeader: &aggkittypes.BlockHeader{
+				Number: 98,
+				Hash:   common.HexToHash("0x1234"),
+			},
+			RpcHeader: &aggkittypes.BlockHeader{
+				Number: 98,
+				Hash:   common.HexToHash("0x1234"),
+			},
+		}, nil).Once()
+	mockPort.EXPECT().GetLastBlockNumberInStorage(mockTx).Return(uint64(110), nil).Once()
+	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock).Return(uint64(115), nil).Once()
+	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock).Return(uint64(100), nil).Once()
+	expectedReorgData := mdtypes.ReorgData{
+		BlockRangeAffected:        aggkitcommon.NewBlockRange(100, 110),
+		DetectedAtBlock:           100,
+		DetectedTimestamp:         nowTimestamp,
+		NetworkLatestBlock:        115,
+		NetworkFinalizedBlock:     100,
+		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
+		Description:               reorgErr.Error(),
+	}
+	mockPort.EXPECT().MoveReorgedBlocks(mockTx, expectedReorgData).Return(uint64(1), nil).Once()
+	mockTx.EXPECT().Commit().Return(nil).Once()
+	err := processor.ProcessReorg(ctx, *reorgErr)
+
+	require.NoError(t, err)
+	mockPort.AssertExpectations(t)
+	mockTx.AssertExpectations(t)
+
 }

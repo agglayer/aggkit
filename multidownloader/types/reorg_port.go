@@ -14,6 +14,7 @@ type ReorgPorter interface {
 	// Return ChainID of the inserted reorg
 	MoveReorgedBlocks(tx dbtypes.Querier, reorgData ReorgData) (uint64, error)
 	GetBlockNumberInRPC(ctx context.Context, blockFinality aggkittypes.BlockNumberFinality) (uint64, error)
+	TimeNowUnix() uint64
 }
 
 type CompareBlockHeaders struct {

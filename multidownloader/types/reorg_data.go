@@ -8,8 +8,11 @@ import (
 )
 
 type ReorgData struct {
-	ChainID                   uint64
-	BlockRangeAffected        aggkitcommon.BlockRange
+	// ChainID is the id of the roerged chain stored on DB (incremental ID)
+	ChainID uint64
+	// BlockRangeAffected is the range of blocks affected by the reorg (from,to inclusive)
+	BlockRangeAffected aggkitcommon.BlockRange
+	// DetectedAtBlock is the block number where the reorg was detected
 	DetectedAtBlock           uint64
 	DetectedTimestamp         uint64
 	NetworkLatestBlock        uint64

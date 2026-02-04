@@ -314,6 +314,51 @@ func (_c *ReorgPorter_NewTx_Call) RunAndReturn(run func(context.Context) (dbtype
 	return _c
 }
 
+// TimeNowUnix provides a mock function with no fields
+func (_m *ReorgPorter) TimeNowUnix() uint64 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for TimeNowUnix")
+	}
+
+	var r0 uint64
+	if rf, ok := ret.Get(0).(func() uint64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	return r0
+}
+
+// ReorgPorter_TimeNowUnix_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TimeNowUnix'
+type ReorgPorter_TimeNowUnix_Call struct {
+	*mock.Call
+}
+
+// TimeNowUnix is a helper method to define mock.On call
+func (_e *ReorgPorter_Expecter) TimeNowUnix() *ReorgPorter_TimeNowUnix_Call {
+	return &ReorgPorter_TimeNowUnix_Call{Call: _e.mock.On("TimeNowUnix")}
+}
+
+func (_c *ReorgPorter_TimeNowUnix_Call) Run(run func()) *ReorgPorter_TimeNowUnix_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ReorgPorter_TimeNowUnix_Call) Return(_a0 uint64) *ReorgPorter_TimeNowUnix_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ReorgPorter_TimeNowUnix_Call) RunAndReturn(run func() uint64) *ReorgPorter_TimeNowUnix_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewReorgPorter creates a new instance of ReorgPorter. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewReorgPorter(t interface {

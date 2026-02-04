@@ -3,6 +3,7 @@ package multidownloader
 import (
 	"context"
 	"fmt"
+	"time"
 
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/etherman"
@@ -58,4 +59,8 @@ func (r *ReorgPort) GetBlockNumberInRPC(
 			blockFinality.String(), err)
 	}
 	return blockNumber.Number, nil
+}
+
+func (r *ReorgPort) TimeNowUnix() uint64 {
+	return uint64(time.Now().Unix())
 }

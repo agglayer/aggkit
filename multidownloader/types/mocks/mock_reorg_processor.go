@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	types "github.com/agglayer/aggkit/multidownloader/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -21,17 +22,17 @@ func (_m *ReorgProcessor) EXPECT() *ReorgProcessor_Expecter {
 	return &ReorgProcessor_Expecter{mock: &_m.Mock}
 }
 
-// ProcessReorg provides a mock function with given fields: ctx, offendingBlockNumber
-func (_m *ReorgProcessor) ProcessReorg(ctx context.Context, offendingBlockNumber uint64) error {
-	ret := _m.Called(ctx, offendingBlockNumber)
+// ProcessReorg provides a mock function with given fields: ctx, detectedReorgError
+func (_m *ReorgProcessor) ProcessReorg(ctx context.Context, detectedReorgError types.DetectedReorgError) error {
+	ret := _m.Called(ctx, detectedReorgError)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ProcessReorg")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
-		r0 = rf(ctx, offendingBlockNumber)
+	if rf, ok := ret.Get(0).(func(context.Context, types.DetectedReorgError) error); ok {
+		r0 = rf(ctx, detectedReorgError)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -46,14 +47,14 @@ type ReorgProcessor_ProcessReorg_Call struct {
 
 // ProcessReorg is a helper method to define mock.On call
 //   - ctx context.Context
-//   - offendingBlockNumber uint64
-func (_e *ReorgProcessor_Expecter) ProcessReorg(ctx interface{}, offendingBlockNumber interface{}) *ReorgProcessor_ProcessReorg_Call {
-	return &ReorgProcessor_ProcessReorg_Call{Call: _e.mock.On("ProcessReorg", ctx, offendingBlockNumber)}
+//   - detectedReorgError types.DetectedReorgError
+func (_e *ReorgProcessor_Expecter) ProcessReorg(ctx interface{}, detectedReorgError interface{}) *ReorgProcessor_ProcessReorg_Call {
+	return &ReorgProcessor_ProcessReorg_Call{Call: _e.mock.On("ProcessReorg", ctx, detectedReorgError)}
 }
 
-func (_c *ReorgProcessor_ProcessReorg_Call) Run(run func(ctx context.Context, offendingBlockNumber uint64)) *ReorgProcessor_ProcessReorg_Call {
+func (_c *ReorgProcessor_ProcessReorg_Call) Run(run func(ctx context.Context, detectedReorgError types.DetectedReorgError)) *ReorgProcessor_ProcessReorg_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint64))
+		run(args[0].(context.Context), args[1].(types.DetectedReorgError))
 	})
 	return _c
 }
@@ -63,7 +64,7 @@ func (_c *ReorgProcessor_ProcessReorg_Call) Return(_a0 error) *ReorgProcessor_Pr
 	return _c
 }
 
-func (_c *ReorgProcessor_ProcessReorg_Call) RunAndReturn(run func(context.Context, uint64) error) *ReorgProcessor_ProcessReorg_Call {
+func (_c *ReorgProcessor_ProcessReorg_Call) RunAndReturn(run func(context.Context, types.DetectedReorgError) error) *ReorgProcessor_ProcessReorg_Call {
 	_c.Call.Return(run)
 	return _c
 }
