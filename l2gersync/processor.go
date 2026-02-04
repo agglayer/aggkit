@@ -29,7 +29,7 @@ type GlobalExitRootInfo struct {
 	GlobalExitRoot  ethcommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
-	BlockPosition   *uint64        `meddler:"block_pos"`
+	BlockPosition   uint64         `meddler:"block_pos"`
 	Removed         bool           `meddler:"-"`
 }
 
@@ -49,7 +49,7 @@ func newGlobalExitRootInfo(
 		GlobalExitRoot:  globalExitRoot,
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		BlockNum:        blockNum,
-		BlockPosition:   &blockPosition,
+		BlockPosition:   blockPosition,
 	}
 }
 
@@ -142,12 +142,12 @@ func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo,
 		removeEvent := &RemoveGEREvent{
 			GlobalExitRoot: gerInfo.GlobalExitRoot,
 			BlockNum:       gerInfo.BlockNum,
-			BlockPos:       *gerInfo.BlockPosition,
+			BlockPos:       gerInfo.BlockPosition,
 			CreatedAt:      uint64(time.Now().Unix()),
 		}
 		if err := meddler.Insert(tx, "remove_ger_events", removeEvent); err != nil {
 			return fmt.Errorf("failed to insert remove GER event (value=%x, block=%d, pos=%d): %w",
-				gerInfo.GlobalExitRoot, gerInfo.BlockNum, *gerInfo.BlockPosition, err)
+				gerInfo.GlobalExitRoot, gerInfo.BlockNum, gerInfo.BlockPosition, err)
 		}
 	}
 

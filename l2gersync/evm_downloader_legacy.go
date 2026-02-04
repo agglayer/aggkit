@@ -197,8 +197,9 @@ func (d *downloaderLegacy) getGERsFromIndex(
 		}
 
 		// For the legacy downloader, we cannot determine the block position,
-		// because we are querying the global exit root map. We use 0 as the default block position.
-		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum, 0))
+		// because we are querying the global exit root map we don't have a real block position,
+		// to avoid conflicts we set it to the same as l1infotreeindex
+		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum, uint64(i)))
 	}
 
 	return gers, nil

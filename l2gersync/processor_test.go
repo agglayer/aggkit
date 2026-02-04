@@ -188,14 +188,11 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 
 	ctx := context.Background()
 
-	blockPosition := uint64(0)
-	blockPosition1 := uint64(1)
-	blockPosition2 := uint64(2)
 	makeGERs := func() []*GlobalExitRootInfo {
 		return []*GlobalExitRootInfo{
-			{GlobalExitRoot: common.HexToHash("0x1234"), BlockPosition: &blockPosition},
-			{GlobalExitRoot: common.HexToHash("0x5678"), BlockPosition: &blockPosition1},
-			{GlobalExitRoot: common.HexToHash("0x9876"), BlockPosition: &blockPosition2},
+			{GlobalExitRoot: common.HexToHash("0x1234"), BlockPosition: 0},
+			{GlobalExitRoot: common.HexToHash("0x5678"), BlockPosition: 1},
+			{GlobalExitRoot: common.HexToHash("0x9876"), BlockPosition: 2},
 		}
 	}
 
@@ -244,14 +241,13 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 	t.Run("returns only non-removed GERs", func(t *testing.T) {
 		t.Parallel()
 
-		blockPosition3 := uint64(3)
 		gerList := makeGERs()
 		allBlocks := []sync.Block{
 			{Num: 93, Events: []any{&Event{GERInfo: gerList[0]}}},
 			{Num: 94, Events: []any{&Event{GERInfo: gerList[1]}}},
 			{Num: 95, Events: []any{&Event{GERInfo: gerList[2]}}},
 			{Num: 96, Events: []any{&Event{
-				GERInfo:   &GlobalExitRootInfo{GlobalExitRoot: gerList[2].GlobalExitRoot, BlockPosition: &blockPosition3},
+				GERInfo:   &GlobalExitRootInfo{GlobalExitRoot: gerList[2].GlobalExitRoot, BlockPosition: 3},
 				EventType: GEREventTypeRemove,
 			}}},
 		}

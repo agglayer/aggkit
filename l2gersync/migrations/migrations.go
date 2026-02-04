@@ -46,9 +46,17 @@ var migrationsL2gersync []types.Migration = []types.Migration{
 }
 
 func RunMigrations(dbPath string) error {
-	return db.RunMigrations(dbPath, migrationsL2gersync)
+	return RunMigrationsWithList(dbPath, migrationsL2gersync)
 }
 
-func RunMigrationsDown(dbPath string, maxMigrations int) error {
-	return db.RunMigrationsDown(dbPath, migrationsL2gersync, maxMigrations)
+func RunMigrationsWithList(dbPath string, migrations []types.Migration) error {
+	originMigrations := make([]types.Migration, len(migrations))
+	copy(originMigrations, migrations)
+	return db.RunMigrations(dbPath, originMigrations)
+}
+
+func RunMigrationsDown(dbPath string, migrations []types.Migration, maxMigrations int) error {
+	originMigrations := make([]types.Migration, len(migrations))
+	copy(originMigrations, migrations)
+	return db.RunMigrationsDown(dbPath, originMigrations, maxMigrations)
 }

@@ -21,13 +21,9 @@ import (
 
 func TestMigration0001(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "l2gersyncTest0001.sqlite")
-	originMigrations := make([]types.Migration, len(migrationsL2gersync))
-	copy(originMigrations, migrationsL2gersync)
-	defer func() {
-		migrationsL2gersync = originMigrations
-	}()
-	migrationsL2gersync = migrationsL2gersync[:1] // only first migration
-	err := RunMigrations(dbPath)
+
+	migrationsTo1 := migrationsL2gersync[:1] // only first migration
+	err := RunMigrationsWithList(dbPath, migrationsTo1)
 	require.NoError(t, err)
 	db, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
@@ -79,16 +75,11 @@ func getKeysFromListMigrations(migs []types.Migration) []string {
 }
 
 func TestMigration0005(t *testing.T) {
-	originMigrations := make([]types.Migration, len(migrationsL2gersync))
-	copy(originMigrations, migrationsL2gersync)
-	defer func() {
-		migrationsL2gersync = originMigrations
-	}()
-	migrationsL2gersync = migrationsL2gersync[:4] // migration to 'l2gersync0004' (previous to 0005)
+	migrationsTo4 := migrationsL2gersync[:4] // migration to 'l2gersync0004' (previous to 0005)
 	log.Debugf("Total migrations till 0004: %d, %+v", len(migrationsL2gersync), getKeysFromListMigrations(migrationsL2gersync))
 	dbPath := path.Join(t.TempDir(), "l2gersyncTest0005.sqlite")
 
-	err := RunMigrations(dbPath)
+	err := RunMigrationsWithList(dbPath, migrationsTo4)
 	require.NoError(t, err)
 	testDB, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
@@ -112,9 +103,9 @@ func TestMigration0005(t *testing.T) {
 	require.NoError(t, err)
 	testDB.Close()
 	// Now execute migration 5
-	migrationsL2gersync = originMigrations[:5]
-	log.Debugf("Total migrations including mig0005 test: %d, %+v", len(migrationsL2gersync), getKeysFromListMigrations(migrationsL2gersync))
-	err = RunMigrations(dbPath)
+	migrationsTo5 := migrationsL2gersync[:5]
+	log.Debugf("Total migrations including mig0005 test: %d, %+v", len(migrationsTo5), getKeysFromListMigrations(migrationsTo5))
+	err = RunMigrationsWithList(dbPath, migrationsTo5)
 	require.NoError(t, err)
 	testDB, err = db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
@@ -142,9 +133,8 @@ func TestMigration0005(t *testing.T) {
 	require.Equal(t, uint32(2), importedGER.L1InfoTreeIndex)
 	testDB.Close()
 	// Now execute migration down to 4
-	migrationsL2gersync = originMigrations[:5]
-	log.Debugf("Total migration down 1 step: %d, %+v", len(migrationsL2gersync), getKeysFromListMigrations(migrationsL2gersync))
-	err = RunMigrationsDown(dbPath, 1)
+	log.Debugf("Total migration down 1 step: %d, %+v", len(migrationsTo5), getKeysFromListMigrations(migrationsTo5))
+	err = RunMigrationsDown(dbPath, migrationsTo5, 1)
 	require.NoError(t, err)
 	testDB, err = db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
