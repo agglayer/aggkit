@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	deleteGERSql = "DELETE FROM imported_global_exit_root WHERE global_exit_root = $1;"
+	deleteGERSql = "DELETE FROM imported_global_exit_root_v2 WHERE global_exit_root = $1;"
 )
 
 type BlockNum struct {
@@ -50,17 +50,6 @@ func newGlobalExitRootInfo(
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		BlockNum:        blockNum,
 		BlockPosition:   &blockPosition,
-	}
-}
-
-// newLegacyGlobalExitRootInfo creates a new GlobalExitRootInfo instance without block position
-func newLegacyGlobalExitRootInfo(
-	globalExitRoot ethcommon.Hash, l1InfoTreeIndex uint32, blockNum uint64) *GlobalExitRootInfo {
-	return &GlobalExitRootInfo{
-		GlobalExitRoot:  globalExitRoot,
-		L1InfoTreeIndex: l1InfoTreeIndex,
-		BlockNum:        blockNum,
-		BlockPosition:   nil,
 	}
 }
 
@@ -133,12 +122,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	return nil
 }
 
-// handleGEREvent either inserts or removes the global exit root entry from `imported_global_exit_root` table,
+// handleGEREvent either inserts or removes the global exit root entry from `imported_global_exit_root_v2` table,
 func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo, eventType GEREventType) error {
 	switch eventType {
 	case GEREventTypeInsert:
 		// Insert the global exit root into the database
-		if err := meddler.Insert(tx, "imported_global_exit_root", gerInfo); err != nil {
+		if err := meddler.Insert(tx, "imported_global_exit_root_v2", gerInfo); err != nil {
 			return fmt.Errorf("failed to insert imported global exit root (value=%x, block=%d): %w",
 				gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
 		}
@@ -182,11 +171,11 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return block.Num, nil
 }
 
-// getLatestL1InfoTreeIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
+// getLatestL1InfoTreeIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root_v2 table
 func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 	var latestGERInfo GlobalExitRootInfo
 	err := meddler.QueryRow(p.database, &latestGERInfo,
-		`SELECT l1_info_tree_index FROM imported_global_exit_root
+		`SELECT l1_info_tree_index FROM imported_global_exit_root_v2
 			ORDER BY l1_info_tree_index DESC LIMIT 1;`)
 	if err != nil {
 		return 0, db.ReturnErrNotFound(err)
@@ -241,7 +230,7 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	e := GlobalExitRootInfo{}
 	err := meddler.QueryRow(p.database, &e, `
 		SELECT l1_info_tree_index, block_num, global_exit_root, block_pos
-		FROM imported_global_exit_root
+		FROM imported_global_exit_root_v2
 		WHERE l1_info_tree_index >= $1
 		ORDER BY l1_info_tree_index ASC LIMIT 1;
 	`, l1InfoTreeIndex)
@@ -268,7 +257,7 @@ func (p *processor) GetInjectedGERsForRange(
 
 	err := meddler.QueryAll(p.database, &results, `
 		SELECT global_exit_root, l1_info_tree_index, block_num, block_pos
-		FROM imported_global_exit_root
+		FROM imported_global_exit_root_v2
 		WHERE block_num >= $1 AND block_num <= $2;
 	`, fromBlock, toBlock)
 	if err != nil {

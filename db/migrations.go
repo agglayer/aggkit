@@ -30,6 +30,14 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 	return RunMigrationsDB(log.GetDefaultLogger(), db, migrations)
 }
 
+func RunMigrationsDown(dbPath string, migrations []types.Migration, maxMigrations int) error {
+	db, err := NewSQLiteDB(dbPath)
+	if err != nil {
+		return fmt.Errorf("error creating DB %w", err)
+	}
+	return RunMigrationsDBExtended(log.GetDefaultLogger(), db, migrations, migrate.Down, maxMigrations)
+}
+
 func RunMigrationsDB(logger aggkitcommon.Logger, db *sql.DB, migrationsParam []types.Migration) error {
 	return RunMigrationsDBExtended(logger, db, migrationsParam, migrate.Up, NoLimitMigrations)
 }
