@@ -479,3 +479,163 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 		require.Equal(t, "my_prefix_0001", migrationID)
 	})
 }
+
+func TestRunMigrationsDown(t *testing.T) {
+	t.Run("successfully runs migrations down with file path", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS rollback_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS rollback_table (
+    id INTEGER PRIMARY KEY,
+    data TEXT
+);`,
+			},
+		}
+
+		// First run migrations up
+		err := RunMigrations(dbPath, migrations)
+		require.NoError(t, err)
+
+		// Verify table exists
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		var tableName string
+		err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='rollback_table'").Scan(&tableName)
+		require.NoError(t, err)
+		require.Equal(t, "rollback_table", tableName)
+
+		// Close the database before running migrations down
+		db.Close()
+
+		// Run migrations down
+		err = RunMigrationsDown(dbPath, migrations, 1)
+		require.NoError(t, err)
+
+		// Reopen database and verify table was dropped
+		db, err = NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		var tableExists bool
+		err = db.QueryRow("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='rollback_table'").Scan(&tableExists)
+		require.NoError(t, err)
+		require.False(t, tableExists)
+	})
+
+	t.Run("returns error with invalid db path", func(t *testing.T) {
+		dbPath := "/nonexistent/directory/test.sqlite"
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
+			},
+		}
+
+		err := RunMigrationsDown(dbPath, migrations, 1)
+		require.Error(t, err)
+	})
+
+	t.Run("runs down migrations with max limit", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS table_one;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS table_one (
+    id INTEGER PRIMARY KEY
+);`,
+			},
+			{
+				ID:     "0002",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS table_two;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS table_two (
+    id INTEGER PRIMARY KEY
+);`,
+			},
+		}
+
+		// First run all migrations up
+		err := RunMigrations(dbPath, migrations)
+		require.NoError(t, err)
+
+		// Verify both tables exist
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('table_one', 'table_two')").Scan(&count)
+		require.NoError(t, err)
+		require.Equal(t, 2, count)
+		db.Close()
+
+		// Run down with limit of 1 migration
+		err = RunMigrationsDown(dbPath, migrations, 1)
+		require.NoError(t, err)
+
+		// Reopen and verify only the most recent migration was rolled back
+		db, err = NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		var table1Exists, table2Exists bool
+		err = db.QueryRow("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='table_one'").Scan(&table1Exists)
+		require.NoError(t, err)
+		err = db.QueryRow("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='table_two'").Scan(&table2Exists)
+		require.NoError(t, err)
+
+		// table_one should still exist, table_two should be gone (rolled back in reverse order)
+		require.True(t, table1Exists)
+		require.False(t, table2Exists)
+	})
+
+	t.Run("runs down with no limit using NoLimitMigrations constant", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS full_rollback;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS full_rollback (
+    id INTEGER PRIMARY KEY
+);`,
+			},
+		}
+
+		// First run migration up
+		err := RunMigrations(dbPath, migrations)
+		require.NoError(t, err)
+
+		// Run down with NoLimitMigrations
+		err = RunMigrationsDown(dbPath, migrations, NoLimitMigrations)
+		require.NoError(t, err)
+
+		// Verify table was dropped
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		var tableExists bool
+		err = db.QueryRow("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='full_rollback'").Scan(&tableExists)
+		require.NoError(t, err)
+		require.False(t, tableExists)
+	})
+}
