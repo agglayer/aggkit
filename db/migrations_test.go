@@ -2,6 +2,7 @@ package db
 
 import (
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/agglayer/aggkit/db/types"
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS test_table (
 
 	t.Run("returns error with invalid db path", func(t *testing.T) {
 		// Use an invalid path (directory that doesn't exist)
-		dbPath := "/nonexistent/directory/test.sqlite"
+		dbPath := filepath.Join(t.TempDir(), "nonexistent", "test.sqlite")
 		migrations := []types.Migration{}
 
 		err := RunMigrations(dbPath, migrations)
