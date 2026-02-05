@@ -105,14 +105,17 @@ func (a *MultidownloaderStorage) GetHighestBlockNumber(tx dbtypes.Querier) (uint
 	return 0, nil
 }
 
-// GetRangeBlockHeader retrieves the highest block header stored in the database
-// return lowest and highest block headers
+// GetRangeBlockHeader retrieves the lowest and highest block headers stored in the database
+// for the specified finality type. Returns lowest and highest block headers.
 func (a *MultidownloaderStorage) GetRangeBlockHeader(tx dbtypes.Querier,
 	isFinal mdtypes.FinalizedType) (*aggkittypes.BlockHeader, *aggkittypes.BlockHeader, error) {
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
 	highestBlock, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks "+
-		"WHERE is_final=? order by block_number DESC LIMIT 1", isFinal)
+		"WHERE is_final=? ORDER BY block_number DESC LIMIT 1", isFinal)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetRangeBlockHeader:highest:  %w", err)
+		return nil, nil, fmt.Errorf("GetRangeBlockHeader:highest: %w", err)
 	}
 	if highestBlock.IsEmpty() {
 		return nil, nil, nil
@@ -122,9 +125,9 @@ func (a *MultidownloaderStorage) GetRangeBlockHeader(tx dbtypes.Querier,
 	}
 
 	lowestBlock, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final=? "+
-		"order by block_number DESC LIMIT 1", isFinal)
+		"ORDER BY block_number ASC LIMIT 1", isFinal)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetRangeBlockHeader:highest:  %w", err)
+		return nil, nil, fmt.Errorf("GetRangeBlockHeader:lowest: %w", err)
 	}
 	if lowestBlock.IsEmpty() {
 		return nil, nil, nil
@@ -132,7 +135,7 @@ func (a *MultidownloaderStorage) GetRangeBlockHeader(tx dbtypes.Querier,
 	if lowestBlock.Len() > 1 {
 		return nil, nil, fmt.Errorf("GetRangeBlockHeader:lowest: more than one block returned (%d)", lowestBlock.Len())
 	}
-	return highestBlock.ListHeaders()[0], lowestBlock.ListHeaders()[0], nil
+	return lowestBlock.ListHeaders()[0], highestBlock.ListHeaders()[0], nil
 }
 
 func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,

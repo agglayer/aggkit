@@ -12,7 +12,7 @@ import (
 // for representing segments to be synced
 type SyncSegment struct {
 	ContractAddr common.Address
-	// If FromBlock is 0 means that is empty
+	// BlockRange can be empty  BlockRange.IsEmpty()
 	BlockRange    aggkitcommon.BlockRange
 	TargetToBlock aggkittypes.BlockNumberFinality
 }
@@ -61,6 +61,7 @@ func (s *SyncSegment) UpdateToBlock(newToBlock uint64) {
 	s.BlockRange.ToBlock = newToBlock
 }
 
+// Empty sets the SyncSegment (fromBlock > toBlock) to indicate it is empty
 func (s *SyncSegment) Empty() {
 	if s == nil {
 		return
