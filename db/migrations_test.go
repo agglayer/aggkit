@@ -531,7 +531,7 @@ CREATE TABLE IF NOT EXISTS rollback_table (
 	})
 
 	t.Run("returns error with invalid db path", func(t *testing.T) {
-		dbPath := "/nonexistent/directory/test.sqlite"
+		dbPath := filepath.Join(t.TempDir(), "nonexistent", "directory", "test.sqlite")
 		migrations := []types.Migration{
 			{
 				ID:     "0001",

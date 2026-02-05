@@ -138,6 +138,7 @@ func TestMigration0005(t *testing.T) {
 	require.NoError(t, err)
 	testDB, err = db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
+	defer testDB.Close()
 	var importedGERV1 struct {
 		BlockNum        uint64 `meddler:"block_num"`
 		GlobalExitRoot  string `meddler:"global_exit_root"`
