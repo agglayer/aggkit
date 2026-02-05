@@ -75,7 +75,7 @@ func TestASAPTrigger_Status(t *testing.T) {
 	require.NoError(t, err, "Failed to create ASAP trigger")
 
 	status := trigger.Status()
-	require.Equal(t, "ASAP Runner: cfg: DelayBeetweenCertificates: 1s, MinimumNewCertificateInterval: 1h0m0s, OnNewL2Bridge: false", status, "Unexpected status message")
+	require.Equal(t, "ASAP Runner: cfg: DelayBetweenCertificates: 1s, MinimumNewCertificateInterval: 1h0m0s, OnNewL2Bridge: false", status, "Unexpected status message")
 }
 
 func TestASAPTrigger_MinInterval(t *testing.T) {

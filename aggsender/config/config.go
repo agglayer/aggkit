@@ -18,8 +18,8 @@ import (
 )
 
 type TriggerASAPConfig struct {
-	// DelayBeetweenCertificates is the delay to wait before sending a new certificate after the previous one is settled
-	DelayBeetweenCertificates types.Duration `mapstructure:"DelayBeetweenCertificates"`
+	// DelayBetweenCertificates is the delay to wait before sending a new certificate after the previous one is settled
+	DelayBetweenCertificates types.Duration `mapstructure:"DelayBetweenCertificates"`
 	// MinimumNewCertificateInterval is the minimum interval between two new certificates triggers
 	MinimumNewCertificateInterval types.Duration `mapstructure:"MinimumNewCertificateInterval"`
 	// OnNewL2Bridge indicates whether to trigger a new certificate when a new L2 bridge exit is detected
@@ -28,21 +28,21 @@ type TriggerASAPConfig struct {
 
 func NewTriggerASAPConfigDefault() *TriggerASAPConfig {
 	return &TriggerASAPConfig{
-		DelayBeetweenCertificates:     types.Duration{Duration: time.Second},
+		DelayBetweenCertificates:      types.Duration{Duration: time.Second},
 		MinimumNewCertificateInterval: types.Duration{Duration: time.Hour},
 	}
 }
 
 func (c *TriggerASAPConfig) String() string {
-	return fmt.Sprintf("DelayBeetweenCertificates: %s, MinimumNewCertificateInterval: %s, OnNewL2Bridge: %t",
-		c.DelayBeetweenCertificates.String(),
+	return fmt.Sprintf("DelayBetweenCertificates: %s, MinimumNewCertificateInterval: %s, OnNewL2Bridge: %t",
+		c.DelayBetweenCertificates.String(),
 		c.MinimumNewCertificateInterval.String(),
 		c.OnNewL2Bridge)
 }
 
 func (c *TriggerASAPConfig) Validate() error {
-	if c.DelayBeetweenCertificates.Duration < 0 {
-		return fmt.Errorf("DelayBeetweenCertificates cannot be negative")
+	if c.DelayBetweenCertificates.Duration < 0 {
+		return fmt.Errorf("DelayBetweenCertificates cannot be negative")
 	}
 	if c.MinimumNewCertificateInterval.Duration <= 0 {
 		return fmt.Errorf("MinimumNewCertificateInterval must be >= 0")

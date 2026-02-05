@@ -144,7 +144,7 @@ func (r *asapTrigger) OnIdle() {
 		r.log.Debugf("ASAP Trigger: trigger already running, skipping")
 		return
 	}
-	r.log.Debugf("ASAP Trigger: sending a trigger in %s", r.cfg.DelayBeetweenCertificates.String())
+	r.log.Debugf("ASAP Trigger: sending a trigger in %s", r.cfg.DelayBetweenCertificates.String())
 
 	go func() {
 		select {
@@ -155,7 +155,7 @@ func (r *asapTrigger) OnIdle() {
 			r.ch = nil
 			r.triggerRunning = false
 			return
-		case <-time.After(r.cfg.DelayBeetweenCertificates.Duration):
+		case <-time.After(r.cfg.DelayBetweenCertificates.Duration):
 			r.trigger("Idle", nil)
 		}
 	}()

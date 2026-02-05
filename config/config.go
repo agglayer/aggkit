@@ -65,7 +65,7 @@ const (
 	networkConfigDeprecatedHint           = "NetworkConfig is deprecated, use L1NetworkConfig instead"
 	l1NetworkConfigUsePolTokenAddrHint    = "Use L1NetworkConfig.POLTokenAddr instead"
 	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
-	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
+	delayBetweenRetriesHint               = "AggSender.DelayBetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
 	aggOracleBlockFinalityDeprecated       = "AggOracle.BlockFinality is deprecated, remove it from configuration"
 	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
@@ -183,7 +183,7 @@ var (
 			Reason:           networkConfigDeprecatedHint,
 		},
 		{
-			FieldNamePattern: "Aggsender.DelayBeetweenRetries",
+			FieldNamePattern: "Aggsender.DelayBetweenRetries",
 			Reason:           delayBetweenRetriesHint,
 		},
 		{
