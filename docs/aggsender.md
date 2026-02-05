@@ -227,7 +227,7 @@ The `TriggerASAPConfig` structure configures the ASAP (As Soon As Possible) trig
 
 | Field Name                         | Type                | Description                                                                                                     |
 |------------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
-| DelayBeetweenCertificates          | Duration            | The delay to wait before sending a new certificate after the previous one is settled                            |
+| DelayBetweenCertificates          | Duration            | The delay to wait before sending a new certificate after the previous one is settled                            |
 | MinimumNewCertificateInterval      | Duration            | The minimum interval between two new certificate triggers (0 = no minimum interval)                             |
 
 Example:
@@ -235,11 +235,11 @@ Example:
 [AggSender]
     TriggerCertMode = "ASAP"
     [AggSender.TriggerASAP]
-        DelayBeetweenCertificates = "1s"
+        DelayBetweenCertificates = "1s"
         MinimumNewCertificateInterval = "1h"
 ```
 
-The ASAP trigger sends certificates as soon as possible after the last certificate reaches a final state (settled or in error). The `DelayBeetweenCertificates` parameter adds a configurable delay before sending, while `MinimumNewCertificateInterval` ensures a minimum time gap between certificate submissions to prevent excessive certificate generation.
+The ASAP trigger sends certificates as soon as possible after the last certificate reaches a final state (settled or in error). The `DelayBetweenCertificates` parameter adds a configurable delay before sending, while `MinimumNewCertificateInterval` ensures a minimum time gap between certificate submissions to prevent excessive certificate generation.
 
 ### Trigger Modes
 
