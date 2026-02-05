@@ -317,20 +317,20 @@ func (d *EVMDownloader) checkReorgedBlock(ctx context.Context,
 		return nil
 	}
 	// Check blockHeader is not reorged
-	isValid, reorgChainID, err := d.mdr.CheckValidBlock(ctx, blockHeader.Number, blockHeader.Hash)
+	isValid, reorgID, err := d.mdr.CheckValidBlock(ctx, blockHeader.Number, blockHeader.Hash)
 	if err != nil {
 		return err
 	}
 	if !isValid {
-		reorgData, err := d.mdr.GetReorgedDataByChainID(ctx, reorgChainID)
+		reorgData, err := d.mdr.GetReorgedDataByReorgID(ctx, reorgID)
 		if err != nil {
 			return err
 		}
 		// TODO: if reorgData is nil?? can't happen
 		if reorgData == nil {
-			return fmt.Errorf("reorg data not found for chain ID %d", reorgChainID)
+			return fmt.Errorf("reorg data not found for reorg ID %d", reorgID)
 		}
-		return mdrtypes.NewReorgedError(reorgData.BlockRangeAffected, reorgChainID,
+		return mdrtypes.NewReorgedError(reorgData.BlockRangeAffected, reorgID,
 			fmt.Sprintf("detected at block number %d", blockHeader.Number),
 		)
 	}

@@ -93,22 +93,22 @@ func CastDetectedReorgError(err error) *DetectedReorgError {
 type ReorgedError struct {
 	Message           string
 	BlockRangeReorged aggkitcommon.BlockRange
-	ReorgedChainID    uint64
+	ReorgID           uint64
 }
 
 func NewReorgedError(blockRangeReorged aggkitcommon.BlockRange,
-	reorgedChainID uint64,
+	reorgID uint64,
 	msg string) *ReorgedError {
 	return &ReorgedError{
 		Message:           msg,
 		BlockRangeReorged: blockRangeReorged,
-		ReorgedChainID:    reorgedChainID,
+		ReorgID:           reorgID,
 	}
 }
 
 func (e *ReorgedError) Error() string {
-	return fmt.Sprintf("reorgedError: chainID=%d blockRangeReorged=%s: %s",
-		e.ReorgedChainID, e.BlockRangeReorged.String(), e.Message)
+	return fmt.Sprintf("reorgedError: reorgID=%d blockRangeReorged=%s: %s",
+		e.ReorgID, e.BlockRangeReorged.String(), e.Message)
 }
 
 // IsReorgedError checks if an error is a ReorgedError

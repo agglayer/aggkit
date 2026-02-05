@@ -176,14 +176,14 @@ func TestDownloadNextBlocks_ReorgDetected(t *testing.T) {
 	}
 
 	reorgData := &mdrtypes.ReorgData{
-		ChainID:            1,
+		ReorgID:            1,
 		BlockRangeAffected: aggkitcommon.NewBlockRange(100, 105),
 		DetectedAtBlock:    106,
 	}
 
 	// Setup mocks - reorg detected
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(false, uint64(1), nil)
-	mockMdr.EXPECT().GetReorgedDataByChainID(ctx, uint64(1)).Return(reorgData, nil)
+	mockMdr.EXPECT().GetReorgedDataByReorgID(ctx, uint64(1)).Return(reorgData, nil)
 
 	result, err := download.DownloadNextBlocks(ctx, lastBlockHeader, 10, syncerConfig)
 
@@ -191,7 +191,7 @@ func TestDownloadNextBlocks_ReorgDetected(t *testing.T) {
 	require.Nil(t, result)
 	require.True(t, mdrtypes.IsReorgedError(err))
 	reorgErr := mdrtypes.CastReorgedError(err)
-	require.Equal(t, uint64(1), reorgErr.ReorgedChainID)
+	require.Equal(t, uint64(1), reorgErr.ReorgID)
 }
 
 func TestDownloadNextBlocks_NilLastBlockHeader(t *testing.T) {
@@ -481,7 +481,7 @@ func TestDownloadNextBlocks_ReorgDetectedDuringRetry(t *testing.T) {
 	}
 
 	reorgData := &mdrtypes.ReorgData{
-		ChainID:            1,
+		ReorgID:            1,
 		BlockRangeAffected: aggkitcommon.NewBlockRange(100, 105),
 		DetectedAtBlock:    106,
 	}
@@ -496,7 +496,7 @@ func TestDownloadNextBlocks_ReorgDetectedDuringRetry(t *testing.T) {
 
 	// Second iteration: reorg detected during checkReorgedBlock
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), lastBlockHeader.Hash).Return(false, uint64(1), nil).Once()
-	mockMdr.EXPECT().GetReorgedDataByChainID(ctx, uint64(1)).Return(reorgData, nil).Once()
+	mockMdr.EXPECT().GetReorgedDataByReorgID(ctx, uint64(1)).Return(reorgData, nil).Once()
 
 	result, err := download.DownloadNextBlocks(ctx, lastBlockHeader, 10, syncerConfig)
 
@@ -865,20 +865,20 @@ func TestCheckReorgedBlock_InvalidBlock(t *testing.T) {
 	}
 
 	reorgData := &mdrtypes.ReorgData{
-		ChainID:            1,
+		ReorgID:            1,
 		BlockRangeAffected: aggkitcommon.NewBlockRange(100, 105),
 		DetectedAtBlock:    106,
 	}
 
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), blockHeader.Hash).Return(false, uint64(1), nil)
-	mockMdr.EXPECT().GetReorgedDataByChainID(ctx, uint64(1)).Return(reorgData, nil)
+	mockMdr.EXPECT().GetReorgedDataByReorgID(ctx, uint64(1)).Return(reorgData, nil)
 
 	err := download.checkReorgedBlock(ctx, blockHeader)
 
 	require.Error(t, err)
 	require.True(t, mdrtypes.IsReorgedError(err))
 	reorgErr := mdrtypes.CastReorgedError(err)
-	require.Equal(t, uint64(1), reorgErr.ReorgedChainID)
+	require.Equal(t, uint64(1), reorgErr.ReorgID)
 }
 
 func TestCheckReorgedBlock_ContextCancellation(t *testing.T) {
@@ -967,7 +967,7 @@ func TestCheckReorgedBlock_GetReorgedDataError(t *testing.T) {
 	}
 
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), blockHeader.Hash).Return(false, uint64(1), nil)
-	mockMdr.EXPECT().GetReorgedDataByChainID(ctx, uint64(1)).Return(nil, fmt.Errorf("database error"))
+	mockMdr.EXPECT().GetReorgedDataByReorgID(ctx, uint64(1)).Return(nil, fmt.Errorf("database error"))
 
 	err := download.checkReorgedBlock(ctx, blockHeader)
 
@@ -999,7 +999,7 @@ func TestCheckReorgedBlock_NilReorgData(t *testing.T) {
 	}
 
 	mockMdr.EXPECT().CheckValidBlock(ctx, uint64(100), blockHeader.Hash).Return(false, uint64(1), nil)
-	mockMdr.EXPECT().GetReorgedDataByChainID(ctx, uint64(1)).Return(nil, nil)
+	mockMdr.EXPECT().GetReorgedDataByReorgID(ctx, uint64(1)).Return(nil, nil)
 
 	err := download.checkReorgedBlock(ctx, blockHeader)
 

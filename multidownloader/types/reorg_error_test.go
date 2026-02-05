@@ -207,19 +207,19 @@ func TestNewReorgedError(t *testing.T) {
 
 	require.NotNil(t, err)
 	require.Equal(t, blockRange, err.BlockRangeReorged)
-	require.Equal(t, chainID, err.ReorgedChainID)
+	require.Equal(t, chainID, err.ReorgID)
 	require.Equal(t, testReorgMsg, err.Message)
 }
 
 func TestReorgedError_Error(t *testing.T) {
 	blockRange := aggkitcommon.NewBlockRange(100, 200)
-	chainID := uint64(1)
+	reorgID := uint64(1)
 	msg := "test message"
 
-	err := NewReorgedError(blockRange, chainID, testReorgMsg)
+	err := NewReorgedError(blockRange, reorgID, testReorgMsg)
 	result := err.Error()
 
-	expected := fmt.Sprintf("reorgedError: chainID=%d blockRangeReorged=%s: %s", chainID, blockRange.String(), msg)
+	expected := fmt.Sprintf("reorgedError: reorgID=%d blockRangeReorged=%s: %s", reorgID, blockRange.String(), msg)
 	require.Equal(t, expected, result)
 }
 

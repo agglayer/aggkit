@@ -155,12 +155,12 @@ func (_c *Storager_GetBlockHeadersNotFinalized_Call) RunAndReturn(run func(types
 	return _c
 }
 
-// GetBlockReorgedChainID provides a mock function with given fields: tx, blockNumber, blockHash
-func (_m *Storager) GetBlockReorgedChainID(tx types.Querier, blockNumber uint64, blockHash common.Hash) (uint64, bool, error) {
+// GetBlockReorgedReorgID provides a mock function with given fields: tx, blockNumber, blockHash
+func (_m *Storager) GetBlockReorgedReorgID(tx types.Querier, blockNumber uint64, blockHash common.Hash) (uint64, bool, error) {
 	ret := _m.Called(tx, blockNumber, blockHash)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetBlockReorgedChainID")
+		panic("no return value specified for GetBlockReorgedReorgID")
 	}
 
 	var r0 uint64
@@ -190,32 +190,32 @@ func (_m *Storager) GetBlockReorgedChainID(tx types.Querier, blockNumber uint64,
 	return r0, r1, r2
 }
 
-// Storager_GetBlockReorgedChainID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBlockReorgedChainID'
-type Storager_GetBlockReorgedChainID_Call struct {
+// Storager_GetBlockReorgedReorgID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBlockReorgedReorgID'
+type Storager_GetBlockReorgedReorgID_Call struct {
 	*mock.Call
 }
 
-// GetBlockReorgedChainID is a helper method to define mock.On call
+// GetBlockReorgedReorgID is a helper method to define mock.On call
 //   - tx types.Querier
 //   - blockNumber uint64
 //   - blockHash common.Hash
-func (_e *Storager_Expecter) GetBlockReorgedChainID(tx interface{}, blockNumber interface{}, blockHash interface{}) *Storager_GetBlockReorgedChainID_Call {
-	return &Storager_GetBlockReorgedChainID_Call{Call: _e.mock.On("GetBlockReorgedChainID", tx, blockNumber, blockHash)}
+func (_e *Storager_Expecter) GetBlockReorgedReorgID(tx interface{}, blockNumber interface{}, blockHash interface{}) *Storager_GetBlockReorgedReorgID_Call {
+	return &Storager_GetBlockReorgedReorgID_Call{Call: _e.mock.On("GetBlockReorgedReorgID", tx, blockNumber, blockHash)}
 }
 
-func (_c *Storager_GetBlockReorgedChainID_Call) Run(run func(tx types.Querier, blockNumber uint64, blockHash common.Hash)) *Storager_GetBlockReorgedChainID_Call {
+func (_c *Storager_GetBlockReorgedReorgID_Call) Run(run func(tx types.Querier, blockNumber uint64, blockHash common.Hash)) *Storager_GetBlockReorgedReorgID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(types.Querier), args[1].(uint64), args[2].(common.Hash))
 	})
 	return _c
 }
 
-func (_c *Storager_GetBlockReorgedChainID_Call) Return(_a0 uint64, _a1 bool, _a2 error) *Storager_GetBlockReorgedChainID_Call {
+func (_c *Storager_GetBlockReorgedReorgID_Call) Return(_a0 uint64, _a1 bool, _a2 error) *Storager_GetBlockReorgedReorgID_Call {
 	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *Storager_GetBlockReorgedChainID_Call) RunAndReturn(run func(types.Querier, uint64, common.Hash) (uint64, bool, error)) *Storager_GetBlockReorgedChainID_Call {
+func (_c *Storager_GetBlockReorgedReorgID_Call) RunAndReturn(run func(types.Querier, uint64, common.Hash) (uint64, bool, error)) *Storager_GetBlockReorgedReorgID_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -403,21 +403,21 @@ func (_c *Storager_GetRangeBlockHeader_Call) RunAndReturn(run func(types.Querier
 	return _c
 }
 
-// GetReorgedDataByChainID provides a mock function with given fields: tx, reorgedChainID
-func (_m *Storager) GetReorgedDataByChainID(tx types.Querier, reorgedChainID uint64) (*multidownloadertypes.ReorgData, error) {
-	ret := _m.Called(tx, reorgedChainID)
+// GetReorgedDataByReorgID provides a mock function with given fields: tx, reorgID
+func (_m *Storager) GetReorgedDataByReorgID(tx types.Querier, reorgID uint64) (*multidownloadertypes.ReorgData, error) {
+	ret := _m.Called(tx, reorgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetReorgedDataByChainID")
+		panic("no return value specified for GetReorgedDataByReorgID")
 	}
 
 	var r0 *multidownloadertypes.ReorgData
 	var r1 error
 	if rf, ok := ret.Get(0).(func(types.Querier, uint64) (*multidownloadertypes.ReorgData, error)); ok {
-		return rf(tx, reorgedChainID)
+		return rf(tx, reorgID)
 	}
 	if rf, ok := ret.Get(0).(func(types.Querier, uint64) *multidownloadertypes.ReorgData); ok {
-		r0 = rf(tx, reorgedChainID)
+		r0 = rf(tx, reorgID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*multidownloadertypes.ReorgData)
@@ -425,7 +425,7 @@ func (_m *Storager) GetReorgedDataByChainID(tx types.Querier, reorgedChainID uin
 	}
 
 	if rf, ok := ret.Get(1).(func(types.Querier, uint64) error); ok {
-		r1 = rf(tx, reorgedChainID)
+		r1 = rf(tx, reorgID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -433,31 +433,31 @@ func (_m *Storager) GetReorgedDataByChainID(tx types.Querier, reorgedChainID uin
 	return r0, r1
 }
 
-// Storager_GetReorgedDataByChainID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReorgedDataByChainID'
-type Storager_GetReorgedDataByChainID_Call struct {
+// Storager_GetReorgedDataByReorgID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReorgedDataByReorgID'
+type Storager_GetReorgedDataByReorgID_Call struct {
 	*mock.Call
 }
 
-// GetReorgedDataByChainID is a helper method to define mock.On call
+// GetReorgedDataByReorgID is a helper method to define mock.On call
 //   - tx types.Querier
-//   - reorgedChainID uint64
-func (_e *Storager_Expecter) GetReorgedDataByChainID(tx interface{}, reorgedChainID interface{}) *Storager_GetReorgedDataByChainID_Call {
-	return &Storager_GetReorgedDataByChainID_Call{Call: _e.mock.On("GetReorgedDataByChainID", tx, reorgedChainID)}
+//   - reorgID uint64
+func (_e *Storager_Expecter) GetReorgedDataByReorgID(tx interface{}, reorgID interface{}) *Storager_GetReorgedDataByReorgID_Call {
+	return &Storager_GetReorgedDataByReorgID_Call{Call: _e.mock.On("GetReorgedDataByReorgID", tx, reorgID)}
 }
 
-func (_c *Storager_GetReorgedDataByChainID_Call) Run(run func(tx types.Querier, reorgedChainID uint64)) *Storager_GetReorgedDataByChainID_Call {
+func (_c *Storager_GetReorgedDataByReorgID_Call) Run(run func(tx types.Querier, reorgID uint64)) *Storager_GetReorgedDataByReorgID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(types.Querier), args[1].(uint64))
 	})
 	return _c
 }
 
-func (_c *Storager_GetReorgedDataByChainID_Call) Return(_a0 *multidownloadertypes.ReorgData, _a1 error) *Storager_GetReorgedDataByChainID_Call {
+func (_c *Storager_GetReorgedDataByReorgID_Call) Return(_a0 *multidownloadertypes.ReorgData, _a1 error) *Storager_GetReorgedDataByReorgID_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *Storager_GetReorgedDataByChainID_Call) RunAndReturn(run func(types.Querier, uint64) (*multidownloadertypes.ReorgData, error)) *Storager_GetReorgedDataByChainID_Call {
+func (_c *Storager_GetReorgedDataByReorgID_Call) RunAndReturn(run func(types.Querier, uint64) (*multidownloadertypes.ReorgData, error)) *Storager_GetReorgedDataByReorgID_Call {
 	_c.Call.Return(run)
 	return _c
 }

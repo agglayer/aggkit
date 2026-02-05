@@ -27,11 +27,11 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(storedBlock, mdrtypes.Finalized, nil).Once()
 
-		isValid, reorgChainID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.NoError(t, err)
 		require.True(t, isValid)
-		require.Equal(t, uint64(0), reorgChainID)
+		require.Equal(t, uint64(0), reorgID)
 	})
 
 	t.Run("returns error when GetBlockHeaderByNumber fails", func(t *testing.T) {
@@ -43,19 +43,19 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(nil, mdrtypes.NotFinalized, expectedErr).Once()
 
-		isValid, reorgChainID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot get BlockHeader")
 		require.True(t, isValid)
-		require.Equal(t, uint64(0), reorgChainID)
+		require.Equal(t, uint64(0), reorgID)
 	})
 
-	t.Run("returns false with chainID when block found in blocks_reorged", func(t *testing.T) {
+	t.Run("returns false with reorgID when block found in blocks_reorged", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 		blockNumber := uint64(100)
 		blockHash := common.HexToHash("0x1234")
-		expectedChainID := uint64(42)
+		expectedReorgID := uint64(42)
 
 		storedBlock := &aggkittypes.BlockHeader{
 			Number: blockNumber,
@@ -64,14 +64,14 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(storedBlock, mdrtypes.Finalized, nil).Once()
-		testData.mockStorage.EXPECT().GetBlockReorgedChainID(mock.Anything, blockNumber, blockHash).
-			Return(expectedChainID, true, nil).Once()
+		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
+			Return(expectedReorgID, true, nil).Once()
 
-		isValid, reorgChainID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.NoError(t, err)
 		require.False(t, isValid)
-		require.Equal(t, expectedChainID, reorgChainID)
+		require.Equal(t, expectedReorgID, reorgID)
 	})
 
 	t.Run("returns false when block not stored and not in blocks_reorged", func(t *testing.T) {
@@ -81,22 +81,22 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(nil, mdrtypes.NotFinalized, nil).Once()
-		testData.mockStorage.EXPECT().GetBlockReorgedChainID(mock.Anything, blockNumber, blockHash).
+		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
 			Return(uint64(0), false, nil).Once()
 
-		isValid, reorgChainID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found in storage or blocks_reorged")
 		require.False(t, isValid)
-		require.Equal(t, uint64(0), reorgChainID)
+		require.Equal(t, uint64(0), reorgID)
 	})
 
-	t.Run("returns false with chainID when stored block hash does not match", func(t *testing.T) {
+	t.Run("returns false with reorgID when stored block hash does not match", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 		blockNumber := uint64(100)
 		blockHash := common.HexToHash("0x1234")
-		reorgChainID := uint64(99)
+		expectedReorgID := uint64(99)
 
 		storedBlock := &aggkittypes.BlockHeader{
 			Number: blockNumber,
@@ -105,17 +105,17 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(storedBlock, mdrtypes.Finalized, nil).Once()
-		testData.mockStorage.EXPECT().GetBlockReorgedChainID(mock.Anything, blockNumber, blockHash).
-			Return(reorgChainID, true, nil).Once()
+		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
+			Return(expectedReorgID, true, nil).Once()
 
-		isValid, chainID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.NoError(t, err)
 		require.False(t, isValid)
-		require.Equal(t, reorgChainID, chainID)
+		require.Equal(t, expectedReorgID, reorgID)
 	})
 
-	t.Run("returns error when GetBlockReorgedChainID fails", func(t *testing.T) {
+	t.Run("returns error when GetBlockReorgedReorgID fails", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 		blockNumber := uint64(100)
 		blockHash := common.HexToHash("0x1234")
@@ -128,24 +128,24 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 		expectedErr := fmt.Errorf("reorg query error")
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(storedBlock, mdrtypes.Finalized, nil).Once()
-		testData.mockStorage.EXPECT().GetBlockReorgedChainID(mock.Anything, blockNumber, blockHash).
+		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
 			Return(uint64(0), false, expectedErr).Once()
 
-		isValid, reorgChainID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot check blocks_reorged")
 		require.True(t, isValid)
-		require.Equal(t, uint64(0), reorgChainID)
+		require.Equal(t, uint64(0), reorgID)
 	})
 }
 
-func TestEVMMultidownloader_GetReorgedDataByChainID(t *testing.T) {
+func TestEVMMultidownloader_GetReorgedDataByReorgID(t *testing.T) {
 	t.Run("returns reorg data successfully", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
-		expectedChainID := uint64(42)
+		expectedReorgID := uint64(42)
 		expectedReorgData := &mdrtypes.ReorgData{
-			ChainID: expectedChainID,
+			ReorgID: expectedReorgID,
 			BlockRangeAffected: aggkitcommon.BlockRange{
 				FromBlock: 100,
 				ToBlock:   200,
@@ -154,14 +154,14 @@ func TestEVMMultidownloader_GetReorgedDataByChainID(t *testing.T) {
 			DetectedTimestamp: 1234567890,
 		}
 
-		testData.mockStorage.EXPECT().GetReorgedDataByChainID(mock.Anything, expectedChainID).
+		testData.mockStorage.EXPECT().GetReorgedDataByReorgID(mock.Anything, expectedReorgID).
 			Return(expectedReorgData, nil).Once()
 
-		result, err := testData.mdr.GetReorgedDataByChainID(context.Background(), expectedChainID)
+		result, err := testData.mdr.GetReorgedDataByReorgID(context.Background(), expectedReorgID)
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		require.Equal(t, expectedReorgData.ChainID, result.ChainID)
+		require.Equal(t, expectedReorgData.ReorgID, result.ReorgID)
 		require.Equal(t, expectedReorgData.BlockRangeAffected, result.BlockRangeAffected)
 		require.Equal(t, expectedReorgData.DetectedAtBlock, result.DetectedAtBlock)
 		require.Equal(t, expectedReorgData.DetectedTimestamp, result.DetectedTimestamp)
@@ -169,27 +169,27 @@ func TestEVMMultidownloader_GetReorgedDataByChainID(t *testing.T) {
 
 	t.Run("returns error when storage query fails", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
-		expectedChainID := uint64(42)
+		expectedReorgID := uint64(42)
 		expectedErr := fmt.Errorf("database error")
 
-		testData.mockStorage.EXPECT().GetReorgedDataByChainID(mock.Anything, expectedChainID).
+		testData.mockStorage.EXPECT().GetReorgedDataByReorgID(mock.Anything, expectedReorgID).
 			Return(nil, expectedErr).Once()
 
-		result, err := testData.mdr.GetReorgedDataByChainID(context.Background(), expectedChainID)
+		result, err := testData.mdr.GetReorgedDataByReorgID(context.Background(), expectedReorgID)
 
 		require.Error(t, err)
 		require.Equal(t, expectedErr, err)
 		require.Nil(t, result)
 	})
 
-	t.Run("returns nil when chainID not found", func(t *testing.T) {
+	t.Run("returns nil when reorgID not found", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
-		expectedChainID := uint64(999)
+		expectedReorgID := uint64(999)
 
-		testData.mockStorage.EXPECT().GetReorgedDataByChainID(mock.Anything, expectedChainID).
+		testData.mockStorage.EXPECT().GetReorgedDataByReorgID(mock.Anything, expectedReorgID).
 			Return(nil, nil).Once()
 
-		result, err := testData.mdr.GetReorgedDataByChainID(context.Background(), expectedChainID)
+		result, err := testData.mdr.GetReorgedDataByReorgID(context.Background(), expectedReorgID)
 
 		require.NoError(t, err)
 		require.Nil(t, result)

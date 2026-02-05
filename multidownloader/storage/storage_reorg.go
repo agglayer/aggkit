@@ -14,7 +14,7 @@ import (
 )
 
 type reorgRow struct {
-	ChainID                   uint64 `meddler:"chain_id"`
+	ReorgID                   uint64 `meddler:"reorg_id"`
 	DetectedAtBlock           uint64 `meddler:"detected_at_block"`
 	ReorgedFromBlock          uint64 `meddler:"reorged_from_block"`
 	ReorgedToBlock            uint64 `meddler:"reorged_to_block"`
@@ -27,7 +27,7 @@ type reorgRow struct {
 
 func newReorgRowFromReorgData(reorgData mdrtypes.ReorgData) *reorgRow {
 	return &reorgRow{
-		ChainID:                   reorgData.ChainID,
+		ReorgID:                   reorgData.ReorgID,
 		DetectedAtBlock:           reorgData.DetectedAtBlock,
 		ReorgedFromBlock:          reorgData.BlockRangeAffected.FromBlock,
 		ReorgedToBlock:            reorgData.BlockRangeAffected.ToBlock,
@@ -39,7 +39,7 @@ func newReorgRowFromReorgData(reorgData mdrtypes.ReorgData) *reorgRow {
 	}
 }
 
-// returns ChainID of the inserted reorg
+// returns ReorgID of the inserted reorg
 func (a *MultidownloaderStorage) InsertReorgAndMoveReorgedBlocksAndLogs(tx dbtypes.Querier,
 	reorgData mdrtypes.ReorgData) (uint64, error) {
 	if tx == nil {
@@ -48,24 +48,24 @@ func (a *MultidownloaderStorage) InsertReorgAndMoveReorgedBlocksAndLogs(tx dbtyp
 	reorgRow := newReorgRowFromReorgData(reorgData)
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	// Get Next ChainID from storage using rowid
-	lastChainID := struct {
-		ChainID *uint64 `meddler:"chain_id"`
+	// Get Next ReorgID from storage using rowid
+	lastReorgID := struct {
+		ReorgID *uint64 `meddler:"reorg_id"`
 	}{}
-	err := meddler.QueryRow(tx, &lastChainID, "SELECT MAX(chain_id) as chain_id FROM reorgs")
+	err := meddler.QueryRow(tx, &lastReorgID, "SELECT MAX(reorg_id) as reorg_id FROM reorgs")
 	if err != nil {
-		return 0, fmt.Errorf("InsertNewReorg: error getting last chain_id: %w", err)
+		return 0, fmt.Errorf("InsertNewReorg: error getting last reorg_id: %w", err)
 	}
-	if lastChainID.ChainID == nil {
-		reorgRow.ChainID = 1
+	if lastReorgID.ReorgID == nil {
+		reorgRow.ReorgID = 1
 	} else {
-		reorgRow.ChainID = *lastChainID.ChainID + 1
+		reorgRow.ReorgID = *lastReorgID.ReorgID + 1
 	}
 
 	if err := meddler.Insert(tx, "reorgs", reorgRow); err != nil {
 		return 0, fmt.Errorf("InsertNewReorg: error inserting reorgs (%s): %w", reorgData.String(), err)
 	}
-	if err := a.moveReorgedBlocksAndLogsNoMutex(tx, reorgRow.ChainID,
+	if err := a.moveReorgedBlocksAndLogsNoMutex(tx, reorgRow.ReorgID,
 		reorgData.BlockRangeAffected); err != nil {
 		return 0, fmt.Errorf("InsertNewReorg: error moving reorged blocks to block_reorged: %w", err)
 	}
@@ -74,18 +74,18 @@ func (a *MultidownloaderStorage) InsertReorgAndMoveReorgedBlocksAndLogs(tx dbtyp
 	if err != nil {
 		return 0, fmt.Errorf("InsertNewReorg: error adjusting sync_status for reorg: %w", err)
 	}
-	return reorgRow.ChainID, nil
+	return reorgRow.ReorgID, nil
 }
 
-func (a *MultidownloaderStorage) moveReorgedBlocksAndLogsNoMutex(tx dbtypes.Querier, chainID uint64,
+func (a *MultidownloaderStorage) moveReorgedBlocksAndLogsNoMutex(tx dbtypes.Querier, reorgID uint64,
 	blockRangeAffected aggkitcommon.BlockRange) error {
-	a.logger.Debugf("storage: moving blocks to blocks_reorged - chain_id: %d, range: %s",
-		chainID, blockRangeAffected.String())
-	query := `INSERT INTO blocks_reorged (chain_id, block_number, block_hash,block_parent_hash, block_timestamp)
+	a.logger.Debugf("storage: moving blocks to blocks_reorged - reorg_id: %d, range: %s",
+		reorgID, blockRangeAffected.String())
+	query := `INSERT INTO blocks_reorged (reorg_id, block_number, block_hash,block_parent_hash, block_timestamp)
 	SELECT ?, block_number, block_hash, block_parent_hash, block_timestamp
 	FROM blocks
 	WHERE block_number >= ? AND block_number <= ?;
-	INSERT INTO logs_reorged (chain_id, block_number, address,topics, data, tx_hash, tx_index, log_index)
+	INSERT INTO logs_reorged (reorg_id, block_number, address,topics, data, tx_hash, tx_index, log_index)
 	SELECT ?, block_number, address, topics, data, tx_hash, tx_index, log_index
 	FROM logs
 	WHERE block_number >= ? AND block_number <= ?;
@@ -94,9 +94,9 @@ func (a *MultidownloaderStorage) moveReorgedBlocksAndLogsNoMutex(tx dbtypes.Quer
 	DELETE FROM blocks
 	WHERE block_number >= ? AND block_number <= ?;`
 	_, err := tx.Exec(query,
-		chainID,
+		reorgID,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
-		chainID,
+		reorgID,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock)
@@ -106,36 +106,36 @@ func (a *MultidownloaderStorage) moveReorgedBlocksAndLogsNoMutex(tx dbtypes.Quer
 	return nil
 }
 
-func (a *MultidownloaderStorage) GetBlockReorgedChainID(tx dbtypes.Querier,
+func (a *MultidownloaderStorage) GetBlockReorgedReorgID(tx dbtypes.Querier,
 	blockNumber uint64, blockHash common.Hash) (uint64, bool, error) {
 	if tx == nil {
 		tx = a.db
 	}
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
-	var chainIDRow struct {
-		ChainID *uint64 `meddler:"chain_id"`
+	var reorgIDRow struct {
+		ReorgID *uint64 `meddler:"reorg_id"`
 	}
-	query := `SELECT br.chain_id FROM blocks_reorged br
-	INNER JOIN reorgs r ON br.chain_id = r.chain_id
+	query := `SELECT br.reorg_id FROM blocks_reorged br
+	INNER JOIN reorgs r ON br.reorg_id = r.reorg_id
 	WHERE br.block_number = ? AND br.block_hash = ?
 	ORDER BY r.reorged_from_block ASC
 	LIMIT 1;`
-	err := tx.QueryRow(query, blockNumber, blockHash.Hex()).Scan(&chainIDRow.ChainID)
+	err := tx.QueryRow(query, blockNumber, blockHash.Hex()).Scan(&reorgIDRow.ReorgID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, false, nil
 		}
-		return 0, false, fmt.Errorf("GetBlockReorgedChainID: error querying blocks_reorged: %w", err)
+		return 0, false, fmt.Errorf("GetBlockReorgedReorgID: error querying blocks_reorged: %w", err)
 	}
-	if chainIDRow.ChainID == nil {
+	if reorgIDRow.ReorgID == nil {
 		return 0, false, nil
 	}
-	return *chainIDRow.ChainID, true, nil
+	return *reorgIDRow.ReorgID, true, nil
 }
 
-func (a *MultidownloaderStorage) GetReorgedDataByChainID(tx dbtypes.Querier,
-	reorgedChainID uint64) (*mdrtypes.ReorgData, error) {
+func (a *MultidownloaderStorage) GetReorgedDataByReorgID(tx dbtypes.Querier,
+	reorgID uint64) (*mdrtypes.ReorgData, error) {
 	if tx == nil {
 		tx = a.db
 	}
@@ -143,26 +143,26 @@ func (a *MultidownloaderStorage) GetReorgedDataByChainID(tx dbtypes.Querier,
 	defer a.mutex.RUnlock()
 
 	var row reorgRow
-	query := `SELECT chain_id, detected_at_block, reorged_from_block, reorged_to_block,
+	query := `SELECT reorg_id, detected_at_block, reorged_from_block, reorged_to_block,
 		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name, description
-		FROM reorgs WHERE chain_id = ? LIMIT 1;`
+		FROM reorgs WHERE reorg_id = ? LIMIT 1;`
 
-	err := meddler.QueryRow(tx, &row, query, reorgedChainID)
+	err := meddler.QueryRow(tx, &row, query, reorgID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("GetReorgedDataByChainID: error querying reorgs table: %w", err)
+		return nil, fmt.Errorf("GetReorgedDataByReorgID: error querying reorgs table: %w", err)
 	}
 
 	// Convert string to BlockNumberFinality
 	blockFinality, err := aggkittypes.NewBlockNumberFinality(row.NetworkFinalizedBlockName)
 	if err != nil {
-		return nil, fmt.Errorf("GetReorgedDataByChainID: error parsing NetworkFinalizedBlockName: %w", err)
+		return nil, fmt.Errorf("GetReorgedDataByReorgID: error parsing NetworkFinalizedBlockName: %w", err)
 	}
 
 	reorgData := &mdrtypes.ReorgData{
-		ChainID: row.ChainID,
+		ReorgID: row.ReorgID,
 		BlockRangeAffected: aggkitcommon.BlockRange{
 			FromBlock: row.ReorgedFromBlock,
 			ToBlock:   row.ReorgedToBlock,

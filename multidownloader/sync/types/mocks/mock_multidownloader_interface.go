@@ -192,21 +192,21 @@ func (_c *MultidownloaderInterface_Finality_Call) RunAndReturn(run func() aggkit
 	return _c
 }
 
-// GetReorgedDataByChainID provides a mock function with given fields: ctx, reorgedChainID
-func (_m *MultidownloaderInterface) GetReorgedDataByChainID(ctx context.Context, reorgedChainID uint64) (*multidownloadertypes.ReorgData, error) {
-	ret := _m.Called(ctx, reorgedChainID)
+// GetReorgedDataByReorgID provides a mock function with given fields: ctx, reorgID
+func (_m *MultidownloaderInterface) GetReorgedDataByReorgID(ctx context.Context, reorgID uint64) (*multidownloadertypes.ReorgData, error) {
+	ret := _m.Called(ctx, reorgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetReorgedDataByChainID")
+		panic("no return value specified for GetReorgedDataByReorgID")
 	}
 
 	var r0 *multidownloadertypes.ReorgData
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context, uint64) (*multidownloadertypes.ReorgData, error)); ok {
-		return rf(ctx, reorgedChainID)
+		return rf(ctx, reorgID)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, uint64) *multidownloadertypes.ReorgData); ok {
-		r0 = rf(ctx, reorgedChainID)
+		r0 = rf(ctx, reorgID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*multidownloadertypes.ReorgData)
@@ -214,7 +214,7 @@ func (_m *MultidownloaderInterface) GetReorgedDataByChainID(ctx context.Context,
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
-		r1 = rf(ctx, reorgedChainID)
+		r1 = rf(ctx, reorgID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -222,31 +222,31 @@ func (_m *MultidownloaderInterface) GetReorgedDataByChainID(ctx context.Context,
 	return r0, r1
 }
 
-// MultidownloaderInterface_GetReorgedDataByChainID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReorgedDataByChainID'
-type MultidownloaderInterface_GetReorgedDataByChainID_Call struct {
+// MultidownloaderInterface_GetReorgedDataByReorgID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReorgedDataByReorgID'
+type MultidownloaderInterface_GetReorgedDataByReorgID_Call struct {
 	*mock.Call
 }
 
-// GetReorgedDataByChainID is a helper method to define mock.On call
+// GetReorgedDataByReorgID is a helper method to define mock.On call
 //   - ctx context.Context
-//   - reorgedChainID uint64
-func (_e *MultidownloaderInterface_Expecter) GetReorgedDataByChainID(ctx interface{}, reorgedChainID interface{}) *MultidownloaderInterface_GetReorgedDataByChainID_Call {
-	return &MultidownloaderInterface_GetReorgedDataByChainID_Call{Call: _e.mock.On("GetReorgedDataByChainID", ctx, reorgedChainID)}
+//   - reorgID uint64
+func (_e *MultidownloaderInterface_Expecter) GetReorgedDataByReorgID(ctx interface{}, reorgID interface{}) *MultidownloaderInterface_GetReorgedDataByReorgID_Call {
+	return &MultidownloaderInterface_GetReorgedDataByReorgID_Call{Call: _e.mock.On("GetReorgedDataByReorgID", ctx, reorgID)}
 }
 
-func (_c *MultidownloaderInterface_GetReorgedDataByChainID_Call) Run(run func(ctx context.Context, reorgedChainID uint64)) *MultidownloaderInterface_GetReorgedDataByChainID_Call {
+func (_c *MultidownloaderInterface_GetReorgedDataByReorgID_Call) Run(run func(ctx context.Context, reorgID uint64)) *MultidownloaderInterface_GetReorgedDataByReorgID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64))
 	})
 	return _c
 }
 
-func (_c *MultidownloaderInterface_GetReorgedDataByChainID_Call) Return(_a0 *multidownloadertypes.ReorgData, _a1 error) *MultidownloaderInterface_GetReorgedDataByChainID_Call {
+func (_c *MultidownloaderInterface_GetReorgedDataByReorgID_Call) Return(_a0 *multidownloadertypes.ReorgData, _a1 error) *MultidownloaderInterface_GetReorgedDataByReorgID_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MultidownloaderInterface_GetReorgedDataByChainID_Call) RunAndReturn(run func(context.Context, uint64) (*multidownloadertypes.ReorgData, error)) *MultidownloaderInterface_GetReorgedDataByChainID_Call {
+func (_c *MultidownloaderInterface_GetReorgedDataByReorgID_Call) RunAndReturn(run func(context.Context, uint64) (*multidownloadertypes.ReorgData, error)) *MultidownloaderInterface_GetReorgedDataByReorgID_Call {
 	_c.Call.Return(run)
 	return _c
 }

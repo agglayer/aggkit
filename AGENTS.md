@@ -7,6 +7,7 @@
 - `make test-unit` - Run all unit tests with coverage
 - `go test -v -run TestName ./path/to/package` - Run a single test
 - `go test -v -run TestName ./...` - Run single test across all packages
+- `make generate-mocks` - Generate all mocks
 
 ## Code Style
 

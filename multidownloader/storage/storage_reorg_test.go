@@ -12,7 +12,7 @@ import (
 func TestStorage_InsertNewReorg(t *testing.T) {
 	storage := newStorageForTest(t, nil)
 	reorgData := mdrtypes.ReorgData{
-		ChainID:                   1,
+		ReorgID:                   1,
 		BlockRangeAffected:        aggkitcommon.NewBlockRange(5000, 5010),
 		DetectedAtBlock:           5020,
 		DetectedTimestamp:         1630003000,
@@ -22,17 +22,17 @@ func TestStorage_InsertNewReorg(t *testing.T) {
 	}
 	tx, err := storage.NewTx(t.Context())
 	require.NoError(t, err, "cannot start new transaction")
-	chainID, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
+	reorgID, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 	require.NoError(t, err, "cannot insert new reorg")
-	require.Equal(t, uint64(1), chainID, "first chain ID must be 1")
+	require.Equal(t, uint64(1), reorgID, "first reorg ID must be 1")
 	err = tx.Commit()
 	require.NoError(t, err, "cannot commit transaction")
 
 	tx, err = storage.NewTx(t.Context())
 	require.NoError(t, err, "cannot start new transaction")
-	chainID, err = storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
+	reorgID, err = storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 	require.NoError(t, err, "cannot insert new reorg")
-	require.Equal(t, uint64(2), chainID, "second chain ID must be 2")
+	require.Equal(t, uint64(2), reorgID, "second reorg ID must be 2")
 	err = tx.Commit()
 	require.NoError(t, err, "cannot commit transaction")
 }
@@ -43,7 +43,7 @@ func TestStorage_InsertNewReorgAndMoveBlocks(t *testing.T) {
 		5000, 20, 5)
 
 	reorgData := mdrtypes.ReorgData{
-		ChainID:                   0, // will be set by InsertNewReorg
+		ReorgID:                   0, // will be set by InsertNewReorg
 		BlockRangeAffected:        aggkitcommon.NewBlockRange(5005, 5015),
 		DetectedAtBlock:           5020,
 		DetectedTimestamp:         1630003000,
@@ -53,9 +53,9 @@ func TestStorage_InsertNewReorgAndMoveBlocks(t *testing.T) {
 	}
 	tx, err := storage.NewTx(t.Context())
 	require.NoError(t, err, "cannot start new transaction")
-	chainID, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
+	reorgID, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 	require.NoError(t, err, "cannot insert new reorg")
-	require.Equal(t, uint64(1), chainID, "first chain ID must be 1")
+	require.Equal(t, uint64(1), reorgID, "first reorg ID must be 1")
 	err = tx.Commit()
 	require.NoError(t, err, "cannot commit transaction")
 	// Now check that blocks from 5005 to 5015 are in block_reorged
@@ -66,8 +66,8 @@ func TestStorage_InsertNewReorgAndMoveBlocks(t *testing.T) {
 	}
 }
 
-func TestStorage_GetBlockReorgedChainID_MultipleChains(t *testing.T) {
-	t.Run("returns chain_id with lowest reorged_from_block when block exists in multiple chains", func(t *testing.T) {
+func TestStorage_GetBlockReorgedReorgID_MultipleChains(t *testing.T) {
+	t.Run("returns reorg_id with lowest reorged_from_block when block exists in multiple chains", func(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 
 		// First, populate some blocks that will be reorged
@@ -86,9 +86,9 @@ func TestStorage_GetBlockReorgedChainID_MultipleChains(t *testing.T) {
 
 		tx1, err := storage.NewTx(t.Context())
 		require.NoError(t, err)
-		chainID1, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx1, reorgData1)
+		reorgID1, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx1, reorgData1)
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), chainID1)
+		require.Equal(t, uint64(1), reorgID1)
 		err = tx1.Commit()
 		require.NoError(t, err)
 
@@ -105,15 +105,15 @@ func TestStorage_GetBlockReorgedChainID_MultipleChains(t *testing.T) {
 
 		tx2, err := storage.NewTx(t.Context())
 		require.NoError(t, err)
-		chainID2, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx2, reorgData2)
+		reorgID2, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx2, reorgData2)
 		require.NoError(t, err)
-		require.Equal(t, uint64(2), chainID2)
+		require.Equal(t, uint64(2), reorgID2)
 		err = tx2.Commit()
 		require.NoError(t, err)
 
 		// The key test: insert the SAME block_number and block_hash into MULTIPLE chains
 		// This is the scenario the user wants to test - when a block exists in multiple reorg chains,
-		// the function should return the chain_id with the lowest reorged_from_block
+		// the function should return the reorg_id with the lowest reorged_from_block
 		testBlockNumber := uint64(2000) // Use a block number outside the reorg ranges
 		testBlockHash := exampleTestHash[7]
 
@@ -121,30 +121,30 @@ func TestStorage_GetBlockReorgedChainID_MultipleChains(t *testing.T) {
 		require.NoError(t, err)
 
 		// Insert the SAME block into chain 1 (reorged_from_block=1010)
-		_, err = tx3.Exec(`INSERT INTO blocks_reorged (chain_id, block_number, block_hash, block_parent_hash, block_timestamp)
-			VALUES (?, ?, ?, ?, ?)`, chainID1, testBlockNumber, testBlockHash.Hex(), exampleTestHash[4].Hex(), 1630000000)
+		_, err = tx3.Exec(`INSERT INTO blocks_reorged (reorg_id, block_number, block_hash, block_parent_hash, block_timestamp)
+			VALUES (?, ?, ?, ?, ?)`, reorgID1, testBlockNumber, testBlockHash.Hex(), exampleTestHash[4].Hex(), 1630000000)
 		require.NoError(t, err)
 
 		// Insert the SAME block into chain 2 (reorged_from_block=1005, lower!)
-		_, err = tx3.Exec(`INSERT INTO blocks_reorged (chain_id, block_number, block_hash, block_parent_hash, block_timestamp)
-			VALUES (?, ?, ?, ?, ?)`, chainID2, testBlockNumber, testBlockHash.Hex(), exampleTestHash[4].Hex(), 1630000000)
+		_, err = tx3.Exec(`INSERT INTO blocks_reorged (reorg_id, block_number, block_hash, block_parent_hash, block_timestamp)
+			VALUES (?, ?, ?, ?, ?)`, reorgID2, testBlockNumber, testBlockHash.Hex(), exampleTestHash[4].Hex(), 1630000000)
 		require.NoError(t, err)
 
 		err = tx3.Commit()
 		require.NoError(t, err)
 
-		// Query for the block - should return chainID2 since it has the lowest reorged_from_block (1005 < 1010)
-		returnedChainID, found, err := storage.GetBlockReorgedChainID(nil, testBlockNumber, testBlockHash)
+		// Query for the block - should return reorgID2 since it has the lowest reorged_from_block (1005 < 1010)
+		returnedReorgID, found, err := storage.GetBlockReorgedReorgID(nil, testBlockNumber, testBlockHash)
 		require.NoError(t, err)
 		require.True(t, found, "block should be found")
-		require.Equal(t, chainID2, returnedChainID, "should return chain_id with lowest reorged_from_block (chain 2 with reorged_from_block=1005)")
+		require.Equal(t, reorgID2, returnedReorgID, "should return reorg_id with lowest reorged_from_block (chain 2 with reorged_from_block=1005)")
 
 		// Verify the reorged_from_block values to confirm our expectation
-		reorgData1Retrieved, err := storage.GetReorgedDataByChainID(nil, chainID1)
+		reorgData1Retrieved, err := storage.GetReorgedDataByReorgID(nil, reorgID1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1010), reorgData1Retrieved.BlockRangeAffected.FromBlock)
 
-		reorgData2Retrieved, err := storage.GetReorgedDataByChainID(nil, chainID2)
+		reorgData2Retrieved, err := storage.GetReorgedDataByReorgID(nil, reorgID2)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1005), reorgData2Retrieved.BlockRangeAffected.FromBlock)
 	})
@@ -153,20 +153,20 @@ func TestStorage_GetBlockReorgedChainID_MultipleChains(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 
 		// Query for non-existent block
-		chainID, found, err := storage.GetBlockReorgedChainID(nil, 9999, exampleTestHash[0])
+		reorgID, found, err := storage.GetBlockReorgedReorgID(nil, 9999, exampleTestHash[0])
 		require.NoError(t, err)
 		require.False(t, found, "block should not be found")
-		require.Equal(t, uint64(0), chainID)
+		require.Equal(t, uint64(0), reorgID)
 	})
 }
 
-func TestStorage_GetReorgedDataByChainID(t *testing.T) {
+func TestStorage_GetReorgedDataByReorgID(t *testing.T) {
 	t.Run("returns reorg data when found", func(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 
 		// Insert a reorg
 		expectedReorgData := mdrtypes.ReorgData{
-			ChainID:                   0, // will be set by InsertNewReorg
+			ReorgID:                   0, // will be set by InsertNewReorg
 			BlockRangeAffected:        aggkitcommon.NewBlockRange(1000, 1010),
 			DetectedAtBlock:           1020,
 			DetectedTimestamp:         1630003000,
@@ -177,17 +177,17 @@ func TestStorage_GetReorgedDataByChainID(t *testing.T) {
 
 		tx, err := storage.NewTx(t.Context())
 		require.NoError(t, err)
-		chainID, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, expectedReorgData)
+		reorgID, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, expectedReorgData)
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), chainID)
+		require.Equal(t, uint64(1), reorgID)
 		err = tx.Commit()
 		require.NoError(t, err)
 
 		// Retrieve the reorg data
-		reorgData, err := storage.GetReorgedDataByChainID(nil, chainID)
+		reorgData, err := storage.GetReorgedDataByReorgID(nil, reorgID)
 		require.NoError(t, err)
 		require.NotNil(t, reorgData, "reorg data should not be nil when found")
-		require.Equal(t, chainID, reorgData.ChainID)
+		require.Equal(t, reorgID, reorgData.ReorgID)
 		require.Equal(t, expectedReorgData.BlockRangeAffected, reorgData.BlockRangeAffected)
 		require.Equal(t, expectedReorgData.DetectedAtBlock, reorgData.DetectedAtBlock)
 		require.Equal(t, expectedReorgData.DetectedTimestamp, reorgData.DetectedTimestamp)
@@ -196,12 +196,12 @@ func TestStorage_GetReorgedDataByChainID(t *testing.T) {
 		require.Equal(t, expectedReorgData.NetworkFinalizedBlockName, reorgData.NetworkFinalizedBlockName)
 	})
 
-	t.Run("returns nil when chainID not found", func(t *testing.T) {
+	t.Run("returns nil when reorgID not found", func(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 
-		// Try to retrieve a non-existent chainID
-		reorgData, err := storage.GetReorgedDataByChainID(nil, 999)
-		require.NoError(t, err, "should not return error when chainID not found")
+		// Try to retrieve a non-existent reorgID
+		reorgData, err := storage.GetReorgedDataByReorgID(nil, 999)
+		require.NoError(t, err, "should not return error when reorgID not found")
 		require.Nil(t, reorgData, "reorg data should be nil when not found")
 	})
 
@@ -229,33 +229,33 @@ func TestStorage_GetReorgedDataByChainID(t *testing.T) {
 
 		tx1, err := storage.NewTx(t.Context())
 		require.NoError(t, err)
-		chainID1, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx1, reorgData1)
+		reorgID1, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx1, reorgData1)
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), chainID1)
+		require.Equal(t, uint64(1), reorgID1)
 		err = tx1.Commit()
 		require.NoError(t, err)
 
 		tx2, err := storage.NewTx(t.Context())
 		require.NoError(t, err)
-		chainID2, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx2, reorgData2)
+		reorgID2, err := storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx2, reorgData2)
 		require.NoError(t, err)
-		require.Equal(t, uint64(2), chainID2)
+		require.Equal(t, uint64(2), reorgID2)
 		err = tx2.Commit()
 		require.NoError(t, err)
 
 		// Retrieve first reorg
-		retrieved1, err := storage.GetReorgedDataByChainID(nil, chainID1)
+		retrieved1, err := storage.GetReorgedDataByReorgID(nil, reorgID1)
 		require.NoError(t, err)
 		require.NotNil(t, retrieved1)
-		require.Equal(t, chainID1, retrieved1.ChainID)
+		require.Equal(t, reorgID1, retrieved1.ReorgID)
 		require.Equal(t, reorgData1.BlockRangeAffected, retrieved1.BlockRangeAffected)
 		require.Equal(t, reorgData1.NetworkFinalizedBlockName, retrieved1.NetworkFinalizedBlockName)
 
 		// Retrieve second reorg
-		retrieved2, err := storage.GetReorgedDataByChainID(nil, chainID2)
+		retrieved2, err := storage.GetReorgedDataByReorgID(nil, reorgID2)
 		require.NoError(t, err)
 		require.NotNil(t, retrieved2)
-		require.Equal(t, chainID2, retrieved2.ChainID)
+		require.Equal(t, reorgID2, retrieved2.ReorgID)
 		require.Equal(t, reorgData2.BlockRangeAffected, retrieved2.BlockRangeAffected)
 		require.Equal(t, reorgData2.NetworkFinalizedBlockName, retrieved2.NetworkFinalizedBlockName)
 	})

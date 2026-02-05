@@ -9,7 +9,7 @@ import (
 )
 
 // CheckValidBlock checks if the given blockNumber and blockHash are still valid
-// returns: isValid bool, reorgChainID uint64, err error
+// returns: isValid bool, reorgID uint64, err error
 func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber uint64,
 	blockHash common.Hash) (bool, uint64, error) {
 	// Check if is stored as valid block
@@ -26,15 +26,15 @@ func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber u
 	}
 	// From this point is invalid or unknown
 	// Check in blocks_reorged
-	chainID, found, err := dh.storage.GetBlockReorgedChainID(nil, blockNumber, blockHash)
+	reorgID, found, err := dh.storage.GetBlockReorgedReorgID(nil, blockNumber, blockHash)
 	if err != nil {
 		return true, 0, fmt.Errorf("EVMMultidownloader.CheckValidBlock: cannot check blocks_reorged for blockNumber=%d: %w",
 			blockNumber, err)
 	}
 	if found {
-		dh.log.Infof("EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s found in blocks_reorged (chainID=%d)",
-			blockNumber, blockHash.Hex(), chainID)
-		return false, chainID, nil
+		dh.log.Infof("EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s found in blocks_reorged (reorgID=%d)",
+			blockNumber, blockHash.Hex(), reorgID)
+		return false, reorgID, nil
 	}
 	// Not found anywhere, consider invalid
 	return false, 0, fmt.Errorf(
@@ -42,7 +42,7 @@ func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber u
 		blockNumber, blockHash.Hex())
 }
 
-func (dh *EVMMultidownloader) GetReorgedDataByChainID(ctx context.Context,
-	reorgChainID uint64) (*mdrtypes.ReorgData, error) {
-	return dh.storage.GetReorgedDataByChainID(nil, reorgChainID)
+func (dh *EVMMultidownloader) GetReorgedDataByReorgID(ctx context.Context,
+	reorgID uint64) (*mdrtypes.ReorgData, error) {
+	return dh.storage.GetReorgedDataByReorgID(nil, reorgID)
 }

@@ -8,8 +8,8 @@ import (
 )
 
 type ReorgData struct {
-	// ChainID is the id of the roerged chain stored on DB (incremental ID)
-	ChainID uint64
+	// ReorgID is the unique identifier for the reorg stored in DB (incremental ID)
+	ReorgID uint64
 	// BlockRangeAffected is the range of blocks affected by the reorg (from,to inclusive)
 	BlockRangeAffected aggkitcommon.BlockRange
 	// DetectedAtBlock is the block number where the reorg was detected
@@ -22,9 +22,9 @@ type ReorgData struct {
 }
 
 func (r *ReorgData) String() string {
-	return fmt.Sprintf("ReorgData{ChainID: %d, BlockRangeAffected: %s, DetectedAtBlock: %d, DetectedTimestamp: %d, "+
+	return fmt.Sprintf("ReorgData{ReorgID: %d, BlockRangeAffected: %s, DetectedAtBlock: %d, DetectedTimestamp: %d, "+
 		"NetworkLatestBlock: %d, NetworkFinalizedBlock: %d (%s), Description: %s}",
-		r.ChainID,
+		r.ReorgID,
 		r.BlockRangeAffected.String(),
 		r.DetectedAtBlock,
 		r.DetectedTimestamp,

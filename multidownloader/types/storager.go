@@ -38,12 +38,12 @@ type Storager interface {
 		highest *aggkittypes.BlockHeader, err error)
 	// GetHighestBlockNumber returns the highest block number stored in db
 	GetHighestBlockNumber(tx dbtypes.Querier) (uint64, error)
-	// GetReorgedChainID returns the chainID of the reorged block if exists
+	// GetBlockReorgedReorgID returns the reorgID of the reorged block if exists
 	// second return value indicates if the block is reorged
-	GetBlockReorgedChainID(tx dbtypes.Querier,
+	GetBlockReorgedReorgID(tx dbtypes.Querier,
 		blockNumber uint64, blockHash common.Hash) (uint64, bool, error)
-	GetReorgedDataByChainID(tx dbtypes.Querier,
-		reorgedChainID uint64) (*ReorgData, error)
+	GetReorgedDataByReorgID(tx dbtypes.Querier,
+		reorgID uint64) (*ReorgData, error)
 }
 
 type StoragerForReorg interface {

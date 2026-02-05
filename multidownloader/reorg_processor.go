@@ -99,11 +99,11 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
 		Description:               detectedReorgError.Error(),
 	}
-	chainID, err := rm.port.MoveReorgedBlocks(tx, reorgData)
+	reorgID, err := rm.port.MoveReorgedBlocks(tx, reorgData)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error moving reorged blocks: %w", err)
 	}
-	reorgData.ChainID = chainID
+	reorgData.ReorgID = reorgID
 	committed = true
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("ProcessReorg: cannot commit tx: %w", err)

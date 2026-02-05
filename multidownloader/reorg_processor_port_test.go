@@ -231,7 +231,7 @@ func TestReorgPort_MoveReorgedBlocks(t *testing.T) {
 		}
 
 		reorgData := mdtypes.ReorgData{
-			ChainID:            1,
+			ReorgID:            1,
 			BlockRangeAffected: aggkitcommon.NewBlockRange(100, 200),
 		}
 		expectedAffectedRows := uint64(101)
@@ -254,7 +254,7 @@ func TestReorgPort_MoveReorgedBlocks(t *testing.T) {
 		}
 
 		reorgData := mdtypes.ReorgData{
-			ChainID:            1,
+			ReorgID:            1,
 			BlockRangeAffected: aggkitcommon.NewBlockRange(100, 200),
 		}
 		expectedErr := fmt.Errorf("transaction failed")

@@ -10,11 +10,11 @@ import (
 
 type MultidownloaderInterface interface {
 	// CheckValidBlock checks if the given blockNumber and blockHash are still valid
-	// returns: isValid bool, reorgChainID uint64, err error
+	// returns: isValid bool, reorgID uint64, err error
 	CheckValidBlock(ctx context.Context, blockNumber uint64,
 		blockHash common.Hash) (bool, uint64, error)
-	// GetReorgedDataByChainID retrieves the reorged data by chain ID
-	GetReorgedDataByChainID(ctx context.Context, reorgedChainID uint64) (*mdrtypes.ReorgData, error)
+	// GetReorgedDataByReorgID retrieves the reorged data by reorg ID
+	GetReorgedDataByReorgID(ctx context.Context, reorgID uint64) (*mdrtypes.ReorgData, error)
 	// IsAvailable checks if the logs for the given query are available
 	IsAvailable(query mdrtypes.LogQuery) bool
 	// IsPartiallyAvailable checks if the logs for the given query are partially available
