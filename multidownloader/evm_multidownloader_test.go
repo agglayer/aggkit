@@ -903,3 +903,483 @@ func TestEVMMultidownloader_StartStep(t *testing.T) {
 		require.Contains(t, err.Error(), "cannot get block header")
 	})
 }
+
+func TestGetBlockNumbers(t *testing.T) {
+	t.Run("empty logs", func(t *testing.T) {
+		logs := []ethtypes.Log{}
+		result := getBlockNumbers(logs)
+		require.Empty(t, result)
+	})
+
+	t.Run("single log", func(t *testing.T) {
+		logs := []ethtypes.Log{
+			{BlockNumber: 100},
+		}
+		result := getBlockNumbers(logs)
+		require.Len(t, result, 1)
+		require.Equal(t, uint64(100), result[0])
+	})
+
+	t.Run("multiple logs with unique block numbers", func(t *testing.T) {
+		logs := []ethtypes.Log{
+			{BlockNumber: 100},
+			{BlockNumber: 101},
+			{BlockNumber: 102},
+		}
+		result := getBlockNumbers(logs)
+		require.Len(t, result, 3)
+		require.Contains(t, result, uint64(100))
+		require.Contains(t, result, uint64(101))
+		require.Contains(t, result, uint64(102))
+	})
+
+	t.Run("multiple logs with duplicate block numbers", func(t *testing.T) {
+		logs := []ethtypes.Log{
+			{BlockNumber: 100},
+			{BlockNumber: 100},
+			{BlockNumber: 101},
+			{BlockNumber: 101},
+			{BlockNumber: 102},
+		}
+		result := getBlockNumbers(logs)
+		require.Len(t, result, 3)
+		require.Contains(t, result, uint64(100))
+		require.Contains(t, result, uint64(101))
+		require.Contains(t, result, uint64(102))
+	})
+}
+
+func TestGetContracts(t *testing.T) {
+	t.Run("empty log queries", func(t *testing.T) {
+		queries := []mdrtypes.LogQuery{}
+		result := getContracts(queries)
+		require.Empty(t, result)
+	})
+
+	t.Run("single query with one address", func(t *testing.T) {
+		addr1 := common.HexToAddress("0x1")
+		queries := []mdrtypes.LogQuery{
+			{Addrs: []common.Address{addr1}},
+		}
+		result := getContracts(queries)
+		require.Len(t, result, 1)
+		require.Contains(t, result, addr1)
+	})
+
+	t.Run("multiple queries with unique addresses", func(t *testing.T) {
+		addr1 := common.HexToAddress("0x1")
+		addr2 := common.HexToAddress("0x2")
+		queries := []mdrtypes.LogQuery{
+			{Addrs: []common.Address{addr1}},
+			{Addrs: []common.Address{addr2}},
+		}
+		result := getContracts(queries)
+		require.Len(t, result, 2)
+		require.Contains(t, result, addr1)
+		require.Contains(t, result, addr2)
+	})
+
+	t.Run("multiple queries with duplicate addresses", func(t *testing.T) {
+		addr1 := common.HexToAddress("0x1")
+		addr2 := common.HexToAddress("0x2")
+		queries := []mdrtypes.LogQuery{
+			{Addrs: []common.Address{addr1, addr2}},
+			{Addrs: []common.Address{addr1}},
+			{Addrs: []common.Address{addr2}},
+		}
+		result := getContracts(queries)
+		require.Len(t, result, 2)
+		require.Contains(t, result, addr1)
+		require.Contains(t, result, addr2)
+	})
+}
+
+func TestEVMMultidownloader_CheckIntegrityNewLogsBlockHeaders(t *testing.T) {
+	t.Run("empty logs and headers", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, false)
+		logs := []ethtypes.Log{}
+		headers := aggkittypes.ListBlockHeaders{}
+
+		err := data.mdr.checkIntegrityNewLogsBlockHeaders(logs, headers)
+		require.NoError(t, err)
+	})
+
+	t.Run("matching logs and headers", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, false)
+
+		hash100 := common.HexToHash("0x100")
+		hash101 := common.HexToHash("0x101")
+
+		logs := []ethtypes.Log{
+			{BlockNumber: 100, BlockHash: hash100},
+			{BlockNumber: 101, BlockHash: hash101},
+		}
+		headers := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 100, Hash: hash100},
+			&aggkittypes.BlockHeader{Number: 101, Hash: hash101},
+		}
+
+		err := data.mdr.checkIntegrityNewLogsBlockHeaders(logs, headers)
+		require.NoError(t, err)
+	})
+
+	t.Run("log with missing block header", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, false)
+
+		hash100 := common.HexToHash("0x100")
+
+		logs := []ethtypes.Log{
+			{BlockNumber: 100, BlockHash: hash100},
+			{BlockNumber: 101, BlockHash: common.HexToHash("0x101")},
+		}
+		headers := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 100, Hash: hash100},
+		}
+
+		err := data.mdr.checkIntegrityNewLogsBlockHeaders(logs, headers)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "block header for log block number 101 not found")
+	})
+
+	t.Run("log with mismatched hash", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, false)
+
+		hash100 := common.HexToHash("0x100")
+		differentHash := common.HexToHash("0xDIFFERENT")
+
+		logs := []ethtypes.Log{
+			{BlockNumber: 100, BlockHash: hash100},
+		}
+		headers := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 100, Hash: differentHash},
+		}
+
+		err := data.mdr.checkIntegrityNewLogsBlockHeaders(logs, headers)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "does not match block header hash")
+	})
+}
+
+func TestEVMMultidownloader_IsPartiallyAvailable(t *testing.T) {
+	t.Run("basic functionality", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, false)
+		data.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(200), nil).Maybe()
+
+		err := data.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID: "syncer1",
+			ContractAddresses: []common.Address{
+				common.HexToAddress("0x1"),
+			},
+			FromBlock: 100,
+			ToBlock:   aggkittypes.FinalizedBlock,
+		})
+		require.NoError(t, err)
+
+		err = data.mdr.Initialize(context.Background())
+		require.NoError(t, err)
+
+		// Query for blocks that are not yet synced
+		query := mdrtypes.LogQuery{
+			BlockRange: aggkitcommon.NewBlockRange(100, 200),
+			Addrs:      []common.Address{common.HexToAddress("0x1")},
+		}
+
+		// The function should not panic and return valid values
+		isPartial, partialQuery := data.mdr.IsPartiallyAvailable(query)
+		// Since nothing is synced yet, it might be partially available or not available
+		// We just verify it doesn't panic and returns consistent values
+		if isPartial {
+			require.NotNil(t, partialQuery)
+		} else {
+			require.Nil(t, partialQuery)
+		}
+	})
+}
+
+func TestEVMMultidownloader_GetLatestBlockNumber(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		expectedBlockNumber := uint64(12345)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, aggkittypes.LatestBlock).
+			Return(expectedBlockNumber, nil).Once()
+
+		blockNumber, err := data.mdr.GetLatestBlockNumber(ctx)
+		require.NoError(t, err)
+		require.Equal(t, expectedBlockNumber, blockNumber)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		expectedErr := fmt.Errorf("block number error")
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, aggkittypes.LatestBlock).
+			Return(uint64(0), expectedErr).Once()
+
+		blockNumber, err := data.mdr.GetLatestBlockNumber(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get latest block")
+		require.Equal(t, uint64(0), blockNumber)
+	})
+}
+
+func TestEVMMultidownloader_ShowStatistics(t *testing.T) {
+	t.Run("show statistics", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, false)
+		// This should not panic
+		data.mdr.ShowStatistics(1)
+		data.mdr.ShowStatistics(10)
+	})
+}
+
+// mockDataError is a mock implementation of ethrpc.DataError for testing
+type mockDataError struct {
+	msg  string
+	data any
+}
+
+func (e *mockDataError) Error() string {
+	return e.msg
+}
+
+func (e *mockDataError) ErrorCode() int {
+	return -32000
+}
+
+func (e *mockDataError) ErrorData() any {
+	return e.data
+}
+
+func Test_ethGetExtendedError(t *testing.T) {
+	t.Run("nil error returns empty string", func(t *testing.T) {
+		result := ethGetExtendedError(nil)
+		require.Equal(t, "", result)
+	})
+
+	t.Run("non-DataError returns empty string", func(t *testing.T) {
+		err := fmt.Errorf("regular error")
+		result := ethGetExtendedError(err)
+		require.Equal(t, "", result)
+	})
+
+	t.Run("DataError returns formatted error data", func(t *testing.T) {
+		dataErr := &mockDataError{
+			msg:  "query error",
+			data: "Query returned more than 20000 results",
+		}
+		result := ethGetExtendedError(dataErr)
+		require.Equal(t, "json_data: Query returned more than 20000 results", result)
+	})
+}
+
+func Test_isEthClientErrorTooManyResults(t *testing.T) {
+	t.Run("nil error returns false", func(t *testing.T) {
+		result := isEthClientErrorTooManyResults(nil)
+		require.False(t, result)
+	})
+
+	t.Run("regular error returns false", func(t *testing.T) {
+		err := fmt.Errorf("regular error")
+		result := isEthClientErrorTooManyResults(err)
+		require.False(t, result)
+	})
+
+	t.Run("error with 'Response size exceeded' returns true", func(t *testing.T) {
+		dataErr := &mockDataError{
+			msg:  "query error",
+			data: "Response size exceeded maximum limit",
+		}
+		result := isEthClientErrorTooManyResults(dataErr)
+		require.True(t, result)
+	})
+
+	t.Run("error with 'Query returned more than' returns true", func(t *testing.T) {
+		dataErr := &mockDataError{
+			msg:  "query error",
+			data: "Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273].",
+		}
+		result := isEthClientErrorTooManyResults(dataErr)
+		require.True(t, result)
+	})
+}
+
+func Test_extractSuggestedBlockRangeFromError(t *testing.T) {
+	t.Run("nil error returns nil", func(t *testing.T) {
+		result := extractSuggestedBlockRangeFromError(nil)
+		require.Nil(t, result)
+	})
+
+	t.Run("non-too-many-results error returns nil", func(t *testing.T) {
+		err := fmt.Errorf("regular error")
+		result := extractSuggestedBlockRangeFromError(err)
+		require.Nil(t, result)
+	})
+
+	t.Run("error with valid block range returns BlockRange", func(t *testing.T) {
+		dataErr := &mockDataError{
+			msg:  "query error",
+			data: "Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273].",
+		}
+		result := extractSuggestedBlockRangeFromError(dataErr)
+		require.NotNil(t, result)
+		require.Equal(t, uint64(0x852c16), result.FromBlock)
+		require.Equal(t, uint64(0x853273), result.ToBlock)
+	})
+
+	t.Run("error with invalid block range returns nil", func(t *testing.T) {
+		dataErr := &mockDataError{
+			msg:  "query error",
+			data: "Query returned more than 20000 results. Try with different range.",
+		}
+		result := extractSuggestedBlockRangeFromError(dataErr)
+		require.Nil(t, result)
+	})
+}
+
+func TestEVMMultidownloader_storeData(t *testing.T) {
+	t.Run("successful store", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		logs := []ethtypes.Log{{Address: common.HexToAddress("0x123")}}
+		blocks := aggkittypes.ListBlockHeaders{{Number: 100, Hash: common.HexToHash("0xabc")}}
+		updatedSegments := []mdrtypes.SyncSegment{
+			mdrtypes.NewSyncSegment(
+				common.HexToAddress("0x123"),
+				aggkitcommon.NewBlockRange(100, 200),
+				aggkittypes.BlockNumberFinality{},
+				false,
+			),
+		}
+
+		mockTx := dbmocks.NewTxer(t)
+		data.mockStorage.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+		data.mockStorage.EXPECT().SaveEthLogsWithHeaders(mockTx, blocks, logs, true).Return(nil).Once()
+		data.mockStorage.EXPECT().UpdateSyncedStatus(mockTx, updatedSegments).Return(nil).Once()
+		mockTx.EXPECT().Commit().Return(nil).Once()
+
+		err := data.mdr.storeData(ctx, logs, blocks, updatedSegments, true)
+		require.NoError(t, err)
+	})
+
+	t.Run("error creating transaction", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		expectedErr := fmt.Errorf("tx creation error")
+		data.mockStorage.EXPECT().NewTx(ctx).Return(nil, expectedErr).Once()
+
+		err := data.mdr.storeData(ctx, nil, nil, nil, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot create new tx")
+	})
+
+	t.Run("error saving logs and headers", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		logs := []ethtypes.Log{{Address: common.HexToAddress("0x123")}}
+		blocks := aggkittypes.ListBlockHeaders{{Number: 100}}
+
+		mockTx := dbmocks.NewTxer(t)
+		expectedErr := fmt.Errorf("save error")
+		data.mockStorage.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+		data.mockStorage.EXPECT().SaveEthLogsWithHeaders(mockTx, blocks, logs, true).Return(expectedErr).Once()
+		mockTx.EXPECT().Rollback().Return(nil).Once()
+
+		err := data.mdr.storeData(ctx, logs, blocks, nil, true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot save eth logs")
+	})
+
+	t.Run("error updating synced status", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		updatedSegments := []mdrtypes.SyncSegment{
+			mdrtypes.NewSyncSegment(
+				common.HexToAddress("0x123"),
+				aggkitcommon.NewBlockRange(100, 200),
+				aggkittypes.BlockNumberFinality{},
+				false,
+			),
+		}
+
+		mockTx := dbmocks.NewTxer(t)
+		expectedErr := fmt.Errorf("update error")
+		data.mockStorage.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+		data.mockStorage.EXPECT().SaveEthLogsWithHeaders(mockTx, mock.Anything, mock.Anything, false).Return(nil).Once()
+		data.mockStorage.EXPECT().UpdateSyncedStatus(mockTx, updatedSegments).Return(expectedErr).Once()
+		mockTx.EXPECT().Rollback().Return(nil).Once()
+
+		err := data.mdr.storeData(ctx, nil, nil, updatedSegments, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot update synced segments")
+	})
+
+	t.Run("error committing transaction", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		ctx := context.Background()
+
+		mockTx := dbmocks.NewTxer(t)
+		expectedErr := fmt.Errorf("commit error")
+		data.mockStorage.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+		data.mockStorage.EXPECT().SaveEthLogsWithHeaders(mockTx, mock.Anything, mock.Anything, false).Return(nil).Once()
+		data.mockStorage.EXPECT().UpdateSyncedStatus(mockTx, mock.Anything).Return(nil).Once()
+		mockTx.EXPECT().Commit().Return(expectedErr).Once()
+
+		err := data.mdr.storeData(ctx, nil, nil, nil, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot commit tx")
+	})
+}
+
+func TestEVMMultidownloader_newStateFromStorage(t *testing.T) {
+	t.Run("successful state creation", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+
+		// Mock GetCurrentBlockNumber for UpdateTargetBlockToNumber
+		data.mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(1000), nil).Maybe()
+
+		// Mock storage response
+		storageSyncSegments := mdrtypes.NewSetSyncSegment()
+		storageSyncSegments.Add(mdrtypes.NewSyncSegment(
+			common.HexToAddress("0x123"),
+			aggkitcommon.NewBlockRange(0, 100),
+			aggkittypes.BlockNumberFinality{},
+			false,
+		))
+		data.mockStorage.EXPECT().GetSyncedBlockRangePerContract(mock.Anything).
+			Return(storageSyncSegments, nil).Once()
+
+		state, err := data.mdr.newStateFromStorage()
+		require.NoError(t, err)
+		require.NotNil(t, state)
+	})
+
+	t.Run("error getting synced block ranges from storage", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+
+		// Mock GetCurrentBlockNumber for UpdateTargetBlockToNumber
+		data.mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(1000), nil).Maybe()
+
+		// Mock storage to return error
+		expectedErr := fmt.Errorf("storage error")
+		emptySegments := mdrtypes.NewSetSyncSegment()
+		data.mockStorage.EXPECT().GetSyncedBlockRangePerContract(mock.Anything).
+			Return(emptySegments, expectedErr).Once()
+
+		state, err := data.mdr.newStateFromStorage()
+		require.Error(t, err)
+		require.Nil(t, state)
+		require.Contains(t, err.Error(), "cannot get synced block ranges from storage")
+	})
+}
