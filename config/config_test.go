@@ -147,7 +147,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	AggchainProofURL = "http://localhost:5576"
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
-	DelayBetweenRetries = "1s"
+	DelayBeetweenRetries = "1s"
 	RequireValidatorCall = true
 	EpochNotificationPercentage = 80
 	[AggSender.MaxSubmitCertificateRate]
