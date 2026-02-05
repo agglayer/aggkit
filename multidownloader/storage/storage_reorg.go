@@ -43,7 +43,7 @@ func newReorgRowFromReorgData(reorgData mdrtypes.ReorgData) *reorgRow {
 func (a *MultidownloaderStorage) InsertReorgAndMoveReorgedBlocksAndLogs(tx dbtypes.Querier,
 	reorgData mdrtypes.ReorgData) (uint64, error) {
 	if tx == nil {
-		return 0, fmt.Errorf("InsertNewReorg: require a tx because it done multiples operations")
+		return 0, fmt.Errorf("InsertNewReorg: requires a tx because it performs multiple operations that need to be atomic")
 	}
 	reorgRow := newReorgRowFromReorgData(reorgData)
 	a.mutex.Lock()
