@@ -46,9 +46,8 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 		{
 			name: "success",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				blockPos := uint64(0)
 				mockChainGERReader.EXPECT().GetInjectedGERsForRange(ctx, uint64(1), uint64(10)).Return(map[common.Hash]l2gersync.GlobalExitRootInfo{
-					common.HexToHash("0x1"): {GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 111, BlockPosition: &blockPos},
+					common.HexToHash("0x1"): {GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 111, BlockPosition: 0},
 				}, nil)
 				mockL1InfoTreeQuery.EXPECT().GetProofForGER(ctx, common.HexToHash("0x1"), common.HexToHash("0x2")).Return(
 					&l1infotreesync.L1InfoTreeLeaf{
@@ -89,14 +88,13 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 		{
 			name: "success with removed GER (dummy info and proof)",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				blockPos := uint64(5)
 				gerHash := common.HexToHash("0xabc123")
 				mockChainGERReader.EXPECT().GetInjectedGERsForRange(ctx, uint64(1), uint64(10)).Return(map[common.Hash]l2gersync.GlobalExitRootInfo{
 					gerHash: {
 						GlobalExitRoot:  gerHash,
 						L1InfoTreeIndex: math.MaxUint32,
 						BlockNum:        222,
-						BlockPosition:   &blockPos,
+						BlockPosition:   5,
 						Removed:         true,
 					},
 				}, nil)
