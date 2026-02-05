@@ -220,7 +220,7 @@ TriggerCertMode = "Auto"
 	# Percentage of epoch completion to trigger certificate sending
 	EpochNotificationPercentage = 50
 [AggSender.TriggerASAP]
-	DelayBeetweenCertificates = "1s"
+	DelayBetweenCertificates = "1s"
 	MinimumNewCertificateInterval = "5m"
 	OnNewL2Bridge = false
 
