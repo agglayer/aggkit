@@ -13,6 +13,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
+	dbmocks "github.com/agglayer/aggkit/db/mocks"
 	"github.com/agglayer/aggkit/etherman"
 	mockethermantypes "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/log"
@@ -54,7 +55,7 @@ func (tp *testProcessor) Reorg(ctx context.Context, firstReorgedBlock uint64) er
 	return nil
 }
 
-func TestEVMMultidownloader(t *testing.T) {
+func TestEVMMultidownloaderExploratory(t *testing.T) {
 	t.Skip("code to test/debug not real unittest - requires external dependencies (l1infotreesync causes import cycle)")
 
 	cfgLog := log.Config{
@@ -161,48 +162,9 @@ func TestEVMMultidownloader(t *testing.T) {
 	wg.Wait()
 }
 
-func TestEVMMultidownloaderExploratoryBatchRequests(t *testing.T) {
-	t.Skip("it's a exploratory test for batch requests - requires external dependencies")
-	/* Commented out to avoid import cycles
-	l1url := os.Getenv("L1URL")
-	ethClient, err := rpc.DialContext(t.Context(), l1url)
-	require.NoError(t, err)
-	var blockNumber string
-	var chainID string
-
-	var latestBlock aggkittypes.BlockHeader
-	batch := []rpc.BatchElem{
-		{
-			Method: "eth_blockNumber",
-			Args:   []interface{}{},
-			Result: &blockNumber,
-		},
-		{
-			Method: "eth_chainId",
-			Args:   []interface{}{},
-			Result: &chainID,
-		},
-		{
-			Method: "eth_getBlockByNumber",
-			Args: []interface{}{
-				"0x37", // número de bloque en formato hex o palabra clave
-				false,  // incluir transacciones completas
-			},
-			Result: &latestBlock,
-		},
-	}
-
-	err = ethClient.BatchCallContext(t.Context(), batch)
-	require.NoError(t, err)
-
-	log.Infof("blockNumber: %s, chainID: %s", blockNumber, chainID)
-	log.Infof("latestBlock: %+v", latestBlock)
-	*/
-}
-
-func TestDownloaderParellelvsBatch(t *testing.T) {
+func TestPerformanceDownloaderParallelvsBatch(t *testing.T) {
 	t.Skip("it's a benchmarking test - requires external dependencies")
-	/* Commented out to avoid import cycles
+
 	l1url := os.Getenv("L1URL")
 	ethClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
@@ -233,24 +195,24 @@ func TestDownloaderParellelvsBatch(t *testing.T) {
 
 	require.Equal(t, len(headersParallel), len(headersBatch))
 	for _, blockNumber := range blockNumbersSlice {
-		headerP := getBlockHeader(blockNumber, headersParallel)
-		headerB := getBlockHeader(blockNumber, headersBatch)
+		headerP := getBlockHeader(t, blockNumber, headersParallel)
+		headerB := getBlockHeader(t, blockNumber, headersBatch)
 		require.NotNil(t, headerP)
 		require.NotNil(t, headerB)
 		require.Equal(t, headerP.Hash, headerB.Hash)
 	}
-	*/
 }
 
 // getBlockHeader is only used in skipped tests
-// func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
-// 	for _, h := range headers {
-// 		if h.Number == bn {
-// 			return h
-// 		}
-// 	}
-// 	return nil
-// }
+func getBlockHeader(t *testing.T, bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
+	t.Helper()
+	for _, h := range headers {
+		if h.Number == bn {
+			return h
+		}
+	}
+	return nil
+}
 
 func TestEVMMultidownloader_NewEVMMultidownloader(t *testing.T) {
 	logger := log.WithFields("test", "evm_multidownloader_test")
@@ -602,5 +564,342 @@ func TestEVMMultidownloader_StartStop(t *testing.T) {
 		require.Greater(t, stopDuration, time.Duration(0), "Stop should take some time waiting for Start")
 
 		wg.Wait()
+	})
+}
+
+func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
+	t.Run("successful move from unsafe to safe", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Maybe()
+		mockTx.EXPECT().Commit().Return(nil).Once()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+
+		// Create Ethereum headers that will be returned by RPC
+		header195 := &ethtypes.Header{
+			Number:     big.NewInt(195),
+			ParentHash: common.HexToHash("0x194"),
+			Time:       1234567890,
+		}
+		header196 := &ethtypes.Header{
+			Number:     big.NewInt(196),
+			ParentHash: common.HexToHash("0x195"),
+			Time:       1234567891,
+		}
+
+		// Mock unsafe blocks with the same hashes that will be calculated from the Ethereum headers
+		unsafeBlocks := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 195, Hash: header195.Hash()},
+			&aggkittypes.BlockHeader{Number: 196, Hash: header196.Hash()},
+		}
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(unsafeBlocks, nil).Once()
+
+		// Mock RPC block headers retrieval for reorg detection
+		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(196)).Return(header196, nil).Once()
+
+		// Mock update to finalized
+		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195, 196}).Return(nil).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("no unsafe blocks to move", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Maybe()
+		data.mockStorage.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+
+		// Mock no unsafe blocks
+		emptyBlocks := aggkittypes.ListBlockHeaders{}
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(emptyBlocks, nil).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("error getting finalized block number", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number error
+		expectedErr := fmt.Errorf("finalized block error")
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, data.mdr.cfg.BlockFinality).
+			Return(uint64(0), expectedErr).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get finalized block number")
+		require.Contains(t, err.Error(), expectedErr.Error())
+	})
+
+	t.Run("error creating transaction", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction creation error
+		expectedErr := fmt.Errorf("tx creation error")
+		data.mockStorage.EXPECT().NewTx(ctx).Return(nil, expectedErr).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot create new tx")
+		require.Contains(t, err.Error(), expectedErr.Error())
+	})
+
+	t.Run("error getting unsafe blocks", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Once()
+		data.mockStorage.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+
+		// Mock error getting unsafe blocks
+		expectedErr := fmt.Errorf("get blocks error")
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(nil, expectedErr).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get unsafe block bases")
+		require.Contains(t, err.Error(), expectedErr.Error())
+	})
+
+	t.Run("reorg detected during move", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Once()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+
+		// Mock unsafe blocks with a specific hash
+		storageHash := common.HexToHash("0x195")
+		unsafeBlocks := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 195, Hash: storageHash},
+		}
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(unsafeBlocks, nil).Once()
+
+		// Mock RPC returns header with different hash (reorg detected)
+		headerDifferent := &ethtypes.Header{
+			Number:     big.NewInt(195),
+			ParentHash: common.HexToHash("0xDIFFERENT"),
+			Time:       9999999,
+		}
+		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(headerDifferent, nil).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error detecting reorgs")
+		// Check it's a reorg error
+		reorgErr := mdrtypes.CastDetectedReorgError(err)
+		require.NotNil(t, reorgErr)
+	})
+
+	t.Run("error updating blocks to finalized", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Once()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+
+		// Create Ethereum header
+		header195 := &ethtypes.Header{
+			Number:     big.NewInt(195),
+			ParentHash: common.HexToHash("0x194"),
+			Time:       1234567890,
+		}
+
+		// Mock unsafe blocks with matching hash
+		unsafeBlocks := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 195, Hash: header195.Hash()},
+		}
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(unsafeBlocks, nil).Once()
+
+		// Mock RPC block headers (no reorg)
+		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+
+		// Mock update error
+		expectedErr := fmt.Errorf("update error")
+		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(expectedErr).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot update is_final for block bases")
+		require.Contains(t, err.Error(), expectedErr.Error())
+	})
+
+	t.Run("error committing transaction", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock finalized block number
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		// Mock transaction
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Maybe()
+		expectedErr := fmt.Errorf("commit error")
+		mockTx.EXPECT().Commit().Return(expectedErr).Once()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+
+		// Create Ethereum header
+		header195 := &ethtypes.Header{
+			Number:     big.NewInt(195),
+			ParentHash: common.HexToHash("0x194"),
+			Time:       1234567890,
+		}
+
+		// Mock unsafe blocks with matching hash
+		unsafeBlocks := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 195, Hash: header195.Hash()},
+		}
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(unsafeBlocks, nil).Once()
+
+		// Mock RPC block headers (no reorg)
+		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+
+		// Mock update success
+		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(nil).Once()
+
+		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot commit tx")
+		require.Contains(t, err.Error(), expectedErr.Error())
+	})
+}
+
+func TestEVMMultidownloader_StartStep(t *testing.T) {
+	t.Run("error in MoveUnsafeToSafeIfPossible", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock updateTargetBlockNumber success (no pending blocks to update)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+
+		// Mock MoveUnsafeToSafeIfPossible to fail
+		expectedErr := fmt.Errorf("move unsafe error")
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(nil, expectedErr).Once()
+
+		err := data.mdr.StartStep(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot create new tx")
+	})
+
+	t.Run("error in checkReorgsUnsafeZone", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		// Mock updateTargetBlockNumber success
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+
+		// Mock MoveUnsafeToSafeIfPossible success (no unsafe blocks)
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Maybe()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, mock.Anything).
+			Return(aggkittypes.ListBlockHeaders{}, nil).Once()
+
+		// Mock checkReorgsUnsafeZone to fail
+		expectedErr := fmt.Errorf("check reorgs error")
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mock.Anything, mock.Anything).
+			Return(nil, expectedErr).Once()
+
+		err := data.mdr.StartStep(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "check reorgs error")
+	})
+
+	t.Run("no pending blocks - waits for new blocks", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+
+		// Create a context with cancel to avoid waiting forever
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Mock updateTargetBlockNumber success
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+
+		// Mock MoveUnsafeToSafeIfPossible success
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Maybe()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, mock.Anything).
+			Return(aggkittypes.ListBlockHeaders{}, nil).Once()
+
+		// Mock checkReorgsUnsafeZone success (no unsafe blocks)
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mock.Anything, mock.Anything).
+			Return(aggkittypes.ListBlockHeaders{}, nil).Once()
+
+		// Mock WaitForNewLatestBlocks - GetBlockHeaderByNumber will fail
+		data.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, mock.Anything).
+			Return(nil, mdrtypes.NotFinalized, fmt.Errorf("no blocks yet")).Once()
+
+		err := data.mdr.StartStep(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get block header")
 	})
 }
