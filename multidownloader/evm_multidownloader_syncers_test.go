@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -237,4 +238,264 @@ func TestEVMMultidownloader_FilterLogs(t *testing.T) {
 func TestEVMMultidownloader_EthClient(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, true)
 	require.Equal(t, testData.mockEthClient, testData.mdr.EthClient())
+}
+
+func TestEVMMultidownloader_LogQuery(t *testing.T) {
+	t.Run("success case with unsafe range calculation", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		testData.FakeInitialized(t)
+
+		// Create a log query
+		query := mdrtypes.NewLogQuery(100, 200, []common.Address{addr1})
+
+		// Mark the query as synced in state
+		err := testData.mdr.state.OnNewSyncedLogQuery(&query)
+		require.NoError(t, err)
+
+		// Mock GetFinalizedBlockNumber (via GetCurrentBlockNumber)
+		finalizedBlock := uint64(150)
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, testData.mdr.cfg.BlockFinality).
+			Return(finalizedBlock, nil)
+
+		// Mock storage.LogQuery to return a response
+		expectedResponse := mdrtypes.LogQueryResponse{
+			ResponseRange: aggkitcommon.NewBlockRange(100, 200),
+		}
+		testData.mockStorage.EXPECT().LogQuery(mock.Anything, query).
+			Return(expectedResponse, nil)
+
+		// Test
+		result, err := testData.mdr.LogQuery(context.Background(), query)
+
+		// Assertions
+		require.NoError(t, err)
+		require.Equal(t, aggkitcommon.NewBlockRange(100, 200), result.ResponseRange)
+		// UnsafeRange should be the range after finalized block
+		require.Equal(t, aggkitcommon.NewBlockRange(151, 200), result.UnsafeRange)
+	})
+
+	t.Run("logs not synced returns error", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		testData.FakeInitialized(t)
+
+		// Create a query that is NOT synced
+		query := mdrtypes.NewLogQuery(100, 200, []common.Address{addr1})
+
+		// Test - state.IsPartiallyAvailable will return false because we didn't call OnNewSyncedLogQuery
+		result, err := testData.mdr.LogQuery(context.Background(), query)
+
+		// Assertions
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "logs not synced for query")
+		require.Equal(t, mdrtypes.LogQueryResponse{}, result)
+	})
+
+	t.Run("GetFinalizedBlockNumber error returns error", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		testData.FakeInitialized(t)
+
+		// Create and sync a query
+		query := mdrtypes.NewLogQuery(100, 200, []common.Address{addr1})
+		err := testData.mdr.state.OnNewSyncedLogQuery(&query)
+		require.NoError(t, err)
+
+		// Mock GetFinalizedBlockNumber to fail
+		expectedErr := errors.New("finalized block error")
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, testData.mdr.cfg.BlockFinality).
+			Return(uint64(0), expectedErr)
+
+		// Test
+		result, err := testData.mdr.LogQuery(context.Background(), query)
+
+		// Assertions
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get finalized block number")
+		require.ErrorIs(t, err, expectedErr)
+		require.Equal(t, mdrtypes.LogQueryResponse{}, result)
+	})
+
+	t.Run("storage.LogQuery error returns error", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		testData.FakeInitialized(t)
+
+		// Create and sync a query
+		query := mdrtypes.NewLogQuery(100, 200, []common.Address{addr1})
+		err := testData.mdr.state.OnNewSyncedLogQuery(&query)
+		require.NoError(t, err)
+
+		// Mock GetFinalizedBlockNumber
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, testData.mdr.cfg.BlockFinality).
+			Return(uint64(150), nil)
+
+		// Mock storage.LogQuery to fail
+		testData.mockStorage.EXPECT().LogQuery(mock.Anything, query).
+			Return(mdrtypes.LogQueryResponse{}, errStorageExample)
+
+		// Test
+		result, err := testData.mdr.LogQuery(context.Background(), query)
+
+		// Assertions
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error executing log query")
+		require.ErrorIs(t, err, errStorageExample)
+		require.Equal(t, mdrtypes.LogQueryResponse{}, result)
+	})
+
+	t.Run("empty unsafe range when all blocks are finalized", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		testData.FakeInitialized(t)
+
+		// Create a log query
+		query := mdrtypes.NewLogQuery(100, 200, []common.Address{addr1})
+		err := testData.mdr.state.OnNewSyncedLogQuery(&query)
+		require.NoError(t, err)
+
+		// Mock GetFinalizedBlockNumber - finalized is beyond the query range
+		finalizedBlock := uint64(250)
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, testData.mdr.cfg.BlockFinality).
+			Return(finalizedBlock, nil)
+
+		// Mock storage.LogQuery
+		expectedResponse := mdrtypes.LogQueryResponse{
+			ResponseRange: aggkitcommon.NewBlockRange(100, 200),
+		}
+		testData.mockStorage.EXPECT().LogQuery(mock.Anything, query).
+			Return(expectedResponse, nil)
+
+		// Test
+		result, err := testData.mdr.LogQuery(context.Background(), query)
+
+		// Assertions
+		require.NoError(t, err)
+		require.Equal(t, aggkitcommon.NewBlockRange(100, 200), result.ResponseRange)
+		// UnsafeRange should be empty since all blocks are finalized
+		require.True(t, result.UnsafeRange.IsEmpty())
+	})
+}
+
+func TestEVMMultidownloader_StorageHeaderByNumber(t *testing.T) {
+	t.Run("block found in storage with finalized=true", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+
+		expectedBlock := &aggkittypes.BlockHeader{
+			Number: 123,
+		}
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(expectedBlock.Number, nil)
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, expectedBlock.Number).
+			Return(expectedBlock, true, nil)
+
+		// Test
+		result, finalized, err := testData.mdr.StorageHeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(123))
+
+		// Assertions
+		require.NoError(t, err)
+		require.Equal(t, expectedBlock, result)
+		require.True(t, finalized)
+	})
+
+	t.Run("block found in storage with finalized=false", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+
+		expectedBlock := &aggkittypes.BlockHeader{
+			Number: 456,
+		}
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(expectedBlock.Number, nil)
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, expectedBlock.Number).
+			Return(expectedBlock, false, nil)
+
+		// Test
+		result, finalized, err := testData.mdr.StorageHeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(456))
+
+		// Assertions
+		require.NoError(t, err)
+		require.Equal(t, expectedBlock, result)
+		require.False(t, finalized)
+	})
+
+	t.Run("nil block number defaults to LatestBlock", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+
+		expectedBlock := &aggkittypes.BlockHeader{
+			Number: 999,
+		}
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).
+			Return(expectedBlock.Number, nil)
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, expectedBlock.Number).
+			Return(expectedBlock, true, nil)
+
+		// Test
+		result, finalized, err := testData.mdr.StorageHeaderByNumber(context.Background(), nil)
+
+		// Assertions
+		require.NoError(t, err)
+		require.Equal(t, expectedBlock, result)
+		require.True(t, finalized)
+	})
+
+	t.Run("block not found in storage returns nil", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(789), nil)
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(789)).
+			Return(nil, false, nil)
+
+		// Test
+		result, finalized, err := testData.mdr.StorageHeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(789))
+
+		// Assertions
+		require.NoError(t, err)
+		require.Nil(t, result)
+		require.False(t, finalized)
+	})
+
+	t.Run("GetCurrentBlockNumber error returns error", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+		expectedErr := errors.New("block number resolution error")
+
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+			Return(uint64(0), expectedErr)
+
+		// Test
+		result, finalized, err := testData.mdr.StorageHeaderByNumber(context.Background(), &aggkittypes.FinalizedBlock)
+
+		// Assertions
+		require.Nil(t, result)
+		require.False(t, finalized)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get block number for finality")
+		require.ErrorIs(t, err, expectedErr)
+	})
+
+	t.Run("GetBlockHeaderByNumber error returns error", func(t *testing.T) {
+		// Setup
+		testData := newEVMMultidownloaderTestData(t, true)
+
+		testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(555), nil)
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, uint64(555)).
+			Return(nil, false, errStorageExample)
+
+		// Test
+		result, finalized, err := testData.mdr.StorageHeaderByNumber(context.Background(), aggkittypes.NewBlockNumber(555))
+
+		// Assertions
+		require.Nil(t, result)
+		require.False(t, finalized)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get BlockHeader number=555")
+		require.ErrorIs(t, err, errStorageExample)
+	})
 }

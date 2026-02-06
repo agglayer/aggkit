@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	percentComplete = 100.0
+	percentTotallyCompleted = 100.0
 )
 
 var (
@@ -98,19 +98,15 @@ func (d *EVMDownloader) DownloadNextBlocks(ctx context.Context,
 		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: logs not available for query: %s. Err: %w",
 			maxLogQuery.String(), ErrLogsNotAvailable)
 	}
-
-	// TODO: Add extra empty block is is in unsafe zone
+	if result == nil {
+		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: executeLogQuery return result=nil. Range: %s", maxLogQuery.BlockRange.String())
+	}
+	// Before returning we check again that lastBlockHeader is not reorged
 	err = d.checkReorgedBlock(ctx, lastBlockHeader)
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
-		d.logger.Debugf("EVMDownloader.DownloadNextBlocks: no logs found for blocks %s", maxLogQuery.BlockRange.String())
-		result = &mdrsynctypes.DownloadResult{
-			Data:            nil,
-			PercentComplete: percentComplete,
-		}
-	}
+
 	return result, nil
 }
 
@@ -174,10 +170,10 @@ func (d *EVMDownloader) calculatePercentCompletation(ctx context.Context,
 	totalBlocks := fullRange.CountBlocks()
 	pendingRange := aggkitcommon.NewBlockRange(lastRange.ToBlock+1, fullRange.ToBlock)
 	if pendingRange.CountBlocks() == 0 {
-		return percentComplete, nil
+		return percentTotallyCompleted, nil
 	}
 	blocksCompleted := totalBlocks - pendingRange.CountBlocks()
-	percent := (float64(blocksCompleted) / float64(totalBlocks)) * percentComplete
+	percent := (float64(blocksCompleted) / float64(totalBlocks)) * percentTotallyCompleted
 	return percent, nil
 }
 

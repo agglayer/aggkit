@@ -100,7 +100,7 @@ func (dh *EVMMultidownloader) HeaderByNumber(ctx context.Context,
 	return blockHeader, nil
 }
 
-// HeaderByNumber gets the block header for the given block number from storage or ethClient
+// HeaderByNumber gets the block header for the given block number from storage
 func (dh *EVMMultidownloader) StorageHeaderByNumber(ctx context.Context,
 	number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, mdrtypes.FinalizedType, error) {
 	if number == nil {
@@ -143,7 +143,6 @@ func (dh *EVMMultidownloader) LogQuery(ctx context.Context,
 				err)
 	}
 	// Calculate UnsafeRange
-
 	result, err := dh.storage.LogQuery(nil, *availQuery)
 	if err != nil {
 		return mdrtypes.LogQueryResponse{}, fmt.Errorf("EVMMultidownloader.LogQuery: error executing log query %s: %w",
