@@ -175,7 +175,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	} else {
 		multidownloaderClient = aggkitsync.NewAdapterEthClientToMultidownloader(l1EthClient)
 	}
-	l1InfoTreeSync, err := l1infotreesync.New(
+	l1InfoTreeSync, err := l1infotreesync.NewLegacy(
 		ctx,
 		l1InfoTreeSyncCfg,
 		multidownloaderClient,

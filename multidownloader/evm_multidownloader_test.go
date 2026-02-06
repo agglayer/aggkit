@@ -21,7 +21,6 @@ import (
 	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
-	"github.com/agglayer/aggkit/multidownloader/types/mocks"
 	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -409,7 +408,6 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 		// Should return no error
 		require.NoError(t, err)
 	})
-
 }
 
 type testDataEVMMultidownloader struct {
@@ -419,7 +417,7 @@ type testDataEVMMultidownloader struct {
 	mockStorage              *mockmdrtypes.Storager
 	usedStorage              mdrtypes.Storager
 	mockBlockNotifierManager *mockethermantypes.BlockNotifierManager
-	mockReorgProcessor       *mocks.ReorgProcessor
+	mockReorgProcessor       *mockmdrtypes.ReorgProcessor
 }
 
 func (td *testDataEVMMultidownloader) FakeInitialized(t *testing.T) {
@@ -453,7 +451,7 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 	}
 	ethClient := mocktypes.NewBaseEthereumClienter(t)
 	mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-	mockReorgProcessor := mocks.NewReorgProcessor(t)
+	mockReorgProcessor := mockmdrtypes.NewReorgProcessor(t)
 	var mockDB *mockmdrtypes.Storager
 	var realDB *storage.MultidownloaderStorage
 	var useDB mdrtypes.Storager

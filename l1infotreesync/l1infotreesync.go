@@ -143,8 +143,8 @@ func NewMultidownloadBased(
 	}, nil
 }
 
-// New creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
-func New(
+// NewLegacy creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
+func NewLegacy(
 	ctx context.Context,
 	cfg Config,
 	l1Client aggkittypes.MultiDownloaderLegacy,
@@ -155,6 +155,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+
 	// TODO: get the initialBlock from L1 to simplify config
 	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
 	if err != nil {

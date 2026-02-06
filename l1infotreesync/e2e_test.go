@@ -121,7 +121,7 @@ func TestE2E(t *testing.T) {
 		mockReorgDetector.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(&reorgdetector.Header{}, nil)
 
 		multidownloaderClient := sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil, nil))
-		syncer, err = l1infotreesync.New(ctx, cfg, multidownloaderClient, mockReorgDetector,
+		syncer, err = l1infotreesync.NewLegacy(ctx, cfg, multidownloaderClient, mockReorgDetector,
 			l1infotreesync.FlagAllowWrongContractsAddrs)
 		require.NoError(t, err)
 	}
@@ -243,7 +243,7 @@ func TestWithReorgs(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, rd.Start(ctx))
 				multidownloaderClient := sync.NewAdapterEthClientToMultidownloader(etherman.NewDefaultEthClient(client.Client(), nil, nil))
-				syncer, err = l1infotreesync.New(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
+				syncer, err = l1infotreesync.NewLegacy(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
 				require.NoError(t, err)
 			}
 			go syncer.Start(ctx)
@@ -443,7 +443,7 @@ func TestStressAndReorgs(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond * 100),
 	}
-	syncer, err := l1infotreesync.New(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
+	syncer, err := l1infotreesync.NewLegacy(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
