@@ -65,7 +65,14 @@ func (f *SetSyncerConfig) Brief() string {
 		return "SetSyncerConfig{<nil>}"
 	}
 	result := "SetSyncerConfig{ "
-	for syncerID, filter := range f.filters {
+	// Sort syncer IDs to ensure deterministic output
+	syncerIDs := make([]string, 0, len(f.filters))
+	for syncerID := range f.filters {
+		syncerIDs = append(syncerIDs, syncerID)
+	}
+	sort.Strings(syncerIDs)
+	for _, syncerID := range syncerIDs {
+		filter := f.filters[syncerID]
 		result += fmt.Sprintf("(%s -> [%d - %s]) ", syncerID, filter.FromBlock, filter.ToBlock.String())
 	}
 	result += "}"
