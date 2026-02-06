@@ -117,6 +117,18 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	}, nil
 }
 
+func (dh *EVMMultidownloader) GetRPCServices() []jRPC.Service {
+	logger := log.WithFields("module", "multidownloader-rpc-"+dh.name)
+	return []jRPC.Service{
+		{
+			Name:    "multidownloader-" + dh.name,
+			Service: NewEVMMultidownloaderRPC(logger, dh),
+		},
+	}
+}
+
+// RegisterSyncer registers a new syncer config to the multidownloader.
+// it must be called before initialization or Start
 func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
@@ -129,123 +141,6 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	return nil
 }
 
-func (dh *EVMMultidownloader) MoveUnsafeToSafeIfPossible(ctx context.Context) error {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
-
-	finalizedBlockNumber, err := dh.GetFinalizedBlockNumber(ctx)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get finalized block number: %w", err)
-	}
-
-	committed := false
-	tx, err := dh.storage.NewTx(ctx)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot create new tx: %w", err)
-	}
-	defer func() {
-		if !committed {
-			dh.log.Debugf("MoveUnsafeToSafeIfPossible: rolling back tx")
-			if err := tx.Rollback(); err != nil {
-				dh.log.Errorf("MoveUnsafeToSafeIfPossible: error rolling back tx: %v", err)
-			}
-		}
-	}()
-
-	blocks, err := dh.storage.GetBlockHeadersNotFinalized(tx, &finalizedBlockNumber)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
-	}
-	if blocks.Len() == 0 {
-		dh.log.Debugf("MoveUnsafeToSafeIfPossible: no unsafe blocks to move to safe")
-		return nil
-	}
-	dh.log.Infof("MoveUnsafeToSafeIfPossible: finalizedBlockNumber=%d, "+
-		"unsafe blocks to finalize=%d", finalizedBlockNumber, len(blocks))
-	err = dh.detectReorgs(ctx, blocks)
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: error detecting reorgs: %w", err)
-	}
-	err = dh.storage.UpdateBlockToFinalized(tx, blocks.BlockNumbers())
-	if err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
-	}
-	committed = true
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("MoveUnsafeToSafeIfPossible: cannot commit tx: %w", err)
-	}
-
-	return nil
-}
-
-func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
-	blocks aggkittypes.ListBlockHeaders) error {
-	if blocks.Len() == 0 {
-		dh.log.Debugf("detectReorgs: no blocks to check for reorgs")
-		return nil
-	}
-	blocksNumber := blocks.BlockNumbers()
-	currentBlockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
-		blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
-	if err != nil {
-		return fmt.Errorf("detectReorgs: cannot retrieve block headers: %w", err)
-	}
-	// check blocks vs currentBlockHeaders. Must match by number and hash
-	storageBlocks := blocks.ToMap()
-	rpcBlocks := currentBlockHeaders.ToMap()
-	for _, number := range blocksNumber {
-		rpcBlock, exists := rpcBlocks[number]
-		if !exists {
-			return mdrtypes.NewDetectedReorgError(number,
-				mdrtypes.ReorgDetectionReason_MissingBlock,
-				common.Hash{}, common.Hash{},
-				fmt.Sprintf("detectReorgs: block number %d not found in RPC", number))
-		}
-		storageBlock, exists := storageBlocks[number]
-		if !exists {
-			return fmt.Errorf("detectReorgs: block number %d not found in storage", number)
-		}
-		if storageBlock.Hash != rpcBlock.Hash {
-			return mdrtypes.NewDetectedReorgError(storageBlock.Number,
-				mdrtypes.ReorgDetectionReason_BlockHashMismatch,
-				storageBlock.Hash, rpcBlock.Hash,
-				fmt.Sprintf("detectReorgs: reorg detected at block number %d: storage hash %s != rpc hash %s",
-					number, storageBlock.Hash.String(), rpcBlock.Hash.String()))
-		}
-	}
-	return nil
-}
-
-func (dh *EVMMultidownloader) GetRPCServices() []jRPC.Service {
-	logger := log.WithFields("module", "multidownloader-rpc-"+dh.name)
-	return []jRPC.Service{
-		{
-			Name:    "multidownloader-" + dh.name,
-			Service: NewEVMMultidownloaderRPC(logger, dh),
-		},
-	}
-}
-func (dh *EVMMultidownloader) CheckDatabase(ctx context.Context) error {
-	chainID, err := dh.ChainID(ctx)
-	if err != nil {
-		return fmt.Errorf("Initialize: cannot get chainID: %w", err)
-	}
-	compatibilityStorageChecker := compatibility.NewCompatibilityCheck(
-		true,
-		func(ctx context.Context) (storage.DBRuntimeData, error) {
-			return storage.DBRuntimeData{NetworkID: chainID,
-				DataVersion: storage.DataVersionCurrent}, nil
-		},
-		compatibility.NewKeyValueToCompatibilityStorage[storage.DBRuntimeData](dh.storage, "multidownloader-"+dh.name),
-	)
-
-	err = compatibilityStorageChecker.Check(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("Initialize: compatibility check failed: %w", err)
-	}
-	return nil
-}
-
 // Initialize initializes the multidownloader. At this point all syncers
 // must be registered and it will prepare the pendingSync segments
 func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
@@ -254,13 +149,13 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	if dh.isInitializedNoMutex() {
 		return fmt.Errorf("initialize: already initialized")
 	}
-	dh.log.Infof("Initializing multidownloader...")
+	dh.log.Debugf("Initializing multidownloader...")
 	// Check DB compatibility
-	err := dh.CheckDatabase(ctx)
+	err := dh.checkDatabaseContentsCompatibility(ctx)
 	if err != nil {
 		return err
 	}
-	dh.log.Infof("Saving syncer configs to storage...")
+	dh.log.Debugf("Saving syncer configs to storage...")
 	// Save syncer configs to storage; it overrides previous ones but keeps
 	// the synced segments
 	err = dh.storage.UpsertSyncerConfigs(nil, dh.syncersConfig.ContractConfigs())
@@ -273,10 +168,13 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	}
 	// What is pending to download?
 	dh.state = newState
-	dh.log.Infof("Initialization completed. state: %s",
-		dh.state.String())
+	dh.log.Infof("Initialization completed.configs: %s state: %s",
+		dh.syncersConfig.Brief(), dh.state.String())
 	return nil
 }
+
+// newStateFromStorage creates a new State based on data on storage and the current syncer configs.
+// It is used on initialization and after reorgs to recreate the state of pending and synced segments
 func (dh *EVMMultidownloader) newStateFromStorage() (*State, error) {
 	syncSegments, err := dh.syncersConfig.SyncSegments()
 	if err != nil {
@@ -432,7 +330,7 @@ func (dh *EVMMultidownloader) StartStep(ctx context.Context) error {
 	}
 
 	// There are unsafe blocks that can be moved to safe and checked?
-	if err = dh.MoveUnsafeToSafeIfPossible(ctx); err != nil {
+	if err = dh.moveUnsafeToSafeIfPossible(ctx); err != nil {
 		return err
 	}
 	// Check possible reorgs in unsafe zone
@@ -993,4 +891,120 @@ func (dh *EVMMultidownloader) requestLogsSingleTry(ctx context.Context,
 
 func (dh *EVMMultidownloader) ShowStatistics(iteration int) {
 	dh.statistics.Show(dh.log.Infof, iteration)
+}
+
+// checkDatabaseContentsCompatibility checks that the data already in database
+// match the data in config/RPC (e.g: contract addresses, chainID, etc)
+func (dh *EVMMultidownloader) checkDatabaseContentsCompatibility(ctx context.Context) error {
+	chainID, err := dh.ChainID(ctx)
+	if err != nil {
+		return fmt.Errorf("Initialize: cannot get chainID: %w", err)
+	}
+	compatibilityStorageChecker := compatibility.NewCompatibilityCheck(
+		true,
+		func(ctx context.Context) (storage.DBRuntimeData, error) {
+			return storage.DBRuntimeData{NetworkID: chainID,
+				DataVersion: storage.DataVersionCurrent}, nil
+		},
+		compatibility.NewKeyValueToCompatibilityStorage[storage.DBRuntimeData](dh.storage, "multidownloader-"+dh.name),
+	)
+
+	err = compatibilityStorageChecker.Check(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("Initialize: compatibility check failed: %w", err)
+	}
+	return nil
+}
+
+// moveUnsafeToSafeIfPossible it's used at start or when finalize block change
+// moving the unsafe blocks to safe zone checking that the block is not reorged
+// If there are any missmatch it returns an DetectedReorgError
+func (dh *EVMMultidownloader) moveUnsafeToSafeIfPossible(ctx context.Context) error {
+	dh.mutex.Lock()
+	defer dh.mutex.Unlock()
+
+	finalizedBlockNumber, err := dh.GetFinalizedBlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("moveUnsafeToSafeIfPossible: cannot get finalized block number: %w", err)
+	}
+
+	committed := false
+	tx, err := dh.storage.NewTx(ctx)
+	if err != nil {
+		return fmt.Errorf("moveUnsafeToSafeIfPossible: cannot create new tx: %w", err)
+	}
+	defer func() {
+		if !committed {
+			dh.log.Debugf("moveUnsafeToSafeIfPossible: rolling back tx")
+			if err := tx.Rollback(); err != nil {
+				dh.log.Errorf("moveUnsafeToSafeIfPossible: error rolling back tx: %v", err)
+			}
+		}
+	}()
+
+	blocks, err := dh.storage.GetBlockHeadersNotFinalized(tx, &finalizedBlockNumber)
+	if err != nil {
+		return fmt.Errorf("moveUnsafeToSafeIfPossible: cannot get unsafe block bases: %w", err)
+	}
+	if blocks.Len() == 0 {
+		dh.log.Debugf("moveUnsafeToSafeIfPossible: no unsafe blocks to move to safe")
+		return nil
+	}
+
+	err = dh.detectReorgs(ctx, blocks)
+	if err != nil {
+		return fmt.Errorf("moveUnsafeToSafeIfPossible: error detecting reorgs: %w", err)
+	}
+	err = dh.storage.UpdateBlockToFinalized(tx, blocks.BlockNumbers())
+	if err != nil {
+		return fmt.Errorf("moveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
+	}
+	dh.log.Infof("moveUnsafeToSafeIfPossible: finalizedBlockNumber=%d, "+
+		"block moved to safe zone: %s (len=%d)", finalizedBlockNumber, blocks.BlockRange().String(), blocks.Len())
+	committed = true
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("moveUnsafeToSafeIfPossible: cannot commit tx: %w", err)
+	}
+
+	return nil
+}
+
+// detectReorgs check \param blocks that match RPC
+// if not return an DetectedReorgError
+func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
+	blocks aggkittypes.ListBlockHeaders) error {
+	if blocks.Len() == 0 {
+		dh.log.Debugf("detectReorgs: no blocks to check for reorgs")
+		return nil
+	}
+	blocksNumber := blocks.BlockNumbers()
+	currentBlockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
+		blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
+	if err != nil {
+		return fmt.Errorf("detectReorgs: cannot retrieve block headers: %w", err)
+	}
+	// check blocks vs currentBlockHeaders. Must match by number and hash
+	storageBlocks := blocks.ToMap()
+	rpcBlocks := currentBlockHeaders.ToMap()
+	for _, number := range blocksNumber {
+		rpcBlock, exists := rpcBlocks[number]
+		if !exists {
+			return mdrtypes.NewDetectedReorgError(number,
+				mdrtypes.ReorgDetectionReason_MissingBlock,
+				common.Hash{}, common.Hash{},
+				fmt.Sprintf("detectReorgs: block number %d not found in RPC", number))
+		}
+		storageBlock, exists := storageBlocks[number]
+		if !exists {
+			return fmt.Errorf("detectReorgs: block number %d not found in storage", number)
+		}
+		if storageBlock.Hash != rpcBlock.Hash {
+			return mdrtypes.NewDetectedReorgError(storageBlock.Number,
+				mdrtypes.ReorgDetectionReason_BlockHashMismatch,
+				storageBlock.Hash, rpcBlock.Hash,
+				fmt.Sprintf("detectReorgs: reorg detected at block number %d: storage hash %s != rpc hash %s",
+					number, storageBlock.Hash.String(), rpcBlock.Hash.String()))
+		}
+	}
+	return nil
 }

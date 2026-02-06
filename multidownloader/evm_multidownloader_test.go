@@ -19,6 +19,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	aggkitsync "github.com/agglayer/aggkit/sync"
@@ -42,7 +43,19 @@ type testProcessor struct {
 func (tp *testProcessor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittypes.BlockHeader, error) {
 	return tp.lastBlock, nil
 }
-func (tp *testProcessor) ProcessBlock(ctx context.Context, block aggkitsync.Block) error {
+
+func (tp *testProcessor) ProcessBlocks(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {
+	if blocks == nil || len(blocks.Data) == 0 {
+		return nil
+	}
+	for _, block := range blocks.Data {
+		if err := tp.ProcessBlock(ctx, block); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (tp *testProcessor) ProcessBlock(ctx context.Context, block *aggkitsync.EVMBlock) error {
 	log.Infof("PROCESSOR: Processing block number %d", block.Num)
 	tp.lastBlock = &aggkittypes.BlockHeader{
 		Number: block.Num,
@@ -611,7 +624,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		// Mock update to finalized
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195, 196}).Return(nil).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.NoError(t, err)
 	})
 
@@ -635,7 +648,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
 			Return(emptyBlocks, nil).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.NoError(t, err)
 	})
 
@@ -649,7 +662,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(ctx, data.mdr.cfg.BlockFinality).
 			Return(uint64(0), expectedErr).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot get finalized block number")
 		require.Contains(t, err.Error(), expectedErr.Error())
@@ -669,7 +682,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		expectedErr := fmt.Errorf("tx creation error")
 		data.mockStorage.EXPECT().NewTx(ctx).Return(nil, expectedErr).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot create new tx")
 		require.Contains(t, err.Error(), expectedErr.Error())
@@ -695,7 +708,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
 			Return(nil, expectedErr).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot get unsafe block bases")
 		require.Contains(t, err.Error(), expectedErr.Error())
@@ -732,7 +745,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		}
 		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(headerDifferent, nil).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error detecting reorgs")
 		// Check it's a reorg error
@@ -776,7 +789,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		expectedErr := fmt.Errorf("update error")
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(expectedErr).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot update is_final for block bases")
 		require.Contains(t, err.Error(), expectedErr.Error())
@@ -819,7 +832,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		// Mock update success
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(nil).Once()
 
-		err := data.mdr.MoveUnsafeToSafeIfPossible(ctx)
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot commit tx")
 		require.Contains(t, err.Error(), expectedErr.Error())

@@ -1,6 +1,10 @@
 package types
 
-import "sort"
+import (
+	"sort"
+
+	aggkitcommon "github.com/agglayer/aggkit/common"
+)
 
 type ListBlockHeaders []*BlockHeader
 
@@ -38,4 +42,32 @@ func (lbs ListBlockHeaders) BlockNumbers() []uint64 {
 		return result[i] < result[j]
 	})
 	return result
+}
+
+func (lbs ListBlockHeaders) BlockRange() aggkitcommon.BlockRange {
+	if len(lbs) == 0 {
+		return aggkitcommon.BlockRange{}
+	}
+	var minBlock, maxBlock uint64
+	initialized := false
+	for _, header := range lbs {
+		if header != nil {
+			if !initialized {
+				minBlock = header.Number
+				maxBlock = header.Number
+				initialized = true
+			} else {
+				if header.Number < minBlock {
+					minBlock = header.Number
+				}
+				if header.Number > maxBlock {
+					maxBlock = header.Number
+				}
+			}
+		}
+	}
+	if !initialized {
+		return aggkitcommon.BlockRange{}
+	}
+	return aggkitcommon.NewBlockRange(minBlock, maxBlock)
 }

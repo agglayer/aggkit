@@ -103,27 +103,13 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 	return nil
 }
 
-func (d *EVMDriver) processBlocks(ctx context.Context, b *mdrsynctypes.DownloadResult) error {
-	if b == nil || len(b.Data) == 0 {
+func (d *EVMDriver) processBlocks(ctx context.Context, data *mdrsynctypes.DownloadResult) error {
+	if data == nil || len(data.Data) == 0 {
 		return nil
 	}
-	for _, block := range b.Data {
-		err := d.processBlock(ctx, block)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
-func (d *EVMDriver) processBlock(ctx context.Context, b *sync.EVMBlock) error {
-	return d.withRetry(ctx, "processBlock", func() error {
-		block := sync.Block{
-			Num:    b.Num,
-			Hash:   b.Hash,
-			Events: b.Events,
-		}
-		return d.processor.ProcessBlock(ctx, block)
+	return d.withRetry(ctx, "processBlocks", func() error {
+		return d.processor.ProcessBlocks(ctx, data)
 	})
 }
 

@@ -12,6 +12,7 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/l1infotreesync/migrations"
 	"github.com/agglayer/aggkit/log"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -347,6 +348,59 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	}
 	return nil
 }
+func (p *processor) ProcessBlocks(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {
+	if blocks == nil || len(blocks.Data) == 0 {
+		return nil
+	}
+	if p.isHalted() {
+		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+		return sync.ErrInconsistentState
+	}
+	return p.processBlocksSameTx(ctx, blocks)
+}
+
+// processBlocksSameTx processes the blocks in the same transaction, so if any block fails to
+// be processed, all the blocks will be rolled back. This is important to keep the integrity of the data,
+// specially for the L1 Info tree that relies on the correct order of the leaves
+// Note: Maybe could be problems if it rollback with memory data?
+func (p *processor) processBlocksSameTx(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {
+	tx, err := db.NewTx(ctx, p.db)
+	if err != nil {
+		return err
+	}
+	shouldRollback := true
+	defer func() {
+		if shouldRollback {
+			p.log.Debugf("rolling back block processing for blocks")
+			if errRllbck := tx.Rollback(); errRllbck != nil {
+				p.log.Errorf("error while rolling back tx %v", errRllbck)
+			}
+		}
+	}()
+
+	for _, block := range blocks.Data {
+		syncBlock := sync.Block{
+			Num:    block.Num,
+			Hash:   block.Hash,
+			Events: block.Events,
+		}
+		if err := p.processBlock(tx, syncBlock); err != nil {
+			return fmt.Errorf("processing block %d: %w", block.Num, err)
+		}
+		logFunc := p.log.Debugf
+		if len(block.Events) > 0 {
+			logFunc = p.log.Infof
+		}
+		logFunc("block %d processed with %d events", block.Num, len(block.Events))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("err: %w", err)
+	}
+	shouldRollback = false
+	log.Infof("processed %d blocks, percent %.2f%% complete. LastBlock: %d",
+		len(blocks.Data), blocks.PercentComplete, blocks.Data[len(blocks.Data)-1].Num)
+	return nil
+}
 
 // ProcessBlock process the events of the block to build the rollup exit tree and the l1 info tree
 // and updates the last processed block (can be called without events for that purpose)
@@ -371,7 +425,24 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 		}
 	}()
+	err = p.processBlock(tx, block)
+	if err != nil {
+		return fmt.Errorf("processing block %d: %w", block.Num, err)
+	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("err: %w", err)
+	}
+	shouldRollback = false
+	logFunc := p.log.Debugf
+	if len(block.Events) > 0 {
+		logFunc = p.log.Infof
+	}
+	logFunc("block %d processed with %d events", block.Num, len(block.Events))
+	return nil
+}
+
+func (p *processor) processBlock(tx dbtypes.Txer, block sync.Block) error {
 	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return fmt.Errorf("insert Block. err: %w", err)
 	}
@@ -469,16 +540,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("err: %w", err)
-	}
-	shouldRollback = false
-	logFunc := p.log.Debugf
-	if len(block.Events) > 0 {
-		logFunc = p.log.Infof
-	}
-	logFunc("block %d processed with %d events", block.Num, len(block.Events))
 	return nil
 }
 

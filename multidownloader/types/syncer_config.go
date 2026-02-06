@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"sort"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -59,7 +60,17 @@ func NewSetSyncerConfig() SetSyncerConfig {
 		filters: make(map[SyncerID]aggkittypes.SyncerConfig),
 	}
 }
-
+func (f *SetSyncerConfig) Brief() string {
+	if f == nil || f.filters == nil {
+		return "SetSyncerConfig{filters: <nil>}"
+	}
+	result := "SetSyncerConfig{"
+	for syncerID, filter := range f.filters {
+		result += fmt.Sprintf("(%s -> [%d - %s])", syncerID, filter.FromBlock, filter.ToBlock.String())
+	}
+	result += "}"
+	return result
+}
 func (f *SetSyncerConfig) Add(filter aggkittypes.SyncerConfig) {
 	if f.filters == nil {
 		f.filters = make(map[SyncerID]aggkittypes.SyncerConfig)
@@ -119,15 +130,6 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 	return convertContractMapToSlice(contractMap)
 }
 
-// convertContractMapToSlice converts map to slice
-func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) []ContractConfig {
-	contractConfigs := make([]ContractConfig, 0, len(contractMap))
-	for _, cc := range contractMap {
-		contractConfigs = append(contractConfigs, *cc)
-	}
-	return contractConfigs
-}
-
 // SyncSegments groups the SetSyncerConfig into segments per contract address and blockRange
 func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
 	segments := NewSetSyncSegment()
@@ -146,4 +148,13 @@ func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
 		}
 	}
 	return &segments, nil
+}
+
+// convertContractMapToSlice converts map to slice
+func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) []ContractConfig {
+	contractConfigs := make([]ContractConfig, 0, len(contractMap))
+	for _, cc := range contractMap {
+		contractConfigs = append(contractConfigs, *cc)
+	}
+	return contractConfigs
 }

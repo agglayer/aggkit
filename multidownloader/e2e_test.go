@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader/storage"
 	mdsync "github.com/agglayer/aggkit/multidownloader/sync"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/test/contracts/logemitter"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -70,7 +71,7 @@ type logemitterProcessor struct {
 	mdr       *EVMMultidownloader
 	mutex     sync.Mutex
 	lastBlock *aggkittypes.BlockHeader
-	events    map[uint64]*aggkitsync.Block
+	events    map[uint64]*aggkitsync.EVMBlock
 }
 
 func (p *logemitterProcessor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittypes.BlockHeader, error) {
@@ -78,7 +79,20 @@ func (p *logemitterProcessor) GetLastProcessedBlockHeader(ctx context.Context) (
 	defer p.mutex.Unlock()
 	return p.lastBlock, nil
 }
-func (p *logemitterProcessor) ProcessBlock(ctx context.Context, block aggkitsync.Block) error {
+
+func (tp *logemitterProcessor) ProcessBlocks(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {
+	if blocks == nil || len(blocks.Data) == 0 {
+		return nil
+	}
+	for _, block := range blocks.Data {
+		if err := tp.ProcessBlock(ctx, block); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *logemitterProcessor) ProcessBlock(ctx context.Context, block *aggkitsync.EVMBlock) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.lastBlock = &aggkittypes.BlockHeader{
@@ -88,9 +102,9 @@ func (p *logemitterProcessor) ProcessBlock(ctx context.Context, block aggkitsync
 	p.logger.Infof("Processed block number %d / %s with %d events",
 		block.Num, block.Hash.Hex(), len(block.Events))
 	if p.events == nil {
-		p.events = make(map[uint64]*aggkitsync.Block)
+		p.events = make(map[uint64]*aggkitsync.EVMBlock)
 	}
-	p.events[block.Num] = &block
+	p.events[block.Num] = block
 	return nil
 }
 func (p *logemitterProcessor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {

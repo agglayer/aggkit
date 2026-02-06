@@ -20,5 +20,4 @@ func TestEVMMultidownloaderDebug(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected error to be cleared after retrieval, got '%s'", err.Error())
 	}
-
 }

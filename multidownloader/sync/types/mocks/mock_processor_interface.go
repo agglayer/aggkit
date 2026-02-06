@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	sync "github.com/agglayer/aggkit/sync"
+	synctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/agglayer/aggkit/types"
@@ -82,17 +82,17 @@ func (_c *ProcessorInterface_GetLastProcessedBlockHeader_Call) RunAndReturn(run 
 	return _c
 }
 
-// ProcessBlock provides a mock function with given fields: ctx, block
-func (_m *ProcessorInterface) ProcessBlock(ctx context.Context, block sync.Block) error {
-	ret := _m.Called(ctx, block)
+// ProcessBlocks provides a mock function with given fields: ctx, blocks
+func (_m *ProcessorInterface) ProcessBlocks(ctx context.Context, blocks *synctypes.DownloadResult) error {
+	ret := _m.Called(ctx, blocks)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ProcessBlock")
+		panic("no return value specified for ProcessBlocks")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, sync.Block) error); ok {
-		r0 = rf(ctx, block)
+	if rf, ok := ret.Get(0).(func(context.Context, *synctypes.DownloadResult) error); ok {
+		r0 = rf(ctx, blocks)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -100,31 +100,31 @@ func (_m *ProcessorInterface) ProcessBlock(ctx context.Context, block sync.Block
 	return r0
 }
 
-// ProcessorInterface_ProcessBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProcessBlock'
-type ProcessorInterface_ProcessBlock_Call struct {
+// ProcessorInterface_ProcessBlocks_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProcessBlocks'
+type ProcessorInterface_ProcessBlocks_Call struct {
 	*mock.Call
 }
 
-// ProcessBlock is a helper method to define mock.On call
+// ProcessBlocks is a helper method to define mock.On call
 //   - ctx context.Context
-//   - block sync.Block
-func (_e *ProcessorInterface_Expecter) ProcessBlock(ctx interface{}, block interface{}) *ProcessorInterface_ProcessBlock_Call {
-	return &ProcessorInterface_ProcessBlock_Call{Call: _e.mock.On("ProcessBlock", ctx, block)}
+//   - blocks *synctypes.DownloadResult
+func (_e *ProcessorInterface_Expecter) ProcessBlocks(ctx interface{}, blocks interface{}) *ProcessorInterface_ProcessBlocks_Call {
+	return &ProcessorInterface_ProcessBlocks_Call{Call: _e.mock.On("ProcessBlocks", ctx, blocks)}
 }
 
-func (_c *ProcessorInterface_ProcessBlock_Call) Run(run func(ctx context.Context, block sync.Block)) *ProcessorInterface_ProcessBlock_Call {
+func (_c *ProcessorInterface_ProcessBlocks_Call) Run(run func(ctx context.Context, blocks *synctypes.DownloadResult)) *ProcessorInterface_ProcessBlocks_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(sync.Block))
+		run(args[0].(context.Context), args[1].(*synctypes.DownloadResult))
 	})
 	return _c
 }
 
-func (_c *ProcessorInterface_ProcessBlock_Call) Return(_a0 error) *ProcessorInterface_ProcessBlock_Call {
+func (_c *ProcessorInterface_ProcessBlocks_Call) Return(_a0 error) *ProcessorInterface_ProcessBlocks_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *ProcessorInterface_ProcessBlock_Call) RunAndReturn(run func(context.Context, sync.Block) error) *ProcessorInterface_ProcessBlock_Call {
+func (_c *ProcessorInterface_ProcessBlocks_Call) RunAndReturn(run func(context.Context, *synctypes.DownloadResult) error) *ProcessorInterface_ProcessBlocks_Call {
 	_c.Call.Return(run)
 	return _c
 }
