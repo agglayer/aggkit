@@ -337,7 +337,7 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 
 [L1Multidownloader]
-	Enabled = false
+	Enabled = true
 	DeveloperMode = false
 	StoragePath = "{{PathRWData}}/l1_multidownloader.sqlite"
 	BlockChunkSize = 10000
