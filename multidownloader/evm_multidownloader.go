@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -563,6 +564,10 @@ func getContracts(logQueries []mdrtypes.LogQuery) []common.Address {
 	for addr := range addressMap {
 		addresses = append(addresses, addr)
 	}
+	// Sort addresses to ensure deterministic output
+	sort.Slice(addresses, func(i, j int) bool {
+		return addresses[i].Hex() < addresses[j].Hex()
+	})
 	return addresses
 }
 

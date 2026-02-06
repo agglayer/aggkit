@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,10 @@ func (m LogAppenderMap) GetTopics() []common.Hash {
 	for topic := range m {
 		topics = append(topics, topic)
 	}
+	// Sort topics to ensure deterministic output
+	sort.Slice(topics, func(i, j int) bool {
+		return topics[i].Hex() < topics[j].Hex()
+	})
 	return topics
 }
 

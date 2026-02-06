@@ -163,5 +163,9 @@ func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) [
 	for _, cc := range contractMap {
 		contractConfigs = append(contractConfigs, *cc)
 	}
+	// Sort by address to ensure deterministic output
+	sort.Slice(contractConfigs, func(i, j int) bool {
+		return contractConfigs[i].Address.Hex() < contractConfigs[j].Address.Hex()
+	})
 	return contractConfigs
 }
