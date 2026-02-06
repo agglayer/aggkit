@@ -59,7 +59,7 @@ func (b *EVMMultidownloaderRPC) Reorg(mismatchingBlockNumber uint64) (interface{
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 			"EVMMultidownloaderRPC.ForceReorg: debug is not enabled")
 	}
-	b.downloader.debug.ForceRorg(mismatchingBlockNumber)
+	b.downloader.debug.ForceReorg(mismatchingBlockNumber)
 	return struct {
 		Message string `json:"message"`
 	}{

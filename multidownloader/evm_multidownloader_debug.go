@@ -17,7 +17,7 @@ func NewEVMMultidownloaderDebug() *EVMMultidownloaderDebug {
 	return &EVMMultidownloaderDebug{}
 }
 
-func (dh *EVMMultidownloaderDebug) ForceRorg(mismatchingBlockNumber uint64) {
+func (dh *EVMMultidownloaderDebug) ForceReorg(mismatchingBlockNumber uint64) {
 	if dh == nil {
 		return
 	}
@@ -28,7 +28,7 @@ func (dh *EVMMultidownloaderDebug) ForceRorg(mismatchingBlockNumber uint64) {
 		mdrtypes.ReorgDetectionReason_Forced,
 		common.Hash{},
 		common.Hash{},
-		fmt.Sprintf("ForceRorg: forced reorg at block number %d", mismatchingBlockNumber),
+		fmt.Sprintf("ForceReorg: forced reorg at block number %d", mismatchingBlockNumber),
 	)
 }
 

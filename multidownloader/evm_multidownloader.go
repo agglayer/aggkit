@@ -193,7 +193,13 @@ func (dh *EVMMultidownloader) newStateFromStorage() (*State, error) {
 	return NewStateFromStorageSyncedBlocks(storageSyncSegments, *syncSegments)
 }
 
+const infiniteLoops = -1
+
 func (dh *EVMMultidownloader) Start(ctx context.Context) error {
+	return dh.startNumLoops(ctx, infiniteLoops)
+}
+
+func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecute int) error {
 	dh.mutex.Lock()
 	if dh.isRunning {
 		dh.mutex.Unlock()
@@ -225,7 +231,13 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 	}
 
 	dh.statistics.StartSyncing()
+	numLoops := 0
 	for {
+		// This is for debug, when reach the number of loops it returns to allow testing
+		if numLoops == numLoopsToExecute {
+			return nil
+		}
+		numLoops++
 		// check if context is done
 		if runCtx.Err() != nil {
 			dh.log.Infof("EVMMultidownloader.Start: context done, exiting...")
@@ -250,6 +262,7 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 				dh.mutex.Lock()
 				// check if context is done during reorg processing
 				if runCtx.Err() != nil {
+					dh.mutex.Unlock()
 					dh.log.Infof("EVMMultidownloader.Start: context done during reorg processing, exiting...")
 					return runCtx.Err()
 				}
@@ -257,12 +270,14 @@ func (dh *EVMMultidownloader) Start(ctx context.Context) error {
 				dh.log.Infof("Processing reorg at block number %d...", reorgErr.OffendingBlockNumber)
 				err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr)
 				if err != nil {
+					dh.mutex.Unlock()
 					dh.log.Warnf("Error running reorg multidownloader: %s", err.Error())
 					time.Sleep(1 * time.Second)
 					continue
 				}
 				newState, err := dh.newStateFromStorage()
 				if err != nil {
+					dh.mutex.Unlock()
 					dh.log.Warnf("Error recreating state after reorg processing: %s", err.Error())
 					time.Sleep(1 * time.Second)
 					continue

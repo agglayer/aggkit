@@ -9,12 +9,12 @@ import (
 func TestEVMMultidownloaderDebug(t *testing.T) {
 	sut := NewEVMMultidownloaderDebug()
 
-	sut.ForceRorg(123)
+	sut.ForceReorg(123)
 	err := sut.GetInjectedStartStepError()
 	if err == nil {
 		t.Fatalf("Expected error to be injected, got nil")
 	}
-	expectedMsg := "ForceRorg: forced reorg at block number 123"
+	expectedMsg := "ForceReorg: forced reorg at block number 123"
 	require.ErrorContains(t, err, expectedMsg)
 
 	// After getting the error once, it should be cleared

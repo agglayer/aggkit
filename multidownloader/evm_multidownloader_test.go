@@ -21,6 +21,7 @@ import (
 	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	"github.com/agglayer/aggkit/multidownloader/types/mocks"
 	mockmdrtypes "github.com/agglayer/aggkit/multidownloader/types/mocks"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -394,11 +395,21 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 		require.False(t, testData.mdr.IsInitialized())
 	})
 
-	// Note: Testing the full Start() loop with auto-initialization is complex because Start()
-	// has an infinite loop and requires extensive mocking. The key behavior is tested above:
-	// - If not initialized, Start() calls Initialize()
-	// - If Initialize() fails, Start() returns the error
-	// For integration testing of the full Start() flow, see e2e_test.go
+	t.Run("Start() and reorg", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mdr.debug = &EVMMultidownloaderDebug{} // Enable debug to test that reorgs are checked even in debug mode
+		// Fake initialization
+		testData.mdr.state = NewEmptyState()
+		ctx := context.Background()
+		testData.mdr.debug.ForceReorg(1234)
+
+		testData.mockReorgProcessor.EXPECT().ProcessReorg(mock.Anything, mock.Anything).Return(nil).Once()
+		// It starts, execute 1 loop that do a reorg and then return
+		err := testData.mdr.startNumLoops(ctx, 1)
+		// Should return no error
+		require.NoError(t, err)
+	})
+
 }
 
 type testDataEVMMultidownloader struct {
@@ -408,6 +419,7 @@ type testDataEVMMultidownloader struct {
 	mockStorage              *mockmdrtypes.Storager
 	usedStorage              mdrtypes.Storager
 	mockBlockNotifierManager *mockethermantypes.BlockNotifierManager
+	mockReorgProcessor       *mocks.ReorgProcessor
 }
 
 func (td *testDataEVMMultidownloader) FakeInitialized(t *testing.T) {
@@ -441,6 +453,7 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 	}
 	ethClient := mocktypes.NewBaseEthereumClienter(t)
 	mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+	mockReorgProcessor := mocks.NewReorgProcessor(t)
 	var mockDB *mockmdrtypes.Storager
 	var realDB *storage.MultidownloaderStorage
 	var useDB mdrtypes.Storager
@@ -455,7 +468,8 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		require.NoError(t, err)
 		useDB = realDB
 	}
-	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil, useDB, mockBlockNotifierManager, nil)
+	mdr, err := NewEVMMultidownloader(logger, cfg, "test", ethClient, nil,
+		useDB, mockBlockNotifierManager, mockReorgProcessor)
 	require.NoError(t, err)
 	return &testDataEVMMultidownloader{
 		mockEthClient:            ethClient,
@@ -464,6 +478,7 @@ func newEVMMultidownloaderTestData(t *testing.T, mockStorage bool) *testDataEVMM
 		mockStorage:              mockDB,
 		usedStorage:              useDB,
 		mockBlockNotifierManager: mockBlockNotifierManager,
+		mockReorgProcessor:       mockReorgProcessor,
 	}
 }
 
