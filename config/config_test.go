@@ -77,6 +77,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, multidownloader.NewConfigDefault("l1", ""), cfg.L1Multidownloader)
 	cfgL2Multidownloader := multidownloader.NewConfigDefault("l2", "")
 	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
+	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
 }
 

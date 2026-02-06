@@ -54,13 +54,14 @@ func NewConfigDefault(name string, basePathDB string) Config {
 	}
 	dbPath := path.Join(basePathDB, fmt.Sprintf("%s_multidownloader.sqlite", name))
 	return Config{
-		Enabled:                         false,
+		Enabled:                         true,
 		StoragePath:                     dbPath,
 		BlockChunkSize:                  defaultBlockChunkSize,
 		MaxParallelBlockHeaderRetrieval: defaultMaxParallelBlockHeaderRetrieval,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
 		WaitPeriodToCheckCatchUp:        types.NewDuration(defaultWaitPeriodToCheckCatchUp),
 		PeriodToCheckReorgs:             types.NewDuration(defaultPeriodToCheckReorgs),
+		DeveloperMode:                   false,
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 
 func TestNewConfigDefault(t *testing.T) {
 	cfg := NewConfigDefault("l1", "/tmp/aggkit/")
-	require.Equal(t, false, cfg.Enabled)
+	require.Equal(t, true, cfg.Enabled)
 	require.Equal(t, "/tmp/aggkit/l1_multidownloader.sqlite", cfg.StoragePath)
 	require.Equal(t, uint32(defaultBlockChunkSize), cfg.BlockChunkSize, "BlockChunkSize should be 10000")
 	require.Equal(t, defaultMaxParallelBlockHeaderRetrieval, cfg.MaxParallelBlockHeaderRetrieval, "MaxParallelBlockHeaderRetrieval should be 30")
@@ -18,7 +18,7 @@ func TestNewConfigDefault(t *testing.T) {
 	require.Equal(t, types.NewDuration(defaultWaitPeriodToCheckCatchUp), cfg.WaitPeriodToCheckCatchUp, "WaitPeriodToCheckCatchUp should be 10 seconds")
 	require.Equal(t, types.NewDuration(defaultPeriodToCheckReorgs), cfg.PeriodToCheckReorgs, "PeriodToCheckReorgs should be 5 seconds")
 
-	require.False(t, cfg.Enabled, "Enabled should be false by default")
+	require.True(t, cfg.Enabled, "Enabled should be true by default")
 }
 
 func TestNewConfigDefault_ValidatesCorrectly(t *testing.T) {
