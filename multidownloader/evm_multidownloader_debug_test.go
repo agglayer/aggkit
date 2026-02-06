@@ -1,6 +1,10 @@
 package multidownloader
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestEVMMultidownloaderDebug(t *testing.T) {
 	sut := NewEVMMultidownloaderDebug()
@@ -11,13 +15,9 @@ func TestEVMMultidownloaderDebug(t *testing.T) {
 		t.Fatalf("Expected error to be injected, got nil")
 	}
 	expectedMsg := "ForceRorg: forced reorg at block number 123"
-	if err.Error() != expectedMsg {
-		t.Fatalf("Expected error message '%s', got '%s'", expectedMsg, err.Error())
-	}
+	require.ErrorContains(t, err, expectedMsg)
 
 	// After getting the error once, it should be cleared
 	err = sut.GetInjectedStartStepError()
-	if err != nil {
-		t.Fatalf("Expected error to be cleared after retrieval, got '%s'", err.Error())
-	}
+	require.NoError(t, err, "Expected error to be cleared after retrieval")
 }
