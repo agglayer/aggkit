@@ -229,7 +229,7 @@ func TestContractConfig_Update_Brief(t *testing.T) {
 			ToBlock:           aggkittypes.LatestBlock,
 		})
 
-		expected := "SetSyncerConfig{(syncer1 -> [10 - FinalizedBlock]) (syncer2 -> [5 - LatestBlock])}"
+		expected := "SetSyncerConfig{ (syncer1 -> [10 - FinalizedBlock]) (syncer2 -> [5 - LatestBlock]) }"
 		require.Equal(t, expected, sut.Brief())
 	})
 

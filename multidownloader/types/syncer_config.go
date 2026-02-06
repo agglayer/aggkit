@@ -64,7 +64,7 @@ func (f *SetSyncerConfig) Brief() string {
 	if f == nil || f.filters == nil {
 		return "SetSyncerConfig{<nil>}"
 	}
-	result := "SetSyncerConfig{"
+	result := "SetSyncerConfig{ "
 	for syncerID, filter := range f.filters {
 		result += fmt.Sprintf("(%s -> [%d - %s]) ", syncerID, filter.FromBlock, filter.ToBlock.String())
 	}

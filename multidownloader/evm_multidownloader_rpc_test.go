@@ -35,3 +35,25 @@ func TestEVMMultidownloaderRPC_Status(t *testing.T) {
 
 	require.Contains(t, fmt.Sprintf("%+v", result), "Status")
 }
+
+func TestEVMMultidownloaderRPC_Reorg(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, false)
+	t.Run("returns error if debug is not enabled", func(t *testing.T) {
+		sut := EVMMultidownloaderRPC{
+			logger:     log.WithFields("module", "test"),
+			downloader: testData.mdr,
+		}
+		_, err := sut.Reorg(123)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "debug is not enabled")
+	})
+	t.Run("calls ForceReorg on downloader when debug is enabled", func(t *testing.T) {
+		testData.mdr.debug = &EVMMultidownloaderDebug{}
+		sut := EVMMultidownloaderRPC{
+			logger:     log.WithFields("module", "test"),
+			downloader: testData.mdr,
+		}
+		_, err := sut.Reorg(123)
+		require.NoError(t, err)
+	})
+}
