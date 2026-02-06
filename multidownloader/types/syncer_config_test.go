@@ -212,3 +212,30 @@ func TestContractConfig_Update_Combined(t *testing.T) {
 	require.Equal(t, aggkittypes.LatestBlock, cc.ToBlock)
 	require.Equal(t, []SyncerID{"syncer1", "syncer2"}, cc.Syncers)
 }
+
+func TestContractConfig_Update_Brief(t *testing.T) {
+	t.Run("brief with valid config", func(t *testing.T) {
+		sut := NewSetSyncerConfig()
+		sut.Add(aggkittypes.SyncerConfig{
+			SyncerID:          "syncer1",
+			ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+			FromBlock:         10,
+			ToBlock:           aggkittypes.FinalizedBlock,
+		})
+		sut.Add(aggkittypes.SyncerConfig{
+			SyncerID:          "syncer2",
+			ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+			FromBlock:         5,
+			ToBlock:           aggkittypes.LatestBlock,
+		})
+
+		expected := "SetSyncerConfig{(syncer1 -> [10 - FinalizedBlock]) (syncer2 -> [5 - LatestBlock])}"
+		require.Equal(t, expected, sut.Brief())
+	})
+
+	t.Run("brief with nil config", func(t *testing.T) {
+		var cc *SetSyncerConfig
+		expected := "SetSyncerConfig{<nil>}"
+		require.Equal(t, expected, cc.Brief())
+	})
+}

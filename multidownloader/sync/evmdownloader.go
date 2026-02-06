@@ -99,7 +99,8 @@ func (d *EVMDownloader) DownloadNextBlocks(ctx context.Context,
 			maxLogQuery.String(), ErrLogsNotAvailable)
 	}
 	if result == nil {
-		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: executeLogQuery return result=nil. Range: %s", maxLogQuery.BlockRange.String())
+		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: executeLogQuery "+
+			"return result=nil. Range: %s", maxLogQuery.BlockRange.String())
 	}
 	// Before returning we check again that lastBlockHeader is not reorged
 	err = d.checkReorgedBlock(ctx, lastBlockHeader)
