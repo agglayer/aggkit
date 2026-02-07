@@ -101,7 +101,7 @@ func NewMultidownloadBased(
 	}
 	logger := log.WithFields("syncer", syncerID)
 	// TODO: move the durations to config file (mdrsync.NewEVMDownloader)
-	logger.Infof("Creating L1 Info Tree Syncer with WaitForNewBlocksPeriod: %s, RetryAfterErrorPeriod: %s",
+	logger.Infof("Creating L1InfoTreeSync with WaitForNewBlocksPeriod: %s, RetryAfterErrorPeriod: %s",
 		cfg.WaitForNewBlocksPeriod.String(),
 		cfg.RetryAfterErrorPeriod.String(),
 	)
@@ -151,6 +151,7 @@ func NewLegacy(
 	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
 ) (*L1InfoTreeSync, error) {
+
 	processor, err := newProcessor(cfg.DBPath)
 	if err != nil {
 		return nil, err

@@ -159,6 +159,23 @@ func start(cliCtx *cli.Context) error {
 		go b.Start(ctx)
 		log.Info("Bridge service started")
 	}
+	if l1MultiDownloader != nil {
+		log.Info("starting L1 MultiDownloader...")
+		err = l1MultiDownloader.Initialize(ctx)
+		if err != nil {
+			log.Fatal("failed to initialize L1 MultiDownloader: ", err)
+		}
+		go func() {
+			err := l1MultiDownloader.Start(ctx)
+			if err != nil {
+				log.Fatal("l1MultiDownloader stopped: %w", err)
+			}
+		}()
+	}
+	if l1InfoTreeSync != nil {
+		log.Info("starting L1 Info Tree Syncer...")
+		go l1InfoTreeSync.Start(ctx)
+	}
 
 	for _, component := range components {
 		switch component {
@@ -231,15 +248,6 @@ func start(cliCtx *cli.Context) error {
 
 	if cfg.Profiling.ProfilingEnabled {
 		go pprof.StartProfilingHTTPServer(ctx, cfg.Profiling)
-	}
-	if l1MultiDownloader != nil {
-		log.Info("starting L1 MultiDownloader...")
-		go func() {
-			err := l1MultiDownloader.Start(ctx)
-			if err != nil {
-				log.Fatal("l1MultiDownloader stopped: %w", err)
-			}
-		}()
 	}
 
 	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
@@ -549,8 +557,6 @@ func runL1InfoTreeSyncerIfNeeded(
 	if err != nil {
 		log.Fatal(err)
 	}
-	go l1InfoTreeSync.Start(ctx)
-
 	return l1InfoTreeSync
 }
 
