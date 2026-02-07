@@ -343,13 +343,14 @@ function main(){
     check_requirements
     create_dest_folder
 
-    common_aggsender_committee_override_urls
+    #common_aggsender_committee_override_urls
     download_kurtosis_artifacts
 
     export_ports_from_kurtosis
     export_values_of_aggkit_config $DEST/config.toml
     export_forced_values
     # Generate config file
+    echo "go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE"
     go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
     ok_or_fatal "Error generating template"
 
