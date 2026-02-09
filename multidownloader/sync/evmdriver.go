@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
-	"github.com/agglayer/aggkit/sync"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -17,10 +18,18 @@ type EVMDriver struct {
 	processor            mdrsynctypes.ProcessorInterface
 	downloader           mdrsynctypes.DownloaderInterface
 	syncerConfig         aggkittypes.SyncerConfig
-	rh                   *sync.RetryHandler
+	rh                   *aggkitsync.RetryHandler
 	logger               aggkitcommon.Logger
 	compatibilityChecker compatibility.CompatibilityChecker
-	syncBlockChunkSize   uint64
+	// This mutext protect to:
+	// - syncBlockChunkSize, because it can be updated dynamically by the user and read by the sync loop
+	// - completionPercentage, because it can be updated by the downloader and read by the sync loop and by the API server
+	mutex              sync.Mutex
+	syncBlockChunkSize uint64
+	//It's the percentage of completion of the download, it can be used to estimate the progress of the sync
+	// can be nil is there are no information yet
+	// 0 -> 0%, 100, -> 100%
+	completionPercentage *float64
 }
 
 func NewEVMDriver(
@@ -29,7 +38,7 @@ func NewEVMDriver(
 	downloader mdrsynctypes.DownloaderInterface,
 	syncerConfig aggkittypes.SyncerConfig,
 	syncBlockChunkSize uint64,
-	rh *sync.RetryHandler,
+	rh *aggkitsync.RetryHandler,
 	compatibilityChecker compatibility.CompatibilityChecker,
 ) *EVMDriver {
 	return &EVMDriver{
@@ -98,7 +107,7 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 	if blocks != nil {
 		LastProcessedBlock := blocks.Data.LastBlock()
 		d.logger.Infof("EVMDriver: processed %d blocks, percent %.2f%% complete. LastBlock: %s",
-			len(blocks.Data), blocks.PercentComplete, LastProcessedBlock.Brief())
+			len(blocks.Data), blocks.CompletionPercentage, LastProcessedBlock.Brief())
 	}
 	return nil
 }
@@ -108,9 +117,14 @@ func (d *EVMDriver) processBlocks(ctx context.Context, data *mdrsynctypes.Downlo
 		return nil
 	}
 
-	return d.withRetry(ctx, "processBlocks", func() error {
+	err := d.withRetry(ctx, "processBlocks", func() error {
 		return d.processor.ProcessBlocks(ctx, data)
 	})
+	// If no error update percentage
+	if err == nil {
+		d.setCompletionPercentage(data.CompletionPercentage)
+	}
+	return err
 }
 
 func (d *EVMDriver) handleReorg(ctx context.Context, err *mdrtypes.ReorgedError) error {
@@ -139,4 +153,22 @@ func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() erro
 			}
 		}
 	}
+}
+
+func (d *EVMDriver) GetCompletionPercentage() *float64 {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	// This is done to copy the value avoid passing internal
+	// pointer.
+	if d.completionPercentage == nil {
+		return nil
+	}
+	percent := *d.completionPercentage
+	return &percent
+}
+
+func (d *EVMDriver) setCompletionPercentage(percent float64) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	d.completionPercentage = &percent
 }

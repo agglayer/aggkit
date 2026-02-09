@@ -139,8 +139,8 @@ func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 		d.logger.Warn(err.Error())
 	}
 	result := &mdrsynctypes.DownloadResult{
-		Data:            d.logQueryResponseToEVMBlocks(ctx, logQueryResponse),
-		PercentComplete: percentComplete,
+		Data:                 d.logQueryResponseToEVMBlocks(ctx, logQueryResponse),
+		CompletionPercentage: percentComplete,
 	}
 	err = d.addLastBlockIfNotIncluded(ctx, result,
 		logQueryResponse.ResponseRange, logQueryResponse.UnsafeRange)

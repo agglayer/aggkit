@@ -9,9 +9,9 @@ import (
 
 type DownloadResult struct {
 	Data sync.EVMBlocks
-	// PercentComplete indicates the percent of completion of the download
+	// CompletionPercentage indicates the percent of completion of the download
 	// 0 -> 0%, 100 -> 100%
-	PercentComplete float64
+	CompletionPercentage float64
 }
 
 type DownloaderInterface interface {
@@ -26,7 +26,7 @@ type DownloaderInterface interface {
 	// - DownloadResult: the result of the download, containing the blocks and the percent complete
 	//     DownloadResult is never nil
 	//     DownloadResult.Data could be nil if no blocks were downloaded
-	//     DownloadResult.PercentComplete indicates the percent of completion of the download
+	//     DownloadResult.CompletionPercentage indicates the percent of completion of the download
 	//       0 -> 0%, 100 -> 100%
 	// - error: if any error occurred during the download
 	//   special error: errors.Is(err, ErrLogsNotAvailable) indicates that it works

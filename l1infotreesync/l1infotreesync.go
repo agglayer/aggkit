@@ -40,6 +40,7 @@ var (
 
 type DriverInterface interface {
 	Sync(ctx context.Context)
+	GetCompletionPercentage() *float64
 }
 
 type DownloaderInterface interface {
@@ -243,6 +244,10 @@ func NewLegacy(
 // Finality returns the block finality of the downloader
 func (d *L1InfoTreeSync) Finality() aggkittypes.BlockNumberFinality {
 	return d.downloader.Finality()
+}
+
+func (d *L1InfoTreeSync) GetCompletionPercentage() *float64 {
+	return d.driver.GetCompletionPercentage()
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes

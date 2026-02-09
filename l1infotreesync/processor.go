@@ -398,7 +398,7 @@ func (p *processor) processBlocksSameTx(ctx context.Context, blocks *mdrsynctype
 	}
 	shouldRollback = false
 	log.Infof("processed %d blocks, percent %.2f%% complete. LastBlock: %d",
-		len(blocks.Data), blocks.PercentComplete, blocks.Data[len(blocks.Data)-1].Num)
+		len(blocks.Data), blocks.CompletionPercentage, blocks.Data[len(blocks.Data)-1].Num)
 	return nil
 }
 

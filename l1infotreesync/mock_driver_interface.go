@@ -21,6 +21,53 @@ func (_m *DriverInterfaceMock) EXPECT() *DriverInterfaceMock_Expecter {
 	return &DriverInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// GetCompletionPercentage provides a mock function with no fields
+func (_m *DriverInterfaceMock) GetCompletionPercentage() *float64 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCompletionPercentage")
+	}
+
+	var r0 *float64
+	if rf, ok := ret.Get(0).(func() *float64); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*float64)
+		}
+	}
+
+	return r0
+}
+
+// DriverInterfaceMock_GetCompletionPercentage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCompletionPercentage'
+type DriverInterfaceMock_GetCompletionPercentage_Call struct {
+	*mock.Call
+}
+
+// GetCompletionPercentage is a helper method to define mock.On call
+func (_e *DriverInterfaceMock_Expecter) GetCompletionPercentage() *DriverInterfaceMock_GetCompletionPercentage_Call {
+	return &DriverInterfaceMock_GetCompletionPercentage_Call{Call: _e.mock.On("GetCompletionPercentage")}
+}
+
+func (_c *DriverInterfaceMock_GetCompletionPercentage_Call) Run(run func()) *DriverInterfaceMock_GetCompletionPercentage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *DriverInterfaceMock_GetCompletionPercentage_Call) Return(_a0 *float64) *DriverInterfaceMock_GetCompletionPercentage_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *DriverInterfaceMock_GetCompletionPercentage_Call) RunAndReturn(run func() *float64) *DriverInterfaceMock_GetCompletionPercentage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Sync provides a mock function with given fields: ctx
 func (_m *DriverInterfaceMock) Sync(ctx context.Context) {
 	_m.Called(ctx)

@@ -312,8 +312,9 @@ function parse_command_line_args() {
         -h | --help)
             echo "Usage: $0"
             echo "  -h: help"
-            echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE)"
-            echo "  -p: expose same ports as service in kurtosis (RPC and REST)"
+            echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE) (--enclave)"
+            echo "  -p: expose same ports as service in kurtosis (RPC and REST) (--expose-ports) "
+            echo "  -s: skip setting up aggsender committee override URLs (--skip-comittee-override)"
             exit 0
             ;;
         -e | --enclave)
@@ -323,6 +324,10 @@ function parse_command_line_args() {
             ;;
         -p | --expose-ports)
             export EXPOSE_PORTS=0
+            shift
+            ;;
+        -s | --skip-comittee-override)
+            export SKIP_COMMITTEE_OVERRIDE=1
             shift
             ;;
         -*)
@@ -342,15 +347,19 @@ function main(){
     parse_command_line_args $*
     check_requirements
     create_dest_folder
-
-    #common_aggsender_committee_override_urls
+    if [ -z $SKIP_COMMITTEE_OVERRIDE ]; then
+        log_debug "Setting up aggsender_committee_override_urls with validators in kurtosis enclave"
+         common_aggsender_committee_override_urls
+    else
+        log_debug "skipping setup of aggsender_committee_override_urls with validators in kurtosis enclave, setting it to empty"    
+        export aggsender_committee_override_urls="{}"
+    fi
     download_kurtosis_artifacts
 
     export_ports_from_kurtosis
     export_values_of_aggkit_config $DEST/config.toml
     export_forced_values
     # Generate config file
-    echo "go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE"
     go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
     ok_or_fatal "Error generating template"
 

@@ -319,3 +319,17 @@ func TestFinality(t *testing.T) {
 	}
 	require.Equal(t, aggkittypes.LatestBlock, s.Finality())
 }
+
+func TestL1InfoTreeSync_GetCompletionPercentage(t *testing.T) {
+	mockEVMDriver := NewDriverInterfaceMock(t)
+	s := L1InfoTreeSync{
+		driver: mockEVMDriver,
+	}
+	mockEVMDriver.EXPECT().GetCompletionPercentage().Return(nil).Once()
+
+	require.Nil(t, s.GetCompletionPercentage(), "expected GetCompletionPercentage to return nil for legacy syncer")
+	percent := float64(10.0)
+	mockEVMDriver.EXPECT().GetCompletionPercentage().Return(&percent).Once()
+	require.Equal(t, &percent, s.GetCompletionPercentage())
+
+}
