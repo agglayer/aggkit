@@ -26,7 +26,7 @@ type EVMDriver struct {
 	// - completionPercentage, because it can be updated by the downloader and read by the sync loop and by the API server
 	mutex              sync.Mutex
 	syncBlockChunkSize uint64
-	//It's the percentage of completion of the download, it can be used to estimate the progress of the sync
+	// It's the percentage of completion of the download, it can be used to estimate the progress of the sync
 	// can be nil is there are no information yet
 	// 0 -> 0%, 100, -> 100%
 	completionPercentage *float64

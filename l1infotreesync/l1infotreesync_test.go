@@ -331,5 +331,4 @@ func TestL1InfoTreeSync_GetCompletionPercentage(t *testing.T) {
 	percent := float64(10.0)
 	mockEVMDriver.EXPECT().GetCompletionPercentage().Return(&percent).Once()
 	require.Equal(t, &percent, s.GetCompletionPercentage())
-
 }

@@ -152,7 +152,6 @@ func NewLegacy(
 	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
 ) (*L1InfoTreeSync, error) {
-
 	processor, err := newProcessor(cfg.DBPath)
 	if err != nil {
 		return nil, err
