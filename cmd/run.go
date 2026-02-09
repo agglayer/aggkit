@@ -164,12 +164,12 @@ func start(cliCtx *cli.Context) error {
 		err = l1MultiDownloader.Initialize(ctx)
 		if err != nil {
 			//nolint:gocritic
-			log.Fatal("failed to initialize L1 MultiDownloader: ", err)
+			log.Fatalf("failed to initialize L1 MultiDownloader: %v", err)
 		}
 		go func() {
 			err := l1MultiDownloader.Start(ctx)
 			if err != nil {
-				log.Fatal("l1MultiDownloader stopped: %w", err)
+				log.Fatalf("l1MultiDownloader stopped: %v", err)
 			}
 		}()
 	}
@@ -195,7 +195,7 @@ func start(cliCtx *cli.Context) error {
 				committeeQuerier,
 			)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("failed to create AggSender: %v", err)
 			}
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
