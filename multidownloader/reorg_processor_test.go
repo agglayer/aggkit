@@ -285,7 +285,21 @@ func TestReorgProcessor_FindFirstUnaffectedBlock(t *testing.T) {
 
 func TestReorgProcessor_ProcessReorg(t *testing.T) {
 	mockLogger := commonmocks.NewLogger(t)
-
+	t.Run("can't reorg if the offending block is genesis (0)", func(t *testing.T) {
+		processor := &ReorgProcessor{
+			log:  log.WithFields("module", "test"),
+			port: nil,
+		}
+		ctx := context.Background()
+		reorgErr := mdtypes.NewDetectedReorgError(
+			0,
+			mdtypes.ReorgDetectionReason_BlockHashMismatch,
+			common.HexToHash("0x1234"),
+			common.HexToHash("0x5678"),
+			"test reorg at genesis")
+		err := processor.ProcessReorg(ctx, *reorgErr)
+		require.Error(t, err)
+	})
 	t.Run("returns error when NewTx fails", func(t *testing.T) {
 		mockPort := mdmocks.NewReorgPorter(t)
 

@@ -99,7 +99,10 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 		case errors.Is(err, ErrLogsNotAvailable):
 			d.logger.Debug("EVMDriver: no logs available yet, waiting to retry")
 			return nil
+		default:
+			return fmt.Errorf("EVMDriver: error downloading blocks: %w", err)
 		}
+
 	}
 	if err = d.processBlocks(ctx, blocks); err != nil {
 		return fmt.Errorf("EVMDriver: error processing blocks: %w", err)

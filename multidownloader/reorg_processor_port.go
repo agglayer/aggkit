@@ -40,12 +40,13 @@ func (r *ReorgPort) GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querie
 }
 
 func (r *ReorgPort) GetLastBlockNumberInStorage(tx dbtypes.Querier) (uint64, error) {
-	highestBlock, err := r.storage.GetHighestBlockNumber(nil)
+	highestBlock, err := r.storage.GetHighestBlockNumber(tx)
 	if err != nil {
 		return 0, fmt.Errorf("GetLastBlockNumberInStorage: error getting highest block from storage: %w", err)
 	}
 	return highestBlock, nil
 }
+
 func (r *ReorgPort) MoveReorgedBlocks(tx dbtypes.Querier, reorgData mdtypes.ReorgData) (uint64, error) {
 	return r.storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 }

@@ -40,7 +40,10 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	var err error
 	// We known that offendingBlockNumber is affected, so we go backwards until we find
 	// the first unaffected block
-	currentBlockNumber := detectedReorgError.OffendingBlockNumber
+	offendingBlockNumber := detectedReorgError.OffendingBlockNumber
+	if offendingBlockNumber == 0 {
+		return fmt.Errorf("ProcessReorg: reorg detected at block 0, this should never happen, check the reorg detection logic")
+	}
 	tx, err := rm.port.NewTx(ctx)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error starting new tx: %w", err)
@@ -54,7 +57,7 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 			}
 		}
 	}()
-	firstUnaffectedBlock, err := rm.findFirstUnaffectedBlock(ctx, tx, currentBlockNumber-1)
+	firstUnaffectedBlock, err := rm.findFirstUnaffectedBlock(ctx, tx, offendingBlockNumber-1)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error finding first unaffected block: %w", err)
 	}
@@ -64,12 +67,12 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 				"It acts as missing blocks, so is going to delete blocks > %d."+
 				"Overriding real unaffected block found %d."+
 				"(forbidden in production! but developerMode is enabled))!!. ",
-				currentBlockNumber, currentBlockNumber, firstUnaffectedBlock)
-			firstUnaffectedBlock = currentBlockNumber - 1
+				offendingBlockNumber, offendingBlockNumber, firstUnaffectedBlock)
+			firstUnaffectedBlock = offendingBlockNumber - 1
 		} else {
 			rm.log.Warnf("ProcessReorg: forced reorg at block %d with developerMode disabled, "+
 				"using the first unaffected block found %d",
-				currentBlockNumber, firstUnaffectedBlock)
+				offendingBlockNumber, firstUnaffectedBlock)
 			// Continue with the reorg using the firstUnaffectedBlock found
 		}
 	}

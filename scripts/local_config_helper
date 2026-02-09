@@ -314,7 +314,7 @@ function parse_command_line_args() {
             echo "  -h: help"
             echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE) (--enclave)"
             echo "  -p: expose same ports as service in kurtosis (RPC and REST) (--expose-ports) "
-            echo "  -s: skip setting up aggsender committee override URLs (--skip-comittee-override)"
+            echo "  -s: skip setting up aggsender committee override URLs (--skip-committee-override)"
             exit 0
             ;;
         -e | --enclave)
@@ -326,7 +326,7 @@ function parse_command_line_args() {
             export EXPOSE_PORTS=0
             shift
             ;;
-        -s | --skip-comittee-override)
+        -s | --skip-committee-override)
             export SKIP_COMMITTEE_OVERRIDE=1
             shift
             ;;
@@ -347,7 +347,7 @@ function main(){
     parse_command_line_args $*
     check_requirements
     create_dest_folder
-    if [ -z $SKIP_COMMITTEE_OVERRIDE ]; then
+    if [ -z "$SKIP_COMMITTEE_OVERRIDE" ]; then
         log_debug "Setting up aggsender_committee_override_urls with validators in kurtosis enclave"
          common_aggsender_committee_override_urls
     else

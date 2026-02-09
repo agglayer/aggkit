@@ -262,7 +262,16 @@ func (p *processor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittyp
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	hdr := aggkittypes.NewBlockHeader(lastProcessedBlockNum, common.HexToHash(*hash), 0, nil)
+	if err != nil {
+		return nil, err
+	}
+	var blockHash common.Hash
+	if hash == nil {
+		blockHash = common.Hash{} // zero hash if no hash is available
+	} else {
+		blockHash = common.HexToHash(*hash)
+	}
+	hdr := aggkittypes.NewBlockHeader(lastProcessedBlockNum, blockHash, 0, nil)
 	return hdr, err
 }
 
