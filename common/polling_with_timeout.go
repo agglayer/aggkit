@@ -20,31 +20,28 @@ func PollingWithTimeout(
 	timeoutTimer := time.NewTimer(timeoutPeriod)
 	defer timeoutTimer.Stop()
 
+	pollingTicker := time.NewTicker(pollingPeriod)
+	defer pollingTicker.Stop()
+
 	for {
-		pollingTimer := time.NewTimer(pollingPeriod)
 		conditionMet, err := checkCondition()
 		if err != nil {
 			return false, err
 		}
 		if conditionMet {
-			pollingTimer.Stop()
 			return true, nil
 		}
 		select {
-		case <-pollingTimer.C:
-			pollingTimer.Stop()
+		case <-pollingTicker.C:
 			// Loop continues to check condition
 
 		case <-timeoutTimer.C:
-			pollingTimer.Stop()
 			return false, fmt.Errorf("pollingWithTimeout: condition not met after waiting %s: %w",
 				timeoutPeriod.String(), ErrTimeoutReached)
 		case <-ctx.Done():
-			pollingTimer.Stop()
 			return false, fmt.Errorf("pollingWithTimeout: "+
 				"context done while waiting for condition to be met: %w",
 				ctx.Err())
 		}
 	}
-	return false, nil
 }
