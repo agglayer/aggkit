@@ -102,7 +102,6 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 		default:
 			return fmt.Errorf("EVMDriver: error downloading blocks: %w", err)
 		}
-
 	}
 	if err = d.processBlocks(ctx, blocks); err != nil {
 		return fmt.Errorf("EVMDriver: error processing blocks: %w", err)

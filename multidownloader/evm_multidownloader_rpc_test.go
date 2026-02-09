@@ -36,6 +36,13 @@ func TestEVMMultidownloaderRPC_Status(t *testing.T) {
 	require.Contains(t, fmt.Sprintf("%+v", result), "Status")
 }
 
+func TestEVMMultidownloaderRPC_Status_NotInitialized(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, false)
+	sut := NewEVMMultidownloaderRPC(log.WithFields("module", "test"), testData.mdr)
+	_, err := sut.Status()
+	require.ErrorContains(t, err, "multidownloader not initialized")
+}
+
 func TestEVMMultidownloaderRPC_Reorg(t *testing.T) {
 	testData := newEVMMultidownloaderTestData(t, false)
 	t.Run("returns error if debug is not enabled", func(t *testing.T) {

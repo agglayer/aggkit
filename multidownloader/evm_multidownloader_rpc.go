@@ -26,6 +26,10 @@ func NewEVMMultidownloaderRPC(
 // curl -X POST http://localhost:5576/ "Content-Type: application/json" \
 // -d '{"method":"multidownloader-l1_status", "params":[], "id":1}'
 func (b *EVMMultidownloaderRPC) Status() (interface{}, rpc.Error) {
+	if !b.downloader.IsInitialized() {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.Status: multidownloader not initialized")
+	}
 	finalizedBlockNumber, err := b.downloader.GetFinalizedBlockNumber(context.Background())
 	if err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,

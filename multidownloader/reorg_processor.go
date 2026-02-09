@@ -42,7 +42,8 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	// the first unaffected block
 	offendingBlockNumber := detectedReorgError.OffendingBlockNumber
 	if offendingBlockNumber == 0 {
-		return fmt.Errorf("ProcessReorg: reorg detected at block 0, this should never happen, check the reorg detection logic")
+		return fmt.Errorf("ProcessReorg: reorg detected at block 0, " +
+			"this should never happen, check the reorg detection logic")
 	}
 	tx, err := rm.port.NewTx(ctx)
 	if err != nil {

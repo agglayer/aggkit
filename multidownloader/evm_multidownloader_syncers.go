@@ -128,6 +128,9 @@ func (dh *EVMMultidownloader) EthClient() aggkittypes.BaseEthereumClienter {
 
 func (dh *EVMMultidownloader) LogQuery(ctx context.Context,
 	query mdrtypes.LogQuery) (mdrtypes.LogQueryResponse, error) {
+	if !dh.IsInitialized() {
+		return mdrtypes.LogQueryResponse{}, fmt.Errorf("EVMMultidownloader.LogQuery: multidownloader not initialized")
+	}
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	isAval, availQuery := dh.state.IsPartiallyAvailable(query)
