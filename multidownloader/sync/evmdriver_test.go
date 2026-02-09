@@ -2,12 +2,14 @@ package multidownloader
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	compatibilityMocks "github.com/agglayer/aggkit/db/compatibility/mocks"
 	"github.com/agglayer/aggkit/log"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	"github.com/agglayer/aggkit/multidownloader/sync/types/mocks"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	"github.com/agglayer/aggkit/sync"
@@ -34,7 +36,7 @@ func newEVMDriverTestData(t *testing.T, compatibilityCheckExpectations bool) *ev
 	syncerConfig := aggkittypes.SyncerConfig{}
 	logger := log.WithFields("module", "test")
 	rh := &sync.RetryHandler{
-		RetryAfterErrorPeriod:      time.Second,
+		RetryAfterErrorPeriod:      time.Millisecond * 10,
 		MaxRetryAttemptsAfterError: 0,
 	}
 	if compatibilityCheckExpectations {
@@ -61,7 +63,7 @@ func newEVMDriverTestData(t *testing.T, compatibilityCheckExpectations bool) *ev
 	}
 }
 
-func TestNewEVMDriver(t *testing.T) {
+func TestNewEVMDriver_SyncStep(t *testing.T) {
 	t.Run("fail compatibility check", func(t *testing.T) {
 		testData := newEVMDriverTestData(t, false)
 		expectedErr := errors.New("compatibility check failed")
@@ -109,5 +111,31 @@ func TestNewEVMDriver(t *testing.T) {
 		testData.mockProcessor.EXPECT().Reorg(mock.Anything, uint64(10)).Return(nil).Once()
 		err := testData.driver.syncStep(t.Context())
 		require.NoError(t, err)
+	})
+}
+
+func TestNewEVMDriver_ProcessBlocks(t *testing.T) {
+	t.Run("xxx", func(t *testing.T) {
+		testData := newEVMDriverTestData(t, true)
+		ctx := t.Context()
+		testData.driver.rh.MaxRetryAttemptsAfterError = 2
+		data := &mdrsynctypes.DownloadResult{
+			Data: []*sync.EVMBlock{
+				{ // sync.EVMBlock
+					EVMBlockHeader: sync.EVMBlockHeader{
+						Num: 10,
+					},
+				},
+			},
+			CompletionPercentage: 50,
+		}
+		errProcessBlock := fmt.Errorf("error processing blocks")
+		testData.mockProcessor.EXPECT().
+			ProcessBlocks(mock.Anything, data).Return(errProcessBlock).Once()
+		testData.mockProcessor.EXPECT().
+			ProcessBlocks(mock.Anything, data).Return(nil).Once()
+		err := testData.driver.processBlocks(ctx, data)
+		require.NoError(t, err)
+		require.Equal(t, data.CompletionPercentage, *testData.driver.GetCompletionPercentage())
 	})
 }
