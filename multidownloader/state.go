@@ -12,6 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+const maxPercent = 100.0
+
 // State represents the current state of the multidownloader,
 // it contains the segments that are already synced and the segments that are pending to be synced
 type State struct {
@@ -171,7 +173,7 @@ func (s *State) CompletionPercentage() map[common.Address]float64 {
 		}
 		pending, existsPending := s.Pending.GetByContract(contract)
 		if !existsPending {
-			result[contract] = 100.0
+			result[contract] = maxPercent
 			continue
 		}
 
@@ -181,9 +183,9 @@ func (s *State) CompletionPercentage() map[common.Address]float64 {
 		log.Infof("CompletionPercentage for contract %s: syncedBlocks=%d, pendingBlocks=%d, totalBlocks=%d",
 			contract.Hex(), syncedBlocks, pendingBlocks, totalBlocks)
 		if totalBlocks == 0 {
-			result[contract] = 100.0
+			result[contract] = maxPercent
 		} else {
-			result[contract] = (float64(syncedBlocks) / float64(totalBlocks)) * 100.0
+			result[contract] = (float64(syncedBlocks) / float64(totalBlocks)) * maxPercent
 		}
 	}
 	return result
