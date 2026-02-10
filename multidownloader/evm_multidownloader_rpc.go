@@ -5,6 +5,7 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type EVMMultidownloaderRPC struct {
@@ -42,18 +43,28 @@ func (b *EVMMultidownloaderRPC) Status() (interface{}, rpc.Error) {
 	}
 	b.downloader.mutex.Lock()
 	defer b.downloader.mutex.Unlock()
-
+	completationPercentage := b.downloader.state.CompletionPercentage()
+	minPercent := 100.0
+	for _, percent := range completationPercentage {
+		if percent < minPercent {
+			minPercent = percent
+		}
+	}
 	info := struct {
-		Status               string `json:"status"`
-		State                string `json:"state,omitempty"`
-		Pending              string `json:"pending,omitempty"`
-		FinalizedBlockNumber uint64 `json:"finalizedBlockNumber,omitempty"`
-		LatestBlockNumber    uint64 `json:"latestBlockNumber,omitempty"`
+		Status                       string                     `json:"status"`
+		State                        string                     `json:"state,omitempty"`
+		Pending                      string                     `json:"pending,omitempty"`
+		FinalizedBlockNumber         uint64                     `json:"finalizedBlockNumber,omitempty"`
+		LatestBlockNumber            uint64                     `json:"latestBlockNumber,omitempty"`
+		CompletionPercentage         float64                    `json:"completionPercentage,omitempty"`
+		CompletionPercentageDetailed map[common.Address]float64 `json:"completionPercentageDetailed,omitempty"`
 	}{
-		Status:               "running",
-		State:                b.downloader.state.String(),
-		FinalizedBlockNumber: finalizedBlockNumber,
-		LatestBlockNumber:    latestBlockNumber,
+		Status:                       "running",
+		State:                        b.downloader.state.String(),
+		FinalizedBlockNumber:         finalizedBlockNumber,
+		LatestBlockNumber:            latestBlockNumber,
+		CompletionPercentage:         minPercent,
+		CompletionPercentageDetailed: completationPercentage,
 	}
 	return info, nil
 }

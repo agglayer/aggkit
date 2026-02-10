@@ -62,6 +62,39 @@ func TestSetSyncSegment_Add(t *testing.T) {
 		require.Equal(t, uint64(1), res.BlockRange.FromBlock)
 		require.Equal(t, uint64(15), res.BlockRange.ToBlock)
 	})
+
+	t.Run("merge from aggkitcommon.BlockRangeZero", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment1 := SyncSegment{
+			ContractAddr: addr,
+			// That means no sync
+			BlockRange:    aggkitcommon.BlockRangeZero,
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+		segment2 := SyncSegment{
+			ContractAddr:  addr,
+			BlockRange:    aggkitcommon.NewBlockRange(5, 15),
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+		set.Add(segment1)
+		set.Add(segment2)
+		res, exists := set.GetByContract(addr)
+		require.True(t, exists)
+		require.Equal(t, uint64(5), res.BlockRange.FromBlock)
+		require.Equal(t, uint64(15), res.BlockRange.ToBlock)
+		segment3 := SyncSegment{
+			ContractAddr:  addr,
+			BlockRange:    aggkitcommon.NewBlockRange(2, 5),
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+
+		set.Add(segment3)
+		res, exists = set.GetByContract(addr)
+		require.True(t, exists)
+		require.Equal(t, uint64(2), res.BlockRange.FromBlock)
+		require.Equal(t, uint64(15), res.BlockRange.ToBlock)
+	})
 }
 
 func TestSetSyncSegment_GetByContract(t *testing.T) {

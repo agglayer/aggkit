@@ -60,11 +60,17 @@ func (s *SetSyncSegment) Add(segment SyncSegment) {
 		return
 	}
 	// Merge syncers
-	s.UpdateBlockRange(&current, current.BlockRange.Extend(segment.BlockRange))
+	var newBlockRange aggkitcommon.BlockRange
+	if current.BlockRange.IsEmpty() {
+		newBlockRange = segment.BlockRange
+	} else {
+		newBlockRange = current.BlockRange.Extend(segment.BlockRange)
+	}
+	s.UpdateBlockRange(&current, newBlockRange)
 }
 
 // GetByContract returns the SyncSegment for the given contract address
-
+// it returns true if it exists, otherwise it returns false
 func (s *SetSyncSegment) GetByContract(addr common.Address) (SyncSegment, bool) {
 	if s == nil {
 		return SyncSegment{}, false
@@ -408,4 +414,14 @@ func (s *SetSyncSegment) SegmentsByContract(addrs []common.Address) []SyncSegmen
 		}
 	}
 	return result
+}
+
+// GetContracts returns the list of contract addresses
+// in the SetSyncSegment
+func (s *SetSyncSegment) GetContracts() []common.Address {
+	contracts := make([]common.Address, 0, len(s.segments))
+	for _, segment := range s.segments {
+		contracts = append(contracts, segment.ContractAddr)
+	}
+	return contracts
 }
