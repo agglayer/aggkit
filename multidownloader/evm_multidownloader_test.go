@@ -1402,3 +1402,463 @@ func TestEVMMultidownloader_newStateFromStorage(t *testing.T) {
 		require.Contains(t, err.Error(), "cannot get synced block ranges from storage")
 	})
 }
+
+func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
+	t.Run("context cancelled", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		// Execute
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, context.Canceled, err)
+		require.Equal(t, lastBlockHeader.Number, blockNumber)
+	})
+
+	t.Run("finalized - new block arrives", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		// Mock: first call returns same block, second call returns new block
+		callCount := 0
+		mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+			RunAndReturn(func(ctx context.Context, blockTag aggkittypes.BlockNumberFinality) (uint64, error) {
+				callCount++
+				if callCount == 1 {
+					return 100, nil // Same block
+				}
+				return 101, nil // New block
+			})
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.FinalizedBlock, lastBlockHeader, mdrtypes.Finalized)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, uint64(101), blockNumber)
+	})
+
+	t.Run("finalized - error getting current block number", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		expectedErr := fmt.Errorf("RPC error")
+		mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+			Return(uint64(0), expectedErr).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.FinalizedBlock, lastBlockHeader, mdrtypes.Finalized)
+
+		// Assert
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "WaitForNewBlocks: cannot get current block number")
+		require.Contains(t, err.Error(), "RPC error")
+		require.Equal(t, lastBlockHeader.Number, blockNumber)
+	})
+
+	t.Run("not finalized - new block arrives", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		// Mock: first call returns same block, second call returns new block
+		callCount := 0
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, blockTag *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+				callCount++
+				if callCount == 1 {
+					return &aggkittypes.BlockHeader{
+						Number: 100,
+						Hash:   common.HexToHash("0x1234"), // Same hash
+					}, nil
+				}
+				return &aggkittypes.BlockHeader{
+					Number: 101,
+					Hash:   common.HexToHash("0x5678"),
+				}, nil
+			})
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, uint64(101), blockNumber)
+	})
+
+	t.Run("not finalized - error getting current header", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		expectedErr := fmt.Errorf("RPC error")
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(nil, expectedErr).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "WaitForNewBlocks: cannot get current block header")
+		require.Contains(t, err.Error(), "RPC error")
+		require.Equal(t, lastBlockHeader.Number, blockNumber)
+	})
+
+	t.Run("not finalized - reorg detected - block hash mismatch at same block", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		// Mock: return same block number but different hash
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{
+				Number: 100,
+				Hash:   common.HexToHash("0x5678"), // Different hash!
+			}, nil).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.Error(t, err)
+		var reorgErr *mdrtypes.DetectedReorgError
+		require.True(t, mdrtypes.IsDetectedReorgError(err))
+		require.ErrorAs(t, err, &reorgErr)
+		require.Equal(t, mdrtypes.ReorgDetectionReason_BlockHashMismatch, reorgErr.ReorgDetectionReason)
+		require.Equal(t, lastBlockHeader.Number, reorgErr.OffendingBlockNumber)
+		require.Equal(t, lastBlockHeader.Hash, reorgErr.OldHash)
+		require.Equal(t, common.HexToHash("0x5678"), reorgErr.NewHash)
+		require.Equal(t, lastBlockHeader.Number, blockNumber)
+	})
+
+	t.Run("not finalized - reorg detected - parent hash mismatch at next block", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		wrongParentHash := common.HexToHash("0x9999")
+		// Mock: return next block (101) with wrong parent hash
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{
+				Number:     101,
+				Hash:       common.HexToHash("0x5678"),
+				ParentHash: &wrongParentHash, // Wrong parent hash!
+			}, nil).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.Error(t, err)
+		var reorgErr *mdrtypes.DetectedReorgError
+		require.True(t, mdrtypes.IsDetectedReorgError(err))
+		require.ErrorAs(t, err, &reorgErr)
+		require.Equal(t, mdrtypes.ReorgDetectionReason_ParentHashMismatch, reorgErr.ReorgDetectionReason)
+		require.Equal(t, lastBlockHeader.Number, reorgErr.OffendingBlockNumber)
+		require.Equal(t, lastBlockHeader.Hash, reorgErr.OldHash)
+		require.Equal(t, wrongParentHash, reorgErr.NewHash)
+		require.Equal(t, lastBlockHeader.Number, blockNumber)
+	})
+
+	t.Run("not finalized - reorg detected - current block less than last block", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		// Mock: return lower block number (reorg happened)
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{
+				Number: 95, // Lower than last synced block!
+				Hash:   common.HexToHash("0x5678"),
+			}, nil).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.Error(t, err)
+		var reorgErr *mdrtypes.DetectedReorgError
+		require.True(t, mdrtypes.IsDetectedReorgError(err))
+		require.ErrorAs(t, err, &reorgErr)
+		require.Equal(t, mdrtypes.ReorgDetectionReason_MissingBlock, reorgErr.ReorgDetectionReason)
+		require.Equal(t, lastBlockHeader.Number, reorgErr.OffendingBlockNumber)
+		require.Equal(t, lastBlockHeader.Number, blockNumber)
+	})
+
+	t.Run("not finalized - same block number with same hash - no reorg", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		// Mock: first returns same block with same hash, second returns new block
+		callCount := 0
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, blockTag *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
+				callCount++
+				if callCount == 1 {
+					return &aggkittypes.BlockHeader{
+						Number: 100,
+						Hash:   common.HexToHash("0x1234"), // Same hash - no reorg
+					}, nil
+				}
+				return &aggkittypes.BlockHeader{
+					Number: 101,
+					Hash:   common.HexToHash("0x5678"),
+				}, nil
+			})
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, uint64(101), blockNumber)
+	})
+
+	t.Run("not finalized - next block with correct parent hash - no reorg", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		correctParentHash := common.HexToHash("0x1234")
+		// Mock: return next block with correct parent hash
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{
+				Number:     101,
+				Hash:       common.HexToHash("0x5678"),
+				ParentHash: &correctParentHash, // Correct parent hash
+			}, nil).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, uint64(101), blockNumber)
+	})
+
+	t.Run("not finalized - next block without parent hash - no parent check", func(t *testing.T) {
+		// Setup
+		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+		logger := log.WithFields("test", "waitForNewBlocks")
+
+		mdr := &EVMMultidownloader{
+			log:                  logger,
+			ethClient:            mockEthClient,
+			blockNotifierManager: mockBlockNotifierManager,
+			cfg: Config{
+				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+			},
+		}
+
+		lastBlockHeader := &aggkittypes.BlockHeader{
+			Number: 100,
+			Hash:   common.HexToHash("0x1234"),
+		}
+
+		// Mock: return next block without parent hash
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{
+				Number:     101,
+				Hash:       common.HexToHash("0x5678"),
+				ParentHash: nil, // No parent hash to check
+			}, nil).Once()
+
+		// Execute
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		blockNumber, err := mdr.waitForNewBlocks(ctx, aggkittypes.LatestBlock, lastBlockHeader, mdrtypes.NotFinalized)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, uint64(101), blockNumber)
+	})
+}
