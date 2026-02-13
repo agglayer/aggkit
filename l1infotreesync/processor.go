@@ -253,7 +253,8 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return p.getLastProcessedBlockWithTx(p.db)
 }
 
-// GetLastProcessedBlock returns the last processed block
+// GetLastProcessedBlockHeader returns the last processed block header
+// this function is used by multidownloader
 func (p *processor) GetLastProcessedBlockHeader(ctx context.Context) (*aggkittypes.BlockHeader, error) {
 	var lastProcessedBlockNum uint64
 	var hash *string

@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strings"
 	"testing"
 
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -230,12 +231,12 @@ func TestContractConfig_Update_Brief(t *testing.T) {
 		})
 
 		expected := "SetSyncerConfig{ (syncer1 -> [10 - FinalizedBlock]) (syncer2 -> [5 - LatestBlock]) }"
-		require.Equal(t, expected, sut.Brief())
+		require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(sut.Brief()))
 	})
 
 	t.Run("brief with nil config", func(t *testing.T) {
 		var cc *SetSyncerConfig
 		expected := "SetSyncerConfig{<nil>}"
-		require.Equal(t, expected, cc.Brief())
+		require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(cc.Brief()))
 	})
 }

@@ -104,7 +104,7 @@ func TestLogQuery_IsValid(t *testing.T) {
 	var lq *LogQuery
 	require.True(t, lq.IsValid())
 	lq = &LogQuery{}
-	require.True(t, lq.IsValid(), "blockRange is {0,0} bu is empty")
+	require.True(t, lq.IsValid(), "blockRange is {0,0} but is empty")
 	lq.BlockRange = aggkitcommon.NewBlockRange(0, 0)
 	require.False(t, lq.IsValid())
 	lq.BlockHash = new(common.Hash)

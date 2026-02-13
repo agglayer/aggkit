@@ -10,7 +10,7 @@ type ReorgProcessor interface {
 	// ProcessReorg processes a detected reorg starting from the offending block number.
 	// It identifies the range of blocks affected by the reorg and takes necessary actions
 	// to handle the reorganization.
-	// input paramaeters:
+	// input parameters:
 	// - ctx: the context for managing cancellation and timeouts
 	// - detectedReorgError: the error returned by the reorg detection logic, containing
 	//   the offending block number and the reason for the reorg detection

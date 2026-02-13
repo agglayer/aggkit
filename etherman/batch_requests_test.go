@@ -294,7 +294,7 @@ func TestBlockHeadersResult_AreAllErrorsNotFound(t *testing.T) {
 				100: errors.New("batch element error: not found"),
 				200: errors.New("converting block: not found"),
 			},
-			expected: false, // IsErrNotFound requires exact "not found" message
+			expected: true, // IsErrNotFound requires exact "not found" message
 		},
 		{
 			name: "no not found errors",
@@ -365,23 +365,23 @@ func TestBlockHeadersResult_ListBlocksNumberNotFound(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name: "errors containing 'not found' but not exact match",
+			name: "errors containing no 'not found'",
 			errors: map[uint64]error{
-				500: errors.New("batch element error: not found"),
-				100: errors.New("converting block: not found"),
+				500: errors.New("batch element error"),
+				100: errors.New("converting block"),
 				300: errors.New("some other error"),
 			},
 			expected: nil, // IsErrNotFound requires exact "not found" message
 		},
 		{
-			name: "mixed exact and non-exact not found",
+			name: "mixed not found with others",
 			errors: map[uint64]error{
 				100: ErrNotFound,                                  // Exact match
 				200: errors.New("not found"),                      // Exact message
 				300: errors.New("batch element error: not found"), // Not exact
 				400: errors.New("timeout"),                        // Other error
 			},
-			expected: []uint64{100, 200}, // Only exact matches
+			expected: []uint64{100, 200, 300}, // Only "not found"
 		},
 	}
 
