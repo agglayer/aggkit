@@ -1403,26 +1403,33 @@ func TestEVMMultidownloader_newStateFromStorage(t *testing.T) {
 	})
 }
 
+// setupWaitForNewBlocksTest creates common test fixtures
+func setupWaitForNewBlocksTest(t *testing.T) (*EVMMultidownloader, *aggkittypes.BlockHeader, *mocktypes.BaseEthereumClienter, *mockethermantypes.BlockNotifierManager) {
+	t.Helper()
+	mockEthClient := mocktypes.NewBaseEthereumClienter(t)
+	mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
+	logger := log.WithFields("test", "waitForNewBlocks")
+
+	mdr := &EVMMultidownloader{
+		log:                  logger,
+		ethClient:            mockEthClient,
+		blockNotifierManager: mockBlockNotifierManager,
+		cfg: Config{
+			PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
+		},
+	}
+
+	lastBlockHeader := &aggkittypes.BlockHeader{
+		Number: 100,
+		Hash:   common.HexToHash("0x1234"),
+	}
+
+	return mdr, lastBlockHeader, mockEthClient, mockBlockNotifierManager
+}
+
 func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, _, _ := setupWaitForNewBlocksTest(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
@@ -1437,24 +1444,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("finalized - new block arrives", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, _, mockBlockNotifierManager := setupWaitForNewBlocksTest(t)
 
 		// Mock: first call returns same block, second call returns new block
 		callCount := 0
@@ -1479,24 +1469,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("finalized - error getting current block number", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, _, mockBlockNotifierManager := setupWaitForNewBlocksTest(t)
 
 		expectedErr := fmt.Errorf("RPC error")
 		mockBlockNotifierManager.EXPECT().
@@ -1516,42 +1489,15 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - new block arrives", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
-
-		// Mock: first call returns same block, second call returns new block
-		callCount := 0
+		// Mock: return new block immediately
 		mockEthClient.EXPECT().
 			CustomHeaderByNumber(mock.Anything, mock.Anything).
-			RunAndReturn(func(ctx context.Context, blockTag *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, error) {
-				callCount++
-				if callCount == 1 {
-					return &aggkittypes.BlockHeader{
-						Number: 100,
-						Hash:   common.HexToHash("0x1234"), // Same hash
-					}, nil
-				}
-				return &aggkittypes.BlockHeader{
-					Number: 101,
-					Hash:   common.HexToHash("0x5678"),
-				}, nil
-			})
+			Return(&aggkittypes.BlockHeader{
+				Number: 101,
+				Hash:   common.HexToHash("0x5678"),
+			}, nil).Once()
 
 		// Execute
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -1564,24 +1510,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - error getting current header", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		expectedErr := fmt.Errorf("RPC error")
 		mockEthClient.EXPECT().
@@ -1601,24 +1530,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - reorg detected - block hash mismatch at same block", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		// Mock: return same block number but different hash
 		mockEthClient.EXPECT().
@@ -1646,24 +1558,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - reorg detected - parent hash mismatch at next block", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		wrongParentHash := common.HexToHash("0x9999")
 		// Mock: return next block (101) with wrong parent hash
@@ -1693,24 +1588,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - reorg detected - current block less than last block", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		// Mock: return lower block number (reorg happened)
 		mockEthClient.EXPECT().
@@ -1736,24 +1614,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - same block number with same hash - no reorg", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		// Mock: first returns same block with same hash, second returns new block
 		callCount := 0
@@ -1784,24 +1645,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - next block with correct parent hash - no reorg", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		correctParentHash := common.HexToHash("0x1234")
 		// Mock: return next block with correct parent hash
@@ -1824,24 +1668,7 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 	})
 
 	t.Run("not finalized - next block without parent hash - no parent check", func(t *testing.T) {
-		// Setup
-		mockEthClient := mocktypes.NewBaseEthereumClienter(t)
-		mockBlockNotifierManager := mockethermantypes.NewBlockNotifierManager(t)
-		logger := log.WithFields("test", "waitForNewBlocks")
-
-		mdr := &EVMMultidownloader{
-			log:                  logger,
-			ethClient:            mockEthClient,
-			blockNotifierManager: mockBlockNotifierManager,
-			cfg: Config{
-				PeriodToCheckReorgs: types.Duration{Duration: 10 * time.Millisecond},
-			},
-		}
-
-		lastBlockHeader := &aggkittypes.BlockHeader{
-			Number: 100,
-			Hash:   common.HexToHash("0x1234"),
-		}
+		mdr, lastBlockHeader, mockEthClient, _ := setupWaitForNewBlocksTest(t)
 
 		// Mock: return next block without parent hash
 		mockEthClient.EXPECT().
