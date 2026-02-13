@@ -402,7 +402,7 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 		ctx := context.Background()
 		testData.mdr.debug.ForceReorg(1234)
 
-		testData.mockReorgProcessor.EXPECT().ProcessReorg(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockReorgProcessor.EXPECT().ProcessReorg(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 		// It starts, execute 1 loop that do a reorg and then return
 		err := testData.mdr.startNumLoops(ctx, 1)
 		// Should return no error
@@ -1384,7 +1384,7 @@ func TestEVMMultidownloader_newStateFromStorage(t *testing.T) {
 		data.mockStorage.EXPECT().GetSyncedBlockRangePerContract(mock.Anything).
 			Return(storageSyncSegments, nil).Once()
 
-		state, err := data.mdr.newStateFromStorage()
+		state, err := data.mdr.newStateFromStorage(t.Context())
 		require.NoError(t, err)
 		require.NotNil(t, state)
 	})
@@ -1403,7 +1403,7 @@ func TestEVMMultidownloader_newStateFromStorage(t *testing.T) {
 		data.mockStorage.EXPECT().GetSyncedBlockRangePerContract(mock.Anything).
 			Return(emptySegments, expectedErr).Once()
 
-		state, err := data.mdr.newStateFromStorage()
+		state, err := data.mdr.newStateFromStorage(t.Context())
 		require.Error(t, err)
 		require.Nil(t, state)
 		require.Contains(t, err.Error(), "cannot get synced block ranges from storage")

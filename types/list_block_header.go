@@ -46,7 +46,7 @@ func (lbs ListBlockHeaders) BlockNumbers() []uint64 {
 
 func (lbs ListBlockHeaders) BlockRange() aggkitcommon.BlockRange {
 	if len(lbs) == 0 {
-		return aggkitcommon.BlockRange{}
+		return aggkitcommon.BlockRangeZero
 	}
 	var minBlock, maxBlock uint64
 	initialized := false
@@ -67,7 +67,7 @@ func (lbs ListBlockHeaders) BlockRange() aggkitcommon.BlockRange {
 		}
 	}
 	if !initialized {
-		return aggkitcommon.BlockRange{}
+		return aggkitcommon.BlockRangeZero
 	}
 	return aggkitcommon.NewBlockRange(minBlock, maxBlock)
 }

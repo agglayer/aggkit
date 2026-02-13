@@ -163,10 +163,10 @@ func (a *MultidownloaderStorage) GetReorgedDataByReorgID(tx dbtypes.Querier,
 
 	reorgData := &mdrtypes.ReorgData{
 		ReorgID: row.ReorgID,
-		BlockRangeAffected: aggkitcommon.BlockRange{
-			FromBlock: row.ReorgedFromBlock,
-			ToBlock:   row.ReorgedToBlock,
-		},
+		BlockRangeAffected: aggkitcommon.NewBlockRange(
+			row.ReorgedFromBlock,
+			row.ReorgedToBlock,
+		),
 		DetectedAtBlock:           row.DetectedAtBlock,
 		DetectedTimestamp:         row.DetectedTimestamp,
 		NetworkLatestBlock:        row.NetworkLatestBlock,

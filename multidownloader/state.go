@@ -1,11 +1,9 @@
 package multidownloader
 
 import (
-	"context"
 	"fmt"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -33,7 +31,8 @@ func NewEmptyState() *State {
 }
 
 // NewState creates a new State with the given synced and pending segments
-func NewState(synced *mdrtypes.SetSyncSegment, pending *mdrtypes.SetSyncSegment) *State {
+func NewState(synced *mdrtypes.SetSyncSegment,
+	pending *mdrtypes.SetSyncSegment) *State {
 	return &State{
 		Synced:  *synced,
 		Pending: *pending,
@@ -74,10 +73,38 @@ func (s *State) String() string {
 		", Pending: " + s.Pending.String() + "}"
 }
 
-// UpdateTargetBlockToNumber updates the target block number for the pending segments
-// for that use the blockNotifier
-func (s *State) UpdateTargetBlockToNumber(ctx context.Context, blockNotifier types.BlockNotifierManager) error {
-	return s.Pending.UpdateTargetBlockToNumber(ctx, blockNotifier)
+func (s *State) ExtendPendingRange(
+	mapBlocks map[aggkittypes.BlockNumberFinality]uint64,
+	syncersConfig *mdrtypes.SetSyncerConfig) error {
+	// It extend pending segments with this new block numbers,
+	// maybe pending segment IsEmpty() then you need to get latest
+	// block from synced segments.
+	newSyncSegments, err := syncersConfig.SyncSegments(mapBlocks)
+	if err != nil {
+		return fmt.Errorf("ExtendPendingRange: error creating sync segments from syncers config: %w", err)
+	}
+	for _, segment := range newSyncSegments.GetSegments() {
+		// If it's empty nothing to do
+		if segment.BlockRange.IsEmpty() {
+			continue
+		}
+
+		synced, ok := s.Synced.GetByContract(segment.ContractAddr)
+		if !ok {
+			return fmt.Errorf("ExtendPendingRange: error getting synced segment for contract %s", segment.ContractAddr.Hex())
+		}
+		// Subtract already synced blocks from pending segment
+		subs := segment.BlockRange.Subtract(synced.BlockRange)
+		if len(subs) == 0 {
+			continue
+		}
+		// We assume that there is only one segment after subtraction, if there are more it means
+		// that there are non contiguous blocks which is unexpected
+		segment.BlockRange = subs[0]
+		// Extend pending segment with new block range
+		s.Pending.Add(segment)
+	}
+	return nil
 }
 
 // GetHighestBlockNumberPendingToSync returns the highest block number that is pending to be synced
@@ -124,6 +151,9 @@ func (s *State) OnNewSyncedLogQuery(logQuery *mdrtypes.LogQuery) error {
 	}
 	if logQuery == nil {
 		return fmt.Errorf("OnNewSyncedLogQuery: logQuery is nil")
+	}
+	if logQuery.IsEmpty() {
+		return fmt.Errorf("OnNewSyncedLogQuery: logQuery is empty")
 	}
 
 	// Clone both sets to ensure atomicity

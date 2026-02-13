@@ -83,3 +83,30 @@ func TestLogQuery_BlockHash(t *testing.T) {
 	require.Equal(t, "LogQuery: addrs=[0x0000000000000000000000000000000000000123], blockHash=0x0000000000000000000000000000000000000000000000000000000000000abc (1234)",
 		lq.String())
 }
+func TestLogQuery_IsEmpty(t *testing.T) {
+	var lq *LogQuery
+	require.True(t, lq.IsEmpty())
+
+	lq = &LogQuery{}
+	require.True(t, lq.IsEmpty())
+
+	lq.BlockRange = aggkitcommon.NewBlockRange(1, 10)
+	require.False(t, lq.IsEmpty())
+
+	lq.BlockRange = aggkitcommon.BlockRangeZero
+	require.True(t, lq.IsEmpty())
+
+	lq.BlockHash = new(common.Hash)
+	require.False(t, lq.IsEmpty())
+}
+
+func TestLogQuery_IsValid(t *testing.T) {
+	var lq *LogQuery
+	require.True(t, lq.IsValid())
+	lq = &LogQuery{}
+	require.True(t, lq.IsValid(), "blockRange is {0,0} bu is empty")
+	lq.BlockRange = aggkitcommon.NewBlockRange(0, 0)
+	require.False(t, lq.IsValid())
+	lq.BlockHash = new(common.Hash)
+	require.True(t, lq.IsValid(), "bn={0,0} but it use blockHash")
+}

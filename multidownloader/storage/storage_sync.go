@@ -26,10 +26,19 @@ func (r *syncStatusRow) ToSyncSegment() (mdrtypes.SyncSegment, error) {
 		return mdrtypes.SyncSegment{}, fmt.Errorf("ToSyncSegment: error parsing target to block finality (%s): %w",
 			r.TargetToBlock, err)
 	}
+	var blockRange aggkitcommon.BlockRange
+
+	if r.SyncedFromBlock == 0 && r.SyncedToBlock == 0 {
+		// We use value {0,0} to represent empty range in the database, but in the code
+		// we want to use the IsEmpty() method of BlockRange
+		blockRange = aggkitcommon.BlockRangeZero
+	} else {
+		blockRange = aggkitcommon.NewBlockRange(r.SyncedFromBlock, r.SyncedToBlock)
+	}
 	return mdrtypes.SyncSegment{
 		ContractAddr:  r.Address,
 		TargetToBlock: *targetToBlock,
-		BlockRange:    aggkitcommon.NewBlockRange(r.SyncedFromBlock, r.SyncedToBlock),
+		BlockRange:    blockRange,
 	}, nil
 }
 
@@ -70,8 +79,16 @@ func (a *MultidownloaderStorage) UpdateSyncedStatus(tx dbtypes.Querier,
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	for _, segment := range segments {
-		result, err := tx.Exec(query, segment.BlockRange.FromBlock,
-			segment.BlockRange.ToBlock, segment.ContractAddr.Hex())
+		if !segment.IsValid() {
+			return fmt.Errorf("UpdateSyncedStatus: invalid segment %s", segment.String())
+		}
+		br := segment.BlockRange
+		if br.IsEmpty() {
+			// We use value {0,0} to represent empty range in the database
+			br = aggkitcommon.BlockRangeZero
+		}
+		result, err := tx.Exec(query, br.FromBlock,
+			br.ToBlock, segment.ContractAddr.Hex())
 		if err != nil {
 			return fmt.Errorf("error updating %s sync status: %w", segment.String(), err)
 		}

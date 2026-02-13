@@ -163,7 +163,7 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	newState, err := dh.newStateFromStorage()
+	newState, err := dh.newStateFromStorage(ctx)
 	if err != nil {
 		return fmt.Errorf("Initialize: error creating new state from storage: %w", err)
 	}
@@ -173,19 +173,32 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 		dh.syncersConfig.Brief(), dh.state.String())
 	return nil
 }
+func (dh *EVMMultidownloader) mapBlockTagToBlockNumber(
+	ctx context.Context) (map[aggkittypes.BlockNumberFinality]uint64, error) {
+	tags := dh.syncersConfig.GetTargetToBlockTags()
+	resultMap := make(map[aggkittypes.BlockNumberFinality]uint64)
+	for _, tag := range tags {
+		blockNumber, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, tag)
+		if err != nil {
+			return nil, fmt.Errorf("mapBlockTagToBlockNumber: cannot get block number for finality %s: %w", tag.String(), err)
+		}
+		resultMap[tag] = blockNumber
+	}
+	return resultMap, nil
+}
 
 // newStateFromStorage creates a new State based on data on storage and the current syncer configs.
 // It is used on initialization and after reorgs to recreate the state of pending and synced segments
-func (dh *EVMMultidownloader) newStateFromStorage() (*State, error) {
-	syncSegments, err := dh.syncersConfig.SyncSegments()
+func (dh *EVMMultidownloader) newStateFromStorage(ctx context.Context) (*State, error) {
+	mapBlocks, err := dh.mapBlockTagToBlockNumber(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("newStateFromStorage: cannot map block tags to block numbers: %w", err)
+	}
+	syncSegments, err := dh.syncersConfig.SyncSegments(mapBlocks)
 	if err != nil {
 		return nil, err
 	}
-	// Update TargetToBlock from name to real block numbers
-	err = syncSegments.UpdateTargetBlockToNumber(context.Background(), dh.blockNotifierManager)
-	if err != nil {
-		return nil, fmt.Errorf("newStateFromStorage: cannot update TargetToBlock in sync segments: %w", err)
-	}
+
 	// Get synced segments from storage
 	storageSyncSegments, err := dh.storage.GetSyncedBlockRangePerContract(nil)
 	if err != nil {
@@ -269,14 +282,14 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 				}
 
 				dh.log.Infof("Processing reorg at block number %d...", reorgErr.OffendingBlockNumber)
-				err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr)
+				err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr, dh.cfg.BlockFinality)
 				if err != nil {
 					dh.mutex.Unlock()
 					dh.log.Warnf("Error running reorg multidownloader: %s", err.Error())
 					time.Sleep(1 * time.Second)
 					continue
 				}
-				newState, err := dh.newStateFromStorage()
+				newState, err := dh.newStateFromStorage(ctx)
 				if err != nil {
 					dh.mutex.Unlock()
 					dh.log.Warnf("Error recreating state after reorg processing: %s", err.Error())
@@ -326,7 +339,11 @@ func (dh *EVMMultidownloader) Stop(ctx context.Context) error {
 func (dh *EVMMultidownloader) updateTargetBlockNumber(ctx context.Context) error {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
-	return dh.state.UpdateTargetBlockToNumber(ctx, dh.blockNotifierManager)
+	mapBlocks, err := dh.mapBlockTagToBlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("updateTargetBlockNumber: cannot map block tags to block numbers: %w", err)
+	}
+	return dh.state.ExtendPendingRange(mapBlocks, &dh.syncersConfig)
 }
 
 func (dh *EVMMultidownloader) checkReorgsUnsafeZone(ctx context.Context) error {
@@ -543,7 +560,7 @@ func (dh *EVMMultidownloader) getUnsafeLogQueries(blockHeaders []*aggkittypes.Bl
 	return logQueries
 }
 
-func (dh *EVMMultidownloader) newState(queries []mdrtypes.LogQuery) (*State, error) {
+func (dh *EVMMultidownloader) newStateAftersLogQueries(queries []mdrtypes.LogQuery) (*State, error) {
 	dh.mutex.Lock()
 	state := dh.state.Clone()
 	dh.mutex.Unlock()
@@ -620,7 +637,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	if err = dh.checkIntegrityNewLogsBlockHeaders(logs, blockHeaders); err != nil {
 		return false, err
 	}
-	newState, err := dh.newState(logQueries)
+	newState, err := dh.newStateAftersLogQueries(logQueries)
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: failed to create new state: %w", err)
 	}
@@ -837,6 +854,7 @@ func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunk uint32, sa
 	return logQueryData, nil
 }
 
+// TODO: Do this requests in parallel
 func (dh *EVMMultidownloader) requestMultiplesLogs(
 	ctx context.Context,
 	queries []mdrtypes.LogQuery) ([]types.Log, error) {

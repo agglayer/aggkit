@@ -35,8 +35,13 @@ func NewReorgProcessor(log aggkitcommon.Logger,
 // After detecting a reorg at detectedReorgError.OffendingBlockNumber,
 // - find affected blocks
 // - store the reorg info in storage
+// params:
+//   - detectedReorgError: the error returned by the reorg detection logic, containing the
+//     offending block number and the reason for the reorg detection
+//   - finalizedBlockTag: the block tag to consider as finalized (typically finalizedBlock)
 func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
-	detectedReorgError mdtypes.DetectedReorgError) error {
+	detectedReorgError mdtypes.DetectedReorgError,
+	finalizedBlockTag aggkittypes.BlockNumberFinality) error {
 	var err error
 	// We known that offendingBlockNumber is affected, so we go backwards until we find
 	// the first unaffected block
@@ -86,8 +91,7 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error getting latest block number in RPC: %w", err)
 	}
-
-	finalizedBlockNumberInRPC, err := rm.port.GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock)
+	finalizedBlockNumberInRPC, err := rm.port.GetBlockNumberInRPC(ctx, finalizedBlockTag)
 	if err != nil {
 		return fmt.Errorf("ProcessReorg: error getting finalized block number in RPC: %w", err)
 	}
@@ -100,7 +104,7 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 		DetectedTimestamp:         rm.port.TimeNowUnix(),
 		NetworkLatestBlock:        latestBlockNumberInRPC,
 		NetworkFinalizedBlock:     finalizedBlockNumberInRPC,
-		NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
+		NetworkFinalizedBlockName: finalizedBlockTag,
 		Description:               detectedReorgError.Error(),
 	}
 	reorgID, err := rm.port.MoveReorgedBlocks(tx, reorgData)

@@ -23,10 +23,10 @@ var (
 )
 
 type EVMDownloader struct {
-	mdr      mdrsynctypes.MultidownloaderInterface
-	logger   aggkitcommon.Logger
-	rh       *sync.RetryHandler
-	appender sync.LogAppenderMap
+	multidownloader mdrsynctypes.MultidownloaderInterface
+	logger          aggkitcommon.Logger
+	rh              *sync.RetryHandler
+	appender        sync.LogAppenderMap
 	// Maximum duration to wait to catch up the maximum request
 	waitPeriodToCatchUpMaximumLogRange time.Duration
 	pullingPeriod                      time.Duration
@@ -41,7 +41,7 @@ func NewEVMDownloader(
 	pullingPeriod time.Duration,
 ) *EVMDownloader {
 	return &EVMDownloader{
-		mdr:                                mdr,
+		multidownloader:                    mdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -51,7 +51,7 @@ func NewEVMDownloader(
 }
 
 func (d *EVMDownloader) Finality() aggkittypes.BlockNumberFinality {
-	return d.mdr.Finality()
+	return d.multidownloader.Finality()
 }
 
 func (d *EVMDownloader) DownloadNextBlocks(ctx context.Context,
@@ -112,7 +112,7 @@ func (d *EVMDownloader) DownloadNextBlocks(ctx context.Context,
 }
 
 func (d *EVMDownloader) ChainID(ctx context.Context) (uint64, error) {
-	return d.mdr.ChainID(ctx)
+	return d.multidownloader.ChainID(ctx)
 }
 
 // executeLogQuery executes the log query, checking for partial availability
@@ -120,8 +120,8 @@ func (d *EVMDownloader) ChainID(ctx context.Context) (uint64, error) {
 func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 	fullLogQuery mdrtypes.LogQuery, syncerConfig aggkittypes.SyncerConfig) (*mdrsynctypes.DownloadResult, error) {
 	logQuery := fullLogQuery
-	if !d.mdr.IsAvailable(fullLogQuery) {
-		isPartial, partialLogQuery := d.mdr.IsPartiallyAvailable(fullLogQuery)
+	if !d.multidownloader.IsAvailable(fullLogQuery) {
+		isPartial, partialLogQuery := d.multidownloader.IsPartiallyAvailable(fullLogQuery)
 		if !isPartial {
 			return nil, fmt.Errorf("DownloadNextBlocks: logs not available for query: %s. Err: %w", fullLogQuery.String(),
 				ErrLogsNotAvailable)
@@ -129,7 +129,7 @@ func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 		logQuery = *partialLogQuery
 	}
 
-	logQueryResponse, err := d.mdr.LogQuery(ctx, logQuery)
+	logQueryResponse, err := d.multidownloader.LogQuery(ctx, logQuery)
 	if err != nil {
 		return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
 	}
@@ -153,7 +153,7 @@ func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 
 func (d *EVMDownloader) getFullBlockRange(ctx context.Context,
 	syncerConfig aggkittypes.SyncerConfig) (*aggkitcommon.BlockRange, error) {
-	blockTo, err := d.mdr.HeaderByNumber(ctx, &syncerConfig.ToBlock)
+	blockTo, err := d.multidownloader.HeaderByNumber(ctx, &syncerConfig.ToBlock)
 	if err != nil || blockTo == nil {
 		return nil, fmt.Errorf("EVMDownloader.getFullBlockRange: error getting 'to' block header: %w", err)
 	}
@@ -190,7 +190,7 @@ func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 		}
 	}
 
-	hdr, _, err := d.mdr.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(lastBlockNumber))
+	hdr, _, err := d.multidownloader.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(lastBlockNumber))
 	if err != nil {
 		d.logger.Errorf("EVMDownloader: error getting block header for block number %d: %v", lastBlockNumber, err)
 		return nil
@@ -314,12 +314,12 @@ func (d *EVMDownloader) checkReorgedBlock(ctx context.Context,
 		return nil
 	}
 	// Check blockHeader is not reorged
-	isValid, reorgID, err := d.mdr.CheckValidBlock(ctx, blockHeader.Number, blockHeader.Hash)
+	isValid, reorgID, err := d.multidownloader.CheckValidBlock(ctx, blockHeader.Number, blockHeader.Hash)
 	if err != nil {
 		return err
 	}
 	if !isValid {
-		reorgData, err := d.mdr.GetReorgedDataByReorgID(ctx, reorgID)
+		reorgData, err := d.multidownloader.GetReorgedDataByReorgID(ctx, reorgID)
 		if err != nil {
 			return err
 		}

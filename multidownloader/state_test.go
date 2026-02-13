@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -13,18 +13,18 @@ import (
 func TestStateInitial(t *testing.T) {
 	addr1 := common.HexToAddress("0x10")
 	addr2 := common.HexToAddress("0x20")
-	storageData := mdtypes.NewSetSyncSegment()
-	storageData.Add(mdtypes.NewSyncSegment(addr1,
+	storageData := mdrtypes.NewSetSyncSegment()
+	storageData.Add(mdrtypes.NewSyncSegment(addr1,
 		aggkitcommon.BlockRangeZero, aggkittypes.FinalizedBlock,
 		false))
-	storageData.Add(mdtypes.NewSyncSegment(addr2,
+	storageData.Add(mdrtypes.NewSyncSegment(addr2,
 		aggkitcommon.BlockRangeZero, aggkittypes.LatestBlock,
 		false))
-	configData := mdtypes.NewSetSyncSegment()
-	segment1 := mdtypes.NewSyncSegment(addr1,
+	configData := mdrtypes.NewSetSyncSegment()
+	segment1 := mdrtypes.NewSyncSegment(addr1,
 		aggkitcommon.NewBlockRange(0, 1000), aggkittypes.FinalizedBlock,
 		false)
-	segment2 := mdtypes.NewSyncSegment(addr2,
+	segment2 := mdrtypes.NewSyncSegment(addr2,
 		aggkitcommon.NewBlockRange(0, 2000), aggkittypes.LatestBlock,
 		false)
 	configData.Add(segment1)
@@ -33,22 +33,22 @@ func TestStateInitial(t *testing.T) {
 	state, err := NewStateFromStorageSyncedBlocks(storageData, configData)
 	require.NoError(t, err)
 	require.NotNil(t, state)
-	logQuery := mdtypes.NewLogQuery(
-		1, 456, []common.Address{addr1})
+	logQuery := mdrtypes.NewLogQuery(
+		0, 456, []common.Address{addr1})
 
 	err = state.OnNewSyncedLogQuery(&logQuery)
 	require.NoError(t, err)
 	pendingSegments := state.SyncedSegmentsByContract([]common.Address{addr1})
 	require.Equal(t, 1, len(pendingSegments))
 	require.Equal(t, addr1, pendingSegments[0].ContractAddr)
-	require.Equal(t, aggkitcommon.NewBlockRange(1, 456), pendingSegments[0].BlockRange)
+	require.Equal(t, aggkitcommon.NewBlockRange(0, 456), pendingSegments[0].BlockRange)
 	require.Equal(t, aggkittypes.FinalizedBlock, pendingSegments[0].TargetToBlock)
 }
 
 func TestState_OnNewSyncedLogQuery(t *testing.T) {
 	t.Run("nil state", func(t *testing.T) {
 		var state *State
-		logQuery := mdtypes.NewLogQuery(1, 10, []common.Address{common.HexToAddress("0x1")})
+		logQuery := mdrtypes.NewLogQuery(1, 10, []common.Address{common.HexToAddress("0x1")})
 		err := state.OnNewSyncedLogQuery(&logQuery)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "state is nil")
@@ -64,14 +64,14 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 	t.Run("successful sync", func(t *testing.T) {
 		addr1 := common.HexToAddress("0x100")
 
-		syncedSet := mdtypes.NewSetSyncSegment()
-		syncedSet.Add(mdtypes.NewSyncSegment(addr1,
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		syncedSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(1, 100),
 			aggkittypes.FinalizedBlock,
 			false))
 
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1,
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(101, 200),
 			aggkittypes.LatestBlock,
 			false))
@@ -87,7 +87,7 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 		require.Equal(t, uint64(100), pendingBefore)
 
 		// Sync blocks 101-150
-		logQuery := mdtypes.NewLogQuery(101, 150, []common.Address{addr1})
+		logQuery := mdrtypes.NewLogQuery(101, 150, []common.Address{addr1})
 		err := state.OnNewSyncedLogQuery(&logQuery)
 		require.NoError(t, err)
 
@@ -104,14 +104,14 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 	t.Run("transactional behavior - state unchanged on error", func(t *testing.T) {
 		addr1 := common.HexToAddress("0x100")
 
-		syncedSet := mdtypes.NewSetSyncSegment()
-		syncedSet.Add(mdtypes.NewSyncSegment(addr1,
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		syncedSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(1, 100),
 			aggkittypes.FinalizedBlock,
 			false))
 
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1,
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(101, 1000),
 			aggkittypes.LatestBlock,
 			false))
@@ -125,7 +125,7 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 
 		// Try to sync a range in the middle (500-600) which would split the pending segment
 		// This should fail with "cannot split segment" error
-		logQuery := mdtypes.NewLogQuery(500, 600, []common.Address{addr1})
+		logQuery := mdrtypes.NewLogQuery(500, 600, []common.Address{addr1})
 		err := state.OnNewSyncedLogQuery(&logQuery)
 
 		// Should fail because it would split the segment into two parts
@@ -144,9 +144,9 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 	t.Run("multiple consecutive syncs", func(t *testing.T) {
 		addr1 := common.HexToAddress("0x100")
 
-		syncedSet := mdtypes.NewSetSyncSegment()
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1,
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(1, 1000),
 			aggkittypes.LatestBlock,
 			false))
@@ -164,7 +164,7 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 		}
 
 		for i, chunk := range chunks {
-			logQuery := mdtypes.NewLogQuery(chunk.from, chunk.to, []common.Address{addr1})
+			logQuery := mdrtypes.NewLogQuery(chunk.from, chunk.to, []common.Address{addr1})
 			err := state.OnNewSyncedLogQuery(&logQuery)
 			require.NoError(t, err, "chunk %d should succeed", i)
 
@@ -185,9 +185,9 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 		addr1 := common.HexToAddress("0x100")
 
 		// Start with empty synced and full pending
-		syncedSet := mdtypes.NewSetSyncSegment()
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1,
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(1, 300),
 			aggkittypes.LatestBlock,
 			false))
@@ -209,7 +209,7 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 		}
 
 		for i, chunk := range chunks {
-			logQuery := mdtypes.NewLogQuery(chunk.from, chunk.to, []common.Address{addr1})
+			logQuery := mdrtypes.NewLogQuery(chunk.from, chunk.to, []common.Address{addr1})
 			err := state.OnNewSyncedLogQuery(&logQuery)
 			require.NoError(t, err, "chunk %d should succeed", i)
 
@@ -241,14 +241,14 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 		addr1 := common.HexToAddress("0x100")
 
 		// Start with some already synced
-		syncedSet := mdtypes.NewSetSyncSegment()
-		syncedSet.Add(mdtypes.NewSyncSegment(addr1,
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		syncedSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(1, 50),
 			aggkittypes.FinalizedBlock,
 			false))
 
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1,
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(51, 100),
 			aggkittypes.LatestBlock,
 			false))
@@ -260,7 +260,7 @@ func TestState_OnNewSyncedLogQuery(t *testing.T) {
 		require.Equal(t, uint64(50), state.TotalBlocksPendingToSync())
 
 		// Sync remaining blocks in one go
-		logQuery := mdtypes.NewLogQuery(51, 100, []common.Address{addr1})
+		logQuery := mdrtypes.NewLogQuery(51, 100, []common.Address{addr1})
 		err := state.OnNewSyncedLogQuery(&logQuery)
 		require.NoError(t, err)
 
@@ -286,14 +286,14 @@ func TestState_Clone(t *testing.T) {
 		// Create original state with synced and pending segments
 		addr1 := common.HexToAddress("0x100")
 
-		syncedSet := mdtypes.NewSetSyncSegment()
-		syncedSet.Add(mdtypes.NewSyncSegment(addr1,
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		syncedSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(1, 100),
 			aggkittypes.FinalizedBlock,
 			false))
 
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1,
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1,
 			aggkitcommon.NewBlockRange(101, 200),
 			aggkittypes.LatestBlock,
 			false))
@@ -314,7 +314,7 @@ func TestState_Clone(t *testing.T) {
 		require.Equal(t, originalSyncedBefore[0].BlockRange, clonedSyncedBefore[0].BlockRange)
 
 		// Modify the original by syncing more blocks
-		logQuery := mdtypes.NewLogQuery(101, 150, []common.Address{addr1})
+		logQuery := mdrtypes.NewLogQuery(101, 150, []common.Address{addr1})
 		err := original.OnNewSyncedLogQuery(&logQuery)
 		require.NoError(t, err)
 
@@ -347,14 +347,14 @@ func TestState_Clone(t *testing.T) {
 		addr2 := common.HexToAddress("0x2")
 		addr3 := common.HexToAddress("0x3")
 
-		syncedSet := mdtypes.NewSetSyncSegment()
-		syncedSet.Add(mdtypes.NewSyncSegment(addr1, aggkitcommon.NewBlockRange(0, 100), aggkittypes.FinalizedBlock, false))
-		syncedSet.Add(mdtypes.NewSyncSegment(addr2, aggkitcommon.NewBlockRange(0, 200), aggkittypes.FinalizedBlock, false))
+		syncedSet := mdrtypes.NewSetSyncSegment()
+		syncedSet.Add(mdrtypes.NewSyncSegment(addr1, aggkitcommon.NewBlockRange(0, 100), aggkittypes.FinalizedBlock, false))
+		syncedSet.Add(mdrtypes.NewSyncSegment(addr2, aggkitcommon.NewBlockRange(0, 200), aggkittypes.FinalizedBlock, false))
 
-		pendingSet := mdtypes.NewSetSyncSegment()
-		pendingSet.Add(mdtypes.NewSyncSegment(addr1, aggkitcommon.NewBlockRange(101, 500), aggkittypes.LatestBlock, false))
-		pendingSet.Add(mdtypes.NewSyncSegment(addr2, aggkitcommon.NewBlockRange(201, 600), aggkittypes.LatestBlock, false))
-		pendingSet.Add(mdtypes.NewSyncSegment(addr3, aggkitcommon.NewBlockRange(0, 1000), aggkittypes.LatestBlock, false))
+		pendingSet := mdrtypes.NewSetSyncSegment()
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr1, aggkitcommon.NewBlockRange(101, 500), aggkittypes.LatestBlock, false))
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr2, aggkitcommon.NewBlockRange(201, 600), aggkittypes.LatestBlock, false))
+		pendingSet.Add(mdrtypes.NewSyncSegment(addr3, aggkitcommon.NewBlockRange(0, 1000), aggkittypes.LatestBlock, false))
 
 		original := NewState(&syncedSet, &pendingSet)
 		cloned := original.Clone()
@@ -365,7 +365,7 @@ func TestState_Clone(t *testing.T) {
 		require.Equal(t, originalPendingBefore, clonedPendingBefore)
 
 		// Modify original - sync blocks at the end of addr3 range to avoid splitting
-		logQuery := mdtypes.NewLogQuery(901, 1000, []common.Address{addr3})
+		logQuery := mdrtypes.NewLogQuery(901, 1000, []common.Address{addr3})
 		err := original.OnNewSyncedLogQuery(&logQuery)
 		require.NoError(t, err)
 
@@ -378,4 +378,195 @@ func TestState_Clone(t *testing.T) {
 		require.Equal(t, clonedPendingBefore, clonedPendingAfter,
 			"cloned state should be independent from original after modification")
 	})
+}
+
+func TestStateInitial_case_startBlock0(t *testing.T) {
+	var err error
+	configs := mdrtypes.NewSetSyncerConfig()
+	cfg := aggkittypes.SyncerConfig{
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{common.HexToAddress("0x10")},
+		FromBlock:         0,
+		ToBlock:           aggkittypes.FinalizedBlock,
+	}
+	configs.Add(cfg)
+	mapBlocks := map[aggkittypes.BlockNumberFinality]uint64{
+		aggkittypes.FinalizedBlock: 256,
+	}
+	syncSegments, err := configs.SyncSegments(mapBlocks)
+	require.NoError(t, err)
+	storageSyncSegments := mdrtypes.NewSetSyncSegment()
+	storageSyncSegments.Add(mdrtypes.NewSyncSegment(
+		common.HexToAddress("0x10"),
+		aggkitcommon.BlockRangeZero,
+		aggkittypes.FinalizedBlock,
+		true))
+
+	sut, err := NewStateFromStorageSyncedBlocks(
+		storageSyncSegments, *syncSegments)
+	require.NoError(t, err)
+	br := sut.GetTotalPendingBlockRange()
+	require.NotNil(t, br)
+	require.Equal(t, "From: 0, To: 256 (257)", br.String())
+	nextRequest, err := sut.NextQueryToSync(20, 250)
+	require.NoError(t, err)
+	require.Equal(t, "From: 0, To: 19 (20)", nextRequest.BlockRange.String())
+	// after: synced: {0-19}, pending: {20-256}
+	err = sut.OnNewSyncedLogQuery(nextRequest)
+	require.NoError(t, err)
+	br = sut.GetTotalPendingBlockRange()
+	require.Equal(t, "From: 20, To: 256 (237)", br.String())
+	require.True(t, sut.IsAvailable(*nextRequest))
+	// nextRequest = {20-400}
+	nextRequest.BlockRange = aggkitcommon.NewBlockRange(10, 400)
+	require.False(t, sut.IsAvailable(*nextRequest))
+	partial, subRequest := sut.IsPartiallyAvailable(*nextRequest)
+	require.True(t, partial)
+	require.Equal(t, "From: 10, To: 19 (10)", subRequest.BlockRange.String())
+}
+
+func TestStateInitial_case_startBlock1(t *testing.T) {
+	var err error
+	configs := mdrtypes.NewSetSyncerConfig()
+	cfg := aggkittypes.SyncerConfig{
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{common.HexToAddress("0x10")},
+		FromBlock:         1,
+		ToBlock:           aggkittypes.FinalizedBlock,
+	}
+	configs.Add(cfg)
+	mapBlocks := map[aggkittypes.BlockNumberFinality]uint64{
+		aggkittypes.FinalizedBlock: 256,
+	}
+	syncSegments, err := configs.SyncSegments(mapBlocks)
+	require.NoError(t, err)
+	storageSyncSegments := mdrtypes.NewSetSyncSegment()
+	storageSyncSegments.Add(mdrtypes.NewSyncSegment(
+		common.HexToAddress("0x10"),
+		aggkitcommon.BlockRangeZero,
+		aggkittypes.FinalizedBlock,
+		true))
+
+	sut, err := NewStateFromStorageSyncedBlocks(
+		storageSyncSegments, *syncSegments)
+	require.NoError(t, err)
+	br := sut.GetTotalPendingBlockRange()
+	require.NotNil(t, br)
+	require.Equal(t, "From: 1, To: 256 (256)", br.String())
+}
+func TestStateInitial_ExtendPendingRange(t *testing.T) {
+	var err error
+	configs := mdrtypes.NewSetSyncerConfig()
+	cfg := aggkittypes.SyncerConfig{
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{common.HexToAddress("0x10")},
+		FromBlock:         1,
+		ToBlock:           aggkittypes.FinalizedBlock,
+	}
+	configs.Add(cfg)
+	mapBlocks := map[aggkittypes.BlockNumberFinality]uint64{
+		aggkittypes.FinalizedBlock: 200,
+	}
+
+	syncSegments, err := configs.SyncSegments(mapBlocks)
+	require.NoError(t, err)
+
+	storageSyncSegments := mdrtypes.NewSetSyncSegment()
+	storageSyncSegments.Add(mdrtypes.NewSyncSegment(
+		common.HexToAddress("0x10"),
+		aggkitcommon.BlockRangeZero,
+		aggkittypes.FinalizedBlock,
+		true))
+	sut, err := NewStateFromStorageSyncedBlocks(
+		storageSyncSegments, *syncSegments)
+	require.NoError(t, err)
+	pendingSync := sut.GetTotalPendingBlockRange()
+	require.NotNil(t, pendingSync)
+
+	// Sync first batch 1-200
+	err = sut.OnNewSyncedLogQuery(&mdrtypes.LogQuery{
+		BlockRange: aggkitcommon.NewBlockRange(1, 200),
+		Addrs:      []common.Address{common.HexToAddress("0x10")},
+	})
+	require.NoError(t, err)
+	require.True(t, sut.IsSyncFinished())
+
+	// Now extend the range to block 350
+	mapBlocks[aggkittypes.FinalizedBlock] = 350
+	err = sut.ExtendPendingRange(mapBlocks, &configs)
+	require.NoError(t, err)
+	pendingBlockRange := sut.GetTotalPendingBlockRange()
+	require.NotNil(t, pendingBlockRange)
+	require.Equal(t, "From: 201, To: 350 (150)", pendingBlockRange.String())
+}
+
+func TestState_AfterFullySync(t *testing.T) {
+	// Setup: Create a state with a segment to sync from block 1 to 100
+	addr := common.HexToAddress("0x123124543423")
+	configs := mdrtypes.NewSetSyncerConfig()
+	cfg := aggkittypes.SyncerConfig{
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{addr},
+		FromBlock:         1,
+		ToBlock:           aggkittypes.LatestBlock,
+	}
+	configs.Add(cfg)
+
+	// Initial target block is 100
+	mapBlocks := map[aggkittypes.BlockNumberFinality]uint64{
+		aggkittypes.LatestBlock: 100,
+	}
+
+	syncSegments, err := configs.SyncSegments(mapBlocks)
+	require.NoError(t, err)
+
+	// Start with empty storage (nothing synced yet)
+	storageSyncSegments := mdrtypes.NewSetSyncSegment()
+	storageSyncSegments.Add(mdrtypes.NewSyncSegment(
+		addr,
+		aggkitcommon.BlockRangeZero,
+		aggkittypes.LatestBlock,
+		true))
+
+	state, err := NewStateFromStorageSyncedBlocks(storageSyncSegments, *syncSegments)
+	require.NoError(t, err)
+
+	// Verify initial pending state
+	require.False(t, state.IsSyncFinished(), "should not be finished initially")
+	require.Equal(t, uint64(100), state.TotalBlocksPendingToSync(), "should have 100 blocks pending")
+
+	// Sync all blocks 1-100
+	logQuery := mdrtypes.NewLogQuery(1, 100, []common.Address{addr})
+	err = state.OnNewSyncedLogQuery(&logQuery)
+	require.NoError(t, err)
+
+	// Verify sync is complete
+	require.True(t, state.IsSyncFinished(), "should be finished after syncing all blocks")
+	require.Equal(t, uint64(0), state.TotalBlocksPendingToSync(), "should have 0 blocks pending")
+
+	// Verify synced range
+	syncedSegments := state.SyncedSegmentsByContract([]common.Address{addr})
+	require.Equal(t, 1, len(syncedSegments))
+	require.Equal(t, aggkitcommon.NewBlockRange(1, 100), syncedSegments[0].BlockRange)
+
+	// Now simulate that the chain has progressed to block 150
+	// This is analogous to UpdateTargetBlockToNumber in the SetSyncSegment test
+	mapBlocks[aggkittypes.LatestBlock] = 150
+	err = state.ExtendPendingRange(mapBlocks, &configs)
+	require.NoError(t, err)
+
+	// Verify that new blocks are now pending (101-150)
+	require.False(t, state.IsSyncFinished(), "should not be finished after extending range")
+	require.Equal(t, uint64(50), state.TotalBlocksPendingToSync(), "should have 50 new blocks pending")
+
+	// Verify pending range
+	pendingBlockRange := state.GetTotalPendingBlockRange()
+	require.NotNil(t, pendingBlockRange)
+	require.Equal(t, "From: 101, To: 150 (50)", pendingBlockRange.String())
+
+	// Verify synced segments remain unchanged
+	syncedSegments = state.SyncedSegmentsByContract([]common.Address{addr})
+	require.Equal(t, 1, len(syncedSegments))
+	require.Equal(t, aggkitcommon.NewBlockRange(1, 100), syncedSegments[0].BlockRange,
+		"synced range should remain unchanged at 1-100")
 }

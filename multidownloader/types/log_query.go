@@ -57,7 +57,7 @@ func (l *LogQuery) String() string {
 	if l == nil {
 		return "LogQuery: <nil>"
 	}
-	if l.BlockHash != nil {
+	if l.IsBlockHashQuery() {
 		bn := " (?)"
 		if !l.BlockRange.IsEmpty() {
 			bn = fmt.Sprintf(" (%d)", l.BlockRange.FromBlock)
@@ -65,6 +65,12 @@ func (l *LogQuery) String() string {
 		return fmt.Sprintf("LogQuery: addrs=%v, blockHash=%s%s", l.Addrs, l.BlockHash.String(), bn)
 	}
 	return fmt.Sprintf("LogQuery: addrs=%v, blockRange=%s", l.Addrs, l.BlockRange.String())
+}
+func (l *LogQuery) IsBlockHashQuery() bool {
+	return l != nil && l.BlockHash != nil
+}
+func (l *LogQuery) IsBlockRangeQuery() bool {
+	return l != nil && l.BlockHash == nil
 }
 
 // ToRPCFilterQuery converts the LogQuery to an Ethereum FilterQuery
@@ -80,4 +86,23 @@ func (l *LogQuery) ToRPCFilterQuery() ethereum.FilterQuery {
 		FromBlock: new(big.Int).SetUint64(l.BlockRange.FromBlock),
 		ToBlock:   new(big.Int).SetUint64(l.BlockRange.ToBlock),
 	}
+}
+func (l *LogQuery) IsEmpty() bool {
+	return l == nil || len(l.Addrs) == 0 && l.BlockRange.IsEmpty() &&
+		l.BlockHash == nil
+}
+
+func (l *LogQuery) IsValid() bool {
+	if l == nil {
+		return true
+	}
+	if l.BlockHash != nil {
+		return true
+	}
+	// We use value {0,0} to represent empty range in DB, so it's forbidden
+	// to use the BlockRange(0,0) for multidownloader
+	if !l.BlockRange.IsEmpty() && l.BlockRange.FromBlock == 0 && l.BlockRange.ToBlock == 0 {
+		return false
+	}
+	return true
 }

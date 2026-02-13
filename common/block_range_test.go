@@ -31,25 +31,25 @@ func TestBlockRange_Gap(t *testing.T) {
 			name:     "a and b overlap",
 			a:        NewBlockRange(5, 15),
 			b:        NewBlockRange(10, 20),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "a and b touch at edge",
 			a:        NewBlockRange(1, 5),
 			b:        NewBlockRange(6, 10),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "b and a touch at edge",
 			a:        NewBlockRange(6, 10),
 			b:        NewBlockRange(1, 5),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "identical ranges",
 			a:        NewBlockRange(5, 10),
 			b:        NewBlockRange(5, 10),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "a after b with no overlap and gap of 1",
@@ -65,45 +65,57 @@ func TestBlockRange_Gap(t *testing.T) {
 		},
 		{
 			name:     "empty a",
-			a:        NewBlockRange(0, 0),
+			a:        BlockRangeZero,
 			b:        NewBlockRange(10, 15),
-			expected: NewBlockRange(1, 9),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "empty b",
 			a:        NewBlockRange(10, 15),
-			b:        NewBlockRange(0, 0),
-			expected: NewBlockRange(1, 9),
+			b:        BlockRangeZero,
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "both empty",
-			a:        NewBlockRange(0, 0),
-			b:        NewBlockRange(0, 0),
-			expected: NewBlockRange(0, 0),
+			a:        BlockRangeZero,
+			b:        BlockRangeZero,
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "b before a with no gap",
 			a:        NewBlockRange(5, 10),
 			b:        NewBlockRange(1, 4),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "invalid a",
 			a:        NewBlockRange(10, 5), // from > to
 			b:        NewBlockRange(1, 15),
-			expected: NewBlockRange(0, 0), // should return empty range
+			expected: BlockRangeZero, // should return empty range
 		},
 		{
 			name:     "invalid b",
 			a:        NewBlockRange(1, 15),
 			b:        NewBlockRange(10, 5), // from > to
-			expected: NewBlockRange(0, 0),  // should return empty range
+			expected: BlockRangeZero,       // should return empty range
 		},
 		{
 			name:     "start verification case",
 			a:        NewBlockRange(1, 5),
 			b:        NewBlockRange(10, 10),
 			expected: NewBlockRange(6, 9),
+		},
+		{
+			name:     "{0,0} a",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(10, 15),
+			expected: NewBlockRange(1, 9),
+		},
+		{
+			name:     "{0,0} b",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(0, 0),
+			expected: NewBlockRange(1, 9),
 		},
 	}
 
@@ -124,8 +136,18 @@ func TestBlockRange_IsEmpty(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "empty zero value",
+			name:     "{0,0} not empty",
 			br:       NewBlockRange(0, 0),
+			expected: false,
+		},
+		{
+			name:     "BlockRangeZero isempty",
+			br:       BlockRangeZero,
+			expected: true,
+		},
+		{
+			name:     "BlockRange{} isempty",
+			br:       BlockRange{},
 			expected: true,
 		},
 		{
@@ -207,32 +229,32 @@ func TestBlockRange_Greater(t *testing.T) {
 		},
 		{
 			name:     "empty a, non-empty b",
-			a:        NewBlockRange(0, 0),
+			a:        BlockRangeZero,
 			b:        NewBlockRange(1, 10),
 			expected: false,
 		},
 		{
 			name:     "non-empty a, empty b",
 			a:        NewBlockRange(5, 10),
-			b:        NewBlockRange(0, 0),
+			b:        BlockRangeZero,
 			expected: true,
 		},
 		{
 			name:     "both empty",
-			a:        NewBlockRange(0, 0),
-			b:        NewBlockRange(0, 0),
+			a:        BlockRangeZero,
+			b:        BlockRangeZero,
 			expected: false,
 		},
 		{
-			name:     "invalid a (from > to)",
-			a:        NewBlockRange(10, 5),
-			b:        NewBlockRange(1, 4),
-			expected: true,
+			name:     "{0,0} > {0,1} = false",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(0, 1),
+			expected: false,
 		},
 		{
-			name:     "invalid b (from > to)",
-			a:        NewBlockRange(5, 10),
-			b:        NewBlockRange(10, 5),
+			name:     "{0,1} > {0,0} = false (overlaps!)",
+			a:        NewBlockRange(0, 1),
+			b:        NewBlockRange(0, 0),
 			expected: false,
 		},
 	}
@@ -406,15 +428,15 @@ func TestBlockRange_Subtract(t *testing.T) {
 }
 func TestBlockRange_Intersect(t *testing.T) {
 	bn := NewBlockRange(10, 50)
-	require.Equal(t, BlockRange{10, 15}, bn.Intersect(NewBlockRange(5, 15)))
-	require.Equal(t, BlockRange{30, 40}, bn.Intersect(NewBlockRange(30, 40)))
+	require.Equal(t, NewBlockRange(10, 15), bn.Intersect(NewBlockRange(5, 15)))
+	require.Equal(t, NewBlockRange(30, 40), bn.Intersect(NewBlockRange(30, 40)))
 	require.Equal(t, BlockRangeZero, bn.Intersect(NewBlockRange(51, 60)))
 }
 
 func TestBlockRange_Cap(t *testing.T) {
 	bn := NewBlockRange(10, 50)
-	require.Equal(t, BlockRange{10, 40}, bn.Cap(40))
-	require.Equal(t, BlockRange{10, 50}, bn.Cap(60))
+	require.Equal(t, NewBlockRange(10, 40), bn.Cap(40))
+	require.Equal(t, NewBlockRange(10, 50), bn.Cap(60))
 	require.Equal(t, BlockRangeZero, bn.Cap(5))
 }
 
@@ -557,7 +579,9 @@ func TestBlockRange_ListBlockNumbers(t *testing.T) {
 	bn2 := NewBlockRange(3, 5)
 	require.Equal(t, []uint64{3, 4, 5}, bn2.ListBlockNumbers())
 	bn3 := NewBlockRange(0, 0)
-	require.Equal(t, []uint64{}, bn3.ListBlockNumbers())
+	require.Equal(t, []uint64{0}, bn3.ListBlockNumbers())
+	bn4 := BlockRangeZero
+	require.Equal(t, []uint64{}, bn4.ListBlockNumbers())
 }
 
 func TestBlockRange_SplitByBlockNumber(t *testing.T) {

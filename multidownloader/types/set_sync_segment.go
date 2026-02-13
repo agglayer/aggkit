@@ -1,12 +1,10 @@
 package types
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -37,7 +35,7 @@ func NewSetSyncSegment() SetSyncSegment {
 }
 
 // NewSetSyncSegmentFromLogQuery creates a new SetSyncSegment from a LogQuery
-func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) SetSyncSegment {
+func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) (SetSyncSegment, error) {
 	set := NewSetSyncSegment()
 	for _, addr := range logQuery.Addrs {
 		segment := SyncSegment{
@@ -46,7 +44,7 @@ func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) SetSyncSegment {
 		}
 		set.Add(segment)
 	}
-	return set
+	return set, nil
 }
 
 // Add adds a new SyncSegment to the SetSyncSegment, merging block ranges
@@ -92,7 +90,7 @@ func (f *SetSyncSegment) SubtractSegments(segments *SetSyncSegment) error {
 	newSegments := f.Clone()
 	for _, segment := range segments.segments {
 		previousSegment, exists := newSegments.GetByContract(segment.ContractAddr)
-		if exists {
+		if exists && !previousSegment.IsEmpty() {
 			brs := previousSegment.BlockRange.Subtract(segment.BlockRange)
 			switch len(brs) {
 			case 0:
@@ -115,7 +113,10 @@ func (f *SetSyncSegment) SubtractLogQuery(logQuery *LogQuery) error {
 	if logQuery == nil {
 		return nil
 	}
-	newSegments := NewSetSyncSegmentFromLogQuery(logQuery)
+	newSegments, err := NewSetSyncSegmentFromLogQuery(logQuery)
+	if err != nil {
+		return err
+	}
 	return f.SubtractSegments(&newSegments)
 }
 func isIncluded(ranges []aggkitcommon.BlockRange, br aggkitcommon.BlockRange) bool {
@@ -154,21 +155,27 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 	return total
 }
 
-// UpdateTargetBlockToNumber updates the ToBlock to real blockNumber
-func (f *SetSyncSegment) UpdateTargetBlockToNumber(ctx context.Context,
-	blockNotifierGetter ethermantypes.BlockNotifierManager) error {
+// GetTargetToBlockTags returns the list of TargetToBlock tags in the
+// SetSyncSegment witout duplicates
+func (f *SetSyncSegment) GetTargetToBlockTags() []aggkittypes.BlockNumberFinality {
 	if f == nil {
 		return nil
 	}
+	result := make([]aggkittypes.BlockNumberFinality, 0, len(f.segments))
 	for _, segment := range f.segments {
-		currentBlock, err := blockNotifierGetter.GetCurrentBlockNumber(ctx, segment.TargetToBlock)
-		if err != nil {
-			return fmt.Errorf("setSyncSegment.UpdateToBlock: error getting BlockNotifier for finality=%s: %w",
-				segment.TargetToBlock.String(), err)
+		// if it's already in list don't add it again
+		exists := false
+		for _, existing := range result {
+			if existing == segment.TargetToBlock {
+				exists = true
+				break
+			}
 		}
-		segment.UpdateToBlock(currentBlock)
+		if !exists {
+			result = append(result, segment.TargetToBlock)
+		}
 	}
-	return nil
+	return result
 }
 
 // IsAvailable checks if the required LogQuery data is already synced
@@ -424,4 +431,12 @@ func (s *SetSyncSegment) GetContracts() []common.Address {
 		contracts = append(contracts, segment.ContractAddr)
 	}
 	return contracts
+}
+
+func (s *SetSyncSegment) GetSegments() []SyncSegment {
+	res := make([]SyncSegment, 0, len(s.segments))
+	for _, segment := range s.segments {
+		res = append(res, *segment)
+	}
+	return res
 }

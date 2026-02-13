@@ -173,7 +173,7 @@ func TestWithReorgs(t *testing.T) {
 			useMultidownloaderForTest: false,
 		},
 		{
-			name:                      "with new multidownloader",
+			name:                      "with multidownloader",
 			useMultidownloaderForTest: true,
 		},
 	}
@@ -214,8 +214,8 @@ func TestWithReorgs(t *testing.T) {
 				finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-15")
 				require.NoError(t, err)
 				cfgMD.BlockFinality = *finality
-				cfgMD.WaitPeriodToCheckCatchUp = cfgtypes.NewDuration(time.Millisecond * 100)
-				cfgMD.PeriodToCheckReorgs = cfgtypes.NewDuration(time.Millisecond * 100)
+				cfgMD.WaitPeriodToCheckCatchUp = cfgtypes.NewDuration(time.Millisecond * 1)
+				cfgMD.PeriodToCheckReorgs = cfgtypes.NewDuration(time.Millisecond * 1)
 				evmMultidownloader, err = multidownloader.NewEVMMultidownloader(
 					log.WithFields("module", "multidownloader"),
 					cfgMD,
@@ -319,7 +319,9 @@ func TestWithReorgs(t *testing.T) {
 			expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
 			require.NoError(t, err)
 			// TODO: Remove ths sleep
-			time.Sleep(time.Second * 1) // wait for syncer to process the reorg
+			if !tt.useMultidownloaderForTest {
+				time.Sleep(time.Second * 1) // wait for syncer to process the reorg
+			}
 			checkBlocks(t, ctx, client.Client(), evmMultidownloader, 0, 10)
 
 			lastProcessedBlock, err := syncer.GetLastProcessedBlock(ctx)
@@ -339,7 +341,9 @@ func TestWithReorgs(t *testing.T) {
 			// wait for syncer to process the reorg
 			helpers.CommitBlocks(t, client, 1, time.Millisecond*100) // Commit block 7
 			// TODO: Remove ths sleep
-			time.Sleep(time.Second * 1)
+			if !tt.useMultidownloaderForTest {
+				time.Sleep(time.Second * 1)
+			}
 			// create some events and update the trees
 			updateL1InfoTreeAndRollupExitTree(2, 1)
 			helpers.CommitBlocks(t, client, 1, time.Millisecond*100)

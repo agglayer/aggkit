@@ -51,9 +51,11 @@ func TestStorage_UpsertSyncerConfigs(t *testing.T) {
 
 	syncSegments, err := storage.GetSyncedBlockRangePerContract(nil)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(syncSegments.GetAddressesForBlockRange(
+	require.Equal(t, 0, len(syncSegments.GetAddressesForBlockRange(
 		aggkitcommon.NewBlockRange(0, 10000),
-	)))
+	)),
+		"There are no synced segments for the given block range",
+	)
 	seg1, exists := syncSegments.GetByContract(exampleAddr1)
 	require.True(t, exists)
 	require.Equal(t, aggkittypes.FinalizedBlock, seg1.TargetToBlock)
@@ -110,6 +112,16 @@ func TestStorage_UpdateSyncedStatus(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, aggkitcommon.NewBlockRange(1500, 2500), seg2.BlockRange)
 	require.Equal(t, aggkittypes.LatestBlock, seg2.TargetToBlock)
+
+	invalidSyncSegment := mdrtypes.NewSyncSegment(
+		exampleAddr1,
+		aggkitcommon.NewBlockRange(0, 0),
+		aggkittypes.FinalizedBlock,
+		true,
+	)
+	err = storage.UpdateSyncedStatus(nil, []mdrtypes.SyncSegment{invalidSyncSegment})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid segment")
 }
 
 func TestSyncStatusRow_ToSyncSegment(t *testing.T) {
@@ -164,5 +176,19 @@ func TestSyncStatusRow_ToSyncSegment(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error parsing target to block finality")
 		require.Equal(t, mdrtypes.SyncSegment{}, segment)
+	})
+	t.Run("empty range", func(t *testing.T) {
+		row := syncStatusRow{
+			Address:         exampleAddr1,
+			TargetFromBlock: 1000,
+			TargetToBlock:   "FinalizedBlock",
+			SyncedFromBlock: 0,
+			SyncedToBlock:   0,
+			SyncersIDs:      "syncer1",
+		}
+
+		segment, err := row.ToSyncSegment()
+		require.NoError(t, err)
+		require.Equal(t, true, segment.BlockRange.IsEmpty())
 	})
 }

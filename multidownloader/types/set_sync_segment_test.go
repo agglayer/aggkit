@@ -4,10 +4,8 @@ import (
 	"testing"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/etherman/types/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -150,6 +148,32 @@ func TestSetSyncSegment_Subtract(t *testing.T) {
 		result := set1.SubtractSegments(&set2)
 		require.NotNil(t, result)
 	})
+
+	t.Run("subtract from empty BlockRange", func(t *testing.T) {
+		set1 := NewSetSyncSegment()
+		set2 := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		set1.Add(SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.BlockRangeZero,
+		})
+		set2.Add(SyncSegment{
+			ContractAddr: addr,
+			BlockRange:   aggkitcommon.NewBlockRange(0, 20),
+		})
+		emptySetStr := set1.String()
+		Set2Str := set2.String()
+		// {empty} - {0-20} = {empty}
+
+		err := set1.SubtractSegments(&set2)
+		require.NoError(t, err)
+		require.Equal(t, emptySetStr, set1.String())
+
+		// {0-20} - {empty} = {0-20}
+		err = set2.SubtractSegments(&set1)
+		require.NoError(t, err)
+		require.Equal(t, Set2Str, set2.String())
+	})
 }
 
 func TestSetSyncSegment_TotalBlocks(t *testing.T) {
@@ -186,29 +210,7 @@ func TestSetSyncSegment_TotalBlocks(t *testing.T) {
 		require.Equal(t, uint64(20), set.TotalBlocks())
 	})
 }
-func TestSetSyncSegment_UpdateTargetBlockToNumber(t *testing.T) {
-	t.Run("nil receiver", func(t *testing.T) {
-		var set *SetSyncSegment
-		err := set.UpdateTargetBlockToNumber(t.Context(), nil)
-		require.NoError(t, err)
-	})
 
-	t.Run("update target block", func(t *testing.T) {
-		set := NewSetSyncSegment()
-		finality := aggkittypes.LatestBlock
-		segment := SyncSegment{
-			ContractAddr:  common.HexToAddress("0x123"),
-			BlockRange:    aggkitcommon.NewBlockRange(1, 10),
-			TargetToBlock: finality,
-		}
-		set.Add(segment)
-		mockBlockNotifierManager := mocks.NewBlockNotifierManager(t)
-
-		mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, finality).Return(uint64(150), nil).Once()
-		err := set.UpdateTargetBlockToNumber(t.Context(), mockBlockNotifierManager)
-		require.NoError(t, err)
-	})
-}
 func TestSetSyncSegment_IsAvailable(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		var set *SetSyncSegment
@@ -643,41 +645,20 @@ func TestSetSyncSegment_RemoveLogQuerySegment(t *testing.T) {
 		require.Error(t, err)
 	})
 }
-func TestSetSyncSegment_AfterFullySync(t *testing.T) {
-	set := NewSetSyncSegment()
-	addr := common.HexToAddress("0x123124543423")
-	segment := SyncSegment{
-		ContractAddr:  addr,
-		BlockRange:    aggkitcommon.NewBlockRange(1, 100),
-		TargetToBlock: aggkittypes.LatestBlock,
-	}
-	set.Add(segment)
-
-	logQuery := &LogQuery{
-		Addrs:      []common.Address{addr},
-		BlockRange: aggkitcommon.NewBlockRange(1, 100),
-	}
-
-	err := set.SubtractLogQuery(logQuery)
-	require.NoError(t, err)
-	// The segment is empty so is not returned by GetByContract
-	segment, exists := set.GetByContract(addr)
-	require.True(t, exists)
-	require.True(t, segment.IsEmpty())
-	require.True(t, set.Finished())
-	require.Equal(t, uint64(0), set.TotalBlocks())
-
-	mockBlockManager := mocks.NewBlockNotifierManager(t)
-	mockBlockManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.LatestBlock).Return(uint64(150), nil).Once()
-	err = set.UpdateTargetBlockToNumber(t.Context(), mockBlockManager)
-	require.NoError(t, err)
-	require.Equal(t, uint64(50), set.TotalBlocks())
-	segment, exists = set.GetByContract(addr)
-	require.True(t, exists)
-	require.Equal(t, "From: 101, To: 150 (50)", segment.BlockRange.String())
-}
 
 func TestSetSyncSegment_GetTotalPendingBlockRange_WithEmptySegments(t *testing.T) {
+	t.Run("a segment with empty range", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		addr := common.HexToAddress("0x123")
+		segment := SyncSegment{
+			ContractAddr:  addr,
+			BlockRange:    aggkitcommon.BlockRangeZero,
+			TargetToBlock: aggkittypes.LatestBlock,
+		}
+		set.Add(segment)
+		br := set.GetTotalPendingBlockRange()
+		require.Nil(t, br)
+	})
 	t.Run("single empty segment returns nil", func(t *testing.T) {
 		set := NewSetSyncSegment()
 		addr := common.HexToAddress("0x123")

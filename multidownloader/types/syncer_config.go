@@ -138,23 +138,50 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 }
 
 // SyncSegments groups the SetSyncerConfig into segments per contract address and blockRange
-func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
+func (f *SetSyncerConfig) SyncSegments(
+	blockNumbers map[aggkittypes.BlockNumberFinality]uint64) (*SetSyncSegment, error) {
 	segments := NewSetSyncSegment()
 	// Trivial implementation; it needs to be improved to group by
 	// contract address and block range
 	for _, filter := range f.filters {
 		// TODO: instead of calling RPC use block_notifier_values
 		for _, addr := range filter.ContractAddresses {
+			toBlock, ok := blockNumbers[filter.ToBlock]
+			if !ok {
+				return nil, fmt.Errorf("SyncSegments: block number for finality %s not found", filter.ToBlock.String())
+			}
 			segment := SyncSegment{
-				ContractAddr: addr,
-				// Initially set ToBlock as 0; it will be updated later
-				BlockRange:    aggkitcommon.NewBlockRange(filter.FromBlock, 0),
+				ContractAddr:  addr,
+				BlockRange:    aggkitcommon.NewBlockRange(filter.FromBlock, toBlock),
 				TargetToBlock: filter.ToBlock,
 			}
 			segments.Add(segment)
 		}
 	}
 	return &segments, nil
+}
+
+// GetTargetToBlockTags returns the list of TargetToBlock tags in the
+// SetSyncSegment witout duplicates
+func (f *SetSyncerConfig) GetTargetToBlockTags() []aggkittypes.BlockNumberFinality {
+	if f == nil {
+		return nil
+	}
+	result := make([]aggkittypes.BlockNumberFinality, 0, len(f.filters))
+	for _, segment := range f.filters {
+		// if it's already in list don't add it again
+		exists := false
+		for _, existing := range result {
+			if existing == segment.ToBlock {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			result = append(result, segment.ToBlock)
+		}
+	}
+	return result
 }
 
 // convertContractMapToSlice converts map to slice

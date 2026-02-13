@@ -47,7 +47,7 @@ func TestDownloadNextBlocks_Success(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -122,7 +122,7 @@ func TestDownloadNextBlocks_ContextCancellation(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -157,7 +157,7 @@ func TestDownloadNextBlocks_ReorgDetected(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -211,7 +211,7 @@ func TestDownloadNextBlocks_NilLastBlockHeader(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -284,7 +284,7 @@ func TestDownloadNextBlocks_LogsNotAvailableInitially(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -368,7 +368,7 @@ func TestDownloadNextBlocks_TimeoutWaitingForLogs(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -415,7 +415,7 @@ func TestDownloadNextBlocks_ContextCancelledDuringRetry(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -462,7 +462,7 @@ func TestDownloadNextBlocks_ReorgDetectedDuringRetry(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -522,7 +522,7 @@ func TestExecuteLogQuery_FullyAvailable(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -596,7 +596,7 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -666,7 +666,7 @@ func TestExecuteLogQuery_NotAvailable(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -701,7 +701,7 @@ func TestExecuteLogQuery_GetEthLogsError(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -734,7 +734,7 @@ func TestNewMaxLogQuery_WithLastBlockHeader(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                nil,
+		multidownloader:                    nil,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -767,7 +767,7 @@ func TestNewMaxLogQuery_WithoutLastBlockHeader(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                nil,
+		multidownloader:                    nil,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -797,7 +797,7 @@ func TestCheckReorgedBlock_NilBlockHeader(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -821,7 +821,7 @@ func TestCheckReorgedBlock_ValidBlock(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -851,7 +851,7 @@ func TestCheckReorgedBlock_InvalidBlock(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -893,7 +893,7 @@ func TestCheckReorgedBlock_ContextCancellation(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -922,7 +922,7 @@ func TestCheckReorgedBlock_CheckValidBlockError(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -953,7 +953,7 @@ func TestCheckReorgedBlock_GetReorgedDataError(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -985,7 +985,7 @@ func TestCheckReorgedBlock_NilReorgData(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                mockMdr,
+		multidownloader:                    mockMdr,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           sync.LogAppenderMap{},
@@ -1025,7 +1025,7 @@ func TestAppendLog_Success(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                nil,
+		multidownloader:                    nil,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
@@ -1074,7 +1074,7 @@ func TestAppendLog_RetryOnError(t *testing.T) {
 	}
 
 	download := &EVMDownloader{
-		mdr:                                nil,
+		multidownloader:                    nil,
 		logger:                             logger,
 		rh:                                 rh,
 		appender:                           appender,
