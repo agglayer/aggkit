@@ -408,7 +408,7 @@ func TestStateInitial_case_startBlock0(t *testing.T) {
 	br := sut.GetTotalPendingBlockRange()
 	require.NotNil(t, br)
 	require.Equal(t, "From: 0, To: 256 (257)", br.String())
-	nextRequest, err := sut.NextQueryToSync(20, 250)
+	nextRequest, err := sut.NextQueryToSync(20, 250, true)
 	require.NoError(t, err)
 	require.Equal(t, "From: 0, To: 19 (20)", nextRequest.BlockRange.String())
 	// after: synced: {0-19}, pending: {20-256}

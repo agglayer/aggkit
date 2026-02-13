@@ -186,8 +186,9 @@ func (s *State) SyncedSegmentsByContract(addrs []common.Address) []mdrtypes.Sync
 }
 
 // NextQueryToSync returns the next LogQuery to sync based on the pending segments and the given chunk size
-func (s *State) NextQueryToSync(syncBlockChunkSize uint32, maxBlockNumber uint64) (*mdrtypes.LogQuery, error) {
-	return s.Pending.NextQuery(syncBlockChunkSize, maxBlockNumber)
+func (s *State) NextQueryToSync(syncBlockChunkSize uint32,
+	maxBlockNumber uint64, applyMaxBlockNumber bool) (*mdrtypes.LogQuery, error) {
+	return s.Pending.NextQuery(syncBlockChunkSize, maxBlockNumber, applyMaxBlockNumber)
 }
 
 func (s *State) CompletionPercentage() map[common.Address]float64 {

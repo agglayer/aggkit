@@ -623,11 +623,23 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	}
 	blocks := pendingBlockRange.ListBlockNumbers()
 	// TODO: Check that the blocks are all inside unsafe range
-	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
+	blockHeadersResult, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
 		blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: failed to retrieve %s block headers: %w", pendingBlockRange.String(), err)
 	}
+	// Check for partial failures
+	if !blockHeadersResult.Success() {
+		for blockNum, blockErr := range blockHeadersResult.Errors {
+			dh.log.Errorf("Unsafe/Step: failed to retrieve block %d: %v", blockNum, blockErr)
+		}
+		if !blockHeadersResult.PartialSuccess() {
+			return false, fmt.Errorf("Unsafe/Step: failed to retrieve any block headers for %s", pendingBlockRange.String())
+		}
+		dh.log.Warnf("Unsafe/Step: partial success retrieving block headers: %d/%d succeeded",
+			len(blockHeadersResult.Headers), len(blocks))
+	}
+	blockHeaders := blockHeadersResult.GetOrderedHeaders(blocks)
 	dh.log.Debugf("Unsafe/Step: querying logs for %s", pendingBlockRange.String())
 	logQueries := dh.getUnsafeLogQueries(blockHeaders)
 	logs, err := dh.requestMultiplesLogs(ctx, logQueries)
@@ -685,11 +697,23 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
 	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks", len(blocks))
-	blockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
+	blockHeadersResult, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
 		blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: failed to retrieve %d block headers: %w", len(blocks), err)
 	}
+	// Check for partial failures
+	if !blockHeadersResult.Success() {
+		for blockNum, blockErr := range blockHeadersResult.Errors {
+			dh.log.Errorf("Safe/Step: failed to retrieve block %d: %v", blockNum, blockErr)
+		}
+		if !blockHeadersResult.PartialSuccess() {
+			return false, fmt.Errorf("Safe/Step: failed to retrieve any block headers")
+		}
+		dh.log.Warnf("Safe/Step: partial success retrieving block headers: %d/%d succeeded",
+			len(blockHeadersResult.Headers), len(blocks))
+	}
+	blockHeaders := blockHeadersResult.GetOrderedHeaders(blocks)
 
 	// Calculate new state (not set in memory until commit is successful)
 	dh.mutex.Lock()
@@ -847,7 +871,7 @@ func (dh *EVMMultidownloader) getNextQuery(ctx context.Context, chunk uint32, sa
 	} else {
 		maxBlock = 0
 	}
-	logQueryData, err := dh.state.NextQueryToSync(chunk, maxBlock)
+	logQueryData, err := dh.state.NextQueryToSync(chunk, maxBlock, true)
 	if err != nil {
 		return nil, fmt.Errorf("getNextQuery: cannot get NextQuery: %w", err)
 	}
@@ -1022,14 +1046,31 @@ func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
 		return nil
 	}
 	blocksNumber := blocks.BlockNumbers()
-	currentBlockHeaders, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
+	currentBlockHeadersResult, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
 		blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return fmt.Errorf("detectReorgs: cannot retrieve block headers: %w", err)
 	}
+	// Check for any failures in retrieving block headers
+	if !currentBlockHeadersResult.Success() {
+		for blockNum, blockErr := range currentBlockHeadersResult.Errors {
+			dh.log.Errorf("detectReorgs: failed to retrieve block %d: %v", blockNum, blockErr)
+		}
+		if currentBlockHeadersResult.AreAllErrorsNotFound() {
+			return mdrtypes.NewDetectedReorgError(
+				currentBlockHeadersResult.ListBlocksNumberNotFound()[0],
+				mdrtypes.ReorgDetectionReason_MissingBlock,
+				common.Hash{}, common.Hash{},
+				fmt.Sprintf("detectReorgs: reorg detected at block number %d: block not found in RPC",
+					currentBlockHeadersResult.ListBlocksNumberNotFound()[0]))
+		}
+		return fmt.Errorf("detectReorgs: failed to retrieve some block headers for blocks: %w",
+			currentBlockHeadersResult.ComposeError())
+	}
+
 	// check blocks vs currentBlockHeaders. Must match by number and hash
 	storageBlocks := blocks.ToMap()
-	rpcBlocks := currentBlockHeaders.ToMap()
+	rpcBlocks := currentBlockHeadersResult.Headers
 	for _, number := range blocksNumber {
 		rpcBlock, exists := rpcBlocks[number]
 		if !exists {

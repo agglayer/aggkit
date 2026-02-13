@@ -92,7 +92,7 @@ func TestE2E(t *testing.T) {
 	if useMultidownloaderForTests {
 		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 		cfgMD.Enabled = true
-		finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-15")
+		finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-2")
 		require.NoError(t, err)
 		cfgMD.BlockFinality = *finality
 		evmMultidownloader, err = multidownloader.NewEVMMultidownloader(
@@ -211,7 +211,7 @@ func TestWithReorgs(t *testing.T) {
 			if tt.useMultidownloaderForTest {
 				cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
 				cfgMD.Enabled = true
-				finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-15")
+				finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-2")
 				require.NoError(t, err)
 				cfgMD.BlockFinality = *finality
 				cfgMD.WaitPeriodToCheckCatchUp = cfgtypes.NewDuration(time.Millisecond * 1)
@@ -341,9 +341,9 @@ func TestWithReorgs(t *testing.T) {
 			// wait for syncer to process the reorg
 			helpers.CommitBlocks(t, client, 1, time.Millisecond*100) // Commit block 7
 			// TODO: Remove ths sleep
-			if !tt.useMultidownloaderForTest {
-				time.Sleep(time.Second * 1)
-			}
+
+			time.Sleep(time.Second * 1)
+
 			// create some events and update the trees
 			updateL1InfoTreeAndRollupExitTree(2, 1)
 			helpers.CommitBlocks(t, client, 1, time.Millisecond*100)
@@ -370,6 +370,12 @@ func checkBlocks(t *testing.T, ctx context.Context, rawClient simulated.Client, 
 		log.Warn("checkBlocks: multidownloader is nil, skipping block check")
 		return
 	}
+	rpcLatest, err := rawClient.BlockNumber(ctx)
+	require.NoError(t, err)
+	mdrLatest, err := mdr.HeaderByNumber(ctx, nil)
+	require.NoError(t, err)
+	log.Infof("checkBlocks: from %d to %d, raw latest: %d, mdr latest: %d", fromBlock, toBlock, rpcLatest, mdrLatest.Number)
+
 	for i := fromBlock; i <= toBlock; i++ {
 		block, errRaw := rawClient.BlockByNumber(ctx, big.NewInt(int64(i)))
 		blockMDR, errMDR := mdr.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(i))

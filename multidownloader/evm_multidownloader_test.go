@@ -197,34 +197,27 @@ func TestPerformanceDownloaderParallelvsBatch(t *testing.T) {
 	start := time.Now()
 	headersBatch, err := etherman.RetrieveBlockHeaders(t.Context(), logger, nil, ethRPCClient, blockNumbersMap, 10)
 	require.NoError(t, err)
+	require.True(t, headersBatch.Success())
 	durationBatch := time.Since(start)
 	log.Infof("BatchMode took %s", durationBatch.String())
 
 	start = time.Now()
 	headersParallel, err := etherman.RetrieveBlockHeaders(t.Context(), logger, ethClientWrapped, nil, blockNumbersMap, 20)
 	require.NoError(t, err)
+	require.True(t, headersParallel.Success())
 	durationParallel := time.Since(start)
 	log.Infof("Parallel RPC took %s", durationParallel.String())
 
-	require.Equal(t, len(headersParallel), len(headersBatch))
+	require.Equal(t, len(headersParallel.Headers), len(headersBatch.Headers))
 	for _, blockNumber := range blockNumbersSlice {
-		headerP := getBlockHeader(t, blockNumber, headersParallel)
-		headerB := getBlockHeader(t, blockNumber, headersBatch)
+		headerP, existsP := headersParallel.Headers[blockNumber]
+		headerB, existsB := headersBatch.Headers[blockNumber]
+		require.True(t, existsP)
+		require.True(t, existsB)
 		require.NotNil(t, headerP)
 		require.NotNil(t, headerB)
 		require.Equal(t, headerP.Hash, headerB.Hash)
 	}
-}
-
-// getBlockHeader is only used in skipped tests
-func getBlockHeader(t *testing.T, bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
-	t.Helper()
-	for _, h := range headers {
-		if h.Number == bn {
-			return h
-		}
-	}
-	return nil
 }
 
 func TestEVMMultidownloader_NewEVMMultidownloader(t *testing.T) {

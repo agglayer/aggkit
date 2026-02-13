@@ -443,12 +443,12 @@ func TestSetSyncSegment_IsPartiallyAvailable(t *testing.T) {
 func TestSetSyncSegment_NextQuery(t *testing.T) {
 	t.Run("nil or empty segments", func(t *testing.T) {
 		var set *SetSyncSegment
-		query, err := set.NextQuery(100, 0)
+		query, err := set.NextQuery(100, 0, false)
 		require.Nil(t, query)
 		require.Equal(t, ErrFinished, err)
 
 		emptySet := NewSetSyncSegment()
-		query, err = emptySet.NextQuery(100, 0)
+		query, err = emptySet.NextQuery(100, 0, false)
 		require.Nil(t, query)
 		require.Equal(t, ErrFinished, err)
 	})

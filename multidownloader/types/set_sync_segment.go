@@ -248,7 +248,8 @@ func (f *SetSyncSegment) IsPartiallyAvailable(query LogQuery) (bool, *LogQuery) 
 
 // NextQuery generates the next LogQuery to sync based on the lowest FromBlock pending
 // to synchronize
-func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uint64) (*LogQuery, error) {
+func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32,
+	maxBlockNumber uint64, applyMaxBlockNumber bool) (*LogQuery, error) {
 	if f == nil || len(f.segments) == 0 {
 		return nil, ErrFinished
 	}
@@ -260,7 +261,7 @@ func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uin
 		lowestSegment.BlockRange.FromBlock,
 		lowestSegment.BlockRange.FromBlock+uint64(syncBlockChunkSize)-1,
 	))
-	if maxBlockNumber > 0 {
+	if applyMaxBlockNumber {
 		br = br.Cap(maxBlockNumber)
 	}
 	if br.IsEmpty() {

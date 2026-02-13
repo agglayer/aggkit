@@ -749,6 +749,58 @@ func TestReorgProcessor_ForcedReorgInDeveloperMode(t *testing.T) {
 	}
 }
 
+func TestReorgProcessor_ReorgMissingBlock(t *testing.T) {
+	logger := log.WithFields("module", "test")
+	mockPort := mdmocks.NewReorgPorter(t)
+	mockTx := dbmocks.NewTxer(t)
+
+	processor := &ReorgProcessor{
+		log:           logger,
+		port:          mockPort,
+		developerMode: false,
+	}
+	ctx := context.Background()
+	detectedReorgBlock := uint64(100)
+	reorgErr := mdtypes.NewDetectedReorgError(
+		detectedReorgBlock,
+		mdtypes.ReorgDetectionReason_MissingBlock,
+		common.Hash{},
+		common.Hash{},
+		"test reorg",
+	)
+	nowTimestamp := uint64(1234567890)
+	mockPort.EXPECT().TimeNowUnix().Return(nowTimestamp).Maybe()
+	mockPort.EXPECT().NewTx(ctx).Return(mockTx, nil).Once()
+	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(99)).
+		Return(&mdtypes.CompareBlockHeaders{
+			BlockNumber: 99,
+			StorageHeader: &aggkittypes.BlockHeader{
+				Number: 99,
+				Hash:   common.HexToHash("0x1234"),
+			},
+			RpcHeader: nil, // Missing block in RPC will cause GetBlockStorageAndRPC to return nil for RpcHeader
+		}, nil).Once()
+	mockPort.EXPECT().GetBlockStorageAndRPC(ctx, mockTx, uint64(98)).
+		Return(&mdtypes.CompareBlockHeaders{
+			BlockNumber: 98,
+			StorageHeader: &aggkittypes.BlockHeader{
+				Number: 98,
+				Hash:   common.HexToHash("0x1234"),
+			},
+			RpcHeader: &aggkittypes.BlockHeader{
+				Number: 98,
+				Hash:   common.HexToHash("0x1234"),
+			},
+		}, nil).Once()
+	mockPort.EXPECT().GetLastBlockNumberInStorage(mockTx).Return(uint64(110), nil).Once()
+	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock).Return(uint64(98), nil).Once()
+	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock).Return(uint64(90), nil).Once()
+	mockPort.EXPECT().MoveReorgedBlocks(mockTx, mock.Anything).Return(uint64(1), nil).Once()
+	mockTx.EXPECT().Commit().Return(nil).Once()
+	err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+	require.NoError(t, err)
+}
+
 func testForcedReorg(t *testing.T, developerMode bool, expectedReorgStartBlock uint64) {
 	t.Helper()
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/agglayer/aggkit/log"
@@ -11,135 +12,49 @@ import (
 	mockaggkittypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func TestConvertMapBlockRawEth(t *testing.T) {
-	tests := []struct {
-		name          string
-		blocks        []*blockRawEth
-		expected      []*aggkittypes.BlockHeader
-		expectedError bool
-	}{
-		{
-			name:          "empty map",
-			blocks:        []*blockRawEth{},
-			expected:      []*aggkittypes.BlockHeader{},
-			expectedError: false,
-		},
-		{
-			name: "single valid block",
-			blocks: []*blockRawEth{
-				{
-					Number:     "0x7b",
-					Hash:       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-					Timestamp:  "0x5f5e100",
-					ParentHash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-				},
-			},
-			expected: []*aggkittypes.BlockHeader{
-				{
-					Number: 123,
-					Hash:   common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					Time:   100000000,
-					ParentHash: func() *common.Hash {
-						h := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-						return &h
-					}(),
-				},
-			},
-			expectedError: false,
-		},
-		{
-			name: "multiple valid blocks",
-			blocks: []*blockRawEth{
-				{
-					Number:     "0x64",
-					Hash:       "0x1111111111111111111111111111111111111111111111111111111111111111",
-					Timestamp:  "0x1000",
-					ParentHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
-				},
-				{
-					Number:     "0xc8",
-					Hash:       "0x3333333333333333333333333333333333333333333333333333333333333333",
-					Timestamp:  "0x2000",
-					ParentHash: "0x4444444444444444444444444444444444444444444444444444444444444444",
-				},
-			},
-			expected: []*aggkittypes.BlockHeader{
-				{
-					Number: 100,
-					Hash:   common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
-					Time:   4096,
-					ParentHash: func() *common.Hash {
-						h := common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
-						return &h
-					}(),
-				},
-				{
-					Number: 200,
-					Hash:   common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
-					Time:   8192,
-					ParentHash: func() *common.Hash {
-						h := common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444")
-						return &h
-					}(),
-				},
-			},
-			expectedError: false,
-		},
-		{
-			name: "invalid block number format",
-			blocks: []*blockRawEth{
-				{
-					Number:     "invalid",
-					Hash:       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-					Timestamp:  "0x5f5e100",
-					ParentHash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-				},
-			},
-			expected:      nil,
-			expectedError: true,
-		},
-		{
-			name: "invalid timestamp format",
-			blocks: []*blockRawEth{
-				{
-					Number:     "0x7b",
-					Hash:       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-					Timestamp:  "invalid",
-					ParentHash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-				},
-			},
-			expected:      nil,
-			expectedError: true,
-		},
-	}
+func TestRetrieveBlockHeadersBatchExploratory(t *testing.T) {
+	t.Skip("This test is for exploratory purposes to check the behavior of batch requests" +
+		" It requires a real RPC endpoint because simulated doesn't support batch calls")
+	ctx := t.Context()
+	logger := log.WithFields("modules", "test")
+	// Get L1URL from environment variable
+	l1url := os.Getenv("L1URL")
+	ethClient, err := ethclient.Dial(l1url)
+	require.NoError(t, err)
+	latestBlockNumber, err := ethClient.BlockNumber(ctx)
+	require.NoError(t, err)
+	log.Infof("Latest block number: %d", latestBlockNumber)
+	rpcClient, err := rpc.DialContext(ctx, l1url)
+	require.NoError(t, err)
+	requestedBlockNumbers := []uint64{latestBlockNumber - 10, latestBlockNumber, latestBlockNumber + 10}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := convertSliceBlockRawEth(tt.blocks)
-
-			if tt.expectedError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "convert: converting block number")
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, len(tt.expected), len(result))
-				for i, expectedHeader := range tt.expected {
-					actualHeader := result[i]
-					assert.Equal(t, expectedHeader.Number, actualHeader.Number)
-					assert.Equal(t, expectedHeader.Hash, actualHeader.Hash)
-					assert.Equal(t, expectedHeader.Time, actualHeader.Time)
-					assert.Equal(t, expectedHeader.ParentHash, actualHeader.ParentHash)
-				}
-			}
-		})
+	res, err := RetrieveBlockHeadersBatch(ctx, logger,
+		rpcClient,
+		requestedBlockNumbers, 10)
+	require.NoError(t, err)
+	require.False(t, res.Success())
+	require.True(t, res.PartialSuccess())
+	require.Equal(t, 2, len(res.Headers))
+	for _, number := range requestedBlockNumbers {
+		err, ok := res.Errors[number]
+		if ok {
+			isNotFound := IsErrNotFound(err)
+			require.True(t, isNotFound, "Expected error for block %d to be not found, got: %s", number, err.Error())
+			log.Infof("Error retrieving block header for block %d: %s", number, err.Error())
+			continue
+		}
+		require.NotNil(t, res.Headers[number])
+		log.Infof(" Retrieved block header for block %d: hash %s", number, res.Headers[number].Hash.Hex())
 	}
 }
+
 func TestRetrieveBlockHeaders(t *testing.T) {
 	ctx := t.Context()
 	logger := log.WithFields("test", "test")
@@ -170,7 +85,8 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, mockRPCClient, blockNumbers, maxConcurrency)
 
 		require.NoError(t, err)
-		assert.Equal(t, len(blockNumbers), len(result))
+		require.True(t, result.Success())
+		assert.Equal(t, len(blockNumbers), len(result.Headers))
 	})
 
 	t.Run("uses legacy when rpcClient is nil", func(t *testing.T) {
@@ -185,7 +101,8 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
 
 		require.NoError(t, err)
-		assert.Equal(t, len(blockNumbers), len(result))
+		require.True(t, result.Success())
+		assert.Equal(t, len(blockNumbers), len(result.Headers))
 	})
 
 	t.Run("propagates error from batch method", func(t *testing.T) {
@@ -197,13 +114,17 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 		require.Contains(t, err.Error(), "batch error")
 	})
 
-	t.Run("propagates error from legacy method", func(t *testing.T) {
+	t.Run("collects errors from legacy method", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
-		mockEthClient.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("legacy error")).Maybe()
-		_, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
+		mockEthClient.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("legacy error")).Times(len(blockNumbers))
+		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
 
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "legacy error")
+		require.NoError(t, err) // No catastrophic error
+		require.False(t, result.Success())
+		require.Equal(t, len(blockNumbers), len(result.Errors))
+		for _, blockErr := range result.Errors {
+			require.Contains(t, blockErr.Error(), "legacy error")
+		}
 	})
 }
 func TestRetrieveBlockHeadersLegacy(t *testing.T) {
@@ -229,7 +150,8 @@ func TestRetrieveBlockHeadersLegacy(t *testing.T) {
 		result, err := RetrieveBlockHeadersLegacy(ctx, logger, mockEthClient, blockNumbers, maxConcurrency)
 
 		require.NoError(t, err)
-		assert.Equal(t, len(blockNumbers), len(result))
+		require.True(t, result.Success())
+		assert.Equal(t, len(blockNumbers), len(result.Headers))
 	})
 }
 
@@ -247,33 +169,26 @@ func TestRetrieveBlockHeadersInBatchParallel(t *testing.T) {
 	result, err := retrieveBlockHeadersInBatchParallel(
 		ctx,
 		logger,
-		func(ctx context.Context, blocks []uint64) (aggkittypes.ListBlockHeaders, error) {
+		func(ctx context.Context, blocks []uint64) (*BlockHeadersResult, error) {
 			t.Logf("Retrieving blocks in batch: %v", blocks)
-			headers := make([]*aggkittypes.BlockHeader, len(blocks))
-			for i, bn := range blocks {
-				headers[i] = &aggkittypes.BlockHeader{
+			result := NewBlockHeadersResult()
+			for _, bn := range blocks {
+				result.AddHeader(bn, &aggkittypes.BlockHeader{
 					Number: bn,
-				}
+				})
 			}
-			return headers, nil
+			return result, nil
 		}, blockNumbers, 2, maxConcurrency)
 
 	require.NoError(t, err)
-	assert.Equal(t, len(blockNumbers), len(result))
+	require.True(t, result.Success())
+	assert.Equal(t, len(blockNumbers), len(result.Headers))
 	for _, bn := range blockNumbers {
-		header := getBlockHeader(bn, result)
+		header, exists := result.Headers[bn]
+		require.True(t, exists)
 		require.NotNil(t, header)
 		assert.Equal(t, bn, header.Number)
 	}
-}
-
-func getBlockHeader(bn uint64, headers []*aggkittypes.BlockHeader) *aggkittypes.BlockHeader {
-	for _, h := range headers {
-		if h.Number == bn {
-			return h
-		}
-	}
-	return nil
 }
 
 func TestSplitBlockNumbersIntoChunks(t *testing.T) {
@@ -332,6 +247,152 @@ func TestSplitBlockNumbersIntoChunks(t *testing.T) {
 			for i := range tt.expected {
 				assert.ElementsMatch(t, tt.expected[i], result[i], "Chunk %d should match:", i, tt.name)
 			}
+		})
+	}
+}
+
+func TestBlockHeadersResult_AreAllErrorsNotFound(t *testing.T) {
+	tests := []struct {
+		name     string
+		errors   map[uint64]error
+		expected bool
+	}{
+		{
+			name:     "no errors",
+			errors:   map[uint64]error{},
+			expected: true,
+		},
+		{
+			name: "all errors are ErrNotFound",
+			errors: map[uint64]error{
+				100: ErrNotFound,
+				200: ErrNotFound,
+				300: ErrNotFound,
+			},
+			expected: true,
+		},
+		{
+			name: "all errors have exact 'not found' message",
+			errors: map[uint64]error{
+				100: errors.New("not found"),
+				200: errors.New("not found"),
+			},
+			expected: true,
+		},
+		{
+			name: "mixed - some ErrNotFound, some other errors",
+			errors: map[uint64]error{
+				100: ErrNotFound,
+				200: errors.New("connection timeout"),
+				300: ErrNotFound,
+			},
+			expected: false,
+		},
+		{
+			name: "errors with 'not found' in message but not exact match",
+			errors: map[uint64]error{
+				100: errors.New("batch element error: not found"),
+				200: errors.New("converting block: not found"),
+			},
+			expected: false, // IsErrNotFound requires exact "not found" message
+		},
+		{
+			name: "no not found errors",
+			errors: map[uint64]error{
+				100: errors.New("connection error"),
+				200: errors.New("timeout"),
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := &BlockHeadersResult{
+				Headers: make(map[uint64]*aggkittypes.BlockHeader),
+				Errors:  tt.errors,
+			}
+			assert.Equal(t, tt.expected, result.AreAllErrorsNotFound())
+		})
+	}
+}
+
+func TestBlockHeadersResult_ListBlocksNumberNotFound(t *testing.T) {
+	tests := []struct {
+		name     string
+		errors   map[uint64]error
+		expected []uint64
+	}{
+		{
+			name:     "no errors",
+			errors:   map[uint64]error{},
+			expected: nil,
+		},
+		{
+			name: "all errors are ErrNotFound",
+			errors: map[uint64]error{
+				300: ErrNotFound,
+				100: ErrNotFound,
+				200: ErrNotFound,
+			},
+			expected: []uint64{100, 200, 300}, // Should be sorted
+		},
+		{
+			name: "all errors have exact 'not found' message",
+			errors: map[uint64]error{
+				300: errors.New("not found"),
+				100: errors.New("not found"),
+			},
+			expected: []uint64{100, 300}, // Should be sorted
+		},
+		{
+			name: "mixed errors - some not found, some other",
+			errors: map[uint64]error{
+				100: ErrNotFound,
+				200: errors.New("connection timeout"),
+				300: ErrNotFound,
+				150: errors.New("other error"),
+				250: errors.New("not found"),
+			},
+			expected: []uint64{100, 250, 300}, // Only not found, sorted
+		},
+		{
+			name: "no not found errors",
+			errors: map[uint64]error{
+				100: errors.New("connection error"),
+				200: errors.New("timeout"),
+			},
+			expected: nil,
+		},
+		{
+			name: "errors containing 'not found' but not exact match",
+			errors: map[uint64]error{
+				500: errors.New("batch element error: not found"),
+				100: errors.New("converting block: not found"),
+				300: errors.New("some other error"),
+			},
+			expected: nil, // IsErrNotFound requires exact "not found" message
+		},
+		{
+			name: "mixed exact and non-exact not found",
+			errors: map[uint64]error{
+				100: ErrNotFound,                                  // Exact match
+				200: errors.New("not found"),                      // Exact message
+				300: errors.New("batch element error: not found"), // Not exact
+				400: errors.New("timeout"),                        // Other error
+			},
+			expected: []uint64{100, 200}, // Only exact matches
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := &BlockHeadersResult{
+				Headers: make(map[uint64]*aggkittypes.BlockHeader),
+				Errors:  tt.errors,
+			}
+			got := result.ListBlocksNumberNotFound()
+			assert.Equal(t, tt.expected, got)
 		})
 	}
 }
