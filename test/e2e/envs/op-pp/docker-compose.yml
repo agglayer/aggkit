@@ -1,0 +1,225 @@
+# Ethereum L1 Snapshot Environment
+# Enclave: cdk
+# Tag: cdk-20260216-104553
+# Genesis: 0x23f1110a667e0418f78412f2a3e4729a11d693a948f59f46473e7f71e081f0b3
+
+services:
+  geth:
+    image: arnaubennassar/geth:op-pp
+    container_name: cdk-20260216-104343-geth
+    hostname: geth
+    command:
+      - "--http"
+      - "--http.addr=0.0.0.0"
+      - "--http.port=8545"
+      - "--http.vhosts=*"
+      - "--http.corsdomain=*"
+      - "--http.api=admin,engine,net,eth,web3,debug,txpool"
+      - "--ws"
+      - "--ws.addr=0.0.0.0"
+      - "--ws.port=8546"
+      - "--ws.origins=*"
+      - "--ws.api=admin,engine,net,eth,web3,debug,txpool"
+      - "--authrpc.addr=0.0.0.0"
+      - "--authrpc.port=8551"
+      - "--authrpc.vhosts=*"
+      - "--authrpc.jwtsecret=/jwt/jwtsecret"
+      - "--datadir=/data/geth/execution-data"
+      - "--port=30303"
+      - "--discovery.port=30303"
+      - "--syncmode=full"
+      - "--gcmode=archive"
+      - "--networkid=271828"
+      - "--metrics"
+      - "--metrics.addr=0.0.0.0"
+      - "--metrics.port=9001"
+      - "--allow-insecure-unlock"
+      - "--nodiscover"
+    ports:
+      - "8545:8545"    # HTTP RPC
+      - "8546:8546"    # WebSocket RPC
+      - "8551:8551"    # Engine API
+      - "30303:30303"  # P2P TCP
+      - "30303:30303/udp"  # P2P UDP
+      - "9001:9001"    # Metrics
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
+      interval: 2s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  beacon:
+    image: arnaubennassar/beacon:op-pp
+    container_name: cdk-20260216-104343-beacon
+    hostname: beacon
+    # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
+    ports:
+      - "4000:4000"    # Beacon API
+      - "9000:9000"    # P2P TCP
+      - "9000:9000/udp"  # P2P UDP
+      - "5054:5054"    # Metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/eth/v1/node/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  validator:
+    image: arnaubennassar/validator:op-pp
+    container_name: cdk-20260216-104343-validator
+    hostname: validator
+    # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
+    depends_on:
+      beacon:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "validator-client"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  agglayer:
+    image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
+    container_name: cdk-20260216-104343-agglayer
+    hostname: agglayer
+    entrypoint: ["/usr/local/bin/agglayer"]
+    command:
+      - "run"
+      - "--cfg"
+      - "/etc/agglayer/config.toml"
+    volumes:
+      - ./config/agglayer/config.toml:/etc/agglayer/config.toml:ro
+      - ./config/agglayer/aggregator.keystore:/etc/agglayer/aggregator.keystore:ro
+    ports:
+      - "4443:4443"    # gRPC RPC
+      - "4444:4444"    # Read RPC
+      - "4446:4446"    # Admin API
+      - "9092:9092"    # Prometheus metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /proc/1/cmdline"]
+      interval: 2s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    environment:
+      - RUST_BACKTRACE=1
+
+  op-geth-001:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
+    container_name: cdk-20260216-104343-op-geth-001
+    hostname: op-geth-001
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ ! -d "/data/geth" ]; then
+          echo "Initializing op-geth with genesis..."
+          geth init --datadir=/data /genesis.json
+        fi
+        exec geth           --http           --http.addr=0.0.0.0           --http.port=8545           --http.vhosts='*'           --http.corsdomain='*'           --http.api=admin,engine,net,eth,web3,debug,txpool           --ws           --ws.addr=0.0.0.0           --ws.port=8546           --ws.origins='*'           --ws.api=admin,engine,net,eth,web3,debug,txpool           --authrpc.addr=0.0.0.0           --authrpc.port=8551           --authrpc.vhosts='*'           --authrpc.jwtsecret=/jwt/jwtsecret           --datadir=/data           --port=30303           --discovery.port=30303           --syncmode=full           --gcmode=archive           --metrics           --metrics.addr=0.0.0.0           --metrics.port=9001           --rollup.disabletxpoolgossip           --nodiscover
+    volumes:
+      - ./config/001/jwt.hex:/jwt/jwtsecret:ro
+      - ./config/001/l2-genesis.json:/genesis.json:ro
+    ports:
+      - "11545:8545"    # HTTP RPC
+      - "11546:8546"    # WebSocket RPC
+      - "11551:8551"    # Engine API
+    depends_on:
+      geth:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
+      interval: 2s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  op-node-001:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.5
+    container_name: cdk-20260216-104343-op-node-001
+    hostname: op-node-001
+    command:
+      - "op-node"
+      - "--rollup.config=/network-configs/rollup.json"
+      - "--l1=http://geth:8545"
+      - "--l1.beacon=http://beacon:4000"
+      - "--l2=http://op-geth-001:8551"
+      - "--l2.jwt-secret=/jwt/jwtsecret"
+      - "--rpc.addr=0.0.0.0"
+      - "--rpc.port=8547"
+      - "--rpc.enable-admin"
+      - "--p2p.disable"
+      - "--sequencer.enabled"
+      - "--sequencer.l1-confs=0"
+      - "--rollup.l1-chain-config=/network-configs/l1-genesis.json"
+      - "--metrics.enabled"
+      - "--metrics.addr=0.0.0.0"
+      - "--metrics.port=7300"
+    volumes:
+      - ./config/001/rollup.json:/network-configs/rollup.json:ro
+      - ./config/001/l1-genesis.json:/network-configs/l1-genesis.json:ro
+      - ./config/001/jwt.hex:/jwt/jwtsecret:ro
+    ports:
+      - "11547:8547"    # RPC
+      - "11300:7300"    # Metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+      beacon:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
+      interval: 2s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
+  aggkit-001:
+    image: aggkit:local
+    container_name: cdk-20260216-104343-aggkit-001
+    hostname: aggkit-001
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender,aggoracle,bridge"
+    volumes:
+      - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
+      - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
+      - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+    ports:
+      - "11576:5576"    # RPC
+      - "11577:5577"    # REST API
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+# No volumes - all state is baked into images
+# L1 state is baked in, L2 starts fresh with config-only mounts
+# Agglayer and AggKit use host-mounted config files (read-only)
