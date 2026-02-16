@@ -989,7 +989,6 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		// Use UPPER for case-insensitive comparison (addresses stored in checksum format)
 		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) = UPPER($%d)", paramIndex))
 		args = append(args, fromAddress)
-		paramIndex++
 	}
 
 	if len(clauses) > 0 {
