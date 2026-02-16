@@ -344,8 +344,11 @@ func (b *BackfillTxnSender) extractData(ctx context.Context,
 		return common.Address{}, common.Address{}, ctx.Err()
 	default:
 	}
-	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
+	txnSender, fromAddrPtr, _, err := ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
 		logEvent, b.log, b.syncFromInBridges)
+	if fromAddrPtr != nil {
+		fromAddr = *fromAddrPtr
+	}
 	return txnSender, fromAddr, err
 }
 

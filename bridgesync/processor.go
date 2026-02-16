@@ -600,6 +600,7 @@ type BridgeSyncRuntimeData struct {
 	// DBVersion tracks the database schema version for compatibility validation
 	DBVersion *int
 	// SyncFromInBridges tracks if FromAddress extraction was enabled for this database
+	// By default is true
 	SyncFromInBridges *bool
 }
 
@@ -617,38 +618,51 @@ func (b BridgeSyncRuntimeData) String() string {
 	return res
 }
 
-func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
+func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*BridgeSyncRuntimeData, error) {
+	// First check the basic runtimedata compatibility using the existing logic in sync.RuntimeData
 	tmp := sync.RuntimeData{
 		ChainID:   b.ChainID,
 		Addresses: b.Addresses,
 	}
-	if err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
-		return err
+	if _, err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
+		return nil, err
 	}
+	// Check database schema version compatibility, this is to introduce
+	// changes beyond migration mechanism.
+	// You can control that the data in DB is invalid and need to be deleted
+	// or, in the future, you can create a way to update it.
 	if storage.DBVersion == nil || *storage.DBVersion != *b.DBVersion {
-		return fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
+		return nil, fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
 			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
 			b.DBVersion, storage.DBVersion)
 	}
-
+	if storage.SyncFromInBridges == nil {
+		// If store doesn't have this field means that is 'true' by default,
+		if !*b.SyncFromInBridges {
+			log.Warnf("Database created without SyncFromInBridges field, assuming true. " +
+				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress.",
+			)
+		}
+		// we update storage with current value
+		return &b, nil
+	}
 	// Validate SyncFromInBridges compatibility
-	if storage.SyncFromInBridges != nil && b.SyncFromInBridges != nil {
-		// false → true: FORBIDDEN (missing FromAddress cannot be recovered)
-		if !*storage.SyncFromInBridges && *b.SyncFromInBridges {
-			return fmt.Errorf("incompatible SyncFromInBridges configuration: " +
-				"cannot enable FromAddress sync on database created without it. " +
-				"Database config: false, Current config: true",
-			)
-		}
-		// true → false: ALLOWED (log warning about inconsistent data)
-		if *storage.SyncFromInBridges && !*b.SyncFromInBridges {
-			log.Warnf("SyncFromInBridges changed from true to false. " +
-				"Existing bridges have FromAddress, new bridges will not.",
-			)
-		}
+
+	// false → true: FORBIDDEN (missing FromAddress cannot be recovered)
+	if !*storage.SyncFromInBridges && *b.SyncFromInBridges {
+		return nil, fmt.Errorf("incompatible SyncFromInBridges configuration: " +
+			"cannot enable FromAddress sync on database created without it. " +
+			"Database config: false, Current config: true",
+		)
+	}
+	// true → false: ALLOWED (log warning about inconsistent data)
+	if *storage.SyncFromInBridges && !*b.SyncFromInBridges {
+		log.Warnf("SyncFromInBridges changed from true to false. " +
+			"Existing bridges have FromAddress, new bridges will not.",
+		)
 	}
 
-	return nil
+	return nil, nil
 }
 
 type BridgeQuerier interface {

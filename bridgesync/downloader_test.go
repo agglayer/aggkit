@@ -1158,6 +1158,11 @@ func TestExtractTxnAddresses(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	txHash := common.HexToHash("0xabcde12345abcde12345abcde12345abcde12345abcde12345abcde12345abcd")
 
+	// Helper function to create address pointers
+	addrPtr := func(addr common.Address) *common.Address {
+		return &addr
+	}
+
 	tests := []struct {
 		name                         string
 		logEvent                     *agglayerbridge.AgglayerbridgeBridgeEvent
@@ -1166,7 +1171,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 		responseTransactionHash      *Transaction
 		responseTransactionHashError error
 		expectedTxnSender            common.Address
-		expectedFrom                 common.Address
+		expectedFrom                 *common.Address
 		expectedTo                   common.Address
 		expectErr                    string
 	}{
@@ -1195,7 +1200,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				To:      "0x2222222222222222222222222222222222222222",
 			},
 			expectedTxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
-			expectedFrom:      common.HexToAddress("0x40"),
+			expectedFrom:      addrPtr(common.HexToAddress("0x40")),
 			expectedTo:        common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		},
 		{
@@ -1243,7 +1248,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				},
 			},
 			expectedTxnSender: common.HexToAddress("0x3333333333333333333333333333333333333333"),
-			expectedFrom:      common.HexToAddress("0x50"),
+			expectedFrom:      addrPtr(common.HexToAddress("0x50")),
 			expectedTo:        common.HexToAddress("0x4444444444444444444444444444444444444444"),
 		},
 	}

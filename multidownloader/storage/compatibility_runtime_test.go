@@ -44,7 +44,7 @@ func TestDBRuntimeDataIsCompatible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := sut.IsCompatible(tt.storage)
+			_, err := sut.IsCompatible(tt.storage)
 			if tt.expectError == "" {
 				require.NoError(t, err)
 			} else {

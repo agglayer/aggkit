@@ -176,54 +176,57 @@ func ExtractTxnAddresses(ctx context.Context,
 	txHash common.Hash,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
 	logger *logger.Logger,
-	syncFromInBridges bool) (txnSender common.Address, fromAddr common.Address, toAddr common.Address, err error) {
+	syncFromInBridges bool) (txnSender common.Address, fromAddr *common.Address, toAddr common.Address, err error) {
 	// For Message events, FromAddress comes from OriginAddress (no tracing needed)
 	if logEvent.LeafType == bridgeLeafTypeMessage {
 		tx, err := RPCTransactionByHash(client, txHash)
 		if err != nil {
-			return common.Address{}, common.Address{}, common.Address{},
+			return common.Address{}, nil, common.Address{},
 				fmt.Errorf("extractTxnAddresses: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
 		}
 		txnSender = tx.From()
 		toAddr = tx.ToAddress()
-		return txnSender, logEvent.OriginAddress, toAddr, nil
+		originAddr := logEvent.OriginAddress
+		return txnSender, &originAddr, toAddr, nil
 	}
-
-	// For Asset events, we can always get TxnSender and ToAddress from standard RPC
-	tx, err := RPCTransactionByHash(client, txHash)
-	if err != nil {
-		return common.Address{}, common.Address{}, common.Address{},
-			fmt.Errorf("extractTxnAddresses: failed to extract txn info from tx_hash:%s: %w", txHash.Hex(), err)
-	}
-	txnSender = tx.From()
-	toAddr = tx.ToAddress()
 
 	// FromAddress extraction for Asset events requires debug_traceTransaction
 	if !syncFromInBridges {
-		// Skip expensive extraction - leave FromAddress as zero (will be stored as NULL)
+		// Skip expensive extraction - leave FromAddress as nil (will be stored as NULL)
+		// For this case, get TxnSender and ToAddress from standard RPC
+		tx, err := RPCTransactionByHash(client, txHash)
+		if err != nil {
+			return common.Address{}, nil, common.Address{},
+				fmt.Errorf("extractTxnAddresses: failed to extract txn info from tx_hash:%s: %w", txHash.Hex(), err)
+		}
+		txnSender = tx.From()
+		toAddr = tx.ToAddress()
 		logger.Debugf("Skipping FromAddress extraction for tx %s (SyncFromInBridges=false)", txHash.Hex())
-		return txnSender, common.Address{}, toAddr, nil
+		return txnSender, nil, toAddr, nil
 	}
 
 	// Extract FromAddress via debug_traceTransaction for Asset events
-	foundCalls, _, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
+	// When syncFromInBridges==true, use the original behavior (get txnSender and toAddr from rootCall)
+	foundCalls, rootCall, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
 		if logEvent.LeafType == bridgeLeafTypeAsset {
 			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
 		}
 		return false, nil
 	})
 	if err != nil {
-		return common.Address{}, common.Address{}, common.Address{},
+		return common.Address{}, nil, common.Address{},
 			fmt.Errorf("extractTxnAddresses:failed to extract bridge event data (tx hash: %s): %w", txHash, err)
 	}
-	fromAddr, err = ExtractFromAddrFromCalls(foundCalls, logEvent)
+	txnSender = rootCall.From
+	toAddr = rootCall.To
+	fromAddrValue, err := ExtractFromAddrFromCalls(foundCalls, logEvent)
 	if err != nil {
-		return common.Address{}, common.Address{}, common.Address{},
+		return common.Address{}, nil, common.Address{},
 			fmt.Errorf("extractTxnAddresses: failed to extract fromAddr from tx_hash:%s calls: %w",
 				txHash.Hex(), err)
 	}
 
-	return txnSender, fromAddr, toAddr, nil
+	return txnSender, &fromAddrValue, toAddr, nil
 }
 
 type bridgeCallParams struct {
@@ -390,16 +393,10 @@ func buildBridgeEventHandler(
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
 
-		// Convert fromAddress to pointer for nullable field
-		var fromAddrPtr *common.Address
-		if fromAddress != (common.Address{}) {
-			fromAddrPtr = &fromAddress
-		}
-
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
-			FromAddress:        fromAddrPtr,
+			FromAddress:        fromAddress,
 			TxHash:             l.TxHash,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
