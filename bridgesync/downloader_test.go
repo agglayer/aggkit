@@ -41,7 +41,7 @@ func TestExtractTxnAddressesExploratory(t *testing.T) {
 	require.NoError(t, err)
 	logger := logger.WithFields("module", "test")
 	bn := big.NewInt(0).SetUint64(22770713)
-	handler := buildBridgeEventHandler(ctx, agglayerBridge, bridgeAddr, ethClient, logger)
+	handler := buildBridgeEventHandler(ctx, agglayerBridge, bridgeAddr, ethClient, true, logger)
 	filterQuery := ethereum.FilterQuery{
 		Addresses: []common.Address{bridgeAddr},
 		FromBlock: bn,
@@ -709,7 +709,7 @@ func TestBuildAppender(t *testing.T) {
 			if tt.buildQuerierMockFunc != nil {
 				querierMock = tt.buildQuerierMockFunc()
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, true, bridgeDeployment, logger)
 			if tt.expectedErr == "" {
 				require.NoError(t, err)
 				require.NotNil(t, appenderMap)
@@ -1131,7 +1131,7 @@ func TestTxnSenderField(t *testing.T) {
 				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, true, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -1272,7 +1272,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				Maybe()
 
 			txnSender, from, to, err := ExtractTxnAddresses(ctx, ethClient,
-				bridgeAddr, txHash, tt.logEvent, logger)
+				bridgeAddr, txHash, tt.logEvent, logger, true)
 			if tt.expectErr != "" {
 				require.ErrorContains(t, err, tt.expectErr)
 			} else {

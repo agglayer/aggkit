@@ -136,22 +136,22 @@ const (
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
-	BlockNum           uint64         `meddler:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos"`
-	FromAddress        common.Address `meddler:"from_address,address"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp"`
-	LeafType           uint8          `meddler:"leaf_type"`
-	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address"`
-	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address"`
-	Amount             *big.Int       `meddler:"amount,bigint"`
-	Metadata           []byte         `meddler:"metadata"`
-	DepositCount       uint32         `meddler:"deposit_count"`
-	TxnSender          common.Address `meddler:"txn_sender,address"`
-	Source             BridgeSource   `meddler:"source"`
-	ToAddress          common.Address `meddler:"to_address,address"`
+	BlockNum           uint64          `meddler:"block_num"`
+	BlockPos           uint64          `meddler:"block_pos"`
+	FromAddress        *common.Address `meddler:"from_address,address"`
+	TxHash             common.Hash     `meddler:"tx_hash,hash"`
+	BlockTimestamp     uint64          `meddler:"block_timestamp"`
+	LeafType           uint8           `meddler:"leaf_type"`
+	OriginNetwork      uint32          `meddler:"origin_network"`
+	OriginAddress      common.Address  `meddler:"origin_address"`
+	DestinationNetwork uint32          `meddler:"destination_network"`
+	DestinationAddress common.Address  `meddler:"destination_address"`
+	Amount             *big.Int        `meddler:"amount,bigint"`
+	Metadata           []byte          `meddler:"metadata"`
+	DepositCount       uint32          `meddler:"deposit_count"`
+	TxnSender          common.Address  `meddler:"txn_sender,address"`
+	Source             BridgeSource    `meddler:"source"`
+	ToAddress          common.Address  `meddler:"to_address,address"`
 }
 
 func (b *Bridge) String() string {
@@ -159,11 +159,15 @@ func (b *Bridge) String() string {
 	if b.Amount != nil {
 		amountStr = b.Amount.String()
 	}
+	fromAddrStr := nilStr
+	if b.FromAddress != nil {
+		fromAddrStr = b.FromAddress.String()
+	}
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
 		"DepositCount: %d, TxnSender: %s, Source: %s, ToAddress: %s}",
-		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
+		b.BlockNum, b.BlockPos, fromAddrStr, b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
 		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
 		b.DepositCount, b.TxnSender.String(), b.Source, b.ToAddress.String())
@@ -595,6 +599,8 @@ type BridgeSyncRuntimeData struct {
 	Addresses []common.Address
 	// DBVersion tracks the database schema version for compatibility validation
 	DBVersion *int
+	// SyncFromInBridges tracks if FromAddress extraction was enabled for this database
+	SyncFromInBridges *bool
 }
 
 func (b BridgeSyncRuntimeData) String() string {
@@ -603,7 +609,10 @@ func (b BridgeSyncRuntimeData) String() string {
 		res += addr.String() + ", "
 	}
 	if b.DBVersion != nil {
-		res += fmt.Sprintf("DBVersion: %d", *b.DBVersion)
+		res += fmt.Sprintf("DBVersion: %d, ", *b.DBVersion)
+	}
+	if b.SyncFromInBridges != nil {
+		res += fmt.Sprintf("SyncFromInBridges: %t", *b.SyncFromInBridges)
 	}
 	return res
 }
@@ -621,6 +630,24 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
 			b.DBVersion, storage.DBVersion)
 	}
+
+	// Validate SyncFromInBridges compatibility
+	if storage.SyncFromInBridges != nil && b.SyncFromInBridges != nil {
+		// false → true: FORBIDDEN (missing FromAddress cannot be recovered)
+		if !*storage.SyncFromInBridges && *b.SyncFromInBridges {
+			return fmt.Errorf("incompatible SyncFromInBridges configuration: " +
+				"cannot enable FromAddress sync on database created without it. " +
+				"Database config: false, Current config: true",
+			)
+		}
+		// true → false: ALLOWED (log warning about inconsistent data)
+		if *storage.SyncFromInBridges && !*b.SyncFromInBridges {
+			log.Warnf("SyncFromInBridges changed from true to false. " +
+				"Existing bridges have FromAddress, new bridges will not.",
+			)
+		}
+	}
+
 	return nil
 }
 
@@ -926,7 +953,9 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 	}
 
 	if fromAddress != "" && common.IsHexAddress(fromAddress) {
-		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+		// Only match non-NULL from_address values with the specified address
+		// NULL values will not match this filter (intentional - explicit filtering)
+		clauses = append(clauses, fmt.Sprintf("from_address = '%s'", strings.ToUpper(fromAddress)))
 	}
 
 	if len(clauses) > 0 {
@@ -1798,8 +1827,9 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		}
 
 		var (
-			txnHash             = event.TxnHash
-			txnSender, fromAddr common.Address
+			txnHash     = event.TxnHash
+			txnSender   common.Address
+			fromAddrPtr *common.Address
 		)
 
 		// let's see if we have exactly one archived bridge that matches the forward LET leaf
@@ -1812,7 +1842,13 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
-			fromAddr = archivedBridge.FromAddress
+			// Only restore FromAddress if it was set in archive
+			if archivedBridge.FromAddress != nil {
+				fromAddrPtr = archivedBridge.FromAddress
+			} else {
+				// FromAddress was NULL in archive (synced with SyncFromInBridges=false)
+				p.log.Debugf("Archived bridge has NULL FromAddress, keeping it NULL for restored bridge")
+			}
 		} else if len(archivedBridges) > 1 {
 			p.log.Debugf("multiple archived bridges found that match forward LET leaf %s;"+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
@@ -1826,7 +1862,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			newDepositCount,
 			txnHash,
 			txnSender,
-			fromAddr,
+			fromAddrPtr,
 		)
 
 		// insert the new bridge leaf into the local exit tree

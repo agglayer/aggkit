@@ -27,11 +27,12 @@ const (
 
 // BackfillTxnSender handles the backfilling of txn_sender field for bridge records
 type BackfillTxnSender struct {
-	db         *sql.DB
-	log        *log.Logger
-	client     types.EthClienter
-	bridgeAddr common.Address
-	dbTimeout  time.Duration
+	db                *sql.DB
+	log               *log.Logger
+	client            types.EthClienter
+	bridgeAddr        common.Address
+	dbTimeout         time.Duration
+	syncFromInBridges bool
 }
 
 // NewBackfillTxnSender creates a new instance of BackfillTxnSender
@@ -39,6 +40,7 @@ func NewBackfillTxnSender(
 	dbPath string,
 	client types.EthClienter,
 	bridgeAddr common.Address,
+	syncFromInBridges bool,
 	logger *log.Logger,
 ) (*BackfillTxnSender, error) {
 	database, err := db.NewSQLiteDB(dbPath)
@@ -47,11 +49,12 @@ func NewBackfillTxnSender(
 	}
 
 	return &BackfillTxnSender{
-		db:         database,
-		log:        logger,
-		client:     client,
-		bridgeAddr: bridgeAddr,
-		dbTimeout:  dbTimeout,
+		db:                database,
+		log:               logger,
+		client:            client,
+		bridgeAddr:        bridgeAddr,
+		dbTimeout:         dbTimeout,
+		syncFromInBridges: syncFromInBridges,
 	}, nil
 }
 
@@ -341,7 +344,8 @@ func (b *BackfillTxnSender) extractData(ctx context.Context,
 		return common.Address{}, common.Address{}, ctx.Err()
 	default:
 	}
-	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash, logEvent, b.log)
+	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
+		logEvent, b.log, b.syncFromInBridges)
 	return txnSender, fromAddr, err
 }
 

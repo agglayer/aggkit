@@ -90,6 +90,7 @@ func buildAppender(
 	querier BridgeQuerier,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
+	syncFromInBridges bool,
 	bridgeDeployment *bridgeDeployment,
 	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
@@ -102,7 +103,7 @@ func buildAppender(
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, logger)
+		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, syncFromInBridges, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		legacyBridge, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(ctx, bridgeDeployment.agglayerBridge, client, querier,
@@ -166,16 +167,17 @@ func RPCTransactionByHash(client aggkittypes.EthClienter,
 	return &tx, nil
 }
 
-// ExtractTxnAddresses extracts the txn_sender, from address, and to address from the transaction trace.
+// ExtractTxnAddresses extracts the txn_sender, from address, and to address.
+// When syncFromInBridges is false, only extracts txnSender and toAddr using standard RPC,
+// and returns zero address for fromAddr (avoids expensive debug_traceTransaction).
 func ExtractTxnAddresses(ctx context.Context,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
-	logger *logger.Logger) (txnSender common.Address, fromAddr common.Address, toAddr common.Address, err error) {
-	// If event is a message, fromAddr is log.origin_address
-	// so we only need the txn_sender that can be obtained from hash_receipt
-	// and toAddr from the transaction receipt (same source as txn_sender)
+	logger *logger.Logger,
+	syncFromInBridges bool) (txnSender common.Address, fromAddr common.Address, toAddr common.Address, err error) {
+	// For Message events, FromAddress comes from OriginAddress (no tracing needed)
 	if logEvent.LeafType == bridgeLeafTypeMessage {
 		tx, err := RPCTransactionByHash(client, txHash)
 		if err != nil {
@@ -186,7 +188,25 @@ func ExtractTxnAddresses(ctx context.Context,
 		toAddr = tx.ToAddress()
 		return txnSender, logEvent.OriginAddress, toAddr, nil
 	}
-	foundCalls, rootCall, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
+
+	// For Asset events, we can always get TxnSender and ToAddress from standard RPC
+	tx, err := RPCTransactionByHash(client, txHash)
+	if err != nil {
+		return common.Address{}, common.Address{}, common.Address{},
+			fmt.Errorf("extractTxnAddresses: failed to extract txn info from tx_hash:%s: %w", txHash.Hex(), err)
+	}
+	txnSender = tx.From()
+	toAddr = tx.ToAddress()
+
+	// FromAddress extraction for Asset events requires debug_traceTransaction
+	if !syncFromInBridges {
+		// Skip expensive extraction - leave FromAddress as zero (will be stored as NULL)
+		logger.Debugf("Skipping FromAddress extraction for tx %s (SyncFromInBridges=false)", txHash.Hex())
+		return txnSender, common.Address{}, toAddr, nil
+	}
+
+	// Extract FromAddress via debug_traceTransaction for Asset events
+	foundCalls, _, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
 		if logEvent.LeafType == bridgeLeafTypeAsset {
 			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
 		}
@@ -196,8 +216,6 @@ func ExtractTxnAddresses(ctx context.Context,
 		return common.Address{}, common.Address{}, common.Address{},
 			fmt.Errorf("extractTxnAddresses:failed to extract bridge event data (tx hash: %s): %w", txHash, err)
 	}
-	txnSender = rootCall.From
-	toAddr = rootCall.To
 	fromAddr, err = ExtractFromAddrFromCalls(foundCalls, logEvent)
 	if err != nil {
 		return common.Address{}, common.Address{}, common.Address{},
@@ -353,6 +371,7 @@ func buildBridgeEventHandler(
 	contract *agglayerbridge.Agglayerbridge,
 	bridgeAddr common.Address,
 	client aggkittypes.EthClienter,
+	syncFromInBridges bool,
 	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
@@ -364,16 +383,23 @@ func buildBridgeEventHandler(
 			"DestinationNetwork: %d, DestinationAddress: %s, DepositCount: %d, Amount: %s, ",
 			bridgeEvent.LeafType, bridgeEvent.OriginNetwork, bridgeEvent.OriginAddress.Hex(), bridgeEvent.DestinationNetwork,
 			bridgeEvent.DestinationAddress.Hex(), bridgeEvent.DepositCount, bridgeEvent.Amount.String())
+
 		txnSender, fromAddress, toAddress, err := ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash,
-			bridgeEvent, logger)
+			bridgeEvent, logger, syncFromInBridges)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
+		}
+
+		// Convert fromAddress to pointer for nullable field
+		var fromAddrPtr *common.Address
+		if fromAddress != (common.Address{}) {
+			fromAddrPtr = &fromAddress
 		}
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
-			FromAddress:        fromAddress,
+			FromAddress:        fromAddrPtr,
 			TxHash:             l.TxHash,
 			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,

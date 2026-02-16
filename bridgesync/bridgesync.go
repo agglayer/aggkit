@@ -39,7 +39,7 @@ const (
 	// CurrentDBVersion represents the current version of the bridge syncer's database schema.
 	// It is used to ensure the database is reset if an upgrade requires a full resync.
 	// Increment this value whenever the database schema changes in a way that is not backward-compatible.
-	CurrentDBVersion = 1
+	CurrentDBVersion = 2
 )
 
 func (b BridgeSyncerID) String() string {
@@ -82,6 +82,7 @@ func NewL1(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
+	syncFromInBridges bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -92,6 +93,7 @@ func NewL1(
 		L1BridgeSyncer,
 		originNetwork,
 		false,
+		syncFromInBridges,
 	)
 }
 
@@ -103,6 +105,7 @@ func NewL2(
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
 	syncFullClaims bool,
+	syncFromInBridges bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -113,6 +116,7 @@ func NewL2(
 		L2BridgeSyncer,
 		originNetwork,
 		syncFullClaims,
+		syncFromInBridges,
 	)
 }
 
@@ -125,6 +129,7 @@ func newBridgeSync(
 	syncerID BridgeSyncerID,
 	networkID uint32,
 	syncFullClaims bool,
+	syncFromInBridges bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -177,7 +182,8 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, processor, cfg.BridgeAddr, syncFullClaims, bridgeDeployment, logger)
+	appender, err := buildAppender(ctx, ethClient, processor, cfg.BridgeAddr, syncFullClaims,
+		syncFromInBridges, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -206,9 +212,10 @@ func newBridgeSync(
 			}
 			ver := CurrentDBVersion
 			return BridgeSyncRuntimeData{
-				ChainID:   tmp.ChainID,
-				Addresses: tmp.Addresses,
-				DBVersion: &ver,
+				ChainID:           tmp.ChainID,
+				Addresses:         tmp.Addresses,
+				DBVersion:         &ver,
+				SyncFromInBridges: &syncFromInBridges,
 			}, nil
 		},
 		processor)
