@@ -125,6 +125,11 @@ func (d *EVMDriver) SubscribeToNewBlocks(subscriberName string) <-chan Block {
 	return d.blockSubscriber.Subscribe(subscriberName)
 }
 
+// Legacy syncer doesn't support completion percentage, so we return nil here.
+func (d *EVMDriver) GetCompletionPercentage() *float64 {
+	return nil
+}
+
 func (d *EVMDriver) Sync(ctx context.Context) {
 reset:
 	var (

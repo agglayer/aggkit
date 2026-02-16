@@ -13,17 +13,26 @@ import (
 var testHash = common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 
 func TestL1InfoTreeSyncRPC_Status(t *testing.T) {
-	rpc := NewL1InfoTreeSyncRPC(
-		log.WithFields("modules", "test"),
-		nil,
-	)
-
+	mockSyncer := NewL1InfoTreeSyncerMock(t)
+	rpc := NewL1InfoTreeSyncRPC(log.WithFields("modules", "test"), mockSyncer)
+	mockSyncer.EXPECT().GetCompletionPercentage().Return(nil).Once()
 	result, err := rpc.Status()
 	require.Nil(t, err, "expected no error from Status")
 
 	statusInfo, ok := result.(StatusInfo)
 	require.True(t, ok, "expected result to be of type StatusInfo")
 	assert.Equal(t, "running", statusInfo.Status, "status should be 'running'")
+	require.Nil(t, statusInfo.CompletionPercentage, "expected CompletionPercentage to be nil")
+
+	percent := float64(20.0)
+	mockSyncer.EXPECT().GetCompletionPercentage().Return(&percent).Once()
+	result, err = rpc.Status()
+	require.NoError(t, err)
+	statusInfo, ok = result.(StatusInfo)
+	require.True(t, ok, "expected result to be of type StatusInfo")
+	assert.Equal(t, "running", statusInfo.Status, "status should be 'running'")
+	require.NotNil(t, statusInfo.CompletionPercentage, "expected CompletionPercentage to not be nil")
+	assert.Equal(t, percent, *statusInfo.CompletionPercentage, "expected CompletionPercentage to match the mock value")
 }
 
 func TestL1InfoTreeSyncRPC_GetInfoByGlobalExitRoot_NilParam_Success(t *testing.T) {

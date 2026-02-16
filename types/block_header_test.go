@@ -68,3 +68,60 @@ func TestBlockHeader_String(t *testing.T) {
 		require.Equal(t, "<nil>", result)
 	})
 }
+
+func TestBlockHeader_Brief(t *testing.T) {
+	t.Run("with valid block header", func(t *testing.T) {
+		hash := common.HexToHash("0x1234567890abcdef")
+		parentHash := common.HexToHash("0xabcdef1234567890")
+		header := &BlockHeader{
+			Number:     123,
+			Hash:       hash,
+			Time:       1640995200,
+			ParentHash: &parentHash,
+		}
+
+		result := header.Brief()
+		expected := "BlockHeader{Number: 123, Hash: 0x0000000000000000000000000000000000000000000000001234567890abcdef}"
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("with nil block header", func(t *testing.T) {
+		var header *BlockHeader
+		result := header.Brief()
+		require.Equal(t, "<nil>", result)
+	})
+}
+
+func TestBlockHeader_Empty(t *testing.T) {
+	t.Run("with nil block header", func(t *testing.T) {
+		var header *BlockHeader
+		result := header.Empty()
+		require.True(t, result)
+	})
+
+	t.Run("with valid block header", func(t *testing.T) {
+		hash := common.HexToHash("0x1234567890abcdef")
+		parentHash := common.HexToHash("0xabcdef1234567890")
+		header := &BlockHeader{
+			Number:     123,
+			Hash:       hash,
+			Time:       1640995200,
+			ParentHash: &parentHash,
+		}
+
+		result := header.Empty()
+		require.False(t, result)
+	})
+
+	t.Run("with zero-valued block header", func(t *testing.T) {
+		header := &BlockHeader{
+			Number:     0,
+			Hash:       common.Hash{},
+			Time:       0,
+			ParentHash: nil,
+		}
+
+		result := header.Empty()
+		require.False(t, result)
+	})
+}

@@ -11,7 +11,8 @@ import (
 // SyncSegment represents a segment of blocks, it is used for synced segments but also
 // for representing segments to be synced
 type SyncSegment struct {
-	ContractAddr  common.Address
+	ContractAddr common.Address
+	// BlockRange can be empty  BlockRange.IsEmpty()
 	BlockRange    aggkitcommon.BlockRange
 	TargetToBlock aggkittypes.BlockNumberFinality
 }
@@ -52,12 +53,35 @@ func (s *SyncSegment) Clone() *SyncSegment {
 	}
 }
 
-// UpdateToBlock updates the ToBlock of the SyncSegment
-func (s *SyncSegment) UpdateToBlock(newToBlock uint64) {
+// Empty sets the SyncSegment (fromBlock > toBlock) to indicate it is empty
+func (s *SyncSegment) Empty() {
 	if s == nil {
 		return
 	}
-	s.BlockRange.ToBlock = newToBlock
+	// Set FromBlock greater than ToBlock to indicate empty segment
+	s.BlockRange = aggkitcommon.BlockRangeZero
+}
+
+func (s *SyncSegment) IsEmpty() bool {
+	if s == nil {
+		return true
+	}
+	return s.BlockRange.IsEmpty()
+}
+
+// There are special values like BlockRange(0,0)
+// that we want to consider invalid for multidownloader,
+// so we need this method to check the validity of the SyncSegment
+func (s *SyncSegment) IsValid() bool {
+	if s.IsEmpty() {
+		return true
+	}
+	// We use value {0,0} to represent empty range in DB, so it's forbidden
+	// to use the BlockRange(0,0) for multidownloader
+	if !s.BlockRange.IsEmpty() && s.BlockRange.FromBlock == 0 && s.BlockRange.ToBlock == 0 {
+		return false
+	}
+	return true
 }
 
 // Equal checks if two SyncSegments are equal

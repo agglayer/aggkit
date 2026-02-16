@@ -101,7 +101,19 @@ func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	result, err := c.internalHeaderByNumber(ctx, numberBigInt)
+	if err != nil {
+		return nil, err
+	}
+
+	result.RequestedBlock = number
+	return result, nil
+}
+
+func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
+	numberBigInt *big.Int) (*aggkittypes.BlockHeader, error) {
 	var result *aggkittypes.BlockHeader
+	var err error
 	if c.HashFromJSON {
 		result, err = c.rpcGetBlockByNumber(ctx, numberBigInt)
 		if err != nil {
@@ -114,8 +126,6 @@ func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context,
 		}
 		result = aggkittypes.NewBlockHeaderFromEthHeader(ethHeader)
 	}
-
-	result.RequestedBlock = number
 	return result, nil
 }
 
@@ -126,7 +136,7 @@ func (c *DefaultEthClient) resolveBlockNumber(ctx context.Context,
 		return number.ToBigInt(), nil
 	}
 	// Resolve the base block number
-	hdr, err := c.rpcGetBlockByNumber(ctx, number.ToBigInt())
+	hdr, err := c.internalHeaderByNumber(ctx, number.ToBigInt())
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +154,10 @@ func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.
 	var rawEthHeader *blockRawEth
 	err := c.CallContext(ctx, &rawEthHeader, "eth_getBlockByNumber", blockArg, false)
 	if err != nil {
-		return nil, fmt.Errorf("rpcGetBlockByNumber: %w", err)
+		return nil, fmt.Errorf("rpcGetBlockByNumber: CallContext error: %w", err)
+	}
+	if rawEthHeader == nil {
+		return nil, fmt.Errorf("rpcGetBlockByNumber:not found:  %s", blockArg)
 	}
 	return rawEthHeader.ToBlockHeader()
 }

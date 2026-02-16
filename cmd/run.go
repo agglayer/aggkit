@@ -119,7 +119,8 @@ func start(cliCtx *cli.Context) error {
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1, l1Client, l1MultiDownloader)
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1,
+		l1Client, l1MultiDownloader)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
@@ -158,6 +159,24 @@ func start(cliCtx *cli.Context) error {
 		go b.Start(ctx)
 		log.Info("Bridge service started")
 	}
+	if l1MultiDownloader != nil {
+		log.Info("starting L1 MultiDownloader...")
+		err = l1MultiDownloader.Initialize(ctx)
+		if err != nil {
+			//nolint:gocritic
+			log.Fatalf("failed to initialize L1 MultiDownloader: %v", err)
+		}
+		go func() {
+			err := l1MultiDownloader.Start(ctx)
+			if err != nil {
+				log.Fatalf("l1MultiDownloader stopped: %v", err)
+			}
+		}()
+	}
+	if l1InfoTreeSync != nil {
+		log.Info("starting L1 Info Tree Syncer...")
+		go l1InfoTreeSync.Start(ctx)
+	}
 
 	for _, component := range components {
 		switch component {
@@ -176,8 +195,7 @@ func start(cliCtx *cli.Context) error {
 				committeeQuerier,
 			)
 			if err != nil {
-				//nolint:gocritic
-				log.Fatal(err)
+				log.Fatalf("failed to create AggSender: %v", err)
 			}
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
@@ -230,15 +248,6 @@ func start(cliCtx *cli.Context) error {
 
 	if cfg.Profiling.ProfilingEnabled {
 		go pprof.StartProfilingHTTPServer(ctx, cfg.Profiling)
-	}
-	if l1MultiDownloader != nil {
-		log.Info("starting L1 MultiDownloader...")
-		go func() {
-			err := l1MultiDownloader.Start(ctx)
-			if err != nil {
-				log.Error("l1MultiDownloader stopped: %w", err)
-			}
-		}()
 	}
 
 	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
@@ -515,8 +524,8 @@ func runL1InfoTreeSyncerIfNeeded(
 	components []string,
 	cfg config.Config,
 	reorgDetectorL1 aggkitsync.ReorgDetector,
-	_ aggkittypes.BaseEthereumClienter,
-	l1MultiDownloader aggkittypes.MultiDownloader,
+	l1EthClient aggkittypes.BaseEthereumClienter,
+	l1MultiDownloader *multidownloader.EVMMultidownloader,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
@@ -524,18 +533,30 @@ func runL1InfoTreeSyncerIfNeeded(
 		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
-	l1InfoTreeSync, err := l1infotreesync.New(
-		ctx,
-		cfg.L1InfoTreeSync,
-		l1MultiDownloader,
-		reorgDetectorL1,
-		l1infotreesync.FlagNone,
-	)
+	var l1InfoTreeSync *l1infotreesync.L1InfoTreeSync
+	var err error
+	if l1MultiDownloader != nil {
+		log.Info("L1 Info Tree Syncer using MultiDownloader based implementation")
+		l1InfoTreeSync, err = l1infotreesync.NewMultidownloadBased(
+			ctx,
+			cfg.L1InfoTreeSync,
+			l1MultiDownloader,
+			l1infotreesync.FlagNone,
+		)
+	} else {
+		log.Info("L1 Info Tree Syncer using legacy sync implementation")
+		l1Client := aggkitsync.NewAdapterEthClientToMultidownloader(l1EthClient)
+		l1InfoTreeSync, err = l1infotreesync.NewLegacy(
+			ctx,
+			cfg.L1InfoTreeSync,
+			l1Client,
+			reorgDetectorL1,
+			l1infotreesync.FlagNone,
+		)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
-	go l1InfoTreeSync.Start(ctx)
-
 	return l1InfoTreeSync
 }
 
@@ -609,14 +630,15 @@ func runReorgDetectorL1IfNeeded(
 func runL1MultiDownloaderIfNeeded(
 	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
-) (aggkittypes.MultiDownloader, []jRPC.Service, error) {
+) (*multidownloader.EVMMultidownloader, []jRPC.Service, error) {
 	// The requirements are the same as L1Client
 	if l1Client == nil {
 		return nil, nil, nil
 	}
 	// If it's disable It creates a direct eth client
 	if !cfg.Enabled {
-		return aggkitsync.NewAdapterEthClientToMultidownloader(l1Client), nil, nil
+		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
+		return nil, nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 
@@ -626,8 +648,9 @@ func runL1MultiDownloaderIfNeeded(
 		"l1",
 		l1Client, // ethClient
 		l1Client, // rpcClient
-		nil,      // storage
-		nil,      // blockNotifierManager
+		nil,      // storage (created inside the multidownloader if nil)
+		nil,      // blockNotifierManager (created inside the multidownloader if nil)
+		nil,      // reorgProcessor (created inside the multidownloader if nil)
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create L1 MultiDownloader: %w", err)

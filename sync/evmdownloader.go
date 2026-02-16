@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,10 @@ func (m LogAppenderMap) GetTopics() []common.Hash {
 	for topic := range m {
 		topics = append(topics, topic)
 	}
+	// Sort topics to ensure deterministic output
+	sort.Slice(topics, func(i, j int) bool {
+		return topics[i].Hex() < topics[j].Hex()
+	})
 	return topics
 }
 
@@ -60,7 +65,7 @@ type EVMDownloader struct {
 
 func NewEVMDownloader(
 	syncerID string,
-	ethClient aggkittypes.MultiDownloader,
+	ethClient aggkittypes.MultiDownloaderLegacy,
 	syncBlockChunkSize uint64,
 	finality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -252,7 +257,7 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 }
 
 type EVMDownloaderImplementation struct {
-	ethClient              aggkittypes.MultiDownloader
+	ethClient              aggkittypes.MultiDownloaderLegacy
 	blockFinality          aggkittypes.BlockNumberFinality
 	waitForNewBlocksPeriod time.Duration
 	appender               LogAppenderMap
@@ -269,7 +274,7 @@ type EVMDownloaderImplementation struct {
 // finalizedBlockType can be nil, in this case, it means that the reorgs are not happening on the network
 func NewEVMDownloaderImplementation(
 	syncerID string,
-	ethClient aggkittypes.MultiDownloader,
+	ethClient aggkittypes.MultiDownloaderLegacy,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
@@ -324,7 +329,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			blockHeader, err := d.ethClient.BlockHeader(ctx, d.blockFinality)
+			blockHeader, err := d.ethClient.HeaderByNumber(ctx, &d.blockFinality)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++

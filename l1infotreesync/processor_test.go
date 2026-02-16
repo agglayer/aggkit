@@ -544,3 +544,60 @@ func TestCalculateGER(t *testing.T) {
 		})
 	}
 }
+
+func TestGetLastProcessedBlockHeader(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	t.Run("returns nil when no blocks are processed", func(t *testing.T) {
+		t.Parallel()
+		dbPath := path.Join(t.TempDir(), "TestGetLastProcessedBlockHeader_empty.sqlite")
+		p, err := newProcessor(dbPath)
+		require.NoError(t, err)
+
+		hdr, err := p.GetLastProcessedBlockHeader(ctx)
+		require.NoError(t, err)
+		require.Nil(t, hdr)
+	})
+
+	t.Run("returns last processed block when single block exists", func(t *testing.T) {
+		t.Parallel()
+		dbPath := path.Join(t.TempDir(), "TestGetLastProcessedBlockHeader_single.sqlite")
+		p, err := newProcessor(dbPath)
+		require.NoError(t, err)
+
+		expectedHash := common.HexToHash("0xabc123")
+		expectedNum := uint64(1)
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, expectedNum, expectedHash.String())
+		require.NoError(t, err)
+
+		hdr, err := p.GetLastProcessedBlockHeader(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, hdr)
+		require.Equal(t, expectedNum, hdr.Number)
+		require.Equal(t, expectedHash, hdr.Hash)
+	})
+
+	t.Run("returns last processed block when multiple blocks exist", func(t *testing.T) {
+		t.Parallel()
+		dbPath := path.Join(t.TempDir(), "TestGetLastProcessedBlockHeader_multiple.sqlite")
+		p, err := newProcessor(dbPath)
+		require.NoError(t, err)
+
+		// Insert multiple blocks
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, common.HexToHash("0x1").String())
+		require.NoError(t, err)
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 2, common.HexToHash("0x2").String())
+		require.NoError(t, err)
+		expectedHash := common.HexToHash("0x3")
+		expectedNum := uint64(3)
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, expectedNum, expectedHash.String())
+		require.NoError(t, err)
+
+		hdr, err := p.GetLastProcessedBlockHeader(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, hdr)
+		require.Equal(t, expectedNum, hdr.Number)
+		require.Equal(t, expectedHash, hdr.Hash)
+	})
+}

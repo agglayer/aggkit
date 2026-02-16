@@ -435,3 +435,8 @@ func TestEVMDriver_Sync(t *testing.T) {
 		})
 	}
 }
+
+func TestEVMDriver_GetCompletionPercentage(t *testing.T) {
+	sut := &EVMDriver{}
+	require.Nil(t, sut.GetCompletionPercentage(), "expected GetCompletionPercentage to return nil for legacy syncer")
+}

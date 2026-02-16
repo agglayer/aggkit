@@ -117,6 +117,10 @@ vulncheck: ## Runs the vulnerability checker tool
 	@echo "Running govulncheck on all packages..."
 	@go list ./... | xargs -n1 govulncheck
 
+.PHONY: generate-mocks
+generate-mocks: ## Generates the mocks using mockery
+	@cd test && $(MAKE) generate-mocks
+
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted
 ## display with the commands and their usage information.

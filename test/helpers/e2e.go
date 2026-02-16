@@ -159,7 +159,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
 
-	var multidownloaderClient aggkittypes.MultiDownloader
+	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	if useMultidownloaderForTest {
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),
@@ -167,14 +167,15 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			"testMD",
 			l1EthClient,
 			nil, // RPC client is not simulated
-			nil,
-			nil,
+			nil, // Storage will be created internally
+			nil, // blockNotifierManager will be created internally
+			nil, // reorgProcessor will be created internally
 		)
 		require.NoError(t, err)
 	} else {
 		multidownloaderClient = aggkitsync.NewAdapterEthClientToMultidownloader(l1EthClient)
 	}
-	l1InfoTreeSync, err := l1infotreesync.New(
+	l1InfoTreeSync, err := l1infotreesync.NewLegacy(
 		ctx,
 		l1InfoTreeSyncCfg,
 		multidownloaderClient,
