@@ -1911,15 +1911,10 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
-			// Only restore FromAddress if it was set in archive
-			if archivedBridge.FromAddress != nil {
-				fromAddrPtr = archivedBridge.FromAddress
-			} else {
-				// FromAddress was NULL in archive (synced with SyncFromInBridges=false)
-				p.log.Debugf("Archived bridge has NULL FromAddress, keeping it NULL for restored bridge")
-			}
+			// It copy the fromAddr pointer, it could be nil
+			fromAddrPtr = archivedBridge.FromAddress
 		} else if len(archivedBridges) > 1 {
-			p.log.Debugf("multiple archived bridges found that match forward LET leaf %s;"+
+			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s;"+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
 		}
 
