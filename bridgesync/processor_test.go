@@ -5946,7 +5946,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		require.Equal(t, initialDepositCount+1, bridge.DepositCount)
 		require.Equal(t, event.TxnHash, bridge.TxHash)
 		require.Equal(t, aggkitcommon.ZeroAddress, bridge.TxnSender)
-		require.Equal(t, aggkitcommon.ZeroAddress, bridge.FromAddress)
+		require.Nil(t, bridge.FromAddress)
 		require.Equal(t, BridgeSourceForwardLET, bridge.Source)
 
 		// Verify: ForwardLET event was inserted
@@ -6140,7 +6140,8 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		bridge := bridges[0]
 		require.Equal(t, archivedTxHash, bridge.TxHash, "Should use archived tx hash")
 		require.Equal(t, archivedTxnSender, bridge.TxnSender, "Should use archived txn sender")
-		require.Equal(t, archivedFromAddr, bridge.FromAddress, "Should use archived from address")
+		require.NotNil(t, bridge.FromAddress)
+		require.Equal(t, archivedFromAddr, *bridge.FromAddress, "Should use archived from address")
 		require.Equal(t, BridgeSourceForwardLET, bridge.Source)
 	})
 
@@ -6255,7 +6256,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		bridge := bridges[0]
 		require.Equal(t, event.TxnHash, bridge.TxHash, "Should use event's tx hash when multiple archived bridges match")
 		require.Equal(t, common.Address{}, bridge.TxnSender, "TxnSender should be empty with multiple matches")
-		require.Equal(t, common.Address{}, bridge.FromAddress, "FromAddress should be empty with multiple matches")
+		require.Nil(t, bridge.FromAddress, "FromAddress should be nil with multiple matches")
 		require.Equal(t, BridgeSourceForwardLET, bridge.Source)
 	})
 

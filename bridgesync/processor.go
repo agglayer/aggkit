@@ -638,7 +638,7 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 	}
 	if storage.SyncFromInBridges == nil {
 		// If store doesn't have this field means that is 'true' by default,
-		if !*b.SyncFromInBridges {
+		if b.SyncFromInBridges != nil && !*b.SyncFromInBridges {
 			log.Warnf("Database created without SyncFromInBridges field, assuming true. " +
 				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress.",
 			)
@@ -986,8 +986,10 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 	if fromAddress != "" && common.IsHexAddress(fromAddress) {
 		// Only match non-NULL from_address values with the specified address
 		// NULL values will not match this filter (intentional - explicit filtering)
-		clauses = append(clauses, fmt.Sprintf("from_address = $%d", paramIndex))
-		args = append(args, strings.ToUpper(fromAddress))
+		// Use UPPER for case-insensitive comparison (addresses stored in checksum format)
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) = UPPER($%d)", paramIndex))
+		args = append(args, fromAddress)
+		paramIndex++
 	}
 
 	if len(clauses) > 0 {

@@ -226,6 +226,11 @@ func ExtractTxnAddresses(ctx context.Context,
 				txHash.Hex(), err)
 	}
 
+	// If extraction returned zero address, treat as nil (NULL in database)
+	if fromAddrValue == (common.Address{}) {
+		return txnSender, nil, toAddr, nil
+	}
+
 	return txnSender, &fromAddrValue, toAddr, nil
 }
 
