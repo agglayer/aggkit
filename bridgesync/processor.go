@@ -637,7 +637,8 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 			b.DBVersion, storage.DBVersion)
 	}
 	if storage.SyncFromInBridges == nil {
-		// If store doesn't have this field means that is 'true' by default,
+		// If storage doesn't have this field, the database was created before this field existed,
+		// so we assume 'true' by default (historical behavior).
 		if b.SyncFromInBridges != nil && !*b.SyncFromInBridges {
 			log.Warnf("Database created without SyncFromInBridges field, assuming true. " +
 				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress.",
