@@ -2120,9 +2120,10 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 		{
 			name: "compatible versions",
 			current: BridgeSyncRuntimeData{
-				ChainID:   1,
-				Addresses: []common.Address{common.HexToAddress("0x123")},
-				DBVersion: intPtr(1),
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
 			},
 			storage: BridgeSyncRuntimeData{
 				ChainID:   1,
@@ -2134,9 +2135,10 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 		{
 			name: "incompatible versions - different DB versions",
 			current: BridgeSyncRuntimeData{
-				ChainID:   1,
-				Addresses: []common.Address{common.HexToAddress("0x123")},
-				DBVersion: intPtr(2),
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(2),
+				SyncFromInBridges: boolPtr(true),
 			},
 			storage: BridgeSyncRuntimeData{
 				ChainID:   1,
@@ -2164,9 +2166,10 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 		{
 			name: "incompatible versions - different addresses",
 			current: BridgeSyncRuntimeData{
-				ChainID:   1,
-				Addresses: []common.Address{common.HexToAddress("0x123")},
-				DBVersion: intPtr(1),
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
 			},
 			storage: BridgeSyncRuntimeData{
 				ChainID:   1,
@@ -2778,6 +2781,10 @@ func intPtr(i int) *int {
 
 func uint64Ptr(i uint64) *uint64 {
 	return &i
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 func TestProcessor_ErrorPathLogging(t *testing.T) {
