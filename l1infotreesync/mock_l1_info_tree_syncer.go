@@ -23,6 +23,53 @@ func (_m *L1InfoTreeSyncerMock) EXPECT() *L1InfoTreeSyncerMock_Expecter {
 	return &L1InfoTreeSyncerMock_Expecter{mock: &_m.Mock}
 }
 
+// GetCompletionPercentage provides a mock function with no fields
+func (_m *L1InfoTreeSyncerMock) GetCompletionPercentage() *float64 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCompletionPercentage")
+	}
+
+	var r0 *float64
+	if rf, ok := ret.Get(0).(func() *float64); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*float64)
+		}
+	}
+
+	return r0
+}
+
+// L1InfoTreeSyncerMock_GetCompletionPercentage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCompletionPercentage'
+type L1InfoTreeSyncerMock_GetCompletionPercentage_Call struct {
+	*mock.Call
+}
+
+// GetCompletionPercentage is a helper method to define mock.On call
+func (_e *L1InfoTreeSyncerMock_Expecter) GetCompletionPercentage() *L1InfoTreeSyncerMock_GetCompletionPercentage_Call {
+	return &L1InfoTreeSyncerMock_GetCompletionPercentage_Call{Call: _e.mock.On("GetCompletionPercentage")}
+}
+
+func (_c *L1InfoTreeSyncerMock_GetCompletionPercentage_Call) Run(run func()) *L1InfoTreeSyncerMock_GetCompletionPercentage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncerMock_GetCompletionPercentage_Call) Return(_a0 *float64) *L1InfoTreeSyncerMock_GetCompletionPercentage_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncerMock_GetCompletionPercentage_Call) RunAndReturn(run func() *float64) *L1InfoTreeSyncerMock_GetCompletionPercentage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetInfoByGlobalExitRoot provides a mock function with given fields: ger
 func (_m *L1InfoTreeSyncerMock) GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, error) {
 	ret := _m.Called(ger)

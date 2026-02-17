@@ -31,25 +31,25 @@ func TestBlockRange_Gap(t *testing.T) {
 			name:     "a and b overlap",
 			a:        NewBlockRange(5, 15),
 			b:        NewBlockRange(10, 20),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "a and b touch at edge",
 			a:        NewBlockRange(1, 5),
 			b:        NewBlockRange(6, 10),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "b and a touch at edge",
 			a:        NewBlockRange(6, 10),
 			b:        NewBlockRange(1, 5),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "identical ranges",
 			a:        NewBlockRange(5, 10),
 			b:        NewBlockRange(5, 10),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "a after b with no overlap and gap of 1",
@@ -65,45 +65,57 @@ func TestBlockRange_Gap(t *testing.T) {
 		},
 		{
 			name:     "empty a",
-			a:        NewBlockRange(0, 0),
+			a:        BlockRangeZero,
 			b:        NewBlockRange(10, 15),
-			expected: NewBlockRange(1, 9),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "empty b",
 			a:        NewBlockRange(10, 15),
-			b:        NewBlockRange(0, 0),
-			expected: NewBlockRange(1, 9),
+			b:        BlockRangeZero,
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "both empty",
-			a:        NewBlockRange(0, 0),
-			b:        NewBlockRange(0, 0),
-			expected: NewBlockRange(0, 0),
+			a:        BlockRangeZero,
+			b:        BlockRangeZero,
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "b before a with no gap",
 			a:        NewBlockRange(5, 10),
 			b:        NewBlockRange(1, 4),
-			expected: NewBlockRange(0, 0),
+			expected: BlockRangeZero,
 		},
 		{
 			name:     "invalid a",
 			a:        NewBlockRange(10, 5), // from > to
 			b:        NewBlockRange(1, 15),
-			expected: NewBlockRange(0, 0), // should return empty range
+			expected: BlockRangeZero, // should return empty range
 		},
 		{
 			name:     "invalid b",
 			a:        NewBlockRange(1, 15),
 			b:        NewBlockRange(10, 5), // from > to
-			expected: NewBlockRange(0, 0),  // should return empty range
+			expected: BlockRangeZero,       // should return empty range
 		},
 		{
 			name:     "start verification case",
 			a:        NewBlockRange(1, 5),
 			b:        NewBlockRange(10, 10),
 			expected: NewBlockRange(6, 9),
+		},
+		{
+			name:     "{0,0} a",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(10, 15),
+			expected: NewBlockRange(1, 9),
+		},
+		{
+			name:     "{0,0} b",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(0, 0),
+			expected: NewBlockRange(1, 9),
 		},
 	}
 
@@ -124,8 +136,18 @@ func TestBlockRange_IsEmpty(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "empty zero value",
+			name:     "{0,0} not empty",
 			br:       NewBlockRange(0, 0),
+			expected: false,
+		},
+		{
+			name:     "BlockRangeZero isempty",
+			br:       BlockRangeZero,
+			expected: true,
+		},
+		{
+			name:     "BlockRange{} isempty",
+			br:       BlockRange{},
 			expected: true,
 		},
 		{
@@ -207,32 +229,32 @@ func TestBlockRange_Greater(t *testing.T) {
 		},
 		{
 			name:     "empty a, non-empty b",
-			a:        NewBlockRange(0, 0),
+			a:        BlockRangeZero,
 			b:        NewBlockRange(1, 10),
 			expected: false,
 		},
 		{
 			name:     "non-empty a, empty b",
 			a:        NewBlockRange(5, 10),
-			b:        NewBlockRange(0, 0),
+			b:        BlockRangeZero,
 			expected: true,
 		},
 		{
 			name:     "both empty",
-			a:        NewBlockRange(0, 0),
-			b:        NewBlockRange(0, 0),
+			a:        BlockRangeZero,
+			b:        BlockRangeZero,
 			expected: false,
 		},
 		{
-			name:     "invalid a (from > to)",
-			a:        NewBlockRange(10, 5),
-			b:        NewBlockRange(1, 4),
-			expected: true,
+			name:     "{0,0} > {0,1} = false",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(0, 1),
+			expected: false,
 		},
 		{
-			name:     "invalid b (from > to)",
-			a:        NewBlockRange(5, 10),
-			b:        NewBlockRange(10, 5),
+			name:     "{0,1} > {0,0} = false (overlaps!)",
+			a:        NewBlockRange(0, 1),
+			b:        NewBlockRange(0, 0),
 			expected: false,
 		},
 	}
@@ -316,6 +338,85 @@ func TestBlockRange_Contains(t *testing.T) {
 	}
 }
 
+func TestBlockRange_ContainsBlockNumber(t *testing.T) {
+	tests := []struct {
+		name        string
+		blockRange  BlockRange
+		blockNumber uint64
+		expected    bool
+	}{
+		{
+			name:        "block in the middle of range",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 15,
+			expected:    true,
+		},
+		{
+			name:        "block at FromBlock boundary",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 10,
+			expected:    true,
+		},
+		{
+			name:        "block at ToBlock boundary",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 20,
+			expected:    true,
+		},
+		{
+			name:        "block before range",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 5,
+			expected:    false,
+		},
+		{
+			name:        "block after range",
+			blockRange:  NewBlockRange(10, 20),
+			blockNumber: 25,
+			expected:    false,
+		},
+		{
+			name:        "single block range contains itself",
+			blockRange:  NewBlockRange(15, 15),
+			blockNumber: 15,
+			expected:    true,
+		},
+		{
+			name:        "single block range does not contain other",
+			blockRange:  NewBlockRange(15, 15),
+			blockNumber: 16,
+			expected:    false,
+		},
+		{
+			name:        "empty range does not contain block",
+			blockRange:  NewBlockRange(0, 0),
+			blockNumber: 5,
+			expected:    false,
+		},
+		{
+			name:        "empty range with block 0",
+			blockRange:  NewBlockRange(0, 0),
+			blockNumber: 0,
+			expected:    true,
+		},
+		{
+			name:        "invalid range (from > to) does not contain",
+			blockRange:  NewBlockRange(20, 10),
+			blockNumber: 15,
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.blockRange.ContainsBlockNumber(tt.blockNumber)
+			require.Equal(t, tt.expected, got,
+				"ContainsBlockNumber() for %s: expected %v, got %v",
+				tt.name, tt.expected, got)
+		})
+	}
+}
+
 func TestBlockRange_Subtract(t *testing.T) {
 	bn := NewBlockRange(10, 50)
 	require.Equal(t, []BlockRange{NewBlockRange(10, 19), NewBlockRange(31, 50)}, bn.Subtract(NewBlockRange(20, 30)))
@@ -327,15 +428,15 @@ func TestBlockRange_Subtract(t *testing.T) {
 }
 func TestBlockRange_Intersect(t *testing.T) {
 	bn := NewBlockRange(10, 50)
-	require.Equal(t, BlockRange{10, 15}, bn.Intersect(NewBlockRange(5, 15)))
-	require.Equal(t, BlockRange{30, 40}, bn.Intersect(NewBlockRange(30, 40)))
+	require.Equal(t, NewBlockRange(10, 15), bn.Intersect(NewBlockRange(5, 15)))
+	require.Equal(t, NewBlockRange(30, 40), bn.Intersect(NewBlockRange(30, 40)))
 	require.Equal(t, BlockRangeZero, bn.Intersect(NewBlockRange(51, 60)))
 }
 
 func TestBlockRange_Cap(t *testing.T) {
 	bn := NewBlockRange(10, 50)
-	require.Equal(t, BlockRange{10, 40}, bn.Cap(40))
-	require.Equal(t, BlockRange{10, 50}, bn.Cap(60))
+	require.Equal(t, NewBlockRange(10, 40), bn.Cap(40))
+	require.Equal(t, NewBlockRange(10, 50), bn.Cap(60))
 	require.Equal(t, BlockRangeZero, bn.Cap(5))
 }
 
@@ -470,4 +571,165 @@ func TestChunkedRangeQuery_EmptyRange(t *testing.T) {
 	result, err := ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange, fetchChunk, combine, empty)
 	require.NoError(t, err)
 	require.Equal(t, empty, result)
+}
+
+func TestBlockRange_ListBlockNumbers(t *testing.T) {
+	bn1 := NewBlockRange(1, 1)
+	require.Equal(t, []uint64{1}, bn1.ListBlockNumbers())
+	bn2 := NewBlockRange(3, 5)
+	require.Equal(t, []uint64{3, 4, 5}, bn2.ListBlockNumbers())
+	bn3 := NewBlockRange(0, 0)
+	require.Equal(t, []uint64{0}, bn3.ListBlockNumbers())
+	bn4 := BlockRangeZero
+	require.Equal(t, []uint64{}, bn4.ListBlockNumbers())
+}
+
+func TestBlockRange_SplitByBlockNumber(t *testing.T) {
+	tests := []struct {
+		name              string
+		blockRange        BlockRange
+		splitBlock        uint64
+		expectedFirst     BlockRange
+		expectedSecond    BlockRange
+		descriptionFirst  string
+		descriptionSecond string
+	}{
+		{
+			name:              "split in the middle",
+			blockRange:        NewBlockRange(100, 200),
+			splitBlock:        150,
+			expectedFirst:     NewBlockRange(100, 150),
+			expectedSecond:    NewBlockRange(151, 200),
+			descriptionFirst:  "first half includes split block",
+			descriptionSecond: "second half starts after split block",
+		},
+		{
+			name:              "split at FromBlock",
+			blockRange:        NewBlockRange(100, 200),
+			splitBlock:        100,
+			expectedFirst:     NewBlockRange(100, 100),
+			expectedSecond:    NewBlockRange(101, 200),
+			descriptionFirst:  "first range is single block",
+			descriptionSecond: "second range is rest of blocks",
+		},
+		{
+			name:              "split at ToBlock",
+			blockRange:        NewBlockRange(100, 200),
+			splitBlock:        200,
+			expectedFirst:     NewBlockRange(100, 200),
+			expectedSecond:    BlockRangeZero,
+			descriptionFirst:  "first range is entire range",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:              "split before FromBlock",
+			blockRange:        NewBlockRange(100, 200),
+			splitBlock:        50,
+			expectedFirst:     BlockRangeZero,
+			expectedSecond:    NewBlockRange(100, 200),
+			descriptionFirst:  "first range is empty",
+			descriptionSecond: "second range is entire original range",
+		},
+		{
+			name:              "split after ToBlock",
+			blockRange:        NewBlockRange(100, 200),
+			splitBlock:        250,
+			expectedFirst:     NewBlockRange(100, 200),
+			expectedSecond:    BlockRangeZero,
+			descriptionFirst:  "first range is entire range",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:              "split single block range at that block",
+			blockRange:        NewBlockRange(100, 100),
+			splitBlock:        100,
+			expectedFirst:     NewBlockRange(100, 100),
+			expectedSecond:    BlockRangeZero,
+			descriptionFirst:  "first range is the single block",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:              "split single block range before",
+			blockRange:        NewBlockRange(100, 100),
+			splitBlock:        50,
+			expectedFirst:     BlockRangeZero,
+			expectedSecond:    NewBlockRange(100, 100),
+			descriptionFirst:  "first range is empty",
+			descriptionSecond: "second range is the single block",
+		},
+		{
+			name:              "split single block range after",
+			blockRange:        NewBlockRange(100, 100),
+			splitBlock:        150,
+			expectedFirst:     NewBlockRange(100, 100),
+			expectedSecond:    BlockRangeZero,
+			descriptionFirst:  "first range is the single block",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:              "split empty range",
+			blockRange:        BlockRangeZero,
+			splitBlock:        100,
+			expectedFirst:     BlockRangeZero,
+			expectedSecond:    BlockRangeZero,
+			descriptionFirst:  "first range is empty",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:              "split two block range at first",
+			blockRange:        NewBlockRange(100, 101),
+			splitBlock:        100,
+			expectedFirst:     NewBlockRange(100, 100),
+			expectedSecond:    NewBlockRange(101, 101),
+			descriptionFirst:  "first range is first block",
+			descriptionSecond: "second range is second block",
+		},
+		{
+			name:              "split two block range at second",
+			blockRange:        NewBlockRange(100, 101),
+			splitBlock:        101,
+			expectedFirst:     NewBlockRange(100, 101),
+			expectedSecond:    BlockRangeZero,
+			descriptionFirst:  "first range is both blocks",
+			descriptionSecond: "second range is empty",
+		},
+		{
+			name:              "split at ToBlock minus 1",
+			blockRange:        NewBlockRange(100, 200),
+			splitBlock:        199,
+			expectedFirst:     NewBlockRange(100, 199),
+			expectedSecond:    NewBlockRange(200, 200),
+			descriptionFirst:  "first range is all but last block",
+			descriptionSecond: "second range is last block only",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			first, second := tt.blockRange.SplitByBlockNumber(tt.splitBlock)
+
+			require.Equal(t, tt.expectedFirst, first,
+				"SplitByBlockNumber() first range for %s: expected %v, got %v (%s)",
+				tt.name, tt.expectedFirst, first, tt.descriptionFirst)
+
+			require.Equal(t, tt.expectedSecond, second,
+				"SplitByBlockNumber() second range for %s: expected %v, got %v (%s)",
+				tt.name, tt.expectedSecond, second, tt.descriptionSecond)
+
+			// Verify that the split is valid
+			if !first.IsEmpty() && !second.IsEmpty() {
+				// Verify there's no gap between ranges
+				require.Equal(t, first.ToBlock+1, second.FromBlock,
+					"There should be no gap between first and second ranges")
+			}
+
+			// Verify that combined ranges equal original
+			if !first.IsEmpty() && !second.IsEmpty() {
+				require.Equal(t, tt.blockRange.FromBlock, first.FromBlock,
+					"First range should start at original FromBlock")
+				require.Equal(t, tt.blockRange.ToBlock, second.ToBlock,
+					"Second range should end at original ToBlock")
+			}
+		})
+	}
 }

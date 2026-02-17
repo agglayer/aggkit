@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"sort"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -59,7 +60,24 @@ func NewSetSyncerConfig() SetSyncerConfig {
 		filters: make(map[SyncerID]aggkittypes.SyncerConfig),
 	}
 }
-
+func (f *SetSyncerConfig) Brief() string {
+	if f == nil || f.filters == nil {
+		return "SetSyncerConfig{<nil>}"
+	}
+	result := "SetSyncerConfig{ "
+	// Sort syncer IDs to ensure deterministic output
+	syncerIDs := make([]string, 0, len(f.filters))
+	for syncerID := range f.filters {
+		syncerIDs = append(syncerIDs, syncerID)
+	}
+	sort.Strings(syncerIDs)
+	for _, syncerID := range syncerIDs {
+		filter := f.filters[syncerID]
+		result += fmt.Sprintf("(%s -> [%d - %s]) ", syncerID, filter.FromBlock, filter.ToBlock.String())
+	}
+	result += "}"
+	return result
+}
 func (f *SetSyncerConfig) Add(filter aggkittypes.SyncerConfig) {
 	if f.filters == nil {
 		f.filters = make(map[SyncerID]aggkittypes.SyncerConfig)
@@ -79,7 +97,7 @@ func (f *SetSyncerConfig) Addresses(blockRange aggkitcommon.BlockRange) []common
 
 	for _, filter := range f.filters {
 		if filter.FromBlock >= blockRange.FromBlock {
-			for _, addr := range filter.ContractsAddr {
+			for _, addr := range filter.ContractAddresses {
 				if _, exists := dups[addr]; !exists {
 					addresses = append(addresses, addr)
 					dups[addr] = struct{}{}
@@ -106,7 +124,7 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 	}
 	contractMap := make(map[common.Address]*ContractConfig)
 	for _, filter := range f.filters {
-		for _, addr := range filter.ContractsAddr {
+		for _, addr := range filter.ContractAddresses {
 			cc, exists := contractMap[addr]
 			if !exists {
 				contractMap[addr] = NewContractConfigFromSyncerConfig(addr, filter)
@@ -119,31 +137,62 @@ func (f *SetSyncerConfig) ContractConfigs() []ContractConfig {
 	return convertContractMapToSlice(contractMap)
 }
 
-// convertContractMapToSlice converts map to slice
-func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) []ContractConfig {
-	contractConfigs := make([]ContractConfig, 0, len(contractMap))
-	for _, cc := range contractMap {
-		contractConfigs = append(contractConfigs, *cc)
-	}
-	return contractConfigs
-}
-
 // SyncSegments groups the SetSyncerConfig into segments per contract address and blockRange
-func (f *SetSyncerConfig) SyncSegments() (*SetSyncSegment, error) {
+func (f *SetSyncerConfig) SyncSegments(
+	blockNumbers map[aggkittypes.BlockNumberFinality]uint64) (*SetSyncSegment, error) {
 	segments := NewSetSyncSegment()
 	// Trivial implementation; it needs to be improved to group by
 	// contract address and block range
 	for _, filter := range f.filters {
 		// TODO: instead of calling RPC use block_notifier_values
-		for _, addr := range filter.ContractsAddr {
+		for _, addr := range filter.ContractAddresses {
+			toBlock, ok := blockNumbers[filter.ToBlock]
+			if !ok {
+				return nil, fmt.Errorf("SyncSegments: block number for finality %s not found", filter.ToBlock.String())
+			}
 			segment := SyncSegment{
-				ContractAddr: addr,
-				// Initially set ToBlock as 0; it will be updated later
-				BlockRange:    aggkitcommon.NewBlockRange(filter.FromBlock, 0),
+				ContractAddr:  addr,
+				BlockRange:    aggkitcommon.NewBlockRange(filter.FromBlock, toBlock),
 				TargetToBlock: filter.ToBlock,
 			}
 			segments.Add(segment)
 		}
 	}
 	return &segments, nil
+}
+
+// GetTargetToBlockTags returns the list of TargetToBlock tags in the
+// SetSyncSegment witout duplicates
+func (f *SetSyncerConfig) GetTargetToBlockTags() []aggkittypes.BlockNumberFinality {
+	if f == nil {
+		return nil
+	}
+	result := make([]aggkittypes.BlockNumberFinality, 0, len(f.filters))
+	for _, segment := range f.filters {
+		// if it's already in list don't add it again
+		exists := false
+		for _, existing := range result {
+			if existing == segment.ToBlock {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			result = append(result, segment.ToBlock)
+		}
+	}
+	return result
+}
+
+// convertContractMapToSlice converts map to slice
+func convertContractMapToSlice(contractMap map[common.Address]*ContractConfig) []ContractConfig {
+	contractConfigs := make([]ContractConfig, 0, len(contractMap))
+	for _, cc := range contractMap {
+		contractConfigs = append(contractConfigs, *cc)
+	}
+	// Sort by address to ensure deterministic output
+	sort.Slice(contractConfigs, func(i, j int) bool {
+		return contractConfigs[i].Address.Hex() < contractConfigs[j].Address.Hex()
+	})
+	return contractConfigs
 }

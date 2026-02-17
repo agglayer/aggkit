@@ -56,3 +56,20 @@ func TryParseError(err error) (error, bool) {
 
 	return parsedError, exists
 }
+
+func IsErrNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	if err.Error() == ErrNotFound.Error() {
+		return true
+	}
+	// If error contains "not found" (case sensitive) is an ErrNotFound
+	if strings.Contains(err.Error(), "not found") {
+		return true
+	}
+	return false
+}

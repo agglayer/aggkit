@@ -11,20 +11,20 @@ import (
 type SyncerConfig struct {
 	// SyncerID is the unique identifier for the syncer
 	SyncerID string
-	// ContractAddr is list of contract addresses to sync
-	ContractsAddr []common.Address
+	// ContractAddresses is list of contract addresses to sync
+	ContractAddresses []common.Address
 	// Starting block
 	FromBlock uint64
 	// Target for final block (e.g. LatestBlock, SafeBlock, FinalizedBlock)
 	ToBlock BlockNumberFinality
 }
 
-type MultiDownloader interface {
+type MultiDownloaderLegacy interface {
 	ChainID(ctx context.Context) (uint64, error)
 	BlockNumber(ctx context.Context, finality BlockNumberFinality) (uint64, error)
-	// TODO: delete this method because it's only required for a intermediate fix of old RerogDetector
-	BlockHeader(ctx context.Context, finality BlockNumberFinality) (*BlockHeader, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]ethtypes.Log, error)
+	// Get block header by number and finality
+	// if number is nil, it gets the latest block
 	HeaderByNumber(ctx context.Context, number *BlockNumberFinality) (*BlockHeader, error)
 	EthClient() BaseEthereumClienter
 	RegisterSyncer(data SyncerConfig) error

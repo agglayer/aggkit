@@ -1,12 +1,11 @@
 package types
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	ethermantypes "github.com/agglayer/aggkit/etherman/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -36,7 +35,7 @@ func NewSetSyncSegment() SetSyncSegment {
 }
 
 // NewSetSyncSegmentFromLogQuery creates a new SetSyncSegment from a LogQuery
-func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) SetSyncSegment {
+func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) (SetSyncSegment, error) {
 	set := NewSetSyncSegment()
 	for _, addr := range logQuery.Addrs {
 		segment := SyncSegment{
@@ -45,16 +44,7 @@ func NewSetSyncSegmentFromLogQuery(logQuery *LogQuery) SetSyncSegment {
 		}
 		set.Add(segment)
 	}
-	return set
-}
-
-// Segments returns all SyncSegments in the SetSyncSegment
-func (s *SetSyncSegment) Segments() []SyncSegment {
-	result := make([]SyncSegment, 0, len(s.segments))
-	for _, segment := range s.segments {
-		result = append(result, *segment)
-	}
-	return result
+	return set, nil
 }
 
 // Add adds a new SyncSegment to the SetSyncSegment, merging block ranges
@@ -68,10 +58,17 @@ func (s *SetSyncSegment) Add(segment SyncSegment) {
 		return
 	}
 	// Merge syncers
-	s.UpdateBlockRange(&current, current.BlockRange.Extend(segment.BlockRange))
+	var newBlockRange aggkitcommon.BlockRange
+	if current.BlockRange.IsEmpty() {
+		newBlockRange = segment.BlockRange
+	} else {
+		newBlockRange = current.BlockRange.Extend(segment.BlockRange)
+	}
+	s.UpdateBlockRange(&current, newBlockRange)
 }
 
 // GetByContract returns the SyncSegment for the given contract address
+// it returns true if it exists, otherwise it returns false
 func (s *SetSyncSegment) GetByContract(addr common.Address) (SyncSegment, bool) {
 	if s == nil {
 		return SyncSegment{}, false
@@ -91,13 +88,13 @@ func (f *SetSyncSegment) SubtractSegments(segments *SetSyncSegment) error {
 		return nil
 	}
 	newSegments := f.Clone()
-	for _, segment := range segments.Segments() {
+	for _, segment := range segments.segments {
 		previousSegment, exists := newSegments.GetByContract(segment.ContractAddr)
-		if exists {
+		if exists && !previousSegment.IsEmpty() {
 			brs := previousSegment.BlockRange.Subtract(segment.BlockRange)
 			switch len(brs) {
 			case 0:
-				newSegments.Remove(&previousSegment)
+				newSegments.Empty(&previousSegment)
 			case 1:
 				newSegments.UpdateBlockRange(&previousSegment, brs[0])
 			default:
@@ -116,7 +113,10 @@ func (f *SetSyncSegment) SubtractLogQuery(logQuery *LogQuery) error {
 	if logQuery == nil {
 		return nil
 	}
-	newSegments := NewSetSyncSegmentFromLogQuery(logQuery)
+	newSegments, err := NewSetSyncSegmentFromLogQuery(logQuery)
+	if err != nil {
+		return err
+	}
 	return f.SubtractSegments(&newSegments)
 }
 func isIncluded(ranges []aggkitcommon.BlockRange, br aggkitcommon.BlockRange) bool {
@@ -155,21 +155,27 @@ func (f *SetSyncSegment) TotalBlocks() uint64 {
 	return total
 }
 
-// UpdateTargetBlockToNumber updates the ToBlock to real blockNumber
-func (f *SetSyncSegment) UpdateTargetBlockToNumber(ctx context.Context,
-	blockNotifierGetter ethermantypes.BlockNotifierManager) error {
+// GetTargetToBlockTags returns the list of TargetToBlock tags in the
+// SetSyncSegment witout duplicates
+func (f *SetSyncSegment) GetTargetToBlockTags() []aggkittypes.BlockNumberFinality {
 	if f == nil {
 		return nil
 	}
+	result := make([]aggkittypes.BlockNumberFinality, 0, len(f.segments))
 	for _, segment := range f.segments {
-		currentBlock, err := blockNotifierGetter.GetCurrentBlockNumber(ctx, segment.TargetToBlock)
-		if err != nil {
-			return fmt.Errorf("setSyncSegment.UpdateToBlock: error getting BlockNotifier for finality=%s: %w",
-				segment.TargetToBlock.String(), err)
+		// if it's already in list don't add it again
+		exists := false
+		for _, existing := range result {
+			if existing == segment.TargetToBlock {
+				exists = true
+				break
+			}
 		}
-		segment.UpdateToBlock(currentBlock)
+		if !exists {
+			result = append(result, segment.TargetToBlock)
+		}
 	}
-	return nil
+	return result
 }
 
 // IsAvailable checks if the required LogQuery data is already synced
@@ -186,9 +192,64 @@ func (f *SetSyncSegment) IsAvailable(query LogQuery) bool {
 	return true
 }
 
+// IsPartiallyAvailable checks if some part of the LogQuery is already synced
+// always starting from FromBlock
+// If there are any data avaible, it returns true and the LogQuery with the available data
+func (f *SetSyncSegment) IsPartiallyAvailable(query LogQuery) (bool, *LogQuery) {
+	if f == nil || len(query.Addrs) == 0 {
+		return false, nil
+	}
+
+	// Find the maximum contiguous range starting from FromBlock that is available
+	// for all addresses in the query
+	var maxAvailableToBlock *uint64
+
+	for _, addr := range query.Addrs {
+		segment, exists := f.GetByContract(addr)
+		if !exists {
+			// If any address is not synced at all, nothing is available
+			return false, nil
+		}
+
+		// Calculate the intersection between the segment and the query range
+		intersection := segment.BlockRange.Intersect(query.BlockRange)
+		if intersection.IsEmpty() {
+			// If there's no overlap, nothing is available
+			return false, nil
+		}
+
+		// Check if the intersection starts at FromBlock
+		// If not, there's a gap at the beginning, so nothing is available
+		if intersection.FromBlock != query.BlockRange.FromBlock {
+			return false, nil
+		}
+
+		// Update the minimum ToBlock (the bottleneck across all addresses)
+		if maxAvailableToBlock == nil || intersection.ToBlock < *maxAvailableToBlock {
+			maxAvailableToBlock = &intersection.ToBlock
+		}
+	}
+
+	if maxAvailableToBlock == nil {
+		return false, nil
+	}
+
+	// Create the available LogQuery
+	availableQuery := &LogQuery{
+		Addrs: query.Addrs,
+		BlockRange: aggkitcommon.NewBlockRange(
+			query.BlockRange.FromBlock,
+			*maxAvailableToBlock,
+		),
+	}
+
+	return true, availableQuery
+}
+
 // NextQuery generates the next LogQuery to sync based on the lowest FromBlock pending
 // to synchronize
-func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uint64) (*LogQuery, error) {
+func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32,
+	maxBlockNumber uint64, applyMaxBlockNumber bool) (*LogQuery, error) {
 	if f == nil || len(f.segments) == 0 {
 		return nil, ErrFinished
 	}
@@ -200,7 +261,7 @@ func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uin
 		lowestSegment.BlockRange.FromBlock,
 		lowestSegment.BlockRange.FromBlock+uint64(syncBlockChunkSize)-1,
 	))
-	if maxBlockNumber > 0 {
+	if applyMaxBlockNumber {
 		br = br.Cap(maxBlockNumber)
 	}
 	if br.IsEmpty() {
@@ -214,6 +275,41 @@ func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32, maxBlockNumber uin
 		Addrs:      addrs,
 		BlockRange: br,
 	}, nil
+}
+func (f *SetSyncSegment) GetHighestBlockNumber() (uint64, aggkittypes.BlockNumberFinality) {
+	if f == nil || len(f.segments) == 0 {
+		return 0, aggkittypes.LatestBlock
+	}
+	highest := uint64(0)
+	finality := aggkittypes.LatestBlock
+	for _, segment := range f.segments {
+		if segment.BlockRange.ToBlock > highest {
+			highest = segment.BlockRange.ToBlock
+			finality = segment.TargetToBlock
+		}
+	}
+	return highest, finality
+}
+
+func (f *SetSyncSegment) GetTotalPendingBlockRange() *aggkitcommon.BlockRange {
+	if f == nil || len(f.segments) == 0 {
+		return nil
+	}
+	var totalRange *aggkitcommon.BlockRange
+	for _, segment := range f.segments {
+		// Skip empty segments to avoid creating invalid BlockRanges
+		if segment.IsEmpty() {
+			continue
+		}
+		if totalRange == nil {
+			br := segment.BlockRange
+			totalRange = &br
+		} else {
+			extended := totalRange.Extend(segment.BlockRange)
+			totalRange = &extended
+		}
+	}
+	return totalRange
 }
 
 func (f *SetSyncSegment) GetLowestFromBlockSegment() *SyncSegment {
@@ -239,8 +335,21 @@ func (f *SetSyncSegment) GetAddressesForBlockRange(blockRange aggkitcommon.Block
 	return addresses
 }
 
+func (f *SetSyncSegment) GetAddressesForBlock(blockNumber uint64) []common.Address {
+	blockRange := aggkitcommon.NewBlockRange(blockNumber, blockNumber)
+	return f.GetAddressesForBlockRange(blockRange)
+}
+
 func (f *SetSyncSegment) Finished() bool {
-	return f == nil || len(f.segments) == 0
+	if f == nil || len(f.segments) == 0 {
+		return true
+	}
+	for _, segment := range f.segments {
+		if !segment.IsEmpty() {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *SetSyncSegment) Clone() *SetSyncSegment {
@@ -252,6 +361,15 @@ func (f *SetSyncSegment) Clone() *SetSyncSegment {
 		newSet.Add(*segment)
 	}
 	return &newSet
+}
+
+func (f *SetSyncSegment) Empty(segment *SyncSegment) {
+	for _, s := range f.segments {
+		if s.Equal(*segment) {
+			s.Empty()
+			return
+		}
+	}
 }
 
 func (f *SetSyncSegment) Remove(segmentToRemove *SyncSegment) {
@@ -304,4 +422,22 @@ func (s *SetSyncSegment) SegmentsByContract(addrs []common.Address) []SyncSegmen
 		}
 	}
 	return result
+}
+
+// GetContracts returns the list of contract addresses
+// in the SetSyncSegment
+func (s *SetSyncSegment) GetContracts() []common.Address {
+	contracts := make([]common.Address, 0, len(s.segments))
+	for _, segment := range s.segments {
+		contracts = append(contracts, segment.ContractAddr)
+	}
+	return contracts
+}
+
+func (s *SetSyncSegment) GetSegments() []SyncSegment {
+	res := make([]SyncSegment, 0, len(s.segments))
+	for _, segment := range s.segments {
+		res = append(res, *segment)
+	}
+	return res
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	dbtypes "github.com/agglayer/aggkit/db/types"
+	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/jmoiron/sqlx"
 	"github.com/russross/meddler"
@@ -40,8 +41,8 @@ func (b *Blocks) Get(number uint64) (*aggkittypes.BlockHeader, bool, error) {
 	return header, isFinal, nil
 }
 
-func (b *Blocks) ListHeaders() []*aggkittypes.BlockHeader {
-	headers := make([]*aggkittypes.BlockHeader, 0, len(b.Headers))
+func (b *Blocks) ListHeaders() aggkittypes.ListBlockHeaders {
+	headers := aggkittypes.NewListBlockHeadersEmpty(len(b.Headers))
 	for _, header := range b.Headers {
 		headers = append(headers, header)
 	}
@@ -50,6 +51,9 @@ func (b *Blocks) ListHeaders() []*aggkittypes.BlockHeader {
 
 func (b *Blocks) IsEmpty() bool {
 	return len(b.Headers) == 0
+}
+func (b *Blocks) Len() int {
+	return len(b.Headers)
 }
 
 func (a *MultidownloaderStorage) saveAggkitBlock(tx dbtypes.Querier,
@@ -62,7 +66,10 @@ func (a *MultidownloaderStorage) saveAggkitBlock(tx dbtypes.Querier,
 	return a.saveBlocksNoMutex(tx, blockRows)
 }
 
-func (a *MultidownloaderStorage) updateIsFinal(tx dbtypes.Querier, blockNumbers []uint64) error {
+func (a *MultidownloaderStorage) UpdateBlockToFinalized(tx dbtypes.Querier, blockNumbers []uint64) error {
+	if len(blockNumbers) == 0 {
+		return nil
+	}
 	if tx == nil {
 		tx = a.db
 	}
@@ -81,11 +88,58 @@ func (a *MultidownloaderStorage) updateIsFinal(tx dbtypes.Querier, blockNumbers 
 	}
 	return nil
 }
-func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
-	blockNumber uint64) (*aggkittypes.BlockHeader, bool, error) {
+
+func (a *MultidownloaderStorage) GetHighestBlockNumber(tx dbtypes.Querier) (uint64, error) {
+	query := "SELECT MAX(block_number) as max_block_number FROM blocks"
 	if tx == nil {
 		tx = a.db
 	}
+	var maxBlockNumber sql.NullInt64
+	err := tx.QueryRow(query).Scan(&maxBlockNumber)
+	if err != nil {
+		return 0, fmt.Errorf("GetHighestBlockNumber: error querying highest block number: %w", err)
+	}
+	if maxBlockNumber.Valid {
+		return uint64(maxBlockNumber.Int64), nil
+	}
+	return 0, nil
+}
+
+// GetRangeBlockHeader retrieves the lowest and highest block headers stored in the database
+// for the specified finality type. Returns lowest and highest block headers.
+func (a *MultidownloaderStorage) GetRangeBlockHeader(tx dbtypes.Querier,
+	isFinal mdtypes.FinalizedType) (*aggkittypes.BlockHeader, *aggkittypes.BlockHeader, error) {
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	highestBlock, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks "+
+		"WHERE is_final=? ORDER BY block_number DESC LIMIT 1", isFinal)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetRangeBlockHeader:highest: %w", err)
+	}
+	if highestBlock.IsEmpty() {
+		return nil, nil, nil
+	}
+	if highestBlock.Len() > 1 {
+		return nil, nil, fmt.Errorf("GetRangeBlockHeader:highest: more than one block returned (%d)", highestBlock.Len())
+	}
+
+	lowestBlock, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final=? "+
+		"ORDER BY block_number ASC LIMIT 1", isFinal)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetRangeBlockHeader:lowest: %w", err)
+	}
+	if lowestBlock.IsEmpty() {
+		return nil, nil, nil
+	}
+	if lowestBlock.Len() > 1 {
+		return nil, nil, fmt.Errorf("GetRangeBlockHeader:lowest: more than one block returned (%d)", lowestBlock.Len())
+	}
+	return lowestBlock.ListHeaders()[0], highestBlock.ListHeaders()[0], nil
+}
+
+func (a *MultidownloaderStorage) GetBlockHeaderByNumber(tx dbtypes.Querier,
+	blockNumber uint64) (*aggkittypes.BlockHeader, mdtypes.FinalizedType, error) {
 	a.mutex.RLock()
 	defer a.mutex.RUnlock()
 	blocks, err := a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE block_number = ?", blockNumber)
@@ -127,4 +181,28 @@ func (a *MultidownloaderStorage) getBlockHeadersNoMutex(tx dbtypes.Querier,
 		result.Add(blockResult, block.IsFinal)
 	}
 	return result, nil
+}
+
+// GetBlockHeadersNotFinalized retrieves all block headers that are not finalized <= maxBlock
+// if maxBlock is 0, retrieves all not finalized blocks
+func (a *MultidownloaderStorage) GetBlockHeadersNotFinalized(tx dbtypes.Querier,
+	maxBlock *uint64) (aggkittypes.ListBlockHeaders, error) {
+	if tx == nil {
+		tx = a.db
+	}
+	var blocks Blocks
+	var err error
+	a.mutex.RLock()
+	defer a.mutex.RUnlock()
+
+	if maxBlock != nil {
+		blocks, err = a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0 AND block_number <= ?", *maxBlock)
+	} else {
+		blocks, err = a.getBlockHeadersNoMutex(tx, "SELECT * FROM blocks WHERE is_final = 0")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return blocks.ListHeaders(), nil
 }

@@ -10,12 +10,14 @@ import (
 )
 
 type StatusInfo struct {
-	Status string `json:"status"`
+	Status               string   `json:"status"`
+	CompletionPercentage *float64 `json:"completionPercentage,omitempty"`
 }
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error)
 	GetInfoByRoot(ger common.Hash) (*L1InfoTreeLeaf, error)
+	GetCompletionPercentage() *float64
 }
 
 // L1InfoTreeSyncRPC is the RPC interface for the L1InfoTreeSync
@@ -39,7 +41,8 @@ func NewL1InfoTreeSyncRPC(
 // -d '{"method":"l1infotreesync_status", "params":[], "id":1}'
 func (b *L1InfoTreeSyncRPC) Status() (interface{}, rpc.Error) {
 	info := StatusInfo{
-		Status: "running",
+		Status:               "running",
+		CompletionPercentage: b.l1InfoTreeSyncer.GetCompletionPercentage(),
 	}
 	return info, nil
 }
