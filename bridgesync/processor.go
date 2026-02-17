@@ -627,6 +627,10 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 	if _, err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
 		return nil, err
 	}
+	if b.DBVersion == nil || b.SyncFromInBridges == nil {
+		return nil, errors.New("invalid runtime data: missing DBVersion or SyncFromInBridges field (internal error)")
+	}
+
 	// Check database schema version compatibility, this is to introduce
 	// changes beyond migration mechanism.
 	// You can control that the data in DB is invalid and need to be deleted
@@ -1913,7 +1917,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
-			// It copy the fromAddr pointer, it could be nil
+			// It copies the fromAddr pointer, which could be nil
 			fromAddrPtr = archivedBridge.FromAddress
 		} else if len(archivedBridges) > 1 {
 			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s;"+
