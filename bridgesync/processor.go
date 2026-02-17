@@ -1990,6 +1990,8 @@ func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, wher
 }
 
 // GetTotalNumberOfRecordsWithParams returns the total number of records with parameterized WHERE clause
+// Note: whereClause must be constructed internally using parameterized placeholders ($1, $2, etc.)
+// and should never contain user input directly concatenated into the string.
 func (p *processor) GetTotalNumberOfRecordsWithParams(ctx context.Context, tableName,
 	whereClause string, args []interface{}) (int, error) {
 	if !tableNameRegex.MatchString(tableName) {
@@ -2001,7 +2003,9 @@ func (p *processor) GetTotalNumberOfRecordsWithParams(ctx context.Context, table
 	defer cancel()
 
 	count := 0
-	query := `SELECT COUNT(*) AS count FROM ` + tableName + whereClause + ";"
+	// Safe: tableName is validated by regex, whereClause contains only SQL placeholders ($1, $2, etc.)
+	// constructed internally, and actual values are passed via args parameter
+	query := fmt.Sprintf("SELECT COUNT(*) AS count FROM %s%s;", tableName, whereClause)
 	err := p.db.QueryRowContext(dbCtx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
