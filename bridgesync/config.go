@@ -98,5 +98,12 @@ func (c Config) Validate() error {
 	if err := c.BlockFinality.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
 	}
+	// Validate SyncFromInBridges
+	switch c.SyncFromInBridges {
+	case SyncFromInBridgesTrue, SyncFromInBridgesFalse, SyncFromInBridgesAuto, "":
+		// Valid values, including empty (will use default)
+	default:
+		return fmt.Errorf("invalid SyncFromInBridges value: %s (valid values: true, false, auto)", c.SyncFromInBridges)
+	}
 	return nil
 }
