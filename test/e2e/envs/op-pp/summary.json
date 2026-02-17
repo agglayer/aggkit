@@ -1,15 +1,15 @@
 {
-  "snapshot_name": "cdk-20260216-104343",
+  "snapshot_name": "cdk-20260216-212314",
   "enclave": "cdk",
-  "created_at": "2026-02-16T10:45:53Z",
+  "created_at": "2026-02-16T21:23:47Z",
   "networks": {
     "l1": {
       "chain_id": "271828",
       "snapshot_block": {
-        "number": "2221",
-        "hash": "0xd31a1d9a46f57bdc9fda58b31ad0f588b35a6ea02d2333590c3b0445ca8a9aff"
+        "number": "384",
+        "hash": "0xf86bf40343c68cc8a6561f37078e13c98d2726af3f5e82abee7534d839e14e1a"
       },
-      "genesis_hash": "0x23f1110a667e0418f78412f2a3e4729a11d693a948f59f46473e7f71e081f0b3",
+      "genesis_hash": "0xd7c99a726a2bb70e9ab7d943776a6b5c4ca0c77404d9956dad3187b110dfb1e0",
       "contracts": {
         "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
         "global_exit_root_v2": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",
@@ -177,7 +177,7 @@
         {
           "address": "0xafF0CA253b97e54440965855cec0A8a2E2399896",
           "balance": "1000000000000000000000000000",
-          "private_key": "0x04b9f63ecf84210c5366c66d68fa1f5da1fa4f634fad6dfc86178e4d79ff9e59",
+          "private_key": null,
           "description": "L1 pre-funded account"
         }
       ]
@@ -251,19 +251,19 @@
           {
             "address": "0x02484cb50aac86eae85610d6f4bf026f30f6627d",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0xc511b2aa70776d4ff1d376e8537903dae36896132c90b91d52c1dfbae267cd8b",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
             "address": "0x08135da0a343e492fa2d4282f2ae34c6c5cc1bbe",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0x224b7eb7449992aac96d631d9677f7bf5888245eef6d6eeda31e62d2f29a83e4",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
             "address": "0x09db0a93b389bef724429898f539aeb7ac2dd55f",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0xeaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
@@ -305,25 +305,25 @@
           {
             "address": "0x40fc963a729c542424cd800349a7e4ecc4896624",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0x4e249d317253b9641e477aba8dd5d8f1f7cf5250a5acadd1229693e262720a19",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
             "address": "0x553bc17a05702530097c3677091c5bb47a3a7931",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0xe383b226df7c8282489889170b0f68f66af6459261f4833a781acd0804fafe7a",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
             "address": "0x5e661b79fe2d3f6ce70f5aac07d8cd9abb2743f1",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0x4624e0802698b9769f5bdb260a3777fbd4941ad2901f5966b854f953497eec1b",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
             "address": "0x61097ba76cd906d2ba4fd106e757f7eb455fc295",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0x375ad145df13ed97f8ca8e27bb21ebf2a3819e9e0a06509a812db377e533def7",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
@@ -347,7 +347,7 @@
           {
             "address": "0x87bdce72c06c21cd96219bd8521bdf1f42c78b5e",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0xf3a6b71b94f5cd909fb2dbb287da47badaa6d8bcdc45d595e2884835d8749001",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
@@ -371,7 +371,7 @@
           {
             "address": "0x9dcce783b6464611f38631e6c851bf441907c710",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0x233c86e887ac435d7f7dc64979d7758d69320906a0d340d2b6518b0fd20aa998",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
@@ -413,7 +413,7 @@
           {
             "address": "0xdf37f81daad2b0327a0a50003740e1c935c70913",
             "balance": "0x21e19e0c9bab2400000",
-            "private_key": "0x18743e59419b01d1d846d97ea070b5a3368a3e7f6f0242cf497e1baac6972427",
+            "private_key": null,
             "description": "L2 network 001 pre-funded account"
           },
           {
