@@ -579,6 +579,17 @@ func TestRuntimeData_IsCompatible_Success(t *testing.T) {
 				Addresses: []common.Address{common.HexToAddress("0x789")},
 			},
 		},
+		{
+			name: "zero chain ID with matching data",
+			data1: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x789")},
+			},
+			data2: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x789")},
+			},
+		},
 	}
 
 	for _, tt := range tests {
