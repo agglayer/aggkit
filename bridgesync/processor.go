@@ -2005,7 +2005,7 @@ func (p *processor) GetTotalNumberOfRecordsWithParams(ctx context.Context, table
 	count := 0
 	// Safe: tableName is validated by regex, whereClause contains only SQL placeholders ($1, $2, etc.)
 	// constructed internally, and actual values are passed via args parameter
-	query := fmt.Sprintf("SELECT COUNT(*) AS count FROM %s%s;", tableName, whereClause)
+	query := "SELECT COUNT(*) AS count FROM " + tableName + whereClause + ";"
 	err := p.db.QueryRowContext(dbCtx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
