@@ -256,8 +256,13 @@ func TestBuildAppender(t *testing.T) {
 	require.NoError(t, err)
 
 	ethClient := mocks.NewEthClienter(t)
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, ethClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		testAddress, "0x0000000000000000000000000000000000000000000")
+
 	ethClient.EXPECT().
-		Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
@@ -1105,7 +1110,7 @@ func TestTxnSenderField(t *testing.T) {
 				Maybe()
 
 			ethClient.EXPECT().
-				Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+				Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Run(func(result any, method string, args ...any) {
 					arg, ok := result.(*Call)
 					require.True(t, ok)
@@ -1268,7 +1273,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 					}
 				}).
 				Maybe()
-			ethClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Run(func(result any, method string, args ...any) {
 					arg, ok := result.(*Call)
 					require.True(t, ok)

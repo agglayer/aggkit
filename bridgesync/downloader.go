@@ -71,9 +71,10 @@ var (
 )
 
 const (
-	// debugTraceTxEndpoint is the name of the debug method used to trace a transaction.
-	debugTraceTxEndpoint = "debug_traceTransaction"
-
+	// DebugTraceTxEndpoint is the name of the debug method used to trace a transaction.
+	DebugTraceTxEndpoint = "debug_traceTransaction"
+	//GetTransactionByHashEndpoint is the name of the method used to get transaction details by hash.
+	GetTransactionByHashEndpoint = "eth_getTransactionByHash"
 	// callTracerType is the name of the call tracer
 	callTracerType = "callTracer"
 
@@ -160,7 +161,7 @@ func RPCTransactionByHash(client aggkittypes.EthClienter,
 	txHash common.Hash) (*Transaction, error) {
 	// Use client.Call to fetch transaction details using eth_getTransactionByHash
 	var tx Transaction
-	err := client.Call(&tx, "eth_getTransactionByHash", txHash.Hex())
+	err := client.Call(&tx, GetTransactionByHashEndpoint, txHash.Hex())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch transaction by hash: %w", err)
 	}
@@ -799,7 +800,7 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
 func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
 	rootCall := &Call{To: contractAddr}
-	err := client.Call(rootCall, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
