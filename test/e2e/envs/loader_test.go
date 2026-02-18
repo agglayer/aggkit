@@ -80,9 +80,18 @@ func TestLoadEnv(t *testing.T) {
 		require.Equal(t, env.L2.ChainID, l2ChainID, "L2 client chain ID should match")
 
 		// Verify L2 client can fetch block number
-		l2BlockNumber, err := env.Clients.L2.BlockNumber(ctx)
-		require.NoError(t, err, "L2 client should be able to fetch block number")
-		require.Greater(t, l2BlockNumber, uint64(0), "L2 should have blocks")
+		const allowedRetries = 5
+		success := false
+		for i := 0; i < allowedRetries; i++ {
+			l2BlockNumber, err := env.Clients.L2.BlockNumber(ctx)
+			require.NoError(t, err, "L2 client should be able to fetch block number")
+			if l2BlockNumber > 0 {
+				success = true
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		require.True(t, success, "L2 client should eventually be able to fetch block number")
 
 		// Verify L2 client can fetch balance
 		balance, err := env.Clients.L2.BalanceAt(ctx, env.L2.Transactor.From, nil)
