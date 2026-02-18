@@ -73,7 +73,7 @@ var (
 const (
 	// DebugTraceTxEndpoint is the name of the debug method used to trace a transaction.
 	DebugTraceTxEndpoint = "debug_traceTransaction"
-	//GetTransactionByHashEndpoint is the name of the method used to get transaction details by hash.
+	// GetTransactionByHashEndpoint is the name of the method used to get transaction details by hash.
 	GetTransactionByHashEndpoint = "eth_getTransactionByHash"
 	// callTracerType is the name of the call tracer
 	callTracerType = "callTracer"
