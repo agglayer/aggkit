@@ -177,28 +177,29 @@ func ExtractTxnAddresses(ctx context.Context,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
 	logger *logger.Logger,
 	syncFromInBridges bool) (txnSender common.Address, fromAddr *common.Address, toAddr common.Address, err error) {
+	tx, err := RPCTransactionByHash(client, txHash)
+	if err != nil {
+		return common.Address{}, nil, common.Address{},
+			fmt.Errorf("extractTxnAddresses: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
+	}
 	// For Message events, FromAddress comes from OriginAddress (no tracing needed)
 	if logEvent.LeafType == bridgeLeafTypeMessage {
-		tx, err := RPCTransactionByHash(client, txHash)
-		if err != nil {
-			return common.Address{}, nil, common.Address{},
-				fmt.Errorf("extractTxnAddresses: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
-		}
 		txnSender = tx.From()
 		toAddr = tx.ToAddress()
 		originAddr := logEvent.OriginAddress
 		return txnSender, &originAddr, toAddr, nil
 	}
+	// This is a improvement: if the tx is directely sent to the bridge
+	// we use the txSender as the from address without doing the expensive debug_traceTransaction,
+	if tx.ToAddress() == bridgeAddr {
+		txnSender = tx.From()
+		toAddr = tx.ToAddress()
+		return txnSender, &txnSender, toAddr, nil
+	}
 
 	// FromAddress extraction for Asset events requires debug_traceTransaction
 	if !syncFromInBridges {
 		// Skip expensive extraction - leave FromAddress as nil (will be stored as NULL)
-		// For this case, get TxnSender and ToAddress from standard RPC
-		tx, err := RPCTransactionByHash(client, txHash)
-		if err != nil {
-			return common.Address{}, nil, common.Address{},
-				fmt.Errorf("extractTxnAddresses: failed to extract txn info from tx_hash:%s: %w", txHash.Hex(), err)
-		}
 		txnSender = tx.From()
 		toAddr = tx.ToAddress()
 		logger.Debugf("Skipping FromAddress extraction for tx %s (SyncFromInBridges=false)", txHash.Hex())
