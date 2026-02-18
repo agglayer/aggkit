@@ -75,7 +75,7 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 //
 //nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
-	b.log.Infof("Starting backfill for %s table", tableName)
+	b.log.Infof("Starting backfill for %s table, syncFromInBridges: %v", tableName, b.syncFromInBridges)
 
 	// Get total count of records that need backfilling
 	totalCount, err := b.getRecordsNeedingBackfillCount(ctx, tableName)
