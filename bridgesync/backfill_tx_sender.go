@@ -160,15 +160,27 @@ type TxnSenderResult struct {
 	Error  error
 }
 
+// missingFieldsCondition returns the SQL condition for records that still need backfilling.
+// When syncFromInBridges is false, from_address will intentionally remain NULL for asset events
+// sent through a router contract, so we only require txn_sender to be filled.
+// When syncFromInBridges is true, both txn_sender and from_address must be present.
+func (b *BackfillTxnSender) missingFieldsCondition() string {
+	if b.syncFromInBridges {
+		return "txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL"
+	}
+	return "txn_sender = '' OR txn_sender IS NULL"
+}
+
 // getRecordsNeedingBackfillCount returns the count of records that need txn_sender backfilling
 func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
+	missingFieldsCond := b.missingFieldsCondition()
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM %s
-		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		WHERE (%s)
 		AND (source IS NULL OR (source != $1 AND source != $2))
-	`, tableName)
+	`, tableName, missingFieldsCond)
 
 	var count int
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
@@ -189,14 +201,15 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	tableName string,
 	limit int,
 ) ([]RecordToBackfill, error) {
+	missingFieldsCond := b.missingFieldsCondition()
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
-		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		WHERE (%s)
 		AND (source IS NULL OR (source != $1 AND source != $2))
 		LIMIT $3
-	`, tableName)
+	`, tableName, missingFieldsCond)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()

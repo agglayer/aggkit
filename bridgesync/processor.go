@@ -1637,7 +1637,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
 				if errors.Is(err, tree.ErrInvalidIndex) {
-					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
+					p.halt(fmt.Sprintf("error adding leaf %d in block %d to the exit tree: %v",
+						event.Bridge.DepositCount, block.Num, err))
 				}
 				return sync.ErrInconsistentState
 			}
