@@ -2179,6 +2179,70 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 			expectError: true,
 			errorMsg:    "addresses[0] mismatch: 0x0000000000000000000000000000000000000123 != 0x0000000000000000000000000000000000000456",
 		},
+		{
+			name: "storage no flag SyncFromInBridges -> false: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(false),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: nil, // Previous DB to this version
+			},
+			expectError: false,
+		},
+		{
+			name: "storage no flag SyncFromInBridges -> true: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: nil, // Previous DB to this version
+			},
+			expectError: false,
+		},
+		{
+			name: "storage SyncFromInBridges false -> true: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(false),
+			},
+			expectError: false,
+		},
+		{
+			name: "storage SyncFromInBridges true -> false: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(false),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -627,9 +627,6 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 	if _, err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
 		return nil, err
 	}
-	if b.DBVersion == nil || b.SyncFromInBridges == nil {
-		return nil, errors.New("invalid runtime data: missing DBVersion or SyncFromInBridges field (internal error)")
-	}
 
 	// Check database schema version compatibility, this is to introduce
 	// changes beyond migration mechanism.
@@ -640,13 +637,16 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
 			b.DBVersion, storage.DBVersion)
 	}
+	if b.SyncFromInBridges == nil {
+		return nil, errors.New("invalid runtime data: missing SyncFromInBridges field (internal error)")
+	}
+
 	if storage.SyncFromInBridges == nil {
 		// If storage doesn't have this field, the database was created before this field existed,
 		// so we assume 'true' by default (historical behavior).
-		if !*b.SyncFromInBridges {
+		if b.SyncFromInBridges != nil && !*b.SyncFromInBridges {
 			log.Warnf("Database created without SyncFromInBridges field, assuming true. " +
-				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress." +
-				"Also a background process is going to fill the missing FromAddress",
+				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress.",
 			)
 		}
 		// we update storage with current value
@@ -656,10 +656,9 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 
 	// false → true: FORBIDDEN (missing FromAddress cannot be recovered)
 	if !*storage.SyncFromInBridges && *b.SyncFromInBridges {
-		return nil, fmt.Errorf("incompatible SyncFromInBridges configuration: " +
-			"cannot enable FromAddress sync on database created without it. " +
-			"Database config: false, Current config: true",
-		)
+		log.Warnf("SyncFromInBridges changed from false to true. " +
+			"The missing FromAddress are going to be filled by a background " +
+			"process, but it might take a while")
 	}
 	// true → false: ALLOWED (log warning about inconsistent data)
 	if *storage.SyncFromInBridges && !*b.SyncFromInBridges {
