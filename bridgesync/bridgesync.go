@@ -138,7 +138,8 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to create binding for AgglayerBridge contract: %w", err)
 	}
 
-	logger.Infof("Bridge sync %s, syncing full claims: %t, syncFromInBridges: %t", syncerID.String(), syncFullClaims, syncFromInBridges)
+	logger.Infof("Bridge sync %s, syncing full claims: %t, syncFromInBridges: %t",
+		syncerID.String(), syncFullClaims, syncFromInBridges)
 
 	err = sanityCheckContract(logger, cfg.BridgeAddr, agglayerBridge)
 	if err != nil {
