@@ -141,7 +141,7 @@ type RecordUpdate struct {
 	BlockNum  uint64
 	BlockPos  uint64
 	TxnSender common.Address
-	FromAddr  common.Address
+	FromAddr  *common.Address // nil means not available (e.g. syncFromInBridges=false for asset events)
 }
 
 func (r *RecordUpdate) String() string {
@@ -337,18 +337,15 @@ func (b *BackfillTxnSender) worker(
 // extractData extracts the transaction txn_sender and from_address
 func (b *BackfillTxnSender) extractData(ctx context.Context,
 	txHash common.Hash,
-	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address, fromAddr common.Address, err error) {
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address, fromAddr *common.Address, err error) {
 	// Check if context is cancelled before making network call
 	select {
 	case <-ctx.Done():
-		return common.Address{}, common.Address{}, ctx.Err()
+		return common.Address{}, nil, ctx.Err()
 	default:
 	}
-	txnSender, fromAddrPtr, _, err := ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
+	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
 		logEvent, b.log, b.syncFromInBridges)
-	if fromAddrPtr != nil {
-		fromAddr = *fromAddrPtr
-	}
 	return txnSender, fromAddr, err
 }
 
@@ -380,7 +377,7 @@ func (b *BackfillTxnSender) bulkUpdate(
 		}
 	}()
 
-	stmt, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
+	stmtWithFrom, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
 		SET
 			txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
@@ -388,15 +385,32 @@ func (b *BackfillTxnSender) bulkUpdate(
 		WHERE block_num = ? AND block_pos = ?;
 	`, tableName))
 	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
+		return fmt.Errorf("failed to prepare statement (with from_address): %w", err)
 	}
-	defer stmt.Close()
+	defer stmtWithFrom.Close()
+
+	stmtWithoutFrom, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
+		UPDATE %s
+		SET txn_sender = COALESCE(NULLIF(txn_sender, ''), ?)
+		WHERE block_num = ? AND block_pos = ?;
+	`, tableName))
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement (without from_address): %w", err)
+	}
+	defer stmtWithoutFrom.Close()
 
 	for _, update := range updates {
-		_, err := stmt.ExecContext(dbCtx, update.TxnSender.Hex(), update.FromAddr.Hex(), update.BlockNum, update.BlockPos)
-		if err != nil {
+		var execErr error
+		if update.FromAddr != nil {
+			_, execErr = stmtWithFrom.ExecContext(dbCtx,
+				update.TxnSender.Hex(), update.FromAddr.Hex(), update.BlockNum, update.BlockPos)
+		} else {
+			_, execErr = stmtWithoutFrom.ExecContext(dbCtx,
+				update.TxnSender.Hex(), update.BlockNum, update.BlockPos)
+		}
+		if execErr != nil {
 			return fmt.Errorf("failed to execute update for block %d pos %d: %w",
-				update.BlockNum, update.BlockPos, err)
+				update.BlockNum, update.BlockPos, execErr)
 		}
 	}
 
