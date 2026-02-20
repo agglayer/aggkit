@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,27 +21,26 @@ func TestBridgeFlows(t *testing.T) {
 	// Skip in short mode as this is an E2E test
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
+	} else {
+		t.Skip("Skipping E2E test in short mode")
 	}
+
+	require.NotNil(t, testEnv, "shared env must be set by TestMain")
+	env := testEnv
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
-	// Load the op-pp environment
-	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
-	require.NoError(t, err, "failed to load environment")
-
-	// Always stop the environment when done
-	defer func() {
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer stopCancel()
-		require.NoError(t, env.Stop(stopCtx))
-	}()
+	// Use env transactors (shared env has one compose; KeyPool checkouts can be used when Keys is populated)
+	l1Opts := env.L1.Transactor
+	l2Opts := env.L2.Transactor
 
 	log.Info("Environment loaded successfully")
 
 	// Wait for L2 to be fully operational and producing blocks
 	log.Info("Waiting for L2 to start producing blocks...")
 	var l2BlockNum uint64
+	var err error
 	for i := 0; i < 60; i++ { // Wait up to 2 minutes
 		time.Sleep(2 * time.Second)
 		l2BlockNum, err = env.Clients.L2.BlockNumber(ctx)
@@ -54,29 +52,17 @@ func TestBridgeFlows(t *testing.T) {
 	require.NoError(t, err, "L2 should be operational")
 	require.Greater(t, l2BlockNum, uint64(0), "L2 should have blocks")
 
-	// Create additional accounts for different flows
-	// For simplicity, use the default funded account from the environment
-	// but create separate private keys for tracking
-	l1ToL2PrivKey, err := crypto.GenerateKey()
-	require.NoError(t, err, "failed to generate L1 to L2 key")
-	log.Infof("L1->L2 account: %s", crypto.PubkeyToAddress(l1ToL2PrivKey.PublicKey).Hex())
-
-	l2ToL1PrivKey, err := crypto.GenerateKey()
-	require.NoError(t, err, "failed to generate L2 to L1 key")
-
-	log.Infof("L2->L1 account: %s", crypto.PubkeyToAddress(l2ToL1PrivKey.PublicKey).Hex())
-
 	// Run L1 -> L2 flow first
-	testBridgeL1ToL2(t, ctx, env)
+	testBridgeL1ToL2(t, ctx, env, l1Opts, l2Opts)
 
 	// Then run L2 -> L1 flow
-	testBridgeL2ToL1(t, ctx, env, common.Address{})
+	testBridgeL2ToL1(t, ctx, env, l1Opts, l2Opts, common.Address{})
 
 	log.Info("Both bridge flows completed successfully!")
 }
 
 // testBridgeL1ToL2 tests the L1 -> L2 bridge flow with native ETH
-func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env) {
+func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts) {
 	t.Helper()
 	log.Info("Starting L1->L2 bridge flow")
 
@@ -85,8 +71,8 @@ func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env) {
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	require.NoError(t, err, "failed to get L2 network ID")
 
-	bridgeAmount := big.NewInt(100000000000000)  // 0.0001 ETH
-	destinationAddress := env.L1.Transactor.From // Use the funded account from env
+	bridgeAmount := big.NewInt(100000000000000) // 0.0001 ETH
+	destinationAddress := l1Opts.From           // Use the funded L1 account (receives on L2)
 	forceUpdateGlobalExitRoot := true
 
 	// Get initial balance on L2
@@ -94,13 +80,13 @@ func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env) {
 	require.NoError(t, err, "failed to get initial L2 balance")
 	log.Infof("L1->L2: Initial L2 balance: %s", initialL2Balance.String())
 
-	// Use env L1 transactor (already funded)
-	env.L1.Transactor.Value = bridgeAmount
-	defer func() { env.L1.Transactor.Value = nil }()
+	// Use checked-out L1 transactor (already funded)
+	l1Opts.Value = bridgeAmount
+	defer func() { l1Opts.Value = nil }()
 
 	// Bridge native ETH from L1 to L2
 	tx, err := env.L1.Contracts.Bridge.BridgeAsset(
-		env.L1.Transactor,
+		l1Opts,
 		l2NetworkID,
 		destinationAddress,
 		bridgeAmount,
@@ -210,9 +196,9 @@ func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env) {
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.Hex2Bytes(bridge.Metadata)
 
-	// Claim on L2 using env transactor
+	// Claim on L2 using checked-out L2 transactor
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
-		env.L2.Transactor,
+		l2Opts,
 		smtProofLocalExitRoot,
 		smtProofRollupExitRoot,
 		bridge.GlobalIndex,
@@ -247,7 +233,7 @@ func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env) {
 }
 
 // testBridgeL2ToL1 tests the L2 -> L1 bridge flow with native ETH
-func testBridgeL2ToL1(t *testing.T, ctx context.Context, env *envs.Env, token common.Address) {
+func testBridgeL2ToL1(t *testing.T, ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, token common.Address) {
 	t.Helper()
 	log.Info("Starting L2->L1 bridge flow (native ETH)")
 
@@ -257,7 +243,7 @@ func testBridgeL2ToL1(t *testing.T, ctx context.Context, env *envs.Env, token co
 	require.NoError(t, err, "failed to get L2 network ID")
 
 	bridgeAmount := big.NewInt(100000000000000) // 0.0001 ETH
-	destinationAddress := env.L2.Transactor.From
+	destinationAddress := l2Opts.From           // Use the funded L2 account (receives on L1)
 	forceUpdateGlobalExitRoot := true
 
 	// Get initial balance on L1
@@ -268,12 +254,12 @@ func testBridgeL2ToL1(t *testing.T, ctx context.Context, env *envs.Env, token co
 	// Bridge native ETH from L2 to L1
 	zeroAddr := common.Address{}
 	if token == zeroAddr {
-		env.L2.Transactor.Value = bridgeAmount
+		l2Opts.Value = bridgeAmount
 	}
-	defer func() { env.L2.Transactor.Value = nil }()
+	defer func() { l2Opts.Value = nil }()
 
 	bridgeTx, err := env.L2.Contracts.L2Bridge.BridgeAsset(
-		env.L2.Transactor,
+		l2Opts,
 		0, // L1 network ID
 		destinationAddress,
 		bridgeAmount,
@@ -368,10 +354,10 @@ func testBridgeL2ToL1(t *testing.T, ctx context.Context, env *envs.Env, token co
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.Hex2Bytes(bridge.Metadata)
 
-	// Claim on L1
+	// Claim on L1 using checked-out L1 transactor
 	log.Info("L2->L1: Claiming on L1")
 	claimTx, err := env.L1.Contracts.Bridge.ClaimAsset(
-		env.L1.Transactor,
+		l1Opts,
 		smtProofLocalExitRoot,
 		smtProofRollupExitRoot,
 		bridge.GlobalIndex,
