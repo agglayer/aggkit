@@ -18,12 +18,12 @@ import (
 
 // TestBridgeFlows tests both L1->L2 and L2->L1 bridge flows in parallel
 func TestBridgeFlows(t *testing.T) {
-	// Skip in short mode as this is an E2E test
-	if testing.Short() {
-		t.Skip("Skipping E2E test in short mode")
-	} else {
-		t.Skip("Skipping E2E test in short mode")
-	}
+	// // Skip in short mode as this is an E2E test
+	// if testing.Short() {
+	// 	t.Skip("Skipping E2E test in short mode")
+	// } else {
+	// 	t.Skip("Skipping E2E test in short mode")
+	// }
 
 	require.NotNil(t, testEnv, "shared env must be set by TestMain")
 	env := testEnv
@@ -42,12 +42,12 @@ func TestBridgeFlows(t *testing.T) {
 	var l2BlockNum uint64
 	var err error
 	for i := 0; i < 60; i++ { // Wait up to 2 minutes
-		time.Sleep(2 * time.Second)
 		l2BlockNum, err = env.Clients.L2.BlockNumber(ctx)
 		if err == nil && l2BlockNum > 0 {
 			log.Infof("L2 is operational at block %d", l2BlockNum)
 			break
 		}
+		time.Sleep(2 * time.Second)
 	}
 	require.NoError(t, err, "L2 should be operational")
 	require.Greater(t, l2BlockNum, uint64(0), "L2 should have blocks")
@@ -102,9 +102,6 @@ func testBridgeL1ToL2(t *testing.T, ctx context.Context, env *envs.Env, l1Opts, 
 	require.NoError(t, err, "failed to wait for bridge transaction")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "bridge transaction failed")
 	log.Infof("L1->L2: Bridge transaction mined in block %d", receipt.BlockNumber.Uint64())
-
-	// Wait and query bridge service
-	time.Sleep(10 * time.Second)
 
 	var bridge *types.BridgeResponse
 	maxBridgeRetries := 30
@@ -275,9 +272,6 @@ func testBridgeL2ToL1(t *testing.T, ctx context.Context, env *envs.Env, l1Opts, 
 	require.NoError(t, err, "failed to wait for bridge transaction")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "bridge transaction failed")
 	log.Infof("L2->L1: Bridge transaction mined in block %d", receipt.BlockNumber.Uint64())
-
-	// Wait for bridge to be indexed
-	time.Sleep(10 * time.Second)
 
 	// Query bridge service for the bridge event
 	var bridge *types.BridgeResponse

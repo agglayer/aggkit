@@ -1,14 +1,14 @@
 {
   "genesis": {
     "l1": {
-      "hash": "0x489e3c5b074ba62d8ac8bd7892fcea37ef7f43b75dfdb0791e13975ba3f527ba",
-      "number": 175
+      "hash": "0xcfd5b536fd9bf85ef2037fb6af0a07ca798ddfe5929d9e75a96d577f5bfeb404",
+      "number": 123
     },
     "l2": {
-      "hash": "0x1d0662eb4b3cd621d00aed8d10d2fdc663eac0030b8120c00a11939506130d52",
+      "hash": "0x8287f652705747a91c56e7d0dcdc8d7c10915b1995cb1b86f96b1383851a5985",
       "number": 0
     },
-    "l2_time": 1771611535,
+    "l2_time": 1771611430,
     "system_config": {
       "batcherAddr": "0xd3f2c5afb2d76f5579f326b0cd7da5f5a4126c35",
       "overhead": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -45,3 +45,4 @@
     "eip1559DenominatorCanyon": 250
   }
 }
+

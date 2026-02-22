@@ -1,20 +1,3 @@
-# ============================================================================
-# Agglayer Configuration - Adapted for Docker Compose Snapshot
-# ============================================================================
-# This configuration has been adapted from the Kurtosis enclave for use in
-# a docker-compose environment. Key changes:
-#
-# - L1 RPC endpoints changed to use 'geth' hostname (from el-1-geth-lighthouse)
-# - L2 RPC endpoints commented out (L2 stack not included in L1-only snapshot)
-# - Gas price floor configured (1 gwei minimum to ensure L1 miners accept txs)
-# - All contract addresses and keys preserved from original deployment
-#
-# To use with L2:
-# 1. Deploy L2 services (cdk-erigon-rpc or equivalent)
-# 2. Uncomment the L2 RPC lines in [full-node-rpcs] section
-# 3. Update the hostname to match your L2 service name
-# ============================================================================
-
 debug-mode = true
 
 
@@ -24,7 +7,7 @@ mock-verifier = true
 
 [full-node-rpcs]
 # OP Stack RPC
-1 = "http://op-geth-001:8545"
+1 = "http://op-el-1-op-geth-op-node-001:8545"
 
 [proof-signers]
 1 = "0x5b06837A43bdC3dD9F114558DAf4B26ed49842Ed"
@@ -56,13 +39,6 @@ confirmations = 1
 settlement-timeout = 1200
 gas-multiplier-factor = 175
 
-# Gas price configuration for settlement transactions
-# Ensures fees are high enough to be accepted by L1 miners
-[outbound.rpc.settle.gas-price]
-floor = "1gwei"        # 1 gwei minimum (L1 default miner.gasprice is 0.001 gwei)
-ceiling = "100gwei"    # 100 gwei maximum
-multiplier = 1000      # 1.0x multiplier (scaled by 1000)
-
 [log]
 # level = "info"
 level = "debug" # we want debug visibility for now
@@ -76,8 +52,8 @@ private-keys = [
 
 [l1]
 chain-id = 271828
-node-url = "http://geth:8545"
-ws-node-url = "ws://geth:8546"
+node-url = "http://el-1-geth-lighthouse:8545"
+ws-node-url = "ws://el-1-geth-lighthouse:8546"
 rollup-manager-contract = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
 polygon-zkevm-global-exit-root-v2-contract = "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674"
 rpc-timeout = 45

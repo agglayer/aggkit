@@ -48,13 +48,14 @@ const AggkitE2EHostDataDir = "/tmp/aggkit-e2e-testing"
 
 // Env represents a loaded E2E test environment
 type Env struct {
-	L1             L1Config
-	L2             L2Config
-	Clients        ClientsConfig
-	Keys           KeysConfig
-	envDir         string
-	envName        ENVName
-	startedCompose bool // Track if we started docker compose (so we know if we should stop it)
+	L1               L1Config
+	L2               L2Config
+	Clients          ClientsConfig
+	Keys             KeysConfig
+	envDir           string
+	envName          ENVName
+	startedCompose   bool   // Track if we started docker compose (so we know if we should stop it)
+	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
 }
 
 // KeysConfig exposes key pools and special keys for tests
@@ -377,9 +378,10 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			AggOracle:      aggoracleKey,
 			SovereignAdmin: sovereignAdminKey,
 		},
-		envDir:         envDir,
-		envName:        envName,
-		startedCompose: startedCompose,
+		envDir:           envDir,
+		envName:          envName,
+		startedCompose:   startedCompose,
+		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
 	}, nil
 }
 
@@ -491,6 +493,39 @@ func (e *Env) Stop(ctx context.Context) error {
 	return stopDockerCompose(ctx, e.envDir)
 }
 
+const aggkitServiceName = "aggkit-001"
+
+// StopAggkit stops only the aggkit service so the test can use the aggoracle key without conflicting with the running aggkit.
+func (e *Env) StopAggkit(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "docker", "compose", "stop", aggkitServiceName)
+	cmd.Dir = e.envDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose stop %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose stop %s output:\n%s\n", aggkitServiceName, string(output))
+	}
+	return nil
+}
+
+// StartAggkit starts the aggkit service and waits for the bridge service to be ready.
+func (e *Env) StartAggkit(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "docker", "compose", "start", aggkitServiceName)
+	cmd.Dir = e.envDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose start %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose start %s output:\n%s\n", aggkitServiceName, string(output))
+	}
+	if err := waitForBridgeService(ctx, e.bridgeServiceURL); err != nil {
+		return fmt.Errorf("wait for bridge service after start: %w", err)
+	}
+	return nil
+}
+
 // prepareAggkitE2EDataDir creates AggkitE2EHostDataDir if it does not exist and clears its
 // contents so aggkit starts with an empty DB on each compose start.
 func prepareAggkitE2EDataDir() error {
@@ -504,57 +539,6 @@ func prepareAggkitE2EDataDir() error {
 // Returns true if we started docker compose, false if it was already running
 func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error) {
 	projectName := filepath.Base(envDir)
-
-	// Use file-based locking to coordinate across multiple test processes
-	lockFile := filepath.Join(os.TempDir(), fmt.Sprintf(".aggkit-e2e-%s.lock", projectName))
-
-	// Try to acquire the file lock with retries (for cross-process synchronization)
-	maxRetries := 60
-	retryDelay := time.Second
-
-	for i := 0; i < maxRetries; i++ {
-		// Try to create the lock file exclusively
-		f, err := os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, filePermOwnerRW)
-		if err == nil {
-			// We got the lock!
-			defer func() {
-				f.Close()
-				os.Remove(lockFile)
-			}()
-
-			// Check if docker compose is already running (inside the lock!)
-			alreadyRunning, err := isDockerComposeRunning(ctx, envDir)
-			if err != nil {
-				return false, fmt.Errorf("check docker compose status: %w", err)
-			}
-
-			if alreadyRunning {
-				// Already running, nothing to do
-				log.Debugf("docker compose is already running for %s\n", projectName)
-				return false, nil
-			}
-
-			// Not running, so we need to start it
-			break
-		}
-
-		// Lock file exists, another process might be starting docker compose
-		// Wait and retry
-		if i < maxRetries-1 {
-			time.Sleep(retryDelay)
-
-			// Check if docker compose is running now
-			alreadyRunning, err := isDockerComposeRunning(ctx, envDir)
-			if err == nil && alreadyRunning {
-				// It's running now, nothing to do
-				log.Debugf("docker compose was started by another process for %s\n", projectName)
-				return false, nil
-			}
-		}
-	}
-
-	// If we're here, either we have the lock or we timed out
-	// Check one more time if it's running
 	alreadyRunning, err := isDockerComposeRunning(ctx, envDir)
 	if err == nil && alreadyRunning {
 		log.Debugf("docker compose is running for %s\n", projectName)
@@ -610,6 +594,7 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 		}
 	}
 
+	log.Debugf("running docker compose up -d for %s\n", projectName)
 	cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 	cmd.Dir = envDir
 

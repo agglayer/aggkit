@@ -12,9 +12,9 @@
 # ==============================================================================
 
 PathRWData = "/tmp"
-L1URL = "http://geth:8545"
-L2URL = "http://op-geth-001:8545"
-OpNodeURL = "http://op-node-001:8547"
+L1URL = "http://el-1-geth-lighthouse:8545"
+L2URL = "http://op-el-1-op-geth-op-node-001:8545"
+OpNodeURL = "http://op-cl-1-op-node-op-geth-001:8547"
 
 # Check if agglayer grpc or readrpc should be used for AggLayerURL
 AggLayerURL = "http://agglayer:4443"
@@ -22,7 +22,7 @@ AggLayerURL = "http://agglayer:4443"
 AggchainProofURL= "aggkit-prover-001:4446"
 SequencerPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
 SequencerPrivateKeyPassword  = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
-RPCURL = "http://op-geth-001:8545"
+RPCURL = "http://op-el-1-op-geth-op-node-001:8545"
 
 # These values can be overridden directly from genesis.json
 rollupCreationBlockNumber = "41"
@@ -42,7 +42,7 @@ genesisBlockNumber = "41"
 # ------------------------------------------------------------------------------
 # URL is the L1 network url
 # ------------------------------------------------------------------------------
-URL = "http://geth:8545"
+URL = "http://el-1-geth-lighthouse:8545"
 
 # ------------------------------------------------------------------------------
 # L1 chain id
@@ -211,7 +211,7 @@ UseTLS = false
 # ------------------------------------------------------------------------------
 # URLRPCL2 is the URL of the L2 RPC node
 # ------------------------------------------------------------------------------
-# URLRPCL2 = "http://op-geth-001:8545"
+# URLRPCL2 = "http://op-el-1-op-geth-op-node-001:8545"
 
 # ------------------------------------------------------------------------------
 # EpochNotificationPercentage indicates the percentage of the epoch
@@ -329,7 +329,7 @@ MaxAttempts = 20
 # ------------------------------------------------------------------------------
 # URLRPCL1 is the URL of the L1 RPC node
 # ------------------------------------------------------------------------------
-# URLRPCL1 = "http://geth:8545"
+# URLRPCL1 = "http://el-1-geth-lighthouse:8545"
 
 # ------------------------------------------------------------------------------
 # Duration expressed in units: [ns, us, ms, s, m, h, d]"
@@ -350,7 +350,7 @@ GlobalExitRootL2 = "0xa40d5f56745a118d0906a34e69aec8c0db1cb8fa"
 # ------------------------------------------------------------------------------
 # URLRPCL2 is the URL of the L2 RPC node
 # ------------------------------------------------------------------------------
-# URLRPCL2 = "http://op-geth-001:8545"
+# URLRPCL2 = "http://op-el-1-op-geth-op-node-001:8545"
 
 # ------------------------------------------------------------------------------
 # GasOffset is the gas to add on the estimated gas when sending the claim txs

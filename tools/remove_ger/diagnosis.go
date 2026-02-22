@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -86,7 +87,7 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	}
 
 	// Step 3 — Find claims using the GER (query L2 Bridge SQLite)
-	claims, err := getClaimsByGER(ctx, env.SQLite.BridgeL2, gerHash)
+	claims, err := GetClaimsByGER(ctx, env.SQLite.BridgeL2, gerHash)
 	if err != nil {
 		return nil, fmt.Errorf("get claims by GER: %w", err)
 	}
@@ -132,14 +133,19 @@ func (e ErrGERExistsOnL1) Error() string {
 	return fmt.Sprintf("GER %s exists on L1 (timestamp > 0); this may not be an invalid GER. Use --force to continue anyway", e.GER.Hex())
 }
 
-// getClaimsByGER queries the L2 bridgesync DB for claims that used the given GER.
+// GetClaimsByGER queries the L2 bridgesync DB for claims that used the given GER.
+// Exported so E2E tests can use the same query/connection for wait and assertion as the tool.
 // If the claim table does not exist yet (e.g. bridge sync not run), returns nil, nil (no claims).
-func getClaimsByGER(ctx context.Context, db *sql.DB, gerHash common.Hash) ([]*bridgesync.Claim, error) {
+func GetClaimsByGER(ctx context.Context, db *sql.DB, gerHash common.Hash) ([]*bridgesync.Claim, error) {
 	const query = `SELECT * FROM claim WHERE global_exit_root = $1 ORDER BY block_num ASC, block_pos ASC`
 	var claims []*bridgesync.Claim
 	rows, err := db.QueryContext(ctx, query, gerHash.Hex())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		// Bridge sync may not have run yet; treat missing table as no claims (doc above).
+		if strings.Contains(err.Error(), "no such table") {
 			return nil, nil
 		}
 		return nil, err

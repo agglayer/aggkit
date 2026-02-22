@@ -3,7 +3,9 @@ package e2e
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -42,9 +44,12 @@ const (
 )
 
 // pollWithBackoff runs fn until it returns (true, nil) or ctx is done. Uses exponential backoff between attempts.
-func pollWithBackoff(ctx context.Context, timeout time.Duration, initialInterval, maxInterval time.Duration, fn func() (done bool, err error)) error {
+// If logLabel is non-empty, logs progress every 10 attempts so long-running waits are visible.
+func pollWithBackoff(ctx context.Context, timeout time.Duration, initialInterval, maxInterval time.Duration, logLabel string, fn func() (done bool, err error)) error {
 	deadline := time.Now().Add(timeout)
+	start := time.Now()
 	interval := initialInterval
+	attempt := 0
 	for {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timeout after %v", timeout)
@@ -54,12 +59,19 @@ func pollWithBackoff(ctx context.Context, timeout time.Duration, initialInterval
 			return ctx.Err()
 		default:
 		}
+		attempt++
 		done, err := fn()
 		if err != nil {
 			return err
 		}
 		if done {
+			if logLabel != "" {
+				log.Info("[poll] done", "label", logLabel, "attempt", attempt)
+			}
 			return nil
+		}
+		if logLabel != "" && attempt%10 == 0 {
+			log.Info("[poll] still waiting", "label", logLabel, "attempt", attempt, "elapsed", time.Since(start))
 		}
 		time.Sleep(interval)
 		if interval < maxInterval {
@@ -342,8 +354,6 @@ func performRealBridgeL1ToL2(ctx context.Context, t *testing.T, env *envs.Env) *
 	require.NoError(t, err, "wait for bridge tx")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "bridge tx failed")
 
-	time.Sleep(10 * time.Second)
-
 	var bridge *types.BridgeResponse
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
@@ -456,6 +466,11 @@ func performRealBridgeL1ToL2NoClaim(ctx context.Context, t *testing.T, env *envs
 	destinationAddress := l2Opts.From
 	forceUpdateGlobalExitRoot := true
 
+	// Sanity check addr has enough balance
+	balance, err := env.Clients.L1.BalanceAt(ctx, l1Opts.From, nil)
+	require.NoError(t, err)
+	require.Equal(t, balance.Cmp(bridgeAmount), 1, "addr does not have enough balance")
+
 	l1Opts.Value = bridgeAmount
 	defer func() { l1Opts.Value = nil }()
 
@@ -469,16 +484,25 @@ func performRealBridgeL1ToL2NoClaim(ctx context.Context, t *testing.T, env *envs
 		nil,
 	)
 	require.NoError(t, err, "BridgeAsset")
-	receipt, err := bind.WaitMined(ctx, env.Clients.L1, tx)
+	log.Infof("[B1] bridge tx sent, waiting for receipt, tx hash: %s", tx.Hash().Hex())
+	// add context with 30s deadline
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	receipt, err := bind.WaitMined(ctxWithTimeout, env.Clients.L1, tx)
 	require.NoError(t, err, "wait for bridge tx")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "bridge tx failed")
 
-	time.Sleep(10 * time.Second)
+	log.Info("[B1] bridge tx mined")
+	bridgeEvent, err := env.L1.Contracts.Bridge.ParseBridgeEvent(*receipt.Logs[0])
+	if err != nil {
+		t.Fatalf("failed to parse bridge event: %v", err)
+	}
+	depositCount := uint64(bridgeEvent.DepositCount)
 
 	var bridge *types.BridgeResponse
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
-		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize}
+		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize, DepositCount: &depositCount}
 		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
@@ -491,11 +515,14 @@ func performRealBridgeL1ToL2NoClaim(ctx context.Context, t *testing.T, env *envs
 		if bridge != nil {
 			break
 		}
+		if (i+1)%5 == 0 {
+			log.Info("[B1] bridge not in bridge service yet", "attempt", i+1, "max", 30)
+		}
 		time.Sleep(2 * time.Second)
 	}
 	require.NotNil(t, bridge, "bridge not found in bridge service")
+	log.Infof("[B1] bridge found in bridge service, deposit count: %d", bridge.DepositCount)
 
-	depositCount := bridge.DepositCount
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 60; i++ {
 		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
@@ -503,21 +530,29 @@ func performRealBridgeL1ToL2NoClaim(ctx context.Context, t *testing.T, env *envs
 			l1InfoTreeIndex = idx
 			break
 		}
+		if (i+1)%6 == 0 {
+			log.Infof("[B1] L1InfoTreeIndex not ready yet, attempt: %d, max: 60", i+1)
+		}
 		time.Sleep(5 * time.Second)
 	}
 	require.NotZero(t, l1InfoTreeIndex, "bridge not in L1 Info Tree")
+	log.Infof("[B1] L1InfoTreeIndex ready, l1InfoTreeIndex: %d", l1InfoTreeIndex)
 
 	for i := 0; i < 120; i++ {
 		_, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
 		if err == nil {
 			break
 		}
+		if (i+1)%12 == 0 {
+			log.Infof("[B1] GetInjectedL1InfoLeaf not ready yet, attempt: %d, max: 120", i+1)
+		}
 		time.Sleep(5 * time.Second)
 	}
+	log.Info("[B1] performRealBridgeL1ToL2NoClaim done")
 
 	return &bridgeResult{
 		Bridge:          bridge,
-		DepositCount:    depositCount,
+		DepositCount:    uint32(depositCount),
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		ClaimTxHash:     common.Hash{}, // no claim executed
 		GlobalIndex:     bridge.GlobalIndex,
@@ -623,7 +658,7 @@ func waitForGEROnBridgeService(ctx context.Context, t *testing.T, env *envs.Env,
 	limit := 50
 	pollCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, func() (bool, error) {
+	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, "GER remove event on bridge service", func() (bool, error) {
 		resp, err := env.Clients.BridgeService.GetRemoveGEREvents(pollCtx, client.GetRemoveGEREventsParams{
 			GlobalExitRoot: &gerHex,
 			Limit:          &limit,
@@ -636,25 +671,23 @@ func waitForGEROnBridgeService(ctx context.Context, t *testing.T, env *envs.Env,
 	require.NoError(t, err, "wait for GER remove event on bridge service")
 }
 
-// waitForClaimInBridgeL2DBByGER polls the Bridge L2 SQLite DB (at host path) until at least one claim exists for the given GER.
-// The tool reads this same DB when diagnosing by GER; without this wait the tool can see no rows.
-func waitForClaimInBridgeL2DBByGER(ctx context.Context, t *testing.T, hostDataDir string, gerHash common.Hash, timeout time.Duration) {
+// waitForClaimInBridgeL2DBByGER polls the Bridge L2 SQLite DB until at least one claim exists for the given GER,
+// using the same GetClaimsByGER as the remove_ger tool so the test and tool cannot diverge on query/visibility.
+// bridgeL2DB must be an open connection to the Bridge L2 DB at the host path the tool will use.
+func waitForClaimInBridgeL2DBByGER(ctx context.Context, t *testing.T, bridgeL2DB *sql.DB, gerHash common.Hash, timeout time.Duration) {
 	t.Helper()
-	dbPath := filepath.Join(hostDataDir, "bridgel2sync.sqlite")
 	pollCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, func() (bool, error) {
-		db, err := db.NewSQLiteDB(dbPath)
+	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, "B1: claim in Bridge L2 DB by GER", func() (bool, error) {
+		claims, err := remove_ger.GetClaimsByGER(pollCtx, bridgeL2DB, gerHash)
 		if err != nil {
+			// Treat no rows (e.g. from meddler scan or driver) as "not ready yet", keep polling.
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
 			return false, err
 		}
-		defer db.Close()
-		var count int
-		err = db.QueryRowContext(ctx, `SELECT count(*) FROM claim WHERE global_exit_root = $1`, gerHash.Hex()).Scan(&count)
-		if err != nil {
-			return false, err
-		}
-		return count >= 1, nil
+		return len(claims) >= 1, nil
 	})
 	require.NoError(t, err, "wait for claim in Bridge L2 DB by GER %s", gerHash.Hex())
 }
@@ -668,7 +701,7 @@ func waitForClaimOnBridgeService(ctx context.Context, t *testing.T, env *envs.En
 	pageSize := uint32(100)
 	pollCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	err = pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, func() (bool, error) {
+	err = pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, "B1: claim on bridge service", func() (bool, error) {
 		resp, err := env.Clients.BridgeService.GetClaims(pollCtx, client.GetClaimsParams{
 			NetworkID:   l2NetworkID,
 			PageSize:    &pageSize,
@@ -723,7 +756,9 @@ var runbookErrorSubstrings = []string{
 func detectInvalidGERFromAggkitLogs(ctx context.Context, t *testing.T, envDir string, timeout time.Duration, expectedGER *common.Hash) (common.Hash, error) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
+	start := time.Now()
 	interval := 3 * time.Second
+	pollCount := 0
 	for {
 		if time.Now().After(deadline) {
 			return common.Hash{}, fmt.Errorf("timeout after %v waiting for invalid GER in aggkit logs", timeout)
@@ -732,6 +767,10 @@ func detectInvalidGERFromAggkitLogs(ctx context.Context, t *testing.T, envDir st
 		case <-ctx.Done():
 			return common.Hash{}, ctx.Err()
 		default:
+		}
+		pollCount++
+		if pollCount%10 == 0 {
+			log.Info("[B1] polling aggkit logs for invalid GER", "attempt", pollCount, "elapsed", time.Since(start))
 		}
 		cmd := exec.CommandContext(ctx, "docker", "compose", "logs", "--no-log-prefix", "aggkit-001")
 		cmd.Dir = envDir
@@ -757,6 +796,7 @@ func detectInvalidGERFromAggkitLogs(ctx context.Context, t *testing.T, envDir st
 					if expectedGER != nil && h != *expectedGER {
 						continue
 					}
+					log.Info("[B1] invalid GER detected in logs", "ger", h.Hex(), "attempt", pollCount)
 					return h, nil
 				}
 			}
@@ -948,7 +988,10 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 	require.NoError(t, err)
 	injectedGER := common.Hash(gerBytes)
 
+	require.NoError(t, env.StopAggkit(ctx))
 	injectInvalidGER(ctx, t, env, injectedGER)
+	require.NoError(t, env.StartAggkit(ctx))
+
 	assertGERExistsOnL2(ctx, t, env, injectedGER)
 
 	// --- GER detection (runbook-aligned): obtain GER only from logs ---
@@ -1034,15 +1077,17 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	require.Equal(t, injectedGER, l1infotreesync.CalculateGER(mainnetExitRootBats, rollupExitRootBats),
 		"bats GER must equal keccak256(mainnetExitRootBats, rollupExitRootBats)")
 
+	require.NoError(t, env.StopAggkit(ctx))
 	injectInvalidGER(ctx, t, env, injectedGER)
 	assertGERExistsOnL2(ctx, t, env, injectedGER)
-
 	globalIndex := batsGlobalIndexCategoryA
 	params := batsCategoryADummyClaimParams() // exact bats params so leaf hashes match and proof verifies
 	// Bats test uses aggoracle key to send the dummy claim tx (latest-n-injected-ger.bats).
 	aggoracleOpts, err := bind.NewKeyedTransactorWithChainID(env.Keys.AggOracle, env.L2.ChainID)
 	require.NoError(t, err)
 	executeDummyClaimWithOpts(ctx, t, env, params, aggoracleOpts)
+	require.NoError(t, env.StartAggkit(ctx))
+
 	assertClaimedOnL2(ctx, t, env, globalIndex)
 
 	// Wait for bridge L2 sync to index the claim (tool reads from same SQLite); otherwise diagnosis sees no claims.
@@ -1131,19 +1176,35 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	}()
 
 	// --- Setup: real bridge (no claim), then inject invalid GER and claim with invalid GER but correct bridge data ---
+	log.Info("[B1] step: performRealBridgeL1ToL2NoClaim")
 	bridgeResult := performRealBridgeL1ToL2NoClaim(ctx, t, env)
+	log.Info("[B1] step: buildB1ClaimProof, injectInvalidGER, executeB1Claim")
 	proof := buildB1ClaimProof(t, bridgeResult.Bridge, bridgeResult.DepositCount)
+	require.NoError(t, env.StopAggkit(ctx))
 	injectInvalidGER(ctx, t, env, proof.InvalidGER)
+	require.NoError(t, env.StartAggkit(ctx))
 	assertGERExistsOnL2(ctx, t, env, proof.InvalidGER)
 	executeB1Claim(ctx, t, env, bridgeResult, proof)
 	assertClaimedOnL2(ctx, t, env, bridgeResult.GlobalIndex)
 
 	// Wait for bridge L2 sync to index the claim before diagnosis (tool reads same SQLite as aggkit)
+	log.Info("[B1] step: waitForClaimOnBridgeService (up to 2m)")
 	waitForClaimOnBridgeService(ctx, t, env, bridgeResult.GlobalIndex, 2*time.Minute)
-	// Wait for the claim to appear in the Bridge L2 DB under our invalid GER (tool queries by GER)
-	waitForClaimInBridgeL2DBByGER(ctx, t, envs.AggkitE2EHostDataDir, proof.InvalidGER, 2*time.Minute)
+
+	// --- Open Bridge L2 DB once and use it for wait, assert, and tool diagnosis ---
+	// Using the same connection and GetClaimsByGER as the tool avoids test/tool query or visibility divergence.
+	log.Info("[B1] step: load config, open Bridge L2 DB")
+	cfg := loadToolConfigWithHostDBPaths(t)
+	bridgeL2DB, err := db.NewSQLiteDB(cfg.BridgeL2Sync.DBPath)
+	require.NoError(t, err)
+	defer bridgeL2DB.Close()
+
+	// Wait for the claim to appear in the Bridge L2 DB under our invalid GER (same query as tool).
+	log.Info("[B1] step: waitForClaimInBridgeL2DBByGER (up to 2m)", "ger", proof.InvalidGER.Hex())
+	waitForClaimInBridgeL2DBByGER(ctx, t, bridgeL2DB, proof.InvalidGER, 2*time.Minute)
 
 	// --- GER detection (runbook-aligned) ---
+	log.Info("[B1] step: detectInvalidGERFromAggkitLogs (up to 6m)")
 	envsDir, err := envs.FindEnvsDir()
 	require.NoError(t, err)
 	envDir := filepath.Join(envsDir, opPPEnvName)
@@ -1153,19 +1214,16 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	require.NotEqual(t, common.Hash{}, detectedGER)
 	require.Equal(t, proof.InvalidGER, detectedGER, "detected GER must match injected (sanity check)")
 
-	// --- Tool: diagnosis ---
-	cfg := loadToolConfigWithHostDBPaths(t)
-	// Re-check that the claim is in the Bridge L2 DB at the exact path the tool will use.
-	checkDB, err := db.NewSQLiteDB(cfg.BridgeL2Sync.DBPath)
+	// Assert claim present using the exact same query as the tool (GetClaimsByGER).
+	log.Info("[B1] step: assert claim in DB, SetupEnv, Diagnose")
+	claimsForGER, err := remove_ger.GetClaimsByGER(ctx, bridgeL2DB, detectedGER)
 	require.NoError(t, err)
-	var count int
-	err = checkDB.QueryRowContext(ctx, `SELECT count(*) FROM claim WHERE global_exit_root = $1`, detectedGER.Hex()).Scan(&count)
-	_ = checkDB.Close()
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, count, 1, "claim must be in Bridge L2 DB at tool path %q when starting diagnosis", cfg.BridgeL2Sync.DBPath)
+	require.GreaterOrEqual(t, len(claimsForGER), 1, "claim must be in Bridge L2 DB at tool path %q when starting diagnosis", cfg.BridgeL2Sync.DBPath)
+
+	// --- Tool: diagnosis (reuse same Bridge L2 connection so tool sees identical view) ---
 	envCtx, envCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer envCancel()
-	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg)
+	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg, bridgeL2DB)
 	require.NoError(t, err)
 	defer toolEnv.Close()
 	diagnosis, err := remove_ger.Diagnose(ctx, toolEnv, detectedGER, false)
@@ -1176,6 +1234,7 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	require.NotNil(t, diagnosis.Claims[0].CorrectBridge, "B.1 claim must have CorrectBridge")
 
 	// --- Tool: recovery ---
+	log.Info("[B1] step: ExecuteRecovery (up to 10m)")
 	recoveryTimeout := 10 * time.Minute
 	recoveryCtx, recoveryCancel := context.WithTimeout(ctx, recoveryTimeout)
 	defer recoveryCancel()
@@ -1183,6 +1242,7 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	require.NoError(t, err)
 
 	// --- Post-recovery assertions ---
+	log.Info("[B1] step: post-recovery assertions")
 	assertGERRemovedFromL2(ctx, t, env, detectedGER)
 	waitForGEROnBridgeService(ctx, t, env, detectedGER, 2*time.Minute)
 	isEmergency, err := env.L2.Contracts.L2Bridge.IsEmergencyState(&bind.CallOpts{Context: ctx})

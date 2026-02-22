@@ -1,12 +1,12 @@
 # Ethereum L1 Snapshot Environment
 # Enclave: cdk
-# Tag: cdk-20260216-212347
-# Genesis: 0xd7c99a726a2bb70e9ab7d943776a6b5c4ca0c77404d9956dad3187b110dfb1e0
+# Tag: cdk-20260220-181934
+# Genesis: 0x7fab811286d4d8a8a7cf8d058b99f59a1fb9eea0d990ae99de0933cb47db7b8d
 
 services:
   geth:
-    image: arnaubennassar/geth:op-pp
-    container_name: cdk-20260216-212314-geth
+    image: snapshot-geth:cdk-20260220-181934
+    container_name: cdk-20260220-181853-geth
     hostname: geth
     command:
       - "--http"
@@ -45,14 +45,14 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
-      interval: 2s
-      timeout: 3s
+      interval: 1s
+      timeout: 2s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
   beacon:
-    image: arnaubennassar/beacon:op-pp
-    container_name: cdk-20260216-212314-beacon
+    image: snapshot-beacon:cdk-20260220-181934
+    container_name: cdk-20260220-181853-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -66,14 +66,14 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/eth/v1/node/health"]
-      interval: 3s
+      interval: 1s
       timeout: 5s
       retries: 5
       start_period: 30s
 
   validator:
-    image: arnaubennassar/validator:op-pp
-    container_name: cdk-20260216-212314-validator
+    image: snapshot-validator:cdk-20260220-181934
+    container_name: cdk-20260220-181853-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -82,14 +82,14 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pgrep", "-f", "validator-client"]
-      interval: 10s
-      timeout: 5s
+      interval: 2s
+      timeout: 2s
       retries: 3
-      start_period: 60s
+      start_period: 15s
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: cdk-20260216-212314-agglayer
+    container_name: cdk-20260220-181853-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -110,21 +110,22 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "sh", "-c", "test -f /proc/1/cmdline"]
-      interval: 2s
-      timeout: 3s
+      interval: 1s
+      timeout: 2s
       retries: 3
-      start_period: 10s
+      start_period: 5s
     environment:
       - RUST_BACKTRACE=1
 
   op-geth-001:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
-    container_name: cdk-20260216-212314-op-geth-001
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101609.0
+    container_name: cdk-20260220-181853-op-geth-001
     hostname: op-geth-001
     entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
       - ./config/001/jwt.hex:/jwt/jwtsecret:ro
       - ./config/001/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
+      - ./config/001/rollup.json:/rollup-ro/rollup.json:ro
       - ./config/001/op-geth-entrypoint.sh:/entrypoint/op-geth-entrypoint.sh:ro
       - l2-shared-001:/shared
     ports:
@@ -140,11 +141,11 @@ services:
       interval: 2s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 100s
 
   op-node-001:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.5
-    container_name: cdk-20260216-212314-op-node-001
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.6
+    container_name: cdk-20260220-181853-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -174,8 +175,8 @@ services:
       start_period: 20s
 
   aggkit-001:
-    image: aggkit:local
-    container_name: cdk-20260216-212314-aggkit-001
+    image: ghcr.io/agglayer/aggkit:0.8.0
+    container_name: cdk-20260220-181853-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
