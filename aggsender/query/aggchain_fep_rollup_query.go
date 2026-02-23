@@ -72,7 +72,8 @@ func NewAggchainFEPQuerier(
 	l1Client aggkittypes.BaseEthereumClienter) (types.AggchainFEPRollupQuerier, error) {
 	if aggchainFEPAddr == aggkitcommon.ZeroAddress || aggsenderMode == types.PessimisticProofMode {
 		// its a PP network without AggchainFEP contract
-		logger.Info("aggchainProverFlow - AggchainFEP contract address is zero, using no-op querier")
+		logger.Infof("aggchainProverFlow - AggchainFEP contract address is zero, or mode (%s) is "+
+			"PessimisticProofMode, using no-op querier", aggsenderMode)
 		return &noOpAggchainFEPRollupQuerier{}, nil
 	}
 
@@ -96,7 +97,8 @@ func newAggchainFEPQuerier(
 			aggchainFEPAddr.String(), err)
 	}
 
-	logger.Info("aggchainProverFlow - AggchainFEP contract address is not zero, using real querier")
+	logger.Infof("aggchainProverFlow - AggchainFEP contract address is not zero, using real querier (%s)",
+		aggchainFEPAddr.String())
 
 	return &aggchainFEPRollupQuerier{
 		startL2BlockNum:   startL2Block.Uint64(),

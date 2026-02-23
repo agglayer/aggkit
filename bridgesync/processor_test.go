@@ -1008,13 +1008,34 @@ func TestGetBridgesPaged(t *testing.T) {
 	fromBlock := uint64(1)
 	toBlock := uint64(10)
 	bridges := []*Bridge{
-		{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), DestinationNetwork: 20, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), DestinationNetwork: 50, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
+		{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
+		{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), DestinationNetwork: 20, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
+		{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
+		{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
+		{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
+		{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), DestinationNetwork: 50, FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970")
+			return &addr
+		}()},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
@@ -2099,9 +2120,10 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 		{
 			name: "compatible versions",
 			current: BridgeSyncRuntimeData{
-				ChainID:   1,
-				Addresses: []common.Address{common.HexToAddress("0x123")},
-				DBVersion: intPtr(1),
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
 			},
 			storage: BridgeSyncRuntimeData{
 				ChainID:   1,
@@ -2113,9 +2135,10 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 		{
 			name: "incompatible versions - different DB versions",
 			current: BridgeSyncRuntimeData{
-				ChainID:   1,
-				Addresses: []common.Address{common.HexToAddress("0x123")},
-				DBVersion: intPtr(2),
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(2),
+				SyncFromInBridges: boolPtr(true),
 			},
 			storage: BridgeSyncRuntimeData{
 				ChainID:   1,
@@ -2143,9 +2166,10 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 		{
 			name: "incompatible versions - different addresses",
 			current: BridgeSyncRuntimeData{
-				ChainID:   1,
-				Addresses: []common.Address{common.HexToAddress("0x123")},
-				DBVersion: intPtr(1),
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
 			},
 			storage: BridgeSyncRuntimeData{
 				ChainID:   1,
@@ -2155,11 +2179,75 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 			expectError: true,
 			errorMsg:    "addresses[0] mismatch: 0x0000000000000000000000000000000000000123 != 0x0000000000000000000000000000000000000456",
 		},
+		{
+			name: "storage no flag SyncFromInBridges -> false: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(false),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: nil, // Previous DB to this version
+			},
+			expectError: false,
+		},
+		{
+			name: "storage no flag SyncFromInBridges -> true: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: nil, // Previous DB to this version
+			},
+			expectError: false,
+		},
+		{
+			name: "storage SyncFromInBridges false -> true: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(false),
+			},
+			expectError: false,
+		},
+		{
+			name: "storage SyncFromInBridges true -> false: ok",
+			current: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(false),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:           1,
+				Addresses:         []common.Address{common.HexToAddress("0x123")},
+				DBVersion:         intPtr(1),
+				SyncFromInBridges: boolPtr(true),
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.current.IsCompatible(tt.storage)
+			_, err := tt.current.IsCompatible(tt.storage)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -2759,6 +2847,10 @@ func uint64Ptr(i uint64) *uint64 {
 	return &i
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 func TestProcessor_ErrorPathLogging(t *testing.T) {
 	t.Parallel()
 
@@ -2981,11 +3073,14 @@ func createTestProcessor(t *testing.T, dbName string) *processor {
 // createTestBridge creates a test Bridge event
 func createTestBridge(blockNum uint64, blockPos int) *Bridge {
 	return &Bridge{
-		BlockNum:           blockNum,
-		BlockPos:           uint64(blockPos),
-		BlockTimestamp:     1234567890,
-		TxHash:             common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
-		FromAddress:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		BlockNum:       blockNum,
+		BlockPos:       uint64(blockPos),
+		BlockTimestamp: 1234567890,
+		TxHash:         common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		FromAddress: func() *common.Address {
+			addr := common.HexToAddress("0x1234567890123456789012345678901234567890")
+			return &addr
+		}(),
 		LeafType:           1,
 		OriginNetwork:      1,
 		OriginAddress:      common.HexToAddress("0x1234567890123456789012345678901234567890"),
@@ -5922,7 +6017,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		require.Equal(t, initialDepositCount+1, bridge.DepositCount)
 		require.Equal(t, event.TxnHash, bridge.TxHash)
 		require.Equal(t, aggkitcommon.ZeroAddress, bridge.TxnSender)
-		require.Equal(t, aggkitcommon.ZeroAddress, bridge.FromAddress)
+		require.Nil(t, bridge.FromAddress)
 		require.Equal(t, BridgeSourceForwardLET, bridge.Source)
 
 		// Verify: ForwardLET event was inserted
@@ -6066,7 +6161,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			DepositCount:       20,
 			TxHash:             archivedTxHash,
 			TxnSender:          archivedTxnSender,
-			FromAddress:        archivedFromAddr,
+			FromAddress:        &archivedFromAddr,
 			// Don't set Source - bridge_archive table doesn't have this column
 		}
 		// Insert manually to avoid Source field
@@ -6116,7 +6211,8 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		bridge := bridges[0]
 		require.Equal(t, archivedTxHash, bridge.TxHash, "Should use archived tx hash")
 		require.Equal(t, archivedTxnSender, bridge.TxnSender, "Should use archived txn sender")
-		require.Equal(t, archivedFromAddr, bridge.FromAddress, "Should use archived from address")
+		require.NotNil(t, bridge.FromAddress)
+		require.Equal(t, archivedFromAddr, *bridge.FromAddress, "Should use archived from address")
 		require.Equal(t, BridgeSourceForwardLET, bridge.Source)
 	})
 
@@ -6167,7 +6263,10 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			DepositCount:       30,
 			TxHash:             common.HexToHash("0xfirst111"),
 			TxnSender:          common.HexToAddress("0x1111111111111111111111111111111111111111"),
-			FromAddress:        common.HexToAddress("0x2222222222222222222222222222222222222222"),
+			FromAddress: func() *common.Address {
+				addr := common.HexToAddress("0x2222222222222222222222222222222222222222")
+				return &addr
+			}(),
 		}
 
 		archivedBridge2 := &Bridge{
@@ -6183,7 +6282,10 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			DepositCount:       31,
 			TxHash:             common.HexToHash("0xsecond222"),
 			TxnSender:          common.HexToAddress("0x3333333333333333333333333333333333333333"),
-			FromAddress:        common.HexToAddress("0x4444444444444444444444444444444444444444"),
+			FromAddress: func() *common.Address {
+				addr := common.HexToAddress("0x4444444444444444444444444444444444444444")
+				return &addr
+			}(),
 		}
 
 		// Insert both archived bridges manually (to avoid Source column)
@@ -6225,7 +6327,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		bridge := bridges[0]
 		require.Equal(t, event.TxnHash, bridge.TxHash, "Should use event's tx hash when multiple archived bridges match")
 		require.Equal(t, common.Address{}, bridge.TxnSender, "TxnSender should be empty with multiple matches")
-		require.Equal(t, common.Address{}, bridge.FromAddress, "FromAddress should be empty with multiple matches")
+		require.Nil(t, bridge.FromAddress, "FromAddress should be nil with multiple matches")
 		require.Equal(t, BridgeSourceForwardLET, bridge.Source)
 	})
 
@@ -6520,7 +6622,8 @@ func calculateExpectedRootAfterForwardLET(t *testing.T, initialDepositCount uint
 	for i, leaf := range leaves {
 		// Try to get archived bridge info if available
 		var txHash common.Hash
-		var txnSender, fromAddr common.Address
+		var txnSender common.Address
+		var fromAddr *common.Address
 		if archived, found := archivedByLeaf[i]; found {
 			txHash = archived.TxHash
 			txnSender = archived.TxnSender

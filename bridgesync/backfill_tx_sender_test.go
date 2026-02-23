@@ -91,7 +91,7 @@ func TestBackfillTxnSender(t *testing.T) {
 
 	// Create backfill instance
 	logger := log.WithFields("module", "test")
-	backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+	backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 	require.NoError(t, err)
 	defer backfiller.Close()
 
@@ -121,7 +121,7 @@ func TestNewBackfillTxnSender(t *testing.T) {
 		logger := log.WithFields("module", "test")
 		bridgeAddr := common.HexToAddress("0x1234")
 
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, bridgeAddr, logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, bridgeAddr, true, logger)
 		require.NoError(t, err)
 		require.NotNil(t, backfiller)
 		require.Equal(t, bridgeAddr, backfiller.bridgeAddr)
@@ -139,7 +139,7 @@ func TestNewBackfillTxnSender(t *testing.T) {
 		logger := log.WithFields("module", "test")
 		bridgeAddr := common.HexToAddress("0x1234")
 
-		backfiller, err := NewBackfillTxnSender(invalidPath, mockClient, bridgeAddr, logger)
+		backfiller, err := NewBackfillTxnSender(invalidPath, mockClient, bridgeAddr, true, logger)
 		require.NoError(t, err) // sql.Open doesn't validate paths
 		require.NotNil(t, backfiller)
 
@@ -196,7 +196,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 		// Create mock client
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -224,7 +224,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -249,7 +249,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -298,7 +298,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -326,7 +326,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -349,7 +349,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -404,7 +404,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -499,7 +499,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -529,7 +529,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -585,7 +585,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -607,7 +607,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -631,7 +631,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -646,6 +646,20 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 	})
 }
 
+func mockClientCallGetTransactionByHash(t *testing.T,
+	mockClient *mocks.EthClienter,
+	expectedTxHash common.Hash, fromAddress string, toAddress string) {
+	t.Helper()
+	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*Transaction)
+		require.True(t, ok)
+		arg.FromRaw = fromAddress
+		arg.To = toAddress
+		arg.Hash = expectedTxHash.Hex()
+		arg.Input = common.Bytes2Hex(BridgeAssetMethodID)
+	}).Return(nil).Maybe()
+}
+
 func TestBackfillTxnSender_processBatch(t *testing.T) {
 	t.Run("successful processing", func(t *testing.T) {
 		tempDir := t.TempDir()
@@ -657,10 +671,14 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -689,11 +707,14 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 		ctx := context.Background()
 		records := []RecordToBackfill{
 			{
@@ -716,16 +737,20 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -761,12 +786,16 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		expectedSender := common.HexToAddress(testAddress)
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -794,11 +823,14 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 		sender, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
@@ -851,7 +883,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -910,7 +942,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -941,7 +973,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -960,7 +992,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -993,7 +1025,7 @@ func TestBackfillTxnSender_Close(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 
 		err = backfiller.Close()
@@ -1050,11 +1082,14 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1134,13 +1169,16 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
 		// Mock mixed results: first call succeeds, second fails
 
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1150,7 +1188,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			}).Return(nil).Once()
 
 		// Mock the second call to fail
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
 
 		records := []RecordToBackfill{
 			{
@@ -1223,12 +1261,15 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
 		// Mock all calls to fail
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("network error")).Maybe()
 
 		records := []RecordToBackfill{
@@ -1302,14 +1343,17 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		// Create a context that will be cancelled
 		cancelCtx, cancel := context.WithCancel(ctx)
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				time.Sleep(10 * time.Millisecond)
 				arg, ok := result.(*Call)
@@ -1355,7 +1399,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -1419,11 +1463,14 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1499,7 +1546,7 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 
 			mockClient := mocks.NewEthClienter(t)
 			logger := log.WithFields("module", "test")
-			backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+			backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 			require.NoError(t, err)
 			defer backfiller.Close()
 
@@ -1581,7 +1628,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -1657,7 +1704,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -1751,7 +1798,7 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 
 	// Create backfill instance
 
-	backfiller, err := NewBackfillTxnSender(dbPath, client, common.HexToAddress("0x1234"), logger)
+	backfiller, err := NewBackfillTxnSender(dbPath, client, common.HexToAddress("0x1234"), true, logger)
 	require.NoError(t, err)
 	defer backfiller.Close()
 

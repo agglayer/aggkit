@@ -127,10 +127,17 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32,
 		globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(networkID, bridge.DepositCount)
 	}
 
+	// Convert FromAddress to pointer if not nil
+	var fromAddr *bridgetypes.Address
+	if bridge.FromAddress != nil {
+		addr := bridgetypes.Address(bridge.FromAddress.Hex())
+		fromAddr = &addr
+	}
+
 	return &bridgetypes.BridgeResponse{
 		BlockNum:           bridge.BlockNum,
 		BlockPos:           bridge.BlockPos,
-		FromAddress:        bridgetypes.Address(bridge.FromAddress.Hex()),
+		FromAddress:        fromAddr,
 		TxHash:             bridgetypes.Hash(bridge.TxHash.Hex()),
 		GlobalIndex:        globalIndex,
 		BlockTimestamp:     bridge.BlockTimestamp,

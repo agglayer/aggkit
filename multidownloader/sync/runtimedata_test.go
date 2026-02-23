@@ -149,8 +149,9 @@ func TestRuntimeData_IsCompatible_Success(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.data1.IsCompatible(tt.data2)
+			result, err := tt.data1.IsCompatible(tt.data2)
 			require.NoError(t, err)
+			require.Nil(t, result)
 		})
 	}
 }
@@ -210,8 +211,9 @@ func TestRuntimeData_IsCompatible_ChainIDMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.data1.IsCompatible(tt.data2)
+			result, err := tt.data1.IsCompatible(tt.data2)
 			require.Error(t, err)
+			require.Nil(t, result)
 			require.Contains(t, err.Error(), "chain ID mismatch")
 		})
 	}
@@ -300,8 +302,9 @@ func TestRuntimeData_IsCompatible_AddressesLenMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.data1.IsCompatible(tt.data2)
+			result, err := tt.data1.IsCompatible(tt.data2)
 			require.Error(t, err)
+			require.Nil(t, result)
 			require.Contains(t, err.Error(), "addresses len mismatch")
 		})
 	}
@@ -412,8 +415,9 @@ func TestRuntimeData_IsCompatible_AddressMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.data1.IsCompatible(tt.data2)
+			result, err := tt.data1.IsCompatible(tt.data2)
 			require.Error(t, err)
+			require.Nil(t, result)
 			require.Contains(t, err.Error(), "addresses")
 			require.Contains(t, err.Error(), "mismatch")
 		})
@@ -431,8 +435,9 @@ func TestRuntimeData_IsCompatible_ErrorPrecedence(t *testing.T) {
 			Addresses: []common.Address{common.HexToAddress("0x456")},
 		}
 
-		err := data1.IsCompatible(data2)
+		result, err := data1.IsCompatible(data2)
 		require.Error(t, err)
+		require.Nil(t, result)
 		require.Contains(t, err.Error(), "chain ID mismatch")
 	})
 
@@ -449,8 +454,9 @@ func TestRuntimeData_IsCompatible_ErrorPrecedence(t *testing.T) {
 			},
 		}
 
-		err := data1.IsCompatible(data2)
+		result, err := data1.IsCompatible(data2)
 		require.Error(t, err)
+		require.Nil(t, result)
 		require.Contains(t, err.Error(), "addresses len mismatch")
 	})
 }
@@ -466,8 +472,9 @@ func TestRuntimeData_IsCompatible_NilAddresses(t *testing.T) {
 			Addresses: nil,
 		}
 
-		err := data1.IsCompatible(data2)
+		result, err := data1.IsCompatible(data2)
 		require.NoError(t, err)
+		require.Nil(t, result)
 	})
 
 	t.Run("one nil, one empty", func(t *testing.T) {
@@ -480,8 +487,9 @@ func TestRuntimeData_IsCompatible_NilAddresses(t *testing.T) {
 			Addresses: []common.Address{},
 		}
 
-		err := data1.IsCompatible(data2)
+		result, err := data1.IsCompatible(data2)
 		require.NoError(t, err)
+		require.Nil(t, result)
 	})
 
 	t.Run("nil vs non-empty", func(t *testing.T) {
@@ -494,8 +502,9 @@ func TestRuntimeData_IsCompatible_NilAddresses(t *testing.T) {
 			Addresses: []common.Address{common.HexToAddress("0x123")},
 		}
 
-		err := data1.IsCompatible(data2)
+		result, err := data1.IsCompatible(data2)
 		require.Error(t, err)
+		require.Nil(t, result)
 		require.Contains(t, err.Error(), "addresses len mismatch")
 	})
 }

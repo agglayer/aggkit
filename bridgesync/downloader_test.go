@@ -41,7 +41,7 @@ func TestExtractTxnAddressesExploratory(t *testing.T) {
 	require.NoError(t, err)
 	logger := logger.WithFields("module", "test")
 	bn := big.NewInt(0).SetUint64(22770713)
-	handler := buildBridgeEventHandler(ctx, agglayerBridge, bridgeAddr, ethClient, logger)
+	handler := buildBridgeEventHandler(ctx, agglayerBridge, bridgeAddr, ethClient, true, logger)
 	filterQuery := ethereum.FilterQuery{
 		Addresses: []common.Address{bridgeAddr},
 		FromBlock: bn,
@@ -256,8 +256,13 @@ func TestBuildAppender(t *testing.T) {
 	require.NoError(t, err)
 
 	ethClient := mocks.NewEthClienter(t)
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, ethClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		testAddress, "0x0000000000000000000000000000000000000000000")
+
 	ethClient.EXPECT().
-		Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
@@ -709,7 +714,7 @@ func TestBuildAppender(t *testing.T) {
 			if tt.buildQuerierMockFunc != nil {
 				querierMock = tt.buildQuerierMockFunc()
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, true, bridgeDeployment, logger)
 			if tt.expectedErr == "" {
 				require.NoError(t, err)
 				require.NotNil(t, appenderMap)
@@ -1105,7 +1110,7 @@ func TestTxnSenderField(t *testing.T) {
 				Maybe()
 
 			ethClient.EXPECT().
-				Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+				Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Run(func(result any, method string, args ...any) {
 					arg, ok := result.(*Call)
 					require.True(t, ok)
@@ -1131,7 +1136,7 @@ func TestTxnSenderField(t *testing.T) {
 				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, true, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -1158,6 +1163,11 @@ func TestExtractTxnAddresses(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	txHash := common.HexToHash("0xabcde12345abcde12345abcde12345abcde12345abcde12345abcde12345abcd")
 
+	// Helper function to create address pointers
+	addrPtr := func(addr common.Address) *common.Address {
+		return &addr
+	}
+
 	tests := []struct {
 		name                         string
 		logEvent                     *agglayerbridge.AgglayerbridgeBridgeEvent
@@ -1166,7 +1176,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 		responseTransactionHash      *Transaction
 		responseTransactionHashError error
 		expectedTxnSender            common.Address
-		expectedFrom                 common.Address
+		expectedFrom                 *common.Address
 		expectedTo                   common.Address
 		expectErr                    string
 	}{
@@ -1195,7 +1205,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				To:      "0x2222222222222222222222222222222222222222",
 			},
 			expectedTxnSender: common.HexToAddress("0x1111111111111111111111111111111111111111"),
-			expectedFrom:      common.HexToAddress("0x40"),
+			expectedFrom:      addrPtr(common.HexToAddress("0x40")),
 			expectedTo:        common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		},
 		{
@@ -1243,7 +1253,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				},
 			},
 			expectedTxnSender: common.HexToAddress("0x3333333333333333333333333333333333333333"),
-			expectedFrom:      common.HexToAddress("0x50"),
+			expectedFrom:      addrPtr(common.HexToAddress("0x50")),
 			expectedTo:        common.HexToAddress("0x4444444444444444444444444444444444444444"),
 		},
 	}
@@ -1263,7 +1273,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 					}
 				}).
 				Maybe()
-			ethClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+			ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Run(func(result any, method string, args ...any) {
 					arg, ok := result.(*Call)
 					require.True(t, ok)
@@ -1272,7 +1282,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 				Maybe()
 
 			txnSender, from, to, err := ExtractTxnAddresses(ctx, ethClient,
-				bridgeAddr, txHash, tt.logEvent, logger)
+				bridgeAddr, txHash, tt.logEvent, logger, true)
 			if tt.expectErr != "" {
 				require.ErrorContains(t, err, tt.expectErr)
 			} else {

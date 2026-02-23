@@ -109,7 +109,13 @@ func (s *State) ExtendPendingRange(
 
 // GetHighestBlockNumberPendingToSync returns the highest block number that is pending to be synced
 func (s *State) GetHighestBlockNumberPendingToSync() (uint64, aggkittypes.BlockNumberFinality) {
-	return s.Pending.GetHighestBlockNumber()
+	// TODO: Change this for a more elegant way of determining that it's fully synced
+	bn, tag := s.Pending.GetHighestBlockNumber()
+	// If bn = 0 is zero means that there are no pending segments
+	if bn == 0 {
+		bn, tag = s.Synced.GetHighestBlockNumber()
+	}
+	return bn, tag
 }
 
 // IsAvailable checks if the given LogQuery is fully available in the synced segments

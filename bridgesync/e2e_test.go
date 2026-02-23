@@ -31,6 +31,22 @@ var (
 	}
 )
 
+const testSyncFromInBridges = true
+
+func mockClientCallGetTransactionByHash(t *testing.T,
+	mockClient *mocks.RPCClienter,
+	expectedTxHash common.Hash, fromAddress string, toAddress string) {
+	t.Helper()
+	mockClient.EXPECT().Call(mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*bridgesync.Transaction)
+		require.True(t, ok)
+		arg.FromRaw = fromAddress
+		arg.To = toAddress
+		arg.Hash = expectedTxHash.Hex()
+		arg.Input = common.Bytes2Hex(bridgesync.BridgeAssetMethodID)
+	}).Return(nil).Maybe()
+}
+
 func TestBridgeEventE2E(t *testing.T) {
 	const (
 		blockTime    = time.Millisecond * 10
@@ -38,7 +54,13 @@ func TestBridgeEventE2E(t *testing.T) {
 	)
 
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
+	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
@@ -176,16 +198,21 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
+	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
-		}).Return(nil)
+		}).Return(nil).Maybe()
 	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
 
 	// Create the bridge syncer with reorg detector
-	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
+	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, testSyncFromInBridges)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
 	require.Equal(t, originNetwork, syncer.OriginNetwork())
@@ -355,14 +382,19 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
+	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
-	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
+	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, testSyncFromInBridges)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
 
@@ -466,6 +498,11 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
 	rpcClient := mocks.NewRPCClienter(t)
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
 	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
@@ -474,7 +511,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 		}).Return(nil)
 	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
 	// Create the bridge syncer with reorg detector
-	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork)
+	syncer, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rd, ethClient, originNetwork, testSyncFromInBridges)
 	require.NoError(t, err)
 	require.NotNil(t, syncer)
 	require.Equal(t, originNetwork, syncer.OriginNetwork())
