@@ -83,6 +83,7 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
+	log.Debugf("Components to run: %v", components)
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
@@ -734,12 +735,19 @@ func runBridgeSyncL1IfNeeded(
 		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
 
+	// Resolve SyncFromInBridges mode based on components
+	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
+	syncFromInBridges := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
+	log.Infof("BridgeL1Sync SyncFromInBridges mode: %s, resolved to: %t (BRIDGE component active: %t)",
+		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
+
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
 		cfg,
 		reorgDetectorL1,
 		l1Client,
 		rollupID,
+		syncFromInBridges,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -748,11 +756,11 @@ func runBridgeSyncL1IfNeeded(
 	// Run txn_sender backfilling in a separate goroutine
 	wg.Add(1)
 	go func() {
-		if err := runTxnSenderBackfill(ctx, cfg, l1Client, wg); err != nil {
-			log.Errorf("txn_sender backfilling failed: %v", err)
+		logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L1BridgeSyncer.String())
+		if err := runTxnSenderBackfill(ctx, cfg, l1Client, components, bridgesync.L1BridgeSyncer, logger, wg); err != nil {
+			logger.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
-		log.Infof("txn_sender backfilling completed for L1 bridge sync")
 	}()
 
 	go bridgeSyncL1.Start(ctx)
@@ -783,6 +791,12 @@ func runBridgeSyncL2IfNeeded(
 		return nil
 	}
 
+	// Resolve SyncFromInBridges mode based on components
+	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
+	syncFromInBridges := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
+	log.Infof("BridgeL2Sync SyncFromInBridges mode: %s, resolved to: %t (BRIDGE component active: %t)",
+		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
+
 	bridgeSyncL2, err := bridgesync.NewL2(
 		ctx,
 		cfg,
@@ -790,6 +804,7 @@ func runBridgeSyncL2IfNeeded(
 		l2Client,
 		rollupID,
 		fullClaimsNeeded,
+		syncFromInBridges,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
@@ -798,8 +813,9 @@ func runBridgeSyncL2IfNeeded(
 	// Run txn_sender backfilling in a separate goroutine
 	wg.Add(1)
 	go func() {
-		if err := runTxnSenderBackfill(ctx, cfg, l2Client, wg); err != nil {
-			log.Errorf("txn_sender backfilling failed: %v", err)
+		logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L2BridgeSyncer.String())
+		if err := runTxnSenderBackfill(ctx, cfg, l2Client, components, bridgesync.L2BridgeSyncer, logger, wg); err != nil {
+			logger.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
 	}()
@@ -913,25 +929,36 @@ func runTxnSenderBackfill(
 	ctx context.Context,
 	cfg bridgesync.Config,
 	client aggkittypes.EthClienter,
+	components []string,
+	syncerID bridgesync.BridgeSyncerID,
+	logger *log.Logger,
 	wg *sync.WaitGroup,
 ) error {
 	// Only run backfilling if we have a database path configured
 	if cfg.DBPath == "" {
-		log.Debug("No database path configured, skipping txn_sender backfilling")
+		logger.Debug("No database path configured, skipping txn_sender backfilling")
 		return nil
 	}
 
 	// Defer WaitGroup Done to ensure cleanup on exit
 	defer wg.Done()
 
-	log.Info("Starting txn_sender backfilling process")
+	logger.Infof("Starting txn_sender backfilling process for %s", syncerID.String())
+
+	// Resolve SyncFromInBridges mode based on components
+	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
+	syncFromInBridges := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
+	logger.Infof("SyncFromInBridges syncer: %s,  mode: %s, resolved to: %t (BRIDGE component active: %t)",
+		syncerID.String(),
+		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
 
 	// Create backfill instance
 	backfiller, err := bridgesync.NewBackfillTxnSender(
 		cfg.DBPath,
 		client,
 		cfg.BridgeAddr,
-		log.WithFields("module", "tx-sender-backfill"),
+		syncFromInBridges,
+		logger,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create backfill instance: %w", err)
@@ -943,16 +970,16 @@ func runTxnSenderBackfill(
 	if err := backfiller.BackfillAll(ctx); err != nil {
 		// Check if the error is due to context cancellation
 		if ctx.Err() != nil {
-			log.Infof("txn_sender backfilling cancelled: %v", ctx.Err())
+			logger.Infof("txn_sender backfilling cancelled: %v", ctx.Err())
 			return nil // Don't treat cancellation as an error
 		}
-		log.Errorf("txn_sender backfilling failed: %v", err)
+		logger.Errorf("txn_sender backfilling failed: %v", err)
 		// Don't fail the entire process, just log the error and continue
 		return err
 	}
 
 	duration := time.Since(start)
-	log.Infof("txn_sender backfilling completed in %v", duration)
+	logger.Infof("txn_sender backfilling for %s completed in %v", syncerID.String(), duration)
 
 	return nil
 }

@@ -228,22 +228,46 @@ type AddressMeddler struct{}
 
 // PreRead is called before a Scan operation for fields that have the AddressMeddler
 func (b AddressMeddler) PreRead(fieldAddr interface{}) (scanTarget interface{}, err error) {
+	// Check if this is a nullable field (**common.Address)
+	_, ok := fieldAddr.(**common.Address)
+	if ok {
+		// Return **string to handle NULL values properly
+		return new(*string), nil
+	}
 	// give a pointer to a byte buffer to grab the raw data
 	return new(string), nil
 }
 
 // PostRead is called after a Scan operation for fields that have the AddressMeddler
 func (b AddressMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
+	// Handle **string case (nullable field)
+	if rawAddrPtr, ok := scanTarget.(**string); ok {
+		addrPtrPtr, ok := fieldPtr.(**common.Address)
+		if !ok {
+			return errors.New("fieldPtr is not **common.Address for **string scanTarget")
+		}
+		if rawAddrPtr == nil || *rawAddrPtr == nil || **rawAddrPtr == "" {
+			*addrPtrPtr = nil
+			return nil
+		}
+		addr := common.HexToAddress(**rawAddrPtr)
+		*addrPtrPtr = &addr
+		return nil
+	}
+
+	// Handle *string case (non-nullable field)
 	ptr, ok := scanTarget.(*string)
 	if !ok {
-		return errors.New("scanTarget is not *string")
+		return errors.New("scanTarget is not *string or **string")
 	}
 	if ptr == nil {
 		return errors.New("AddressMeddler.PostRead: nil pointer")
 	}
+
+	// Handle regular pointer (non-nullable field)
 	field, ok := fieldPtr.(*common.Address)
 	if !ok {
-		return errors.New("fieldPtr is not common.Address")
+		return errors.New("fieldPtr is not *common.Address")
 	}
 	*field = common.HexToAddress(*ptr)
 	return nil
@@ -251,9 +275,17 @@ func (b AddressMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
 
 // PreWrite is called before an Insert or Update operation for fields that have the AddressMeddler
 func (b AddressMeddler) PreWrite(fieldPtr interface{}) (saveValue interface{}, err error) {
+	// Handle pointer to common.Address (nullable field)
+	if addrPtr, ok := fieldPtr.(*common.Address); ok {
+		if addrPtr == nil {
+			return nil, nil
+		}
+		return addrPtr.Hex(), nil
+	}
+	// Handle common.Address (non-nullable field)
 	field, ok := fieldPtr.(common.Address)
 	if !ok {
-		return nil, errors.New("fieldPtr is not common.Address")
+		return nil, errors.New("fieldPtr is not common.Address or *common.Address")
 	}
 	return field.Hex(), nil
 }

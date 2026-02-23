@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testSyncFromInBridges = true
+
 func TestNewLx(t *testing.T) {
 	const (
 		syncBlockChunkSize         = uint64(100)
@@ -86,6 +88,7 @@ func TestNewLx(t *testing.T) {
 		mockReorgDetector,
 		mockEthClient,
 		originNetwork,
+		false,
 	)
 
 	require.NoError(t, err)
@@ -111,6 +114,7 @@ func TestNewLx(t *testing.T) {
 		mockEthClient,
 		originNetwork,
 		false,
+		testSyncFromInBridges,
 	)
 
 	require.NoError(t, err)
@@ -128,6 +132,7 @@ func TestNewLx(t *testing.T) {
 		mockEthClient,
 		originNetwork,
 		false,
+		testSyncFromInBridges,
 	)
 	require.Error(t, err)
 	require.Nil(t, l2BridgeSyncer)
@@ -330,6 +335,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		mockEthClient,
 		originNetwork,
 		false,
+		testSyncFromInBridges,
 	)
 	require.NoError(t, err)
 
@@ -499,6 +505,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		mockEthClient,
 		originNetwork,
 		false,
+		testSyncFromInBridges,
 	)
 	require.NoError(t, err)
 
@@ -703,6 +710,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		mockEthClient,
 		originNetwork,
 		false,
+		testSyncFromInBridges,
 	)
 	require.NoError(t, err)
 
@@ -716,9 +724,12 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	t.Run("get last root after processing bridge events", func(t *testing.T) {
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
-				BlockNum:           1,
-				BlockPos:           0,
-				FromAddress:        common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				BlockNum: 1,
+				BlockPos: 0,
+				FromAddress: func() *common.Address {
+					addr := common.HexToAddress("0x1111111111111111111111111111111111111111")
+					return &addr
+				}(),
 				TxHash:             common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
 				BlockTimestamp:     1234567890,
 				LeafType:           1,
@@ -731,9 +742,12 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 				DepositCount:       0,
 			}},
 			Event{Bridge: &Bridge{
-				BlockNum:           1,
-				BlockPos:           1,
-				FromAddress:        common.HexToAddress("0x5555555555555555555555555555555555555555"),
+				BlockNum: 1,
+				BlockPos: 1,
+				FromAddress: func() *common.Address {
+					addr := common.HexToAddress("0x5555555555555555555555555555555555555555")
+					return &addr
+				}(),
 				TxHash:             common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
 				BlockTimestamp:     1234567890,
 				LeafType:           1,
@@ -776,9 +790,12 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 
 		bridgeEvents := []interface{}{
 			Event{Bridge: &Bridge{
-				BlockNum:           2,
-				BlockPos:           0,
-				FromAddress:        common.HexToAddress("0x9999999999999999999999999999999999999999"),
+				BlockNum: 2,
+				BlockPos: 0,
+				FromAddress: func() *common.Address {
+					addr := common.HexToAddress("0x9999999999999999999999999999999999999999")
+					return &addr
+				}(),
 				TxHash:             common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 				BlockTimestamp:     1234567891,
 				LeafType:           1,
@@ -874,6 +891,7 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 		mockEthClient,
 		originNetwork,
 		false,
+		testSyncFromInBridges,
 	)
 	require.NoError(t, err)
 

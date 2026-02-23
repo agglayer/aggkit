@@ -162,6 +162,7 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
+SyncFromInBridges = "auto"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -174,6 +175,7 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
+SyncFromInBridges = "auto"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"

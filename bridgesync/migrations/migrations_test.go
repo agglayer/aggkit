@@ -169,8 +169,8 @@ func TestMigration0002(t *testing.T) {
 		DepositCount       uint32   `meddler:"deposit_count"`
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
-		FromAddress        string   `meddler:"from_address"`
-		TxnSender          string   `meddler:"txn_sender"`
+		FromAddress        *string  `meddler:"from_address"`
+		TxnSender          *string  `meddler:"txn_sender"`
 	}
 
 	err = meddler.QueryRow(db, &bridge,
@@ -518,8 +518,8 @@ func TestMigration0006(t *testing.T) {
 		DepositCount       uint32   `meddler:"deposit_count"`
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
-		FromAddress        string   `meddler:"from_address"`
-		TxnSender          string   `meddler:"txn_sender"`
+		FromAddress        *string  `meddler:"from_address"`
+		TxnSender          *string  `meddler:"txn_sender"`
 	}
 
 	// Test that we can query the txn_sender column after migration
@@ -527,7 +527,8 @@ func TestMigration0006(t *testing.T) {
 		`SELECT * FROM bridge WHERE block_pos = 0`)
 	require.NoError(t, err)
 	require.NotNil(t, bridgeWithTxnSender)
-	require.Equal(t, "", bridgeWithTxnSender.TxnSender) // Should have default empty string value
+	require.NotNil(t, bridgeWithTxnSender.TxnSender)
+	require.Equal(t, "", *bridgeWithTxnSender.TxnSender) // Should have default empty string value
 	require.Equal(t, "0x1111", bridgeWithTxnSender.OriginAddress)
 
 	// Test the second record
@@ -544,15 +545,16 @@ func TestMigration0006(t *testing.T) {
 		DepositCount       uint32   `meddler:"deposit_count"`
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
-		FromAddress        string   `meddler:"from_address"`
-		TxnSender          string   `meddler:"txn_sender"`
+		FromAddress        *string  `meddler:"from_address"`
+		TxnSender          *string  `meddler:"txn_sender"`
 	}
 
 	err = meddler.QueryRow(database, &bridgeWithTxnSender2,
 		`SELECT * FROM bridge WHERE block_pos = 1`)
 	require.NoError(t, err)
 	require.NotNil(t, bridgeWithTxnSender2)
-	require.Equal(t, "", bridgeWithTxnSender2.TxnSender) // Should have default empty string value
+	require.NotNil(t, bridgeWithTxnSender2.TxnSender)
+	require.Equal(t, "", *bridgeWithTxnSender2.TxnSender) // Should have default empty string value
 	require.Equal(t, "0x4444", bridgeWithTxnSender2.OriginAddress)
 
 	// Test that we can insert new records with txn_sender values
@@ -590,15 +592,16 @@ func TestMigration0006(t *testing.T) {
 		DepositCount       uint32   `meddler:"deposit_count"`
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
-		FromAddress        string   `meddler:"from_address"`
-		TxnSender          string   `meddler:"txn_sender"`
+		FromAddress        *string  `meddler:"from_address"`
+		TxnSender          *string  `meddler:"txn_sender"`
 	}
 
 	err = meddler.QueryRow(database, &bridgeWithCustomTxnSender,
 		`SELECT * FROM bridge WHERE block_pos = 2`)
 	require.NoError(t, err)
 	require.NotNil(t, bridgeWithCustomTxnSender)
-	require.Equal(t, "0xAAAA", bridgeWithCustomTxnSender.TxnSender)
+	require.NotNil(t, bridgeWithCustomTxnSender.TxnSender)
+	require.Equal(t, "0xAAAA", *bridgeWithCustomTxnSender.TxnSender)
 	require.Equal(t, "0x7777", bridgeWithCustomTxnSender.OriginAddress)
 
 	// Test migration 0006 DOWN (DROP COLUMN) by manually executing the SQL
