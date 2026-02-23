@@ -26,8 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-const filePermOwnerRW = 0o600
-
 // ENVName represents a valid E2E test environment name
 type ENVName string
 
@@ -42,17 +40,13 @@ const (
 	serviceCheckInterval = 2 * time.Second
 )
 
-// AggkitE2EHostDataDir is the host path for the aggkit E2E data directory.
-// It is bind-mounted as /tmp in the aggkit container so the remove_ger tool can read the live DB.
-const AggkitE2EHostDataDir = "/tmp/aggkit-e2e-testing"
-
 // Env represents a loaded E2E test environment
 type Env struct {
 	L1               L1Config
 	L2               L2Config
 	Clients          ClientsConfig
 	Keys             KeysConfig
-	envDir           string
+	EnvDir           string
 	envName          ENVName
 	startedCompose   bool   // Track if we started docker compose (so we know if we should stop it)
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
@@ -378,7 +372,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			AggOracle:      aggoracleKey,
 			SovereignAdmin: sovereignAdminKey,
 		},
-		envDir:           envDir,
+		EnvDir:           envDir,
 		envName:          envName,
 		startedCompose:   startedCompose,
 		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
@@ -490,7 +484,7 @@ func (e *Env) Stop(ctx context.Context) error {
 		// We didn't start docker compose, so don't stop it
 		return nil
 	}
-	return stopDockerCompose(ctx, e.envDir)
+	return stopDockerCompose(ctx, e.EnvDir)
 }
 
 const aggkitServiceName = "aggkit-001"
@@ -498,7 +492,7 @@ const aggkitServiceName = "aggkit-001"
 // StopAggkit stops only the aggkit service so the test can use the aggoracle key without conflicting with the running aggkit.
 func (e *Env) StopAggkit(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "docker", "compose", "stop", aggkitServiceName)
-	cmd.Dir = e.envDir
+	cmd.Dir = e.EnvDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose stop %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
@@ -512,7 +506,7 @@ func (e *Env) StopAggkit(ctx context.Context) error {
 // StartAggkit starts the aggkit service and waits for the bridge service to be ready.
 func (e *Env) StartAggkit(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "docker", "compose", "start", aggkitServiceName)
-	cmd.Dir = e.envDir
+	cmd.Dir = e.EnvDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose start %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
@@ -524,15 +518,6 @@ func (e *Env) StartAggkit(ctx context.Context) error {
 		return fmt.Errorf("wait for bridge service after start: %w", err)
 	}
 	return nil
-}
-
-// prepareAggkitE2EDataDir creates AggkitE2EHostDataDir if it does not exist and clears its
-// contents so aggkit starts with an empty DB on each compose start.
-func prepareAggkitE2EDataDir() error {
-	if err := os.RemoveAll(AggkitE2EHostDataDir); err != nil {
-		return fmt.Errorf("remove aggkit E2E data dir: %w", err)
-	}
-	return os.MkdirAll(AggkitE2EHostDataDir, 0o755)
 }
 
 // ensureDockerComposeRunning ensures docker compose is running for the given environment
@@ -547,10 +532,6 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 
 	// Not running, so start it
 	networkName := projectName + "_default"
-
-	if err := prepareAggkitE2EDataDir(); err != nil {
-		return false, fmt.Errorf("prepare aggkit E2E data dir: %w", err)
-	}
 
 	// Step 1: Remove all containers from this project
 	cleanupCmd := exec.CommandContext(ctx, "docker", "compose", "down", "-v", "--remove-orphans")

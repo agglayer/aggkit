@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -15,6 +17,9 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 )
+
+// ErrNotFound is returned when a resource is not found (HTTP 404)
+var ErrNotFound = errors.New("not found")
 
 const (
 	// DefaultTimeout is the default HTTP client timeout
@@ -347,6 +352,64 @@ func (c *Client) GetRemoveGEREvents(
 	return &resp, nil
 }
 
+// GetBridgesByContentParams holds the content fields for GetBridgesByContent
+type GetBridgesByContentParams struct {
+	LeafType           uint8
+	OriginAddress      string
+	DestinationNetwork uint32
+	DestinationAddress string
+	Amount             *big.Int
+	Metadata           []byte
+}
+
+// GetClaimsByGER retrieves all claims matching the given global exit root (0x-prefixed hex hash).
+func (c *Client) GetClaimsByGER(ctx context.Context, ger string) (*types.ClaimsByGERResult, error) {
+	query := url.Values{}
+	query.Set("global_exit_root", ger)
+
+	var resp types.ClaimsByGERResult
+	if err := c.doRequest(ctx, "/bridge/v1/claims-by-ger?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetBridgeByDepositCount retrieves the L1 bridge with the given deposit count.
+// Returns ErrNotFound if the bridge does not exist in bridge or bridge_archive.
+func (c *Client) GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*types.BridgeResponse, error) {
+	query := url.Values{}
+	query.Set("deposit_count", strconv.FormatUint(uint64(depositCount), 10))
+
+	var resp types.BridgeResponse
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/bridge-by-deposit-count?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetBridgesByContent retrieves L1 bridges matching the given content fields.
+func (c *Client) GetBridgesByContent(ctx context.Context, params GetBridgesByContentParams) (*types.BridgesByContentResult, error) {
+	query := url.Values{}
+	query.Set("leaf_type", strconv.FormatUint(uint64(params.LeafType), 10))
+	query.Set("origin_address", params.OriginAddress)
+	query.Set("destination_network", strconv.FormatUint(uint64(params.DestinationNetwork), 10))
+	query.Set("destination_address", params.DestinationAddress)
+	if params.Amount != nil {
+		query.Set("amount", params.Amount.String())
+	} else {
+		query.Set("amount", "0")
+	}
+	if len(params.Metadata) > 0 {
+		query.Set("metadata", "0x"+hex.EncodeToString(params.Metadata))
+	}
+
+	var resp types.BridgesByContentResult
+	if err := c.doRequest(ctx, "/bridge/v1/bridges-by-content?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // doRequest performs an HTTP GET request and decodes the response
 func (c *Client) doRequest(ctx context.Context, path string, result interface{}) error {
 	reqURL := c.baseURL + path
@@ -368,6 +431,47 @@ func (c *Client) doRequest(ctx context.Context, path string, result interface{})
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	if result != nil {
+		if err := json.Unmarshal(respBody, result); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// doRequestAllowNotFound performs an HTTP GET request and decodes the response.
+// Returns ErrNotFound for HTTP 404 responses instead of an error with status code.
+func (c *Client) doRequestAllowNotFound(ctx context.Context, path string, result interface{}) error {
+	reqURL := c.baseURL + path
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
 	}
 
 	if resp.StatusCode != http.StatusOK {

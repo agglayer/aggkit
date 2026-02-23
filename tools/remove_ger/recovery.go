@@ -2,7 +2,6 @@ package remove_ger
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math/big"
 	"time"
@@ -12,13 +11,9 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/russross/meddler"
 )
 
-const (
-	recoveryStepTimeout = 5 * time.Minute
-	pollBridgeTimeout   = 2 * time.Minute
-)
+const pollBridgeTimeout = 2 * time.Minute
 
 // ExecuteRecovery runs the recovery flow for the given diagnosis. All steps execute on L2.
 // On any error, returns immediately; the bridge may remain in emergency state for manual intervention.
@@ -272,7 +267,7 @@ func stepSetClaims(ctx context.Context, env *Env, auth *bind.TransactOpts, callO
 	return nil
 }
 
-func stepForceEmitDetailedClaimEvents(ctx context.Context, cfg *Config, env *Env, auth *bind.TransactOpts, claims []ClaimDiagnosis) error {
+func stepForceEmitDetailedClaimEvents(ctx context.Context, _ *Config, env *Env, auth *bind.TransactOpts, claims []ClaimDiagnosis) error {
 	if len(claims) == 0 {
 		return nil
 	}
@@ -328,26 +323,24 @@ func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagno
 		if cd.CorrectBridge == nil {
 			return nil, fmt.Errorf("claim with global index %s has nil CorrectBridge", formatGlobalIndex(cd.GlobalIndex))
 		}
-		bridge, err := getL1BridgeByDepositCount(env.SQLite.BridgeL1, cd.CorrectBridge.DepositCount)
+		bridgeResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, cd.CorrectBridge.DepositCount)
 		if err != nil {
 			return nil, fmt.Errorf("get L1 bridge deposit_count=%d: %w", cd.CorrectBridge.DepositCount, err)
 		}
-		l1Leaf, err := getL1InfoLeafUntilBlock(env.SQLite.L1InfoTree, bridge.BlockNum)
+		l1Leaf, err := getL1InfoLeafByDepositCount(ctx, env.BridgeService, cd.CorrectBridge.DepositCount)
 		if err != nil {
-			return nil, fmt.Errorf("get L1 info leaf for block %d: %w", bridge.BlockNum, err)
+			return nil, fmt.Errorf("get L1 info leaf for deposit_count=%d: %w", cd.CorrectBridge.DepositCount, err)
 		}
 		var proofLocal, proofRollup [32][32]byte
-		if env.BridgeService != nil {
-			proof, err := env.BridgeService.GetClaimProof(ctx, 0, l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount)
-			if err != nil {
-				return nil, fmt.Errorf("get claim proof leaf_index=%d deposit_count=%d: %w", l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount, err)
-			}
-			for i := 0; i < 32 && i < len(proof.ProofLocalExitRoot); i++ {
-				proofLocal[i] = common.HexToHash(string(proof.ProofLocalExitRoot[i]))
-			}
-			for i := 0; i < 32 && i < len(proof.ProofRollupExitRoot); i++ {
-				proofRollup[i] = common.HexToHash(string(proof.ProofRollupExitRoot[i]))
-			}
+		proof, err := env.BridgeService.GetClaimProof(ctx, 0, l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount)
+		if err != nil {
+			return nil, fmt.Errorf("get claim proof leaf_index=%d deposit_count=%d: %w", l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount, err)
+		}
+		for i := 0; i < 32 && i < len(proof.ProofLocalExitRoot); i++ {
+			proofLocal[i] = common.HexToHash(string(proof.ProofLocalExitRoot[i]))
+		}
+		for i := 0; i < 32 && i < len(proof.ProofRollupExitRoot); i++ {
+			proofRollup[i] = common.HexToHash(string(proof.ProofRollupExitRoot[i]))
 		}
 		globalIndex := cd.GlobalIndex
 		if cd.Category == ScenarioCategoryB2 {
@@ -364,6 +357,7 @@ func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagno
 		if metadata == nil {
 			metadata = []byte{}
 		}
+		_ = bridgeResp // bridge data used for correctBridge content; claim data already in cd.CorrectBridge
 		out = append(out, agglayerbridgel2.AgglayerBridgeL2ClaimData{
 			SmtProofLocalExitRoot:  proofLocal,
 			SmtProofRollupExitRoot: proofRollup,
@@ -380,19 +374,6 @@ func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagno
 		})
 	}
 	return out, nil
-}
-
-func getL1BridgeByDepositCount(db *sql.DB, depositCount uint32) (*bridgesync.Bridge, error) {
-	var b bridgesync.Bridge
-	err := meddler.QueryRow(db, &b, `SELECT * FROM bridge WHERE deposit_count = $1 AND origin_network = 0`, depositCount)
-	if err == nil {
-		return &b, nil
-	}
-	err = meddler.QueryRow(db, &b, `SELECT * FROM bridge_archive WHERE deposit_count = $1 AND origin_network = 0`, depositCount)
-	if err != nil {
-		return nil, err
-	}
-	return &b, nil
 }
 
 func ptrInt(n int) *int { return &n }

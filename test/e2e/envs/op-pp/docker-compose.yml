@@ -1,12 +1,12 @@
 # Ethereum L1 Snapshot Environment
 # Enclave: cdk
-# Tag: cdk-20260220-181934
-# Genesis: 0x7fab811286d4d8a8a7cf8d058b99f59a1fb9eea0d990ae99de0933cb47db7b8d
+# Tag: cdk-20260222-193712
+# Genesis: 0x8743cfc416c3d8f1cf0face10810749caaf5861f8556ddd79039928ef1ab7a19
 
 services:
   geth:
-    image: snapshot-geth:cdk-20260220-181934
-    container_name: cdk-20260220-181853-geth
+    image: snapshot-geth:cdk-20260222-193712
+    container_name: cdk-20260222-193628-geth
     hostname: geth
     command:
       - "--http"
@@ -51,8 +51,8 @@ services:
       start_period: 5s
 
   beacon:
-    image: snapshot-beacon:cdk-20260220-181934
-    container_name: cdk-20260220-181853-beacon
+    image: snapshot-beacon:cdk-20260222-193712
+    container_name: cdk-20260222-193628-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -72,8 +72,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:cdk-20260220-181934
-    container_name: cdk-20260220-181853-validator
+    image: snapshot-validator:cdk-20260222-193712
+    container_name: cdk-20260222-193628-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -89,7 +89,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: cdk-20260220-181853-agglayer
+    container_name: cdk-20260222-193628-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -119,7 +119,7 @@ services:
 
   op-geth-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101609.0
-    container_name: cdk-20260220-181853-op-geth-001
+    container_name: cdk-20260222-193628-op-geth-001
     hostname: op-geth-001
     entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
@@ -138,14 +138,14 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
-      interval: 2s
+      interval: 1s
       timeout: 3s
-      retries: 3
+      retries: 6
       start_period: 100s
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.6
-    container_name: cdk-20260220-181853-op-node-001
+    container_name: cdk-20260222-193628-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -169,14 +169,14 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
-      interval: 2s
+      interval: 1s
       timeout: 3s
-      retries: 3
-      start_period: 20s
+      retries: 6
+      start_period: 100s
 
   aggkit-001:
-    image: ghcr.io/agglayer/aggkit:0.8.0
-    container_name: cdk-20260220-181853-aggkit-001
+    image: aggkit:local
+    container_name: cdk-20260222-193628-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
@@ -188,7 +188,6 @@ services:
       - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
       - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
-      - /tmp/aggkit-e2e-testing:/tmp
     ports:
       - "11576:5576"    # RPC
       - "11577:5577"    # REST API
@@ -202,6 +201,7 @@ services:
       agglayer:
         condition: service_healthy
     restart: unless-stopped
+    user: "${UID}:${GID}"
     environment:
       - RUST_BACKTRACE=1
 

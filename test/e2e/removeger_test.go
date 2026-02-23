@@ -3,9 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -21,7 +19,6 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/e2e/envs"
@@ -308,6 +305,153 @@ func batsCategoryADummyClaimParams() dummyClaimParams {
 	}
 }
 
+// performRealBridgeL1ToL2WithAmount performs a full L1->L2 bridge and claim with a specified amount; returns bridge and claim details.
+// Uses shorter timeouts than performRealBridgeL1ToL2 to avoid hanging in tests.
+func performRealBridgeL1ToL2WithAmount(ctx context.Context, t *testing.T, env *envs.Env, bridgeAmount *big.Int) *bridgeResult {
+	t.Helper()
+	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L1Keys.Return(l1Key)
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L2Keys.Return(l2Key)
+
+	callOpts := &bind.CallOpts{Context: ctx}
+	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
+	require.NoError(t, err)
+
+	destinationAddress := l2Opts.From
+	forceUpdateGlobalExitRoot := true
+
+	l1Opts.Value = bridgeAmount
+	defer func() { l1Opts.Value = nil }()
+
+	tx, err := env.L1.Contracts.Bridge.BridgeAsset(
+		l1Opts,
+		l2NetworkID,
+		destinationAddress,
+		bridgeAmount,
+		common.Address{},
+		forceUpdateGlobalExitRoot,
+		nil,
+	)
+	require.NoError(t, err, "BridgeAsset")
+	receipt, err := bind.WaitMined(ctx, env.Clients.L1, tx)
+	require.NoError(t, err, "wait for bridge tx")
+	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "bridge tx failed")
+	log.Infof("[B2] bridge tx mined on L1, tx=%s", tx.Hash().Hex())
+
+	// Wait for bridge service to index the bridge (shorter timeout: 1 minute)
+	var bridge *types.BridgeResponse
+	for i := 0; i < 30; i++ {
+		pageSize := uint32(100)
+		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize}
+		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
+		if err == nil && bridgesResult != nil {
+			for _, b := range bridgesResult.Bridges {
+				if string(b.TxHash) == tx.Hash().Hex() {
+					bridge = b
+					break
+				}
+			}
+		}
+		if bridge != nil {
+			break
+		}
+		if (i+1)%5 == 0 {
+			log.Infof("[B2] bridge not in bridge service yet, attempt %d/30", i+1)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	require.NotNil(t, bridge, "bridge not found in bridge service after 1 minute")
+	log.Infof("[B2] bridge found in bridge service, deposit_count=%d", bridge.DepositCount)
+
+	depositCount := bridge.DepositCount
+
+	// Wait for L1 info tree index (shorter timeout: 2 minutes)
+	var l1InfoTreeIndex uint32
+	for i := 0; i < 24; i++ {
+		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
+		if err == nil {
+			l1InfoTreeIndex = idx
+			break
+		}
+		if (i+1)%4 == 0 {
+			log.Infof("[B2] L1InfoTreeIndex not ready yet, attempt %d/24", i+1)
+		}
+		time.Sleep(5 * time.Second)
+	}
+	require.NotZero(t, l1InfoTreeIndex, "bridge not in L1 Info Tree after 2 minutes")
+	log.Infof("[B2] L1InfoTreeIndex ready: %d", l1InfoTreeIndex)
+
+	// Wait for injected L1 info leaf (shorter timeout: 2 minutes)
+	for i := 0; i < 24; i++ {
+		_, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
+		if err == nil {
+			break
+		}
+		if (i+1)%4 == 0 {
+			log.Infof("[B2] GetInjectedL1InfoLeaf not ready yet, attempt %d/24", i+1)
+		}
+		time.Sleep(5 * time.Second)
+	}
+	log.Info("[B2] GetInjectedL1InfoLeaf ready")
+
+	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, l1InfoTreeIndex, depositCount)
+	require.NoError(t, err)
+	require.NotNil(t, claimProof)
+
+	var smtProofLocalExitRoot [32][32]byte
+	for i, proofHex := range claimProof.ProofLocalExitRoot {
+		if i >= 32 {
+			break
+		}
+		smtProofLocalExitRoot[i] = common.HexToHash(string(proofHex))
+	}
+	var smtProofRollupExitRoot [32][32]byte
+	for i, proofHex := range claimProof.ProofRollupExitRoot {
+		if i >= 32 {
+			break
+		}
+		smtProofRollupExitRoot[i] = common.HexToHash(string(proofHex))
+	}
+	mainnetExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.MainnetExitRoot))
+	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
+	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
+	metadata := common.Hex2Bytes(bridge.Metadata)
+
+	log.Info("[B2] executing claim on L2")
+	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
+		l2Opts,
+		smtProofLocalExitRoot,
+		smtProofRollupExitRoot,
+		bridge.GlobalIndex,
+		mainnetExitRoot,
+		rollupExitRoot,
+		bridge.OriginNetwork,
+		originTokenAddress,
+		bridge.DestinationNetwork,
+		destinationAddress,
+		bridgeAmount,
+		metadata,
+	)
+	require.NoError(t, err, "ClaimAsset")
+	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
+	require.NoError(t, err)
+	require.Equal(t, ethtypes.ReceiptStatusSuccessful, claimReceipt.Status, "claim failed")
+	log.Infof("[B2] claim executed on L2, tx=%s", claimTx.Hash().Hex())
+
+	return &bridgeResult{
+		Bridge:          bridge,
+		DepositCount:    depositCount,
+		L1InfoTreeIndex: l1InfoTreeIndex,
+		ClaimTxHash:     claimTx.Hash(),
+		GlobalIndex:     bridge.GlobalIndex,
+		DestinationAddr: destinationAddress,
+		BridgeAmount:    bridgeAmount,
+	}
+}
+
 // bridgeResult holds the outcome of a real L1->L2 bridge + claim for use in B.1/B.2 tests.
 type bridgeResult struct {
 	Bridge          *types.BridgeResponse
@@ -561,6 +705,117 @@ func performRealBridgeL1ToL2NoClaim(ctx context.Context, t *testing.T, env *envs
 	}
 }
 
+// performBridgeL1NoClaim performs a real L1->L2 bridge with a specified amount and waits for it to be
+// indexed by the bridge service, but does NOT claim on L2. Used by B.2 tests: the test then injects
+// fake GERs and claims with fake merkle proofs at wrong deposit counts.
+func performBridgeL1NoClaim(ctx context.Context, t *testing.T, env *envs.Env, bridgeAmount *big.Int, label string) *bridgeResult {
+	t.Helper()
+	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L1Keys.Return(l1Key)
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L2Keys.Return(l2Key)
+
+	callOpts := &bind.CallOpts{Context: ctx}
+	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
+	require.NoError(t, err)
+
+	destinationAddress := l2Opts.From
+	forceUpdateGlobalExitRoot := true
+
+	balance, err := env.Clients.L1.BalanceAt(ctx, l1Opts.From, nil)
+	require.NoError(t, err)
+	require.Equal(t, balance.Cmp(bridgeAmount), 1, "addr does not have enough balance")
+
+	l1Opts.Value = bridgeAmount
+	defer func() { l1Opts.Value = nil }()
+
+	tx, err := env.L1.Contracts.Bridge.BridgeAsset(
+		l1Opts,
+		l2NetworkID,
+		destinationAddress,
+		bridgeAmount,
+		common.Address{},
+		forceUpdateGlobalExitRoot,
+		nil,
+	)
+	require.NoError(t, err, "BridgeAsset")
+	log.Infof("[%s] bridge tx sent, tx=%s", label, tx.Hash().Hex())
+
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	receipt, err := bind.WaitMined(ctxWithTimeout, env.Clients.L1, tx)
+	require.NoError(t, err, "wait for bridge tx")
+	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "bridge tx failed")
+	log.Infof("[%s] bridge tx mined at block %d", label, receipt.BlockNumber.Uint64())
+
+	bridgeEvent, err := env.L1.Contracts.Bridge.ParseBridgeEvent(*receipt.Logs[0])
+	require.NoError(t, err, "parse bridge event")
+	depositCount := uint64(bridgeEvent.DepositCount)
+
+	var bridge *types.BridgeResponse
+	for i := 0; i < 30; i++ {
+		pageSize := uint32(100)
+		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize, DepositCount: &depositCount}
+		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
+		if err == nil && bridgesResult != nil {
+			for _, b := range bridgesResult.Bridges {
+				if string(b.TxHash) == tx.Hash().Hex() {
+					bridge = b
+					break
+				}
+			}
+		}
+		if bridge != nil {
+			break
+		}
+		if (i+1)%5 == 0 {
+			log.Infof("[%s] bridge not in bridge service yet, attempt %d/30", label, i+1)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	require.NotNil(t, bridge, "bridge not found in bridge service")
+	log.Infof("[%s] bridge found, deposit_count=%d", label, bridge.DepositCount)
+
+	var l1InfoTreeIndex uint32
+	for i := 0; i < 60; i++ {
+		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
+		if err == nil {
+			l1InfoTreeIndex = idx
+			break
+		}
+		if (i+1)%6 == 0 {
+			log.Infof("[%s] L1InfoTreeIndex not ready, attempt %d/60", label, i+1)
+		}
+		time.Sleep(5 * time.Second)
+	}
+	require.NotZero(t, l1InfoTreeIndex, "bridge not in L1 Info Tree")
+	log.Infof("[%s] L1InfoTreeIndex ready: %d", label, l1InfoTreeIndex)
+
+	for i := 0; i < 120; i++ {
+		_, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
+		if err == nil {
+			break
+		}
+		if (i+1)%12 == 0 {
+			log.Infof("[%s] GetInjectedL1InfoLeaf not ready, attempt %d/120", label, i+1)
+		}
+		time.Sleep(5 * time.Second)
+	}
+	log.Infof("[%s] bridge fully indexed (no claim)", label)
+
+	return &bridgeResult{
+		Bridge:          bridge,
+		DepositCount:    uint32(depositCount),
+		L1InfoTreeIndex: l1InfoTreeIndex,
+		ClaimTxHash:     common.Hash{},
+		GlobalIndex:     bridge.GlobalIndex,
+		DestinationAddr: destinationAddress,
+		BridgeAmount:    bridgeAmount,
+	}
+}
+
 // generateZeroHashesForProof builds zero hashes for merkle proof (same logic as tree package for single-leaf tree).
 // Index 0 = empty leaf, index i = hash(zeroHashes[i-1], zeroHashes[i-1]).
 func generateZeroHashesForProof(height uint8) []common.Hash {
@@ -671,25 +926,20 @@ func waitForGEROnBridgeService(ctx context.Context, t *testing.T, env *envs.Env,
 	require.NoError(t, err, "wait for GER remove event on bridge service")
 }
 
-// waitForClaimInBridgeL2DBByGER polls the Bridge L2 SQLite DB until at least one claim exists for the given GER,
+// waitForClaimInBridgeL2DBByGER polls the bridge service until at least one claim exists for the given GER,
 // using the same GetClaimsByGER as the remove_ger tool so the test and tool cannot diverge on query/visibility.
-// bridgeL2DB must be an open connection to the Bridge L2 DB at the host path the tool will use.
-func waitForClaimInBridgeL2DBByGER(ctx context.Context, t *testing.T, bridgeL2DB *sql.DB, gerHash common.Hash, timeout time.Duration) {
+func waitForClaimInBridgeL2DBByGER(ctx context.Context, t *testing.T, bsc *client.Client, gerHash common.Hash, timeout time.Duration) {
 	t.Helper()
 	pollCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, "B1: claim in Bridge L2 DB by GER", func() (bool, error) {
-		claims, err := remove_ger.GetClaimsByGER(pollCtx, bridgeL2DB, gerHash)
+	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, "B1: claim by GER on bridge service", func() (bool, error) {
+		claims, err := remove_ger.GetClaimsByGER(pollCtx, bsc, gerHash)
 		if err != nil {
-			// Treat no rows (e.g. from meddler scan or driver) as "not ready yet", keep polling.
-			if errors.Is(err, sql.ErrNoRows) {
-				return false, nil
-			}
 			return false, err
 		}
 		return len(claims) >= 1, nil
 	})
-	require.NoError(t, err, "wait for claim in Bridge L2 DB by GER %s", gerHash.Hex())
+	require.NoError(t, err, "wait for claim by GER %s on bridge service", gerHash.Hex())
 }
 
 // waitForClaimOnBridgeService polls until the bridge service returns at least one claim for the given global index.
@@ -841,13 +1091,9 @@ type summaryForToolConfig struct {
 // prepareToolConfig creates a temp config file with the base aggkit config plus [RemoveGER] section for the tool.
 // If pathRWDataOverride is non-empty, it is used as PathRWData (e.g. envs.AggkitE2EHostDataDir for the host-mounted E2E data dir); otherwise envDir/aggkit_data_001 is used.
 // If configDir is non-empty, the config file is written there (so it persists across tests); otherwise t.TempDir() is used.
-func prepareToolConfig(t *testing.T, pathRWDataOverride, configDir string) string {
+func prepareToolConfig(t *testing.T, configDir string) string {
 	t.Helper()
-	envsDir, err := envs.FindEnvsDir()
-	require.NoError(t, err)
-
-	envDir := filepath.Join(envsDir, opPPEnvName)
-	summaryPath := filepath.Join(envDir, "summary.json")
+	summaryPath := filepath.Join(testEnv.EnvDir, "summary.json")
 	summaryData, err := os.ReadFile(summaryPath)
 	require.NoError(t, err)
 
@@ -860,16 +1106,9 @@ func prepareToolConfig(t *testing.T, pathRWDataOverride, configDir string) strin
 	bridgeServiceURL := l2Network.Services.Aggkit.BridgeService.External
 	l1URL := summary.Networks.L1.Services.Geth.HTTPRpc.External
 	l2URL := l2Network.Services.OpGeth.HTTPRpc.External
-	var pathRWData string
-	if pathRWDataOverride != "" {
-		pathRWData = pathRWDataOverride
-	} else {
-		pathRWData, err = filepath.Abs(filepath.Join(envDir, "aggkit_data_001"))
-		require.NoError(t, err)
-	}
-	sovereignAdminKeyPath := filepath.Join(envDir, "config", "001", "sovereignadmin.keystore")
+	sovereignAdminKeyPath := filepath.Join(testEnv.EnvDir, "config", "001", "sovereignadmin.keystore")
 
-	originalCfg := filepath.Join(envDir, "config", "001", "aggkit-config.toml")
+	originalCfg := filepath.Join(testEnv.EnvDir, "config", "001", "aggkit-config.toml")
 	content, err := os.ReadFile(originalCfg)
 	require.NoError(t, err)
 
@@ -878,7 +1117,6 @@ func prepareToolConfig(t *testing.T, pathRWDataOverride, configDir string) strin
 	content = []byte(strings.ReplaceAll(string(content), "http://op-geth-001:8545", l2URL))
 
 	appendSection := fmt.Sprintf(`
-PathRWData = "%s"
 
 [RemoveGER]
 BridgeServiceURL = "%s"
@@ -887,7 +1125,6 @@ BridgeServiceURL = "%s"
 Path = "%s"
 Password = "%s"
 `,
-		pathRWData,
 		bridgeServiceURL,
 		sovereignAdminKeyPath,
 		keystorePassword,
@@ -933,25 +1170,20 @@ var (
 func getPreparedToolConfigPath(t *testing.T) string {
 	t.Helper()
 	toolConfigPathOnce.Do(func() {
-		persistentDir, err := os.MkdirTemp("", "aggkit-e2e-removeger-config-")
+		toolConfigDir, err := os.MkdirTemp("", "aggkit-e2e-removeger-config-")
 		require.NoError(t, err)
-		toolConfigPath = prepareToolConfig(t, envs.AggkitE2EHostDataDir, persistentDir)
+		toolConfigPath = prepareToolConfig(t, toolConfigDir)
 	})
 	return toolConfigPath
 }
 
-// loadToolConfigWithHostDBPaths loads the remove_ger config using the shared prepared config path and patches
-// all sync DB paths to the host E2E data dir (so the tool sees the same DBs as the aggkit container).
-func loadToolConfigWithHostDBPaths(t *testing.T) *remove_ger.Config {
+// loadToolConfig loads the remove_ger config using the shared prepared config path.
+func loadToolConfig(t *testing.T) *remove_ger.Config {
 	t.Helper()
 	configPath := getPreparedToolConfigPath(t)
 	cliCtx := buildToolCLIContext(t, configPath)
 	cfg, err := remove_ger.LoadConfig(cliCtx)
 	require.NoError(t, err)
-	hostData := envs.AggkitE2EHostDataDir
-	cfg.BridgeL2Sync.DBPath = filepath.Join(hostData, "bridgel2sync.sqlite")
-	cfg.BridgeL1Sync.DBPath = filepath.Join(hostData, "bridgel1sync.sqlite")
-	cfg.L1InfoTreeSync.DBPath = filepath.Join(hostData, "L1InfoTreeSync.sqlite")
 	return cfg
 }
 
@@ -1007,7 +1239,7 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 	require.Equal(t, injectedGER, detectedGER, "detected GER must match injected (sanity check)")
 
 	// --- Tool: diagnosis ---
-	cfg := loadToolConfigWithHostDBPaths(t)
+	cfg := loadToolConfig(t)
 	envCtx, envCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer envCancel()
 	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg)
@@ -1104,18 +1336,7 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	require.Equal(t, injectedGER, detectedGER, "detected GER must match injected (sanity check)")
 
 	// --- Tool: diagnosis ---
-	cfg := loadToolConfigWithHostDBPaths(t)
-	// Assert the claim is present in Bridge L2 DB with this GER (same path the tool uses).
-	bridgeL2Path := cfg.BridgeL2Sync.DBPath
-	bridgeL2DB, err := db.NewSQLiteDB(bridgeL2Path)
-	require.NoError(t, err, "open Bridge L2 DB at %s", bridgeL2Path)
-	defer bridgeL2DB.Close()
-	var count int
-	err = bridgeL2DB.QueryRowContext(ctx, `SELECT count(*) FROM claim WHERE global_exit_root = $1`, detectedGER.Hex()).Scan(&count)
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, count, 1, "Bridge L2 DB at %s must contain at least one claim for GER %s (aggkit container mounts this dir as /tmp)",
-		bridgeL2Path, detectedGER.Hex())
-
+	cfg := loadToolConfig(t)
 	envCtx, envCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer envCancel()
 	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg)
@@ -1191,17 +1412,9 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	log.Info("[B1] step: waitForClaimOnBridgeService (up to 2m)")
 	waitForClaimOnBridgeService(ctx, t, env, bridgeResult.GlobalIndex, 2*time.Minute)
 
-	// --- Open Bridge L2 DB once and use it for wait, assert, and tool diagnosis ---
-	// Using the same connection and GetClaimsByGER as the tool avoids test/tool query or visibility divergence.
-	log.Info("[B1] step: load config, open Bridge L2 DB")
-	cfg := loadToolConfigWithHostDBPaths(t)
-	bridgeL2DB, err := db.NewSQLiteDB(cfg.BridgeL2Sync.DBPath)
-	require.NoError(t, err)
-	defer bridgeL2DB.Close()
-
-	// Wait for the claim to appear in the Bridge L2 DB under our invalid GER (same query as tool).
+	// Wait for the claim to appear via bridge service under our invalid GER (same query as tool).
 	log.Info("[B1] step: waitForClaimInBridgeL2DBByGER (up to 2m)", "ger", proof.InvalidGER.Hex())
-	waitForClaimInBridgeL2DBByGER(ctx, t, bridgeL2DB, proof.InvalidGER, 2*time.Minute)
+	waitForClaimInBridgeL2DBByGER(ctx, t, env.Clients.BridgeService, proof.InvalidGER, 2*time.Minute)
 
 	// --- GER detection (runbook-aligned) ---
 	log.Info("[B1] step: detectInvalidGERFromAggkitLogs (up to 6m)")
@@ -1214,16 +1427,17 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	require.NotEqual(t, common.Hash{}, detectedGER)
 	require.Equal(t, proof.InvalidGER, detectedGER, "detected GER must match injected (sanity check)")
 
-	// Assert claim present using the exact same query as the tool (GetClaimsByGER).
-	log.Info("[B1] step: assert claim in DB, SetupEnv, Diagnose")
-	claimsForGER, err := remove_ger.GetClaimsByGER(ctx, bridgeL2DB, detectedGER)
+	// Assert claim present via bridge service using the exact same query as the tool (GetClaimsByGER).
+	log.Info("[B1] step: assert claim via bridge service, SetupEnv, Diagnose")
+	cfg := loadToolConfig(t)
+	claimsForGER, err := remove_ger.GetClaimsByGER(ctx, env.Clients.BridgeService, detectedGER)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(claimsForGER), 1, "claim must be in Bridge L2 DB at tool path %q when starting diagnosis", cfg.BridgeL2Sync.DBPath)
+	require.GreaterOrEqual(t, len(claimsForGER), 1, "claim must be visible on bridge service when starting diagnosis")
 
-	// --- Tool: diagnosis (reuse same Bridge L2 connection so tool sees identical view) ---
+	// --- Tool: diagnosis ---
 	envCtx, envCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer envCancel()
-	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg, bridgeL2DB)
+	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
 	diagnosis, err := remove_ger.Diagnose(ctx, toolEnv, detectedGER, false)
@@ -1261,4 +1475,211 @@ func TestRemoveGER_CategoryA(t *testing.T) {
 // TestRemoveGER_CategoryB1 runs the Category B.1 E2E scenario (Chunk 8).
 func TestRemoveGER_CategoryB1(t *testing.T) {
 	testRemoveGER_CategoryB1(t)
+}
+
+// testRemoveGER_CategoryB2 runs the Category B.2 scenario:
+// 1. Do a real L1 bridge (do NOT claim it on L2 directly)
+// 2. Build a fake merkle proof at a WRONG deposit_count
+// 3. Inject a fake GER that corresponds to that fake root
+// 4. Claim using the fake proof (zero-hash siblings) at the wrong deposit_count
+// 5. Let the tool diagnose B.2 and recover (unset wrong claim, set correct claim, force emit)
+//
+// Key: the real bridge is never claimed normally. Instead it is claimed at a wrong deposit_count
+// via a fake GER, which is exactly the B.2 scenario the runbook describes.
+func testRemoveGER_CategoryB2(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+	env := testEnv
+	require.NotNil(t, env, "testEnv must be set by TestMain")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	defer func() {
+		restoreCtx, restoreCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer restoreCancel()
+		isEmergency, err := env.L2.Contracts.L2Bridge.IsEmergencyState(&bind.CallOpts{Context: restoreCtx})
+		if err != nil || !isEmergency {
+			return
+		}
+		opts, err := bind.NewKeyedTransactorWithChainID(env.Keys.SovereignAdmin, env.L2.ChainID)
+		if err != nil {
+			return
+		}
+		_, _ = env.L2.Contracts.L2Bridge.DeactivateEmergencyState(opts)
+	}()
+
+	// --- Step 1: Do a real L1 bridge (NO claim on L2) ---
+	log.Info("[B2] step: perform real L1 bridge (no claim)")
+
+	bridge1 := performBridgeL1NoClaim(ctx, t, env, big.NewInt(200000000000000), "B2-1") // 0.0002 ETH
+	log.Infof("[B2] bridge done: deposit_count=%d, global_index=%s",
+		bridge1.DepositCount, bridge1.GlobalIndex.String())
+
+	// --- Step 2: Build fake merkle proof at wrong deposit count ---
+	// This simulates what happens during an L1 reorg when a bridge moves to a different index.
+	log.Info("[B2] step: build fake proof for wrong deposit_count")
+
+	wrongDepositCount1 := uint32(42069)
+	fakeProof1 := buildFakeMerkleProofForWrongDepositCount(t, bridge1, wrongDepositCount1)
+
+	// --- Step 3: Stop aggkit, inject fake GER, start aggkit ---
+	log.Info("[B2] step: inject fake GER")
+	require.NoError(t, env.StopAggkit(ctx))
+	injectInvalidGER(ctx, t, env, fakeProof1.GER)
+	require.NoError(t, env.StartAggkit(ctx))
+	assertGERExistsOnL2(ctx, t, env, fakeProof1.GER)
+
+	// --- Step 4: Claim using fake proof at wrong deposit count ---
+	// The claim uses the real bridge leaf data but at a wrong deposit_count, verified against the fake GER.
+	log.Info("[B2] step: claim bridge using fake proof (wrong deposit_count)")
+
+	wrongGlobalIndex1 := bridgesync.GenerateGlobalIndexForNetworkID(0, wrongDepositCount1)
+
+	l2Opts1, l2Key1, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L2Keys.Return(l2Key1)
+
+	claimTx1, err := env.L2.Contracts.L2Bridge.ClaimAsset(
+		l2Opts1,
+		fakeProof1.ProofLocal,
+		fakeProof1.ProofRollup,
+		wrongGlobalIndex1,
+		fakeProof1.MainnetExitRoot,
+		fakeProof1.RollupExitRoot,
+		bridge1.Bridge.OriginNetwork,
+		common.HexToAddress(string(bridge1.Bridge.OriginAddress)),
+		bridge1.Bridge.DestinationNetwork,
+		bridge1.DestinationAddr,
+		bridge1.BridgeAmount,
+		common.Hex2Bytes(bridge1.Bridge.Metadata),
+	)
+	require.NoError(t, err, "ClaimAsset (B.2)")
+	receipt1, err := bind.WaitMined(ctx, env.Clients.L2, claimTx1)
+	require.NoError(t, err)
+	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt1.Status, "claim tx failed")
+	log.Info("[B2] claim succeeded with fake proof")
+	assertClaimedOnL2(ctx, t, env, wrongGlobalIndex1)
+
+	// --- Step 5: Wait for bridge service to index claim ---
+	log.Info("[B2] step: wait for claim on bridge service (up to 2m)")
+	waitForClaimOnBridgeService(ctx, t, env, wrongGlobalIndex1, 2*time.Minute)
+
+	log.Info("[B2] step: wait for claim by GER on bridge service (up to 2m)")
+	waitForClaimInBridgeL2DBByGER(ctx, t, env.Clients.BridgeService, fakeProof1.GER, 2*time.Minute)
+
+	// --- Step 6: GER detection (runbook-aligned) ---
+	log.Info("[B2] step: detect invalid GER from aggkit logs (up to 6m)")
+	envsDir, err := envs.FindEnvsDir()
+	require.NoError(t, err)
+	envDir := filepath.Join(envsDir, opPPEnvName)
+
+	detectedGER1, err := detectInvalidGERFromAggkitLogs(ctx, t, envDir, 6*time.Minute, &fakeProof1.GER)
+	require.NoError(t, err)
+	require.Equal(t, fakeProof1.GER, detectedGER1, "detected GER must match injected")
+
+	// --- Step 7: Tool diagnosis ---
+	log.Info("[B2] step: diagnose GER")
+	cfg := loadToolConfig(t)
+	envCtx, envCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer envCancel()
+	toolEnv, err := remove_ger.SetupEnv(envCtx, cfg)
+	require.NoError(t, err)
+	defer toolEnv.Close()
+
+	diagnosis1, err := remove_ger.Diagnose(ctx, toolEnv, detectedGER1, false)
+	require.NoError(t, err)
+	require.Equal(t, remove_ger.ScenarioCategoryB2, diagnosis1.Scenario)
+	require.Len(t, diagnosis1.Claims, 1)
+	require.Equal(t, remove_ger.ScenarioCategoryB2, diagnosis1.Claims[0].Category)
+	require.NotNil(t, diagnosis1.Claims[0].CorrectBridge, "B.2 claim must have CorrectBridge")
+	require.Equal(t, bridge1.DepositCount, diagnosis1.Claims[0].CorrectBridge.DepositCount,
+		"CorrectBridge deposit_count must match real bridge")
+
+	// --- Step 8: Tool recovery ---
+	// B.2 recovery: freeze → remove GER → unset wrong claim → set correct claim → force emit → restore
+	log.Info("[B2] step: ExecuteRecovery (up to 10m)")
+	recoveryTimeout := 10 * time.Minute
+	recoveryCtx1, recoveryCancel1 := context.WithTimeout(ctx, recoveryTimeout)
+	defer recoveryCancel1()
+	err = remove_ger.ExecuteRecovery(recoveryCtx1, cfg, toolEnv, diagnosis1)
+	require.NoError(t, err)
+
+	// --- Post-recovery assertions ---
+	log.Info("[B2] step: post-recovery assertions")
+	assertGERRemovedFromL2(ctx, t, env, detectedGER1)
+	waitForGEROnBridgeService(ctx, t, env, detectedGER1, 2*time.Minute)
+	assertClaimUnsetOnL2(ctx, t, env, wrongGlobalIndex1)
+	assertClaimedOnL2(ctx, t, env, bridge1.GlobalIndex) // correct claim should now be set
+
+	isEmergency, err := env.L2.Contracts.L2Bridge.IsEmergencyState(&bind.CallOpts{Context: ctx})
+	require.NoError(t, err)
+	require.False(t, isEmergency, "bridge must not be in emergency state after recovery")
+}
+
+// fakeMerkleProof holds the components needed to make a fake B.2 claim.
+type fakeMerkleProof struct {
+	GER             common.Hash
+	MainnetExitRoot common.Hash
+	RollupExitRoot  common.Hash
+	ProofLocal      [32][32]byte
+	ProofRollup     [32][32]byte
+}
+
+// buildFakeMerkleProofForWrongDepositCount generates a fake merkle proof for a bridge at a wrong deposit_count.
+// It creates a single-leaf tree with the bridge's leaf hash at the wrong deposit_count, computes the root,
+// and generates a GER from that root. The zero-hash proof will verify against this fake root.
+func buildFakeMerkleProofForWrongDepositCount(t *testing.T, bridge *bridgeResult, wrongDepositCount uint32) *fakeMerkleProof {
+	t.Helper()
+
+	// Get the bridge leaf hash
+	b := &bridgesync.Bridge{
+		LeafType:           bridge.Bridge.LeafType,
+		OriginNetwork:      bridge.Bridge.OriginNetwork,
+		OriginAddress:      common.HexToAddress(string(bridge.Bridge.OriginAddress)),
+		DestinationNetwork: bridge.Bridge.DestinationNetwork,
+		DestinationAddress: common.HexToAddress(string(bridge.Bridge.DestinationAddress)),
+		Amount:             bridge.Bridge.Amount.ToBigInt(),
+		Metadata:           common.Hex2Bytes(bridge.Bridge.Metadata),
+	}
+	leafHash := b.Hash()
+
+	// Generate zero hashes for the merkle tree (same as in tree package)
+	zeroHashes := generateZeroHashesForProof(treetypes.DefaultHeight)
+
+	// Build proof: all zero-hash siblings (represents a single-leaf tree)
+	var proof treetypes.Proof
+	for h := uint8(0); h < treetypes.DefaultHeight; h++ {
+		proof[h] = zeroHashes[h]
+	}
+
+	// Calculate the merkle root for this leaf at the wrong deposit_count
+	mainnetExitRoot := tree.CalculateRoot(leafHash, proof, wrongDepositCount)
+
+	// Rollup exit root is zero (no rollup bridges in this test)
+	rollupExitRoot := common.Hash{}
+
+	// Calculate GER from the fake mainnet exit root
+	ger := l1infotreesync.CalculateGER(mainnetExitRoot, rollupExitRoot)
+
+	// Convert proof to contract format
+	var proofLocal, proofRollup [32][32]byte
+	for i := 0; i < 32; i++ {
+		proofLocal[i] = proof[i]
+		proofRollup[i] = zeroHashes[i]
+	}
+
+	return &fakeMerkleProof{
+		GER:             ger,
+		MainnetExitRoot: mainnetExitRoot,
+		RollupExitRoot:  rollupExitRoot,
+		ProofLocal:      proofLocal,
+		ProofRollup:     proofRollup,
+	}
+}
+
+// TestRemoveGER_CategoryB2 runs the Category B.2 E2E scenario (Chunk 9).
+func TestRemoveGER_CategoryB2(t *testing.T) {
+	testRemoveGER_CategoryB2(t)
 }

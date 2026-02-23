@@ -31,6 +31,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -210,6 +211,9 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
 		bridgeGroup.GET("/removed-gers", b.GetRemoveGEREventsHandler)
+		bridgeGroup.GET("/claims-by-ger", b.GetClaimsByGERHandler)
+		bridgeGroup.GET("/bridge-by-deposit-count", b.GetBridgeByDepositCountHandler)
+		bridgeGroup.GET("/bridges-by-content", b.GetBridgesByContentHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -1592,6 +1596,246 @@ func (b *BridgeService) parseGlobalIndexAndSetupRequest(
 func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 	metrics.IncTotalRequestCounter(handlerID, strconv.Itoa(statusCode))
 	metrics.ObserveRequestLatencyHistogram(handlerID, startTime)
+}
+
+// GetClaimsByGERHandler retrieves all DetailedClaimEvent claims that used the given global exit root.
+//
+// @Summary Get claims by global exit root
+// @Description Returns all claims (DetailedClaimEvent type) recorded with the specified GER.
+// @Tags claims
+// @Param global_exit_root query string true "Global exit root (0x-prefixed 32-byte hex)"
+// @Produce json
+// @Success 200 {object} types.ClaimsByGERResult
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /claims-by-ger [get]
+func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
+	b.logger.Debugf("GetClaimsByGER request received (global_exit_root=%s)", c.Query("global_exit_root"))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetClaimsByGERReq, statusCode, startTime)
+	}()
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	if b.bridgeL2 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+		return
+	}
+
+	gerStr := c.Query("global_exit_root")
+	if gerStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "global_exit_root is mandatory"})
+		return
+	}
+	if !isValidHexHash(gerStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "invalid global_exit_root parameter, must be a valid hex hash"})
+		return
+	}
+	ger := common.HexToHash(gerStr)
+
+	claims, err := b.bridgeL2.GetClaimsByGER(ctx, ger)
+	if err != nil {
+		b.logger.Errorf("failed to get claims by GER %s: %v", gerStr, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get claims by GER: %s", err)})
+		return
+	}
+
+	claimResponses := make([]*types.ClaimResponse, 0, len(claims))
+	for _, claim := range claims {
+		claimResponses = append(claimResponses, NewClaimResponse(claim, false))
+	}
+	c.JSON(statusCode, types.ClaimsByGERResult{
+		Claims: claimResponses,
+		Count:  len(claimResponses),
+	})
+}
+
+// GetBridgeByDepositCountHandler retrieves an L1 bridge by deposit count.
+//
+// @Summary Get L1 bridge by deposit count
+// @Description Returns the L1 bridge event with the given deposit count (checks bridge and bridge_archive).
+// @Tags bridges
+// @Param deposit_count query uint32 true "Deposit count"
+// @Produce json
+// @Success 200 {object} types.BridgeResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /bridge-by-deposit-count [get]
+func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
+	b.logger.Debugf("GetBridgeByDepositCount request received (deposit_count=%s)", c.Query(depositCountParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetBridgeByDepositCountReq, statusCode, startTime)
+	}()
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	if b.bridgeL1 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+		return
+	}
+
+	depositCount, err := parseUintQuery(c, depositCountParam, true, uint32(0))
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	bridge, err := b.bridgeL1.GetBridgeByDepositCount(ctx, depositCount)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			statusCode = http.StatusNotFound
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("bridge with deposit_count=%d not found", depositCount)})
+			return
+		}
+		b.logger.Errorf("failed to get bridge by deposit count %d: %v", depositCount, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridge by deposit count: %s", err)})
+		return
+	}
+
+	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
+	c.JSON(statusCode, NewBridgeResponse(bridge, mainnetNetworkID, etrogUpgradeL1Block))
+}
+
+// GetBridgesByContentHandler retrieves L1 bridges matching the given content fields.
+//
+// @Summary Get L1 bridges by content
+// @Description Returns all L1 bridges (from bridge and bridge_archive) matching the specified content.
+// @Tags bridges
+// @Param leaf_type query uint8 true "Leaf type (0=asset, 1=message)"
+// @Param origin_address query string true "Origin address (hex)"
+// @Param destination_network query uint32 true "Destination network ID"
+// @Param destination_address query string true "Destination address (hex)"
+// @Param amount query string true "Amount (decimal string)"
+// @Param metadata query string false "Metadata (0x-prefixed hex, default empty)"
+// @Produce json
+// @Success 200 {object} types.BridgesByContentResult
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /bridges-by-content [get]
+func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
+	b.logger.Debugf("GetBridgesByContent request received")
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetBridgesByContentReq, statusCode, startTime)
+	}()
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	if b.bridgeL1 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+		return
+	}
+
+	leafType, err := parseUintQuery(c, "leaf_type", true, uint32(0))
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+	if leafType > 255 {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "leaf_type must be 0 or 1"})
+		return
+	}
+
+	originAddrStr := c.Query("origin_address")
+	if originAddrStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "origin_address is mandatory"})
+		return
+	}
+	if !common.IsHexAddress(originAddrStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid %s parameter", "origin_address")})
+		return
+	}
+	originAddress := common.HexToAddress(originAddrStr)
+
+	destNetwork, err := parseUintQuery(c, "destination_network", true, uint32(0))
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	destAddrStr := c.Query("destination_address")
+	if destAddrStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "destination_address is mandatory"})
+		return
+	}
+	if !common.IsHexAddress(destAddrStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid %s parameter", "destination_address")})
+		return
+	}
+	destAddress := common.HexToAddress(destAddrStr)
+
+	amountStr := c.Query("amount")
+	if amountStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "amount is mandatory"})
+		return
+	}
+	amount, ok := new(big.Int).SetString(amountStr, 10)
+	if !ok {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "invalid amount parameter, must be a decimal integer"})
+		return
+	}
+
+	var metadata []byte
+	metadataStr := c.Query("metadata")
+	if metadataStr != "" && metadataStr != "0x" {
+		metadataHex := strings.TrimPrefix(metadataStr, "0x")
+		metadata, err = hex.DecodeString(metadataHex)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": "invalid metadata parameter, must be 0x-prefixed hex"})
+			return
+		}
+	}
+
+	bridges, err := b.bridgeL1.GetBridgesByContent(ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata) //nolint:gosec
+	if err != nil {
+		b.logger.Errorf("failed to get bridges by content: %v", err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridges by content: %s", err)})
+		return
+	}
+
+	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
+	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
+	for _, bridge := range bridges {
+		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, mainnetNetworkID, etrogUpgradeL1Block))
+	}
+	c.JSON(statusCode, types.BridgesByContentResult{
+		Bridges: bridgeResponses,
+		Count:   len(bridgeResponses),
+	})
 }
 
 // isValidHexHash validates that a string is a valid 32-byte hex hash

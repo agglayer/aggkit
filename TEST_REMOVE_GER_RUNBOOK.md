@@ -930,10 +930,6 @@ testRemoveGER_CategoryB2
 │   ├── Assert: correct claims set (with correct global indexes)
 │   ├── Assert: corrected claim events emitted
 │   └── Assert: bridge not in emergency state
-└── Post-recovery:
-    ├── Perform a new L1→L2 bridge and claim
-    ├── Verify certificate settlement succeeds
-    └── assertNetworkHealthy()
 ```
 
 ### Key Implementation Details
@@ -941,16 +937,13 @@ testRemoveGER_CategoryB2
 - Follows the bats test structure: two invalid GERs, two dummy claims, then full B.2 recovery.
 - **Obtain the GER(s) for the tool only from log detection** (runbook patterns). When multiple invalid GERs are present, logs may mention one or both; the test should collect all detected GER hashes and pass them to the tool (or run diagnosis/recovery per detected GER as the runbook implies).
 - Do not pass the injected GERs directly to the tool.
-- After all recovery steps, a fresh bridge verifies the system is fully operational.
-- Certificate settlement is verified (aggsender produces valid certificates after recovery).
-- **Apply E2E notes above:** Wait for the bridge L2 sync to index both claims before diagnosis. Patch tool config DB paths (BridgeL2Sync, BridgeL1Sync, L1InfoTreeSync) to the host data dir after `LoadConfig`. For dummy claims, use params and proofs that match the expected leaf (formatting/params must be consistent so proofs verify).
+- **Apply E2E notes above:** Wait for the bridge L2 sync to index both claims before diagnosis. For dummy claims, use params and proofs that match the expected leaf (formatting/params must be consistent so proofs verify).
 
 ### Acceptance Criteria
 
 - [x] Multiple invalid GER injection and dummy claim execution succeeds.
 - [x] Tool correctly diagnoses Category B.2.
 - [x] Full B.2 recovery flow (remove + unset + set + force emit) completes via tool.
-- [x] Post-recovery: fresh bridge+claim works, settlements continue.
 
 ---
 

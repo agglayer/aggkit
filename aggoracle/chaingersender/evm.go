@@ -233,6 +233,7 @@ func (c *EVMChainGERSender) submitTransaction(
 	}
 
 	c.logger.Infof("%s GER transaction submitted with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
+	c.logger.Debugf("monitoring every %s", c.waitPeriodMonitorTx)
 
 	// Monitor the transaction status
 	for {

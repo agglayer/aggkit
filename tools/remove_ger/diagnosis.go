@@ -2,17 +2,18 @@ package remove_ger
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strings"
 
+	"github.com/agglayer/aggkit/bridgeservice/client"
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/russross/meddler"
 )
 
 // Scenario is the overall or per-claim classification from the runbook.
@@ -86,8 +87,8 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 		return result, nil
 	}
 
-	// Step 3 — Find claims using the GER (query L2 Bridge SQLite)
-	claims, err := GetClaimsByGER(ctx, env.SQLite.BridgeL2, gerHash)
+	// Step 3 — Find claims using the GER (via bridge service)
+	claims, err := GetClaimsByGER(ctx, env.BridgeService, gerHash)
 	if err != nil {
 		return nil, fmt.Errorf("get claims by GER: %w", err)
 	}
@@ -98,7 +99,7 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	// Step 4 — Classify each claim
 	result.Claims = make([]ClaimDiagnosis, 0, len(claims))
 	for _, c := range claims {
-		cd, err := classifyClaim(env, c)
+		cd, err := classifyClaim(ctx, env, c)
 		if err != nil {
 			return nil, fmt.Errorf("classify claim global_index=%s: %w", c.GlobalIndex.String(), err)
 		}
@@ -133,42 +134,79 @@ func (e ErrGERExistsOnL1) Error() string {
 	return fmt.Sprintf("GER %s exists on L1 (timestamp > 0); this may not be an invalid GER. Use --force to continue anyway", e.GER.Hex())
 }
 
-// GetClaimsByGER queries the L2 bridgesync DB for claims that used the given GER.
-// Exported so E2E tests can use the same query/connection for wait and assertion as the tool.
-// If the claim table does not exist yet (e.g. bridge sync not run), returns nil, nil (no claims).
-func GetClaimsByGER(ctx context.Context, db *sql.DB, gerHash common.Hash) ([]*bridgesync.Claim, error) {
-	const query = `SELECT * FROM claim WHERE global_exit_root = $1 ORDER BY block_num ASC, block_pos ASC`
-	var claims []*bridgesync.Claim
-	rows, err := db.QueryContext(ctx, query, gerHash.Hex())
+// GetClaimsByGER queries the bridge service for DetailedClaimEvent claims that used the given GER.
+// Exported so E2E tests can use the same query for wait and assertion as the tool.
+func GetClaimsByGER(ctx context.Context, bsc *client.Client, gerHash common.Hash) ([]*bridgesync.Claim, error) {
+	res, err := bsc.GetClaimsByGER(ctx, gerHash.Hex())
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		// Bridge sync may not have run yet; treat missing table as no claims (doc above).
-		if strings.Contains(err.Error(), "no such table") {
-			return nil, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		c := &bridgesync.Claim{}
-		if err := meddler.Scan(rows, c); err != nil {
-			return nil, err
-		}
-		claims = append(claims, c)
+	if res == nil || len(res.Claims) == 0 {
+		return nil, nil
 	}
-	if err := rows.Err(); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
+	claims := make([]*bridgesync.Claim, 0, len(res.Claims))
+	for _, cr := range res.Claims {
+		claims = append(claims, claimResponseToClaim(cr))
 	}
 	return claims, nil
 }
 
+// claimResponseToClaim converts a bridge service ClaimResponse to a bridgesync.Claim.
+func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
+	globalIndex, _ := new(big.Int).SetString(string(r.GlobalIndex), 10)
+	amount, _ := new(big.Int).SetString(string(r.Amount), 10)
+	return &bridgesync.Claim{
+		BlockNum:           r.BlockNum,
+		BlockTimestamp:     r.BlockTimestamp,
+		TxHash:             common.HexToHash(string(r.TxHash)),
+		GlobalIndex:        globalIndex,
+		OriginNetwork:      r.OriginNetwork,
+		OriginAddress:      common.HexToAddress(string(r.OriginAddress)),
+		DestinationAddress: common.HexToAddress(string(r.DestinationAddress)),
+		DestinationNetwork: r.DestinationNetwork,
+		Amount:             amount,
+		MainnetExitRoot:    common.HexToHash(string(r.MainnetExitRoot)),
+		RollupExitRoot:     common.HexToHash(string(r.RollupExitRoot)),
+		GlobalExitRoot:     common.HexToHash(string(r.GlobalExitRoot)),
+		Metadata:           decodeMetadataHex(string(r.Metadata)),
+		IsMessage:          r.IsMessage,
+		Type:               bridgesync.DetailedClaimEvent,
+	}
+}
+
+// bridgeResponseToBridgeData converts a bridge service BridgeResponse to BridgeData.
+func bridgeResponseToBridgeData(b *bridgetypes.BridgeResponse) *BridgeData {
+	if b == nil {
+		return nil
+	}
+	amount, _ := new(big.Int).SetString(string(b.Amount), 10)
+	return &BridgeData{
+		LeafType:           b.LeafType,
+		OriginNetwork:      b.OriginNetwork,
+		OriginAddress:      common.HexToAddress(string(b.OriginAddress)),
+		DestinationNetwork: b.DestinationNetwork,
+		DestinationAddress: common.HexToAddress(string(b.DestinationAddress)),
+		Amount:             amount,
+		Metadata:           decodeMetadataHex(string(b.Metadata)),
+		DepositCount:       b.DepositCount,
+	}
+}
+
+// decodeMetadataHex decodes a "0x..."-prefixed hex string to bytes. Returns nil for empty/invalid input.
+func decodeMetadataHex(s string) []byte {
+	s = strings.TrimPrefix(s, "0x")
+	if s == "" {
+		return nil
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 // classifyClaim classifies a single claim (A, B.1, B.2) using the runbook decision tree.
-func classifyClaim(env *Env, claim *bridgesync.Claim) (ClaimDiagnosis, error) {
+func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (ClaimDiagnosis, error) {
 	cd := ClaimDiagnosis{
 		GlobalIndex:   claim.GlobalIndex,
 		OriginNetwork: claim.OriginNetwork,
@@ -191,22 +229,34 @@ func classifyClaim(env *Env, claim *bridgesync.Claim) (ClaimDiagnosis, error) {
 		return cd, nil
 	}
 
-	// L1 origin: query L1 bridge at deposit_count
-	var bridgeAtX bridgesync.Bridge
-	err = meddler.QueryRow(env.SQLite.BridgeL1, &bridgeAtX,
-		`SELECT * FROM bridge WHERE deposit_count = $1 AND origin_network = 0`, cd.DepositCount)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return cd, nil // no bridge on L1 → Category A
-		}
-		return cd, err
-	}
-
-	// Compare content: leaf_type vs IsMessage, origin_network, origin_address, destination_network, destination_address, amount, metadata
 	claimLeafType := uint8(0)
 	if claim.IsMessage {
 		claimLeafType = 1
 	}
+
+	log.Infof("[classify] claim global_index=%s deposit_count=%d origin_network=%d leaf_type=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d",
+		claim.GlobalIndex.String(), cd.DepositCount, cd.OriginNetwork, claimLeafType,
+		claim.OriginAddress.Hex(), claim.DestinationNetwork, claim.DestinationAddress.Hex(),
+		claim.Amount.String(), len(claim.Metadata))
+
+	// L1 origin: query L1 bridge at deposit_count via bridge service
+	bridgeResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, cd.DepositCount)
+	if err != nil {
+		if !isNotFound(err) {
+			return cd, fmt.Errorf("get bridge by deposit count %d: %w", cd.DepositCount, err)
+		}
+		log.Infof("[classify] no bridge at deposit_count=%d (not found), searching by content", cd.DepositCount)
+		// No bridge at the claimed deposit_count. Search by claim content to detect B.2
+		// (bridge exists at a different deposit_count — typical in reorg / wrong-index scenarios).
+		return classifyByClaimContent(ctx, env, claim, claimLeafType, cd)
+	}
+	bridgeAtX := bridgeResponseToBridgeData(bridgeResp)
+	log.Infof("[classify] bridge at deposit_count=%d: leaf_type=%d origin_net=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d",
+		cd.DepositCount, bridgeAtX.LeafType, bridgeAtX.OriginNetwork, bridgeAtX.OriginAddress.Hex(),
+		bridgeAtX.DestinationNetwork, bridgeAtX.DestinationAddress.Hex(),
+		bridgeAtX.Amount.String(), len(bridgeAtX.Metadata))
+
+	// Compare content: leaf_type vs IsMessage, origin_network, origin_address, destination_network, destination_address, amount, metadata
 	if bridgeAtX.LeafType != claimLeafType ||
 		bridgeAtX.OriginNetwork != claim.OriginNetwork ||
 		bridgeAtX.OriginAddress != claim.OriginAddress ||
@@ -214,87 +264,134 @@ func classifyClaim(env *Env, claim *bridgesync.Claim) (ClaimDiagnosis, error) {
 		bridgeAtX.DestinationAddress != claim.DestinationAddress ||
 		!equalBigInt(bridgeAtX.Amount, claim.Amount) ||
 		!equalBytes(bridgeAtX.Metadata, claim.Metadata) {
-		return cd, nil // content mismatch → Category A
+		// Content mismatch at this deposit_count. Search by claim content to detect B.2.
+		return classifyByClaimContent(ctx, env, claim, claimLeafType, cd)
 	}
 
-	// Content matches. Search L1 for any bridge (and bridge_archive) with same content to detect B.2 (correct index elsewhere).
-	type bridgeRow struct {
-		DepositCount uint32 `meddler:"deposit_count"`
-	}
-	const contentMatchSQL = `SELECT deposit_count FROM bridge WHERE origin_network = 0 AND leaf_type = $1 AND origin_address = $2 AND destination_network = $3 AND destination_address = $4 AND amount = $5 AND metadata = $6`
-	var matches []*bridgeRow
-	amountStr := "0"
-	if bridgeAtX.Amount != nil {
-		amountStr = bridgeAtX.Amount.String()
-	}
-	err = meddler.QueryAll(env.SQLite.BridgeL1, &matches, contentMatchSQL,
-		bridgeAtX.LeafType, bridgeAtX.OriginAddress.Hex(), bridgeAtX.DestinationNetwork, bridgeAtX.DestinationAddress.Hex(),
-		amountStr, bridgeAtX.Metadata)
-	if err != nil && err != sql.ErrNoRows {
-		return cd, err
-	}
-	// Also check bridge_archive
-	const contentMatchArchiveSQL = `SELECT deposit_count FROM bridge_archive WHERE origin_network = 0 AND leaf_type = $1 AND origin_address = $2 AND destination_network = $3 AND destination_address = $4 AND amount = $5 AND metadata = $6`
-	var archiveMatches []*bridgeRow
-	_ = meddler.QueryAll(env.SQLite.BridgeL1, &archiveMatches, contentMatchArchiveSQL,
-		bridgeAtX.LeafType, bridgeAtX.OriginAddress.Hex(), bridgeAtX.DestinationNetwork, bridgeAtX.DestinationAddress.Hex(),
-		amountStr, bridgeAtX.Metadata)
-	for _, m := range archiveMatches {
-		matches = append(matches, m)
+	// Content matches at deposit_count X. Search for other bridges with same content to detect B.2.
+	contentRes, err := env.BridgeService.GetBridgesByContent(ctx, client.GetBridgesByContentParams{
+		LeafType:           bridgeAtX.LeafType,
+		OriginAddress:      bridgeAtX.OriginAddress.Hex(),
+		DestinationNetwork: bridgeAtX.DestinationNetwork,
+		DestinationAddress: bridgeAtX.DestinationAddress.Hex(),
+		Amount:             bridgeAtX.Amount,
+		Metadata:           bridgeAtX.Metadata,
+	})
+	if err != nil {
+		return cd, fmt.Errorf("get bridges by content: %w", err)
 	}
 
 	// If any match has deposit_count != claim's → B.2
-	for _, m := range matches {
+	for _, m := range contentRes.Bridges {
 		if m.DepositCount != cd.DepositCount {
-			cd.Category = ScenarioCategoryB2
-			cd.CorrectBridge = bridgeToBridgeData(&bridgeAtX)
-			// Correct bridge is the one at the other deposit_count; we already have bridgeAtX at X. Find the one at m.DepositCount.
-			var correctB bridgesync.Bridge
-			err = meddler.QueryRow(env.SQLite.BridgeL1, &correctB,
-				`SELECT * FROM bridge WHERE deposit_count = $1 AND origin_network = 0`, m.DepositCount)
-			if err != nil {
-				err = meddler.QueryRow(env.SQLite.BridgeL1, &correctB,
-					`SELECT * FROM bridge_archive WHERE deposit_count = $1 AND origin_network = 0`, m.DepositCount)
-			}
+			// Correct bridge is the one at the other deposit_count
+			correctResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, m.DepositCount)
 			if err == nil {
-				cd.CorrectBridge = bridgeToBridgeData(&correctB)
+				cd.CorrectBridge = bridgeResponseToBridgeData(correctResp)
+			} else {
+				cd.CorrectBridge = bridgeResponseToBridgeData(bridgeResp)
 			}
+			cd.Category = ScenarioCategoryB2
 			return cd, nil
 		}
 	}
 
 	// Same index (content matches, only at X). Compare GER → B.1 if GER differs.
-	l1Leaf, err := getL1InfoLeafUntilBlock(env.SQLite.L1InfoTree, bridgeAtX.BlockNum)
+	l1Leaf, err := getL1InfoLeafByDepositCount(ctx, env.BridgeService, cd.DepositCount)
 	if err != nil {
 		// If we can't get L1 leaf, treat as B.1 (same index, invalid GER implies wrong GER)
 		cd.Category = ScenarioCategoryB1
-		cd.CorrectBridge = bridgeToBridgeData(&bridgeAtX)
+		cd.CorrectBridge = bridgeAtX
 		return cd, nil
 	}
 	if claim.MainnetExitRoot != l1Leaf.MainnetExitRoot || claim.RollupExitRoot != l1Leaf.RollupExitRoot {
 		cd.Category = ScenarioCategoryB1
-		cd.CorrectBridge = bridgeToBridgeData(&bridgeAtX)
+		cd.CorrectBridge = bridgeAtX
 		return cd, nil
 	}
 	// GER matches — shouldn't happen for invalid GER; treat as B.1 anyway so we still have a recovery path
 	cd.Category = ScenarioCategoryB1
-	cd.CorrectBridge = bridgeToBridgeData(&bridgeAtX)
+	cd.CorrectBridge = bridgeAtX
 	return cd, nil
 }
 
-func bridgeToBridgeData(b *bridgesync.Bridge) *BridgeData {
-	if b == nil {
-		return nil
+// classifyByClaimContent handles classification when there is no valid bridge at the claim's deposit_count
+// (either not found or content mismatch). It searches all L1 bridges with the same content fields as the
+// claim. If a match is found at a different deposit_count, the claim is B.2. Otherwise Category A.
+func classifyByClaimContent(ctx context.Context, env *Env, claim *bridgesync.Claim, claimLeafType uint8, cd ClaimDiagnosis) (ClaimDiagnosis, error) {
+	cd.Category = ScenarioCategoryA // default
+
+	log.Infof("[classifyByContent] searching bridges: leaf_type=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata=%x",
+		claimLeafType, claim.OriginAddress.Hex(), claim.DestinationNetwork,
+		claim.DestinationAddress.Hex(), claim.Amount.String(), claim.Metadata)
+
+	contentRes, err := env.BridgeService.GetBridgesByContent(ctx, client.GetBridgesByContentParams{
+		LeafType:           claimLeafType,
+		OriginAddress:      claim.OriginAddress.Hex(),
+		DestinationNetwork: claim.DestinationNetwork,
+		DestinationAddress: claim.DestinationAddress.Hex(),
+		Amount:             claim.Amount,
+		Metadata:           claim.Metadata,
+	})
+	if err != nil {
+		log.Infof("[classifyByContent] GetBridgesByContent error (falling back to category_a): %v", err)
+		// Content search failed; fall back to Category A
+		return cd, nil
 	}
-	return &BridgeData{
-		LeafType:           b.LeafType,
-		OriginNetwork:      b.OriginNetwork,
-		OriginAddress:      b.OriginAddress,
-		DestinationNetwork: b.DestinationNetwork,
-		DestinationAddress: b.DestinationAddress,
-		Amount:             b.Amount,
-		Metadata:           b.Metadata,
-		DepositCount:       b.DepositCount,
+
+	log.Infof("[classifyByContent] GetBridgesByContent returned %d bridges (claim deposit_count=%d)",
+		len(contentRes.Bridges), cd.DepositCount)
+	for i, m := range contentRes.Bridges {
+		log.Infof("[classifyByContent] bridge[%d]: deposit_count=%d origin_addr=%s dest_addr=%s amount=%s",
+			i, m.DepositCount, m.OriginAddress, m.DestinationAddress, m.Amount)
+		if m.DepositCount != cd.DepositCount {
+			// A bridge with identical content exists at a different deposit_count → B.2
+			correctResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, m.DepositCount)
+			if err == nil {
+				cd.CorrectBridge = bridgeResponseToBridgeData(correctResp)
+			}
+			cd.Category = ScenarioCategoryB2
+			return cd, nil
+		}
+	}
+
+	log.Infof("[classifyByContent] no bridge at different deposit_count → category_a")
+	return cd, nil // Category A: no matching bridge found at any deposit_count
+}
+
+// isNotFound returns true if the error is a client.ErrNotFound sentinel.
+func isNotFound(err error) bool {
+	return err != nil && err.Error() == client.ErrNotFound.Error()
+}
+
+// getL1InfoLeafByDepositCount uses the two-step bridge service lookup to find the L1InfoTree leaf
+// that first includes the given L1 bridge deposit_count in its MainnetExitRoot.
+// Step 1: GetL1InfoTreeIndex(ctx, 0, depositCount) → leafIndex
+// Step 2: GetInjectedL1InfoLeaf(ctx, 0, leafIndex) → leaf response
+func getL1InfoLeafByDepositCount(ctx context.Context, bsc *client.Client, depositCount uint32) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	leafIndex, err := bsc.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
+	if err != nil {
+		return nil, fmt.Errorf("get L1 info tree index for deposit_count=%d: %w", depositCount, err)
+	}
+	resp, err := bsc.GetInjectedL1InfoLeaf(ctx, 0, int(leafIndex))
+	if err != nil {
+		return nil, fmt.Errorf("get L1 info leaf at index=%d: %w", leafIndex, err)
+	}
+	return l1InfoLeafResponseToLeaf(resp), nil
+}
+
+// l1InfoLeafResponseToLeaf converts a bridge service L1InfoTreeLeafResponse to l1infotreesync.L1InfoTreeLeaf.
+func l1InfoLeafResponseToLeaf(r *bridgetypes.L1InfoTreeLeafResponse) *l1infotreesync.L1InfoTreeLeaf {
+	return &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:       r.BlockNumber,
+		BlockPosition:     r.BlockPosition,
+		L1InfoTreeIndex:   r.L1InfoTreeIndex,
+		PreviousBlockHash: common.HexToHash(string(r.PreviousBlockHash)),
+		Timestamp:         r.Timestamp,
+		MainnetExitRoot:   common.HexToHash(string(r.MainnetExitRoot)),
+		RollupExitRoot:    common.HexToHash(string(r.RollupExitRoot)),
+		GlobalExitRoot:    common.HexToHash(string(r.GlobalExitRoot)),
+		Hash:              common.HexToHash(string(r.Hash)),
 	}
 }
 
@@ -318,17 +415,6 @@ func equalBytes(a, b []byte) bool {
 		}
 	}
 	return true
-}
-
-// getL1InfoLeafUntilBlock returns the L1InfoTree leaf at or just after the given block (leaf with block_num >= blockNum, first by order).
-func getL1InfoLeafUntilBlock(db *sql.DB, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error) {
-	const query = `SELECT * FROM l1info_leaf WHERE block_num >= $1 ORDER BY block_num ASC, block_pos ASC LIMIT 1`
-	leaf := &l1infotreesync.L1InfoTreeLeaf{}
-	err := meddler.QueryRow(db, leaf, query, blockNum)
-	if err != nil {
-		return nil, err
-	}
-	return leaf, nil
 }
 
 // PrintDiagnosis prints a human-readable diagnosis summary and recovery plan to stdout.

@@ -25,9 +25,9 @@ SequencerPrivateKeyPassword  = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 RPCURL = "http://op-geth-001:8545"
 
 # These values can be overridden directly from genesis.json
-rollupCreationBlockNumber = "41"
-rollupManagerCreationBlockNumber = "41"
-genesisBlockNumber = "41"
+rollupCreationBlockNumber = "38"
+rollupManagerCreationBlockNumber = "38"
+genesisBlockNumber = "38"
 # ------------------------------------------------------------------------------
 
 # ==============================================================================
@@ -110,7 +110,7 @@ Environment = "development"
 # log. Generally we'll switch to debug if we want to troubleshoot
 # something specifically otherwise we leave it at info
 # ------------------------------------------------------------------------------
-Level = "info"
+Level = "debug"
 
 # ------------------------------------------------------------------------------
 # Outputs define the output paths for writing logs. The default is to
@@ -547,7 +547,7 @@ FinalizedBlock = "FinalizedBlock"
 # The initial block number from which to start syncing.
 # Default: 0
 # ------------------------------------------------------------------------------
-InitialBlock = "41"
+InitialBlock = "38"
 
 # ==============================================================================
 #  _     ____   ____ _____ ____  ______   ___   _  ____
@@ -634,7 +634,7 @@ MaxDecodingMessageSize = 1073741824  # 1GB
 # Is it necessary to specify all of these values again?
 [Validator.LerQuerierConfig]
 RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
-RollupCreationBlockL1 = "41"
+RollupCreationBlockL1 = "38"
 
 [Validator.AgglayerClient]
 Cached = true

@@ -1,15 +1,15 @@
 {
-  "snapshot_name": "cdk-20260220-181853",
+  "snapshot_name": "cdk-20260222-193628",
   "enclave": "cdk",
-  "created_at": "2026-02-20T18:19:34Z",
+  "created_at": "2026-02-22T19:37:12Z",
   "networks": {
     "l1": {
       "chain_id": "271828",
       "snapshot_block": {
-        "number": "175",
-        "hash": "0x489e3c5b074ba62d8ac8bd7892fcea37ef7f43b75dfdb0791e13975ba3f527ba"
+        "number": "216",
+        "hash": "0x147f3289131fafc5d11fc82d27a01156c23fceb26220596652a5e21666086d4e"
       },
-      "genesis_hash": "0x7fab811286d4d8a8a7cf8d058b99f59a1fb9eea0d990ae99de0933cb47db7b8d",
+      "genesis_hash": "0x8743cfc416c3d8f1cf0face10810749caaf5861f8556ddd79039928ef1ab7a19",
       "contracts": {
         "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
         "global_exit_root_v2": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",

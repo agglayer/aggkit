@@ -76,7 +76,7 @@ send-tx = "unlimited"
 
 [epoch.block-clock]
 epoch-duration = 15
-genesis-block = 41
+genesis-block = 38
 
 [shutdown]
 runtime-timeout = 5
