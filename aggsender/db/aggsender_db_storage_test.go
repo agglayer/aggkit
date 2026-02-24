@@ -1255,7 +1255,7 @@ func Test_RuntimeData_IsCompatible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.runtime.IsCompatible(tt.storage)
+			_, err := tt.runtime.IsCompatible(tt.storage)
 
 			if tt.expectError {
 				require.Error(t, err)

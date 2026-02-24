@@ -50,11 +50,11 @@ func (r RuntimeData) String() string {
 	return fmt.Sprintf("NetworkID: %d", r.NetworkID)
 }
 
-func (r RuntimeData) IsCompatible(storage RuntimeData) error {
+func (r RuntimeData) IsCompatible(storage RuntimeData) (*RuntimeData, error) {
 	if r.NetworkID != storage.NetworkID {
-		return fmt.Errorf("network ID mismatch: %d != %d", r.NetworkID, storage.NetworkID)
+		return nil, fmt.Errorf("network ID mismatch: %d != %d", r.NetworkID, storage.NetworkID)
 	}
-	return nil
+	return nil, nil
 }
 
 type AggSenderStorageMaintainer interface {

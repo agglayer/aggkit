@@ -136,22 +136,22 @@ const (
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
-	BlockNum           uint64         `meddler:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos"`
-	FromAddress        common.Address `meddler:"from_address,address"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp"`
-	LeafType           uint8          `meddler:"leaf_type"`
-	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address"`
-	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address"`
-	Amount             *big.Int       `meddler:"amount,bigint"`
-	Metadata           []byte         `meddler:"metadata"`
-	DepositCount       uint32         `meddler:"deposit_count"`
-	TxnSender          common.Address `meddler:"txn_sender,address"`
-	Source             BridgeSource   `meddler:"source"`
-	ToAddress          common.Address `meddler:"to_address,address"`
+	BlockNum           uint64          `meddler:"block_num"`
+	BlockPos           uint64          `meddler:"block_pos"`
+	FromAddress        *common.Address `meddler:"from_address,address"`
+	TxHash             common.Hash     `meddler:"tx_hash,hash"`
+	BlockTimestamp     uint64          `meddler:"block_timestamp"`
+	LeafType           uint8           `meddler:"leaf_type"`
+	OriginNetwork      uint32          `meddler:"origin_network"`
+	OriginAddress      common.Address  `meddler:"origin_address"`
+	DestinationNetwork uint32          `meddler:"destination_network"`
+	DestinationAddress common.Address  `meddler:"destination_address"`
+	Amount             *big.Int        `meddler:"amount,bigint"`
+	Metadata           []byte          `meddler:"metadata"`
+	DepositCount       uint32          `meddler:"deposit_count"`
+	TxnSender          common.Address  `meddler:"txn_sender,address"`
+	Source             BridgeSource    `meddler:"source"`
+	ToAddress          common.Address  `meddler:"to_address,address"`
 }
 
 func (b *Bridge) String() string {
@@ -159,11 +159,15 @@ func (b *Bridge) String() string {
 	if b.Amount != nil {
 		amountStr = b.Amount.String()
 	}
+	fromAddrStr := nilStr
+	if b.FromAddress != nil {
+		fromAddrStr = b.FromAddress.String()
+	}
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
 		"DepositCount: %d, TxnSender: %s, Source: %s, ToAddress: %s}",
-		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
+		b.BlockNum, b.BlockPos, fromAddrStr, b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
 		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
 		b.DepositCount, b.TxnSender.String(), b.Source, b.ToAddress.String())
@@ -595,6 +599,9 @@ type BridgeSyncRuntimeData struct {
 	Addresses []common.Address
 	// DBVersion tracks the database schema version for compatibility validation
 	DBVersion *int
+	// SyncFromInBridges tracks if FromAddress extraction was enabled for this database
+	// By default is true
+	SyncFromInBridges *bool
 }
 
 func (b BridgeSyncRuntimeData) String() string {
@@ -603,25 +610,64 @@ func (b BridgeSyncRuntimeData) String() string {
 		res += addr.String() + ", "
 	}
 	if b.DBVersion != nil {
-		res += fmt.Sprintf("DBVersion: %d", *b.DBVersion)
+		res += fmt.Sprintf("DBVersion: %d, ", *b.DBVersion)
+	}
+	if b.SyncFromInBridges != nil {
+		res += fmt.Sprintf("SyncFromInBridges: %t", *b.SyncFromInBridges)
 	}
 	return res
 }
 
-func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
+func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*BridgeSyncRuntimeData, error) {
+	// First check the basic runtimedata compatibility using the existing logic in sync.RuntimeData
 	tmp := sync.RuntimeData{
 		ChainID:   b.ChainID,
 		Addresses: b.Addresses,
 	}
-	if err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
-		return err
+	if _, err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
+		return nil, err
 	}
+
+	// Check database schema version compatibility, this is to introduce
+	// changes beyond migration mechanism.
+	// You can control that the data in DB is invalid and need to be deleted
+	// or, in the future, you can create a way to update it.
 	if storage.DBVersion == nil || *storage.DBVersion != *b.DBVersion {
-		return fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
+		return nil, fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
 			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
 			b.DBVersion, storage.DBVersion)
 	}
-	return nil
+	if b.SyncFromInBridges == nil {
+		return nil, errors.New("invalid runtime data: missing SyncFromInBridges field (internal error)")
+	}
+
+	if storage.SyncFromInBridges == nil {
+		// If storage doesn't have this field, the database was created before this field existed,
+		// so we assume 'true' by default (historical behavior).
+		if b.SyncFromInBridges != nil && !*b.SyncFromInBridges {
+			log.Warnf("Database created without SyncFromInBridges field, assuming true. " +
+				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress.",
+			)
+		}
+		// we update storage with current value
+		return &b, nil
+	}
+	// Validate SyncFromInBridges compatibility
+
+	// false → true: FORBIDDEN (missing FromAddress cannot be recovered)
+	if !*storage.SyncFromInBridges && *b.SyncFromInBridges {
+		log.Warnf("SyncFromInBridges changed from false to true. " +
+			"The missing FromAddress are going to be filled by a background " +
+			"process, but it might take a while")
+	}
+	// true → false: ALLOWED (log warning about inconsistent data)
+	if *storage.SyncFromInBridges && !*b.SyncFromInBridges {
+		log.Warnf("SyncFromInBridges changed from true to false. " +
+			"Existing bridges have FromAddress, new bridges will not.",
+		)
+	}
+
+	return nil, nil
 }
 
 type BridgeQuerier interface {
@@ -870,9 +916,10 @@ func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
-	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
+	whereClause, whereArgs := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
-	bridgesCount, err := p.GetTotalNumberOfRecords(ctx, bridgeTableName, whereClause)
+
+	bridgesCount, err := p.GetTotalNumberOfRecordsWithParams(ctx, bridgeTableName, whereClause, whereArgs)
 	if err != nil {
 		return []*Bridge{}, 0, err
 	}
@@ -886,14 +933,16 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
+	rows, err := p.queryPagedWithParams(ctx, p.db, offset, pageSize, bridgeTableName,
+		orderByClause, whereClause, whereArgs)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
 				pageNumber, pageSize, whereClause)
 			return nil, bridgesCount, nil
 		}
-		p.log.Errorf("GetBridgesPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetBridgesPaged: queryPagedWithParams failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -905,7 +954,8 @@ func (p *processor) GetBridgesPaged(
 
 	bridges := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
-		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -914,25 +964,42 @@ func (p *processor) GetBridgesPaged(
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
 // based on the provided depositCount, networkIDs, fromAddress and globalIndex
-func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32, fromAddress string) string {
+// Returns the WHERE clause with placeholders and the corresponding arguments for parameterized queries
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32,
+	fromAddress string) (string, []interface{}) {
 	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
+	args := make([]interface{}, 0, clauseCapacity)
+	paramIndex := 1
+
 	if depositCount != nil {
-		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
+		clauses = append(clauses, fmt.Sprintf("deposit_count = $%d", paramIndex))
+		args = append(args, *depositCount)
+		paramIndex++
 	}
 
 	if len(networkIDs) > 0 {
-		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
+		placeholders := make([]string, len(networkIDs))
+		for i, id := range networkIDs {
+			placeholders[i] = fmt.Sprintf("$%d", paramIndex)
+			args = append(args, id)
+			paramIndex++
+		}
+		clauses = append(clauses, fmt.Sprintf("destination_network IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
 	if fromAddress != "" && common.IsHexAddress(fromAddress) {
-		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+		// Only match non-NULL from_address values with the specified address
+		// NULL values will not match this filter (intentional - explicit filtering)
+		// Use UPPER for case-insensitive comparison (addresses stored in checksum format)
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) = UPPER($%d)", paramIndex))
+		args = append(args, fromAddress)
 	}
 
 	if len(clauses) > 0 {
-		return " WHERE " + strings.Join(clauses, " AND ")
+		return " WHERE " + strings.Join(clauses, " AND "), args
 	}
-	return ""
+	return "", nil
 }
 
 func (p *processor) GetClaimsPaged(
@@ -1285,6 +1352,43 @@ func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 	return rows, nil
 }
 
+// queryPagedWithParams returns a paged result from the given table with parameterized WHERE clause
+// to prevent SQL injection attacks
+func (p *processor) queryPagedWithParams(ctx context.Context, tx dbtypes.Querier,
+	offset, pageSize uint32,
+	table, orderByClause, whereClause string,
+	whereArgs []interface{},
+) (*sql.Rows, error) {
+	// Create a context with database timeout
+	dbCtx, _ := p.withDatabaseTimeout(ctx)
+
+	// Build the query with placeholders for pagination
+	// whereArgs already contains placeholders starting from $1
+	// We need to adjust LIMIT and OFFSET to use the next available placeholders
+	nextParam := len(whereArgs) + 1
+	query := fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		%s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d;
+	`, table, whereClause, orderByClause, nextParam, nextParam+1)
+
+	// Combine WHERE args with pagination args
+	args := make([]interface{}, 0, len(whereArgs)+2) //nolint:mnd
+	args = append(args, whereArgs...)
+	args = append(args, pageSize, offset)
+
+	rows, err := tx.QueryContext(dbCtx, query, args...)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
 // that don't have events
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
@@ -1533,7 +1637,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
 				if errors.Is(err, tree.ErrInvalidIndex) {
-					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
+					p.halt(fmt.Sprintf("error adding leaf %d in block %d to the exit tree: %v",
+						event.Bridge.DepositCount, block.Num, err))
 				}
 				return sync.ErrInconsistentState
 			}
@@ -1798,8 +1903,9 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		}
 
 		var (
-			txnHash             = event.TxnHash
-			txnSender, fromAddr common.Address
+			txnHash     = event.TxnHash
+			txnSender   common.Address
+			fromAddrPtr *common.Address
 		)
 
 		// let's see if we have exactly one archived bridge that matches the forward LET leaf
@@ -1812,9 +1918,10 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
-			fromAddr = archivedBridge.FromAddress
+			// It copies the fromAddr pointer, which could be nil
+			fromAddrPtr = archivedBridge.FromAddress
 		} else if len(archivedBridges) > 1 {
-			p.log.Debugf("multiple archived bridges found that match forward LET leaf %s;"+
+			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s;"+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
 		}
 
@@ -1826,7 +1933,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			newDepositCount,
 			txnHash,
 			txnSender,
-			fromAddr,
+			fromAddrPtr,
 		)
 
 		// insert the new bridge leaf into the local exit tree
@@ -1876,6 +1983,31 @@ func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, wher
 	err := p.db.QueryRowContext(dbCtx, fmt.Sprintf(
 		`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause,
 	)).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// GetTotalNumberOfRecordsWithParams returns the total number of records with parameterized WHERE clause
+// Note: whereClause must be constructed internally using parameterized placeholders ($1, $2, etc.)
+// and should never contain user input directly concatenated into the string.
+func (p *processor) GetTotalNumberOfRecordsWithParams(ctx context.Context, tableName,
+	whereClause string, args []interface{}) (int, error) {
+	if !tableNameRegex.MatchString(tableName) {
+		return 0, fmt.Errorf("invalid table name '%s' provided", tableName)
+	}
+
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	count := 0
+	// Safe: tableName is validated by regex, whereClause contains only SQL placeholders ($1, $2, etc.)
+	// constructed internally, and actual values are passed via args parameter
+	query := "SELECT COUNT(*) AS count FROM " + tableName + whereClause + ";"
+	err := p.db.QueryRowContext(dbCtx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
 	}

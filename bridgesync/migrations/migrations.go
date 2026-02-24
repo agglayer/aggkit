@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/db"
+	dbmigrations "github.com/agglayer/aggkit/db/migrations"
 	"github.com/agglayer/aggkit/db/types"
 	treemigrations "github.com/agglayer/aggkit/tree/migrations"
 )
@@ -46,11 +47,14 @@ func init() {
 }
 
 func RunMigrations(dbPath string) error {
+	baseMigrations := dbmigrations.GetBaseMigrations()
 	// Allocate slice with exact capacity to avoid reallocations when combining migrations
-	total := len(migrations) + len(treemigrations.Migrations)
+	total := len(baseMigrations) + len(migrations) + len(treemigrations.Migrations)
 
 	combined := make([]types.Migration, 0, total)
 	// Copy migrations
+
+	combined = append(combined, baseMigrations...)
 	combined = append(combined, migrations...)
 	combined = append(combined, treemigrations.Migrations...)
 

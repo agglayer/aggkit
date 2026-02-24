@@ -63,19 +63,19 @@ func (r RuntimeData) String() string {
 	return res
 }
 
-func (r RuntimeData) IsCompatible(other RuntimeData) error {
+func (r RuntimeData) IsCompatible(other RuntimeData) (*RuntimeData, error) {
 	if r.ChainID != other.ChainID {
-		return fmt.Errorf("chain ID mismatch: %d != %d", r.ChainID, other.ChainID)
+		return nil, fmt.Errorf("chain ID mismatch: %d != %d", r.ChainID, other.ChainID)
 	}
 	if len(r.Addresses) != len(other.Addresses) {
-		return fmt.Errorf("addresses len mismatch: %d != %d", len(r.Addresses), len(other.Addresses))
+		return nil, fmt.Errorf("addresses len mismatch: %d != %d", len(r.Addresses), len(other.Addresses))
 	}
 	for i, addr := range r.Addresses {
 		if addr != other.Addresses[i] {
-			return fmt.Errorf("addresses[%d] mismatch: %s != %s", i, addr.String(), other.Addresses[i].String())
+			return nil, fmt.Errorf("addresses[%d] mismatch: %s != %s", i, addr.String(), other.Addresses[i].String())
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 type processorInterface interface {
