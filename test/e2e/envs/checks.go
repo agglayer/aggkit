@@ -45,7 +45,7 @@ func (e *Env) checkConfiguration() error {
 		return fmt.Errorf("RollupManager contract is nil")
 	}
 	if e.L1.Contracts.Bridge == nil {
-		return fmt.Errorf("Bridge contract is nil")
+		return fmt.Errorf("bridge contract is nil")
 	}
 	if e.L1.Transactor == nil {
 		return fmt.Errorf("L1 Transactor is nil")

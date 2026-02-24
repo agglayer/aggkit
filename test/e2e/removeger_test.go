@@ -694,6 +694,7 @@ func loadToolConfig(t *testing.T) *remove_ger.Config {
 
 // testRemoveGER_NoProblematicClaims runs the No Claims scenario: inject invalid GER, detect from logs, diagnose NoClaims, recover, assert health.
 func testRemoveGER_NoProblematicClaims(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
@@ -777,6 +778,7 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 
 // testRemoveGER_CategoryA runs the Category A scenario: invalid GER + dummy claim (no bridge on L1), detect GER from logs, diagnose Category A, recover (unset claim), assert health.
 func testRemoveGER_CategoryA(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
@@ -872,6 +874,7 @@ func testRemoveGER_CategoryA(t *testing.T) {
 
 // testRemoveGER_CategoryB1 runs the Category B.1 scenario: real bridge, inject invalid GER, claim with invalid GER but correct bridge data, detect from logs, diagnose B.1, recover (remove GER + force emit), assert health.
 func testRemoveGER_CategoryB1(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}

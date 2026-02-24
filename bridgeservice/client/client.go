@@ -379,7 +379,9 @@ func (c *Client) GetClaimsByGER(ctx context.Context, networkID uint32, ger strin
 
 // GetBridgeByDepositCount retrieves the bridge for the given network and deposit count.
 // Returns ErrNotFound if the bridge does not exist in bridge or bridge_archive.
-func (c *Client) GetBridgeByDepositCount(ctx context.Context, networkID uint32, depositCount uint32) (*types.BridgeResponse, error) {
+func (c *Client) GetBridgeByDepositCount(
+	ctx context.Context, networkID uint32, depositCount uint32,
+) (*types.BridgeResponse, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
 	query.Set("deposit_count", strconv.FormatUint(uint64(depositCount), 10))
@@ -392,7 +394,9 @@ func (c *Client) GetBridgeByDepositCount(ctx context.Context, networkID uint32, 
 }
 
 // GetBridgesByContent retrieves bridges matching the given content fields for the specified network.
-func (c *Client) GetBridgesByContent(ctx context.Context, params GetBridgesByContentParams) (*types.BridgesByContentResult, error) {
+func (c *Client) GetBridgesByContent(
+	ctx context.Context, params GetBridgesByContentParams,
+) (*types.BridgesByContentResult, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.FormatUint(uint64(params.NetworkID), 10))
 	query.Set("leaf_type", strconv.FormatUint(uint64(params.LeafType), 10))

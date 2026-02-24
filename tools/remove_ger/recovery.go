@@ -87,7 +87,8 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 			if cd.CorrectBridge == nil {
 				return fmt.Errorf("B.2 claim missing CorrectBridge")
 			}
-			correctIndexes = append(correctIndexes, bridgesync.GenerateGlobalIndexForNetworkID(cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount))
+			correctIndexes = append(correctIndexes,
+				bridgesync.GenerateGlobalIndexForNetworkID(cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount))
 		}
 		if err := stepSetClaims(ctx, env, auth, callOpts, diagnosis.Claims, correctIndexes); err != nil {
 			return err
@@ -130,7 +131,9 @@ func stepFreezeBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, ca
 	return nil
 }
 
-func stepRemoveGERs(ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts, ger common.Hash) error {
+func stepRemoveGERs(
+	ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts, ger common.Hash,
+) error {
 	fmt.Printf("Step: Remove GER %s (removeGlobalExitRoots)\n", ger.Hex())
 	gersToRemove := [][32]byte{ger}
 	tx, err := env.L2GERManager.RemoveGlobalExitRoots(auth, gersToRemove)
@@ -178,7 +181,8 @@ func stepRestoreBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, c
 	fmt.Println("Step: Restore bridge (deactivateEmergencyState)")
 	tx, err := env.L2Bridge.DeactivateEmergencyState(auth)
 	if err != nil {
-		return fmt.Errorf("deactivateEmergencyState: %w (bridge remains in emergency state — manual intervention required)", err)
+		return fmt.Errorf("deactivateEmergencyState: %w"+
+			" (bridge remains in emergency state — manual intervention required)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
 	receipt, err := waitForReceipt(ctx, env.L2, tx)
@@ -199,7 +203,9 @@ func stepRestoreBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, c
 	return nil
 }
 
-func stepUnsetClaims(ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts, claims []ClaimDiagnosis) error {
+func stepUnsetClaims(
+	ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts, claims []ClaimDiagnosis,
+) error {
 	if len(claims) == 0 {
 		return nil
 	}
@@ -224,17 +230,22 @@ func stepUnsetClaims(ctx context.Context, env *Env, auth *bind.TransactOpts, cal
 	for _, cd := range claims {
 		claimed, err := env.L2Bridge.IsClaimed(callOpts, cd.DepositCount, cd.OriginNetwork)
 		if err != nil {
-			return fmt.Errorf("verify IsClaimed(false) for deposit_count=%d origin_network=%d: %w", cd.DepositCount, cd.OriginNetwork, err)
+			return fmt.Errorf("verify IsClaimed(false) for deposit_count=%d origin_network=%d: %w",
+				cd.DepositCount, cd.OriginNetwork, err)
 		}
 		if claimed {
-			return fmt.Errorf("claim still marked claimed after unset (deposit_count=%d origin_network=%d)", cd.DepositCount, cd.OriginNetwork)
+			return fmt.Errorf("claim still marked claimed after unset (deposit_count=%d origin_network=%d)",
+				cd.DepositCount, cd.OriginNetwork)
 		}
 	}
 	fmt.Println("  Verified: all claims unset")
 	return nil
 }
 
-func stepSetClaims(ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts, claims []ClaimDiagnosis, correctGlobalIndexes []*big.Int) error {
+func stepSetClaims(
+	ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts,
+	claims []ClaimDiagnosis, correctGlobalIndexes []*big.Int,
+) error {
 	if len(correctGlobalIndexes) == 0 {
 		return nil
 	}
@@ -260,14 +271,17 @@ func stepSetClaims(ctx context.Context, env *Env, auth *bind.TransactOpts, callO
 			return fmt.Errorf("verify IsClaimed(true) for correct claim: %w", err)
 		}
 		if !claimed {
-			return fmt.Errorf("correct claim not marked claimed after set (global index %s)", formatGlobalIndex(correctGlobalIndexes[i]))
+			return fmt.Errorf("correct claim not marked claimed after set (global index %s)",
+				formatGlobalIndex(correctGlobalIndexes[i]))
 		}
 	}
 	fmt.Println("  Verified: all correct claims set")
 	return nil
 }
 
-func stepForceEmitDetailedClaimEvents(ctx context.Context, _ *Config, env *Env, auth *bind.TransactOpts, claims []ClaimDiagnosis) error {
+func stepForceEmitDetailedClaimEvents(
+	ctx context.Context, _ *Config, env *Env, auth *bind.TransactOpts, claims []ClaimDiagnosis,
+) error {
 	if len(claims) == 0 {
 		return nil
 	}
@@ -295,7 +309,8 @@ func stepForceEmitDetailedClaimEvents(ctx context.Context, _ *Config, env *Env, 
 		for _, cd := range claims {
 			globalIndex := cd.GlobalIndex
 			if cd.CorrectBridge != nil {
-				globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount)
+				globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(
+					cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount)
 			}
 			idx := globalIndex
 			err = pollBridgeService(ctx, env.BridgeService, func() (bool, error) {
@@ -317,7 +332,9 @@ func stepForceEmitDetailedClaimEvents(ctx context.Context, _ *Config, env *Env, 
 	return nil
 }
 
-func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagnosis) ([]agglayerbridgel2.AgglayerBridgeL2ClaimData, error) {
+func buildForceEmitClaimData(
+	ctx context.Context, env *Env, claims []ClaimDiagnosis,
+) ([]agglayerbridgel2.AgglayerBridgeL2ClaimData, error) {
 	out := make([]agglayerbridgel2.AgglayerBridgeL2ClaimData, 0, len(claims))
 	for _, cd := range claims {
 		if cd.CorrectBridge == nil {
@@ -334,7 +351,8 @@ func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagno
 		var proofLocal, proofRollup [32][32]byte
 		proof, err := env.BridgeService.GetClaimProof(ctx, 0, l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount)
 		if err != nil {
-			return nil, fmt.Errorf("get claim proof leaf_index=%d deposit_count=%d: %w", l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount, err)
+			return nil, fmt.Errorf("get claim proof leaf_index=%d deposit_count=%d: %w",
+				l1Leaf.L1InfoTreeIndex, cd.CorrectBridge.DepositCount, err)
 		}
 		for i := 0; i < 32 && i < len(proof.ProofLocalExitRoot); i++ {
 			proofLocal[i] = common.HexToHash(string(proof.ProofLocalExitRoot[i]))
@@ -344,7 +362,8 @@ func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagno
 		}
 		globalIndex := cd.GlobalIndex
 		if cd.Category == ScenarioCategoryB2 {
-			globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount)
+			globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(
+				cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount)
 		}
 		var mainnetExitRoot, rollupExitRoot [32]byte
 		copy(mainnetExitRoot[:], l1Leaf.MainnetExitRoot[:])

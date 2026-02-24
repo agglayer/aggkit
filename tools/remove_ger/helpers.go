@@ -19,7 +19,8 @@ import (
 func buildSovereignAdminTransactor(cfg *Config, chainID *big.Int) (*bind.TransactOpts, error) {
 	kc := cfg.RemoveGER.SovereignAdminPrivateKey
 	if kc.Path == "" || kc.Password == "" {
-		return nil, fmt.Errorf("sovereign admin keystore path and password are required in [RemoveGER.SovereignAdminPrivateKey]")
+		return nil, fmt.Errorf("sovereign admin keystore path and password are required" +
+			" in [RemoveGER.SovereignAdminPrivateKey]")
 	}
 	keyCfg := cfgtypes.KeystoreFileConfig{Path: kc.Path, Password: kc.Password}
 	privKey, err := common.NewKeyFromKeystore(keyCfg)
@@ -41,14 +42,18 @@ func waitForReceipt(ctx context.Context, client *ethclient.Client, tx *types.Tra
 	return bind.WaitMined(ctx, client, tx)
 }
 
+const pollTickInterval = 2 * time.Second
+
 // pollBridgeService runs check periodically until it returns (true, nil) or the context/timeout expires.
 // Returns an error on timeout or if check returns an error.
-func pollBridgeService(ctx context.Context, bridgeClient *bridgeservice.Client, check func() (bool, error), timeout time.Duration) error {
+func pollBridgeService(
+	ctx context.Context, bridgeClient *bridgeservice.Client, check func() (bool, error), timeout time.Duration,
+) error {
 	if bridgeClient == nil {
 		return fmt.Errorf("bridge service client is nil")
 	}
 	deadline := time.Now().Add(timeout)
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(pollTickInterval)
 	defer ticker.Stop()
 	for {
 		done, err := check()

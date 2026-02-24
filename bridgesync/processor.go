@@ -2122,8 +2122,10 @@ func (p *processor) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	//nolint:gosec
-	query := fmt.Sprintf(`SELECT %s FROM claim WHERE global_exit_root = $1 AND type = $2 ORDER BY block_num ASC, block_pos ASC`, claimColumnsSQL)
+	query := fmt.Sprintf(
+		"SELECT %s FROM claim WHERE global_exit_root = $1 AND type = $2"+
+			" ORDER BY block_num ASC, block_pos ASC",
+		claimColumnsSQL)
 	rows, err := p.db.QueryContext(dbCtx, query, globalExitRoot.Hex(), DetailedClaimEvent)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
@@ -2199,21 +2201,21 @@ func (p *processor) GetBridgesByContent(
 	// use IS NULL / IS '' when the caller passes nil or empty metadata.
 	// Addresses are stored as raw 20-byte BLOBs by meddler (common.Address is [20]byte,
 	// so meddler stores it as binary). Use addr[:] to pass raw bytes for correct BLOB comparison.
-	baseArgs := []any{leafType, originAddress[:], destinationNetwork, destinationAddress[:], amountStr}
+	queryArgs := []any{leafType, originAddress[:], destinationNetwork, destinationAddress[:], amountStr}
 	var metadataSQL string
-	var queryArgs []any
 	if len(metadata) == 0 {
 		metadataSQL = `(metadata IS NULL OR metadata = x'')`
-		queryArgs = baseArgs
 	} else {
 		metadataSQL = `metadata = $6`
-		queryArgs = append(baseArgs, metadata)
+		queryArgs = append(queryArgs, metadata)
 	}
 	whereSQL := fmt.Sprintf(
-		`origin_network = 0 AND leaf_type = $1 AND origin_address = $2 AND destination_network = $3 AND destination_address = $4 AND amount = $5 AND %s`,
+		"origin_network = 0 AND leaf_type = $1 AND origin_address = $2"+
+			" AND destination_network = $3 AND destination_address = $4 AND amount = $5 AND %s",
 		metadataSQL,
 	)
-	p.log.Infof("[GetBridgesByContent] leaf_type=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d metadataSQL=%s",
+	p.log.Infof("[GetBridgesByContent] leaf_type=%d origin_addr=%s dest_net=%d"+
+		" dest_addr=%s amount=%s metadata_len=%d metadataSQL=%s",
 		leafType, originAddress.Hex(), destinationNetwork, destinationAddress.Hex(), amountStr, len(metadata), metadataSQL)
 
 	var result []*Bridge
