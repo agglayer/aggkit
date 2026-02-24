@@ -16,6 +16,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+const (
+	decimalBase = 10
+	hexBase     = 16
+)
+
 // Scenario is the overall or per-claim classification from the runbook.
 type Scenario string
 
@@ -58,7 +63,7 @@ type BridgeData struct {
 }
 
 // Diagnose runs the diagnosis phase: validate GER on L1/L2, find claims by GER, classify each claim.
-// If GER exists on L1 and force is false, returns ErrGERExistsOnL1.
+// If GER exists on L1 and force is false, returns GERExistsOnL1Error.
 func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*DiagnosisResult, error) {
 	result := &DiagnosisResult{
 		InvalidGER: gerHash,
@@ -73,7 +78,7 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	}
 	result.GERExistsOnL1 = l1Timestamp != nil && l1Timestamp.Sign() > 0
 	if result.GERExistsOnL1 && !force {
-		return nil, ErrGERExistsOnL1{GER: gerHash}
+		return nil, GERExistsOnL1Error{GER: gerHash}
 	}
 
 	// Step 2 — Validate GER exists on L2
@@ -125,12 +130,12 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	return result, nil
 }
 
-// ErrGERExistsOnL1 is returned when the GER exists on L1 (not invalid) and --force was not set.
-type ErrGERExistsOnL1 struct {
+// GERExistsOnL1Error is returned when the GER exists on L1 (not invalid) and --force was not set.
+type GERExistsOnL1Error struct {
 	GER common.Hash
 }
 
-func (e ErrGERExistsOnL1) Error() string {
+func (e GERExistsOnL1Error) Error() string {
 	return fmt.Sprintf(
 		"GER %s exists on L1 (timestamp > 0); this may not be an invalid GER. Use --force to continue anyway",
 		e.GER.Hex(),
@@ -140,7 +145,9 @@ func (e ErrGERExistsOnL1) Error() string {
 // GetClaimsByGER queries the bridge service for DetailedClaimEvent claims that used the given GER.
 // networkID specifies which network to query (0 for L1, L2 network ID otherwise).
 // Exported so E2E tests can use the same query for wait and assertion as the tool.
-func GetClaimsByGER(ctx context.Context, bridgeService *client.Client, networkID uint32, gerHash common.Hash) ([]*bridgesync.Claim, error) {
+func GetClaimsByGER(
+	ctx context.Context, bridgeService *client.Client, networkID uint32, gerHash common.Hash,
+) ([]*bridgesync.Claim, error) {
 	res, err := bridgeService.GetClaimsByGER(ctx, networkID, gerHash.Hex())
 	if err != nil {
 		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
@@ -157,8 +164,8 @@ func GetClaimsByGER(ctx context.Context, bridgeService *client.Client, networkID
 
 // claimResponseToClaim converts a bridge service ClaimResponse to a bridgesync.Claim.
 func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
-	globalIndex, _ := new(big.Int).SetString(string(r.GlobalIndex), 10)
-	amount, _ := new(big.Int).SetString(string(r.Amount), 10)
+	globalIndex, _ := new(big.Int).SetString(string(r.GlobalIndex), decimalBase)
+	amount, _ := new(big.Int).SetString(string(r.Amount), decimalBase)
 	return &bridgesync.Claim{
 		BlockNum:           r.BlockNum,
 		BlockTimestamp:     r.BlockTimestamp,
@@ -172,7 +179,7 @@ func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
 		MainnetExitRoot:    common.HexToHash(string(r.MainnetExitRoot)),
 		RollupExitRoot:     common.HexToHash(string(r.RollupExitRoot)),
 		GlobalExitRoot:     common.HexToHash(string(r.GlobalExitRoot)),
-		Metadata:           decodeMetadataHex(string(r.Metadata)),
+		Metadata:           decodeMetadataHex(r.Metadata),
 		IsMessage:          r.IsMessage,
 		Type:               bridgesync.DetailedClaimEvent,
 	}
@@ -183,7 +190,7 @@ func bridgeResponseToBridgeData(b *bridgetypes.BridgeResponse) *BridgeData {
 	if b == nil {
 		return nil
 	}
-	amount, _ := new(big.Int).SetString(string(b.Amount), 10)
+	amount, _ := new(big.Int).SetString(string(b.Amount), decimalBase)
 	return &BridgeData{
 		LeafType:           b.LeafType,
 		OriginNetwork:      b.OriginNetwork,
@@ -191,7 +198,7 @@ func bridgeResponseToBridgeData(b *bridgetypes.BridgeResponse) *BridgeData {
 		DestinationNetwork: b.DestinationNetwork,
 		DestinationAddress: common.HexToAddress(string(b.DestinationAddress)),
 		Amount:             amount,
-		Metadata:           decodeMetadataHex(string(b.Metadata)),
+		Metadata:           decodeMetadataHex(b.Metadata),
 		DepositCount:       b.DepositCount,
 	}
 }
@@ -238,7 +245,8 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 		claimLeafType = 1
 	}
 
-	log.Infof("[classify] claim global_index=%s deposit_count=%d origin_network=%d leaf_type=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d",
+	log.Infof("[classify] claim global_index=%s deposit_count=%d origin_network=%d"+
+		" leaf_type=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d",
 		claim.GlobalIndex.String(), cd.DepositCount, cd.OriginNetwork, claimLeafType,
 		claim.OriginAddress.Hex(), claim.DestinationNetwork, claim.DestinationAddress.Hex(),
 		claim.Amount.String(), len(claim.Metadata))
@@ -255,12 +263,14 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 		return classifyByClaimContent(ctx, env, claim, claimLeafType, cd)
 	}
 	bridgeAtX := bridgeResponseToBridgeData(bridgeResp)
-	log.Infof("[classify] bridge at deposit_count=%d: leaf_type=%d origin_net=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d",
+	log.Infof("[classify] bridge at deposit_count=%d: leaf_type=%d origin_net=%d"+
+		" origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata_len=%d",
 		cd.DepositCount, bridgeAtX.LeafType, bridgeAtX.OriginNetwork, bridgeAtX.OriginAddress.Hex(),
 		bridgeAtX.DestinationNetwork, bridgeAtX.DestinationAddress.Hex(),
 		bridgeAtX.Amount.String(), len(bridgeAtX.Metadata))
 
-	// Compare content: leaf_type vs IsMessage, origin_network, origin_address, destination_network, destination_address, amount, metadata
+	// Compare content: leaf_type vs IsMessage, origin_network, origin_address,
+	// destination_network, destination_address, amount, metadata
 	if bridgeAtX.LeafType != claimLeafType ||
 		bridgeAtX.OriginNetwork != claim.OriginNetwork ||
 		bridgeAtX.OriginAddress != claim.OriginAddress ||
@@ -323,10 +333,13 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 // classifyByClaimContent handles classification when there is no valid bridge at the claim's deposit_count
 // (either not found or content mismatch). It searches all L1 bridges with the same content fields as the
 // claim. If a match is found at a different deposit_count, the claim is B.2. Otherwise Category A.
-func classifyByClaimContent(ctx context.Context, env *Env, claim *bridgesync.Claim, claimLeafType uint8, cd ClaimDiagnosis) (ClaimDiagnosis, error) {
+func classifyByClaimContent(
+	ctx context.Context, env *Env, claim *bridgesync.Claim, claimLeafType uint8, cd ClaimDiagnosis,
+) (ClaimDiagnosis, error) {
 	cd.Category = ScenarioCategoryA // default
 
-	log.Infof("[classifyByContent] searching bridges: leaf_type=%d origin_addr=%s dest_net=%d dest_addr=%s amount=%s metadata=%x",
+	log.Infof("[classifyByContent] searching bridges: leaf_type=%d origin_addr=%s"+
+		" dest_net=%d dest_addr=%s amount=%s metadata=%x",
 		claimLeafType, claim.OriginAddress.Hex(), claim.DestinationNetwork,
 		claim.DestinationAddress.Hex(), claim.Amount.String(), claim.Metadata)
 
@@ -374,7 +387,9 @@ func isNotFound(err error) bool {
 // that first includes the given L1 bridge deposit_count in its MainnetExitRoot.
 // Step 1: GetL1InfoTreeIndex(ctx, 0, depositCount) → leafIndex
 // Step 2: GetInjectedL1InfoLeaf(ctx, 0, leafIndex) → leaf response
-func getL1InfoLeafByDepositCount(ctx context.Context, bsc *client.Client, depositCount uint32) (*l1infotreesync.L1InfoTreeLeaf, error) {
+func getL1InfoLeafByDepositCount(
+	ctx context.Context, bsc *client.Client, depositCount uint32,
+) (*l1infotreesync.L1InfoTreeLeaf, error) {
 	leafIndex, err := bsc.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
 	if err != nil {
 		return nil, fmt.Errorf("get L1 info tree index for deposit_count=%d: %w", depositCount, err)
@@ -469,7 +484,7 @@ func formatGlobalIndex(g *big.Int) string {
 	if g == nil {
 		return "0x0"
 	}
-	return "0x" + g.Text(16)
+	return "0x" + g.Text(hexBase)
 }
 
 func categoryDescription(s Scenario) string {
@@ -518,7 +533,8 @@ func printRecoveryPlanSteps(result *DiagnosisResult) {
 		}
 	case ScenarioCategoryB1:
 		for _, cd := range result.Claims {
-			fmt.Printf("  %d. Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)\n", step, formatGlobalIndex(cd.GlobalIndex))
+			fmt.Printf("  %d. Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)\n",
+				step, formatGlobalIndex(cd.GlobalIndex))
 			step++
 		}
 	case ScenarioCategoryB2:
@@ -529,7 +545,8 @@ func printRecoveryPlanSteps(result *DiagnosisResult) {
 		fmt.Printf("  %d. Set claims with correct global indexes (setMultipleClaims)\n", step)
 		step++
 		for _, cd := range result.Claims {
-			fmt.Printf("  %d. Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)\n", step, formatGlobalIndex(cd.GlobalIndex))
+			fmt.Printf("  %d. Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)\n",
+				step, formatGlobalIndex(cd.GlobalIndex))
 			step++
 		}
 	}

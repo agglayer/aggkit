@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/log"
-
-	"github.com/agglayer/aggkit/test/e2e/envs"
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/test/e2e/envs"
 )
 
 var testEnv *envs.Env
@@ -33,6 +33,7 @@ func TestMain(m *testing.M) {
 
 	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
 	if err != nil {
+		cancel()
 		log.Fatalf("failed to load env: %v", err)
 	}
 	testEnv = env

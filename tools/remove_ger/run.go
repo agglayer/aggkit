@@ -177,7 +177,8 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 func parseGER(s string) (common.Hash, error) {
 	s = strings.TrimPrefix(s, gerHexPrefix)
 	if len(s) != gerHexLen {
-		return common.Hash{}, fmt.Errorf("invalid GER: want %s followed by %d hex chars, got %d chars", gerHexPrefix, gerHexLen, len(s))
+		return common.Hash{}, fmt.Errorf("invalid GER: want %s followed by %d hex chars, got %d chars",
+			gerHexPrefix, gerHexLen, len(s))
 	}
 	for _, c := range s {
 		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {

@@ -1693,7 +1693,7 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 // GetBridgeByDepositCountHandler retrieves a bridge by deposit count for the given network.
 //
 // @Summary Get bridge by deposit count
-// @Description Returns the bridge event with the given deposit count for the specified network (checks bridge and bridge_archive).
+// @Description Returns the bridge by deposit count for the specified network (checks bridge and bridge_archive).
 // @Tags bridges
 // @Param network_id query uint32 true "Network ID (0 for L1, L2 network ID otherwise)"
 // @Param deposit_count query uint32 true "Deposit count"
@@ -1784,7 +1784,7 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 // GetBridgesByContentHandler retrieves bridges matching the given content fields for the specified network.
 //
 // @Summary Get bridges by content
-// @Description Returns all bridges (from bridge and bridge_archive) matching the specified content for the given network.
+// @Description Returns all bridges (bridge and bridge_archive) matching the specified content for the given network.
 // @Tags bridges
 // @Param network_id query uint32 true "Network ID (0 for L1, L2 network ID otherwise)"
 // @Param leaf_type query uint8 true "Leaf type (0=asset, 1=message)"
@@ -1825,7 +1825,7 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
-	if leafType > 255 {
+	if leafType > math.MaxUint8 {
 		statusCode = http.StatusBadRequest
 		c.JSON(statusCode, gin.H{"error": "leaf_type must be 0 or 1"})
 		return
@@ -1897,7 +1897,8 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
-		bridges, err = b.bridgeL1.GetBridgesByContent(ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata) //nolint:gosec
+		bridges, err = b.bridgeL1.GetBridgesByContent( //nolint:gosec
+			ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges by content for L1 network: %v", err)
 			statusCode = http.StatusInternalServerError
@@ -1910,7 +1911,8 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
-		bridges, err = b.bridgeL2.GetBridgesByContent(ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata) //nolint:gosec
+		bridges, err = b.bridgeL2.GetBridgesByContent( //nolint:gosec
+			ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges by content for L2 network (ID=%d): %v", networkID, err)
 			statusCode = http.StatusInternalServerError

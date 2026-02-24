@@ -568,5 +568,6 @@ func (s *BridgeSync) GetBridgesByContent(
 	amount *big.Int,
 	metadata []byte,
 ) ([]*Bridge, error) {
-	return s.processor.GetBridgesByContent(ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata)
+	return s.processor.GetBridgesByContent(ctx, leafType, originAddress,
+		destinationNetwork, destinationAddress, amount, metadata)
 }
