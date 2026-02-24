@@ -26,11 +26,12 @@ jobs:
           # KNOWN_UNFIXABLE list:
           #   GO-2026-4479 - pion/dtls/v2 v2.2.12 (indirect via op-signer)
           #                  Fixed in: N/A (no fix available in v2 line)
-          govulncheck -json ./... > /tmp/govuln.json 2>&1
+          govulncheck -json ./... > /tmp/govuln.json 2>/tmp/govuln-err.txt
           VULN_EXIT=$?
           # Exit code 1 = internal error (e.g. package load failure) — always fail.
           if [ "$VULN_EXIT" -eq 1 ]; then
             echo "govulncheck encountered an error:" >&2
+            cat /tmp/govuln-err.txt >&2
             cat /tmp/govuln.json >&2
             exit 1
           fi
@@ -52,6 +53,8 @@ jobs:
                   try:
                       obj = json.loads(line)
                   except json.JSONDecodeError:
+                      continue
+                  if not isinstance(obj, dict):
                       continue
                   if obj.get("type") == "finding":
                       osv = obj.get("finding", {}).get("osv", "")
