@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	pollBridgeTimeout    = 2 * time.Minute
-	removeGEREventLimit  = 10
+	pollBridgeTimeout   = 2 * time.Minute
+	removeGEREventLimit = 10
 )
 
 // ExecuteRecovery runs the recovery flow for the given diagnosis. All steps execute on L2.

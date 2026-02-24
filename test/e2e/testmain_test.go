@@ -38,10 +38,11 @@ func TestMain(m *testing.M) {
 	testEnv = env
 
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer checkCancel()
 	if err := env.CheckEnv(checkCtx); err != nil {
+		checkCancel()
 		log.Fatalf("pre-test environment check failed: %v", err)
 	}
+	checkCancel()
 
 	code := m.Run()
 
