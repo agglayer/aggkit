@@ -1,5 +1,0 @@
-- use a different key that is not the one from aggoracle to inject GER
-  - only one addr supported, would need to transfer role from ger updater
-- "fail fast" on the e2e tests
-- better assertNetworkHealthy
-- defered assertor
