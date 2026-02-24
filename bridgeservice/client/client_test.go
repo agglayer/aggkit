@@ -834,7 +834,7 @@ func TestGetClaimsByGER(t *testing.T) {
 func TestGetBridgeByDepositCount(t *testing.T) {
 	t.Run("successful request returns bridge", func(t *testing.T) {
 		expectedResp := &types.BridgeResponse{
-			DepositCount: 5,
+			DepositCount:  5,
 			OriginNetwork: 0,
 		}
 
