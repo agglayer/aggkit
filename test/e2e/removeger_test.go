@@ -980,6 +980,7 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 // Key: the real bridge is never claimed normally. Instead it is claimed at a wrong deposit_count
 // via a fake GER, which is exactly the B.2 scenario the runbook describes.
 func testRemoveGER_CategoryB2(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}

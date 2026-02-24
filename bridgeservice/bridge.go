@@ -42,6 +42,7 @@ import (
 )
 
 const (
+	decimalBase = 10
 	// hexHashLengthWithoutPrefix is the expected length of a hex-encoded 32-byte hash without 0x prefix
 	hexHashLengthWithoutPrefix = 64
 	// BridgeV1Prefix is the url prefix for the bridge service
@@ -1870,7 +1871,7 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 		c.JSON(statusCode, gin.H{"error": "amount is mandatory"})
 		return
 	}
-	amount, ok := new(big.Int).SetString(amountStr, 10)
+	amount, ok := new(big.Int).SetString(amountStr, decimalBase)
 	if !ok {
 		statusCode = http.StatusBadRequest
 		c.JSON(statusCode, gin.H{"error": "invalid amount parameter, must be a decimal integer"})
@@ -1897,7 +1898,7 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
-		bridges, err = b.bridgeL1.GetBridgesByContent( //nolint:gosec
+		bridges, err = b.bridgeL1.GetBridgesByContent(
 			ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges by content for L1 network: %v", err)
@@ -1911,7 +1912,7 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
-		bridges, err = b.bridgeL2.GetBridgesByContent( //nolint:gosec
+		bridges, err = b.bridgeL2.GetBridgesByContent(
 			ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata)
 		if err != nil {
 			b.logger.Errorf("failed to get bridges by content for L2 network (ID=%d): %v", networkID, err)
