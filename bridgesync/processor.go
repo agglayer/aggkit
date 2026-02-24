@@ -106,6 +106,35 @@ const (
 		o.is_message,
 		o.block_timestamp,
 		o.type`
+
+	// claimsByGERSQL is the query used by GetClaimsByGER.
+	claimsByGERSQL = "SELECT " + claimColumnsSQL +
+		" FROM claim WHERE global_exit_root = $1 AND type = $2" +
+		" ORDER BY block_num ASC, block_pos ASC"
+
+	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
+	bridgeByDepositCountSQL = "SELECT * FROM " + bridgeTableName +
+		" WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1"
+
+	// archiveByDepositCountSQL is the query used by GetBridgeByDepositCount for bridge_archive.
+	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1`
+
+	// bridgesByContentWhereNoMeta is the WHERE clause for GetBridgesByContent without metadata.
+	bridgesByContentWhereNoMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
+		" AND destination_network = $3 AND destination_address = $4 AND amount = $5" +
+		" AND (metadata IS NULL OR metadata = x'')"
+
+	// bridgesByContentWhereWithMeta is the WHERE clause for GetBridgesByContent with metadata.
+	bridgesByContentWhereWithMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
+		" AND destination_network = $3 AND destination_address = $4 AND amount = $5" +
+		" AND metadata = $6"
+
+	// Precomputed full SELECT queries for GetBridgesByContent (bridge and bridge_archive tables,
+	// with and without metadata filter). Using compile-time constants avoids dynamic SQL construction.
+	bridgeByContentNoMetaSQL    = "SELECT * FROM " + bridgeTableName + " WHERE " + bridgesByContentWhereNoMeta
+	bridgeByContentWithMetaSQL  = "SELECT * FROM " + bridgeTableName + " WHERE " + bridgesByContentWhereWithMeta
+	archiveByContentNoMetaSQL   = "SELECT * FROM bridge_archive WHERE " + bridgesByContentWhereNoMeta
+	archiveByContentWithMetaSQL = "SELECT * FROM bridge_archive WHERE " + bridgesByContentWhereWithMeta
 )
 
 var (
@@ -1990,11 +2019,7 @@ func (p *processor) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	query := fmt.Sprintf(
-		"SELECT %s FROM claim WHERE global_exit_root = $1 AND type = $2"+
-			" ORDER BY block_num ASC, block_pos ASC",
-		claimColumnsSQL)
-	rows, err := p.db.QueryContext(dbCtx, query, globalExitRoot.Hex(), DetailedClaimEvent)
+	rows, err := p.db.QueryContext(dbCtx, claimsByGERSQL, globalExitRoot.Hex(), DetailedClaimEvent)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
 			return nil, nil
@@ -2020,15 +2045,16 @@ func (p *processor) GetBridgeByDepositCount(ctx context.Context, depositCount ui
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	for _, table := range []string{bridgeTableName, "bridge_archive"} {
-		//nolint:gosec
-		query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1`, table)
-		rows, err := p.db.QueryContext(dbCtx, query, depositCount)
+	for _, tq := range []struct{ name, query string }{
+		{bridgeTableName, bridgeByDepositCountSQL},
+		{"bridge_archive", archiveByDepositCountSQL},
+	} {
+		rows, err := p.db.QueryContext(dbCtx, tq.query, depositCount)
 		if err != nil {
 			if strings.Contains(err.Error(), "no such table") {
 				continue
 			}
-			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): %w", table, err)
+			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): %w", tq.name, err)
 		}
 		bridges := []*Bridge{}
 		scanErr := meddler.ScanAll(rows, &bridges)
@@ -2036,7 +2062,7 @@ func (p *processor) GetBridgeByDepositCount(ctx context.Context, depositCount ui
 			p.log.Errorf("error closing rows: %v", cerr)
 		}
 		if scanErr != nil {
-			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): scan: %w", table, scanErr)
+			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): scan: %w", tq.name, scanErr)
 		}
 		if len(bridges) > 0 {
 			return bridges[0], nil
@@ -2065,38 +2091,37 @@ func (p *processor) GetBridgesByContent(
 		amountStr = amount.String()
 	}
 
-	// Build the metadata condition dynamically: SQL "col = NULL" is always false, so we must
-	// use IS NULL / IS '' when the caller passes nil or empty metadata.
 	// Addresses are stored as raw 20-byte BLOBs by meddler (common.Address is [20]byte,
 	// so meddler stores it as binary). Use addr[:] to pass raw bytes for correct BLOB comparison.
 	queryArgs := []any{leafType, originAddress[:], destinationNetwork, destinationAddress[:], amountStr}
-	var metadataSQL string
+
+	// Choose pre-built constant queries based on whether metadata is present.
+	// Using compile-time constants avoids dynamic SQL construction.
+	type tableQuery struct{ name, bridge, archive string }
+	var tq tableQuery
 	if len(metadata) == 0 {
-		metadataSQL = `(metadata IS NULL OR metadata = x'')`
+		tq = tableQuery{"no-meta", bridgeByContentNoMetaSQL, archiveByContentNoMetaSQL}
 	} else {
-		metadataSQL = `metadata = $6`
+		tq = tableQuery{"with-meta", bridgeByContentWithMetaSQL, archiveByContentWithMetaSQL}
 		queryArgs = append(queryArgs, metadata)
 	}
-	whereSQL := fmt.Sprintf(
-		"origin_network = 0 AND leaf_type = $1 AND origin_address = $2"+
-			" AND destination_network = $3 AND destination_address = $4 AND amount = $5 AND %s",
-		metadataSQL,
-	)
+
 	p.log.Infof("[GetBridgesByContent] leaf_type=%d origin_addr=%s dest_net=%d"+
-		" dest_addr=%s amount=%s metadata_len=%d metadataSQL=%s",
-		leafType, originAddress.Hex(), destinationNetwork, destinationAddress.Hex(), amountStr, len(metadata), metadataSQL)
+		" dest_addr=%s amount=%s metadata_len=%d variant=%s",
+		leafType, originAddress.Hex(), destinationNetwork, destinationAddress.Hex(), amountStr, len(metadata), tq.name)
 
 	var result []*Bridge
-	for _, table := range []string{bridgeTableName, "bridge_archive"} {
-		//nolint:gosec
-		query := fmt.Sprintf(`SELECT * FROM %s WHERE %s`, table, whereSQL)
-		rows, err := p.db.QueryContext(dbCtx, query, queryArgs...)
-		p.log.Infof("[GetBridgesByContent] table=%s query=%s", table, query)
+	for _, pair := range []struct{ name, query string }{
+		{bridgeTableName, tq.bridge},
+		{"bridge_archive", tq.archive},
+	} {
+		rows, err := p.db.QueryContext(dbCtx, pair.query, queryArgs...)
+		p.log.Infof("[GetBridgesByContent] table=%s", pair.name)
 		if err != nil {
 			if strings.Contains(err.Error(), "no such table") {
 				continue
 			}
-			return nil, fmt.Errorf("GetBridgesByContent (%s): %w", table, err)
+			return nil, fmt.Errorf("GetBridgesByContent (%s): %w", pair.name, err)
 		}
 		var bridges []*Bridge
 		scanErr := meddler.ScanAll(rows, &bridges)
@@ -2104,9 +2129,9 @@ func (p *processor) GetBridgesByContent(
 			p.log.Errorf("error closing rows: %v", cerr)
 		}
 		if scanErr != nil {
-			return nil, fmt.Errorf("GetBridgesByContent (%s): scan: %w", table, scanErr)
+			return nil, fmt.Errorf("GetBridgesByContent (%s): scan: %w", pair.name, scanErr)
 		}
-		p.log.Infof("[GetBridgesByContent] table=%s found=%d", table, len(bridges))
+		p.log.Infof("[GetBridgesByContent] table=%s found=%d", pair.name, len(bridges))
 		for i, b := range bridges {
 			p.log.Infof("[GetBridgesByContent]   bridge[%d]: deposit_count=%d origin_addr=%s dest_addr=%s amount=%s metadata=%x",
 				i, b.DepositCount, b.OriginAddress.Hex(), b.DestinationAddress.Hex(), b.Amount.String(), b.Metadata)

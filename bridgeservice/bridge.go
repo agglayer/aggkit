@@ -1613,8 +1613,7 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
 // @Router /claims-by-ger [get]
 func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
-	b.logger.Debugf("GetClaimsByGER request received (network_id=%s, global_exit_root=%s)",
-		c.Query(networkIDParam), c.Query("global_exit_root"))
+	b.logger.Debugf("GetClaimsByGER request received")
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
@@ -1706,8 +1705,7 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
 // @Router /bridge-by-deposit-count [get]
 func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
-	b.logger.Debugf("GetBridgeByDepositCount request received (network_id=%s, deposit_count=%s)",
-		c.Query(networkIDParam), c.Query(depositCountParam))
+	b.logger.Debugf("GetBridgeByDepositCount request received")
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
@@ -1801,7 +1799,7 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
 // @Router /bridges-by-content [get]
 func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
-	b.logger.Debugf("GetBridgesByContent request received (network_id=%s)", c.Query(networkIDParam))
+	b.logger.Debugf("GetBridgesByContent request received")
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
