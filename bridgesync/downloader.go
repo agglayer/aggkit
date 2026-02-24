@@ -475,6 +475,17 @@ func buildClaimEventHandler(ctx context.Context, agglayerBridge *agglayerbridge.
 			}
 		}
 
+		// Skip if a DetailedClaimEvent for the same transaction is already in this block's events.
+		for _, raw := range b.Events {
+			if e, ok := raw.(Event); ok && e.Claim != nil && e.Claim.Type == DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
+				logger.Debugf(
+					"Skipping ClaimEvent at block %d tx %s; DetailedClaimEvent already present in block",
+					l.BlockNumber, l.TxHash.Hex(),
+				)
+				return nil
+			}
+		}
+
 		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
@@ -509,6 +520,17 @@ func buildDetailedClaimEventHandler(contract *agglayerbridgel2.Agglayerbridgel2,
 			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
 			Type:                DetailedClaimEvent,
 		}
+
+		// Remove any ClaimEvent for the same transaction already collected in this block.
+		// Both ClaimEvent and DetailedClaimEvent are emitted on sovereign chains; DetailedClaimEvent takes precedence.
+		newEvents := make([]interface{}, 0, len(b.Events))
+		for _, raw := range b.Events {
+			if e, ok := raw.(Event); ok && e.Claim != nil && e.Claim.Type == ClaimEvent && e.Claim.TxHash == l.TxHash {
+				continue
+			}
+			newEvents = append(newEvents, raw)
+		}
+		b.Events = newEvents
 
 		b.Events = append(b.Events, Event{Claim: claim})
 		return nil

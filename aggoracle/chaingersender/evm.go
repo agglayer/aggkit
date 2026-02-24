@@ -232,7 +232,8 @@ func (c *EVMChainGERSender) submitTransaction(
 		return fmt.Errorf("failed to add %s GER transaction: %w", action, err)
 	}
 
-	c.logger.Infof("%s GER transaction submitted with ID: %s", action, id.Hex())
+	c.logger.Infof("%s GER transaction submitted with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
+	c.logger.Debugf("monitoring every %s", c.waitPeriodMonitorTx)
 
 	// Monitor the transaction status
 	for {
