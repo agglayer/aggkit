@@ -66,7 +66,7 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 		Scenario:   ScenarioNoClaims,
 	}
 
-	// Step 1 — Validate GER on L1
+	// Step 1 — Validate GER doesn't exist on L1
 	l1Timestamp, err := env.L1GERManager.GlobalExitRootMap(&bind.CallOpts{Context: ctx}, gerHash)
 	if err != nil {
 		return nil, fmt.Errorf("L1 globalExitRootMap: %w", err)
@@ -76,7 +76,7 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 		return nil, ErrGERExistsOnL1{GER: gerHash}
 	}
 
-	// Step 2 — Validate GER on L2
+	// Step 2 — Validate GER exists on L2
 	l2Timestamp, err := env.L2GERManager.GlobalExitRootMap(&bind.CallOpts{Context: ctx}, gerHash)
 	if err != nil {
 		return nil, fmt.Errorf("L2 globalExitRootMap: %w", err)
@@ -88,7 +88,7 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	}
 
 	// Step 3 — Find claims using the GER (via bridge service)
-	claims, err := GetClaimsByGER(ctx, env.BridgeService, gerHash)
+	claims, err := GetClaimsByGER(ctx, env.BridgeService, env.L2NetworkID, gerHash)
 	if err != nil {
 		return nil, fmt.Errorf("get claims by GER: %w", err)
 	}
@@ -131,13 +131,17 @@ type ErrGERExistsOnL1 struct {
 }
 
 func (e ErrGERExistsOnL1) Error() string {
-	return fmt.Sprintf("GER %s exists on L1 (timestamp > 0); this may not be an invalid GER. Use --force to continue anyway", e.GER.Hex())
+	return fmt.Sprintf(
+		"GER %s exists on L1 (timestamp > 0); this may not be an invalid GER. Use --force to continue anyway",
+		e.GER.Hex(),
+	)
 }
 
 // GetClaimsByGER queries the bridge service for DetailedClaimEvent claims that used the given GER.
+// networkID specifies which network to query (0 for L1, L2 network ID otherwise).
 // Exported so E2E tests can use the same query for wait and assertion as the tool.
-func GetClaimsByGER(ctx context.Context, bsc *client.Client, gerHash common.Hash) ([]*bridgesync.Claim, error) {
-	res, err := bsc.GetClaimsByGER(ctx, gerHash.Hex())
+func GetClaimsByGER(ctx context.Context, bridgeService *client.Client, networkID uint32, gerHash common.Hash) ([]*bridgesync.Claim, error) {
+	res, err := bridgeService.GetClaimsByGER(ctx, networkID, gerHash.Hex())
 	if err != nil {
 		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
 	}
@@ -240,7 +244,7 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 		claim.Amount.String(), len(claim.Metadata))
 
 	// L1 origin: query L1 bridge at deposit_count via bridge service
-	bridgeResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, cd.DepositCount)
+	bridgeResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, 0, cd.DepositCount)
 	if err != nil {
 		if !isNotFound(err) {
 			return cd, fmt.Errorf("get bridge by deposit count %d: %w", cd.DepositCount, err)
@@ -270,6 +274,7 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 
 	// Content matches at deposit_count X. Search for other bridges with same content to detect B.2.
 	contentRes, err := env.BridgeService.GetBridgesByContent(ctx, client.GetBridgesByContentParams{
+		NetworkID:          0,
 		LeafType:           bridgeAtX.LeafType,
 		OriginAddress:      bridgeAtX.OriginAddress.Hex(),
 		DestinationNetwork: bridgeAtX.DestinationNetwork,
@@ -285,7 +290,7 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 	for _, m := range contentRes.Bridges {
 		if m.DepositCount != cd.DepositCount {
 			// Correct bridge is the one at the other deposit_count
-			correctResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, m.DepositCount)
+			correctResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, 0, m.DepositCount)
 			if err == nil {
 				cd.CorrectBridge = bridgeResponseToBridgeData(correctResp)
 			} else {
@@ -326,6 +331,7 @@ func classifyByClaimContent(ctx context.Context, env *Env, claim *bridgesync.Cla
 		claim.DestinationAddress.Hex(), claim.Amount.String(), claim.Metadata)
 
 	contentRes, err := env.BridgeService.GetBridgesByContent(ctx, client.GetBridgesByContentParams{
+		NetworkID:          0,
 		LeafType:           claimLeafType,
 		OriginAddress:      claim.OriginAddress.Hex(),
 		DestinationNetwork: claim.DestinationNetwork,
@@ -346,7 +352,7 @@ func classifyByClaimContent(ctx context.Context, env *Env, claim *bridgesync.Cla
 			i, m.DepositCount, m.OriginAddress, m.DestinationAddress, m.Amount)
 		if m.DepositCount != cd.DepositCount {
 			// A bridge with identical content exists at a different deposit_count → B.2
-			correctResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, m.DepositCount)
+			correctResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, 0, m.DepositCount)
 			if err == nil {
 				cd.CorrectBridge = bridgeResponseToBridgeData(correctResp)
 			}

@@ -32,6 +32,9 @@ type Env struct {
 	// Bridge service REST client (required)
 	BridgeService *client.Client
 
+	// L2NetworkID is the network ID of the L2 network served by the bridge service.
+	L2NetworkID uint32
+
 	// L1 contract bindings
 	L1GERManager *agglayerger.Agglayerger
 
@@ -163,6 +166,7 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		L1:            l1Client,
 		L2:            l2Client,
 		BridgeService: bridgeSvc,
+		L2NetworkID:   cfg.RemoveGER.L2NetworkID,
 		L1GERManager:  l1GER,
 		L2Bridge:      l2Bridge,
 		L2GERManager:  l2GER,

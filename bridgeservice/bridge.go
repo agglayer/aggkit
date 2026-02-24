@@ -1601,8 +1601,9 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 // GetClaimsByGERHandler retrieves all DetailedClaimEvent claims that used the given global exit root.
 //
 // @Summary Get claims by global exit root
-// @Description Returns all claims (DetailedClaimEvent type) recorded with the specified GER.
+// @Description Returns all claims (DetailedClaimEvent type) recorded with the specified GER for the given network.
 // @Tags claims
+// @Param network_id query uint32 true "Network ID (0 for L1, L2 network ID otherwise)"
 // @Param global_exit_root query string true "Global exit root (0x-prefixed 32-byte hex)"
 // @Produce json
 // @Success 200 {object} types.ClaimsByGERResult
@@ -1611,7 +1612,8 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
 // @Router /claims-by-ger [get]
 func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
-	b.logger.Debugf("GetClaimsByGER request received (global_exit_root=%s)", c.Query("global_exit_root"))
+	b.logger.Debugf("GetClaimsByGER request received (network_id=%s, global_exit_root=%s)",
+		c.Query(networkIDParam), c.Query("global_exit_root"))
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
@@ -1622,9 +1624,11 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	if b.bridgeL2 == nil {
-		statusCode = http.StatusServiceUnavailable
-		c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -1641,11 +1645,38 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	}
 	ger := common.HexToHash(gerStr)
 
-	claims, err := b.bridgeL2.GetClaimsByGER(ctx, ger)
-	if err != nil {
-		b.logger.Errorf("failed to get claims by GER %s: %v", gerStr, err)
-		statusCode = http.StatusInternalServerError
-		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get claims by GER: %s", err)})
+	var claims []*bridgesync.Claim
+	switch networkID {
+	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
+		claims, err = b.bridgeL1.GetClaimsByGER(ctx, ger)
+		if err != nil {
+			b.logger.Errorf("failed to get claims by GER %s for L1 network: %v", gerStr, err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get claims by GER: %s", err)})
+			return
+		}
+	case b.networkID:
+		if b.bridgeL2 == nil {
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
+		claims, err = b.bridgeL2.GetClaimsByGER(ctx, ger)
+		if err != nil {
+			b.logger.Errorf("failed to get claims by GER %s for L2 network (ID=%d): %v", gerStr, networkID, err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get claims by GER: %s", err)})
+			return
+		}
+	default:
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -1659,11 +1690,12 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	})
 }
 
-// GetBridgeByDepositCountHandler retrieves an L1 bridge by deposit count.
+// GetBridgeByDepositCountHandler retrieves a bridge by deposit count for the given network.
 //
-// @Summary Get L1 bridge by deposit count
-// @Description Returns the L1 bridge event with the given deposit count (checks bridge and bridge_archive).
+// @Summary Get bridge by deposit count
+// @Description Returns the bridge event with the given deposit count for the specified network (checks bridge and bridge_archive).
 // @Tags bridges
+// @Param network_id query uint32 true "Network ID (0 for L1, L2 network ID otherwise)"
 // @Param deposit_count query uint32 true "Deposit count"
 // @Produce json
 // @Success 200 {object} types.BridgeResponse
@@ -1673,7 +1705,8 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
 // @Router /bridge-by-deposit-count [get]
 func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
-	b.logger.Debugf("GetBridgeByDepositCount request received (deposit_count=%s)", c.Query(depositCountParam))
+	b.logger.Debugf("GetBridgeByDepositCount request received (network_id=%s, deposit_count=%s)",
+		c.Query(networkIDParam), c.Query(depositCountParam))
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
@@ -1684,9 +1717,11 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	if b.bridgeL1 == nil {
-		statusCode = http.StatusServiceUnavailable
-		c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -1697,28 +1732,61 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 		return
 	}
 
-	bridge, err := b.bridgeL1.GetBridgeByDepositCount(ctx, depositCount)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			statusCode = http.StatusNotFound
-			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("bridge with deposit_count=%d not found", depositCount)})
+	var bridge *bridgesync.Bridge
+	switch networkID {
+	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
-		b.logger.Errorf("failed to get bridge by deposit count %d: %v", depositCount, err)
-		statusCode = http.StatusInternalServerError
-		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridge by deposit count: %s", err)})
+		bridge, err = b.bridgeL1.GetBridgeByDepositCount(ctx, depositCount)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				statusCode = http.StatusNotFound
+				c.JSON(statusCode, gin.H{"error": fmt.Sprintf("bridge with deposit_count=%d not found", depositCount)})
+				return
+			}
+			b.logger.Errorf("failed to get bridge by deposit count %d for L1 network: %v", depositCount, err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridge by deposit count: %s", err)})
+			return
+		}
+	case b.networkID:
+		if b.bridgeL2 == nil {
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
+		bridge, err = b.bridgeL2.GetBridgeByDepositCount(ctx, depositCount)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				statusCode = http.StatusNotFound
+				c.JSON(statusCode, gin.H{"error": fmt.Sprintf("bridge with deposit_count=%d not found", depositCount)})
+				return
+			}
+			b.logger.Errorf("failed to get bridge by deposit count %d for L2 network (ID=%d): %v", depositCount, networkID, err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridge by deposit count: %s", err)})
+			return
+		}
+	default:
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
 	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
-	c.JSON(statusCode, NewBridgeResponse(bridge, mainnetNetworkID, etrogUpgradeL1Block))
+	c.JSON(statusCode, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
 }
 
-// GetBridgesByContentHandler retrieves L1 bridges matching the given content fields.
+// GetBridgesByContentHandler retrieves bridges matching the given content fields for the specified network.
 //
-// @Summary Get L1 bridges by content
-// @Description Returns all L1 bridges (from bridge and bridge_archive) matching the specified content.
+// @Summary Get bridges by content
+// @Description Returns all bridges (from bridge and bridge_archive) matching the specified content for the given network.
 // @Tags bridges
+// @Param network_id query uint32 true "Network ID (0 for L1, L2 network ID otherwise)"
 // @Param leaf_type query uint8 true "Leaf type (0=asset, 1=message)"
 // @Param origin_address query string true "Origin address (hex)"
 // @Param destination_network query uint32 true "Destination network ID"
@@ -1732,7 +1800,7 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 // @Failure 503 {object} types.ErrorResponse "Service Unavailable"
 // @Router /bridges-by-content [get]
 func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
-	b.logger.Debugf("GetBridgesByContent request received")
+	b.logger.Debugf("GetBridgesByContent request received (network_id=%s)", c.Query(networkIDParam))
 
 	statusCode := http.StatusOK
 	startTime := time.Now()
@@ -1743,9 +1811,11 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	if b.bridgeL1 == nil {
-		statusCode = http.StatusServiceUnavailable
-		c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -1819,18 +1889,45 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 		}
 	}
 
-	bridges, err := b.bridgeL1.GetBridgesByContent(ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata) //nolint:gosec
-	if err != nil {
-		b.logger.Errorf("failed to get bridges by content: %v", err)
-		statusCode = http.StatusInternalServerError
-		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridges by content: %s", err)})
+	var bridges []*bridgesync.Bridge
+	switch networkID {
+	case mainnetNetworkID:
+		if b.bridgeL1 == nil {
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+			return
+		}
+		bridges, err = b.bridgeL1.GetBridgesByContent(ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata) //nolint:gosec
+		if err != nil {
+			b.logger.Errorf("failed to get bridges by content for L1 network: %v", err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridges by content: %s", err)})
+			return
+		}
+	case b.networkID:
+		if b.bridgeL2 == nil {
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+			return
+		}
+		bridges, err = b.bridgeL2.GetBridgesByContent(ctx, uint8(leafType), originAddress, destNetwork, destAddress, amount, metadata) //nolint:gosec
+		if err != nil {
+			b.logger.Errorf("failed to get bridges by content for L2 network (ID=%d): %v", networkID, err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridges by content: %s", err)})
+			return
+		}
+	default:
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
 	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
 	for _, bridge := range bridges {
-		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, mainnetNetworkID, etrogUpgradeL1Block))
+		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
 	}
 	c.JSON(statusCode, types.BridgesByContentResult{
 		Bridges: bridgeResponses,

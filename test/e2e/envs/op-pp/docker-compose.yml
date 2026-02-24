@@ -201,7 +201,6 @@ services:
       agglayer:
         condition: service_healthy
     restart: unless-stopped
-    user: "${UID}:${GID}"
     environment:
       - RUST_BACKTRACE=1
 

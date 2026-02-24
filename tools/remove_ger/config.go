@@ -27,6 +27,10 @@ type RemoveGERConfig struct {
 	// BridgeServiceURL is the URL of the aggkit bridge service REST API.
 	// Used for querying claims, bridges, and proofs.
 	BridgeServiceURL string `mapstructure:"BridgeServiceURL"`
+
+	// L2NetworkID is the network ID of the L2 network served by the bridge service.
+	// Required for querying L2 claims via the bridge service.
+	L2NetworkID uint32 `mapstructure:"L2NetworkID"`
 }
 
 // KeyConfig holds keystore path and password for the sovereign admin key.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	removeger "github.com/agglayer/aggkit/tools/remove_ger"
+	"github.com/agglayer/aggkit/tools/remove_ger"
 	"github.com/urfave/cli/v2"
 )
 
@@ -33,7 +33,7 @@ func main() {
 			Usage: "Continue even if GER exists on L1 (use when you still want to diagnose/remove)",
 		},
 	}
-	app.Action = removeger.Run
+	app.Action = remove_ger.Run
 
 	if err := app.Run(os.Args); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)

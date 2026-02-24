@@ -323,7 +323,7 @@ func buildForceEmitClaimData(ctx context.Context, env *Env, claims []ClaimDiagno
 		if cd.CorrectBridge == nil {
 			return nil, fmt.Errorf("claim with global index %s has nil CorrectBridge", formatGlobalIndex(cd.GlobalIndex))
 		}
-		bridgeResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, cd.CorrectBridge.DepositCount)
+		bridgeResp, err := env.BridgeService.GetBridgeByDepositCount(ctx, 0, cd.CorrectBridge.DepositCount)
 		if err != nil {
 			return nil, fmt.Errorf("get L1 bridge deposit_count=%d: %w", cd.CorrectBridge.DepositCount, err)
 		}

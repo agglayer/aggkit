@@ -354,6 +354,7 @@ func (c *Client) GetRemoveGEREvents(
 
 // GetBridgesByContentParams holds the content fields for GetBridgesByContent
 type GetBridgesByContentParams struct {
+	NetworkID          uint32
 	LeafType           uint8
 	OriginAddress      string
 	DestinationNetwork uint32
@@ -362,9 +363,11 @@ type GetBridgesByContentParams struct {
 	Metadata           []byte
 }
 
-// GetClaimsByGER retrieves all claims matching the given global exit root (0x-prefixed hex hash).
-func (c *Client) GetClaimsByGER(ctx context.Context, ger string) (*types.ClaimsByGERResult, error) {
+// GetClaimsByGER retrieves all claims matching the given global exit root (0x-prefixed hex hash)
+// for the specified network (0 for L1, L2 network ID otherwise).
+func (c *Client) GetClaimsByGER(ctx context.Context, networkID uint32, ger string) (*types.ClaimsByGERResult, error) {
 	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
 	query.Set("global_exit_root", ger)
 
 	var resp types.ClaimsByGERResult
@@ -374,10 +377,11 @@ func (c *Client) GetClaimsByGER(ctx context.Context, ger string) (*types.ClaimsB
 	return &resp, nil
 }
 
-// GetBridgeByDepositCount retrieves the L1 bridge with the given deposit count.
+// GetBridgeByDepositCount retrieves the bridge for the given network and deposit count.
 // Returns ErrNotFound if the bridge does not exist in bridge or bridge_archive.
-func (c *Client) GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*types.BridgeResponse, error) {
+func (c *Client) GetBridgeByDepositCount(ctx context.Context, networkID uint32, depositCount uint32) (*types.BridgeResponse, error) {
 	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
 	query.Set("deposit_count", strconv.FormatUint(uint64(depositCount), 10))
 
 	var resp types.BridgeResponse
@@ -387,9 +391,10 @@ func (c *Client) GetBridgeByDepositCount(ctx context.Context, depositCount uint3
 	return &resp, nil
 }
 
-// GetBridgesByContent retrieves L1 bridges matching the given content fields.
+// GetBridgesByContent retrieves bridges matching the given content fields for the specified network.
 func (c *Client) GetBridgesByContent(ctx context.Context, params GetBridgesByContentParams) (*types.BridgesByContentResult, error) {
 	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(params.NetworkID), 10))
 	query.Set("leaf_type", strconv.FormatUint(uint64(params.LeafType), 10))
 	query.Set("origin_address", params.OriginAddress)
 	query.Set("destination_network", strconv.FormatUint(uint64(params.DestinationNetwork), 10))

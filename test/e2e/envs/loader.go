@@ -84,6 +84,7 @@ type L1Contracts struct {
 // L2Config contains L2 network configuration
 type L2Config struct {
 	ChainID    *big.Int
+	NetworkID  uint32
 	Contracts  L2Contracts
 	Transactor *bind.TransactOpts
 }
@@ -274,6 +275,11 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("initialize L2 bridge contract: %w", err)
 	}
 
+	l2NetworkID, err := l2Bridge.NetworkID(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return nil, fmt.Errorf("fetch L2 network ID from bridge contract: %w", err)
+	}
+
 	globalExitRootAddr := common.HexToAddress(l2Network.Contracts.GlobalExitRoot)
 	globalExitRoot, err := agglayergerl2.NewAgglayergerl2(globalExitRootAddr, l2Client)
 	if err != nil {
@@ -353,7 +359,8 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			Transactor: l1Transactor,
 		},
 		L2: L2Config{
-			ChainID: l2ChainID,
+			ChainID:   l2ChainID,
+			NetworkID: l2NetworkID,
 			Contracts: L2Contracts{
 				L2Bridge:        l2Bridge,
 				L2BridgeAddress: l2BridgeAddr,
