@@ -13,7 +13,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const pollBridgeTimeout = 2 * time.Minute
+const (
+	pollBridgeTimeout    = 2 * time.Minute
+	removeGEREventLimit  = 10
+)
 
 // ExecuteRecovery runs the recovery flow for the given diagnosis. All steps execute on L2.
 // On any error, returns immediately; the bridge may remain in emergency state for manual intervention.
@@ -161,7 +164,7 @@ func stepRemoveGERs(
 		err = pollBridgeService(ctx, env.BridgeService, func() (bool, error) {
 			res, err := env.BridgeService.GetRemoveGEREvents(ctx, client.GetRemoveGEREventsParams{
 				GlobalExitRoot: &gerHex,
-				Limit:          ptrInt(10),
+				Limit:          ptrInt(removeGEREventLimit),
 			})
 			if err != nil {
 				return false, err
