@@ -11,62 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Run govulncheck
     steps:
-      - uses: actions/checkout@v4
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.7"
-          check-latest: true
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: Run govulncheck
-        run: |
-          # Run govulncheck in JSON mode and filter out known vulnerabilities
-          # that have no upstream fix available.
-          #
-          # KNOWN_UNFIXABLE list:
-          #   GO-2026-4479 - pion/dtls/v2 v2.2.12 (indirect via op-signer)
-          #                  Fixed in: N/A (no fix available in v2 line)
-          govulncheck -json ./... > /tmp/govuln.json 2>/tmp/govuln-err.txt
-          VULN_EXIT=$?
-          # Exit code 1 = internal error (e.g. package load failure) — always fail.
-          if [ "$VULN_EXIT" -eq 1 ]; then
-            echo "govulncheck encountered an error:" >&2
-            cat /tmp/govuln-err.txt >&2
-            cat /tmp/govuln.json >&2
-            exit 1
-          fi
-          # Exit codes 0 (no vulns) and 3 (vulns found) are handled by the
-          # Python filter below, which ignores known-unfixable vulnerability IDs.
-          python3 - <<'EOF'
-          import json, sys
-
-          KNOWN_UNFIXABLE = {
-              "GO-2026-4479",  # pion/dtls/v2 - no fix in v2 line (Fixed in: N/A)
-          }
-
-          findings = []
-          with open("/tmp/govuln.json") as f:
-              for line in f:
-                  line = line.strip()
-                  if not line:
-                      continue
-                  try:
-                      obj = json.loads(line)
-                  except json.JSONDecodeError:
-                      continue
-                  if not isinstance(obj, dict):
-                      continue
-                  if obj.get("type") == "finding":
-                      osv = obj.get("finding", {}).get("osv", "")
-                      if osv and osv not in KNOWN_UNFIXABLE:
-                          findings.append(osv)
-
-          if findings:
-              print(f"govulncheck: unexpected vulnerabilities found: {findings}", file=sys.stderr)
-              sys.exit(1)
-
-          if KNOWN_UNFIXABLE:
-              print(f"govulncheck: PASS (ignoring known-unfixable: {sorted(KNOWN_UNFIXABLE)})")
-          else:
-              print("govulncheck: PASS (no vulnerabilities found)")
-          EOF
+          go-version-input: 1.25.7
+          go-package: ./...
