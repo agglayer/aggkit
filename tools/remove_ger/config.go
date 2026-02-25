@@ -3,16 +3,30 @@ package remove_ger
 import (
 	"fmt"
 
-	"github.com/agglayer/aggkit/config"
+	"github.com/agglayer/aggkit/bridgesync"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v2"
 )
 
-// Config extends the main aggkit config with fields specific to the remove-GER tool.
+// Config holds the subset of aggkit configuration fields needed by the remove-GER tool,
+// plus tool-specific settings in the RemoveGER section.
 type Config struct {
-	config.Config
+	// L1NetworkConfig contains the L1 RPC URL and contract addresses.
+	L1NetworkConfig ethermanconfig.L1NetworkConfig `mapstructure:"L1NetworkConfig"`
 
-	RemoveGER RemoveGERConfig
+	// Common contains shared settings such as the L2 RPC URL.
+	Common ethermanconfig.CommonConfig `mapstructure:"Common"`
+
+	// BridgeL2Sync contains the L2 bridge contract address used to initialize the binding.
+	BridgeL2Sync bridgesync.Config `mapstructure:"BridgeL2Sync"`
+
+	// L2GERSync contains the L2/L1 GER contract addresses.
+	L2GERSync l2gersync.Config `mapstructure:"L2GERSync"`
+
+	RemoveGER RemoveGERConfig `mapstructure:"RemoveGER"`
 }
 
 // RemoveGERConfig contains configuration specific to the remove-GER tool.
@@ -24,7 +38,7 @@ type RemoveGERConfig struct {
 	// - forceEmitDetailedClaimEvent on the L2 bridge
 	SovereignAdminPrivateKey KeyConfig `mapstructure:"SovereignAdminPrivateKey"`
 
-	// BridgeServiceURL is the URL of the aggkit bridge service REST API.
+	// BridgeServiceURL is the URL of the aggkit bridge service REST API (required).
 	// Used for querying claims, bridges, and proofs.
 	BridgeServiceURL string `mapstructure:"BridgeServiceURL"`
 
@@ -39,22 +53,26 @@ type KeyConfig struct {
 	Password string `mapstructure:"Password"`
 }
 
-// LoadConfig loads the extended config using the same pipeline as the main aggkit binary.
-// After config.Load(c), viper still holds the merged config, so we unmarshal the [RemoveGER] section.
+// LoadConfig reads the TOML config file(s) specified by --cfg and unmarshals only
+// the fields required by the remove-GER tool.
 func LoadConfig(c *cli.Context) (*Config, error) {
-	baseCfg, err := config.Load(c)
-	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+	v := viper.New()
+	v.SetConfigType("toml")
+
+	for _, cfgFile := range c.StringSlice("cfg") {
+		v.SetConfigFile(cfgFile)
+		if err := v.MergeInConfig(); err != nil {
+			return nil, fmt.Errorf("read config %s: %w", cfgFile, err)
+		}
 	}
 
-	var removeGER RemoveGERConfig
-	// Viper typically lowercases keys; TOML [RemoveGER] becomes "removeger".
-	if err := viper.UnmarshalKey("removeger", &removeGER); err != nil {
-		return nil, fmt.Errorf("unmarshal RemoveGER config: %w", err)
+	var cfg Config
+	if err := v.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+		mapstructure.TextUnmarshallerHookFunc(),
+		mapstructure.StringToSliceHookFunc(","),
+	))); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	return &Config{
-		Config:    *baseCfg,
-		RemoveGER: removeGER,
-	}, nil
+	return &cfg, nil
 }

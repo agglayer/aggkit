@@ -441,6 +441,18 @@ func buildClaimEventHandler(ctx context.Context, agglayerBridge *agglayerbridge.
 			return nil
 		}
 
+		// Skip if a DetailedClaimEvent for the same transaction is already in this block's events.
+		// Check early to avoid the expensive extractCallData RPC call.
+		for _, raw := range b.Events {
+			if e, ok := raw.(Event); ok && e.Claim != nil && e.Claim.Type == DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
+				logger.Debugf(
+					"Skipping ClaimEvent at block %d tx %s; DetailedClaimEvent already present in block",
+					l.BlockNumber, l.TxHash.Hex(),
+				)
+				return nil
+			}
+		}
+
 		claimEvent, err := agglayerBridge.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
@@ -472,17 +484,6 @@ func buildClaimEventHandler(ctx context.Context, agglayerBridge *agglayerbridge.
 		if syncFullClaims {
 			if err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger); err != nil {
 				return err
-			}
-		}
-
-		// Skip if a DetailedClaimEvent for the same transaction is already in this block's events.
-		for _, raw := range b.Events {
-			if e, ok := raw.(Event); ok && e.Claim != nil && e.Claim.Type == DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
-				logger.Debugf(
-					"Skipping ClaimEvent at block %d tx %s; DetailedClaimEvent already present in block",
-					l.BlockNumber, l.TxHash.Hex(),
-				)
-				return nil
 			}
 		}
 

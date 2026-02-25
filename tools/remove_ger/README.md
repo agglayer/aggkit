@@ -25,7 +25,7 @@ The tool uses the **same** config file(s) as the main aggkit binary: standard `a
 
 | Field | Type | Description |
 | ----- | ---- | ------------ |
-| **BridgeServiceURL** | string | Bridge service REST API base URL. Used for querying claims and bridges. If set, the tool runs a health check at startup; leave empty if you rely only on local DB for claims. |
+| **BridgeServiceURL** | string | Bridge service REST API base URL (**required**). Used for querying claims and bridges. The tool runs a health check at startup and will fail if the service is unreachable. |
 | **SovereignAdminPrivateKey** | section | Keystore for the key that can run recovery (activate/deactivate emergency state, remove GER, unset/set claims, force-emit claim events). See sub-fields below. |
 
 **SovereignAdminPrivateKey** sub-fields:

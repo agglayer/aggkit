@@ -4,9 +4,9 @@ This runbook provides instructions on how to recover a network in the case an in
 
 ## Detection
 
-This section will detail how to identidy the issue
+This section will detail how to identify the issue
 
-### Invalid GER injected dedtection
+### Invalid GER injected detection
 
 #### AggSender logs
 

@@ -318,7 +318,7 @@ func stepForceEmitDetailedClaimEvents(
 			idx := globalIndex
 			err = pollBridgeService(ctx, env.BridgeService, func() (bool, error) {
 				res, err := env.BridgeService.GetClaims(ctx, client.GetClaimsParams{
-					NetworkID:   1,
+					NetworkID:   env.L2NetworkID,
 					GlobalIndex: idx,
 				})
 				if err != nil {
