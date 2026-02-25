@@ -83,7 +83,7 @@ $(GOBIN)/aggsender_find_imported_bridge: ## Build aggsender_find_imported_bridge
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
 $(GOBIN)/remove_ger: ## Build remove_ger tool
-	$(GOENVVARS) go build -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
