@@ -18,7 +18,8 @@ import (
 // buildSovereignAdminTransactor creates a transact options instance for the sovereign admin key
 // using the signertypes.SignerConfig from config. Supports local keystore, AWS KMS, and GCP KMS.
 func buildSovereignAdminTransactor(ctx context.Context, cfg *Config, l2ChainID *big.Int) (*bind.TransactOpts, error) {
-	s, err := signer.NewSigner(ctx, l2ChainID.Uint64(), cfg.RemoveGER.SovereignAdminKey, "remove-ger", log.GetDefaultLogger())
+	s, err := signer.NewSigner(ctx, l2ChainID.Uint64(), cfg.RemoveGER.SovereignAdminKey,
+		"remove-ger", log.GetDefaultLogger())
 	if err != nil {
 		return nil, fmt.Errorf("load sovereign admin signer: %w", err)
 	}
@@ -35,7 +36,9 @@ func buildSovereignAdminTransactor(ctx context.Context, cfg *Config, l2ChainID *
 }
 
 // waitForReceipt waits for the transaction to be mined and returns its receipt.
-func waitForReceipt(ctx context.Context, client *ethclient.Client, tx *gethTypes.Transaction) (*gethTypes.Receipt, error) {
+func waitForReceipt(
+	ctx context.Context, client *ethclient.Client, tx *gethTypes.Transaction,
+) (*gethTypes.Receipt, error) {
 	return bind.WaitMined(ctx, client, tx)
 }
 
