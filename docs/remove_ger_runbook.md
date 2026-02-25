@@ -505,6 +505,8 @@ WHERE global_exit_root = '<L2_CLAIM_GER>';
 
 This section provides step-by-step instructions to recover from invalid GER injection. The recovery process varies depending on the claim classification (A, B.1, or B.2). All steps must be executed on the L2 network.
 
+> **All of those steps can be run programatically using the [remove GER tool](../tools/remove_ger/README.md)**
+
 **Important Notes:**
 - All transactions happen on **L2** (not L1)
 - Private keys must have specific roles on the L2 smart contracts
