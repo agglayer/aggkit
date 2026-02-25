@@ -170,6 +170,7 @@ func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes
 		RollupExitRoot:     bridgetypes.Hash(claim.RollupExitRoot.Hex()),
 		GlobalExitRoot:     bridgetypes.Hash(claim.GlobalExitRoot.Hex()),
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(claim.Metadata)),
+		IsMessage:          claim.IsMessage,
 	}
 
 	// Only populate proof fields if requested

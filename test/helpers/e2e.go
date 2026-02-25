@@ -132,7 +132,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1EthClient := etherman.NewDefaultEthClient(l1Client.Client(), nil, nil)
 	rdL1, err := reorgdetector.New(l1EthClient, reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
-		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
@@ -308,7 +308,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
 	rdL2, err := reorgdetector.New(etherman.NewDefaultEthClient(l2Client.Client(), nil, nil), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
-		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	},
 		reorgdetector.L2,
@@ -395,7 +395,7 @@ func NewSimulatedL1(t *testing.T) (
 	require.NoError(t, err)
 
 	// DeployBridge function sends two transactions (bridge and proxy contract deployment)
-	calculatedGERAddr := crypto.CreateAddress(setup.DeployerAuth.From, nonce+2) //nolint:mnd
+	calculatedGERAddr := crypto.CreateAddress(setup.DeployerAuth.From, nonce+2)
 
 	err = setup.DeployBridge(client, calculatedGERAddr, 0)
 	require.NoError(t, err)
@@ -643,7 +643,6 @@ func WaitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer Processore
 		lastBlockNum, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)
 		RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
-		//nolint:mnd
 		time.Sleep(time.Millisecond * 500)
 		lastBlockNum2, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)

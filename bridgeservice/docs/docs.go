@@ -48,6 +48,68 @@ const docTemplate = `{
                 }
             }
         },
+        "/bridge-by-deposit-count": {
+            "get": {
+                "description": "Returns the bridge by deposit count for the specified network (checks bridge and bridge_archive).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridges"
+                ],
+                "summary": "Get bridge by deposit count",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Network ID (0 for L1, L2 network ID otherwise)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Deposit count",
+                        "name": "deposit_count",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.BridgeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/bridges": {
             "get": {
                 "description": "Returns a paginated list of bridge events for the specified network.",
@@ -61,6 +123,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -68,18 +131,21 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Page number (default 1)",
                         "name": "page_number",
                         "in": "query"
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Page size (default 100)",
                         "name": "page_size",
                         "in": "query"
                     },
                     {
                         "type": "integer",
+                        "format": "int64",
                         "description": "Filter by deposit count",
                         "name": "deposit_count",
                         "in": "query"
@@ -93,7 +159,8 @@ const docTemplate = `{
                     {
                         "type": "array",
                         "items": {
-                            "type": "integer"
+                            "type": "integer",
+                            "format": "int32"
                         },
                         "collectionFormat": "csv",
                         "description": "Filter by one or more destination network IDs (maximum 5 allowed)",
@@ -123,6 +190,97 @@ const docTemplate = `{
                 }
             }
         },
+        "/bridges-by-content": {
+            "get": {
+                "description": "Returns all bridges (bridge and bridge_archive) matching the specified content for the given network.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridges"
+                ],
+                "summary": "Get bridges by content",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Network ID (0 for L1, L2 network ID otherwise)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Leaf type (0=asset, 1=message)",
+                        "name": "leaf_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Origin address (hex)",
+                        "name": "origin_address",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Destination network ID",
+                        "name": "destination_network",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Destination address (hex)",
+                        "name": "destination_address",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Amount (decimal string)",
+                        "name": "amount",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Metadata (0x-prefixed hex, default empty)",
+                        "name": "metadata",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.BridgesByContentResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/claim-proof": {
             "get": {
                 "description": "Returns the Merkle proofs (local and rollup exit root) and\nthe corresponding L1 info tree leaf needed to verify a claim.",
@@ -136,6 +294,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -143,6 +302,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Index in the L1 info tree",
                         "name": "leaf_index",
                         "in": "query",
@@ -150,6 +310,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Number of deposits in the bridge",
                         "name": "deposit_count",
                         "in": "query",
@@ -191,6 +352,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
@@ -198,12 +360,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Page number (default 1)",
                         "name": "page_number",
                         "in": "query"
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Page size (default 100)",
                         "name": "page_size",
                         "in": "query"
@@ -211,7 +375,8 @@ const docTemplate = `{
                     {
                         "type": "array",
                         "items": {
-                            "type": "integer"
+                            "type": "integer",
+                            "format": "int32"
                         },
                         "collectionFormat": "csv",
                         "description": "Filter by one or more source network IDs (maximum 5 allowed)",
@@ -226,6 +391,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
+                        "format": "int32",
                         "description": "Filter by global index",
                         "name": "global_index",
                         "in": "query"
@@ -246,6 +412,61 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/claims-by-ger": {
+            "get": {
+                "description": "Returns all claims (DetailedClaimEvent type) recorded with the specified GER for the given network.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "claims"
+                ],
+                "summary": "Get claims by global exit root",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Network ID (0 for L1, L2 network ID otherwise)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Global exit root (0x-prefixed 32-byte hex)",
+                        "name": "global_exit_root",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.ClaimsByGERResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -331,7 +552,8 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "integer"
+                            "type": "integer",
+                            "format": "int32"
                         }
                     },
                     "400": {
@@ -772,7 +994,7 @@ const docTemplate = `{
                     "example": 42161
                 },
                 "from_address": {
-                    "description": "Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA",
+                    "description": "Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA.\nMay be null if bridge was synced with SyncFromInBridges=false",
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 },
@@ -815,6 +1037,24 @@ const docTemplate = `{
                     "description": "Address of the transaction sender who initiated the bridge transaction",
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef12345"
+                }
+            }
+        },
+        "types.BridgesByContentResult": {
+            "description": "Response containing bridge events matching specific content fields",
+            "type": "object",
+            "properties": {
+                "bridges": {
+                    "description": "List of bridges matching the content query",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.BridgeResponse"
+                    }
+                },
+                "count": {
+                    "description": "Total number of matching bridges",
+                    "type": "integer",
+                    "example": 2
                 }
             }
         },
@@ -918,6 +1158,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "1000000000000000000"
                 },
+                "is_message": {
+                    "description": "IsMessage indicates whether this is a message claim (leaf type 1) rather than an asset claim (leaf type 0)",
+                    "type": "boolean",
+                    "example": false
+                },
                 "mainnet_exit_root": {
                     "description": "Mainnet exit root associated with the claim",
                     "type": "string",
@@ -971,6 +1216,24 @@ const docTemplate = `{
                     "description": "Transaction hash associated with the claim",
                     "type": "string",
                     "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                }
+            }
+        },
+        "types.ClaimsByGERResult": {
+            "description": "Response containing claim events matching a specific global exit root",
+            "type": "object",
+            "properties": {
+                "claims": {
+                    "description": "List of claims matching the global exit root",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.ClaimResponse"
+                    }
+                },
+                "count": {
+                    "description": "Total number of matching claims",
+                    "type": "integer",
+                    "example": 3
                 }
             }
         },

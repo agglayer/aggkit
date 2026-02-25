@@ -11,6 +11,7 @@ import (
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -18,6 +19,7 @@ import (
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -923,5 +925,123 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 
 		require.NotNil(t, blockChan1)
 		require.NotNil(t, blockChan2)
+	})
+}
+
+func TestBridgeSync_GetClaimsByGER(t *testing.T) {
+	ctx := context.Background()
+	p := createTestProcessor(t, "test_bridgesync_get_claims_by_ger")
+	s := BridgeSync{processor: p}
+
+	ger := common.HexToHash("0xaabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344")
+
+	t.Run("returns empty slice for unknown GER", func(t *testing.T) {
+		claims, err := s.GetClaimsByGER(ctx, ger)
+		require.NoError(t, err)
+		require.Empty(t, claims)
+	})
+
+	t.Run("returns matching DetailedClaimEvent", func(t *testing.T) {
+		tx, err := p.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(1))
+		require.NoError(t, err)
+		claim := &Claim{
+			BlockNum:       1,
+			BlockPos:       0,
+			GlobalIndex:    big.NewInt(42),
+			GlobalExitRoot: ger,
+			Type:           DetailedClaimEvent,
+			Amount:         big.NewInt(0),
+		}
+		require.NoError(t, meddler.Insert(tx, "claim", claim))
+		require.NoError(t, tx.Commit())
+
+		claims, err := s.GetClaimsByGER(ctx, ger)
+		require.NoError(t, err)
+		require.Len(t, claims, 1)
+		require.Equal(t, int64(42), claims[0].GlobalIndex.Int64())
+	})
+}
+
+func TestBridgeSync_GetBridgeByDepositCount(t *testing.T) {
+	ctx := context.Background()
+	p := createTestProcessor(t, "test_bridgesync_get_bridge_by_deposit_count")
+	s := BridgeSync{processor: p}
+
+	originAddr := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	destAddr := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	t.Run("returns ErrNotFound for missing deposit count", func(t *testing.T) {
+		got, err := s.GetBridgeByDepositCount(ctx, 99)
+		require.ErrorIs(t, err, db.ErrNotFound)
+		require.Nil(t, got)
+	})
+
+	t.Run("returns bridge by deposit count", func(t *testing.T) {
+		tx, err := p.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(1))
+		require.NoError(t, err)
+		bridge := &Bridge{
+			BlockNum:           1,
+			BlockPos:           0,
+			DepositCount:       7,
+			OriginNetwork:      0,
+			OriginAddress:      originAddr,
+			DestinationNetwork: 1,
+			DestinationAddress: destAddr,
+			Amount:             big.NewInt(500),
+			LeafType:           0,
+		}
+		require.NoError(t, meddler.Insert(tx, "bridge", bridge))
+		require.NoError(t, tx.Commit())
+
+		got, err := s.GetBridgeByDepositCount(ctx, 7)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, uint32(7), got.DepositCount)
+	})
+}
+
+func TestBridgeSync_GetBridgesByContent(t *testing.T) {
+	ctx := context.Background()
+	p := createTestProcessor(t, "test_bridgesync_get_bridges_by_content")
+	s := BridgeSync{processor: p}
+
+	originAddr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	destAddr := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	amount := big.NewInt(1000)
+
+	t.Run("returns empty for no matching bridge", func(t *testing.T) {
+		result, err := s.GetBridgesByContent(ctx, 0, originAddr, 1, destAddr, amount, nil)
+		require.NoError(t, err)
+		require.Empty(t, result)
+	})
+
+	t.Run("returns matching bridge without metadata", func(t *testing.T) {
+		tx, err := p.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(1))
+		require.NoError(t, err)
+		bridge := &Bridge{
+			BlockNum:           1,
+			BlockPos:           0,
+			DepositCount:       15,
+			OriginNetwork:      0,
+			LeafType:           0,
+			OriginAddress:      originAddr,
+			DestinationNetwork: 1,
+			DestinationAddress: destAddr,
+			Amount:             new(big.Int).Set(amount),
+			Metadata:           nil,
+		}
+		require.NoError(t, meddler.Insert(tx, "bridge", bridge))
+		require.NoError(t, tx.Commit())
+
+		result, err := s.GetBridgesByContent(ctx, 0, originAddr, 1, destAddr, amount, nil)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Equal(t, uint32(15), result[0].DepositCount)
 	})
 }
