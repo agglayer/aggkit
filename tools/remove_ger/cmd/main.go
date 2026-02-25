@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/tools/remove_ger"
 	"github.com/urfave/cli/v2"
 )
@@ -12,6 +13,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "remove-ger"
 	app.Usage = "Diagnose and recover from invalid GER injection on L2"
+	app.Version = aggkit.Version
 	app.Flags = []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "cfg",

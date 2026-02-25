@@ -3,6 +3,7 @@ package remove_ger
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -164,8 +165,16 @@ func GetClaimsByGER(
 
 // claimResponseToClaim converts a bridge service ClaimResponse to a bridgesync.Claim.
 func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
-	globalIndex, _ := new(big.Int).SetString(string(r.GlobalIndex), decimalBase)
-	amount, _ := new(big.Int).SetString(string(r.Amount), decimalBase)
+	globalIndex, ok := new(big.Int).SetString(string(r.GlobalIndex), decimalBase)
+	if !ok {
+		log.Warnf("claimResponseToClaim: failed to parse GlobalIndex %q, defaulting to 0", r.GlobalIndex)
+		globalIndex = big.NewInt(0)
+	}
+	amount, ok := new(big.Int).SetString(string(r.Amount), decimalBase)
+	if !ok {
+		log.Warnf("claimResponseToClaim: failed to parse Amount %q, defaulting to 0", r.Amount)
+		amount = big.NewInt(0)
+	}
 	return &bridgesync.Claim{
 		BlockNum:           r.BlockNum,
 		BlockTimestamp:     r.BlockTimestamp,
@@ -380,7 +389,7 @@ func classifyByClaimContent(
 
 // isNotFound returns true if the error is a client.ErrNotFound sentinel.
 func isNotFound(err error) bool {
-	return err != nil && err.Error() == client.ErrNotFound.Error()
+	return errors.Is(err, client.ErrNotFound)
 }
 
 // getL1InfoLeafByDepositCount uses the two-step bridge service lookup to find the L1InfoTree leaf

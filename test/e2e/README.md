@@ -1,6 +1,6 @@
 # E2E
 
-This package contains tests run against a dockerize environment, loaded from `test/e2e/envs/loader.go`. The tests follows this flow:
+This package contains tests run against a dockerized environment, loaded from `test/e2e/envs/loader.go`. The tests follow this flow:
 
 1. Test env is loaded by `test/e2e/testmain_test.go`
 2. Some sanity checks are performed to assert that the testing env is operating as expected

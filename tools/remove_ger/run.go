@@ -73,16 +73,15 @@ func Run(c *cli.Context) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(c.Context, dialTimeout)
-	defer cancel()
-
-	env, err := SetupEnv(ctx, cfg)
+	dialCtx, dialCancel := context.WithTimeout(c.Context, dialTimeout)
+	env, err := SetupEnv(dialCtx, cfg)
+	dialCancel()
 	if err != nil {
 		return err
 	}
 	defer env.Close()
 
-	diagnosis, err := Diagnose(ctx, env, gerHash, c.Bool("force"))
+	diagnosis, err := Diagnose(c.Context, env, gerHash, c.Bool("force"))
 	if err != nil {
 		return err
 	}
@@ -173,18 +172,22 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 	}, nil
 }
 
-// parseGER validates and returns the GER as common.Hash. GER must be 0x-prefixed 32-byte hex.
+// parseGER validates and returns the GER as common.Hash.
+// GER must be a 0x-prefixed 32-byte hex string (66 characters total).
 func parseGER(s string) (common.Hash, error) {
-	s = strings.TrimPrefix(s, gerHexPrefix)
-	if len(s) != gerHexLen {
-		return common.Hash{}, fmt.Errorf("invalid GER: want %s followed by %d hex chars, got %d chars",
-			gerHexPrefix, gerHexLen, len(s))
+	if !strings.HasPrefix(s, gerHexPrefix) {
+		return common.Hash{}, fmt.Errorf("invalid GER: must start with %s", gerHexPrefix)
 	}
-	for _, c := range s {
+	hex := s[len(gerHexPrefix):]
+	if len(hex) != gerHexLen {
+		return common.Hash{}, fmt.Errorf("invalid GER: want %s followed by %d hex chars, got %d chars",
+			gerHexPrefix, gerHexLen, len(hex))
+	}
+	for _, c := range hex {
 		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
 			continue
 		}
 		return common.Hash{}, fmt.Errorf("invalid GER: not hex")
 	}
-	return common.HexToHash(gerHexPrefix + s), nil
+	return common.HexToHash(s), nil
 }
