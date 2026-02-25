@@ -27,6 +27,9 @@ const (
 	GetSyncStatusReq             = "get_sync_status"
 	GetRemoveGEREventsReq        = "get_remove_ger_events"
 	GetHealthCheckReq            = "health_check"
+	GetClaimsByGERReq            = "get_claims_by_ger"
+	GetBridgeByDepositCountReq   = "get_bridge_by_deposit_count"
+	GetBridgesByContentReq       = "get_bridges_by_content"
 )
 
 func Register() {
