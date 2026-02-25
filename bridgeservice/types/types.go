@@ -205,6 +205,29 @@ type ClaimResponse struct {
 
 	// Metadata associated with the claim
 	Metadata string `json:"metadata" example:"0xdeadbeef"`
+
+	// IsMessage indicates whether this is a message claim (leaf type 1) rather than an asset claim (leaf type 0)
+	IsMessage bool `json:"is_message" example:"false"`
+}
+
+// ClaimsByGERResult contains the claims matching a given global exit root and their count
+// @Description Response containing claim events matching a specific global exit root
+type ClaimsByGERResult struct {
+	// List of claims matching the global exit root
+	Claims []*ClaimResponse `json:"claims"`
+
+	// Total number of matching claims
+	Count int `json:"count" example:"3"`
+}
+
+// BridgesByContentResult contains the bridges matching given content fields and their count
+// @Description Response containing bridge events matching specific content fields
+type BridgesByContentResult struct {
+	// List of bridges matching the content query
+	Bridges []*BridgeResponse `json:"bridges"`
+
+	// Total number of matching bridges
+	Count int `json:"count" example:"2"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
@@ -411,4 +434,33 @@ type UnsetClaimResponse struct {
 
 	// Timestamp when the unset claim was created
 	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// SetClaimResponse represents a set claim event response
+// @Description Detailed information about a set claim event
+type SetClaimResponse struct {
+	// Block number where the set claim was processed
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the set claim event within the block
+	BlockPos uint64 `json:"block_pos" example:"2"`
+
+	// Transaction hash associated with the set claim
+	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+
+	// Global index of the claim that was set
+	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
+
+	// Timestamp when the set claim was created
+	CreatedAt uint64 `json:"created_at" example:"1684500000"`
+}
+
+// SetClaimsResult contains the set claims and the total count
+// @Description Paginated response of set claim events (L2 networks only)
+type SetClaimsResult struct {
+	// List of set claim events
+	SetClaims []*SetClaimResponse `json:"set_claims"`
+
+	// Total number of set claim events
+	Count int `json:"count" example:"20"`
 }

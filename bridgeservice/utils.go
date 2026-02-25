@@ -153,6 +153,7 @@ func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes
 		RollupExitRoot:     bridgetypes.Hash(claim.RollupExitRoot.Hex()),
 		GlobalExitRoot:     bridgetypes.Hash(claim.GlobalExitRoot.Hex()),
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(claim.Metadata)),
+		IsMessage:          claim.IsMessage,
 	}
 
 	// Only populate proof fields if requested
@@ -195,6 +196,19 @@ func NewTokenMigrationResponse(
 		UpdatedTokenAddress: bridgetypes.Address(tokenMigration.UpdatedTokenAddress.Hex()),
 		Amount:              bridgetypes.BigIntString(tokenMigration.Amount.String()),
 	}
+}
+
+// parseBigIntQuery parses an optional big.Int query parameter from the request context.
+func parseBigIntQuery(c *gin.Context) (*big.Int, error) {
+	paramStr := c.Query(globalIndexParam)
+	if paramStr == "" {
+		return nil, nil
+	}
+	globalIndex, ok := new(big.Int).SetString(paramStr, 0)
+	if !ok {
+		return nil, fmt.Errorf("invalid %s parameter, it should be a numeric", globalIndexParam)
+	}
+	return globalIndex, nil
 }
 
 // NewL1InfoTreeLeafResponse creates L1InfoTreeLeafResponse instance out of the provided L1InfoTreeLeaf

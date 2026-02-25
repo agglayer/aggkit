@@ -532,3 +532,38 @@ func (s *BridgeSync) GetLatestNetworkBlock(ctx context.Context) (uint64, error) 
 func (s *BridgeSync) IsActive(ctx context.Context) bool {
 	return !s.processor.isHalted()
 }
+
+// GetSetClaimsPaged returns a paginated list of set claims.
+func (s *BridgeSync) GetSetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32, globalIndex *big.Int) ([]*SetClaim, int, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get set claims")
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
+}
+
+// GetClaimsByGER returns all DetailedClaimEvent claims for the given global exit root.
+func (s *BridgeSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
+	return s.processor.GetClaimsByGER(ctx, globalExitRoot)
+}
+
+// GetBridgeByDepositCount returns the bridge with the given deposit count (bridge or bridge_archive).
+func (s *BridgeSync) GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*Bridge, error) {
+	return s.processor.GetBridgeByDepositCount(ctx, depositCount)
+}
+
+// GetBridgesByContent returns all bridges matching the given content fields.
+func (s *BridgeSync) GetBridgesByContent(
+	ctx context.Context,
+	leafType uint8,
+	originAddress common.Address,
+	destinationNetwork uint32,
+	destinationAddress common.Address,
+	amount *big.Int,
+	metadata []byte,
+) ([]*Bridge, error) {
+	return s.processor.GetBridgesByContent(ctx, leafType, originAddress,
+		destinationNetwork, destinationAddress, amount, metadata)
+}
