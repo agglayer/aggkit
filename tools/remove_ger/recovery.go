@@ -25,7 +25,7 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 	if err != nil {
 		return fmt.Errorf("get L2 chain ID: %w", err)
 	}
-	auth, err := buildSovereignAdminTransactor(cfg, l2ChainID)
+	auth, err := buildSovereignAdminTransactor(ctx, cfg, l2ChainID)
 	if err != nil {
 		return fmt.Errorf("sovereign admin transactor: %w", err)
 	}

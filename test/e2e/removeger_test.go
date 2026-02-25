@@ -625,9 +625,7 @@ func prepareToolConfig(t *testing.T, configDir string) string {
 BridgeServiceURL = "%s"
 L2NetworkID = %d
 
-[RemoveGER.SovereignAdminPrivateKey]
-Path = "%s"
-Password = "%s"
+SovereignAdminKey = { Method = "local", Path = "%s", Password = "%s" }
 `,
 		bridgeServiceURL,
 		testEnv.L2.NetworkID,

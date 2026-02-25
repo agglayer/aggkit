@@ -6,6 +6,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l2gersync"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v2"
@@ -31,12 +32,13 @@ type Config struct {
 
 // RemoveGERConfig contains configuration specific to the remove-GER tool.
 type RemoveGERConfig struct {
-	// SovereignAdminPrivateKey is the private key with privileges to:
+	// SovereignAdminKey is the signing key with privileges to:
 	// - activateEmergencyState / deactivateEmergencyState on the L2 bridge
 	// - removeGlobalExitRoots on the L2 GER manager
 	// - unsetMultipleClaims / setMultipleClaims on the L2 bridge
 	// - forceEmitDetailedClaimEvent on the L2 bridge
-	SovereignAdminPrivateKey KeyConfig `mapstructure:"SovereignAdminPrivateKey"`
+	// Supports local keystore, AWS KMS, and GCP KMS via signertypes.SignerConfig.
+	SovereignAdminKey signertypes.SignerConfig `mapstructure:"SovereignAdminKey"`
 
 	// BridgeServiceURL is the URL of the aggkit bridge service REST API (required).
 	// Used for querying claims, bridges, and proofs.
@@ -45,12 +47,6 @@ type RemoveGERConfig struct {
 	// L2NetworkID is the network ID of the L2 network served by the bridge service.
 	// Required for querying L2 claims via the bridge service.
 	L2NetworkID uint32 `mapstructure:"L2NetworkID"`
-}
-
-// KeyConfig holds keystore path and password for the sovereign admin key.
-type KeyConfig struct {
-	Path     string `mapstructure:"Path"`
-	Password string `mapstructure:"Password"`
 }
 
 // LoadConfig reads the TOML config file(s) specified by --cfg and unmarshals only

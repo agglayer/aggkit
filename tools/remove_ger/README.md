@@ -26,14 +26,15 @@ The tool uses the **same** config file(s) as the main aggkit binary: standard `a
 | Field | Type | Description |
 | ----- | ---- | ------------ |
 | **BridgeServiceURL** | string | Bridge service REST API base URL (**required**). Used for querying claims and bridges. The tool runs a health check at startup and will fail if the service is unreachable. |
-| **SovereignAdminPrivateKey** | section | Keystore for the key that can run recovery (activate/deactivate emergency state, remove GER, unset/set claims, force-emit claim events). See sub-fields below. |
+| **SovereignAdminKey** | section | Signing key with sovereign admin privileges (activate/deactivate emergency state, remove GER, unset/set claims, force-emit claim events). Supports local keystore, AWS KMS, and GCP KMS. See sub-fields below. |
 
-**SovereignAdminPrivateKey** sub-fields:
+**SovereignAdminKey** sub-fields (depends on `Method`):
 
 | Field | Type | Description |
 | ----- | ---- | ------------ |
-| **Path** | string | Path to the keystore file. |
-| **Password** | string | Password to decrypt the keystore. |
+| **Method** | string | Signing method: `"local"` (keystore file), `"AWS"` (AWS KMS), `"GCP"` (GCP KMS). |
+| **Path** | string | Path to the keystore file (`"local"` only). |
+| **Password** | string | Password to decrypt the keystore (`"local"` only). |
 
 ## Example config addition
 
@@ -42,10 +43,7 @@ Append the following to your existing `aggkit-config.toml` (adjust paths and URL
 ```toml
 [RemoveGER]
 BridgeServiceURL = "http://localhost:8080"
-
-[RemoveGER.SovereignAdminPrivateKey]
-Path = "/path/to/sovereign_admin_keystore.json"
-Password = "your-keystore-password"
+SovereignAdminKey = { Method = "local", Path = "/path/to/sovereign_admin_keystore.json", Password = "your-keystore-password" }
 ```
 
 ## Usage examples
@@ -91,7 +89,7 @@ The tool classifies the situation and runs the matching recovery flow:
 
 ## Troubleshooting
 
-- **Wrong private key / keystore:** Ensure `[RemoveGER.SovereignAdminPrivateKey]` path and password point to a key that has sovereign admin roles on the L2 contracts (emergency bridge pause/unpause, GER removal, unset/set claims, force emit). If recovery transactions fail with auth errors, verify the key’s roles on the L2 bridge and GER manager contracts.
+- **Wrong private key / keystore:** Ensure `SovereignAdminKey` points to a key that has sovereign admin roles on the L2 contracts (emergency bridge pause/unpause, GER removal, unset/set claims, force emit). If recovery transactions fail with auth errors, verify the key’s roles on the L2 bridge and GER manager contracts.
 
 - **Bridge service not reachable:** If `BridgeServiceURL` is set, the tool runs a health check at startup. Connection or HTTP errors will cause an immediate exit. Check the URL, network access, and that the bridge service is running.
 
