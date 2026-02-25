@@ -79,6 +79,7 @@ build-aggkit: ## Builds aggkit binary
 .PHONY: build-tools
 build-tools: ## Builds the tools
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
@@ -95,6 +96,10 @@ build-docker-nc: ## Builds a docker image with the aggkit binary - but without b
 .PHONY: test-unit
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
+
+.PHONY: test-e2e
+test-e2e: ## Runs the e2e tests
+	go test -v -timeout 30m ./test/e2e/...
 
 .PHONY: lint
 lint: ## Runs the linter

@@ -94,6 +94,19 @@ definitions:
         example: 0xabc1234567890abcdef1234567890abcdef12345
         type: string
     type: object
+  types.BridgesByContentResult:
+    description: Response containing bridge events matching specific content fields
+    properties:
+      bridges:
+        description: List of bridges matching the content query
+        items:
+          $ref: '#/definitions/types.BridgeResponse'
+        type: array
+      count:
+        description: Total number of matching bridges
+        example: 2
+        type: integer
+    type: object
   types.BridgesResult:
     description: Paginated response of bridge events
     properties:
@@ -168,6 +181,11 @@ definitions:
         description: Global index of the claim
         example: "1000000000000000000"
         type: string
+      is_message:
+        description: IsMessage indicates whether this is a message claim (leaf type
+          1) rather than an asset claim (leaf type 0)
+        example: false
+        type: boolean
       mainnet_exit_root:
         description: Mainnet exit root associated with the claim
         example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
@@ -210,6 +228,20 @@ definitions:
         description: Transaction hash associated with the claim
         example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
         type: string
+    type: object
+  types.ClaimsByGERResult:
+    description: Response containing claim events matching a specific global exit
+      root
+    properties:
+      claims:
+        description: List of claims matching the global exit root
+        items:
+          $ref: '#/definitions/types.ClaimResponse'
+        type: array
+      count:
+        description: Total number of matching claims
+        example: 3
+        type: integer
     type: object
   types.ClaimsResult:
     description: Paginated response containing claim events and total count
@@ -376,6 +408,43 @@ definitions:
           $ref: '#/definitions/types.RemoveGEREventResponse'
         type: array
     type: object
+  types.SetClaimResponse:
+    description: Detailed information about a set claim event
+    properties:
+      block_num:
+        description: Block number where the set claim was processed
+        example: 1234
+        type: integer
+      block_pos:
+        description: Position of the set claim event within the block
+        example: 2
+        type: integer
+      created_at:
+        description: Timestamp when the set claim was created
+        example: 1684500000
+        type: integer
+      global_index:
+        description: Global index of the claim that was set
+        example: "1000000000000000000"
+        type: string
+      tx_hash:
+        description: Transaction hash associated with the set claim
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+    type: object
+  types.SetClaimsResult:
+    description: Paginated response of set claim events (L2 networks only)
+    properties:
+      count:
+        description: Total number of set claim events
+        example: 20
+        type: integer
+      set_claims:
+        description: List of set claim events
+        items:
+          $ref: '#/definitions/types.SetClaimResponse'
+        type: array
+    type: object
   types.SyncStatus:
     description: Bridge sync status comparing on-chain deposit counts with local database
       counts
@@ -514,6 +583,49 @@ paths:
       summary: Get health status
       tags:
       - health
+  /bridge-by-deposit-count:
+    get:
+      description: Returns the bridge by deposit count for the specified network (checks
+        bridge and bridge_archive).
+      parameters:
+      - description: Network ID (0 for L1, L2 network ID otherwise)
+        format: int32
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Deposit count
+        format: int32
+        in: query
+        name: deposit_count
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.BridgeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get bridge by deposit count
+      tags:
+      - bridges
   /bridges:
     get:
       description: Returns a paginated list of bridge events for the specified network.
@@ -567,6 +679,70 @@ paths:
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get bridges
+      tags:
+      - bridges
+  /bridges-by-content:
+    get:
+      description: Returns all bridges (bridge and bridge_archive) matching the specified
+        content for the given network.
+      parameters:
+      - description: Network ID (0 for L1, L2 network ID otherwise)
+        format: int32
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Leaf type (0=asset, 1=message)
+        format: int32
+        in: query
+        name: leaf_type
+        required: true
+        type: integer
+      - description: Origin address (hex)
+        in: query
+        name: origin_address
+        required: true
+        type: string
+      - description: Destination network ID
+        format: int32
+        in: query
+        name: destination_network
+        required: true
+        type: integer
+      - description: Destination address (hex)
+        in: query
+        name: destination_address
+        required: true
+        type: string
+      - description: Amount (decimal string)
+        in: query
+        name: amount
+        required: true
+        type: string
+      - description: Metadata (0x-prefixed hex, default empty)
+        in: query
+        name: metadata
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.BridgesByContentResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get bridges by content
       tags:
       - bridges
   /claim-proof:
@@ -664,6 +840,44 @@ paths:
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get claims
+      tags:
+      - claims
+  /claims-by-ger:
+    get:
+      description: Returns all claims (DetailedClaimEvent type) recorded with the
+        specified GER for the given network.
+      parameters:
+      - description: Network ID (0 for L1, L2 network ID otherwise)
+        format: int32
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Global exit root (0x-prefixed 32-byte hex)
+        in: query
+        name: global_exit_root
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.ClaimsByGERResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get claims by global exit root
       tags:
       - claims
   /injected-l1-info-leaf:
@@ -832,6 +1046,44 @@ paths:
       summary: Get remove GER events
       tags:
       - ger-events
+  /set-claims:
+    get:
+      description: Returns set claims for the L2 network, paginated
+      parameters:
+      - description: Page number
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by global index
+        in: query
+        name: global_index
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SetClaimsResult'
+        "400":
+          description: Bad Request - Invalid parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable - L2 bridge syncer not available
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get set claims
+      tags:
+      - set-claims
   /sync-status:
     get:
       description: |-
