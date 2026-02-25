@@ -7,38 +7,35 @@ import (
 	"time"
 
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
-	"github.com/agglayer/aggkit/common"
-	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/common"
+	gethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// buildSovereignAdminTransactor loads the sovereign admin key from config and returns
-// transact options for the given chain ID (L2). Uses common.NewKeyFromKeystore.
-func buildSovereignAdminTransactor(cfg *Config, chainID *big.Int) (*bind.TransactOpts, error) {
-	kc := cfg.RemoveGER.SovereignAdminPrivateKey
-	if kc.Path == "" || kc.Password == "" {
-		return nil, fmt.Errorf("sovereign admin keystore path and password are required" +
-			" in [RemoveGER.SovereignAdminPrivateKey]")
-	}
-	keyCfg := cfgtypes.KeystoreFileConfig{Path: kc.Path, Password: kc.Password}
-	privKey, err := common.NewKeyFromKeystore(keyCfg)
+// buildSovereignAdminTransactor creates a transact options instance for the sovereign admin key
+// using the signertypes.SignerConfig from config. Supports local keystore, AWS KMS, and GCP KMS.
+func buildSovereignAdminTransactor(ctx context.Context, cfg *Config, l2ChainID *big.Int) (*bind.TransactOpts, error) {
+	s, err := signer.NewSigner(ctx, l2ChainID.Uint64(), cfg.RemoveGER.SovereignAdminKey, "remove-ger", log.GetDefaultLogger())
 	if err != nil {
-		return nil, fmt.Errorf("load sovereign admin key: %w", err)
+		return nil, fmt.Errorf("load sovereign admin signer: %w", err)
 	}
-	if privKey == nil {
-		return nil, fmt.Errorf("sovereign admin key is nil (empty path/password?)")
+	if err := s.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("initialize sovereign admin signer: %w", err)
 	}
-	opts, err := bind.NewKeyedTransactorWithChainID(privKey, chainID)
-	if err != nil {
-		return nil, fmt.Errorf("create transactor: %w", err)
+	opts := &bind.TransactOpts{
+		From: s.PublicAddress(),
+		Signer: func(_ common.Address, tx *gethTypes.Transaction) (*gethTypes.Transaction, error) {
+			return s.SignTx(ctx, tx)
+		},
 	}
 	return opts, nil
 }
 
 // waitForReceipt waits for the transaction to be mined and returns its receipt.
-func waitForReceipt(ctx context.Context, client *ethclient.Client, tx *types.Transaction) (*types.Receipt, error) {
+func waitForReceipt(ctx context.Context, client *ethclient.Client, tx *gethTypes.Transaction) (*gethTypes.Receipt, error) {
 	return bind.WaitMined(ctx, client, tx)
 }
 
