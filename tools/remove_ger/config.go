@@ -2,8 +2,11 @@ package remove_ger
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitConfig "github.com/agglayer/aggkit/config"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l2gersync"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -49,17 +52,38 @@ type RemoveGERConfig struct {
 	L2NetworkID uint32 `mapstructure:"L2NetworkID"`
 }
 
-// LoadConfig reads the TOML config file(s) specified by --cfg and unmarshals only
-// the fields required by the remove-GER tool.
+// LoadConfig reads the TOML config file(s) specified by --cfg and unmarshals the
+// fields required by the remove-GER tool. Uses the same template rendering pipeline
+// as the main aggkit binary so that template variables (e.g. L1URL → L1NetworkConfig.RPC.URL)
+// are resolved correctly.
 func LoadConfig(c *cli.Context) (*Config, error) {
-	v := viper.New()
-	v.SetConfigType("toml")
-
+	// Build FileData list for template rendering.
+	userFiles := make([]aggkitConfig.FileData, 0)
 	for _, cfgFile := range c.StringSlice("cfg") {
-		v.SetConfigFile(cfgFile)
-		if err := v.MergeInConfig(); err != nil {
+		content, err := os.ReadFile(cfgFile)
+		if err != nil {
 			return nil, fmt.Errorf("read config %s: %w", cfgFile, err)
 		}
+		userFiles = append(userFiles, aggkitConfig.FileData{Name: cfgFile, Content: string(content)})
+	}
+
+	// Prepend defaults so template variables ({{L1Config.URL}}, {{L2URL}}, etc.) resolve.
+	allFiles := []aggkitConfig.FileData{
+		{Name: "default_mandatory_vars", Content: aggkitConfig.DefaultMandatoryVars},
+		{Name: "default_vars", Content: aggkitConfig.DefaultVars},
+		{Name: "default_values", Content: aggkitConfig.DefaultValues},
+	}
+	allFiles = append(allFiles, userFiles...)
+
+	rendered, err := aggkitConfig.NewConfigRender(allFiles, aggkitConfig.EnvVarPrefix).Render()
+	if err != nil {
+		return nil, fmt.Errorf("render config: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigType("toml")
+	if err := v.ReadConfig(strings.NewReader(rendered)); err != nil {
+		return nil, fmt.Errorf("parse rendered config: %w", err)
 	}
 
 	var cfg Config
