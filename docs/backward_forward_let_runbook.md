@@ -205,14 +205,79 @@ echo "L2 current LER:          $L2_LER"
 echo "L2 current deposit count: $L2_DEPOSIT_COUNT"
 ```
 
-The comparison determines the case:
+**Important**: `L2_LER != L1_SETTLED_LER` does **not** by itself indicate divergence. Under normal operation L2 is ahead of L1 (the `aggsender` posts certificates periodically), so `L2_DEPOSIT_COUNT > L1_DEPOSIT_COUNT` and a different current root is perfectly expected.
 
-| Condition | Meaning |
-|-----------|---------|
-| `L1_SETTLED_LER == L2_LER` | No divergence — investigate other causes |
-| `L1_SETTLED_LER != L2_LER` and `L1_DEPOSIT_COUNT > L2_DEPOSIT_COUNT` | L1 has leaves that L2 doesn't — **forwardLET needed** |
-| `L1_SETTLED_LER != L2_LER` and `L1_DEPOSIT_COUNT == L2_DEPOSIT_COUNT` | Same count but different roots — leaves diverged at the same position — **backwardLET + forwardLET needed** |
-| `L1_SETTLED_LER != L2_LER` and `L1_DEPOSIT_COUNT < L2_DEPOSIT_COUNT` | L2 has extra leaves beyond what L1 settled, and possibly L1 settled different leaves — **backwardLET + forwardLET needed** |
+The key validation is to check whether `L1_SETTLED_LER` **exists in L2's history** — i.e., whether L2's tree ever had that root at `L1_DEPOSIT_COUNT` deposits.
+
+#### Quick checks (no archive node needed)
+
+```bash
+# If L2 has fewer deposits than L1 settled, divergence is certain.
+# L1 should never settle leaves that don't exist on L2.
+if [ "$L2_DEPOSIT_COUNT" -lt "$L1_DEPOSIT_COUNT" ]; then
+  echo "DIVERGENCE: L1 settled $L1_DEPOSIT_COUNT deposits but L2 only has $L2_DEPOSIT_COUNT"
+fi
+
+# If deposit counts match, a simple root comparison suffices.
+if [ "$L2_DEPOSIT_COUNT" -eq "$L1_DEPOSIT_COUNT" ]; then
+  if [ "$L2_LER" == "$L1_SETTLED_LER" ]; then
+    echo "No divergence — roots match at same deposit count"
+  else
+    echo "DIVERGENCE: same deposit count ($L2_DEPOSIT_COUNT) but different roots"
+  fi
+fi
+```
+
+#### When L2 is ahead (`L2_DEPOSIT_COUNT > L1_DEPOSIT_COUNT`)
+
+L2 being ahead is normal. To confirm divergence, verify that `L1_SETTLED_LER` matches the L2 tree's historical root at `L1_DEPOSIT_COUNT`. This requires an **archive node** for the L2 RPC.
+
+Use the bridge service to find the block boundary, then query the historical root:
+
+```bash
+# deposit_count in the bridge service is 0-indexed.
+# L1_DEPOSIT_COUNT is the total leaf count, so the last settled deposit is at index L1_DEPOSIT_COUNT - 1.
+# The first deposit AFTER the settled set is at index L1_DEPOSIT_COUNT.
+FIRST_POST_SETTLE=$(curl -s "$BRIDGE_SERVICE_URL/bridge-by-deposit-count?network_id=$NETWORK_ID&deposit_count=$L1_DEPOSIT_COUNT" | jq -r '.block_num')
+
+if [ "$FIRST_POST_SETTLE" != "null" ] && [ -n "$FIRST_POST_SETTLE" ]; then
+  # Read the L2 root at the block BEFORE the first post-settlement deposit.
+  # At this point, L2 should have had exactly L1_DEPOSIT_COUNT leaves.
+  HISTORY_BLOCK=$((FIRST_POST_SETTLE - 1))
+  L2_HISTORICAL_LER=$(cast call $BRIDGE_L2_ADDR "getRoot()(bytes32)" \
+    --rpc-url $L2_RPC_URL --block $HISTORY_BLOCK)
+
+  echo "L2 historical LER at block $HISTORY_BLOCK: $L2_HISTORICAL_LER"
+  echo "L1 settled LER:                            $L1_SETTLED_LER"
+
+  if [ "$L2_HISTORICAL_LER" == "$L1_SETTLED_LER" ]; then
+    echo "No divergence — L1 settled LER exists in L2 history"
+  else
+    echo "DIVERGENCE CONFIRMED — L1 settled LER does NOT match L2 tree at deposit count $L1_DEPOSIT_COUNT"
+  fi
+else
+  echo "Bridge at deposit_count=$L1_DEPOSIT_COUNT not found on L2 — verify bridge service sync status"
+fi
+```
+
+> **Note**: The archive-node query above assumes the first deposit after the settled set is in a different block than the last settled deposit. If multiple deposits land in the same block, the block boundary may not be exact. In that case, use the block of the last settled deposit (`deposit_count = L1_DEPOSIT_COUNT - 1`) and verify the deposit count at that block:
+> ```bash
+> LAST_SETTLED_BLOCK=$(curl -s "$BRIDGE_SERVICE_URL/bridge-by-deposit-count?network_id=$NETWORK_ID&deposit_count=$((L1_DEPOSIT_COUNT - 1))" | jq -r '.block_num')
+> DEPOSIT_AT_BLOCK=$(cast call $BRIDGE_L2_ADDR "depositCount()(uint256)" --rpc-url $L2_RPC_URL --block $LAST_SETTLED_BLOCK)
+> # If DEPOSIT_AT_BLOCK == L1_DEPOSIT_COUNT, the root at this block is the one to compare.
+> # If DEPOSIT_AT_BLOCK > L1_DEPOSIT_COUNT, more deposits landed in the same block — you'll need
+> # to trace the transaction to get the intermediate root.
+> ```
+
+#### Summary
+
+| Condition | Result |
+|-----------|--------|
+| `L2_DEPOSIT_COUNT < L1_DEPOSIT_COUNT` | **Divergence** — L1 settled leaves that don't exist on L2 |
+| `L2_DEPOSIT_COUNT == L1_DEPOSIT_COUNT` and `L2_LER == L1_SETTLED_LER` | **No divergence** |
+| `L2_DEPOSIT_COUNT == L1_DEPOSIT_COUNT` and `L2_LER != L1_SETTLED_LER` | **Divergence** — same count, different roots |
+| `L2_DEPOSIT_COUNT > L1_DEPOSIT_COUNT` and L1_SETTLED_LER **found** in L2 history | **No divergence** — L2 is simply ahead |
+| `L2_DEPOSIT_COUNT > L1_DEPOSIT_COUNT` and L1_SETTLED_LER **NOT found** in L2 history | **Divergence** — L1 settled a root that L2 never had |
 
 ### Step 5: List the L2 bridges (leaves) from the divergence point
 
@@ -258,19 +323,50 @@ done
 
 The divergent leaves (BX, BY, ...) are the ones that were included in certificates settled on L1 but do not exist on L2. These leaves are part of the `bridge_exits` field of the settled certificates.
 
-To retrieve them, first get the settled certificate header, then inspect its bridge exits. The bridge exits are available via the certificate submission data on the AggLayer. If you have the certificate ID:
+The AggLayer gRPC API only exposes certificate **headers** (`GetCertificateHeader`), not full certificate bodies — it does not return the individual bridge exits. Retrieving the actual leaf data requires one of the following options.
+
+#### Option 1: aggsender certificate API (preferred)
+
+The `aggsender` stores the full body of every certificate it submits, including the `bridge_exits` array. A dedicated endpoint is being added to the `aggsender` to expose this data. It will be available before this runbook is released.
+
+The endpoint will accept a certificate ID (or height) and return the full list of bridge exits for that certificate, including the leaf data needed for `forwardLET`:
 
 ```bash
-# Get certificate details by ID (the ID comes from GetNetworkInfo.settled_certificate_id)
-CERT_ID="<certificate_id hex>"
-grpcurl -plaintext -d "{\"certificate_id\": {\"value\": {\"value\": \"$(echo $CERT_ID | xxd -r -p | base64)\"}}}" \
-  $AGGLAYER_GRPC \
-  agglayer.node.v1.NodeStateService/GetCertificateHeader
+# Retrieve bridge exits for a specific certificate height
+# The aggsender API base URL depends on your deployment configuration
+AGGSENDER_API_URL="<aggsender admin API base URL>"
+CERT_HEIGHT="<height of the divergent settled certificate>"
+
+curl -s "$AGGSENDER_API_URL/certificate/$CERT_HEIGHT/bridge-exits" | jq .
 ```
 
-The `CertificateHeader` includes `new_local_exit_root` and `prev_local_exit_root` but **not** the individual bridge exits. The bridge exits (the actual leaf data for BX, BY) must be obtained from the AggLayer's certificate storage or from the operator who submitted the certificate.
+The response will contain an array of bridge exit objects, each with:
+- `leaf_type` (0=asset, 1=message)
+- `origin_network`
+- `origin_token_address`
+- `dest_network`
+- `dest_address`
+- `amount`
+- `metadata`
 
-> **Note**: If the divergent leaves cannot be retrieved from the AggLayer (the gRPC API currently only exposes certificate headers, not full certificate bodies), contact the AggLayer operator or check the aggsender local database for the certificate that was submitted and settled.
+These map directly to the `LeafData` fields required by `forwardLET`.
+
+> **Prerequisite**: The aggsender must be the same instance that submitted the divergent certificate (its DB holds that certificate's data). If the aggsender was replaced or its database was lost, fall back to Option 2.
+
+#### Option 2: contact the AggLayer node admin (fallback)
+
+If Option 1 is unavailable (aggsender DB lost, different aggsender instance, or the API is unreachable), contact the operator of the AggLayer node and request the full certificate body for the divergent certificate ID.
+
+Provide them with the certificate ID obtained in Step 1:
+
+```bash
+# Certificate ID from GetNetworkInfo (settled_certificate_id)
+echo "Certificate ID: $CERT_ID"
+echo "Network ID:     $NETWORK_ID"
+echo "Height:         <settled_height from GetNetworkInfo>"
+```
+
+The AggLayer node operator can retrieve the full certificate body — including all `bridge_exits` — from their internal storage and share the leaf data needed to construct the `forwardLET` call.
 
 ### Summary: determining the recovery case
 
