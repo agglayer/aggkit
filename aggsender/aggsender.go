@@ -252,8 +252,13 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 	logger := log.WithFields("module", "aggsender-rpc")
 	return []jRPC.Service{
 		{
-			Name:    "aggsender",
-			Service: aggsenderrpc.NewAggsenderRPC(logger, a.storage, a),
+			Name: "aggsender",
+			Service: aggsenderrpc.NewAggsenderRPC(
+				logger, a.storage, a,
+				a.cfg.EnableDebugSendCertificate,
+				a.cfg.DebugSendCertificateAuthAddress,
+				a.aggLayerClient,
+			),
 		},
 	}
 }
@@ -263,6 +268,11 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
+
+	if a.cfg.EnableDebugSendCertificate {
+		a.log.Warn("Debug send certificate endpoint enabled — aggsender certificate sending is DISABLED")
+		return
+	}
 
 	a.checkDBCompatibility(ctx)
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)

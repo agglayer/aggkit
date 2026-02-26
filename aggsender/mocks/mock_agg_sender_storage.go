@@ -125,6 +125,64 @@ func (_c *AggSenderStorage_DeleteOldCertificates_Call) RunAndReturn(run func(typ
 	return _c
 }
 
+// GetCertificateBridgeExits provides a mock function with given fields: height
+func (_m *AggSenderStorage) GetCertificateBridgeExits(height uint64) ([]*agglayertypes.BridgeExit, error) {
+	ret := _m.Called(height)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCertificateBridgeExits")
+	}
+
+	var r0 []*agglayertypes.BridgeExit
+	var r1 error
+	if rf, ok := ret.Get(0).(func(uint64) ([]*agglayertypes.BridgeExit, error)); ok {
+		return rf(height)
+	}
+	if rf, ok := ret.Get(0).(func(uint64) []*agglayertypes.BridgeExit); ok {
+		r0 = rf(height)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*agglayertypes.BridgeExit)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(uint64) error); ok {
+		r1 = rf(height)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggSenderStorage_GetCertificateBridgeExits_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCertificateBridgeExits'
+type AggSenderStorage_GetCertificateBridgeExits_Call struct {
+	*mock.Call
+}
+
+// GetCertificateBridgeExits is a helper method to define mock.On call
+//   - height uint64
+func (_e *AggSenderStorage_Expecter) GetCertificateBridgeExits(height interface{}) *AggSenderStorage_GetCertificateBridgeExits_Call {
+	return &AggSenderStorage_GetCertificateBridgeExits_Call{Call: _e.mock.On("GetCertificateBridgeExits", height)}
+}
+
+func (_c *AggSenderStorage_GetCertificateBridgeExits_Call) Run(run func(height uint64)) *AggSenderStorage_GetCertificateBridgeExits_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(uint64))
+	})
+	return _c
+}
+
+func (_c *AggSenderStorage_GetCertificateBridgeExits_Call) Return(_a0 []*agglayertypes.BridgeExit, _a1 error) *AggSenderStorage_GetCertificateBridgeExits_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggSenderStorage_GetCertificateBridgeExits_Call) RunAndReturn(run func(uint64) ([]*agglayertypes.BridgeExit, error)) *AggSenderStorage_GetCertificateBridgeExits_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetCertificateByHeight provides a mock function with given fields: height
 func (_m *AggSenderStorage) GetCertificateByHeight(height uint64) (*aggsendertypes.Certificate, error) {
 	ret := _m.Called(height)

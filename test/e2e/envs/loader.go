@@ -47,6 +47,7 @@ type Env struct {
 	Clients          ClientsConfig
 	Keys             KeysConfig
 	EnvDir           string
+	AggsenderRPCURL  string // External URL of the aggsender JSON-RPC endpoint
 	envName          ENVName
 	startedCompose   bool   // Track if we started docker compose (so we know if we should stop it)
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
@@ -137,6 +138,9 @@ type summaryJSON struct {
 					} `json:"http_rpc"`
 				} `json:"op-geth"`
 				Aggkit struct {
+					RPC struct {
+						External string `json:"external"`
+					} `json:"rpc"`
 					BridgeService struct {
 						External string `json:"external"`
 					} `json:"rest_api"`
@@ -380,6 +384,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			SovereignAdmin: sovereignAdminKey,
 		},
 		EnvDir:           envDir,
+		AggsenderRPCURL:  l2Network.Services.Aggkit.RPC.External,
 		envName:          envName,
 		startedCompose:   startedCompose,
 		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
@@ -525,6 +530,33 @@ func (e *Env) StartAggkit(ctx context.Context) error {
 		return fmt.Errorf("wait for bridge service after start: %w", err)
 	}
 	return nil
+}
+
+// GetAggkitConfigPath returns the path to the aggkit config file on the host.
+func (e *Env) GetAggkitConfigPath() string {
+	return filepath.Join(e.EnvDir, "config", "001", "aggkit-config.toml")
+}
+
+// StopAggkitAndEditConfig stops aggkit and calls editFn with the config file path.
+// The caller is responsible for restarting aggkit after editing the config.
+func (e *Env) StopAggkitAndEditConfig(ctx context.Context, editFn func(configPath string) error) error {
+	if err := e.StopAggkit(ctx); err != nil {
+		return fmt.Errorf("stop aggkit: %w", err)
+	}
+	configPath := e.GetAggkitConfigPath()
+	if err := editFn(configPath); err != nil {
+		return fmt.Errorf("edit aggkit config %s: %w", configPath, err)
+	}
+	return nil
+}
+
+// RestartAggkitWithConfig stops aggkit, calls editFn to modify the config, then starts aggkit.
+// Waits for the bridge service to be ready before returning.
+func (e *Env) RestartAggkitWithConfig(ctx context.Context, editFn func(configPath string) error) error {
+	if err := e.StopAggkitAndEditConfig(ctx, editFn); err != nil {
+		return err
+	}
+	return e.StartAggkit(ctx)
 }
 
 // ensureDockerComposeRunning ensures docker compose is running for the given environment

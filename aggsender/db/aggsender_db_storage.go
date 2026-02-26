@@ -100,6 +100,8 @@ type AggSenderStorage interface {
 	SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error
 	// GetLastSettledCertificate returns the last settled certificate from the storage
 	GetLastSettledCertificate() (*types.CertificateHeader, error)
+	// GetCertificateBridgeExits returns the bridge exits for the signed certificate at the given height
+	GetCertificateBridgeExits(height uint64) ([]*agglayertypes.BridgeExit, error)
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -284,6 +286,23 @@ func (a *AggSenderSQLStorage) GetLastSettledCertificate() (*types.CertificateHea
 		return nil, fmt.Errorf("error getting last settled certificate: %w", err)
 	}
 	return &certificateHeader, nil
+}
+
+// GetCertificateBridgeExits returns the bridge exits for the signed certificate at the given height.
+// Returns nil if no certificate exists at that height or the certificate has no signed certificate data.
+func (a *AggSenderSQLStorage) GetCertificateBridgeExits(height uint64) ([]*agglayertypes.BridgeExit, error) {
+	cert, err := a.GetCertificateByHeight(height)
+	if err != nil {
+		return nil, err
+	}
+	if cert == nil || cert.SignedCertificate == nil {
+		return nil, nil
+	}
+	var agglayerCert agglayertypes.Certificate
+	if err := json.Unmarshal([]byte(*cert.SignedCertificate), &agglayerCert); err != nil {
+		return nil, fmt.Errorf("GetCertificateBridgeExits: failed to unmarshal certificate at height %d: %w", height, err)
+	}
+	return agglayerCert.BridgeExits, nil
 }
 
 // SaveOrUpdateCertificate saves the certificate in the storage

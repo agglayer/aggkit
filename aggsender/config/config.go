@@ -147,6 +147,13 @@ type Config struct {
 	TriggerEpochBased TriggerEpochBasedConfig `mapstructure:"TriggerEpochBased"`
 	// TriggerASAP is the configuration for the ASAP trigger mode (TriggerCertMode==ASAP)
 	TriggerASAP TriggerASAPConfig `mapstructure:"TriggerASAP"`
+	// EnableDebugSendCertificate enables the debug RPC endpoint for sending arbitrary certificates.
+	// When true, the aggsender's normal certificate-sending loop is disabled.
+	// Default false. NEVER enable in production.
+	EnableDebugSendCertificate bool `mapstructure:"EnableDebugSendCertificate"`
+	// DebugSendCertificateAuthAddress is the Ethereum address authorized to sign debug send requests.
+	// Only used when EnableDebugSendCertificate is true.
+	DebugSendCertificateAuthAddress ethCommon.Address `mapstructure:"DebugSendCertificateAuthAddress"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -171,7 +178,8 @@ func (c Config) String() string {
 		"StorageRetainCertificatesPolicy: " + c.StorageRetainCertificatesPolicy.String() + "\n" +
 		"BlockFinalityForL1InfoTree: " + c.BlockFinalityForL1InfoTree.String() + "\n" +
 		"TriggerCertMode: " + c.TriggerCertMode.String() + "\n" +
-		"TriggerEpochBased: " + c.TriggerEpochBased.String() + "\n"
+		"TriggerEpochBased: " + c.TriggerEpochBased.String() + "\n" +
+		"EnableDebugSendCertificate: " + fmt.Sprintf("%t", c.EnableDebugSendCertificate) + "\n"
 }
 
 // Validate checks if the configuration is valid
