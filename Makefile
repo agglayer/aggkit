@@ -101,6 +101,10 @@ build-docker-nc: ## Builds a docker image with the aggkit binary - but without b
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
 
+.PHONY: test-e2e
+test-e2e: ## Runs the e2e tests
+	go test -v -timeout 30m ./test/e2e/...
+
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
