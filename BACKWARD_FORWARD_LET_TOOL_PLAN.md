@@ -556,7 +556,7 @@ Chunk 2 (Debug Send Cert Endpoint)                          │
   │                                                         │
   ├──► Chunk 6 (E2E Env Helpers)                            │
   │         │                                               │
-  └─────────┴──► Chunk 7 (E2E Tests) ◄─────────────────────┘
+  └─────────┴──► Chunk 7 (E2E Tests) ◄──────────────────────┘
 ```
 
 **Recommended execution order:**
