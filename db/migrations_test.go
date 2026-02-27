@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"fmt"
 	"path"
 	"path/filepath"
 	"testing"
@@ -370,6 +372,118 @@ CREATE TABLE IF NOT EXISTS module_b_data (
 		err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('module_a_data', 'module_b_data')").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
+	})
+
+	t.Run("idempotentFunc is called after migrations", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		called := false
+		idempotentFunc := func(_ *sql.DB) error {
+			called = true
+			return nil
+		}
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, idempotentFunc, migrate.Up, NoLimitMigrations)
+		require.NoError(t, err)
+		require.True(t, called)
+	})
+
+	t.Run("idempotentFunc receives a working db connection", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		// idempotentFunc adds a column to the table created by the migration
+		idempotentFunc := func(d *sql.DB) error {
+			_, err := d.Exec("ALTER TABLE test_table ADD COLUMN extra TEXT DEFAULT 'added_by_func'")
+			return err
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, idempotentFunc, migrate.Up, NoLimitMigrations)
+		require.NoError(t, err)
+
+		// Verify the column was added by idempotentFunc
+		var colCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('test_table') WHERE name='extra'").Scan(&colCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, colCount)
+	})
+
+	t.Run("idempotentFunc error is propagated", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		idempotentFunc := func(_ *sql.DB) error {
+			return fmt.Errorf("idempotent function failed")
+		}
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, idempotentFunc, migrate.Up, NoLimitMigrations)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "idempotent function failed")
+	})
+
+	t.Run("nil idempotentFunc does not cause errors", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
+		require.NoError(t, err)
 	})
 }
 
