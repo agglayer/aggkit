@@ -657,12 +657,12 @@ func TestMigrationsDown(t *testing.T) {
 	require.Error(t, err)
 }
 
-// This check that migrations over existing databasese produce the same schema as
+// This check that migrations over existing databases produce the same schema as
 // creating a new database.
 // So it create a empty DB and apply all migrations.
-// Copy databases "testdata/*.sqlite" and aplly all migrations to them
+// Copy databases "testdata/*.sqlite" and apply all migrations to them
 // Compare schema of all databases that must be the same
-func TestMigrationFromPreviousVerion(t *testing.T) {
+func TestMigrationFromPreviousVersion(t *testing.T) {
 	// Create a fresh empty DB and apply all migrations — this is the reference.
 	freshDBPath := path.Join(t.TempDir(), "fresh.sqlite")
 	err := RunMigrations(freshDBPath)

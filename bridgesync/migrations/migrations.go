@@ -53,15 +53,23 @@ func addSourceField(database *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("error getting applied migrations: %w", err)
 	}
-	// This code is for undo the change bridgesync0014 have the drop of the field
+	// This code is to undo the change where bridgesync0014 drops the field
 	if !contains(migrations, "bridgesync0014") {
 		log.Warn("migration 'bridgesync0014' not applied, skipping addSourceField." +
 			" This means that the 'source' column on 'bridge' table will not be added.")
 		return nil
 	}
 	_, err = database.Exec("ALTER TABLE bridge ADD COLUMN source TEXT DEFAULT '';")
-	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
-		return err
+	if err != nil {
+		// Check if the column already exists
+		var count int
+		checkErr := database.QueryRow("SELECT COUNT(*) FROM pragma_table_info('bridge') WHERE name='source'").Scan(&count)
+		if checkErr != nil {
+			return fmt.Errorf("error adding column source:%w and also checking if source column exists: %w", err, checkErr)
+		}
+		if count == 0 {
+			return fmt.Errorf("error adding source column: %w", err)
+		}
 	}
 	return nil
 }
