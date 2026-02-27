@@ -15,7 +15,10 @@ CREATE TABLE IF NOT EXISTS backward_let (
 		PRIMARY KEY (block_num, block_pos)
 	);
 
-ALTER TABLE bridge ADD COLUMN source TEXT DEFAULT '';
+-- 'source' column on bridge is handled by the Go idempotent function
+-- addSourceField (called via RunMigrations2) so that it works on databases
+-- that already have the column (e.g. v0.9.0) and those that do not (e.g.
+-- v0.8.1). SQLite does not support ALTER TABLE … ADD COLUMN IF NOT EXISTS.
 
 CREATE TABLE IF NOT EXISTS forward_let (
 		block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,

@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS orders (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify both tables were created
@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS table2 (
 		}
 
 		// Run only 1 migration
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, 1)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, 1)
 		require.NoError(t, err)
 
 		// Verify only first table was created
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS temp_table (
 		}
 
 		// First run migration up
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table exists
@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS temp_table (
 		require.True(t, tableExists)
 
 		// Run migration down
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Down, 1)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Down, 1)
 		require.NoError(t, err)
 
 		// Verify table was dropped
@@ -246,7 +246,7 @@ CREATE TABLE IF NOT EXISTS /*dbprefix*/custom_table (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table with prefix was created
@@ -276,7 +276,7 @@ CREATE TABLE IF NOT EXISTS no_prefix_table (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table was created
@@ -304,7 +304,7 @@ CREATE INVALID TABLE SYNTAX;`,
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.Error(t, err)
 	})
 
@@ -328,7 +328,7 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.Error(t, err)
 	})
 
@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS module_b_data (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify both tables with different prefixes were created
@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS custom_table (
 		}
 
 		// Run with NoLimitMigrations to include base migrations
-		err = RunMigrationsDBExtended(logger, db, customMigrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, customMigrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify both custom table and base key_value table exist
@@ -434,7 +434,7 @@ CREATE TABLE IF NOT EXISTS custom_table (
 		}
 
 		// Run with limit to exclude base migrations
-		err = RunMigrationsDBExtended(logger, db, customMigrations, migrate.Up, 1)
+		err = RunMigrationsDBExtended(logger, db, customMigrations, nil, migrate.Up, 1)
 		require.NoError(t, err)
 
 		// Verify custom table exists
@@ -470,7 +470,7 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Query the migrations table to verify the ID format
@@ -516,7 +516,7 @@ CREATE TABLE IF NOT EXISTS rollback_table (
 		db.Close()
 
 		// Run migrations down
-		err = RunMigrationsDown(dbPath, migrations, 1)
+		err = RunMigrationsDown(dbPath, migrations, nil, 1)
 		require.NoError(t, err)
 
 		// Reopen database and verify table was dropped
@@ -543,7 +543,7 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 			},
 		}
 
-		err := RunMigrationsDown(dbPath, migrations, 1)
+		err := RunMigrationsDown(dbPath, migrations, nil, 1)
 		require.Error(t, err)
 	})
 
@@ -587,7 +587,7 @@ CREATE TABLE IF NOT EXISTS table_two (
 		db.Close()
 
 		// Run down with limit of 1 migration
-		err = RunMigrationsDown(dbPath, migrations, 1)
+		err = RunMigrationsDown(dbPath, migrations, nil, 1)
 		require.NoError(t, err)
 
 		// Reopen and verify only the most recent migration was rolled back
@@ -626,7 +626,7 @@ CREATE TABLE IF NOT EXISTS full_rollback (
 		require.NoError(t, err)
 
 		// Run down with NoLimitMigrations
-		err = RunMigrationsDown(dbPath, migrations, NoLimitMigrations)
+		err = RunMigrationsDown(dbPath, migrations, nil, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table was dropped
