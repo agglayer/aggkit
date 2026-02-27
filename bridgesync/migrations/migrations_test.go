@@ -2,8 +2,15 @@ package migrations
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"fmt"
+	"io"
 	"math/big"
+	"os"
 	"path"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
@@ -269,7 +276,8 @@ func TestMigration0004(t *testing.T) {
 	migrations := GetUpTo("bridgesync0003")
 
 	// Run migrations up to bridgesync0003 (3 migrations)
-	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 3)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(),
+		database, migrations, nil, migrate.Up, 3)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -448,7 +456,8 @@ func TestMigration0006(t *testing.T) {
 	migrations := GetUpTo("bridgesync0005")
 
 	// Run migrations up to 0005 (5 migrations)
-	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migrations, migrate.Up, 5)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(),
+		database, migrations, nil, migrate.Up, 5)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -635,4 +644,337 @@ func TestMigration0006(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bridgeAfterRollback)
 	require.Equal(t, "0x1111", bridgeAfterRollback.OriginAddress)
+}
+
+// This test check that bridge.to_address have the default ” and also
+// that the previous data is not lost after migration 0013
+func TestMigration0013(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0013.sqlite")
+
+	// Create database and run migrations up to 0012 only
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+
+	// Define migrations up to bridgesync0012
+	migrations := GetUpTo("bridgesync0012")
+
+	// Run migrations up to 0012 (12 migrations)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(),
+		database, migrations, nil, migrate.Up, 12)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	tx, err := database.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.Exec(`
+		INSERT INTO block (num, hash) VALUES (1, '0xDEAD');
+
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address,
+			to_address
+		) VALUES (1, 0, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x3333', '0x42');
+
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address,
+			to_address
+		) VALUES (1, 2, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x3333', NULL);
+	`)
+	require.NoError(t, err)
+
+	// Confirm to_address is actually NULL before migration
+	var nullCheck *string
+	require.NoError(t, tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=2`).Scan(&nullCheck))
+	require.Nil(t, nullCheck, "to_address should be NULL before migration 0013")
+
+	err = tx.Commit()
+	require.NoError(t, err)
+	migrations = GetUpTo("bridgesync0013")
+	// Run migrations up to 0013 (13 migrations)
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(),
+		database, migrations, nil, migrate.Up, 13)
+	require.NoError(t, err)
+	tx, err = database.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	// Insert bridge with no to_address so must use the default ''
+	_, err = tx.Exec(`
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address
+		) VALUES (1, 1, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x4444');
+	`)
+	require.NoError(t, err)
+	// First insert preserves to_address = '0x42'
+	row := tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=0`)
+	var toAddress string
+	err = row.Scan(&toAddress)
+	require.NoError(t, err)
+	require.Equal(t, "0x42", toAddress)
+	// Second insert had no to_address → DEFAULT '' applied
+	row = tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=1`)
+	var toAddress2 string
+	err = row.Scan(&toAddress2)
+	require.NoError(t, err)
+	require.Equal(t, "", toAddress2)
+	// Third insert had NULL to_address before migration → converted to '' by migration
+	row = tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=2`)
+	var toAddress3 string
+	err = row.Scan(&toAddress3)
+	require.NoError(t, err)
+	require.Equal(t, "", toAddress3, "NULL to_address must be converted to '' by migration 0013")
+	err = tx.Commit()
+	require.NoError(t, err)
+}
+func TestMigrationsDown(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTestDown.sqlite")
+	err := RunMigrations(dbPath)
+	require.NoError(t, err)
+	err = RunMigrationsDown(dbPath, 1)
+	require.Error(t, err)
+}
+
+// This check that migrations over existing databases produce the same schema as
+// creating a new database.
+// So it create a empty DB and apply all migrations.
+// Copy databases "testdata/*.sqlite" and apply all migrations to them
+// Compare schema of all databases that must be the same
+func TestMigrationFromPreviousVersion(t *testing.T) {
+	// Create a fresh empty DB and apply all migrations — this is the reference.
+	freshDBPath := path.Join(t.TempDir(), "fresh.sqlite")
+	err := RunMigrations(freshDBPath)
+	require.NoError(t, err)
+
+	freshDB, err := db.NewSQLiteDB(freshDBPath)
+	require.NoError(t, err)
+	defer freshDB.Close()
+
+	referenceHash := schemaHash(t, freshDB)
+
+	// For each testdata/*.sqlite, copy it, apply all remaining migrations, and
+	// verify that the resulting schema hash matches the reference.
+	testdataEntries, err := os.ReadDir("testdata")
+	require.NoError(t, err)
+
+	for _, entry := range testdataEntries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sqlite") {
+			continue
+		}
+		t.Run(entry.Name(), func(t *testing.T) {
+			dstPath := path.Join(t.TempDir(), entry.Name())
+			require.NoError(t, copyFile(path.Join("testdata", entry.Name()), dstPath))
+
+			err := RunMigrations(dstPath)
+			require.NoError(t, err)
+
+			migratedDB, err := db.NewSQLiteDB(dstPath)
+			require.NoError(t, err)
+			defer migratedDB.Close()
+
+			require.Equal(t, referenceHash, schemaHash(t, migratedDB),
+				"schema mismatch for %s after applying all migrations", entry.Name())
+		})
+	}
+}
+
+// schemaHash returns a SHA-256 hash of the normalised schema of every user
+// table in the database. Columns are sorted by name before hashing so that
+// different column-creation orders (which can happen when a column was added
+// outside the migration system) do not cause a false mismatch. Indexes are
+// likewise sorted by name.
+// gorp_migrations is excluded because its contents legitimately differ across
+// databases with different migration histories.
+func schemaHash(t *testing.T, database *sql.DB) string {
+	t.Helper()
+
+	tableRows, err := database.Query(`
+		SELECT name FROM sqlite_master
+		WHERE type = 'table'
+		  AND name NOT LIKE 'sqlite_%'
+		  AND name != 'gorp_migrations'
+		ORDER BY name
+	`)
+	require.NoError(t, err)
+	defer tableRows.Close()
+
+	var tables []string
+	for tableRows.Next() {
+		var name string
+		require.NoError(t, tableRows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NoError(t, tableRows.Err())
+
+	var sb strings.Builder
+	for _, tbl := range tables {
+		fmt.Fprintf(&sb, "TABLE:%s\n", tbl)
+
+		// --- columns (sorted by name, order-insensitive) ---
+		colRows, err := database.Query("PRAGMA table_info(" + tbl + ")")
+		require.NoError(t, err)
+
+		type colDef struct {
+			name    string
+			colType string
+			notNull int
+			dflt    sql.NullString
+			pk      int
+		}
+		var cols []colDef
+		for colRows.Next() {
+			var cid int
+			var c colDef
+			require.NoError(t, colRows.Scan(&cid, &c.name, &c.colType, &c.notNull, &c.dflt, &c.pk))
+			cols = append(cols, c)
+		}
+		require.NoError(t, colRows.Err())
+		colRows.Close()
+
+		sort.Slice(cols, func(i, j int) bool { return cols[i].name < cols[j].name })
+		for _, c := range cols {
+			fmt.Fprintf(&sb, "  col:%s type:%s notnull:%d dflt:%v pk:%d\n",
+				c.name, c.colType, c.notNull, c.dflt, c.pk)
+		}
+
+		// --- indexes (sorted by name) ---
+		idxRows, err := database.Query("PRAGMA index_list(" + tbl + ")")
+		require.NoError(t, err)
+
+		var idxNames []string
+		for idxRows.Next() {
+			var seq, unique, partial int
+			var name, origin string
+			require.NoError(t, idxRows.Scan(&seq, &name, &unique, &origin, &partial))
+			if origin != "pk" {
+				idxNames = append(idxNames, name)
+			}
+		}
+		require.NoError(t, idxRows.Err())
+		idxRows.Close()
+
+		sort.Strings(idxNames)
+		for _, name := range idxNames {
+			fmt.Fprintf(&sb, "  idx:%s\n", name)
+		}
+	}
+
+	h := sha256.Sum256([]byte(sb.String()))
+	return fmt.Sprintf("%x", h)
+}
+
+func TestAddSourceField(t *testing.T) {
+	t.Run("skips when bridgesync0014 not applied", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "add_source_no0014.sqlite")
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer database.Close()
+
+		migs := GetUpTo("bridgesync0013")
+		err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migs, nil, migrate.Up, db.NoLimitMigrations)
+		require.NoError(t, err)
+
+		err = addSourceField(database)
+		require.NoError(t, err)
+
+		// source column must NOT have been added
+		_, err = database.Exec("SELECT source FROM bridge LIMIT 1")
+		require.Error(t, err)
+	})
+
+	t.Run("adds source column when bridgesync0014 is applied", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "add_source_0014.sqlite")
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer database.Close()
+
+		migs := GetUpTo("bridgesync0014")
+		err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migs, nil, migrate.Up, db.NoLimitMigrations)
+		require.NoError(t, err)
+
+		// Confirm source does not exist before calling addSourceField
+		_, err = database.Exec("SELECT source FROM bridge LIMIT 1")
+		require.Error(t, err)
+
+		err = addSourceField(database)
+		require.NoError(t, err)
+
+		// source column must now exist
+		_, err = database.Exec("SELECT source FROM bridge LIMIT 1")
+		require.NoError(t, err)
+	})
+
+	t.Run("is idempotent when source column already exists", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "add_source_idempotent.sqlite")
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer database.Close()
+
+		migs := GetUpTo("bridgesync0014")
+		err = db.RunMigrationsDBExtended(log.GetDefaultLogger(), database, migs, nil, migrate.Up, db.NoLimitMigrations)
+		require.NoError(t, err)
+
+		// First call adds the column
+		err = addSourceField(database)
+		require.NoError(t, err)
+
+		// Second call must not fail
+		err = addSourceField(database)
+		require.NoError(t, err)
+
+		// Column still exists
+		_, err = database.Exec("SELECT source FROM bridge LIMIT 1")
+		require.NoError(t, err)
+	})
+}
+
+// copyFile copies the file at src to dst.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
