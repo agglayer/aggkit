@@ -640,3 +640,83 @@ CREATE TABLE IF NOT EXISTS full_rollback (
 		require.False(t, tableExists)
 	})
 }
+
+func TestGetMigrationsIDsApplied(t *testing.T) {
+	makeMigration := func(id, prefix string) types.Migration {
+		return types.Migration{
+			ID:     id,
+			Prefix: prefix,
+			SQL: `-- +migrate Down
+DROP TABLE IF EXISTS ` + prefix + id + `;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS ` + prefix + id + ` (id INTEGER PRIMARY KEY);`,
+		}
+	}
+
+	t.Run("returns single applied migration", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migs := []types.Migration{makeMigration("0001", "test_")}
+		err = RunMigrationsDBExtended(logger, db, migs, nil, migrate.Up, 1)
+		require.NoError(t, err)
+
+		ids, err := GetMigrationsIDsApplied(db)
+		require.NoError(t, err)
+		require.Equal(t, []string{"test_0001"}, ids)
+	})
+
+	t.Run("returns multiple applied migrations in applied_at order", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migs := []types.Migration{
+			makeMigration("0001", "test_"),
+			makeMigration("0002", "test_"),
+			makeMigration("0003", "test_"),
+		}
+		err = RunMigrationsDBExtended(logger, db, migs, nil, migrate.Up, 3)
+		require.NoError(t, err)
+
+		ids, err := GetMigrationsIDsApplied(db)
+		require.NoError(t, err)
+		require.Equal(t, []string{"test_0001", "test_0002", "test_0003"}, ids)
+	})
+
+	t.Run("returns only applied migrations when some are pending", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migs := []types.Migration{
+			makeMigration("0001", "test_"),
+			makeMigration("0002", "test_"),
+		}
+		// Apply only the first migration
+		err = RunMigrationsDBExtended(logger, db, migs, nil, migrate.Up, 1)
+		require.NoError(t, err)
+
+		ids, err := GetMigrationsIDsApplied(db)
+		require.NoError(t, err)
+		require.Equal(t, []string{"test_0001"}, ids)
+		require.NotContains(t, ids, "test_0002")
+	})
+
+	t.Run("returns error when db is closed", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		db.Close()
+
+		_, err = GetMigrationsIDsApplied(db)
+		require.Error(t, err)
+	})
+}
