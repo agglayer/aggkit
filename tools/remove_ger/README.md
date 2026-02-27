@@ -46,7 +46,11 @@ BridgeServiceURL = "http://localhost:8080"
 SovereignAdminKey = { Method = "local", Path = "/path/to/sovereign_admin_keystore.json", Password = "your-keystore-password" }
 ```
 
-## Usage examples
+## Commands
+
+The tool has two modes: the default **diagnose & recover** command and the **generate** subcommand for testing.
+
+### Diagnose & recover (default)
 
 **Interactive (diagnose, then confirm before recovery):**
 
@@ -62,7 +66,7 @@ SovereignAdminKey = { Method = "local", Path = "/path/to/sovereign_admin_keystor
 
 You can pass multiple config files; later files override earlier ones (e.g. `--cfg base.toml --cfg overrides.toml`).
 
-## CLI flags
+#### CLI flags
 
 | Flag | Short | Required | Description |
 | ---- | ----- | -------- | ----------- |
@@ -70,6 +74,57 @@ You can pass multiple config files; later files override earlier ones (e.g. `--c
 | `--ger` | — | Yes | Invalid GER hash to diagnose and remove (hex, 0x-prefixed, 32 bytes / 64 hex chars). |
 | `--yes` | — | No | Skip interactive confirmation and run recovery immediately. |
 | `--force` | — | No | Continue even if the GER exists on L1 (still diagnose and remove). |
+
+### generate
+
+Generate a deterministic invalid GER scenario and print ready-to-run `cast` commands for injecting a fake GER and a fake claim into L2. This is intended for **E2E testing** of the recovery tool.
+
+The command builds a single-leaf merkle tree from the given parameters, derives the GER, and outputs two `cast send` commands:
+
+1. **Insert fake GER** — calls `insertGlobalExitRoot(bytes32)` on the L2 GER manager contract (requires the aggoracle private key).
+2. **Claim with fake proof** — calls `claimAsset(...)` on the L2 bridge contract with the generated merkle proofs (requires any funded L2 private key).
+
+```bash
+./remove_ger generate --cfg aggkit-config.toml --network-id 1
+```
+
+The output is deterministic: the same parameters always produce the same GER hash and proofs.
+
+#### generate flags
+
+| Flag | Required | Default | Description |
+| ---- | -------- | ------- | ----------- |
+| `--cfg` | Yes | — | Configuration file(s), same format as the default command. |
+| `--network-id` | Yes | — | Destination network ID (must be > 0). |
+| `--dest-addr` | No | `0x0000...0000` | Destination address for the bridge leaf. |
+| `--origin-network` | No | `0` | Origin network ID. |
+| `--origin-addr` | No | `0x0000...0000` | Origin token address. |
+| `--amount` | No | `1` | Bridge amount in wei. |
+| `--deposit-count` | No | `42069` | Deposit count for the fake bridge leaf. |
+| `--leaf-type` | No | `0` | Leaf type (`0` = asset, `1` = message). |
+
+#### Config requirements for generate
+
+The generate command reads a subset of the aggkit config:
+
+- `Common.L2RPC.URL` — L2 RPC endpoint.
+- `BridgeL2Sync.BridgeAddr` — L2 bridge contract address.
+- `L2GERSync.GlobalExitRootL2Addr` — L2 GER manager contract address.
+
+The `[RemoveGER]` section is **not** required for the generate command.
+
+#### generate example
+
+```bash
+# Generate scenario with custom parameters
+./remove_ger generate --cfg aggkit-config.toml \
+  --network-id 1 \
+  --deposit-count 100 \
+  --amount 1000000000000000000
+
+# Pipe the output cast commands into a shell (test environments only!)
+./remove_ger generate --cfg aggkit-config.toml --network-id 1 2>&1 | bash
+```
 
 ## Scenarios
 
