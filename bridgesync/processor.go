@@ -931,7 +931,7 @@ func (p *processor) GetClaimsPaged(
 	networkIDs []uint32, globalIndex *big.Int,
 ) ([]*Claim, int, error) {
 	whereClause := p.buildClaimsFilterClause(networkIDs, globalIndex)
-	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
+	claimsCount, err := p.getCompactedClaimsCount(ctx, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1657,8 +1657,6 @@ func buildGlobalIndexFilterClause(globalIndex *big.Int) string {
 }
 
 // GetSetClaimsPaged returns a paginated list of set claims
-//
-//nolint:dupl
 func (p *processor) GetSetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
