@@ -58,7 +58,7 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 	// If we use a testDatabase must correspond to before the testing migration
 	if templateDBFilename == "" && migrationNumber > 1 {
 		logger.Infof("Running UP migration before  %d migration", migrationNumber)
-		err := db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, migrationNumber-1)
+		err := db.RunMigrationsDBExtended(logger, database, migrationData, nil, migrate.Up, migrationNumber-1)
 		require.NoError(t, err, "failed to run migration up %d", migrationNumber-1)
 		miter.InsertDataBeforeMigrationUp(t, database)
 	} else {
@@ -66,12 +66,12 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 	}
 	// We just run the pending migration that is the one that we want to test
 	logger.Infof("Running UP migration from: %d  to next one", migrationNumber)
-	err = db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, 1)
+	err = db.RunMigrationsDBExtended(logger, database, migrationData, nil, migrate.Up, 1)
 	require.NoError(t, err, "failed to run migration up %d", migrationNumber)
 	miter.RunAssertsAfterMigrationUp(t, database)
 	// We downgrade to before tested migration
 	logger.Infof("Running DOWN migration from: %d to the previous one", migrationNumber)
-	err = db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Down, 1)
+	err = db.RunMigrationsDBExtended(logger, database, migrationData, nil, migrate.Down, 1)
 	require.NoError(t, err, "failed to run migration down %d", migrationNumber)
 	miter.RunAssertsAfterMigrationDown(t, database)
 }
