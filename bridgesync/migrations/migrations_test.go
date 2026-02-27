@@ -686,11 +686,34 @@ func TestMigration0013(t *testing.T) {
 			deposit_count,
 			block_timestamp,
 			tx_hash,
-			from_address, 
+			from_address,
 			to_address
 		) VALUES (1, 0, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x3333', '0x42');
+
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash,
+			from_address,
+			to_address
+		) VALUES (1, 2, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x3333', NULL);
 	`)
 	require.NoError(t, err)
+
+	// Confirm to_address is actually NULL before migration
+	var nullCheck *string
+	require.NoError(t, tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=2`).Scan(&nullCheck))
+	require.Nil(t, nullCheck, "to_address should be NULL before migration 0013")
+
 	err = tx.Commit()
 	require.NoError(t, err)
 	migrations = GetUpTo("bridgesync0013")
@@ -700,7 +723,7 @@ func TestMigration0013(t *testing.T) {
 	require.NoError(t, err)
 	tx, err = database.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	// Insert bridge with no from_address so must be the default ''
+	// Insert bridge with no to_address so must use the default ''
 	_, err = tx.Exec(`
 		INSERT INTO bridge (
 			block_num,
@@ -716,22 +739,27 @@ func TestMigration0013(t *testing.T) {
 			block_timestamp,
 			tx_hash,
 			from_address
-		) VALUES (1, 1, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd','0x4444');
+		) VALUES (1, 1, 0, 0, '0x1111', 0, '0x2222', 1000, NULL, 0, 1739270804, '0xabcd', '0x4444');
 	`)
 	require.NoError(t, err)
-	// First insert have to_address = '0x42'
-	row := tx.QueryRow(`SELECT to_address from bridge where block_num=1 and block_pos=0`)
+	// First insert preserves to_address = '0x42'
+	row := tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=0`)
 	var toAddress string
 	err = row.Scan(&toAddress)
 	require.NoError(t, err)
 	require.Equal(t, "0x42", toAddress)
-	// and the second insert have to_address = '' (default value)
-	row = tx.QueryRow(`SELECT to_address from bridge where block_num=1 and block_pos=1`)
+	// Second insert had no to_address → DEFAULT '' applied
+	row = tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=1`)
 	var toAddress2 string
 	err = row.Scan(&toAddress2)
 	require.NoError(t, err)
 	require.Equal(t, "", toAddress2)
+	// Third insert had NULL to_address before migration → converted to '' by migration
+	row = tx.QueryRow(`SELECT to_address FROM bridge WHERE block_num=1 AND block_pos=2`)
+	var toAddress3 string
+	err = row.Scan(&toAddress3)
 	require.NoError(t, err)
+	require.Equal(t, "", toAddress3, "NULL to_address must be converted to '' by migration 0013")
 	err = tx.Commit()
 	require.NoError(t, err)
 }
