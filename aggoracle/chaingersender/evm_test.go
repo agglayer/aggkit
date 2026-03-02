@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/agglayer/aggkit/aggoracle/mocks"
 	"github.com/agglayer/aggkit/log"
@@ -392,6 +393,16 @@ func TestEVMChainGERSender_SubmitTransaction(t *testing.T) {
 			resultReturn:    &types.MonitoredTxResult{},
 			resultReturnErr: errors.New("result error"),
 			expectedErr:     "result error",
+		},
+		{
+			name:            "ErrAlreadyExists is not an error - monitoring continues until mined",
+			funcName:        "testFunction",
+			action:          "test",
+			addReturnTxID:   txID,
+			addReturnErr:    ethtxmanager.ErrAlreadyExists,
+			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusMined, MinedAtBlockNumber: big.NewInt(123)},
+			resultReturnErr: nil,
+			expectedErr:     "",
 		},
 	}
 
