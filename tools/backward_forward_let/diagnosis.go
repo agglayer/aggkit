@@ -10,8 +10,10 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/grpc/codes"
 )
 
 // Diagnose compares the AggLayer's settled L1 state against L2's on-chain bridge state,
@@ -22,6 +24,12 @@ func Diagnose(ctx context.Context, env *Env) (*DiagnosisResult, error) {
 	// Step 1 — Query AggLayer settled state.
 	info, err := env.AgglayerClient.GetNetworkInfo(ctx, env.L2NetworkID)
 	if err != nil {
+		// A NotFound response means the network is not yet known to the agglayer
+		// (no certificates have been settled), so there is no divergence.
+		var grpcErr aggkitgrpc.GRPCError
+		if errors.As(err, &grpcErr) && grpcErr.Code == codes.NotFound {
+			return result, nil
+		}
 		return nil, fmt.Errorf("get network info from agglayer: %w", err)
 	}
 	if info.SettledHeight == nil {

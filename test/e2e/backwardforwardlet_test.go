@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	gethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -21,6 +22,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	bfl "github.com/agglayer/aggkit/tools/backward_forward_let"
@@ -31,6 +33,13 @@ const (
 	bflRestartTimeout    = 5 * time.Minute
 	bflBridgeIndexWait   = 2 * time.Minute
 )
+
+// bflRunNonce is a unique value computed once per test binary run.
+// It is injected as Metadata into fake bridge exits so that cert IDs (which
+// include a hash of bridge-exit leaves) are unique across test runs. This
+// prevents a stale agglayer "InError" cert from a previous run blocking the
+// current run, since the agglayer deduplicates certs by their CertificateID.
+var bflRunNonce = big.NewInt(time.Now().UnixNano()).Bytes()
 
 // summaryForBFLToolConfig is a minimal struct for reading summary.json to build the bfl tool config.
 type summaryForBFLToolConfig struct {
@@ -104,7 +113,7 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 
 	authKey := testEnv.Keys.SovereignAdmin
 
-	// Enable debug endpoint so malicious certs can be sent.
+	// Enable debug endpoint so we can send certs manually.
 	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build bfl tool environment.
@@ -119,9 +128,13 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 	require.NoError(t, err)
 	initialDC := uint32(initialDCBig.Uint64())
 
+	certSignerKey := loadCertSignerKey(t)
+
 	// Build and send 1 malicious cert with 1 fake bridge exit.
-	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(1e18))}
-	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits)
+	// On a fresh environment there is no settled cert, so buildMaliciousCert
+	// will start at height=0 from the empty L2 bridge state.
+	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
+	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
 	log.Infof("[Case1] sent malicious cert height=%d", cert.Height)
 
@@ -176,7 +189,7 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 
 	authKey := testEnv.Keys.SovereignAdmin
 
-	// Enable debug endpoint.
+	// Enable debug endpoint first so we can send certs manually.
 	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build bfl tool environment.
@@ -185,9 +198,11 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	require.NoError(t, err)
 	defer toolEnv.Close()
 
+	certSignerKey := loadCertSignerKey(t)
+
 	// Build and send 1 malicious cert with 1 fake bridge exit.
-	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(1e18))}
-	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits)
+	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
+	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
 	log.Infof("[Case2] sent malicious cert height=%d", cert.Height)
 
@@ -196,7 +211,9 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	// Restore normal aggkit mode.
 	disableDebugSendCertEndpoint(ctx, t)
 
-	// Create 1 real L2 bridge deposit to produce extra L2 bridges.
+	// Create 2 real L2 bridge deposits so collectExtraL2Bridges returns a non-empty slice.
+	// With DivergencePoint=0 and l2CurrentDC=2, collectExtraL2Bridges(1,2)=[bridge at DC=1].
+	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
 
 	// Brief wait for bridge service indexing.
@@ -221,12 +238,16 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	err = bfl.ExecuteRecovery(recoveryCtx, toolEnv, diagnosis)
 	require.NoError(t, err)
 
-	// Verify.
+	// Verify: DC should equal DivergencePoint + divergent leaves + extra real bridges.
+	// For Case2, L2 LER will NOT match L1 settled LER because extra real L2 bridges were
+	// appended after the fake leaf; the next aggsender cert will advance L1 to match.
 	callOpts := &bind.CallOpts{Context: ctx}
-	root, err := toolEnv.L2Bridge.GetRoot(callOpts)
+	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
+		uint32(len(diagnosis.ExtraL2Bridges))
+	postDCBig, err := toolEnv.L2Bridge.DepositCount(callOpts)
 	require.NoError(t, err)
-	require.Equal(t, diagnosis.L1SettledLER, common.Hash(root),
-		"L2 LER should match L1 settled LER after recovery")
+	require.Equal(t, expectedDC, uint32(postDCBig.Uint64()),
+		"deposit count should equal DivergencePoint+divergent+extraL2 after recovery")
 
 	inEmergency, err := toolEnv.L2Bridge.IsEmergencyState(callOpts)
 	require.NoError(t, err)
@@ -243,7 +264,7 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 
 	authKey := testEnv.Keys.SovereignAdmin
 
-	// Enable debug endpoint.
+	// Enable debug endpoint first.
 	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build first bfl tool environment.
@@ -252,9 +273,11 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 	require.NoError(t, err)
 	defer toolEnv.Close()
 
+	certSignerKey := loadCertSignerKey(t)
+
 	// Send first malicious cert.
-	fake1 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(1e18))}
-	cert1 := buildMaliciousCert(ctx, t, toolEnv, fake1)
+	fake1 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
+	cert1 := buildMaliciousCert(ctx, t, toolEnv, fake1, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert1, authKey)
 	log.Infof("[Case3] sent malicious cert1 height=%d", cert1.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert1.Height)
@@ -266,8 +289,8 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 	require.NoError(t, err)
 
 	// Send second malicious cert.
-	fake2 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(2e18))}
-	cert2 := buildMaliciousCert(ctx, t, toolEnv, fake2)
+	fake2 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(1)}
+	cert2 := buildMaliciousCert(ctx, t, toolEnv, fake2, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert2, authKey)
 	log.Infof("[Case3] sent malicious cert2 height=%d", cert2.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert2.Height)
@@ -316,7 +339,7 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 
 	authKey := testEnv.Keys.SovereignAdmin
 
-	// Enable debug endpoint.
+	// Enable debug endpoint first.
 	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build bfl tool environment.
@@ -325,9 +348,11 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	require.NoError(t, err)
 	defer toolEnv.Close()
 
+	certSignerKey := loadCertSignerKey(t)
+
 	// Send first malicious cert.
-	fake1 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(1e18))}
-	cert1 := buildMaliciousCert(ctx, t, toolEnv, fake1)
+	fake1 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
+	cert1 := buildMaliciousCert(ctx, t, toolEnv, fake1, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert1, authKey)
 	log.Infof("[Case4] sent malicious cert1 height=%d", cert1.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert1.Height)
@@ -338,8 +363,8 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	toolEnv, err = bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 
-	fake2 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(2e18))}
-	cert2 := buildMaliciousCert(ctx, t, toolEnv, fake2)
+	fake2 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(1)}
+	cert2 := buildMaliciousCert(ctx, t, toolEnv, fake2, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert2, authKey)
 	log.Infof("[Case4] sent malicious cert2 height=%d", cert2.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert2.Height)
@@ -347,7 +372,9 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	// Restore normal aggkit mode.
 	disableDebugSendCertEndpoint(ctx, t)
 
-	// Create real L2 bridge deposit.
+	// Create 2 real L2 bridge deposits so collectExtraL2Bridges returns a non-empty slice.
+	// With DivergencePoint=0 and l2CurrentDC=2, collectExtraL2Bridges(1,2)=[bridge at DC=1].
+	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
 	time.Sleep(15 * time.Second)
 
@@ -370,12 +397,16 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	err = bfl.ExecuteRecovery(recoveryCtx, toolEnv, diagnosis)
 	require.NoError(t, err)
 
-	// Verify.
+	// Verify: DC should equal DivergencePoint + divergent leaves + extra real bridges.
+	// For Case4, L2 LER will NOT match L1 settled LER because extra real L2 bridges were
+	// appended after the fake leaves; the next aggsender cert will advance L1 to match.
 	callOpts := &bind.CallOpts{Context: ctx}
-	root, err := toolEnv.L2Bridge.GetRoot(callOpts)
+	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
+		uint32(len(diagnosis.ExtraL2Bridges))
+	postDCBig, err := toolEnv.L2Bridge.DepositCount(callOpts)
 	require.NoError(t, err)
-	require.Equal(t, diagnosis.L1SettledLER, common.Hash(root),
-		"L2 LER should match L1 settled LER after recovery")
+	require.Equal(t, expectedDC, uint32(postDCBig.Uint64()),
+		"deposit count should equal DivergencePoint+divergent+extraL2 after recovery")
 
 	inEmergency, err := toolEnv.L2Bridge.IsEmergencyState(callOpts)
 	require.NoError(t, err)
@@ -393,7 +424,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 
 	authKey := testEnv.Keys.SovereignAdmin
 
-	// Create a divergent state using the debug endpoint.
+	// Enable debug endpoint first.
 	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
@@ -401,8 +432,10 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer toolEnv.Close()
 
-	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(big.NewInt(1e18))}
-	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits)
+	certSignerKey := loadCertSignerKey(t)
+
+	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
+	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
 	log.Infof("[APIFallback] sent malicious cert height=%d", cert.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert.Height)
@@ -545,26 +578,65 @@ func waitForCertificateToSettle(
 	require.NoError(t, err, "timeout waiting for certificate at height=%d to settle", expectedHeight)
 }
 
+// loadCertSignerKey loads the sequencer keystore (the agglayer proof signer for PP networks).
+func loadCertSignerKey(t *testing.T) *ecdsa.PrivateKey {
+	t.Helper()
+	keystorePath := filepath.Join(testEnv.EnvDir, "config", "001", "sequencer.keystore")
+	contents, err := os.ReadFile(filepath.Clean(keystorePath))
+	require.NoError(t, err, "read sequencer keystore")
+	key, err := gethkeystore.DecryptKey(contents, keystorePassword)
+	require.NoError(t, err, "decrypt sequencer keystore")
+	return key.PrivateKey
+}
+
 // buildMaliciousCert builds a Certificate with the given fake bridge exits, rooted at the current
-// settled LET state. The certificate is not sent; call sendMaliciousCertificate to submit it.
+// settled LET state (or height=0 if no settled cert exists yet), and signs it with certSignerKey.
+// The certificate is not sent; call sendMaliciousCertificate to submit it.
 func buildMaliciousCert(
 	ctx context.Context, t *testing.T,
 	toolEnv *bfl.Env,
 	fakeBridgeExits []*agglayertypes.BridgeExit,
+	certSignerKey *ecdsa.PrivateKey,
 ) *agglayertypes.Certificate {
 	t.Helper()
 	require.NotEmpty(t, fakeBridgeExits, "need at least one fake bridge exit")
 
-	// Step 1 — Query settled state from AggLayer.
-	info, err := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
-	require.NoError(t, err)
-	require.NotNil(t, info.SettledHeight, "no settled certificates; cannot build malicious cert")
-	require.NotNil(t, info.SettledLER)
-	require.NotNil(t, info.SettledLETLeafCount)
+	// Step 1 — Read current settled state from AggLayer.
+	// If no cert has settled yet (fresh environment), start from height=0 with empty state.
+	var certHeight uint64
+	var prevLER common.Hash
+	var existingLeafCount uint32
+	l1InfoTreeLeafCount := uint32(1) // default for height=0; L1 chain has at least 1 leaf
 
-	settledHeight := *info.SettledHeight
-	prevLER := *info.SettledLER
-	existingLeafCount := uint32(*info.SettledLETLeafCount)
+	info, infoErr := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
+	if infoErr == nil && info.SettledHeight != nil {
+		// A previous cert has settled: build on top of it.
+		certHeight = *info.SettledHeight + 1
+		prevLER = *info.SettledLER
+		existingLeafCount = uint32(*info.SettledLETLeafCount)
+
+		// Get the L1InfoTreeLeafCount from the settled cert in the aggsender DB.
+		// We query the SETTLED height to avoid picking up a stale malicious cert
+		// stored by a previous (failed) test run.
+		if settledCert, certErr := toolEnv.AggsenderRPC.GetCertificateHeaderPerHeight(info.SettledHeight); certErr == nil &&
+			settledCert != nil && settledCert.Header != nil {
+			l1InfoTreeLeafCount = settledCert.Header.L1InfoTreeLeafCount
+		}
+	} else {
+		// No settled cert yet — send the very first cert at height=0.
+		// Read the actual L2 bridge root (the empty-tree root is non-zero) and
+		// deposit count so prevLER and existingLeafCount are accurate.
+		callOpts := &bind.CallOpts{Context: ctx}
+		root, rootErr := toolEnv.L2Bridge.GetRoot(callOpts)
+		require.NoError(t, rootErr, "GetRoot for initial prevLER")
+		prevLER = common.Hash(root)
+
+		dcBig, dcErr := toolEnv.L2Bridge.DepositCount(callOpts)
+		require.NoError(t, dcErr, "DepositCount for initial leaf count")
+		existingLeafCount = uint32(dcBig.Uint64())
+
+		log.Infof("[buildMaliciousCert] no settled cert, height=0, prevLER=%s, dc=%d", prevLER, existingLeafCount)
+	}
 
 	// Step 2 — Fetch existing L2 bridge leaf hashes from bridge service.
 	existingHashes := make([]common.Hash, 0, existingLeafCount)
@@ -584,26 +656,60 @@ func buildMaliciousCert(
 	newLER, err := bfl.ComputeLERForNewLeaves(existingHashes, newHashes)
 	require.NoError(t, err, "ComputeLERForNewLeaves")
 
-	return &agglayertypes.Certificate{
-		NetworkID:         toolEnv.L2NetworkID,
-		Height:            settledHeight + 1,
-		PrevLocalExitRoot: prevLER,
-		NewLocalExitRoot:  newLER,
-		BridgeExits:       fakeBridgeExits,
+	cert := &agglayertypes.Certificate{
+		NetworkID:           toolEnv.L2NetworkID,
+		Height:              certHeight,
+		PrevLocalExitRoot:   prevLER,
+		NewLocalExitRoot:    newLER,
+		BridgeExits:         fakeBridgeExits,
+		L1InfoTreeLeafCount: l1InfoTreeLeafCount,
 	}
+
+	// Step 5 — Sign the certificate for PP (PessimisticProof) networks.
+	// AggchainDataMultisig.ExtractAggchainParams() returns ZeroHash, so the
+	// hash is the same whether computed before or after setting AggchainData.
+	hashToSign, err := validator.HashCertificateToSign(cert)
+	require.NoError(t, err, "HashCertificateToSign")
+	sig, err := crypto.Sign(hashToSign.Bytes(), certSignerKey)
+	require.NoError(t, err, "sign certificate hash")
+
+	cert.AggchainData = &agglayertypes.AggchainDataMultisig{
+		Multisig: &agglayertypes.Multisig{
+			Signatures: []agglayertypes.ECDSAMultisigEntry{
+				{Index: 0, Signature: sig},
+			},
+		},
+	}
+
+	return cert
 }
 
-// makeFakeBridgeExit builds a fake BridgeExit with the given amount.
-func makeFakeBridgeExit(amount *big.Int) *agglayertypes.BridgeExit {
+// makeFakeBridgeExit builds a fake BridgeExit using Amount=0 so the agglayer's PP
+// balance check cannot underflow (zero tokens exported = zero balance needed).
+//
+// exitIndex differentiates exits within the same test binary run so that Case3/4
+// (which send two malicious certs) produce unique leaf hashes for each cert.
+//
+// DestinationAddress is derived from bflRunNonce+exitIndex to ensure uniqueness across
+// runs (so agglayer does not deduplicate certs from previous runs) and within a run
+// (so Case3/4 certs produce distinct leaf hashes).
+//
+// Metadata is nil: BridgeExit.Hash() uses EmptyBytesHash (= keccak256([])) and the
+// forwardLET contract also computes keccak256([]) for empty metadata — they agree.
+func makeFakeBridgeExit(exitIndex int) *agglayertypes.BridgeExit {
+	// Derive a unique DestinationAddress from the run nonce and per-exit index.
+	addrBytes := crypto.Keccak256(append(append([]byte(nil), bflRunNonce...), byte(exitIndex)))
+	destAddr := common.BytesToAddress(addrBytes)
 	return &agglayertypes.BridgeExit{
 		LeafType: bridgesynctypes.LeafTypeAsset,
 		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      0, // mainnet
-			OriginTokenAddress: common.Address{}, // native ETH
+			OriginNetwork:      0,               // mainnet native token
+			OriginTokenAddress: common.Address{}, // native ETH address
 		},
-		DestinationNetwork: 1,
-		DestinationAddress: common.HexToAddress("0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"),
-		Amount:             amount,
+		DestinationNetwork: 0,        // L1 (mainnet); cannot exit to the same network as origin (L2=1)
+		DestinationAddress: destAddr, // unique per run+exitIndex
+		Amount:             big.NewInt(0), // zero amount avoids PP balance-underflow rejection
+		Metadata:           nil,           // nil: consistent with forwardLET contract's keccak256([])
 	}
 }
 
@@ -687,8 +793,14 @@ func prepareBFLToolConfig(t *testing.T, aggsenderRPCURL string) *bfl.Config {
 	patched = strings.ReplaceAll(patched, "http://op-geth-001:8545", l2URL)
 	patched = strings.ReplaceAll(patched, "http://agglayer:4443", agglayerGRPCURL)
 
-	// Append [BackwardForwardLET] section.
+	// Append [AgglayerClient] and [BackwardForwardLET] sections.
 	appendSection := fmt.Sprintf(`
+
+[AgglayerClient.GRPC]
+URL                = %q
+MinConnectTimeout  = "5s"
+RequestTimeout     = "300s"
+UseTLS             = false
 
 [BackwardForwardLET]
 BridgeServiceURL = %q
@@ -710,6 +822,7 @@ Method   = "local"
 Path     = %q
 Password = %q
 `,
+		agglayerGRPCURL,
 		bridgeServiceURL,
 		aggsenderRPCURL,
 		testEnv.L2.NetworkID,
