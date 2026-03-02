@@ -1742,42 +1742,6 @@ func (p *processor) GetSetClaimsPaged(
 	return setClaims, setClaimsCount, nil
 }
 
-// getCompactedClaimsCount returns the count of claims with compaction logic applied.
-// - If unset_claim exists for a global_index, count all claims with that global_index
-// - If no unset_claim exists, count only one per global_index (compacted)
-// The count represents the total across all pages, matching what would be returned
-// if all pages were queried.
-func (p *processor) getCompactedClaimsCount(ctx context.Context, whereClause string) (int, error) {
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	//nolint:gosec
-	query := fmt.Sprintf(`
-		WITH filtered_claims AS (
-			SELECT * FROM claim %s
-		)
-		SELECT
-			(SELECT COUNT(*) FROM filtered_claims
-			 WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = filtered_claims.global_index
-			 )) +
-			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims
-			 WHERE NOT EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = filtered_claims.global_index
-			 )) AS total_count;
-	`, whereClause)
-
-	count := 0
-	err := p.db.QueryRowContext(dbCtx, query).Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
-}
-
 // GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root,
 // ordered by block_num/block_pos ascending. If the claim table does not exist (e.g. L1
 // processor), returns nil, nil gracefully.
