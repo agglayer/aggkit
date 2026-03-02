@@ -360,6 +360,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
 				mockLERQuerier,
+				nil,
 				NewBaseFlowConfig(0, 0, false, true))
 			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverBuilderFlow(
@@ -479,6 +480,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // sotrage
 				nil, // l1InfoTreeDataQuerier,
 				nil, // lerQuerier
+				nil, // certQuerier
 				NewBaseFlowConfig(0, tc.startL2Block, false, true),
 			)
 			flow := NewAggchainProverBuilderFlow(
@@ -597,6 +599,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				nil, // mockStorage
 				nil, // mockL1InfoTreeDataQuerier
 				mockLERQuerier,
+				nil, // certQuerier
 				NewBaseFlowConfigDefault(),
 			)
 			aggchainFlow := NewAggchainProverBuilderFlow(

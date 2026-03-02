@@ -39,6 +39,7 @@ func NewBuilderFlow(
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	certQuerier types.CertificateQuerier,
 ) (types.AggsenderBuilderFlow, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
@@ -53,6 +54,7 @@ func NewBuilderFlow(
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			certQuerier,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -102,6 +104,7 @@ func NewBuilderFlow(
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			certQuerier,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -169,6 +172,7 @@ func CreateCommonFlowComponents(
 	agglayerBridgeL2Addr ethCommon.Address,
 	globalExitRootL1Addr ethCommon.Address,
 	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality,
+	certQuerier types.CertificateQuerier,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
@@ -196,6 +200,7 @@ func CreateCommonFlowComponents(
 
 	baseFlow := NewBaseFlow(
 		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
+		certQuerier,
 		NewBaseFlowConfig(
 			maxCertSize,
 			startL2Block,

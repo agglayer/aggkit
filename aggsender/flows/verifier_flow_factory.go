@@ -39,6 +39,7 @@ func NewVerifierFlow(
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			nil, // certQuerier not used in validator mode
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -69,6 +70,7 @@ func NewVerifierFlow(
 			cfg.AgglayerBridgeL2Addr,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			nil, // certQuerier not used in validator mode
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)

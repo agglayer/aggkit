@@ -133,6 +133,18 @@ func newAggsender(
 		return nil, err
 	}
 
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
+		cfg.SovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPCaller,
+		aggLayerClient,
+	)
+
 	flowManager, err := flows.NewBuilderFlow(
 		ctx,
 		cfg,
@@ -144,6 +156,7 @@ func newAggsender(
 		l2Syncer,
 		rollupDataQuerier,
 		committeeQuerier,
+		certQuerier,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
@@ -159,18 +172,6 @@ func newAggsender(
 			return db.RuntimeData{NetworkID: l2OriginNetwork}, nil
 		},
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
-	)
-
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
-		cfg.SovereignRollupAddr, l1Client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
-	}
-
-	certQuerier := query.NewCertificateQuerier(
-		l2Syncer,
-		aggchainFEPCaller,
-		aggLayerClient,
 	)
 
 	verifierFlow, err := flows.NewLocalVerifier(

@@ -539,7 +539,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockLERQuerier := mocks.NewLERQuerier(t)
 			logger := log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams")
 			baseFlow := NewBaseFlow(logger, mockL2BridgeQuerier,
-				mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, NewBaseFlowConfigDefault())
+				mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, nil, NewBaseFlowConfigDefault())
 			baseFlow.timeNowFunc = timeNowUTCForTest
 			ppFlow := NewPPBuilderFlow(
 				logger,

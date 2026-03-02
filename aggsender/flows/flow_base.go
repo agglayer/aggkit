@@ -76,6 +76,7 @@ type baseFlow struct {
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 	lerQuerier            types.LERQuerier
+	certQuerier           types.CertificateQuerier
 	cfg                   BaseFlowConfig
 	log                   types.Logger
 	// TimeNowFunc is a function that returns the current time as a uint32 timestamp.
@@ -89,6 +90,7 @@ func NewBaseFlow(
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
 	lerQuerier types.LERQuerier,
+	certQuerier types.CertificateQuerier,
 	cfg BaseFlowConfig,
 ) *baseFlow {
 	return &baseFlow{
@@ -97,6 +99,7 @@ func NewBaseFlow(
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		lerQuerier:            lerQuerier,
+		certQuerier:           certQuerier,
 		cfg:                   cfg,
 		timeNowFunc:           TimeNowUTC,
 	}
@@ -116,6 +119,21 @@ func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 	}
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
+
+	// For settled certs, re-derive the boundary from on-chain/bridgesync data using the same
+	// logic as the local validator. This ensures the aggsender and validator always agree on
+	// fromBlock even when the stored ToBlock is stale (e.g. set to 0 by the debug endpoint).
+	if lastSentCertificate != nil && lastSentCertificate.Status.IsSettled() && f.certQuerier != nil {
+		agglayerCert := converters.ConvertAggsenderCertHeaderToAgglayer(
+			lastSentCertificate, f.l2BridgeQuerier.OriginNetwork())
+		derivedToBlock, err := f.certQuerier.GetLastSettledCertificateToBlock(ctx, agglayerCert)
+		if err != nil {
+			return aggkitcommon.BlockRangeZero, 0,
+				fmt.Errorf("error deriving toBlock for settled cert %s: %w", lastSentCertificate.ID(), err)
+		}
+		previousToBlock = derivedToBlock
+	}
+
 	if previousToBlock >= lastL2BlockSynced {
 		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)

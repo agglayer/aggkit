@@ -130,6 +130,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				nil,
 				nil,
+				nil,
 				NewBaseFlowConfig(tt.maxCertSize, 0, false, true))
 
 			result, err := f.LimitCertSize(tt.fullCert)

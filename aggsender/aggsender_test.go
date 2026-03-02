@@ -251,7 +251,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		localValidator:         mockLocalValidator,
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
-				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
+				mockL1Querier, mockLERQuerier, nil, flows.NewBaseFlowConfigDefault()),
 			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
 	}
 
@@ -863,7 +863,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
-				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
+				l1InfoTreeQuerierMock, lerQuerier, nil, flows.NewBaseFlowConfigDefault()),
 			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
 	var flowMock *mocks.AggsenderBuilderFlow

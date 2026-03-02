@@ -1623,11 +1623,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return sync.ErrInconsistentState
 	}
 
-	// Create a context with database timeout for the transaction
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	tx, err := db.NewTx(dbCtx, p.db)
+	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		p.log.Errorf("failed to start transaction for block %d: %v", block.Num, err)
 		return err
@@ -1908,7 +1904,10 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
-	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+	var newDepositCount uint32
+	if event.PreviousRoot != bridgesynctypes.EmptyLER {
+		newDepositCount = uint32(event.PreviousDepositCount.Uint64()) + 1
+	}
 	newBlockPos := event.BlockPos
 	if blockPos != nil {
 		newBlockPos = *blockPos
@@ -1947,20 +1946,26 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			fromAddrPtr *common.Address
 		)
 
-		// let's see if we have exactly one archived bridge that matches the forward LET leaf
+		// let's see if we have exactly one archived bridge that matches the forward LET leaf.
 		// usually we should have exactly one match since to recover the LET on L2,
 		// we must have a backwards LET done which archives the bridges,
-		// and then a forward LET that re-adds them to the exit tree after fixing it
-		// however, in case of multiple matches, we cannot be sure which one to use,
-		// so we will just log and leave the txnSender and fromAddr fields empty
-		if len(archivedBridges) == 1 {
+		// and then a forward LET that re-adds them to the exit tree after fixing it.
+		// however, this is not always the case (e.g. when a ForwardLET is issued without
+		// a preceding BackwardLET). When no match is found, or when there are multiple matches
+		// (in which case we cannot determine which one to use), we leave the txnSender and
+		// fromAddr fields empty.
+		switch len(archivedBridges) {
+		case 1:
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
 			// It copies the fromAddr pointer, which could be nil
 			fromAddrPtr = archivedBridge.FromAddress
-		} else if len(archivedBridges) > 1 {
-			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s;"+
+		case 0:
+			p.log.Warnf("no archived bridge found that matches forward LET leaf %s; "+
+				"txnSender and fromAddr fields will be left empty", leaf.String())
+		default:
+			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s; "+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
 		}
 

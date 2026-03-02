@@ -111,6 +111,7 @@ func NewAggchainProofGenerationTool(
 		nil, // storage
 		l1InfoTreeQuerier,
 		nil, // lerQuerier
+		nil, // certQuerier
 		flows.NewBaseFlowConfigDefault(),
 	)
 	aggchainProofQuerier := query.NewAggchainProofQuery(
