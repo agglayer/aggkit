@@ -627,3 +627,5 @@ Capacity = 100
 URL = "http://agglayer:4443"
 UseTLS = false
 
+[L1Multidownloader]
+	Enabled = false

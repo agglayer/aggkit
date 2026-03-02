@@ -14,6 +14,7 @@ import (
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -1875,6 +1876,15 @@ func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error
 		}
 	} else {
 		lastRootHash = root.Hash
+	}
+
+	if ler == bridgesynctypes.EmptyLER {
+		// if the provided LER is the empty hash, the LER on the DB should be 0x00...0
+		if lastRootHash != aggkitcommon.ZeroHash {
+			return fmt.Errorf("local exit root mismatch: expected %s, got %s. Note that %s is used to represent the empty LER",
+				aggkitcommon.ZeroHash.String(), lastRootHash.String(), bridgesynctypes.EmptyLER.String())
+		}
+		return nil
 	}
 
 	if lastRootHash != ler {

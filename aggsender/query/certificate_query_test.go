@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -70,7 +71,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			name: "empty local exit root with imported bridge exit",
 			certificate: &agglayertypes.CertificateHeader{
 				Status:           agglayertypes.Settled,
-				NewLocalExitRoot: types.EmptyLER,
+				NewLocalExitRoot: bridgesynctypes.EmptyLER,
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				networkStatus := agglayertypes.NetworkInfo{
@@ -121,7 +122,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			name: "error getting latest settled imported bridge exit",
 			certificate: &agglayertypes.CertificateHeader{
 				Status:           agglayertypes.Settled,
-				NewLocalExitRoot: types.EmptyLER,
+				NewLocalExitRoot: bridgesynctypes.EmptyLER,
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, errors.New("agglayer error"))
@@ -132,7 +133,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			name: "error getting claim by global index",
 			certificate: &agglayertypes.CertificateHeader{
 				Status:           agglayertypes.Settled,
-				NewLocalExitRoot: types.EmptyLER,
+				NewLocalExitRoot: bridgesynctypes.EmptyLER,
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				networkStatus := agglayertypes.NetworkInfo{
@@ -150,7 +151,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			name: "error getting last settled L2 block",
 			certificate: &agglayertypes.CertificateHeader{
 				Status:           agglayertypes.Settled,
-				NewLocalExitRoot: types.EmptyLER,
+				NewLocalExitRoot: bridgesynctypes.EmptyLER,
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
@@ -162,7 +163,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			name: "all sources return zero values",
 			certificate: &agglayertypes.CertificateHeader{
 				Status:           agglayertypes.Settled,
-				NewLocalExitRoot: types.EmptyLER,
+				NewLocalExitRoot: bridgesynctypes.EmptyLER,
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
@@ -254,7 +255,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 		{
 			name: "empty local exit root with imported bridge exits",
 			certificate: &agglayertypes.Certificate{
-				NewLocalExitRoot:    types.EmptyLER,
+				NewLocalExitRoot:    bridgesynctypes.EmptyLER,
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{testIbe},
 			},
 			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
@@ -280,7 +281,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 		{
 			name: "empty local exit root with no imported bridge exits",
 			certificate: &agglayertypes.Certificate{
-				NewLocalExitRoot:    types.EmptyLER,
+				NewLocalExitRoot:    bridgesynctypes.EmptyLER,
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 			},
 			expectedBlock: 0, // max of 0, 0
@@ -312,7 +313,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 		{
 			name: "error getting claim by global index",
 			certificate: &agglayertypes.Certificate{
-				NewLocalExitRoot:    types.EmptyLER,
+				NewLocalExitRoot:    bridgesynctypes.EmptyLER,
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{testIbe},
 			},
 			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
@@ -323,7 +324,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 		{
 			name: "multiple imported bridge exits uses last one",
 			certificate: &agglayertypes.Certificate{
-				NewLocalExitRoot: types.EmptyLER,
+				NewLocalExitRoot: bridgesynctypes.EmptyLER,
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
 					{GlobalIndex: &agglayertypes.GlobalIndex{}}, // First one - should not be used
 					{GlobalIndex: &agglayertypes.GlobalIndex{}}, // Second one - should not be used

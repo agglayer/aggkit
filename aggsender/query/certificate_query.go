@@ -9,6 +9,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -184,7 +185,7 @@ func (c *certificateQuerier) CalculateCertificateTypeFromToBlock(certToBlock uin
 }
 
 func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRoot common.Hash) (uint64, error) {
-	if localExitRoot == types.EmptyLER {
+	if localExitRoot == bridgesynctypes.EmptyLER {
 		return 0, nil // Empty LER means no exit root, so return 0
 	}
 

@@ -19,6 +19,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/test/contracts/mintableerc20"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -92,9 +93,11 @@ type L2Config struct {
 
 // L2Contracts contains initialized L2 contract bindings
 type L2Contracts struct {
-	L2Bridge        *agglayerbridgel2.Agglayerbridgel2
-	L2BridgeAddress common.Address
-	GlobalExitRoot  *agglayergerl2.Agglayergerl2
+	L2Bridge             *agglayerbridgel2.Agglayerbridgel2
+	L2BridgeAddress      common.Address
+	GlobalExitRoot       *agglayergerl2.Agglayergerl2
+	MintableERC20        *mintableerc20.Mintableerc20
+	MintableERC20Address common.Address
 }
 
 // ClientsConfig contains RPC clients
@@ -290,6 +293,34 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("initialize global exit root contract: %w", err)
 	}
 
+	// Deploy MintableERC20 on L2 for use in tests that need to bridge L2-native tokens.
+	// L2-native tokens bypass the Local Balance Tree underflow check in AgglayerBridgeL2.
+	var deployerKey *ecdsa.PrivateKey
+	for _, account := range l2Network.Accounts {
+		if account.PrivateKey != nil && *account.PrivateKey != "" {
+			deployerKey, err = parsePrivateKey(*account.PrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("parse deployer key for MintableERC20: %w", err)
+			}
+			break
+		}
+	}
+	if deployerKey == nil {
+		return nil, fmt.Errorf("no L2 account with private key found for MintableERC20 deployment")
+	}
+	deployerAuth, err := bind.NewKeyedTransactorWithChainID(deployerKey, l2ChainID)
+	if err != nil {
+		return nil, fmt.Errorf("create deployer transactor for MintableERC20: %w", err)
+	}
+	erc20Addr, erc20Tx, erc20Contract, err := mintableerc20.DeployMintableerc20(deployerAuth, l2Client, "TestToken", "TEST")
+	if err != nil {
+		return nil, fmt.Errorf("deploy MintableERC20: %w", err)
+	}
+	if _, err := bind.WaitMined(ctx, l2Client, erc20Tx); err != nil {
+		return nil, fmt.Errorf("wait for MintableERC20 deployment: %w", err)
+	}
+	log.Infof("[LoadEnv] MintableERC20 deployed at %s", erc20Addr.Hex())
+
 	// Collect all L1 keys with private_key for the pool (deduplicate by address)
 	seenL1Addr := make(map[common.Address]bool)
 	var l1Keys []*ecdsa.PrivateKey
@@ -366,9 +397,11 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			ChainID:   l2ChainID,
 			NetworkID: l2NetworkID,
 			Contracts: L2Contracts{
-				L2Bridge:        l2Bridge,
-				L2BridgeAddress: l2BridgeAddr,
-				GlobalExitRoot:  globalExitRoot,
+				L2Bridge:             l2Bridge,
+				L2BridgeAddress:      l2BridgeAddr,
+				GlobalExitRoot:       globalExitRoot,
+				MintableERC20:        erc20Contract,
+				MintableERC20Address: erc20Addr,
 			},
 			Transactor: l2Transactor,
 		},

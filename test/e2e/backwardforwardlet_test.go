@@ -208,16 +208,19 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 
 	waitForCertificateToSettle(ctx, t, toolEnv, cert.Height)
 
-	// Restore normal aggkit mode.
-	disableDebugSendCertEndpoint(ctx, t)
-
-	// Create 2 real L2 bridge deposits so collectExtraL2Bridges returns a non-empty slice.
+	// Create 2 real L2 bridge deposits BEFORE disabling debug mode so that the bridge service
+	// (already running and synced) can index them quickly within createL2BridgeNoClaim's own
+	// poll. After the subsequent aggkit restart we wait for re-sync separately.
 	// With DivergencePoint=0 and l2CurrentDC=2, collectExtraL2Bridges(1,2)=[bridge at DC=1].
 	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
 
-	// Brief wait for bridge service indexing.
-	time.Sleep(15 * time.Second)
+	// Restore normal aggkit mode.
+	disableDebugSendCertEndpoint(ctx, t)
+
+	// After aggkit restart the bridge service re-syncs from genesis. Wait until it has
+	// re-indexed all L2 bridges so that Diagnose can see the extra bridges.
+	waitForBridgeServiceSynced(ctx, t)
 
 	// Re-build toolEnv.
 	toolEnv.Close()
@@ -369,14 +372,19 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	log.Infof("[Case4] sent malicious cert2 height=%d", cert2.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert2.Height)
 
-	// Restore normal aggkit mode.
-	disableDebugSendCertEndpoint(ctx, t)
-
-	// Create 2 real L2 bridge deposits so collectExtraL2Bridges returns a non-empty slice.
+	// Create 2 real L2 bridge deposits BEFORE disabling debug mode so the bridge service
+	// (already running and synced) can index them quickly within createL2BridgeNoClaim's own
+	// poll. After the subsequent aggkit restart we wait for re-sync separately.
 	// With DivergencePoint=0 and l2CurrentDC=2, collectExtraL2Bridges(1,2)=[bridge at DC=1].
 	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
-	time.Sleep(15 * time.Second)
+
+	// Restore normal aggkit mode.
+	disableDebugSendCertEndpoint(ctx, t)
+
+	// After aggkit restart the bridge service re-syncs from genesis. Wait until it has
+	// re-indexed all L2 bridges so that Diagnose can see the extra bridges.
+	waitForBridgeServiceSynced(ctx, t)
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
@@ -713,33 +721,56 @@ func makeFakeBridgeExit(exitIndex int) *agglayertypes.BridgeExit {
 	}
 }
 
-// createL2BridgeNoClaim performs an L2→L1 BridgeAsset call and waits for the bridge service
-// to index it. Does NOT claim on L1. Used to create "extra L2 bridges" for Case2/4 tests.
+// createL2BridgeNoClaim performs an L2→L1 BridgeAsset call using the MintableERC20 token
+// (L2-native tokens bypass the Local Balance Tree underflow check) and waits for the bridge
+// service to index it. Does NOT claim on L1. Used to create "extra L2 bridges" for Case2/4 tests.
 func createL2BridgeNoClaim(ctx context.Context, t *testing.T) {
 	t.Helper()
 	l2Opts, l2Key, err := testEnv.Keys.L2Keys.Checkout()
 	require.NoError(t, err, "checkout L2 key")
 	defer testEnv.Keys.L2Keys.Return(l2Key)
 
-	amount := big.NewInt(1e14) // 0.0001 ETH
-	l2Opts.Value = amount
-	defer func() { l2Opts.Value = nil }()
+	amount := big.NewInt(1e18) // 1 TEST token
 
-	log.Infof("[createL2BridgeNoClaim] sending L2 BridgeAsset")
+	// Mint tokens to the sender so they have a balance to bridge out.
+	log.Infof("[createL2BridgeNoClaim] minting TEST tokens to %s", l2Opts.From.Hex())
+	mintTx, err := testEnv.L2.Contracts.MintableERC20.Mint(l2Opts, l2Opts.From, amount)
+	require.NoError(t, err, "mint MintableERC20")
+	_, err = bind.WaitMined(ctx, testEnv.Clients.L2, mintTx)
+	require.NoError(t, err, "wait for mint tx")
+
+	// Approve the L2 bridge to pull tokens on behalf of the sender.
+	log.Infof("[createL2BridgeNoClaim] approving L2 bridge to spend TEST tokens")
+	approveTx, err := testEnv.L2.Contracts.MintableERC20.Approve(
+		l2Opts, testEnv.L2.Contracts.L2BridgeAddress, amount,
+	)
+	require.NoError(t, err, "approve L2 bridge for MintableERC20")
+	_, err = bind.WaitMined(ctx, testEnv.Clients.L2, approveTx)
+	require.NoError(t, err, "wait for approve tx")
+
+	// Bridge ERC20 tokens L2→L1. No ETH value needed.
+	log.Infof("[createL2BridgeNoClaim] sending L2 BridgeAsset (ERC20)")
 	tx, err := testEnv.L2.Contracts.L2Bridge.BridgeAsset(
-		l2Opts, 0, l2Opts.From, amount, common.Address{}, true, nil,
+		l2Opts, 0, l2Opts.From, amount, testEnv.L2.Contracts.MintableERC20Address, true, nil,
 	)
 	require.NoError(t, err, "L2 BridgeAsset")
 
 	receipt, err := bind.WaitMined(ctx, testEnv.Clients.L2, tx)
 	require.NoError(t, err, "wait for L2 BridgeAsset receipt")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "L2 BridgeAsset tx failed")
-	require.NotEmpty(t, receipt.Logs, "expected at least one log in BridgeAsset receipt")
 
-	// Parse the deposit count from the BridgeEvent.
-	bridgeEvent, err := testEnv.L2.Contracts.L2Bridge.ParseBridgeEvent(*receipt.Logs[0])
-	require.NoError(t, err, "parse L2 BridgeEvent")
-	depositCount := bridgeEvent.DepositCount
+	// Find the BridgeEvent log (ERC20 bridging also emits a Transfer log, so scan all logs).
+	var depositCount uint32
+	var foundBridgeEvent bool
+	for _, lg := range receipt.Logs {
+		bridgeEvent, parseErr := testEnv.L2.Contracts.L2Bridge.ParseBridgeEvent(*lg)
+		if parseErr == nil {
+			depositCount = bridgeEvent.DepositCount
+			foundBridgeEvent = true
+			break
+		}
+	}
+	require.True(t, foundBridgeEvent, "BridgeEvent not found in BridgeAsset receipt logs")
 	log.Infof("[createL2BridgeNoClaim] bridge tx mined dc=%d block=%d",
 		depositCount, receipt.BlockNumber.Uint64())
 
@@ -755,6 +786,32 @@ func createL2BridgeNoClaim(ctx context.Context, t *testing.T) {
 	)
 	require.NoError(t, err, "bridge service did not index L2 bridge dc=%d", depositCount)
 	log.Infof("[createL2BridgeNoClaim] bridge service indexed dc=%d", depositCount)
+}
+
+// waitForBridgeServiceSynced waits until the bridge service has re-indexed all L2 bridges up to
+// the current L2 deposit count. This is needed after an aggkit restart, because the bridge
+// service re-syncs from genesis and may take several minutes to process historical blocks.
+func waitForBridgeServiceSynced(ctx context.Context, t *testing.T) {
+	t.Helper()
+	callOpts := &bind.CallOpts{Context: ctx}
+	dcBig, err := testEnv.L2.Contracts.L2Bridge.DepositCount(callOpts)
+	require.NoError(t, err, "get L2 deposit count for bridge-service sync check")
+	if dcBig.Uint64() == 0 {
+		return
+	}
+	lastDC := uint32(dcBig.Uint64()) - 1
+	log.Infof("[waitForBridgeServiceSynced] waiting for bridge service to index dc=%d", lastDC)
+	err = pollWithBackoff(ctx, 10*time.Minute, 2*time.Second, 15*time.Second,
+		fmt.Sprintf("bridge-service-sync-to-dc%d", lastDC),
+		func() (bool, error) {
+			_, indexErr := testEnv.Clients.BridgeService.GetBridgeByDepositCount(
+				ctx, testEnv.L2.NetworkID, lastDC,
+			)
+			return indexErr == nil, nil
+		},
+	)
+	require.NoError(t, err, "bridge service did not sync to dc=%d", lastDC)
+	log.Infof("[waitForBridgeServiceSynced] bridge service synced to dc=%d", lastDC)
 }
 
 // prepareBFLToolConfig creates a temp config file for the backward/forward LET tool by:

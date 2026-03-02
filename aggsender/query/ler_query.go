@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/agglayer/aggkit/aggsender/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -50,7 +51,7 @@ func (l *lerDataQuerier) GetLastLocalExitRoot() (common.Hash, error) {
 	}
 
 	if rollupData.LastLocalExitRoot == aggkitcommon.ZeroHash {
-		return types.EmptyLER, nil
+		return bridgesynctypes.EmptyLER, nil
 	}
 
 	return rollupData.LastLocalExitRoot, nil
