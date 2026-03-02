@@ -101,7 +101,18 @@ func RunMigrationsDBExtended(logger aggkitcommon.Logger,
 	fullmigrations := migrationsParam
 	// In case of partial execution we ignore the base migrations
 	if maxMigrations == NoLimitMigrations {
-		fullmigrations = append(fullmigrations, migrations.GetBaseMigrations()...)
+		baseMigrations := migrations.GetBaseMigrations()
+		found := false
+		// If the base migration is included we skip adding twice
+		for _, m := range migrationsParam {
+			if m.ID == baseMigrations[0].ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fullmigrations = append(fullmigrations, baseMigrations...)
+		}
 	} else {
 		migrate.SetIgnoreUnknown(true)
 	}
