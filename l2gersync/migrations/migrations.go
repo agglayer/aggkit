@@ -58,5 +58,5 @@ func RunMigrationsWithList(dbPath string, migrations []types.Migration) error {
 func RunMigrationsDown(dbPath string, migrations []types.Migration, maxMigrations int) error {
 	originMigrations := make([]types.Migration, len(migrations))
 	copy(originMigrations, migrations)
-	return db.RunMigrationsDown(dbPath, originMigrations, maxMigrations)
+	return db.RunMigrationsDown(dbPath, originMigrations, nil, maxMigrations)
 }
