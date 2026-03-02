@@ -931,7 +931,7 @@ func (p *processor) GetClaimsPaged(
 	networkIDs []uint32, globalIndex *big.Int,
 ) ([]*Claim, int, error) {
 	whereClause := p.buildClaimsFilterClause(networkIDs, globalIndex)
-	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
+	claimsCount, err := p.getCompactedClaimsCount(ctx, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1506,6 +1506,46 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	return tokenMappings, nil
 }
 
+// getCompactedClaimsCount returns the count of claims with compaction logic applied.
+// - If unset_claim exists for a global_index, count all claims with that global_index
+// - If no unset_claim exists, count only one per global_index (compacted)
+// The count represents the total across all pages, matching what would be returned
+// if all pages were queried.
+func (p *processor) getCompactedClaimsCount(ctx context.Context, whereClause string) (int, error) {
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// Count query with compaction logic matching GetClaimsPaged:
+	// 1. Count all claims with unset_claim (no compaction, all returned)
+	// 2. Count distinct global_index for claims without unset_claim (compacted, one per global_index)
+	//nolint:gosec
+	query := fmt.Sprintf(`
+		WITH filtered_claims AS (
+			SELECT * FROM claim %s
+		)
+		SELECT
+			(SELECT COUNT(*) FROM filtered_claims
+			 WHERE EXISTS (
+				SELECT 1 FROM unset_claim uc
+				WHERE uc.global_index = filtered_claims.global_index
+			 )) +
+			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims
+			 WHERE NOT EXISTS (
+				SELECT 1 FROM unset_claim uc
+				WHERE uc.global_index = filtered_claims.global_index
+			 )) AS total_count;
+	`, whereClause)
+
+	count := 0
+	err := p.db.QueryRowContext(dbCtx, query).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 // buildNetworkIDsFilter builds SQL filter for the given network IDs
 func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 	placeholders := make([]string, len(networkIDs))
@@ -1657,8 +1697,6 @@ func buildGlobalIndexFilterClause(globalIndex *big.Int) string {
 }
 
 // GetSetClaimsPaged returns a paginated list of set claims
-//
-//nolint:dupl
 func (p *processor) GetSetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,
@@ -1702,42 +1740,6 @@ func (p *processor) GetSetClaimsPaged(
 	}
 
 	return setClaims, setClaimsCount, nil
-}
-
-// getCompactedClaimsCount returns the count of claims with compaction logic applied.
-// - If unset_claim exists for a global_index, count all claims with that global_index
-// - If no unset_claim exists, count only one per global_index (compacted)
-// The count represents the total across all pages, matching what would be returned
-// if all pages were queried.
-func (p *processor) getCompactedClaimsCount(ctx context.Context, whereClause string) (int, error) {
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	//nolint:gosec
-	query := fmt.Sprintf(`
-		WITH filtered_claims AS (
-			SELECT * FROM claim %s
-		)
-		SELECT
-			(SELECT COUNT(*) FROM filtered_claims
-			 WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = filtered_claims.global_index
-			 )) +
-			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims
-			 WHERE NOT EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = filtered_claims.global_index
-			 )) AS total_count;
-	`, whereClause)
-
-	count := 0
-	err := p.db.QueryRowContext(dbCtx, query).Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
 }
 
 // GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root,
