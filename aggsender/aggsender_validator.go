@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
@@ -56,6 +57,7 @@ func NewAggsenderValidator(ctx context.Context,
 	}, nil
 }
 func (a *AggsenderValidator) Start(ctx context.Context) {
+	metrics.Register()
 	a.validatorService.Start(ctx)
 }
 
