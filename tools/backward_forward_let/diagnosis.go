@@ -2,6 +2,7 @@ package backward_forward_let
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -9,12 +10,26 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
+	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
+
+// aggsenderRPCClient is the subset of rpcclient.Client used by the tool and its tests.
+type aggsenderRPCClient interface {
+	GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error)
+	GetCertificateHeaderPerHeight(height *uint64) (*aggsendertypes.Certificate, error)
+	DebugSendCertificate(cert *agglayertypes.Certificate, privateKey *ecdsa.PrivateKey) (common.Hash, error)
+}
+
+// bridgeServiceClient is the subset of bridgeservice.Client used by the diagnosis tool.
+type bridgeServiceClient interface {
+	GetBridgeByDepositCount(ctx context.Context, networkID uint32, depositCount uint32) (*bridgeservicetypes.BridgeResponse, error)
+}
 
 // Diagnose compares the AggLayer's settled L1 state against L2's on-chain bridge state,
 // classifies the divergence into one of 4 runbook cases, and returns a DiagnosisResult.
@@ -76,13 +91,17 @@ func Diagnose(ctx context.Context, env *Env) (*DiagnosisResult, error) {
 	}
 
 	// Step 4 — Find DivergencePoint by walking settled certificates from newest to oldest.
-	divergentLeaves, divPoint, divFound, apiErr := findDivergencePoint(ctx, env, result.L1SettledHeight,
-		result.L1SettledDepositCount)
-	if apiErr != nil {
-		// Aggsender API was unreachable. Return partial result.
+	divergentLeaves, divPoint, divFound, missingErr := findDivergencePoint(ctx, env, result.L1SettledHeight,
+		result.L1SettledDepositCount, result.L1SettledCertificateID)
+	if missingErr != nil {
+		// One or more heights had no bridge exit data. Return partial result.
 		result.AggsenderAPIFailed = true
-		result.FailedCertHeight = apiErr.height
-		result.FailedCertID = apiErr.certID
+		result.MissingCerts = missingErr.missing
+		// Back-compat: populate deprecated fields from the first entry.
+		if len(missingErr.missing) > 0 {
+			result.FailedCertHeight = missingErr.missing[0].Height
+			result.FailedCertID = missingErr.missing[0].CertID
+		}
 		return result, nil
 	}
 
@@ -112,34 +131,66 @@ func Diagnose(ctx context.Context, env *Env) (*DiagnosisResult, error) {
 	return result, nil
 }
 
-// aggsenderAPIError carries context about a failed aggsender RPC call.
-type aggsenderAPIError struct {
-	height uint64
-	certID common.Hash
+// missingCertsError is returned when one or more heights have no bridge exit data.
+type missingCertsError struct {
+	missing []MissingCertInfo
+}
+
+// getBridgeExitsForHeight fetches bridge exits for a certificate height using a
+// two-source fallback chain:
+//  1. Aggsender RPC (primary) — works when the aggsender DB is intact.
+//  2. JSON override file (secondary) — operator-supplied pre-extracted data.
+//
+// An error is returned only when both sources fail or the override has no entry
+// for the given height.
+func getBridgeExitsForHeight(env *Env, height uint64) ([]*agglayertypes.BridgeExit, error) {
+	exits, err := env.AggsenderRPC.GetCertificateBridgeExits(&height)
+	if err == nil {
+		return exits, nil
+	}
+	if env.BridgeExitsOverride != nil {
+		if overrideExits, ok := env.BridgeExitsOverride.GetExits(height); ok {
+			return overrideExits, nil
+		}
+	}
+	return nil, fmt.Errorf("no bridge exit data for height %d: aggsender: %w", height, err)
 }
 
 // findDivergencePoint walks settled certificate heights from newest to oldest.
-// It returns (divergentLeaves, divergencePoint, found, apiError).
-// If apiError is non-nil, the aggsender RPC failed and the result is partial.
+// It returns (divergentLeaves, divergencePoint, found, missingCertsError).
+// If missingCertsError is non-nil, one or more heights had no bridge exit data and
+// the result is partial. The caller must supply override data for all missing heights
+// before the diagnosis can be completed.
 func findDivergencePoint(
 	ctx context.Context,
 	env *Env,
 	settledHeight uint64,
 	totalSettledLeaves uint32,
-) ([]*agglayertypes.BridgeExit, uint32, bool, *aggsenderAPIError) {
+	settledCertID common.Hash,
+) ([]*agglayertypes.BridgeExit, uint32, bool, *missingCertsError) {
 	dcEnd := totalSettledLeaves
 	var divergentLeaves []*agglayertypes.BridgeExit
+	var missing []MissingCertInfo
 
 	for h := settledHeight; ; h-- {
-		exits, err := env.AggsenderRPC.GetCertificateBridgeExits(&h)
+		exits, err := getBridgeExitsForHeight(env, h)
 		if err != nil {
-			// Determine cert ID for the error report from the agglayer client if possible.
-			var certID common.Hash
-			hdr, hdrErr := env.AgglayerClient.GetLatestSettledCertificateHeader(ctx, env.L2NetworkID)
-			if hdrErr == nil && hdr != nil {
-				certID = hdr.CertificateID
+			// Determine cert ID for the error report.
+			// Only the latest settled height can have its cert ID auto-resolved.
+			certIDResolved := h == settledHeight && settledCertID != (common.Hash{})
+			certID := common.Hash{}
+			if certIDResolved {
+				certID = settledCertID
 			}
-			return nil, 0, false, &aggsenderAPIError{height: h, certID: certID}
+			missing = append(missing, MissingCertInfo{
+				Height:         h,
+				CertID:         certID,
+				CertIDResolved: certIDResolved,
+			})
+			if h == 0 {
+				break
+			}
+			continue
 		}
 
 		n := uint32(len(exits))
@@ -156,18 +207,26 @@ func findDivergencePoint(
 		// Compare each exit in this certificate against the L2 bridge service.
 		allMatch := checkCertExitsMatchL2(ctx, env, exits, dcStart)
 
-		if allMatch {
-			// This certificate fully matches L2; divergence starts after it.
+		if allMatch && len(missing) == 0 {
+			// No missing entries and this cert fully matches L2; divergence starts after it.
 			return divergentLeaves, dcEnd - 1, true, nil
 		}
 
-		// Prepend exits (maintain ascending deposit-count order).
-		divergentLeaves = append(exits, divergentLeaves...)
-		dcEnd = dcStart
+		if !allMatch {
+			// Prepend exits (maintain ascending deposit-count order) and advance window.
+			divergentLeaves = append(exits, divergentLeaves...)
+			dcEnd = dcStart
+		}
+		// If allMatch but missing > 0: the walk is incomplete due to missing heights above.
+		// Continue to collect any remaining missing heights below this cert.
 
 		if h == 0 {
 			break
 		}
+	}
+
+	if len(missing) > 0 {
+		return nil, 0, false, &missingCertsError{missing: missing}
 	}
 
 	// No fully-matching certificate found.
@@ -303,12 +362,7 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 	}
 
 	if result.AggsenderAPIFailed {
-		fmt.Fprintln(w, "WARNING: Aggsender RPC was unreachable during diagnosis.")
-		fmt.Fprintf(w, "  Failed certificate height: %d\n", result.FailedCertHeight)
-		fmt.Fprintf(w, "  Failed certificate ID:     %s\n", result.FailedCertID.Hex())
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Action required: contact your AggLayer admin with the above certificate details.")
-		fmt.Fprintln(w, "Recovery cannot proceed until the aggsender RPC is accessible.")
+		printMissingCertReport(w, result)
 		return
 	}
 
@@ -372,6 +426,73 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 	// Recovery summary.
 	fmt.Fprintln(w, "=== Recovery Plan ===")
 	printRecoveryPlanSummary(w, result)
+}
+
+// printMissingCertReport prints actionable, copy-pasteable instructions when one
+// or more certificate heights had no bridge exit data from any source.
+// It lists each missing height with its cert ID (or UNKNOWN), explains how to call
+// admin_getCertificate on the agglayer, shows the override file template with the
+// actual heights, and prints the re-run command.
+func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
+	fmt.Fprintln(w, "WARNING: Aggsender RPC returned no bridge exit data for the following certificate heights.")
+	fmt.Fprintln(w, "Recovery cannot proceed until this data is provided.")
+	fmt.Fprintln(w)
+
+	n := len(result.MissingCerts)
+	heightWord := "heights"
+	if n == 1 {
+		heightWord = "height"
+	}
+	fmt.Fprintf(w, "Missing certificates (%d %s):\n", n, heightWord)
+
+	hasUnknown := false
+	for _, mc := range result.MissingCerts {
+		if mc.CertIDResolved {
+			fmt.Fprintf(w, "  Height %-6d  CertID: %s  [ID auto-resolved]\n",
+				mc.Height, mc.CertID.Hex())
+		} else {
+			fmt.Fprintf(w, "  Height %-6d  CertID: UNKNOWN            [contact agglayer admin for cert ID]\n",
+				mc.Height)
+			hasUnknown = true
+		}
+	}
+	fmt.Fprintln(w)
+
+	if hasUnknown {
+		fmt.Fprintln(w, "NOTE: For heights with UNKNOWN cert IDs, ask the agglayer admin to look up")
+		fmt.Fprintln(w, "  (network_id, height) in the agglayer's certificate_per_network_cf column family,")
+		fmt.Fprintln(w, "  or check aggsender submission logs for the certificate ID at that height.")
+		fmt.Fprintln(w)
+	}
+
+	fmt.Fprintln(w, "To extract bridge exits for each KNOWN cert ID:")
+	fmt.Fprintln(w, "  POST http://<agglayer-admin-url>/")
+	fmt.Fprintln(w, "  Content-Type: application/json")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, `  {"jsonrpc":"2.0","method":"admin_getCertificate","params":["<CertID>"],"id":1}`)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  The response is [Certificate, CertificateHeader|null].")
+	fmt.Fprintln(w, `  Extract the "bridge_exits" field from the Certificate object.`)
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "Build a JSON override file in this format:")
+	fmt.Fprintln(w, "  {")
+	fmt.Fprintln(w, `    "network_id": <L2NetworkID>,`)
+	fmt.Fprintln(w, `    "heights": {`)
+	for i, mc := range result.MissingCerts {
+		suffix := ","
+		if i == n-1 {
+			suffix = ""
+		}
+		fmt.Fprintf(w, "      \"%d\": [ ...bridge_exits from admin_getCertificate response... ]%s\n",
+			mc.Height, suffix)
+	}
+	fmt.Fprintln(w, "    }")
+	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "Re-run the tool with:")
+	fmt.Fprintln(w, "  backward-forward-let --cfg <config> --cert-exits-file <path-to-override.json>")
 }
 
 func caseDescription(c RecoveryCase) string {

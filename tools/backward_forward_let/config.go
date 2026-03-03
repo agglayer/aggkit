@@ -49,6 +49,13 @@ type BackwardForwardLETConfig struct {
 
 	// L2NetworkID is the network ID of the L2 chain.
 	L2NetworkID uint32 `mapstructure:"L2NetworkID"`
+
+	// CertificateExitsFile is an optional path to a JSON override file containing
+	// pre-extracted bridge exits keyed by certificate height. When set, used as a
+	// fallback if the aggsender RPC cannot supply bridge exits for a height.
+	// Obtain the file by calling admin_getCertificate on the agglayer for each
+	// cert ID reported in the tool's missing-cert output.
+	CertificateExitsFile string `mapstructure:"CertificateExitsFile"`
 }
 
 // LoadConfig reads the TOML config file(s) specified by --cfg and unmarshals the

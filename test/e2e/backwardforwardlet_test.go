@@ -9,10 +9,17 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-rpc/rpc"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/log"
+	bfl "github.com/agglayer/aggkit/tools/backward_forward_let"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,12 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
-
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/validator"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
-	"github.com/agglayer/aggkit/log"
-	bfl "github.com/agglayer/aggkit/tools/backward_forward_let"
 )
 
 const (
@@ -58,6 +59,9 @@ type summaryForBFLToolConfig struct {
 				GrpcRPC struct {
 					External string `json:"external"`
 				} `json:"grpc_rpc"`
+				AdminAPI struct {
+					External string `json:"external"`
+				} `json:"admin_api"`
 			} `json:"services"`
 		} `json:"agglayer"`
 		L2Networks map[string]struct {
@@ -421,8 +425,15 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	require.False(t, inEmergency, "L2 bridge should not be in emergency state after recovery")
 }
 
-// TestBackwardForwardLET_AggsenderAPIFallback verifies that Diagnose reports AggsenderAPIFailed
-// when the aggsender RPC URL is unreachable while there is a real divergence.
+// TestBackwardForwardLET_AggsenderAPIFallback verifies the full recovery path when the aggsender
+// DB is wiped. The test:
+//  1. Creates a Case2 diverged state (1 fake bridge exit + 2 real L2 bridges).
+//  2. Wipes the aggsender DB by restarting with a fresh StoragePath.
+//  3. Runs diagnosis — expects AggsenderAPIFailed=true with cert IDs in MissingCerts.
+//  4. Uses the reported cert IDs to call admin_getCertificate on the agglayer admin API.
+//  5. Builds a JSON override file from the fetched bridge exits.
+//  6. Runs diagnosis again with the override file — expects Case2 classification.
+//  7. Executes recovery and verifies the post-recovery L2 state.
 func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
@@ -432,7 +443,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 
 	authKey := testEnv.Keys.SovereignAdmin
 
-	// Enable debug endpoint first.
+	// Phase 1: Setup — same structure as TestBackwardForwardLET_Case2.
 	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
@@ -445,32 +456,137 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
 	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
-	log.Infof("[APIFallback] sent malicious cert height=%d", cert.Height)
+	log.Infof("[AggsenderFallback] sent malicious cert height=%d", cert.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert.Height)
 
-	// Restore normal aggkit mode.
+	createL2BridgeNoClaim(ctx, t)
+	createL2BridgeNoClaim(ctx, t)
+
 	disableDebugSendCertEndpoint(ctx, t)
+	waitForBridgeServiceSynced(ctx, t)
 
-	// Now diagnose with an INVALID aggsender RPC URL.
-	toolEnv.Close()
-	invalidAggsenderURL := "http://localhost:19999" // nothing listening here
-	cfgBad := prepareBFLToolConfig(t, invalidAggsenderURL)
-	toolEnvBad, err := bfl.SetupEnv(ctx, cfgBad)
+	// Phase 2: Wipe aggsender DB by restarting with a fresh StoragePath.
+	// Save the current config so Phase 8 cleanup can restore it.
+	configPath := testEnv.GetAggkitConfigPath()
+	preWipeConfig, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	defer toolEnvBad.Close()
+	t.Cleanup(func() {
+		// Phase 8: Restore the pre-wipe aggkit config.
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), bflRestartTimeout)
+		defer cleanupCancel()
+		if restoreErr := testEnv.RestartAggkitWithConfig(cleanupCtx, func(cfgPath string) error {
+			return os.WriteFile(cfgPath, preWipeConfig, 0o600)
+		}); restoreErr != nil {
+			t.Logf("WARNING: failed to restore aggkit config after DB wipe: %v", restoreErr)
+		}
+	})
 
-	diagnosis, err := bfl.Diagnose(ctx, toolEnvBad)
-	require.NoError(t, err, "Diagnose should not error even when aggsender API is unreachable")
+	freshPath := fmt.Sprintf("/tmp/aggsender-empty-%d", time.Now().UnixNano())
+	restartCtx, restartCancel := context.WithTimeout(ctx, bflRestartTimeout)
+	defer restartCancel()
+	err = testEnv.RestartAggkitWithConfig(restartCtx, func(cfgPath string) error {
+		content, readErr := os.ReadFile(cfgPath)
+		if readErr != nil {
+			return readErr
+		}
+		// Inject StoragePath right after the [AggSender] header so it takes precedence
+		// over any existing StoragePath further down in the section.
+		patched := strings.Replace(
+			string(content), "[AggSender]",
+			"[AggSender]\nStoragePath = \""+freshPath+"\"", 1,
+		)
+		return os.WriteFile(cfgPath, []byte(patched), 0o600)
+	})
+	require.NoError(t, err, "restart aggkit with fresh aggsender storage")
 
-	// If no divergence exists, we cannot test the API failure path.
-	if diagnosis.Case == bfl.NoDivergence {
-		t.Skip("system has no divergence; AggsenderAPIFallback test requires a divergent state")
+	// Wait for bridge service to re-sync after the restart.
+	waitForBridgeServiceSynced(ctx, t)
+
+	// Phase 3: First diagnosis — should report AggsenderAPIFailed because the aggsender DB
+	// is empty and cannot supply bridge exits for any settled height.
+	toolEnv.Close()
+	cfg3 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	toolEnv, err = bfl.SetupEnv(ctx, cfg3)
+	require.NoError(t, err)
+
+	diagnosis, err := bfl.Diagnose(ctx, toolEnv)
+	require.NoError(t, err)
+	require.True(t, diagnosis.AggsenderAPIFailed,
+		"expected AggsenderAPIFailed=true after aggsender DB wipe")
+	require.NotEmpty(t, diagnosis.MissingCerts,
+		"expected MissingCerts to be non-empty after aggsender DB wipe")
+	// The malicious cert IS the latest settled cert, so its ID is auto-resolved.
+	require.True(t, diagnosis.MissingCerts[0].CertIDResolved,
+		"expected latest settled cert ID to be auto-resolved via agglayer gRPC")
+
+	// Phase 4: Extract bridge exits from the agglayer admin API using cert IDs from tool output.
+	summaryPath := filepath.Join(testEnv.EnvDir, "summary.json")
+	summaryData, err := os.ReadFile(summaryPath)
+	require.NoError(t, err)
+	var summary summaryForBFLToolConfig
+	require.NoError(t, json.Unmarshal(summaryData, &summary))
+	adminURL := summary.Networks.Agglayer.Services.AdminAPI.External
+	require.NotEmpty(t, adminURL, "agglayer admin API URL not found in summary.json")
+
+	type overrideFileFormat struct {
+		NetworkID   uint32                                 `json:"network_id"`
+		Description string                                 `json:"description"`
+		Heights     map[string][]*agglayertypes.BridgeExit `json:"heights"`
+	}
+	of := overrideFileFormat{
+		NetworkID:   testEnv.L2.NetworkID,
+		Description: "extracted by E2E test from agglayer admin API",
+		Heights:     make(map[string][]*agglayertypes.BridgeExit),
+	}
+	for _, mc := range diagnosis.MissingCerts {
+		require.True(t, mc.CertIDResolved,
+			"cert ID at height %d could not be resolved; cannot call admin API", mc.Height)
+		adminCert := callAgglayerAdminGetCertificate(t, adminURL, mc.CertID)
+		require.NotNil(t, adminCert, "admin_getCertificate returned nil cert for height %d", mc.Height)
+		of.Heights[strconv.FormatUint(mc.Height, 10)] = adminCert.BridgeExits
 	}
 
-	require.True(t, diagnosis.AggsenderAPIFailed,
-		"expected AggsenderAPIFailed=true when aggsender RPC is unreachable")
-	require.NotZero(t, diagnosis.FailedCertHeight,
-		"expected FailedCertHeight to be set when AggsenderAPIFailed")
+	// Phase 5: Build JSON override file.
+	overrideBytes, err := json.Marshal(of)
+	require.NoError(t, err)
+	overridePath := filepath.Join(t.TempDir(), "override.json")
+	require.NoError(t, os.WriteFile(overridePath, overrideBytes, 0o600))
+
+	// Phase 6: Second diagnosis with override file — should classify as Case2.
+	toolEnv.Close()
+	cfg6 := prepareBFLToolConfigWithOverride(t, testEnv.AggsenderRPCURL, overridePath)
+	toolEnv, err = bfl.SetupEnv(ctx, cfg6)
+	require.NoError(t, err)
+
+	diagnosis2, err := bfl.Diagnose(ctx, toolEnv)
+	require.NoError(t, err)
+	require.False(t, diagnosis2.AggsenderAPIFailed,
+		"expected AggsenderAPIFailed=false with override file")
+	require.Equal(t, bfl.Case2, diagnosis2.Case,
+		"expected Case2 diagnosis with override file")
+	require.Len(t, diagnosis2.DivergentLeaves, 1,
+		"expected 1 divergent leaf (the fake bridge exit)")
+	require.NotEmpty(t, diagnosis2.ExtraL2Bridges,
+		"expected extra L2 bridges for Case2")
+
+	// Phase 7: Recovery.
+	recoveryCtx, recoveryCancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer recoveryCancel()
+	err = bfl.ExecuteRecovery(recoveryCtx, toolEnv, diagnosis2)
+	require.NoError(t, err)
+
+	// Verify post-recovery L2 state.
+	callOpts := &bind.CallOpts{Context: ctx}
+	expectedDC := diagnosis2.DivergencePoint + uint32(len(diagnosis2.DivergentLeaves)) +
+		uint32(len(diagnosis2.ExtraL2Bridges))
+	postDCBig, err := toolEnv.L2Bridge.DepositCount(callOpts)
+	require.NoError(t, err)
+	require.Equal(t, expectedDC, uint32(postDCBig.Uint64()),
+		"deposit count should equal DivergencePoint+divergent+extraL2 after recovery")
+
+	inEmergency, err := toolEnv.L2Bridge.IsEmergencyState(callOpts)
+	require.NoError(t, err)
+	require.False(t, inEmergency, "L2 bridge should not be in emergency state after recovery")
 }
 
 // =============================================================================
@@ -839,6 +955,20 @@ func waitForBridgeServiceSynced(ctx context.Context, t *testing.T) {
 // aggsenderRPCURL overrides the default one from summary.json (used for testing API fallback).
 func prepareBFLToolConfig(t *testing.T, aggsenderRPCURL string) *bfl.Config {
 	t.Helper()
+	return buildBFLToolConfig(t, aggsenderRPCURL, "")
+}
+
+// prepareBFLToolConfigWithOverride is like prepareBFLToolConfig but also sets
+// CertificateExitsFile so the tool uses the JSON override file for bridge exit data.
+func prepareBFLToolConfigWithOverride(t *testing.T, aggsenderRPCURL, certExitsFile string) *bfl.Config {
+	t.Helper()
+	return buildBFLToolConfig(t, aggsenderRPCURL, certExitsFile)
+}
+
+// buildBFLToolConfig is the shared implementation for prepareBFLToolConfig and
+// prepareBFLToolConfigWithOverride. certExitsFile may be empty.
+func buildBFLToolConfig(t *testing.T, aggsenderRPCURL, certExitsFile string) *bfl.Config {
+	t.Helper()
 
 	summaryPath := filepath.Join(testEnv.EnvDir, "summary.json")
 	summaryData, err := os.ReadFile(summaryPath)
@@ -868,6 +998,12 @@ func prepareBFLToolConfig(t *testing.T, aggsenderRPCURL string) *bfl.Config {
 	patched = strings.ReplaceAll(patched, "http://op-geth-001:8545", l2URL)
 	patched = strings.ReplaceAll(patched, "http://agglayer:4443", agglayerGRPCURL)
 
+	// Optional override file line.
+	certExitsFileLine := ""
+	if certExitsFile != "" {
+		certExitsFileLine = fmt.Sprintf("\nCertificateExitsFile = %q", certExitsFile)
+	}
+
 	// Append [AgglayerClient] and [BackwardForwardLET] sections.
 	appendSection := fmt.Sprintf(`
 
@@ -880,7 +1016,7 @@ UseTLS             = false
 [BackwardForwardLET]
 BridgeServiceURL = %q
 AggsenderRPCURL  = %q
-L2NetworkID      = %d
+L2NetworkID      = %d%s
 
 [BackwardForwardLET.GERRemoverKey]
 Method   = "local"
@@ -901,6 +1037,7 @@ Password = %q
 		bridgeServiceURL,
 		aggsenderRPCURL,
 		testEnv.L2.NetworkID,
+		certExitsFileLine,
 		sovereignAdminKeyPath, keystorePassword,
 		sovereignAdminKeyPath, keystorePassword,
 		sovereignAdminKeyPath, keystorePassword,
@@ -914,6 +1051,28 @@ Password = %q
 	cfg, err := bfl.LoadConfig(cliCtx)
 	require.NoError(t, err)
 	return cfg
+}
+
+// callAgglayerAdminGetCertificate calls admin_getCertificate on the agglayer admin JSON-RPC
+// and returns the Certificate. The cert ID is the agglayer CertificateId resolved from
+// diagnosis.MissingCerts. Requires debug-mode = true in the agglayer config.
+func callAgglayerAdminGetCertificate(
+	t *testing.T,
+	adminURL string,
+	certID common.Hash,
+) *agglayertypes.Certificate {
+	t.Helper()
+	response, err := rpc.JSONRPCCall(adminURL, "admin_getCertificate", certID)
+	require.NoError(t, err, "admin_getCertificate RPC call failed for certID=%s", certID.Hex())
+	require.Nil(t, response.Error, "admin_getCertificate returned error: %v", response.Error)
+	// The result is [Certificate, CertificateHeader|null].
+	var pair [2]json.RawMessage
+	require.NoError(t, json.Unmarshal(response.Result, &pair),
+		"failed to unmarshal admin_getCertificate result as [Certificate, CertificateHeader|null]")
+	var cert agglayertypes.Certificate
+	require.NoError(t, json.Unmarshal(pair[0], &cert),
+		"failed to unmarshal Certificate from admin_getCertificate pair[0]")
+	return &cert
 }
 
 // buildBFLToolCLIContext creates a *cli.Context with --cfg pointing to configPath

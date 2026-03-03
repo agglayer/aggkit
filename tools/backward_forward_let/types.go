@@ -64,7 +64,32 @@ type DiagnosisResult struct {
 	// AggsenderAPIFailed is set when the aggsender RPC was unreachable during the divergence walk.
 	AggsenderAPIFailed bool
 
-	// FailedCertHeight and FailedCertID are set when AggsenderAPIFailed is true.
+	// MissingCerts lists the certificate heights for which no bridge exit data
+	// was available. Populated when AggsenderAPIFailed is true.
+	// The operator should fetch each cert from the agglayer admin API using
+	// the provided CertID, then supply a JSON override file.
+	MissingCerts []MissingCertInfo
+
+	// Deprecated: use MissingCerts instead. FailedCertHeight is the first height
+	// for which no bridge exit data was available.
 	FailedCertHeight uint64
-	FailedCertID     common.Hash
+
+	// Deprecated: use MissingCerts instead. FailedCertID is the cert ID for
+	// FailedCertHeight, if it could be resolved.
+	FailedCertID common.Hash
+}
+
+// MissingCertInfo describes a certificate height for which bridge exits
+// could not be obtained from any available source.
+type MissingCertInfo struct {
+	// Height is the certificate height that is missing.
+	Height uint64
+
+	// CertID is the agglayer CertificateId for this height, if it could be
+	// resolved via the public gRPC. Zero-value when not resolvable.
+	CertID common.Hash
+
+	// CertIDResolved is true when CertID was successfully resolved.
+	// When false, the operator must contact the agglayer admin.
+	CertIDResolved bool
 }

@@ -27,13 +27,17 @@ type Env struct {
 	L2Client *ethclient.Client
 
 	// BridgeService is the aggkit bridge service REST client.
-	BridgeService *bridgeservice.Client
+	BridgeService bridgeServiceClient
 
 	// AgglayerClient is the gRPC client for the AggLayer node.
 	AgglayerClient agglayer.AgglayerClientInterface
 
 	// AggsenderRPC is the JSON-RPC client for the running aggsender process.
-	AggsenderRPC *rpcclient.Client
+	AggsenderRPC aggsenderRPCClient
+
+	// BridgeExitsOverride is loaded from CertificateExitsFile if configured.
+	// nil when no override file is specified.
+	BridgeExitsOverride *BridgeExitsOverride
 
 	// L2Bridge is the bound L2 bridge contract.
 	L2Bridge *agglayerbridgel2.Agglayerbridgel2
@@ -88,14 +92,24 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		return nil, fmt.Errorf("initialize L2 bridge binding: %w", err)
 	}
 
+	var bridgeExitsOverride *BridgeExitsOverride
+	if cfg.BackwardForwardLET.CertificateExitsFile != "" {
+		bridgeExitsOverride, err = LoadBridgeExitsOverride(cfg.BackwardForwardLET.CertificateExitsFile)
+		if err != nil {
+			l2Client.Close()
+			return nil, fmt.Errorf("load certificate exits override: %w", err)
+		}
+	}
+
 	return &Env{
-		L2Client:       l2Client,
-		BridgeService:  bridgeSvc,
-		AgglayerClient: agglayerClient,
-		AggsenderRPC:   aggsenderRPC,
-		L2Bridge:       l2Bridge,
-		L2NetworkID:    cfg.BackwardForwardLET.L2NetworkID,
-		Config:         cfg,
+		L2Client:            l2Client,
+		BridgeService:       bridgeSvc,
+		AgglayerClient:      agglayerClient,
+		AggsenderRPC:        aggsenderRPC,
+		BridgeExitsOverride: bridgeExitsOverride,
+		L2Bridge:            l2Bridge,
+		L2NetworkID:         cfg.BackwardForwardLET.L2NetworkID,
+		Config:              cfg,
 	}, nil
 }
 
@@ -104,6 +118,11 @@ func Run(c *cli.Context) error {
 	cfg, err := LoadConfig(c)
 	if err != nil {
 		return err
+	}
+
+	// Flag takes precedence over config file.
+	if f := c.String("cert-exits-file"); f != "" {
+		cfg.BackwardForwardLET.CertificateExitsFile = f
 	}
 
 	dialCtx, dialCancel := context.WithTimeout(c.Context, dialTimeout)
