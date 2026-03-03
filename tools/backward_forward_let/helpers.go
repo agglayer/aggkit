@@ -71,14 +71,11 @@ func BridgeExitLeafHash(be *agglayertypes.BridgeExit) common.Hash {
 
 // BridgeResponseLeafHash computes the leaf hash for a BridgeResponse using the same
 // algorithm as BridgeExit.Hash().
+// The bridge service stores raw metadata (from the BridgeEvent). The contract's getLeafValue
+// takes keccak256(rawMetadata), so we hash it here — matching convertBridgeMetadata in aggsender.
 func BridgeResponseLeafHash(br *bridgeservicetypes.BridgeResponse) common.Hash {
 	amount := parseAmount(string(br.Amount))
 	metadata := decodeMetadata(br.Metadata)
-
-	metadataHash := metadata
-	if len(metadataHash) == 0 {
-		metadataHash = aggkitcommon.EmptyBytesHash
-	}
 
 	return crypto.Keccak256Hash(
 		[]byte{br.LeafType},
@@ -87,7 +84,7 @@ func BridgeResponseLeafHash(br *bridgeservicetypes.BridgeResponse) common.Hash {
 		aggkitcommon.Uint32ToBigEndianBytes(br.DestinationNetwork),
 		common.HexToAddress(string(br.DestinationAddress)).Bytes(),
 		common.BigToHash(amount).Bytes(),
-		metadataHash,
+		crypto.Keccak256(metadata),
 	)
 }
 
@@ -130,6 +127,10 @@ func makeZeroHashes() []common.Hash {
 // computeFrontier simulates an append-only Merkle tree for leaf indices 0..targetIndex-1
 // and returns the resulting frontier (lastLeftCache). The frontier[h] holds the left sibling
 // at height h, ready to pair with the next right child.
+//
+// The returned frontier uses bytes32(0) (literal zero bytes) for positions that have not been
+// set by any leaf insertion. This matches the contract's initial storage state and is required
+// by _checkValidSubtreeFrontier, which rejects non-zero values in unused positions.
 func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.Hash, error) {
 	if uint32(len(leafHashes)) < targetIndex {
 		return [32]common.Hash{}, fmt.Errorf(
@@ -138,10 +139,9 @@ func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.H
 	}
 
 	zeros := makeZeroHashes()
+	// frontier is zero-initialized by Go (all common.Hash{} = bytes32(0)), matching the
+	// contract's initial _branch storage state before any leaves are inserted.
 	var frontier [32]common.Hash
-	for h := range 32 {
-		frontier[h] = zeros[h]
-	}
 
 	for i := uint32(0); i < targetIndex; i++ {
 		node := leafHashes[i] //nolint:gosec // G602: i < targetIndex <= len(leafHashes) checked above
@@ -277,14 +277,12 @@ func ComputeLERForNewLeaves(existingLeafHashes []common.Hash, newLeafHashes []co
 
 // leafDataLeafHash computes the Merkle leaf hash for a bridgesync.LeafData using the same
 // algorithm as BridgeExit.Hash().
+// LeafData.Metadata contains raw bytes (from the bridge event). The contract hashes it with
+// keccak256 before computing the leaf hash, so we do the same here.
 func leafDataLeafHash(ld bridgesync.LeafData) common.Hash {
 	amount := ld.Amount
 	if amount == nil {
 		amount = big.NewInt(0)
-	}
-	metadataHash := ld.Metadata
-	if len(metadataHash) == 0 {
-		metadataHash = aggkitcommon.EmptyBytesHash
 	}
 	return crypto.Keccak256Hash(
 		[]byte{ld.LeafType},
@@ -293,7 +291,7 @@ func leafDataLeafHash(ld bridgesync.LeafData) common.Hash {
 		aggkitcommon.Uint32ToBigEndianBytes(ld.DestinationNetwork),
 		ld.DestinationAddress.Bytes(),
 		common.BigToHash(amount).Bytes(),
-		metadataHash,
+		crypto.Keccak256(ld.Metadata),
 	)
 }
 

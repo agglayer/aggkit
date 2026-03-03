@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
 
@@ -627,7 +627,8 @@ func buildMaliciousCert(
 		// We query the SETTLED height to avoid picking up a stale malicious cert
 		// stored by a previous (failed) test run.
 		if settledCert, certErr := toolEnv.AggsenderRPC.GetCertificateHeaderPerHeight(info.SettledHeight); certErr == nil &&
-			settledCert != nil && settledCert.Header != nil {
+			settledCert != nil && settledCert.Header != nil &&
+			settledCert.Header.L1InfoTreeLeafCount > 0 {
 			l1InfoTreeLeafCount = settledCert.Header.L1InfoTreeLeafCount
 		}
 	} else {
@@ -646,12 +647,29 @@ func buildMaliciousCert(
 		log.Infof("[buildMaliciousCert] no settled cert, height=0, prevLER=%s, dc=%d", prevLER, existingLeafCount)
 	}
 
-	// Step 2 — Fetch existing L2 bridge leaf hashes from bridge service.
-	existingHashes := make([]common.Hash, 0, existingLeafCount)
-	for dc := range existingLeafCount {
-		br, bridgeErr := toolEnv.BridgeService.GetBridgeByDepositCount(ctx, toolEnv.L2NetworkID, dc)
-		require.NoError(t, bridgeErr, "GetBridgeByDepositCount dc=%d", dc)
-		existingHashes = append(existingHashes, bfl.BridgeResponseLeafHash(br))
+	// Step 2 — Build existing L2 bridge leaf hashes.
+	// When settled certs exist, use aggsender's stored bridge exits for each settled height.
+	// This ensures existingHashes matches the agglayer's LET state exactly (including any
+	// fake exits from previously sent malicious certs).
+	// For a fresh environment (no settled certs), use bridge service data.
+	var existingHashes []common.Hash
+	if infoErr == nil && info.SettledHeight != nil {
+		existingHashes = make([]common.Hash, 0, existingLeafCount)
+		for h := uint64(0); h <= *info.SettledHeight; h++ {
+			hh := h
+			exits, exitsErr := toolEnv.AggsenderRPC.GetCertificateBridgeExits(&hh)
+			require.NoError(t, exitsErr, "GetCertificateBridgeExits height=%d", h)
+			for _, be := range exits {
+				existingHashes = append(existingHashes, bfl.BridgeExitLeafHash(be))
+			}
+		}
+	} else {
+		existingHashes = make([]common.Hash, 0, existingLeafCount)
+		for dc := range existingLeafCount {
+			br, bridgeErr := toolEnv.BridgeService.GetBridgeByDepositCount(ctx, toolEnv.L2NetworkID, dc)
+			require.NoError(t, bridgeErr, "GetBridgeByDepositCount dc=%d", dc)
+			existingHashes = append(existingHashes, bfl.BridgeResponseLeafHash(br))
+		}
 	}
 
 	// Step 3 — Compute new leaf hashes for fake exits.
@@ -711,11 +729,11 @@ func makeFakeBridgeExit(exitIndex int) *agglayertypes.BridgeExit {
 	return &agglayertypes.BridgeExit{
 		LeafType: bridgesynctypes.LeafTypeAsset,
 		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      0,               // mainnet native token
+			OriginNetwork:      0,                // mainnet native token
 			OriginTokenAddress: common.Address{}, // native ETH address
 		},
-		DestinationNetwork: 0,        // L1 (mainnet); cannot exit to the same network as origin (L2=1)
-		DestinationAddress: destAddr, // unique per run+exitIndex
+		DestinationNetwork: 0,             // L1 (mainnet); cannot exit to the same network as origin (L2=1)
+		DestinationAddress: destAddr,      // unique per run+exitIndex
 		Amount:             big.NewInt(0), // zero amount avoids PP balance-underflow rejection
 		Metadata:           nil,           // nil: consistent with forwardLET contract's keccak256([])
 	}

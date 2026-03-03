@@ -395,14 +395,17 @@ func printRecoveryPlanSummary(w io.Writer, result *DiagnosisResult) {
 
 	switch result.Case {
 	case Case2, Case4:
-		fmt.Fprintf(w, "  %d. BackwardLET: roll back L2 bridge to DivergencePoint DC=%d\n",
+		fmt.Fprintf(w, "  %d. BackwardLET:   roll back L2 bridge to DivergencePoint DC=%d\n",
 			step, result.DivergencePoint)
 		step++
-		fmt.Fprintf(w, "  %d. ForwardLET:  replay %d real L2 bridge(s) on-chain\n",
+		fmt.Fprintf(w, "  %d. ForwardLET #1: inject %d divergent leaf(ves) (agglayer but not L2)\n",
+			step, len(result.DivergentLeaves))
+		step++
+		fmt.Fprintf(w, "  %d. ForwardLET #2: replay %d real L2 bridge(s) (L2 but not agglayer)\n",
 			step, len(result.ExtraL2Bridges))
 		step++
 	case Case1, Case3:
-		fmt.Fprintf(w, "  %d. ForwardLET:  inject %d correct leaf(ves) to fix the settled LET\n",
+		fmt.Fprintf(w, "  %d. ForwardLET:    inject %d divergent leaf(ves) (agglayer but not L2)\n",
 			step, len(result.DivergentLeaves))
 		step++
 	}

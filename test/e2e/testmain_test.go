@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 
 	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
 	if err != nil {

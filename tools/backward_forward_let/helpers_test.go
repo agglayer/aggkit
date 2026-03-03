@@ -43,16 +43,17 @@ func TestComputeFrontier(t *testing.T) {
 	require.Equal(t, crypto.Keccak256Hash(l0.Bytes(), l1.Bytes()), frontier[1])
 }
 
-// TestComputeFrontier_Empty verifies that frontier for 0 leaves is the zero-hashes frontier.
+// TestComputeFrontier_Empty verifies that frontier for 0 leaves is all bytes32(0).
+// This matches the contract's initial _branch storage state (before any leaf insertions),
+// as required by _checkValidSubtreeFrontier which rejects non-zero unused positions.
 func TestComputeFrontier_Empty(t *testing.T) {
 	t.Parallel()
 
 	frontier, err := computeFrontier([]common.Hash{}, 0)
 	require.NoError(t, err)
 
-	zeros := makeZeroHashes()
 	for h := range 32 {
-		require.Equal(t, zeros[h], frontier[h], "frontier[%d] should be zero hash", h)
+		require.Equal(t, common.Hash{}, frontier[h], "frontier[%d] should be bytes32(0)", h)
 	}
 }
 

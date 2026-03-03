@@ -114,11 +114,13 @@ const (
 		" ORDER BY block_num ASC, block_pos ASC"
 
 	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
+	// deposit_count is a unique monotonic counter per bridge event in the contract, so no
+	// additional origin_network filter is needed (it would incorrectly exclude L2-native tokens).
 	bridgeByDepositCountSQL = "SELECT * FROM " + bridgeTableName +
-		" WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1"
+		" WHERE deposit_count = $1 LIMIT 1"
 
 	// archiveByDepositCountSQL is the query used by GetBridgeByDepositCount for bridge_archive.
-	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1`
+	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 LIMIT 1`
 
 	// bridgesByContentWhereNoMeta is the WHERE clause for GetBridgesByContent without metadata.
 	bridgesByContentWhereNoMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
@@ -1739,11 +1741,22 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					newDepositCount, err)
 			}
 
-			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
-			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
-				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-					leafIndex, newDepositCount)
-				return err
+			// 2. Remove leaves from the exit tree so that exactly newDepositCount leaves remain.
+			// BackwardToIndex(N) keeps positions 0..N (N+1 leaves). To keep exactly newDepositCount
+			// leaves (positions 0..newDepositCount-1), we call BackwardToIndex(newDepositCount-1).
+			// Special case: for newDepositCount==0 the tree must be fully cleared, so use Reorg(0)
+			// which deletes all root entries (block_num >= 0 = all rows).
+			if leafIndex == 0 {
+				if err := p.exitTree.Reorg(tx, 0); err != nil {
+					p.log.Errorf("failed to clear exit tree for BackwardLET to DC=0: %v", err)
+					return err
+				}
+			} else {
+				if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex-1); err != nil {
+					p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+						leafIndex, newDepositCount)
+					return err
+				}
 			}
 
 			// 4. sanity check that the new root matches the latest one in the exit tree
@@ -1817,10 +1830,12 @@ func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
 	return u64, u32, nil
 }
 
-// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than the provided one
+// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than or equal to
+// the provided one. After a BackwardLET to DC=N, leaves 0..N-1 remain valid; any bridge at deposit_count>=N
+// is no longer present in the exit tree and must be archived and removed.
 func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
 	// 1. Load candidates
-	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count > $1`, bridgeTableName)
+	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count >= $1`, bridgeTableName)
 	var bridges []*Bridge
 	if err := meddler.QueryAll(tx, &bridges, query, depositCount); err != nil {
 		return err
@@ -1843,7 +1858,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	// 3. Delete originals
 	deleteQuery := fmt.Sprintf(`
 		DELETE FROM %s
-		WHERE deposit_count > $1`,
+		WHERE deposit_count >= $1`,
 		bridgeTableName)
 
 	_, err := tx.ExecContext(ctx, deleteQuery, depositCount)
@@ -1852,7 +1867,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	}
 
 	if len(deletedDepositCounts) > 0 {
-		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
+		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count >= %d: %v",
 			len(deletedDepositCounts), depositCount, deletedDepositCounts,
 		)
 	}
@@ -1906,7 +1921,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 
 	var newDepositCount uint32
 	if event.PreviousRoot != bridgesynctypes.EmptyLER {
-		newDepositCount = uint32(event.PreviousDepositCount.Uint64()) + 1
+		newDepositCount = uint32(event.PreviousDepositCount.Uint64())
 	}
 	newBlockPos := event.BlockPos
 	if blockPos != nil {

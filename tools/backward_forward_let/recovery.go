@@ -62,8 +62,16 @@ func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) 
 		}
 	}
 
-	if err := stepForwardLET(ctx, env, adminAuth, callOpts, diagnosis); err != nil {
-		return fmt.Errorf("forward LET: %w", err)
+	// First ForwardLET: insert divergent leaves (bridges included on agglayer but not L2).
+	if err := stepForwardLETDivergentLeaves(ctx, env, adminAuth, callOpts, diagnosis); err != nil {
+		return fmt.Errorf("forward LET divergent leaves: %w", err)
+	}
+
+	// Second ForwardLET: insert extra L2 bridges (bridges on L2 but not agglayer).
+	if len(diagnosis.ExtraL2Bridges) > 0 {
+		if err := stepForwardLETExtraL2Bridges(ctx, env, adminAuth, callOpts, diagnosis); err != nil {
+			return fmt.Errorf("forward LET extra L2 bridges: %w", err)
+		}
 	}
 
 	return nil
@@ -198,24 +206,20 @@ func stepBackwardLET(
 	return nil
 }
 
-// stepForwardLET inserts the correct leaves into the L2 bridge to match the L1 settled state.
-func stepForwardLET(
+// stepForwardLETDivergentLeaves inserts divergent L1 leaves into the L2 bridge.
+// These are bridges included on agglayer but not on L2.
+func stepForwardLETDivergentLeaves(
 	ctx context.Context,
 	env *Env,
 	auth *bind.TransactOpts,
 	callOpts *bind.CallOpts,
 	diagnosis *DiagnosisResult,
 ) error {
-	totalLeaves := len(diagnosis.DivergentLeaves) + len(diagnosis.ExtraL2Bridges)
-	fmt.Printf("[step] ForwardLET: inserting %d leaf(ves)...\n", totalLeaves)
+	fmt.Printf("[step] ForwardLET (divergent leaves): inserting %d leaf(ves)...\n", len(diagnosis.DivergentLeaves))
 
-	// Build the contract leaf slice: divergent L1 leaves first, then extra L2 bridges.
-	newLeaves := make([]agglayerbridgel2.AgglayerBridgeL2LeafData, 0, totalLeaves)
+	newLeaves := make([]agglayerbridgel2.AgglayerBridgeL2LeafData, 0, len(diagnosis.DivergentLeaves))
 	for _, be := range diagnosis.DivergentLeaves {
 		newLeaves = append(newLeaves, bridgeExitToContractLeaf(be))
-	}
-	for _, ld := range diagnosis.ExtraL2Bridges {
-		newLeaves = append(newLeaves, leafDataToContractLeaf(ld))
 	}
 
 	// Compute the frontier at DivergencePoint from the L2 bridge service data.
@@ -233,56 +237,137 @@ func stepForwardLET(
 		return fmt.Errorf("compute frontier at divergence point: %w", err)
 	}
 
-	// Collect new leaf hashes in insertion order.
-	newLeafHashes := make([]common.Hash, 0, totalLeaves)
+	divergentLeafHashes := make([]common.Hash, 0, len(diagnosis.DivergentLeaves))
 	for _, be := range diagnosis.DivergentLeaves {
-		newLeafHashes = append(newLeafHashes, BridgeExitLeafHash(be))
-	}
-	for _, ld := range diagnosis.ExtraL2Bridges {
-		newLeafHashes = append(newLeafHashes, leafDataLeafHash(ld))
+		divergentLeafHashes = append(divergentLeafHashes, BridgeExitLeafHash(be))
 	}
 
-	expectedLER, err := computeRootFromFrontier(frontier, diagnosis.DivergencePoint, newLeafHashes)
+	expectedLER, err := computeRootFromFrontier(frontier, diagnosis.DivergencePoint, divergentLeafHashes)
 	if err != nil {
-		return fmt.Errorf("compute expected LER: %w", err)
+		return fmt.Errorf("compute expected LER for divergent leaves: %w", err)
 	}
 
 	tx, err := env.L2Bridge.ForwardLET(auth, newLeaves, [32]byte(expectedLER))
 	if err != nil {
-		return fmt.Errorf("send ForwardLET tx: %w", err)
+		return fmt.Errorf("send ForwardLET (divergent leaves) tx: %w", err)
 	}
 
 	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
 	if err != nil {
-		return fmt.Errorf("wait for ForwardLET receipt: %w", err)
+		return fmt.Errorf("wait for ForwardLET (divergent leaves) receipt: %w", err)
 	}
 	if receipt.Status != 1 {
-		return fmt.Errorf("ForwardLET tx failed (status=%d)", receipt.Status)
+		return fmt.Errorf("ForwardLET (divergent leaves) tx failed (status=%d)", receipt.Status)
 	}
 
-	// Verify the final on-chain state.
-	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
-		uint32(len(diagnosis.ExtraL2Bridges))
+	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves))
 
 	dcBig, err := env.L2Bridge.DepositCount(callOpts)
 	if err != nil {
-		return fmt.Errorf("get deposit count after ForwardLET: %w", err)
+		return fmt.Errorf("get deposit count after ForwardLET (divergent leaves): %w", err)
 	}
 	if uint32(dcBig.Uint64()) != expectedDC {
-		return fmt.Errorf("deposit count mismatch after ForwardLET: expected %d, got %d",
+		return fmt.Errorf("deposit count mismatch after ForwardLET (divergent leaves): expected %d, got %d",
 			expectedDC, dcBig.Uint64())
 	}
 
 	root32, err := env.L2Bridge.GetRoot(callOpts)
 	if err != nil {
-		return fmt.Errorf("get root after ForwardLET: %w", err)
+		return fmt.Errorf("get root after ForwardLET (divergent leaves): %w", err)
 	}
-	actualLER := common.Hash(root32)
-	if actualLER != expectedLER {
-		return fmt.Errorf("LER mismatch after ForwardLET: expected %s, got %s",
-			expectedLER.Hex(), actualLER.Hex())
+	if common.Hash(root32) != expectedLER {
+		return fmt.Errorf("LER mismatch after ForwardLET (divergent leaves): expected %s, got %s",
+			expectedLER.Hex(), common.Hash(root32).Hex())
 	}
 
-	fmt.Printf("[step] ForwardLET complete. DC=%d, LER=%s\n", expectedDC, expectedLER.Hex())
+	fmt.Printf("[step] ForwardLET (divergent leaves) complete. DC=%d, LER=%s\n", expectedDC, expectedLER.Hex())
+	return nil
+}
+
+// stepForwardLETExtraL2Bridges inserts extra real L2 bridges into the L2 bridge.
+// These are bridges on L2 but not yet on agglayer, appended after the divergent leaves.
+// The bridge service doesn't know about divergent leaves (inserted via ForwardLET), so
+// the frontier at DivergencePoint+len(DivergentLeaves) is built from L2 service data
+// plus the divergent leaf hashes.
+func stepForwardLETExtraL2Bridges(
+	ctx context.Context,
+	env *Env,
+	auth *bind.TransactOpts,
+	callOpts *bind.CallOpts,
+	diagnosis *DiagnosisResult,
+) error {
+	fmt.Printf("[step] ForwardLET (extra L2 bridges): inserting %d leaf(ves)...\n", len(diagnosis.ExtraL2Bridges))
+
+	newLeaves := make([]agglayerbridgel2.AgglayerBridgeL2LeafData, 0, len(diagnosis.ExtraL2Bridges))
+	for _, ld := range diagnosis.ExtraL2Bridges {
+		newLeaves = append(newLeaves, leafDataToContractLeaf(ld))
+	}
+
+	// Compute the frontier at DivergencePoint + len(DivergentLeaves).
+	// The bridge service only holds real L2 bridges; divergent leaves were injected via
+	// ForwardLET and are not visible there, so we build the full leaf hash sequence manually.
+	afterDivergentCount := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves))
+
+	allHashesBeforeExtra := make([]common.Hash, 0, int(afterDivergentCount))
+	if diagnosis.DivergencePoint > 0 {
+		l2Hashes, err := fetchL2LeafHashesUpTo(ctx, env, diagnosis.DivergencePoint)
+		if err != nil {
+			return fmt.Errorf("fetch L2 leaf hashes up to divergence point: %w", err)
+		}
+		allHashesBeforeExtra = append(allHashesBeforeExtra, l2Hashes...)
+	}
+	for _, be := range diagnosis.DivergentLeaves {
+		allHashesBeforeExtra = append(allHashesBeforeExtra, BridgeExitLeafHash(be))
+	}
+
+	frontier, err := computeFrontier(allHashesBeforeExtra, afterDivergentCount)
+	if err != nil {
+		return fmt.Errorf("compute frontier after divergent leaves: %w", err)
+	}
+
+	extraLeafHashes := make([]common.Hash, 0, len(diagnosis.ExtraL2Bridges))
+	for _, ld := range diagnosis.ExtraL2Bridges {
+		extraLeafHashes = append(extraLeafHashes, leafDataLeafHash(ld))
+	}
+
+	expectedLER, err := computeRootFromFrontier(frontier, afterDivergentCount, extraLeafHashes)
+	if err != nil {
+		return fmt.Errorf("compute expected LER for extra L2 bridges: %w", err)
+	}
+
+	tx, err := env.L2Bridge.ForwardLET(auth, newLeaves, [32]byte(expectedLER))
+	if err != nil {
+		return fmt.Errorf("send ForwardLET (extra L2 bridges) tx: %w", err)
+	}
+
+	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
+	if err != nil {
+		return fmt.Errorf("wait for ForwardLET (extra L2 bridges) receipt: %w", err)
+	}
+	if receipt.Status != 1 {
+		return fmt.Errorf("ForwardLET (extra L2 bridges) tx failed (status=%d)", receipt.Status)
+	}
+
+	expectedDC := afterDivergentCount + uint32(len(diagnosis.ExtraL2Bridges))
+
+	dcBig, err := env.L2Bridge.DepositCount(callOpts)
+	if err != nil {
+		return fmt.Errorf("get deposit count after ForwardLET (extra L2 bridges): %w", err)
+	}
+	if uint32(dcBig.Uint64()) != expectedDC {
+		return fmt.Errorf("deposit count mismatch after ForwardLET (extra L2 bridges): expected %d, got %d",
+			expectedDC, dcBig.Uint64())
+	}
+
+	root32, err := env.L2Bridge.GetRoot(callOpts)
+	if err != nil {
+		return fmt.Errorf("get root after ForwardLET (extra L2 bridges): %w", err)
+	}
+	if common.Hash(root32) != expectedLER {
+		return fmt.Errorf("LER mismatch after ForwardLET (extra L2 bridges): expected %s, got %s",
+			expectedLER.Hex(), common.Hash(root32).Hex())
+	}
+
+	fmt.Printf("[step] ForwardLET (extra L2 bridges) complete. DC=%d, LER=%s\n", expectedDC, expectedLER.Hex())
 	return nil
 }
