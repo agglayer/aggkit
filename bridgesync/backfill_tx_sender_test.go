@@ -29,7 +29,7 @@ const testAddress = "0x1111111111111111111111111111111111111111"
 
 // newTestBridge creates a Bridge with default test values using the given block position and tx hash.
 // Both TxnSender and FromAddress are set to testAddress (non-empty hex strings via AddressMeddler).
-// Use a SQL UPDATE to set txn_sender = ” after inserting if the record needs to trigger backfill.
+// Use a SQL UPDATE to set txn_sender = '' (empty string) or txn_sender = NULL after inserting if the record needs to trigger backfill.
 func newTestBridge(blockNum, blockPos uint64, txHash string) *Bridge {
 	return &Bridge{
 		BlockNum:           blockNum,
