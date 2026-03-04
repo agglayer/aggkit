@@ -45,7 +45,8 @@ type DiagnosisResult struct {
 	L2CurrentLER          common.Hash
 	L2CurrentDepositCount uint32
 
-	// DivergencePoint is the last deposit count where L1 settled and L2 bridge agree.
+	// DivergencePoint is the number of leading leaves that match between
+	// L1 settled and L2 bridge. It is also the target deposit count for BackwardLET.
 	DivergencePoint uint32
 
 	// ExtraL2Bridges contains real L2 bridges (bridgesync.LeafData) after DivergencePoint.

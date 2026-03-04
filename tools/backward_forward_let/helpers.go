@@ -157,6 +157,15 @@ func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.H
 		}
 	}
 
+	// Zero out positions where bit h of targetIndex is 0. These are stale values
+	// from earlier leaf insertions and must be zero for the contract's
+	// _checkValidSubtreeFrontier, which rejects non-zero values in inactive positions.
+	for h := range 32 {
+		if (targetIndex>>h)&1 == 0 {
+			frontier[h] = common.Hash{}
+		}
+	}
+
 	return frontier, nil
 }
 

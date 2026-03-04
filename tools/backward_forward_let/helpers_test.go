@@ -27,6 +27,8 @@ func TestMakeZeroHashes(t *testing.T) {
 }
 
 // TestComputeFrontier verifies the frontier after inserting 2 known leaves.
+// For targetIndex=2 (binary 10), only position 1 should be set (bit 1 is 1);
+// position 0 is inactive (bit 0 of 2 = 0) and must be zero for the contract.
 func TestComputeFrontier(t *testing.T) {
 	t.Parallel()
 
@@ -36,10 +38,8 @@ func TestComputeFrontier(t *testing.T) {
 	frontier, err := computeFrontier([]common.Hash{l0, l1}, 2)
 	require.NoError(t, err)
 
-	// After inserting l0 (index 0, all left children) and l1 (index 1):
-	// frontier[0] = l0  (set by leaf 0's left-child at h=0; not changed by leaf 1's right-child at h=0)
-	// frontier[1] = hash(l0, l1) (set by leaf 1's left-child at h=1)
-	require.Equal(t, l0, frontier[0])
+	// For targetIndex=2 (binary 10): bit 0 is 0 → frontier[0] zeroed; bit 1 is 1 → frontier[1] active.
+	require.Equal(t, common.Hash{}, frontier[0], "frontier[0] must be zero (inactive position for count=2)")
 	require.Equal(t, crypto.Keccak256Hash(l0.Bytes(), l1.Bytes()), frontier[1])
 }
 

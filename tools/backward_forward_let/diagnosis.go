@@ -114,11 +114,11 @@ func Diagnose(ctx context.Context, env *Env) (*DiagnosisResult, error) {
 	}
 
 	// Step 5 — Classify the case.
-	result.Case = classifyCase(result.L1SettledDepositCount, result.L2CurrentDepositCount, result.DivergencePoint)
+	result.Case = classifyCase(result.L2CurrentDepositCount, result.DivergencePoint, len(result.DivergentLeaves))
 
 	// Step 6 — Collect ExtraL2Bridges for Cases 2 and 4.
 	if result.Case == Case2 || result.Case == Case4 {
-		extra, err := collectExtraL2Bridges(ctx, env, result.DivergencePoint+1, result.L2CurrentDepositCount)
+		extra, err := collectExtraL2Bridges(ctx, env, result.DivergencePoint, result.L2CurrentDepositCount)
 		if err != nil {
 			return nil, fmt.Errorf("collect extra L2 bridges: %w", err)
 		}
@@ -209,7 +209,7 @@ func findDivergencePoint(
 
 		if allMatch && len(missing) == 0 {
 			// No missing entries and this cert fully matches L2; divergence starts after it.
-			return divergentLeaves, dcEnd - 1, true, nil
+			return divergentLeaves, dcEnd, true, nil
 		}
 
 		if !allMatch {
@@ -255,19 +255,21 @@ func checkCertExitsMatchL2(
 	return true
 }
 
-// classifyCase returns the RecoveryCase based on settled and current deposit counts.
-func classifyCase(l1SettledDC, l2CurrentDC, divergencePoint uint32) RecoveryCase {
-	extraL2 := l2CurrentDC > divergencePoint
-	extraL1 := l1SettledDC > divergencePoint+1 // more than 1 divergent L1 leaf
+// classifyCase returns the RecoveryCase based on the L2 deposit count,
+// the divergence point (number of matching leading leaves), and the
+// number of divergent L1-settled leaves.
+func classifyCase(l2CurrentDC, divergencePoint uint32, numDivergentLeaves int) RecoveryCase {
+	hasExtraL2 := l2CurrentDC > divergencePoint
+	multipleL1 := numDivergentLeaves > 1
 
 	switch {
-	case !extraL2 && !extraL1:
+	case !hasExtraL2 && !multipleL1:
 		return Case1
-	case extraL2 && !extraL1:
+	case hasExtraL2 && !multipleL1:
 		return Case2
-	case !extraL2 && extraL1:
+	case !hasExtraL2 && multipleL1:
 		return Case3
-	default: // extraL2 && extraL1
+	default: // hasExtraL2 && multipleL1
 		return Case4
 	}
 }
@@ -367,7 +369,7 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 	}
 
 	fmt.Fprintf(w, "Case: %s\n", caseDescription(result.Case))
-	fmt.Fprintf(w, "Divergence Point (last matching DC): %d\n", result.DivergencePoint)
+	fmt.Fprintf(w, "Divergence Point (matching leaf count): %d\n", result.DivergencePoint)
 	fmt.Fprintln(w)
 
 	// Divergent leaves table.

@@ -62,50 +62,46 @@ func TestClassifyCase(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                  string
-		l1SettledDepositCount uint32
-		l2CurrentDepositCount uint32
-		divergencePoint       uint32
-		expectedCase          RecoveryCase
+		name              string
+		l2CurrentDC       uint32
+		divergencePoint   uint32 // number of matching leading leaves
+		numDivergent      int    // number of divergent L1-settled leaves
+		expectedCase      RecoveryCase
 	}{
 		{
-			// No divergent leaves, no extra L2 bridges → NoDivergence is handled before
-			// classifyCase is called, but if L1 == divergencePoint+1 and L2 <= divergencePoint → Case1.
-			name:                  "Case1: single divergent leaf, no extra L2",
-			l1SettledDepositCount: 6, // DC 6 is divergent (divergencePoint=5, so 1 divergent leaf)
-			l2CurrentDepositCount: 5, // L2 has DC 0..4 (≤ divergencePoint)
-			divergencePoint:       5,
-			expectedCase:          Case1,
+			name:            "Case1: single divergent leaf, no extra L2",
+			l2CurrentDC:     6, // L2 has DC 0..5 (≤ divergencePoint)
+			divergencePoint: 6, // 6 matching leaves (DC 0..5)
+			numDivergent:    1,
+			expectedCase:    Case1,
 		},
 		{
-			name:                  "Case2: single divergent leaf + extra L2 bridges",
-			l1SettledDepositCount: 6, // 1 divergent L1 leaf (DC 5)
-			l2CurrentDepositCount: 8, // L2 has DC 6, 7 (extra real bridges)
-			divergencePoint:       5,
-			expectedCase:          Case2,
+			name:            "Case2: single divergent leaf + extra L2 bridges",
+			l2CurrentDC:     8, // L2 has DC 6, 7 (extra real bridges beyond divergencePoint)
+			divergencePoint: 6,
+			numDivergent:    1,
+			expectedCase:    Case2,
 		},
 		{
-			name:                  "Case3: multiple divergent L1 leaves, no extra L2",
-			l1SettledDepositCount: 10, // DC 6..9 are divergent (4 divergent leaves)
-			l2CurrentDepositCount: 5,  // L2 has DC 0..4 (≤ divergencePoint)
-			divergencePoint:       5,
-			expectedCase:          Case3,
+			name:            "Case3: multiple divergent L1 leaves, no extra L2",
+			l2CurrentDC:     6, // L2 has DC 0..5 (≤ divergencePoint)
+			divergencePoint: 6,
+			numDivergent:    4, // 4 divergent leaves
+			expectedCase:    Case3,
 		},
 		{
-			name:                  "Case4: multiple divergent L1 leaves + extra L2 bridges",
-			l1SettledDepositCount: 10, // DC 6..9 divergent
-			l2CurrentDepositCount: 8,  // L2 has DC 6, 7 (extra real bridges)
-			divergencePoint:       5,
-			expectedCase:          Case4,
+			name:            "Case4: multiple divergent L1 leaves + extra L2 bridges",
+			l2CurrentDC:     8, // L2 has DC 6, 7 (extra real bridges)
+			divergencePoint: 6,
+			numDivergent:    4,
+			expectedCase:    Case4,
 		},
 		{
-			// DivergencePoint == L1SettledDepositCount-1 and L2 == L1 → NoDivergence
-			// but let's test the edge where extraL2 and extraL1 are both false except for Case1.
-			name:                  "Case1 edge: exactly 1 divergent leaf",
-			l1SettledDepositCount: 1, // DC 0 is divergent
-			l2CurrentDepositCount: 0, // L2 has no bridges
-			divergencePoint:       0,
-			// extraL2 = 0 > 0 = false; extraL1 = 1 > 1 = false → Case1
+			name:            "Case1 edge: exactly 1 divergent leaf, zero matching",
+			l2CurrentDC:     0, // L2 has no bridges
+			divergencePoint: 0, // 0 matching leaves
+			numDivergent:    1,
+			// hasExtraL2 = 0 > 0 = false; multipleL1 = 1 > 1 = false → Case1
 			expectedCase: Case1,
 		},
 	}
@@ -113,7 +109,7 @@ func TestClassifyCase(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := classifyCase(tc.l1SettledDepositCount, tc.l2CurrentDepositCount, tc.divergencePoint)
+			got := classifyCase(tc.l2CurrentDC, tc.divergencePoint, tc.numDivergent)
 			require.Equal(t, tc.expectedCase, got)
 		})
 	}
@@ -200,7 +196,7 @@ func TestPrintDiagnosis(t *testing.T) {
 		L1SettledCertificateID: certID,
 		L2CurrentLER:           l2ler,
 		L2CurrentDepositCount:  6,
-		DivergencePoint:        5,
+		DivergencePoint:        6,
 		DivergentLeaves: []*agglayertypes.BridgeExit{
 			{
 				LeafType:           bridgetypes.LeafTypeAsset,

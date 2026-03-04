@@ -1848,9 +1848,20 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	deletedDepositCounts := make([]uint32, 0, len(bridges))
 	// 2. Archive
 	for _, b := range bridges {
-		b.Source = BridgeSourceBackwardLET
-		if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
-			return err
+		// Skip if already archived (can happen when a ForwardLET re-inserts a bridge that
+		// was previously archived by an earlier BackwardLET, and then a new BackwardLET
+		// targets the same deposit_count again).
+		var count int
+		if err := tx.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM bridge_archive WHERE deposit_count = ?", b.DepositCount,
+		).Scan(&count); err != nil {
+			return fmt.Errorf("failed to check bridge_archive for deposit_count %d: %w", b.DepositCount, err)
+		}
+		if count == 0 {
+			b.Source = BridgeSourceBackwardLET
+			if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
+				return err
+			}
 		}
 		deletedDepositCounts = append(deletedDepositCounts, b.DepositCount)
 	}
