@@ -84,7 +84,6 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 
 func (r *AgglayerBridgeL2Reader) fetchUnsetClaimsWithFallbackChunking(ctx context.Context,
 	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
-
 	unclaims, err := r.fetchUnsetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large

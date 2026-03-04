@@ -76,7 +76,8 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ProactiveChunkingByC
 
 		var ranges [][2]uint64
 		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Run(func(args mock.Arguments) {
-			q := args.Get(1).(ethereum.FilterQuery)
+			q, ok := args.Get(1).(ethereum.FilterQuery)
+			require.True(t, ok)
 			require.NotNil(t, q.FromBlock)
 			require.NotNil(t, q.ToBlock)
 			ranges = append(ranges, [2]uint64{q.FromBlock.Uint64(), q.ToBlock.Uint64()})
