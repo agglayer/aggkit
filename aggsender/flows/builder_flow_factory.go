@@ -51,6 +51,7 @@ func NewBuilderFlow(
 			true, // fullClaims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 		)
@@ -100,6 +101,7 @@ func NewBuilderFlow(
 			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 		)
@@ -167,6 +169,7 @@ func CreateCommonFlowComponents(
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
+	unsetClaimsMaxLogBlockRange uint64,
 	globalExitRootL1Addr ethCommon.Address,
 	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality,
 ) (*CommonFlowComponents, error) {
@@ -181,7 +184,11 @@ func CreateCommonFlowComponents(
 		return nil, err
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(agglayerBridgeL2Addr, l2Client)
+	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
+		agglayerBridgeL2Addr,
+		l2Client,
+		unsetClaimsMaxLogBlockRange,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
