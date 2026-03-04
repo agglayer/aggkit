@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/e2e/envs"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 
 var testEnv *envs.Env
@@ -50,21 +51,55 @@ func TestMain(m *testing.M) {
 	if code == 0 {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 8*time.Minute)
+
 		l1Opts := env.L1.Transactor
 		l2Opts := env.L2.Transactor
-		bridgeL1L2Err := BridgeL1ToL2(bridgeCheckCtx, env, l1Opts, l2Opts)
-		if bridgeL1L2Err != nil {
+
+		// Mint and approve ERC20 tokens on L2 before bridging (L2-native tokens bypass
+		// the Local Balance Tree underflow check in the L2 bridge contract).
+		mintAmount := big.NewInt(1e18)
+		mintTx, err := env.L2.Contracts.MintableERC20.Mint(l2Opts, l2Opts.From, mintAmount)
+		if err != nil {
 			bridgeCancel()
-			log.Fatalf(`[POSTTEST] Bridge flows post-test check failed: L1->L2: %v.
-			Note that test env will not be cleaned for further debugging`, bridgeL1L2Err)
+			log.Fatalf("[POSTTEST] Failed to mint ERC20 tokens: %v", err)
 		}
-		bridgeL2L1Err := BridgeL2ToL1(bridgeCheckCtx, env, l1Opts, l2Opts, common.Address{})
-		if bridgeL2L1Err != nil {
+		if _, err := bind.WaitMined(bridgeCheckCtx, env.Clients.L2, mintTx); err != nil {
 			bridgeCancel()
-			log.Fatalf(`[POSTTEST] Bridge flows post-test check failed: L2->L1: %v.
-			Note that test env will not be cleaned for further debugging`, bridgeL2L1Err)
+			log.Fatalf("[POSTTEST] Failed to wait for ERC20 mint tx: %v", err)
 		}
+
+		approveTx, err := env.L2.Contracts.MintableERC20.Approve(
+			l2Opts, env.L2.Contracts.L2BridgeAddress, mintAmount,
+		)
+		if err != nil {
+			bridgeCancel()
+			log.Fatalf("[POSTTEST] Failed to approve ERC20 tokens for L2 bridge: %v", err)
+		}
+		if _, err := bind.WaitMined(bridgeCheckCtx, env.Clients.L2, approveTx); err != nil {
+			bridgeCancel()
+			log.Fatalf("[POSTTEST] Failed to wait for ERC20 approve tx: %v", err)
+		}
+
+		// Run L1->L2 and L2->L1 bridges in parallel.
+		l1l2ErrCh := make(chan error, 1)
+		l2l1ErrCh := make(chan error, 1)
+
+		go func() {
+			l1l2ErrCh <- BridgeL1ToL2(bridgeCheckCtx, env, l1Opts, l2Opts)
+		}()
+		go func() {
+			l2l1ErrCh <- BridgeL2ToL1(bridgeCheckCtx, env, l1Opts, l2Opts, env.L2.Contracts.MintableERC20Address)
+		}()
+
+		bridgeL1L2Err := <-l1l2ErrCh
+		bridgeL2L1Err := <-l2l1ErrCh
+
 		bridgeCancel()
+
+		if bridgeL1L2Err != nil || bridgeL2L1Err != nil {
+			log.Fatalf(`[POSTTEST] Bridge flows post-test check failed: L1->L2: %v, L2->L1: %v.
+			Note that test env will not be cleaned for further debugging`, bridgeL1L2Err, bridgeL2L1Err)
+		}
 		log.Infof("[POSTTEST] Bridge flows post-test check succeeded.")
 	}
 
