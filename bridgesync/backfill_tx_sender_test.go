@@ -29,7 +29,7 @@ const testAddress = "0x1111111111111111111111111111111111111111"
 
 // newTestBridge creates a Bridge with default test values using the given block position and tx hash.
 // Both TxnSender and FromAddress are set to testAddress (non-empty hex strings via AddressMeddler).
-// Use a SQL UPDATE to set txn_sender = '' after inserting if the record needs to trigger backfill.
+// Use a SQL UPDATE to set txn_sender = ” after inserting if the record needs to trigger backfill.
 func newTestBridge(blockNum, blockPos uint64, txHash string) *Bridge {
 	return &Bridge{
 		BlockNum:           blockNum,
@@ -654,7 +654,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 			}).Return(nil).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, _, err := backfiller.extractData(t.Context(), txHash,
+		sender, _, _, err := backfiller.extractData(t.Context(), txHash,
 			&agglayerbridge.AgglayerbridgeBridgeEvent{
 				LeafType: bridgeLeafTypeAsset,
 			})
@@ -679,7 +679,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
+		sender, _, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
 			LeafType: bridgeLeafTypeAsset,
 		})
 		require.Error(t, err)
