@@ -82,7 +82,7 @@ func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.T
 		return err
 	}
 
-	gas := uint64(21000) //nolint:mnd
+	gas := uint64(21000)
 
 	if len(data) > 0 {
 		msg := ethereum.CallMsg{

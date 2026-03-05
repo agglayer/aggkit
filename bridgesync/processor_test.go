@@ -6559,3 +6559,206 @@ func encodeLeafDataArrayForTest(t *testing.T, leaves []LeafData) []byte {
 
 	return encodedBytes
 }
+
+func TestProcessor_GetClaimsByGER(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	p := createTestProcessor(t, "test_get_claims_by_ger")
+
+	gerHash := common.HexToHash("0xaabbccdd")
+	otherGER := common.HexToHash("0x11223344")
+
+	// Insert a block and two claims: one DetailedClaimEvent with gerHash, one ClaimEvent with gerHash,
+	// and one DetailedClaimEvent with a different GER.
+	tx, err := p.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(1))
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(2))
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(3))
+	require.NoError(t, err)
+
+	detailedClaim := &Claim{
+		BlockNum:       1,
+		BlockPos:       0,
+		GlobalIndex:    big.NewInt(100),
+		GlobalExitRoot: gerHash,
+		Type:           DetailedClaimEvent,
+		Amount:         big.NewInt(0),
+	}
+	require.NoError(t, meddler.Insert(tx, "claim", detailedClaim))
+
+	// A ClaimEvent with the same GER — should NOT be returned
+	claimEventSameGER := &Claim{
+		BlockNum:       2,
+		BlockPos:       0,
+		GlobalIndex:    big.NewInt(200),
+		GlobalExitRoot: gerHash,
+		Type:           ClaimEvent,
+		Amount:         big.NewInt(0),
+	}
+	require.NoError(t, meddler.Insert(tx, "claim", claimEventSameGER))
+
+	// A DetailedClaimEvent with a different GER — should NOT be returned
+	detailedOtherGER := &Claim{
+		BlockNum:       3,
+		BlockPos:       0,
+		GlobalIndex:    big.NewInt(300),
+		GlobalExitRoot: otherGER,
+		Type:           DetailedClaimEvent,
+		Amount:         big.NewInt(0),
+	}
+	require.NoError(t, meddler.Insert(tx, "claim", detailedOtherGER))
+	require.NoError(t, tx.Commit())
+
+	t.Run("returns only DetailedClaimEvent with matching GER", func(t *testing.T) {
+		claims, err := p.GetClaimsByGER(ctx, gerHash)
+		require.NoError(t, err)
+		require.Len(t, claims, 1)
+		require.Equal(t, int64(100), claims[0].GlobalIndex.Int64())
+		require.Equal(t, DetailedClaimEvent, claims[0].Type)
+	})
+
+	t.Run("returns nil for unknown GER", func(t *testing.T) {
+		claims, err := p.GetClaimsByGER(ctx, common.HexToHash("0xdeadbeef"))
+		require.NoError(t, err)
+		require.Empty(t, claims)
+	})
+}
+
+func TestProcessor_GetBridgeByDepositCount(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	p := createTestProcessor(t, "test_get_bridge_by_deposit_count")
+
+	originAddr := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	destAddr := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	// Insert a block and a bridge with origin_network=0 and deposit_count=5.
+	tx, err := p.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(1))
+	require.NoError(t, err)
+
+	bridge := &Bridge{
+		BlockNum:           1,
+		BlockPos:           0,
+		DepositCount:       5,
+		OriginNetwork:      0,
+		OriginAddress:      originAddr,
+		DestinationNetwork: 1,
+		DestinationAddress: destAddr,
+		Amount:             big.NewInt(1000),
+		LeafType:           0,
+	}
+	require.NoError(t, meddler.Insert(tx, "bridge", bridge))
+	require.NoError(t, tx.Commit())
+
+	t.Run("found by deposit count", func(t *testing.T) {
+		got, err := p.GetBridgeByDepositCount(ctx, 5)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, uint32(5), got.DepositCount)
+		require.Equal(t, uint32(0), got.OriginNetwork)
+		require.Equal(t, originAddr, got.OriginAddress)
+	})
+
+	t.Run("not found returns ErrNotFound", func(t *testing.T) {
+		got, err := p.GetBridgeByDepositCount(ctx, 999)
+		require.ErrorIs(t, err, db.ErrNotFound)
+		require.Nil(t, got)
+	})
+}
+
+func TestProcessor_GetBridgesByContent(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	p := createTestProcessor(t, "test_get_bridges_by_content")
+
+	originAddr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	destAddr := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	amount := big.NewInt(500)
+	metadata := []byte("testmeta")
+
+	tx, err := p.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(1))
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(2))
+	require.NoError(t, err)
+
+	// Bridge matching the search criteria
+	bridge1 := &Bridge{
+		BlockNum:           1,
+		BlockPos:           0,
+		DepositCount:       10,
+		OriginNetwork:      0,
+		LeafType:           0,
+		OriginAddress:      originAddr,
+		DestinationNetwork: 2,
+		DestinationAddress: destAddr,
+		Amount:             new(big.Int).Set(amount),
+		Metadata:           metadata,
+	}
+	require.NoError(t, meddler.Insert(tx, "bridge", bridge1))
+
+	// Bridge with different amount — should NOT match
+	bridge2 := &Bridge{
+		BlockNum:           2,
+		BlockPos:           0,
+		DepositCount:       11,
+		OriginNetwork:      0,
+		LeafType:           0,
+		OriginAddress:      originAddr,
+		DestinationNetwork: 2,
+		DestinationAddress: destAddr,
+		Amount:             big.NewInt(999),
+		Metadata:           metadata,
+	}
+	require.NoError(t, meddler.Insert(tx, "bridge", bridge2))
+	require.NoError(t, tx.Commit())
+
+	t.Run("returns bridge matching content", func(t *testing.T) {
+		result, err := p.GetBridgesByContent(ctx, 0, originAddr, 2, destAddr, amount, metadata)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Equal(t, uint32(10), result[0].DepositCount)
+	})
+
+	t.Run("no matches returns empty", func(t *testing.T) {
+		result, err := p.GetBridgesByContent(ctx, 0, originAddr, 2, destAddr, big.NewInt(1), metadata)
+		require.NoError(t, err)
+		require.Empty(t, result)
+	})
+
+	t.Run("nil metadata matches bridges with null metadata", func(t *testing.T) {
+		// Insert a bridge with nil metadata
+		tx2, err := p.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		_, err = tx2.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(3))
+		require.NoError(t, err)
+		nilMetaBridge := &Bridge{
+			BlockNum:           3,
+			BlockPos:           0,
+			DepositCount:       20,
+			OriginNetwork:      0,
+			LeafType:           1,
+			OriginAddress:      originAddr,
+			DestinationNetwork: 3,
+			DestinationAddress: destAddr,
+			Amount:             big.NewInt(1),
+			Metadata:           nil,
+		}
+		require.NoError(t, meddler.Insert(tx2, "bridge", nilMetaBridge))
+		require.NoError(t, tx2.Commit())
+
+		result, err := p.GetBridgesByContent(ctx, 1, originAddr, 3, destAddr, big.NewInt(1), nil)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Equal(t, uint32(20), result[0].DepositCount)
+	})
+}

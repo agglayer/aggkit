@@ -32,6 +32,11 @@ type Bridger interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
 	IsActive(ctx context.Context) bool
+	GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*bridgesync.Claim, error)
+	GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*bridgesync.Bridge, error)
+	GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address,
+		destinationNetwork uint32, destinationAddress common.Address,
+		amount *big.Int, metadata []byte) ([]*bridgesync.Bridge, error)
 }
 
 type L2GERSyncer interface {
