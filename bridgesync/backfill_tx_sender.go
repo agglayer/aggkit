@@ -407,7 +407,9 @@ func (b *BackfillTxnSender) bulkUpdate(
 
 	stmtWithoutFrom, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
-		SET txn_sender = COALESCE(NULLIF(txn_sender, ''), ?)
+		SET
+			txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
+			to_address = COALESCE(NULLIF(to_address, ''), ?)
 		WHERE block_num = ? AND block_pos = ?;
 	`, tableName))
 	if err != nil {
@@ -422,7 +424,7 @@ func (b *BackfillTxnSender) bulkUpdate(
 				update.TxnSender.Hex(), update.FromAddr.Hex(), update.ToAddr.Hex(), update.BlockNum, update.BlockPos)
 		} else {
 			_, execErr = stmtWithoutFrom.ExecContext(dbCtx,
-				update.TxnSender.Hex(), update.BlockNum, update.BlockPos)
+				update.TxnSender.Hex(), update.ToAddr.Hex(), update.BlockNum, update.BlockPos)
 		}
 		if execErr != nil {
 			return fmt.Errorf("failed to execute update for block %d pos %d: %w",

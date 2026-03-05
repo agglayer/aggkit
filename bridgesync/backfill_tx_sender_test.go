@@ -981,6 +981,61 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to bulk update txn_sender")
 	})
+
+	t.Run("syncFromInBridges=false: updates txn_sender and to_address but not from_address", func(t *testing.T) {
+		tempDir := t.TempDir()
+		dbPath := filepath.Join(tempDir, "test.db")
+
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer database.Close()
+
+		ctx := t.Context()
+		tx, err := db.NewTx(ctx, database)
+		require.NoError(t, err)
+
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
+		require.NoError(t, err)
+
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, tx.Commit())
+
+		// Clear txn_sender, from_address and to_address to simulate unbackfilled record
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '', from_address = '', to_address = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		mockClient := mocks.NewEthClienter(t)
+		logger := log.WithFields("module", "test")
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), false, logger)
+		require.NoError(t, err)
+		defer backfiller.Close()
+
+		toAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
+		updates := []RecordUpdate{
+			{
+				BlockNum:  1,
+				BlockPos:  0,
+				TxnSender: common.HexToAddress(testAddress),
+				FromAddr:  nil, // syncFromInBridges=false: no from_address available
+				ToAddr:    toAddr,
+			},
+		}
+
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
+		require.NoError(t, err)
+
+		var txnSender, fromAddress, toAddress string
+		row := database.QueryRowContext(ctx, "SELECT txn_sender, from_address, to_address FROM bridge WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, row.Scan(&txnSender, &fromAddress, &toAddress))
+
+		require.Equal(t, testAddress, txnSender)
+		require.Empty(t, fromAddress)  // from_address must remain empty (not updated)
+		require.Equal(t, toAddr.Hex(), toAddress)
+	})
 }
 
 func TestBackfillTxnSender_Close(t *testing.T) {
