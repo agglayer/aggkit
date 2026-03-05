@@ -214,6 +214,8 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+# Max block range per eth_getLogs call for unset-claims queries. 0 disables proactive chunking.
+UnsetClaimsMaxLogBlockRange = 0
 BlockFinalityForL1InfoTree = "FinalizedBlock"
 TriggerCertMode = "Auto"
 [AggSender.TriggerEpochBased]
@@ -304,6 +306,8 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+# Max block range per eth_getLogs call for unset-claims queries. 0 disables proactive chunking.
+UnsetClaimsMaxLogBlockRange = {{AggSender.UnsetClaimsMaxLogBlockRange}}
 GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 [Validator.ServerConfig]
