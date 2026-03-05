@@ -51,6 +51,7 @@ func NewBuilderFlow(
 			true, // fullClaims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 		)
 		if err != nil {
@@ -99,6 +100,7 @@ func NewBuilderFlow(
 			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 		)
 		if err != nil {
@@ -165,6 +167,7 @@ func CreateCommonFlowComponents(
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
+	unsetClaimsMaxLogBlockRange uint64,
 	globalExitRootL1Addr ethCommon.Address,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
@@ -178,7 +181,11 @@ func CreateCommonFlowComponents(
 		return nil, err
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(agglayerBridgeL2Addr, l2Client)
+	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
+		agglayerBridgeL2Addr,
+		l2Client,
+		unsetClaimsMaxLogBlockRange,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
