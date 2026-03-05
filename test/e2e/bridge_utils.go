@@ -125,7 +125,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	mainnetExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.MainnetExitRoot))
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
-	metadata := common.Hex2Bytes(bridge.Metadata)
+	metadata := common.FromHex(bridge.Metadata)
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
@@ -267,7 +267,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	mainnetExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.MainnetExitRoot))
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
-	metadata := common.Hex2Bytes(bridge.Metadata)
+	metadata := common.FromHex(bridge.Metadata)
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
@@ -495,7 +495,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	mainnetExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.MainnetExitRoot))
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
-	metadata := common.Hex2Bytes(bridge.Metadata)
+	metadata := common.FromHex(bridge.Metadata)
 	log.Debugf("sending L2->L1 claim transaction on L1")
 	claimTx, err := env.L1.Contracts.Bridge.ClaimAsset(
 		l1Opts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex,

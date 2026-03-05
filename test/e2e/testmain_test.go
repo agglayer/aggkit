@@ -52,7 +52,6 @@ func TestMain(m *testing.M) {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 8*time.Minute)
 
-		l1Opts := env.L1.Transactor
 		l2Opts := env.L2.Transactor
 
 		// Mint and approve ERC20 tokens on L2 before bridging (L2-native tokens bypass
@@ -81,14 +80,20 @@ func TestMain(m *testing.M) {
 		}
 
 		// Run L1->L2 and L2->L1 bridges in parallel.
+		// Each goroutine gets its own copy of the transactors so that mutations to
+		// fields like Value (done by BridgeL1ToL2 for the ETH bridge tx) don't race
+		// with the other goroutine's transactions.
 		l1l2ErrCh := make(chan error, 1)
 		l2l1ErrCh := make(chan error, 1)
 
+		l1OptsL1L2, l2OptsL1L2 := *env.L1.Transactor, *env.L2.Transactor
+		l1OptsL2L1, l2OptsL2L1 := *env.L1.Transactor, *env.L2.Transactor
+
 		go func() {
-			l1l2ErrCh <- BridgeL1ToL2(bridgeCheckCtx, env, l1Opts, l2Opts)
+			l1l2ErrCh <- BridgeL1ToL2(bridgeCheckCtx, env, &l1OptsL1L2, &l2OptsL1L2)
 		}()
 		go func() {
-			l2l1ErrCh <- BridgeL2ToL1(bridgeCheckCtx, env, l1Opts, l2Opts, env.L2.Contracts.MintableERC20Address)
+			l2l1ErrCh <- BridgeL2ToL1(bridgeCheckCtx, env, &l1OptsL2L1, &l2OptsL2L1, env.L2.Contracts.MintableERC20Address)
 		}()
 
 		bridgeL1L2Err := <-l1l2ErrCh
