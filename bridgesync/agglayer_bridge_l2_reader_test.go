@@ -9,6 +9,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
@@ -61,6 +62,43 @@ func TestNewAgglayerBridgeL2Reader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ProactiveChunkingByConfig(t *testing.T) {
+	ctx := context.Background()
+	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	t.Run("configured max proactively chunks range", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(bridgeAddr, mockClient, 1000)
+		require.NoError(t, err)
+
+		var ranges [][2]uint64
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Run(func(args mock.Arguments) {
+			q, ok := args.Get(1).(ethereum.FilterQuery)
+			require.True(t, ok)
+			require.NotNil(t, q.FromBlock)
+			require.NotNil(t, q.ToBlock)
+			ranges = append(ranges, [2]uint64{q.FromBlock.Uint64(), q.ToBlock.Uint64()})
+		}).Times(3)
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+		require.Equal(t, [][2]uint64{{0, 999}, {1000, 1999}, {2000, 2500}}, ranges)
+	})
+
+	t.Run("zero configured max keeps current non-proactive behavior", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(bridgeAddr, mockClient, 0)
+		require.NoError(t, err)
+
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+	})
 }
 
 func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithMockedClient(t *testing.T) {
