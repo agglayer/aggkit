@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"fmt"
 	"path"
 	"path/filepath"
 	"testing"
@@ -130,7 +132,7 @@ CREATE TABLE IF NOT EXISTS orders (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify both tables were created
@@ -171,7 +173,7 @@ CREATE TABLE IF NOT EXISTS table2 (
 		}
 
 		// Run only 1 migration
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, 1)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, 1)
 		require.NoError(t, err)
 
 		// Verify only first table was created
@@ -207,7 +209,7 @@ CREATE TABLE IF NOT EXISTS temp_table (
 		}
 
 		// First run migration up
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table exists
@@ -217,7 +219,7 @@ CREATE TABLE IF NOT EXISTS temp_table (
 		require.True(t, tableExists)
 
 		// Run migration down
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Down, 1)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Down, 1)
 		require.NoError(t, err)
 
 		// Verify table was dropped
@@ -246,7 +248,7 @@ CREATE TABLE IF NOT EXISTS /*dbprefix*/custom_table (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table with prefix was created
@@ -276,7 +278,7 @@ CREATE TABLE IF NOT EXISTS no_prefix_table (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table was created
@@ -304,7 +306,7 @@ CREATE INVALID TABLE SYNTAX;`,
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.Error(t, err)
 	})
 
@@ -328,7 +330,7 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.Error(t, err)
 	})
 
@@ -362,7 +364,7 @@ CREATE TABLE IF NOT EXISTS module_b_data (
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify both tables with different prefixes were created
@@ -370,6 +372,118 @@ CREATE TABLE IF NOT EXISTS module_b_data (
 		err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('module_a_data', 'module_b_data')").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
+	})
+
+	t.Run("idempotentFunc is called after migrations", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		called := false
+		idempotentFunc := func(_ *sql.DB) error {
+			called = true
+			return nil
+		}
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, idempotentFunc, migrate.Up, NoLimitMigrations)
+		require.NoError(t, err)
+		require.True(t, called)
+	})
+
+	t.Run("idempotentFunc receives a working db connection", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		// idempotentFunc adds a column to the table created by the migration
+		idempotentFunc := func(d *sql.DB) error {
+			_, err := d.Exec("ALTER TABLE test_table ADD COLUMN extra TEXT DEFAULT 'added_by_func'")
+			return err
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, idempotentFunc, migrate.Up, NoLimitMigrations)
+		require.NoError(t, err)
+
+		// Verify the column was added by idempotentFunc
+		var colCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('test_table') WHERE name='extra'").Scan(&colCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, colCount)
+	})
+
+	t.Run("idempotentFunc error is propagated", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		idempotentFunc := func(_ *sql.DB) error {
+			return fmt.Errorf("idempotent function failed")
+		}
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, idempotentFunc, migrate.Up, NoLimitMigrations)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "idempotent function failed")
+	})
+
+	t.Run("nil idempotentFunc does not cause errors", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migrations := []types.Migration{
+			{
+				ID:     "0001",
+				Prefix: "test_",
+				SQL: `-- +migrate Down
+DROP TABLE IF EXISTS test_table;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY);`,
+			},
+		}
+
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
+		require.NoError(t, err)
 	})
 }
 
@@ -403,7 +517,7 @@ CREATE TABLE IF NOT EXISTS custom_table (
 		}
 
 		// Run with NoLimitMigrations to include base migrations
-		err = RunMigrationsDBExtended(logger, db, customMigrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, customMigrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify both custom table and base key_value table exist
@@ -434,7 +548,7 @@ CREATE TABLE IF NOT EXISTS custom_table (
 		}
 
 		// Run with limit to exclude base migrations
-		err = RunMigrationsDBExtended(logger, db, customMigrations, migrate.Up, 1)
+		err = RunMigrationsDBExtended(logger, db, customMigrations, nil, migrate.Up, 1)
 		require.NoError(t, err)
 
 		// Verify custom table exists
@@ -470,7 +584,7 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 			},
 		}
 
-		err = RunMigrationsDBExtended(logger, db, migrations, migrate.Up, NoLimitMigrations)
+		err = RunMigrationsDBExtended(logger, db, migrations, nil, migrate.Up, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Query the migrations table to verify the ID format
@@ -516,7 +630,7 @@ CREATE TABLE IF NOT EXISTS rollback_table (
 		db.Close()
 
 		// Run migrations down
-		err = RunMigrationsDown(dbPath, migrations, 1)
+		err = RunMigrationsDown(dbPath, migrations, nil, 1)
 		require.NoError(t, err)
 
 		// Reopen database and verify table was dropped
@@ -543,7 +657,7 @@ CREATE TABLE IF NOT EXISTS test (id INTEGER);`,
 			},
 		}
 
-		err := RunMigrationsDown(dbPath, migrations, 1)
+		err := RunMigrationsDown(dbPath, migrations, nil, 1)
 		require.Error(t, err)
 	})
 
@@ -587,7 +701,7 @@ CREATE TABLE IF NOT EXISTS table_two (
 		db.Close()
 
 		// Run down with limit of 1 migration
-		err = RunMigrationsDown(dbPath, migrations, 1)
+		err = RunMigrationsDown(dbPath, migrations, nil, 1)
 		require.NoError(t, err)
 
 		// Reopen and verify only the most recent migration was rolled back
@@ -626,7 +740,7 @@ CREATE TABLE IF NOT EXISTS full_rollback (
 		require.NoError(t, err)
 
 		// Run down with NoLimitMigrations
-		err = RunMigrationsDown(dbPath, migrations, NoLimitMigrations)
+		err = RunMigrationsDown(dbPath, migrations, nil, NoLimitMigrations)
 		require.NoError(t, err)
 
 		// Verify table was dropped
@@ -638,5 +752,85 @@ CREATE TABLE IF NOT EXISTS full_rollback (
 		err = db.QueryRow("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='full_rollback'").Scan(&tableExists)
 		require.NoError(t, err)
 		require.False(t, tableExists)
+	})
+}
+
+func TestGetMigrationsIDsApplied(t *testing.T) {
+	makeMigration := func(id, prefix string) types.Migration {
+		return types.Migration{
+			ID:     id,
+			Prefix: prefix,
+			SQL: `-- +migrate Down
+DROP TABLE IF EXISTS ` + prefix + id + `;
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS ` + prefix + id + ` (id INTEGER PRIMARY KEY);`,
+		}
+	}
+
+	t.Run("returns single applied migration", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migs := []types.Migration{makeMigration("0001", "test_")}
+		err = RunMigrationsDBExtended(logger, db, migs, nil, migrate.Up, 1)
+		require.NoError(t, err)
+
+		ids, err := GetMigrationsIDsApplied(db)
+		require.NoError(t, err)
+		require.Equal(t, []string{"test_0001"}, ids)
+	})
+
+	t.Run("returns multiple applied migrations in applied_at order", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migs := []types.Migration{
+			makeMigration("0001", "test_"),
+			makeMigration("0002", "test_"),
+			makeMigration("0003", "test_"),
+		}
+		err = RunMigrationsDBExtended(logger, db, migs, nil, migrate.Up, 3)
+		require.NoError(t, err)
+
+		ids, err := GetMigrationsIDsApplied(db)
+		require.NoError(t, err)
+		require.Equal(t, []string{"test_0001", "test_0002", "test_0003"}, ids)
+	})
+
+	t.Run("returns only applied migrations when some are pending", func(t *testing.T) {
+		logger := log.WithFields("test", "migrations")
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+
+		migs := []types.Migration{
+			makeMigration("0001", "test_"),
+			makeMigration("0002", "test_"),
+		}
+		// Apply only the first migration
+		err = RunMigrationsDBExtended(logger, db, migs, nil, migrate.Up, 1)
+		require.NoError(t, err)
+
+		ids, err := GetMigrationsIDsApplied(db)
+		require.NoError(t, err)
+		require.Equal(t, []string{"test_0001"}, ids)
+		require.NotContains(t, ids, "test_0002")
+	})
+
+	t.Run("returns error when db is closed", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "test.sqlite")
+		db, err := NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		db.Close()
+
+		_, err = GetMigrationsIDsApplied(db)
+		require.Error(t, err)
 	})
 }

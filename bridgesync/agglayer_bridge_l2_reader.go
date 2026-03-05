@@ -17,7 +17,8 @@ import (
 // AgglayerBridgeL2Reader provides functionality to read and interact with the AggLayer Bridge L2 contract.
 // It encapsulates the contract instance and provides methods to query bridge-related data from the L2 chain.
 type AgglayerBridgeL2Reader struct {
-	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
+	agglayerBridgeL2            *agglayerbridgel2.Agglayerbridgel2
+	unsetClaimsMaxLogBlockRange uint64
 }
 
 // NewAgglayerBridgeL2Reader creates a new instance of AgglayerBridgeL2Reader.
@@ -34,11 +35,25 @@ func NewAgglayerBridgeL2Reader(
 	bridgeAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
 ) (*AgglayerBridgeL2Reader, error) {
+	return NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(bridgeAddr, l2Client, 0)
+}
+
+// NewAgglayerBridgeL2ReaderWithMaxLogBlockRange creates a new instance of AgglayerBridgeL2Reader
+// with an optional proactive max block range for unset claims eth_getLogs queries.
+func NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
+	bridgeAddr common.Address,
+	l2Client aggkittypes.BaseEthereumClienter,
+	unsetClaimsMaxLogBlockRange uint64,
+) (*AgglayerBridgeL2Reader, error) {
 	agglayerBridgeL2Contract, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, l2Client)
 	if err != nil {
 		return nil, err
 	}
-	return &AgglayerBridgeL2Reader{agglayerBridgeL2: agglayerBridgeL2Contract}, nil
+
+	return &AgglayerBridgeL2Reader{
+		agglayerBridgeL2:            agglayerBridgeL2Contract,
+		unsetClaimsMaxLogBlockRange: unsetClaimsMaxLogBlockRange,
+	}, nil
 }
 
 // GetUnsetClaimsForBlockRange retrieves all unset claims (unclaims) within a specified block range.
@@ -60,26 +75,40 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 
+	if r.unsetClaimsMaxLogBlockRange > 0 && toBlock-fromBlock >= r.unsetClaimsMaxLogBlockRange {
+		return r.getUnsetClaimsInChunks(ctx, fromBlock, toBlock, r.unsetClaimsMaxLogBlockRange)
+	}
+
+	return r.fetchUnsetClaimsWithFallbackChunking(ctx, fromBlock, toBlock)
+}
+
+func (r *AgglayerBridgeL2Reader) fetchUnsetClaimsWithFallbackChunking(ctx context.Context,
+	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
 	unclaims, err := r.fetchUnsetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
 		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
 		if isMaxRangeErr {
-			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(
-				ctx, fromBlock, toBlock, maxRange,
-				r.fetchUnsetClaims,
-				func(all, chunk []types.Unclaim) []types.Unclaim {
-					return append(all, chunk...)
-				},
-				make([]types.Unclaim, 0),
-			)
+			return r.getUnsetClaimsInChunks(ctx, fromBlock, toBlock, maxRange)
 		}
 
 		return nil, err
 	}
 
 	return unclaims, nil
+}
+
+func (r *AgglayerBridgeL2Reader) getUnsetClaimsInChunks(ctx context.Context,
+	fromBlock, toBlock, maxRange uint64) ([]types.Unclaim, error) {
+	log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
+	return aggkitcommon.ChunkedRangeQuery(
+		ctx, fromBlock, toBlock, maxRange,
+		r.fetchUnsetClaimsWithFallbackChunking,
+		func(all, chunk []types.Unclaim) []types.Unclaim {
+			return append(all, chunk...)
+		},
+		make([]types.Unclaim, 0),
+	)
 }
 
 // fetchUnsetClaims performs the actual event filtering for a given block range

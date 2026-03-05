@@ -139,6 +139,9 @@ type Config struct {
 	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
 	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
 	AgglayerBridgeL2Addr ethCommon.Address `mapstructure:"AgglayerBridgeL2Addr"`
+	// UnsetClaimsMaxLogBlockRange is the proactive max block range for eth_getLogs queries when fetching unset claims.
+	// 0 means disabled.
+	UnsetClaimsMaxLogBlockRange uint64 `mapstructure:"UnsetClaimsMaxLogBlockRange"`
 	// BlockFinalityForL1InfoTree indicates the block finality to use when querying for L1InfoRoot to use
 	BlockFinalityForL1InfoTree aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinalityForL1InfoTree"` //nolint:lll
 	// TriggerCertMode is the mode used to trigger certificate sending
