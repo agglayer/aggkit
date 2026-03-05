@@ -167,11 +167,11 @@ func stepBackwardLET(
 
 	var frontierBytes [32][32]byte
 	for i, h := range frontier {
-		frontierBytes[i] = [32]byte(h) //nolint:gosec // G602: i is bounded to [32] by range over [32]common.Hash
+		frontierBytes[i] = [32]byte(h)
 	}
 	var proofBytes [32][32]byte
 	for i, h := range proof {
-		proofBytes[i] = [32]byte(h) //nolint:gosec // G602: i is bounded to [32] by range over [32]common.Hash
+		proofBytes[i] = [32]byte(h)
 	}
 
 	tx, err := env.L2Bridge.BackwardLET(
