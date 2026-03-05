@@ -429,66 +429,31 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 		require.NoError(t, err)
 
 		// Insert bridge with empty txn_sender and NULL source (should be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender, source
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', NULL
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		// Insert bridge with empty txn_sender and backward_let source (should NOT be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender, source
-			) VALUES (
-				2, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 2, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-				1234567890, '', '', 'backward_let'
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(2, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
 
 		// Insert bridge with empty txn_sender and forward_let source (should NOT be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender, source
-			) VALUES (
-				3, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 3, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892',
-				1234567890, '', '', 'forward_let'
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(3, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892")))
 
-		// Insert bridge with empty txn_sender and no source field (should be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				4, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 4, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567893',
-				1234567890, '', ''
-			)
-		`)
-		require.NoError(t, err)
+		// Insert bridge with empty txn_sender and no source (should be counted)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(4, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567893")))
 
 		err = tx.Commit()
+		require.NoError(t, err)
+
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_pos = 0")
+		require.NoError(t, err)
+		_, err = database.Exec("UPDATE bridge SET from_address = '', source = 'backward_let' WHERE block_num = 2 AND block_pos = 0")
+		require.NoError(t, err)
+		_, err = database.Exec("UPDATE bridge SET from_address = '', source = 'forward_let' WHERE block_num = 3 AND block_pos = 0")
+		require.NoError(t, err)
+		_, err = database.Exec("UPDATE bridge SET from_address = '' WHERE block_num = 4 AND block_pos = 0")
 		require.NoError(t, err)
 
 		mockClient := mocks.NewEthClienter(t)
@@ -1033,7 +998,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		require.NoError(t, row.Scan(&txnSender, &fromAddress, &toAddress))
 
 		require.Equal(t, testAddress, txnSender)
-		require.Empty(t, fromAddress)  // from_address must remain empty (not updated)
+		require.Empty(t, fromAddress, "from_address must remain empty (not updated)")
 		require.Equal(t, toAddr.Hex(), toAddress)
 	})
 }

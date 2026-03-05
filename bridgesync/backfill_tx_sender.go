@@ -352,7 +352,8 @@ func (b *BackfillTxnSender) worker(
 // extractData extracts the transaction txn_sender, from_address and to_address
 func (b *BackfillTxnSender) extractData(ctx context.Context,
 	txHash common.Hash,
-	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address, fromAddr *common.Address, toAddr common.Address, err error) {
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address,
+	fromAddr *common.Address, toAddr common.Address, err error) {
 	// Check if context is cancelled before making network call
 	select {
 	case <-ctx.Done():
@@ -407,9 +408,8 @@ func (b *BackfillTxnSender) bulkUpdate(
 
 	stmtWithoutFrom, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
-		SET
-			txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
-			to_address = COALESCE(NULLIF(to_address, ''), ?)
+		SET txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
+		    to_address = COALESCE(NULLIF(to_address, ''), ?)
 		WHERE block_num = ? AND block_pos = ?;
 	`, tableName))
 	if err != nil {
