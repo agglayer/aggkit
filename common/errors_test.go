@@ -81,6 +81,30 @@ func TestParseMaxRangeFromError(t *testing.T) {
 			expectedMaxBlock:   2500,
 			expectedIsMaxRange: true,
 		},
+		{
+			name:               "eth_getLogs limited with comma-formatted number",
+			errorMsg:           `eth_getLogs is limited to a 10,000 range`,
+			expectedMaxBlock:   10000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "eth_getLogs limited without comma",
+			errorMsg:           `eth_getLogs is limited to a 5000 range`,
+			expectedMaxBlock:   5000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "eth_getLogs limited embedded in JSON error",
+			errorMsg:           `413 Request Entity Too Large: {"jsonrpc":"2.0","id":1021041,"error":{"code":-32614,"message":"eth_getLogs is limited to a 10,000 range"}}`,
+			expectedMaxBlock:   10000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "eth_getLogs limited with large comma-formatted number",
+			errorMsg:           `eth_getLogs is limited to a 100,000 range`,
+			expectedMaxBlock:   100000,
+			expectedIsMaxRange: true,
+		},
 	}
 
 	for _, tt := range tests {
