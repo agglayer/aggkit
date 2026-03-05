@@ -9,10 +9,9 @@ import (
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
-	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -42,31 +41,16 @@ func (s *stubAggsenderRPC) DebugSendCertificate(_ *agglayertypes.Certificate, _ 
 	return common.Hash{}, fmt.Errorf("stub: not implemented")
 }
 
-// stubBridgeService implements bridgeServiceClient for testing.
-// Returns ErrNotFound for any DC not in bridgesByDC.
-type stubBridgeService struct {
-	bridgesByDC map[uint32]*bridgeservicetypes.BridgeResponse
-}
-
-func (s *stubBridgeService) GetBridgeByDepositCount(
-	_ context.Context, _ uint32, dc uint32,
-) (*bridgeservicetypes.BridgeResponse, error) {
-	if br, ok := s.bridgesByDC[dc]; ok {
-		return br, nil
-	}
-	return nil, bridgeservice.ErrNotFound
-}
-
 // TestClassifyCase verifies classifyCase returns the expected RecoveryCase for all 5 cases.
 func TestClassifyCase(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name              string
-		l2CurrentDC       uint32
-		divergencePoint   uint32 // number of matching leading leaves
-		numDivergent      int    // number of divergent L1-settled leaves
-		expectedCase      RecoveryCase
+		name            string
+		l2CurrentDC     uint32
+		divergencePoint uint32 // number of matching leading leaves
+		numDivergent    int    // number of divergent L1-settled leaves
+		expectedCase    RecoveryCase
 	}{
 		{
 			name:            "Case1: single divergent leaf, no extra L2",
@@ -389,7 +373,7 @@ func TestFindDivergencePoint_OnlySettledHeightFails(t *testing.T) {
 		},
 	}
 
-	_, _, _, missingErr := findDivergencePoint(
+	_, _, _, missingErr := findDivergencePoint( //nolint:dogsled
 		context.Background(), env, 2, 0, settledCertID,
 	)
 
@@ -439,7 +423,7 @@ func TestFindDivergencePoint_ZeroCertIDSkipped(t *testing.T) {
 		},
 	}
 
-	_, _, _, missingErr := findDivergencePoint(
+	_, _, _, missingErr := findDivergencePoint( //nolint:dogsled
 		context.Background(), env, 0, 1, common.Hash{}, // zero settledCertID
 	)
 

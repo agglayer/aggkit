@@ -9,11 +9,11 @@ import (
 	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
-	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
@@ -28,7 +28,9 @@ type aggsenderRPCClient interface {
 
 // bridgeServiceClient is the subset of bridgeservice.Client used by the diagnosis tool.
 type bridgeServiceClient interface {
-	GetBridgeByDepositCount(ctx context.Context, networkID uint32, depositCount uint32) (*bridgeservicetypes.BridgeResponse, error)
+	GetBridgeByDepositCount(
+		ctx context.Context, networkID uint32, depositCount uint32,
+	) (*bridgeservicetypes.BridgeResponse, error)
 }
 
 // Diagnose compares the AggLayer's settled L1 state against L2's on-chain bridge state,

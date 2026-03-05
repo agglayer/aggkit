@@ -1471,9 +1471,9 @@ func TestGetCertificateBridgeExits(t *testing.T) {
 		},
 	}
 	agglayerCert := agglayertypes.Certificate{
-		NetworkID:    1,
-		Height:       100,
-		BridgeExits:  bridgeExits,
+		NetworkID:   1,
+		Height:      100,
+		BridgeExits: bridgeExits,
 	}
 	signedCertJSON, err := json.Marshal(agglayerCert)
 	require.NoError(t, err)

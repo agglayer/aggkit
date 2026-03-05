@@ -81,7 +81,9 @@ func (c *Client) GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.Bri
 
 // DebugSendCertificate signs the certificate with the given private key and sends it via the debug endpoint.
 // The hashing and signing are handled internally; callers just pass the cert and key.
-func (c *Client) DebugSendCertificate(cert *agglayertypes.Certificate, privateKey *ecdsa.PrivateKey) (ethCommon.Hash, error) {
+func (c *Client) DebugSendCertificate(
+	cert *agglayertypes.Certificate, privateKey *ecdsa.PrivateKey,
+) (ethCommon.Hash, error) {
 	hash, err := aggsenderrpc.HashCertificateForDebugAuth(cert)
 	if err != nil {
 		return ethCommon.Hash{}, fmt.Errorf("DebugSendCertificate: hash error: %w", err)

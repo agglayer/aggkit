@@ -28,7 +28,8 @@ func main() {
 		&cli.StringFlag{
 			Name:    "cert-exits-file",
 			Aliases: []string{"f"},
-			Usage:   "Path to a JSON override file containing pre-extracted bridge exits keyed by certificate height. Use when the aggsender DB is empty and the tool reports missing cert IDs.",
+			Usage: "Path to a JSON override file containing pre-extracted bridge exits keyed by certificate height." +
+				" Use when the aggsender DB is empty and the tool reports missing cert IDs.",
 		},
 	}
 	app.Action = backward_forward_let.Run

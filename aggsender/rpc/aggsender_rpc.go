@@ -30,7 +30,7 @@ type AggsenderInterface interface {
 // DebugSendCertificateRequest is the request body for the debug send certificate endpoint.
 type DebugSendCertificateRequest struct {
 	Certificate agglayertypes.Certificate `json:"certificate"`
-	Signature   []byte                   `json:"signature"` // 65-byte Ethereum signature
+	Signature   []byte                    `json:"signature"` // 65-byte Ethereum signature
 }
 
 // AggsenderRPC is the RPC interface for the aggsender

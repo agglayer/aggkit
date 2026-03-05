@@ -163,7 +163,7 @@ func TestAggsenderRPCGetCertificateBridgeExits(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			testData := newAggsenderData(t)
-			resolvedHeight := height
+			var resolvedHeight uint64
 			if tt.height == nil {
 				testData.mockStore.EXPECT().GetLastSentCertificate().
 					Return(tt.lastCertResult, tt.lastCertError).Once()
