@@ -195,6 +195,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | MaxL2BlockNumber                  | uint64                    | Set the last block to be included in a certificate (0 = disabled)
 |StopOnFinishedSendingAllCertificates| bool                      | Stop when there are no more certificates to send due to MaxL2BlockNumber
 |StorageRetainCertificatesPolicy| [StorageRetainCertificatesPolicy](#storageretaincertificatespolicy) | Configure the certificate retain policy
+| UnsetClaimsMaxLogBlockRange       | uint64                    | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error)
 
 ## StorageRetainCertificatesPolicy
 The `StorageRetainCertificatesPolicy` structure configures the certificate retain policy
