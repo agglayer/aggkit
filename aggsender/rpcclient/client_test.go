@@ -2,6 +2,7 @@ package rpcclient
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -93,4 +94,133 @@ func TestDebugSendCertificate(t *testing.T) {
 	certHash, err := sut.DebugSendCertificate(cert, privateKey)
 	require.NoError(t, err)
 	require.Equal(t, expectedHash, certHash)
+}
+
+func TestGetStatus_Errors(t *testing.T) {
+	t.Parallel()
+
+	sut := NewClient("url")
+
+	t.Run("rpc call error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{}, fmt.Errorf("network error")
+		}
+		_, err := sut.GetStatus()
+		require.Error(t, err)
+	})
+
+	t.Run("response error field set", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
+		}
+		_, err := sut.GetStatus()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "aggsender_status")
+	})
+
+	t.Run("unmarshal error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Result: json.RawMessage("not-json")}, nil
+		}
+		_, err := sut.GetStatus()
+		require.Error(t, err)
+	})
+}
+
+func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
+	t.Parallel()
+
+	sut := NewClient("url")
+	height := uint64(1)
+
+	t.Run("rpc call error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{}, fmt.Errorf("network error")
+		}
+		_, err := sut.GetCertificateHeaderPerHeight(&height)
+		require.Error(t, err)
+	})
+
+	t.Run("response error field set", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
+		}
+		_, err := sut.GetCertificateHeaderPerHeight(&height)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "aggsender_getCertificateHeaderPerHeight")
+	})
+
+	t.Run("unmarshal error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Result: json.RawMessage("not-json")}, nil
+		}
+		_, err := sut.GetCertificateHeaderPerHeight(&height)
+		require.Error(t, err)
+	})
+}
+
+func TestGetCertificateBridgeExits_Errors(t *testing.T) {
+	t.Parallel()
+
+	sut := NewClient("url")
+	height := uint64(5)
+
+	t.Run("rpc call error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{}, fmt.Errorf("network error")
+		}
+		_, err := sut.GetCertificateBridgeExits(&height)
+		require.Error(t, err)
+	})
+
+	t.Run("response error field set", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
+		}
+		_, err := sut.GetCertificateBridgeExits(&height)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "aggsender_getCertificateBridgeExits")
+	})
+
+	t.Run("unmarshal error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Result: json.RawMessage("not-json")}, nil
+		}
+		_, err := sut.GetCertificateBridgeExits(&height)
+		require.Error(t, err)
+	})
+}
+
+func TestDebugSendCertificate_Errors(t *testing.T) {
+	t.Parallel()
+
+	sut := NewClient("url")
+	privateKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	cert := &agglayertypes.Certificate{Height: 1}
+
+	t.Run("rpc call error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{}, fmt.Errorf("network error")
+		}
+		_, err := sut.DebugSendCertificate(cert, privateKey)
+		require.Error(t, err)
+	})
+
+	t.Run("response error field set", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
+		}
+		_, err := sut.DebugSendCertificate(cert, privateKey)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "aggsender_debugSendCertificate")
+	})
+
+	t.Run("unmarshal error", func(t *testing.T) {
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return rpc.Response{Result: json.RawMessage("not-json")}, nil
+		}
+		_, err := sut.DebugSendCertificate(cert, privateKey)
+		require.Error(t, err)
+	})
 }

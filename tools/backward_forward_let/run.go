@@ -3,6 +3,7 @@ package backward_forward_let
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/rpcclient"
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
+	signertypes "github.com/agglayer/go_signer/signer/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	gethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
@@ -20,6 +24,20 @@ const (
 	dialTimeout     = 10 * time.Second
 	recoveryTimeout = 10 * time.Minute
 )
+
+// l2BridgeContract is the subset of agglayerbridgel2.Agglayerbridgel2 used by the tool.
+// Defined as an interface to allow mocking in tests.
+type l2BridgeContract interface {
+	// Read-only methods used by Diagnose.
+	DepositCount(opts *bind.CallOpts) (*big.Int, error)
+	GetRoot(opts *bind.CallOpts) ([32]byte, error)
+	IsEmergencyState(opts *bind.CallOpts) (bool, error)
+	// Write methods used by ExecuteRecovery.
+	ActivateEmergencyState(opts *bind.TransactOpts) (*gethTypes.Transaction, error)
+	DeactivateEmergencyState(opts *bind.TransactOpts) (*gethTypes.Transaction, error)
+	BackwardLET(opts *bind.TransactOpts, newDepositCount *big.Int, newFrontier [32][32]byte, nextLeaf [32]byte, proof [32][32]byte) (*gethTypes.Transaction, error)
+	ForwardLET(opts *bind.TransactOpts, newLeaves []agglayerbridgel2.AgglayerBridgeL2LeafData, expectedLER [32]byte) (*gethTypes.Transaction, error)
+}
 
 // Env holds all connections and contract bindings needed by the backward/forward LET tool.
 type Env struct {
@@ -40,13 +58,23 @@ type Env struct {
 	BridgeExitsOverride *BridgeExitsOverride
 
 	// L2Bridge is the bound L2 bridge contract.
-	L2Bridge *agglayerbridgel2.Agglayerbridgel2
+	L2Bridge l2BridgeContract
 
 	// L2NetworkID is the network ID of the L2 chain.
 	L2NetworkID uint32
 
 	// Config holds the loaded configuration.
 	Config *Config
+
+	// chainIDFn returns the L2 chain ID. Defaults to L2Client.ChainID. Override in tests.
+	chainIDFn func(ctx context.Context) (*big.Int, error)
+
+	// buildAuthFn builds a bind.TransactOpts for the given signer config. Override in tests.
+	buildAuthFn func(ctx context.Context, cfg signertypes.SignerConfig, l2ChainID *big.Int, name string) (*bind.TransactOpts, error)
+
+	// waitReceiptFn waits for a transaction to be mined and returns its receipt.
+	// Defaults to waitForReceipt wrapping bind.WaitMined. Override in tests.
+	waitReceiptFn func(ctx context.Context, tx *gethTypes.Transaction) (*gethTypes.Receipt, error)
 }
 
 // Close closes the L2 RPC connection.
@@ -101,7 +129,7 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		}
 	}
 
-	return &Env{
+	env := &Env{
 		L2Client:            l2Client,
 		BridgeService:       bridgeSvc,
 		AgglayerClient:      agglayerClient,
@@ -110,7 +138,13 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		L2Bridge:            l2Bridge,
 		L2NetworkID:         cfg.BackwardForwardLET.L2NetworkID,
 		Config:              cfg,
-	}, nil
+	}
+	env.chainIDFn = l2Client.ChainID
+	env.buildAuthFn = buildTransactOpts
+	env.waitReceiptFn = func(ctx context.Context, tx *gethTypes.Transaction) (*gethTypes.Receipt, error) {
+		return waitForReceipt(ctx, l2Client, tx)
+	}
+	return env, nil
 }
 
 // Run is the main entry point for the backward/forward LET CLI.

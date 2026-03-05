@@ -214,6 +214,16 @@ func TestLoadBridgeExitsOverride_MalformedJSON(t *testing.T) {
 	require.Contains(t, err.Error(), "parse override file")
 }
 
+// TestLoadBridgeExitsOverride_FileNotFound verifies that a non-existent file path
+// produces an error containing "read override file".
+func TestLoadBridgeExitsOverride_FileNotFound(t *testing.T) {
+	t.Parallel()
+
+	_, err := LoadBridgeExitsOverride("/nonexistent/path/override.json")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "read override file")
+}
+
 // TestLoadBridgeExitsOverride_MissingHeightsMap verifies that an absent "heights" key
 // (nil map after unmarshal) is rejected.
 func TestLoadBridgeExitsOverride_MissingHeightsMap(t *testing.T) {

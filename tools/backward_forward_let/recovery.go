@@ -14,26 +14,26 @@ import (
 // It activates emergency state (if not already active), runs BackwardLET and/or ForwardLET
 // as required by the case, and deactivates emergency state when done.
 func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) error {
-	l2ChainID, err := env.L2Client.ChainID(ctx)
+	l2ChainID, err := env.chainIDFn(ctx)
 	if err != nil {
 		return fmt.Errorf("get L2 chain ID: %w", err)
 	}
 
-	adminAuth, err := buildTransactOpts(
+	adminAuth, err := env.buildAuthFn(
 		ctx, env.Config.BackwardForwardLET.GERRemoverKey, l2ChainID, "ger-remover",
 	)
 	if err != nil {
 		return fmt.Errorf("build admin transact opts: %w", err)
 	}
 
-	pauserAuth, err := buildTransactOpts(
+	pauserAuth, err := env.buildAuthFn(
 		ctx, env.Config.BackwardForwardLET.EmergencyPauserKey, l2ChainID, "emergency-pauser",
 	)
 	if err != nil {
 		return fmt.Errorf("build pauser transact opts: %w", err)
 	}
 
-	unpauserAuth, err := buildTransactOpts(
+	unpauserAuth, err := env.buildAuthFn(
 		ctx, env.Config.BackwardForwardLET.EmergencyUnpauserKey, l2ChainID, "emergency-unpauser",
 	)
 	if err != nil {
@@ -91,7 +91,7 @@ func stepActivateEmergency(
 		return fmt.Errorf("send ActivateEmergencyState tx: %w", err)
 	}
 
-	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
+	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for ActivateEmergencyState receipt: %w", err)
 	}
@@ -125,7 +125,7 @@ func stepDeactivateEmergency(
 		return fmt.Errorf("send DeactivateEmergencyState tx: %w", err)
 	}
 
-	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
+	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for DeactivateEmergencyState receipt: %w", err)
 	}
@@ -185,7 +185,7 @@ func stepBackwardLET(
 		return fmt.Errorf("send BackwardLET tx: %w", err)
 	}
 
-	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
+	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for BackwardLET receipt: %w", err)
 	}
@@ -252,7 +252,7 @@ func stepForwardLETDivergentLeaves(
 		return fmt.Errorf("send ForwardLET (divergent leaves) tx: %w", err)
 	}
 
-	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
+	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for ForwardLET (divergent leaves) receipt: %w", err)
 	}
@@ -340,7 +340,7 @@ func stepForwardLETExtraL2Bridges(
 		return fmt.Errorf("send ForwardLET (extra L2 bridges) tx: %w", err)
 	}
 
-	receipt, err := waitForReceipt(ctx, env.L2Client, tx)
+	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for ForwardLET (extra L2 bridges) receipt: %w", err)
 	}

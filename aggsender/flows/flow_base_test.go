@@ -1779,3 +1779,93 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 		})
 	}
 }
+
+// Test_baseFlow_NextCertificateBlockRange_CertQuerier tests the new certQuerier path
+// in NextCertificateBlockRange for settled certificates.
+func Test_baseFlow_NextCertificateBlockRange_CertQuerier(t *testing.T) {
+	t.Parallel()
+
+	t.Run("settled cert with certQuerier success", func(t *testing.T) {
+		t.Parallel()
+
+		mockBridgeQuerier := mocks.NewBridgeQuerier(t)
+		mockCertQuerier := mocks.NewCertificateQuerier(t)
+
+		// lastSentCertificate is settled with ToBlock=0 (stale, as set by debug endpoint).
+		lastSentCert := &types.CertificateHeader{
+			Status:  agglayertypes.Settled,
+			ToBlock: 0,
+			Height:  3,
+		}
+
+		// certQuerier re-derives the toBlock = 10.
+		mockBridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(20), nil)
+		mockBridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
+		mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(mock.Anything, mock.Anything).
+			Return(uint64(10), nil)
+
+		f := &baseFlow{
+			l2BridgeQuerier: mockBridgeQuerier,
+			certQuerier:     mockCertQuerier,
+			log:             log.WithFields("test", t.Name()),
+		}
+
+		blockRange, retryCount, err := f.NextCertificateBlockRange(context.Background(), lastSentCert)
+		require.NoError(t, err)
+		require.Equal(t, uint64(11), blockRange.FromBlock)
+		require.Equal(t, uint64(20), blockRange.ToBlock)
+		require.Equal(t, 0, retryCount)
+	})
+
+	t.Run("settled cert with certQuerier error", func(t *testing.T) {
+		t.Parallel()
+
+		mockBridgeQuerier := mocks.NewBridgeQuerier(t)
+		mockCertQuerier := mocks.NewCertificateQuerier(t)
+
+		lastSentCert := &types.CertificateHeader{
+			Status:  agglayertypes.Settled,
+			ToBlock: 5,
+			Height:  2,
+		}
+
+		mockBridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(20), nil)
+		mockBridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
+		mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(mock.Anything, mock.Anything).
+			Return(uint64(0), errors.New("query failed"))
+
+		f := &baseFlow{
+			l2BridgeQuerier: mockBridgeQuerier,
+			certQuerier:     mockCertQuerier,
+			log:             log.WithFields("test", t.Name()),
+		}
+
+		_, _, err := f.NextCertificateBlockRange(context.Background(), lastSentCert)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error deriving toBlock for settled cert")
+	})
+
+	t.Run("settled cert without certQuerier uses stored toBlock", func(t *testing.T) {
+		t.Parallel()
+
+		mockBridgeQuerier := mocks.NewBridgeQuerier(t)
+
+		lastSentCert := &types.CertificateHeader{
+			Status:  agglayertypes.Settled,
+			ToBlock: 8,
+			Height:  1,
+		}
+
+		mockBridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(20), nil)
+
+		f := &baseFlow{
+			l2BridgeQuerier: mockBridgeQuerier,
+			certQuerier:     nil, // no certQuerier → falls back to stored toBlock
+			log:             log.WithFields("test", t.Name()),
+		}
+
+		blockRange, _, err := f.NextCertificateBlockRange(context.Background(), lastSentCert)
+		require.NoError(t, err)
+		require.Equal(t, uint64(9), blockRange.FromBlock)
+	})
+}

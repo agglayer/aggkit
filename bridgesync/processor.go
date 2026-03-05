@@ -1538,7 +1538,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 	restoreQuery := `
 		SELECT *
 		FROM bridge_archive
-		WHERE deposit_count > $1 AND deposit_count <= $2
+		WHERE deposit_count >= $1 AND deposit_count <= $2
 		ORDER BY deposit_count ASC
 	`
 
@@ -1582,7 +1582,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 		// cleanup bridge_archive
 		if _, err := tx.Exec(`
 			DELETE FROM bridge_archive
-			WHERE deposit_count > $1 AND deposit_count <= $2
+			WHERE deposit_count >= $1 AND deposit_count <= $2
 		`, next, prev); err != nil {
 			return err
 		}

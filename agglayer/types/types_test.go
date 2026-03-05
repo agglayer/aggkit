@@ -1897,3 +1897,50 @@ func createTreeDBForTest(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	return treeDB
 }
+
+// TestBridgeExit_UnmarshalJSON_HexAmount verifies that BridgeExit correctly deserializes
+// amounts with a "0x"-prefixed hex string (added in this branch).
+func TestBridgeExit_UnmarshalJSON_HexAmount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		amountJSON     string
+		expectedAmount *big.Int
+	}{
+		{
+			name:           "decimal amount",
+			amountJSON:     `"1000"`,
+			expectedAmount: big.NewInt(1000),
+		},
+		{
+			name:           "0x-prefixed hex amount",
+			amountJSON:     `"0x3e8"`,
+			expectedAmount: big.NewInt(1000),
+		},
+		{
+			name:           "0X-prefixed hex amount (uppercase)",
+			amountJSON:     `"0X3E8"`,
+			expectedAmount: big.NewInt(1000),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonData := fmt.Sprintf(`{
+				"leaf_type": "Transfer",
+				"token_info": {"origin_network": 1, "origin_token_address": "0x0000000000000000000000000000000000000001"},
+				"dest_network": 2,
+				"dest_address": "0x0000000000000000000000000000000000000002",
+				"amount": %s,
+				"metadata": null
+			}`, tc.amountJSON)
+
+			var be BridgeExit
+			require.NoError(t, json.Unmarshal([]byte(jsonData), &be))
+			require.Equal(t, tc.expectedAmount, be.Amount)
+		})
+	}
+}

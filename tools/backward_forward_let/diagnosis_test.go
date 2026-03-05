@@ -4,17 +4,42 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+// stubBridgeService implements bridgeServiceClient for testing.
+type stubBridgeService struct {
+	// bridges maps depositCount → BridgeResponse to return.
+	bridges map[uint32]*bridgeservicetypes.BridgeResponse
+	// errAtDC maps depositCount → error to return.
+	errAtDC map[uint32]error
+}
+
+func (s *stubBridgeService) GetBridgeByDepositCount(
+	_ context.Context, _ uint32, depositCount uint32,
+) (*bridgeservicetypes.BridgeResponse, error) {
+	if s.errAtDC != nil {
+		if err, ok := s.errAtDC[depositCount]; ok {
+			return nil, err
+		}
+	}
+	if br, ok := s.bridges[depositCount]; ok {
+		return br, nil
+	}
+	return nil, bridgeservice.ErrNotFound
+}
 
 // --- stubs for findDivergencePoint unit tests ---
 
@@ -521,4 +546,479 @@ func TestGetBridgeExitsForHeight_AggsenderFails_NoOverride(t *testing.T) {
 	_, err := getBridgeExitsForHeight(env, 2)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no bridge exit data for height 2")
+}
+
+// TestIsNotFound verifies that isNotFound correctly identifies the bridgeservice sentinel.
+func TestIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isNotFound(bridgeservice.ErrNotFound))
+	require.True(t, isNotFound(fmt.Errorf("wrapped: %w", bridgeservice.ErrNotFound)))
+	require.False(t, isNotFound(errors.New("some other error")))
+}
+
+// TestCaseDescription verifies caseDescription returns the correct string for each case.
+func TestCaseDescription(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		c    RecoveryCase
+		want string
+	}{
+		{Case1, "Case1"},
+		{Case2, "Case2"},
+		{Case3, "Case3"},
+		{Case4, "Case4"},
+		{NoDivergence, string(NoDivergence)}, // default branch
+	}
+
+	for _, tc := range tests {
+		t.Run(string(tc.c), func(t *testing.T) {
+			t.Parallel()
+			got := caseDescription(tc.c)
+			require.Contains(t, got, tc.want)
+		})
+	}
+}
+
+// TestPrintRecoveryPlanSummary_Case1 verifies ForwardLET-only output.
+func TestPrintRecoveryPlanSummary_Case1(t *testing.T) {
+	t.Parallel()
+
+	tokenA := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	result := &DiagnosisResult{
+		Case: Case1,
+		DivergentLeaves: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: tokenA},
+				Amount:    big.NewInt(100),
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	printRecoveryPlanSummary(&buf, result)
+	output := buf.String()
+
+	require.Contains(t, output, "ForwardLET")
+	require.Contains(t, output, "1 divergent leaf")
+	require.NotContains(t, output, "BackwardLET")
+}
+
+// TestPrintRecoveryPlanSummary_Case2 verifies BackwardLET+ForwardLET+ForwardLET output.
+func TestPrintRecoveryPlanSummary_Case2(t *testing.T) {
+	t.Parallel()
+
+	tokenA := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	result := &DiagnosisResult{
+		Case:            Case2,
+		DivergencePoint: 3,
+		DivergentLeaves: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: tokenA},
+				Amount:    big.NewInt(200),
+			},
+		},
+		ExtraL2Bridges: []bridgesync.LeafData{
+			{LeafType: 0, OriginNetwork: 1, Amount: big.NewInt(50)},
+		},
+	}
+
+	var buf bytes.Buffer
+	printRecoveryPlanSummary(&buf, result)
+	output := buf.String()
+
+	require.Contains(t, output, "BackwardLET")
+	require.Contains(t, output, "ForwardLET #1")
+	require.Contains(t, output, "ForwardLET #2")
+	require.Contains(t, output, "Verify")
+}
+
+// makeBridgeResponse builds a minimal BridgeResponse suitable for leaf hash comparison.
+func makeBridgeResponse(
+	leafType uint8, originNet uint32, originAddr, destAddr string, destNet uint32, amount string,
+) *bridgeservicetypes.BridgeResponse {
+	return &bridgeservicetypes.BridgeResponse{
+		LeafType:           leafType,
+		OriginNetwork:      originNet,
+		OriginAddress:      bridgeservicetypes.Address(originAddr),
+		DestinationNetwork: destNet,
+		DestinationAddress: bridgeservicetypes.Address(destAddr),
+		Amount:             bridgeservicetypes.BigIntString(amount),
+	}
+}
+
+// makeBridgeExit builds a BridgeExit whose leaf hash matches a given BridgeResponse.
+func makeBridgeExitFromResponse(br *bridgeservicetypes.BridgeResponse) *agglayertypes.BridgeExit {
+	amount := parseAmount(string(br.Amount))
+	return &agglayertypes.BridgeExit{
+		LeafType:           bridgetypes.LeafType(br.LeafType),
+		TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: br.OriginNetwork, OriginTokenAddress: common.HexToAddress(string(br.OriginAddress))},
+		DestinationNetwork: br.DestinationNetwork,
+		DestinationAddress: common.HexToAddress(string(br.DestinationAddress)),
+		Amount:             amount,
+		Metadata:           decodeMetadata(br.Metadata),
+	}
+}
+
+// TestCheckCertExitsMatchL2_AllMatch verifies true when all exits match.
+func TestCheckCertExitsMatchL2_AllMatch(t *testing.T) {
+	t.Parallel()
+
+	br0 := makeBridgeResponse(0, 1, "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "1000")
+	br1 := makeBridgeResponse(0, 1, "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+		"0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD", 3, "2000")
+
+	exits := []*agglayertypes.BridgeExit{
+		makeBridgeExitFromResponse(br0),
+		makeBridgeExitFromResponse(br1),
+	}
+
+	env := &Env{
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				5: br0,
+				6: br1,
+			},
+		},
+		L2NetworkID: 1,
+	}
+
+	result := checkCertExitsMatchL2(context.Background(), env, exits, 5)
+	require.True(t, result)
+}
+
+// TestCheckCertExitsMatchL2_Mismatch verifies false when hashes differ.
+func TestCheckCertExitsMatchL2_Mismatch(t *testing.T) {
+	t.Parallel()
+
+	br0 := makeBridgeResponse(0, 1, "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "1000")
+	// Create an exit that does NOT match br0.
+	differentExit := &agglayertypes.BridgeExit{
+		LeafType:           0,
+		TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 9, OriginTokenAddress: common.HexToAddress("0x9999")},
+		DestinationNetwork: 9,
+		DestinationAddress: common.HexToAddress("0x9999"),
+		Amount:             big.NewInt(9999),
+	}
+
+	env := &Env{
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{0: br0},
+		},
+		L2NetworkID: 1,
+	}
+
+	result := checkCertExitsMatchL2(context.Background(), env, []*agglayertypes.BridgeExit{differentExit}, 0)
+	require.False(t, result)
+}
+
+// TestCheckCertExitsMatchL2_ServiceError verifies false when bridge service returns error.
+func TestCheckCertExitsMatchL2_ServiceError(t *testing.T) {
+	t.Parallel()
+
+	exit := &agglayertypes.BridgeExit{
+		LeafType:           0,
+		DestinationNetwork: 1,
+		Amount:             big.NewInt(100),
+	}
+
+	env := &Env{
+		BridgeService: &stubBridgeService{
+			errAtDC: map[uint32]error{0: errors.New("service down")},
+		},
+		L2NetworkID: 1,
+	}
+
+	result := checkCertExitsMatchL2(context.Background(), env, []*agglayertypes.BridgeExit{exit}, 0)
+	require.False(t, result)
+}
+
+// TestCollectExtraL2Bridges_HappyPath verifies bridges are collected correctly.
+func TestCollectExtraL2Bridges_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	br3 := makeBridgeResponse(0, 1, "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "500")
+	br4 := makeBridgeResponse(1, 2, "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+		"0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD", 3, "600")
+
+	env := &Env{
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				3: br3,
+				4: br4,
+			},
+		},
+		L2NetworkID: 1,
+	}
+
+	extra, err := collectExtraL2Bridges(context.Background(), env, 3, 5)
+	require.NoError(t, err)
+	require.Len(t, extra, 2)
+}
+
+// TestCollectExtraL2Bridges_NotFound verifies that NotFound entries are skipped.
+func TestCollectExtraL2Bridges_NotFound(t *testing.T) {
+	t.Parallel()
+
+	br3 := makeBridgeResponse(0, 1, "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "100")
+
+	env := &Env{
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				3: br3,
+				// DC 4 is absent → returns ErrNotFound → skipped
+			},
+		},
+		L2NetworkID: 1,
+	}
+
+	extra, err := collectExtraL2Bridges(context.Background(), env, 3, 5)
+	require.NoError(t, err)
+	require.Len(t, extra, 1)
+}
+
+// TestCollectExtraL2Bridges_ServiceError verifies a non-NotFound error is propagated.
+func TestCollectExtraL2Bridges_ServiceError(t *testing.T) {
+	t.Parallel()
+
+	env := &Env{
+		BridgeService: &stubBridgeService{
+			errAtDC: map[uint32]error{2: errors.New("connection refused")},
+		},
+		L2NetworkID: 1,
+	}
+
+	_, err := collectExtraL2Bridges(context.Background(), env, 2, 3)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "DC=2")
+}
+
+// TestEnvClose_Nil verifies that Close on a nil *Env returns nil without panic.
+func TestEnvClose_Nil(t *testing.T) {
+	t.Parallel()
+
+	var e *Env
+	require.NoError(t, e.Close())
+}
+
+// TestEnvClose_NilL2Client verifies that Close on an Env with no L2Client returns nil.
+func TestEnvClose_NilL2Client(t *testing.T) {
+	t.Parallel()
+
+	e := &Env{}
+	require.NoError(t, e.Close())
+}
+
+// TestPrintDiagnosis_EmergencyState verifies the emergency state warning is printed.
+func TestPrintDiagnosis_EmergencyState(t *testing.T) {
+	t.Parallel()
+
+	tokenA := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	result := &DiagnosisResult{
+		Case:             Case1,
+		IsEmergencyState: true,
+		DivergentLeaves: []*agglayertypes.BridgeExit{
+			{
+				LeafType:           bridgetypes.LeafTypeAsset,
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: tokenA},
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x1111"),
+				Amount:             big.NewInt(100),
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	PrintDiagnosis(&buf, result)
+	output := buf.String()
+
+	require.Contains(t, output, "emergency state")
+	require.Contains(t, output, "WARNING")
+}
+
+// TestPrintDiagnosis_WithExtraL2Bridges verifies the ExtraL2Bridges table is printed.
+func TestPrintDiagnosis_WithExtraL2Bridges(t *testing.T) {
+	t.Parallel()
+
+	tokenA := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	result := &DiagnosisResult{
+		Case:            Case2,
+		DivergencePoint: 3,
+		DivergentLeaves: []*agglayertypes.BridgeExit{
+			{
+				LeafType:           bridgetypes.LeafTypeAsset,
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: tokenA},
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x1111"),
+				Amount:             big.NewInt(500),
+			},
+		},
+		ExtraL2Bridges: []bridgesync.LeafData{
+			{
+				LeafType:           0,
+				OriginNetwork:      1,
+				OriginAddress:      tokenA,
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x2222"),
+				Amount:             big.NewInt(200),
+			},
+		},
+		Undercollateralization: []UndercollateralizedToken{
+			{TokenOriginNetwork: 0, TokenOriginAddress: tokenA, Amount: big.NewInt(500)},
+		},
+	}
+
+	var buf bytes.Buffer
+	PrintDiagnosis(&buf, result)
+	output := buf.String()
+
+	require.Contains(t, output, "Extra Real L2 Bridges")
+	require.Contains(t, output, "200")
+	require.Contains(t, output, "Case2")
+}
+
+// TestFindDivergencePoint_NonMatchingExits verifies the path where exits from a cert
+// do NOT match the L2 bridge service data. In this case, the exits are prepended to
+// divergentLeaves and the walk continues. With no further matching cert, the function
+// returns (divergentLeaves, 0, false, nil).
+func TestFindDivergencePoint_NonMatchingExits(t *testing.T) {
+	t.Parallel()
+
+	// Height 0 returns one exit that does NOT match the bridge service response.
+	mismatchedExit := &agglayertypes.BridgeExit{
+		LeafType:           0,
+		TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 99, OriginTokenAddress: common.HexToAddress("0x9999")},
+		DestinationNetwork: 99,
+		DestinationAddress: common.HexToAddress("0x9999"),
+		Amount:             big.NewInt(9999),
+	}
+	br0 := makeBridgeResponse(0, 1, "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "1000")
+
+	env := &Env{
+		AggsenderRPC: &stubAggsenderRPC{
+			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
+				0: {mismatchedExit},
+			},
+		},
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				0: br0,
+			},
+		},
+		L2NetworkID: 1,
+	}
+
+	// settledHeight=0, 1 total leaf → height 0 has one exit that doesn't match.
+	leaves, divPoint, divFound, missingErr := findDivergencePoint(
+		context.Background(), env, 0, 1, common.Hash{},
+	)
+
+	require.Nil(t, missingErr)
+	require.Len(t, leaves, 1, "mismatched exit should be in divergentLeaves")
+	require.Equal(t, mismatchedExit, leaves[0])
+	require.Equal(t, uint32(0), divPoint)
+	require.False(t, divFound, "no matching cert found when exits don't match")
+}
+
+// TestFindDivergencePoint_AllCertsMatch verifies the early-return path when all exits
+// at a height match the L2 bridge service data and there are no missing heights.
+func TestFindDivergencePoint_AllCertsMatch(t *testing.T) {
+	t.Parallel()
+
+	// Create two matching bridge exit / bridge response pairs for DC 0 and DC 1.
+	br0 := makeBridgeResponse(0, 1, "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "1000")
+	br1 := makeBridgeResponse(0, 1, "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+		"0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD", 3, "2000")
+	exit0 := makeBridgeExitFromResponse(br0)
+	exit1 := makeBridgeExitFromResponse(br1)
+
+	env := &Env{
+		AggsenderRPC: &stubAggsenderRPC{
+			// Height 0 returns 2 exits that match DCs 0 and 1.
+			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
+				0: {exit0, exit1},
+			},
+		},
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				0: br0,
+				1: br1,
+			},
+		},
+		L2NetworkID: 1,
+	}
+
+	// settledHeight=0, totalSettledLeaves=2 → one cert at height 0 with 2 exits.
+	leaves, divPoint, divFound, missingErr := findDivergencePoint(
+		context.Background(), env, 0, 2, common.Hash{},
+	)
+
+	require.Nil(t, missingErr)
+	require.Empty(t, leaves, "no divergent leaves expected when all certs match")
+	require.Equal(t, uint32(2), divPoint, "divergence point should be after all settled leaves")
+	require.True(t, divFound)
+}
+
+// TestComputeUndercollateralization_NilTokenInfo verifies that leaves with nil TokenInfo
+// are skipped and do not contribute to the result.
+func TestComputeUndercollateralization_NilTokenInfo(t *testing.T) {
+	t.Parallel()
+
+	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	leaves := []*agglayertypes.BridgeExit{
+		// This leaf has nil TokenInfo — should be skipped.
+		{
+			LeafType:           0,
+			TokenInfo:          nil,
+			DestinationNetwork: 1,
+			Amount:             big.NewInt(999),
+		},
+		// This leaf has valid TokenInfo.
+		{
+			LeafType:  0,
+			TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: token},
+			Amount:    big.NewInt(42),
+		},
+	}
+
+	result := computeUndercollateralization(leaves)
+	require.Len(t, result, 1, "only the leaf with non-nil TokenInfo should appear")
+	require.Equal(t, token, result[0].TokenOriginAddress)
+	require.Equal(t, big.NewInt(42), result[0].Amount)
+}
+
+// TestFindDivergencePoint_MatchingThenMissingAbove verifies that when a matching cert is found
+// but there are missing certs above it, the walk reports missing entries.
+func TestFindDivergencePoint_MatchingThenMissingAbove(t *testing.T) {
+	t.Parallel()
+
+	settledCertID := common.HexToHash("0xCCCC")
+
+	// Height 2 fails, heights 0 and 1 have exits that match (empty).
+	env := &Env{
+		AggsenderRPC: &stubAggsenderRPC{
+			failHeights: map[uint64]bool{2: true},
+			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
+				0: {},
+				1: {},
+			},
+		},
+	}
+
+	// settledHeight=2, but height 2 fails → one missing entry.
+	_, _, _, missingErr := findDivergencePoint( //nolint:dogsled
+		context.Background(), env, 2, 0, settledCertID,
+	)
+
+	require.NotNil(t, missingErr)
+	require.Len(t, missingErr.missing, 1)
+	require.Equal(t, uint64(2), missingErr.missing[0].Height)
+	require.True(t, missingErr.missing[0].CertIDResolved)
 }
