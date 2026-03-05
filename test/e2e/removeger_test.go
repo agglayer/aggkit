@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -58,6 +59,12 @@ func TestRemoveGER_CategoryB1(t *testing.T) {
 // TestRemoveGER_CategoryB2 runs the Category B.2
 func TestRemoveGER_CategoryB2(t *testing.T) {
 	testRemoveGER_CategoryB2(t)
+}
+
+// TestGenerateInvalidGER tests the generate subcommand end-to-end:
+// builds the CLI binary, runs generate, parses cast commands, executes them, and asserts results.
+func TestGenerateInvalidGER(t *testing.T) {
+	testGenerateInvalidGER(t)
 }
 
 // pollWithBackoff runs fn until it returns (true, nil) or ctx is done. Uses exponential backoff between attempts.
@@ -1169,4 +1176,178 @@ func buildFakeMerkleProofForWrongDepositCount(t *testing.T, bridge *bridgeResult
 		ProofLocal:      proofLocal,
 		ProofRollup:     proofRollup,
 	}
+}
+
+// testGenerateInvalidGER tests the "generate" subcommand end-to-end:
+// 1. Build CLI binary
+// 2. Run "generate --network-id <N>" and capture output
+// 3. Parse the two cast commands from stdout
+// 4. Stop aggkit, execute both cast commands, start aggkit
+// 5. Assert GER exists on L2 and claim is marked
+func testGenerateInvalidGER(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+	if _, err := exec.LookPath("cast"); err != nil {
+		t.Skip("cast not found in PATH, skipping TestGenerateInvalidGER")
+	}
+	env := testEnv
+	require.NotNil(t, env, "testEnv must be set by TestMain")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	// Best-effort: restore bridge if left in emergency state
+	defer func() {
+		restoreCtx, restoreCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer restoreCancel()
+		isEmergency, err := env.L2.Contracts.L2Bridge.IsEmergencyState(&bind.CallOpts{Context: restoreCtx})
+		if err != nil || !isEmergency {
+			return
+		}
+		opts, err := bind.NewKeyedTransactorWithChainID(env.Keys.SovereignAdmin, env.L2.ChainID)
+		if err != nil {
+			return
+		}
+		_, _ = env.L2.Contracts.L2Bridge.DeactivateEmergencyState(opts)
+	}()
+
+	// --- Step 1: Build the CLI binary ---
+	envsDir, err := envs.FindEnvsDir()
+	require.NoError(t, err)
+	repoRoot := filepath.Join(envsDir, "..", "..", "..") // envs dir = <repo>/test/e2e/envs
+	tmpDir := t.TempDir()
+	binaryPath := filepath.Join(tmpDir, "remove-ger")
+	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", binaryPath, "./tools/remove_ger/cmd/")
+	buildCmd.Dir = repoRoot
+	buildOut, err := buildCmd.CombinedOutput()
+	require.NoError(t, err, "build remove-ger binary: %s", string(buildOut))
+
+	// --- Step 2: Run "generate" subcommand ---
+	// Use a random deposit count so the generated GER is unique per run (avoids GlobalExitRootAlreadySet
+	// if the environment persists from a previous run).
+	var depositCountBytes [2]byte
+	_, err = rand.Read(depositCountBytes[:])
+	require.NoError(t, err)
+	randomDepositCount := uint32(40000) + uint32(depositCountBytes[0])<<8 + uint32(depositCountBytes[1])
+
+	configPath := getPreparedToolConfigPath(t)
+	networkID := fmt.Sprintf("%d", env.L2.NetworkID)
+	generateCmd := exec.CommandContext(ctx, binaryPath,
+		"--cfg", configPath,
+		"generate",
+		"--network-id", networkID,
+		"--deposit-count", fmt.Sprintf("%d", randomDepositCount),
+	)
+	generateOut, err := generateCmd.CombinedOutput()
+	require.NoError(t, err, "run generate subcommand: %s", string(generateOut))
+	output := string(generateOut)
+	t.Logf("generate output:\n%s", output)
+
+	// --- Step 3: Parse output ---
+	gerHash := parseGERFromGenerateOutput(t, output)
+	globalIndex := parseGlobalIndexFromGenerateOutput(t, output)
+	injectCmd, claimCmd := parseCastCommandsFromOutput(t, output)
+
+	aggoracleKeyHex := hex.EncodeToString(crypto.FromECDSA(env.Keys.AggOracle))
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L2Keys.Return(l2Key)
+	claimKeyHex := hex.EncodeToString(crypto.FromECDSA(l2Key))
+	_ = l2Opts // only need the raw key for cast
+
+	injectCmd = expandEnvVars(injectCmd, map[string]string{
+		"AGGORACLE_PRIVATE_KEY": "0x" + aggoracleKeyHex,
+	})
+	claimCmd = expandEnvVars(claimCmd, map[string]string{
+		"CLAIM_PRIVATE_KEY": "0x" + claimKeyHex,
+	})
+
+	// --- Step 4: Stop aggkit, inject GER, claim, start aggkit ---
+	// Stop aggkit first to avoid nonce conflicts with the aggoracle key (consistent with other tests).
+	require.NoError(t, env.StopAggkit(ctx))
+
+	log.Info("[GenerateInvalidGER] executing inject GER cast command")
+	injectExec := exec.CommandContext(ctx, "bash", "-c", injectCmd)
+	injectOut, err := injectExec.CombinedOutput()
+	require.NoError(t, err, "cast inject GER: %s", string(injectOut))
+	t.Logf("inject output: %s", string(injectOut))
+
+	log.Info("[GenerateInvalidGER] executing claim cast command")
+	claimExec := exec.CommandContext(ctx, "bash", "-c", claimCmd)
+	claimOut, err := claimExec.CombinedOutput()
+	require.NoError(t, err, "cast claim: %s", string(claimOut))
+	t.Logf("claim output: %s", string(claimOut))
+
+	require.NoError(t, env.StartAggkit(ctx))
+
+	// --- Step 5: Assert injection and claim succeeded ---
+	assertGERExistsOnL2(ctx, t, env, gerHash)
+	assertClaimedOnL2(ctx, t, env, globalIndex)
+
+	// Wait for bridge L2 sync to index the claim; otherwise diagnosis sees no claims.
+	waitForClaimOnBridgeService(ctx, t, env, globalIndex, 2*time.Minute)
+
+	// --- Step 6: Recovery using the CLI binary (same binary, diagnose+recover mode) ---
+	log.Info("[GenerateInvalidGER] running remove-ger tool to recover from invalid GER")
+	recoverCmd := exec.CommandContext(ctx, binaryPath,
+		"--cfg", configPath,
+		"--ger", gerHash.Hex(),
+		"--yes",
+	)
+	recoverOut, err := recoverCmd.CombinedOutput()
+	require.NoError(t, err, "remove-ger recovery: %s", string(recoverOut))
+	t.Logf("recovery output: %s", string(recoverOut))
+
+	assertGERRemovedFromL2(ctx, t, env, gerHash)
+
+	isEmergency, err := env.L2.Contracts.L2Bridge.IsEmergencyState(&bind.CallOpts{Context: ctx})
+	require.NoError(t, err)
+	require.False(t, isEmergency, "bridge must not be in emergency state after recovery")
+
+	log.Info("[GenerateInvalidGER] test passed: generate, inject, claim, and recovery all succeeded")
+}
+
+// parseGERFromGenerateOutput extracts the GER hash from the "# GER: 0x..." line.
+func parseGERFromGenerateOutput(t *testing.T, output string) common.Hash {
+	t.Helper()
+	re := regexp.MustCompile(`# GER: (0x[0-9a-fA-F]{64})`)
+	matches := re.FindStringSubmatch(output)
+	require.Len(t, matches, 2, "expected GER hash in generate output")
+	return common.HexToHash(matches[1])
+}
+
+// parseGlobalIndexFromGenerateOutput extracts the global index from the "# Global Index: <decimal>" line.
+func parseGlobalIndexFromGenerateOutput(t *testing.T, output string) *big.Int {
+	t.Helper()
+	re := regexp.MustCompile(`# Global Index: (\d+)`)
+	matches := re.FindStringSubmatch(output)
+	require.Len(t, matches, 2, "expected Global Index in generate output")
+	gi := new(big.Int)
+	_, ok := gi.SetString(matches[1], 10)
+	require.True(t, ok, "invalid Global Index decimal: %s", matches[1])
+	return gi
+}
+
+// parseCastCommandsFromOutput extracts the two "cast send" command lines from generate output.
+func parseCastCommandsFromOutput(t *testing.T, output string) (injectCmd, claimCmd string) {
+	t.Helper()
+	var castLines []string
+	for line := range strings.SplitSeq(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "cast send") {
+			castLines = append(castLines, trimmed)
+		}
+	}
+	require.Len(t, castLines, 2, "expected exactly 2 cast send commands in generate output")
+	return castLines[0], castLines[1]
+}
+
+// expandEnvVars replaces $VAR_NAME placeholders in cmd with their values from vars.
+func expandEnvVars(cmd string, vars map[string]string) string {
+	for k, v := range vars {
+		cmd = strings.ReplaceAll(cmd, "$"+k, v)
+	}
+	return cmd
 }
