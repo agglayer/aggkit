@@ -6530,6 +6530,86 @@ func TestHandleForwardLETEvent(t *testing.T) {
 		require.Len(t, bridges, 1)
 		require.Equal(t, event.BlockPos, bridges[0].BlockPos)
 	})
+
+	t.Run("ForwardLET after genesis assigns deposit_count starting at 0", func(t *testing.T) {
+		// Covers the EmptyLER branch: when the tree is empty (PreviousRoot == EmptyLER),
+		// newDepositCount must start at 0 (the Go zero value), independent of PreviousDepositCount.
+		p, tx := setupProcessorWithTransaction(t)
+		defer tx.Rollback() //nolint:errcheck
+
+		// Insert block for the ForwardLET event (no prior leaves — tree is empty)
+		_, err := tx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(200))
+		require.NoError(t, err)
+
+		leaves := []LeafData{
+			{
+				LeafType:           0,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x2222222222222222222222222222222222222222"),
+				Amount:             big.NewInt(500),
+				Metadata:           []byte("genesis leaf"),
+			},
+			{
+				LeafType:           0,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x4444444444444444444444444444444444444444"),
+				Amount:             big.NewInt(750),
+				Metadata:           []byte("genesis leaf 2"),
+			},
+		}
+		encodedLeaves := encodeLeafDataArrayForTest(t, leaves)
+
+		event := &ForwardLET{
+			BlockNum:             200,
+			BlockPos:             0,
+			BlockTimestamp:       9999999,
+			TxnHash:              common.HexToHash("0xgenesis"),
+			PreviousDepositCount: big.NewInt(0),
+			PreviousRoot:         bridgesynctypes.EmptyLER, // tree is empty
+			NewDepositCount:      big.NewInt(2),
+			NewLeaves:            encodedLeaves,
+		}
+
+		// Compute expected root by inserting leaves into a temp tree starting at index 0
+		tempDBPath := filepath.Join(t.TempDir(), "temp_genesis.db")
+		err = migrations.RunMigrations(tempDBPath)
+		require.NoError(t, err)
+		tempP, err := newProcessor(tempDBPath, "test-genesis", log.WithFields("module", "test-genesis"), dbQueryTimeout)
+		require.NoError(t, err)
+		tempTx, err := db.NewTx(t.Context(), tempP.db)
+		require.NoError(t, err)
+		defer tempTx.Rollback() //nolint:errcheck
+		_, err = tempTx.Exec(`INSERT INTO block (num) VALUES ($1)`, uint64(200))
+		require.NoError(t, err)
+		var expectedRoot common.Hash
+		for i, leaf := range leaves {
+			bridge := leaf.ToBridge(200, uint64(i), 9999999, uint32(i), event.TxnHash, common.Address{}, nil)
+			expectedRoot, err = tempP.exitTree.PutLeaf(tempTx, 200, uint64(i), types.Leaf{
+				Index: uint32(i),
+				Hash:  bridge.Hash(),
+			})
+			require.NoError(t, err)
+		}
+		event.NewRoot = expectedRoot
+
+		blockPos := event.BlockPos
+		newBlockPos, err := p.handleForwardLETEvent(tx, event, &blockPos)
+		require.NoError(t, err)
+		require.Equal(t, uint64(len(leaves)), newBlockPos)
+
+		var bridges []*Bridge
+		err = meddler.QueryAll(tx, &bridges, "SELECT * FROM bridge WHERE block_num = $1 ORDER BY deposit_count", event.BlockNum)
+		require.NoError(t, err)
+		require.Len(t, bridges, 2)
+
+		// First leaf must get deposit_count=0, second must get deposit_count=1
+		require.Equal(t, uint32(0), bridges[0].DepositCount)
+		require.Equal(t, uint32(1), bridges[1].DepositCount)
+	})
 }
 
 // setupProcessorWithTransaction creates a processor and begins a transaction for testing

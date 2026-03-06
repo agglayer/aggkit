@@ -208,5 +208,8 @@ func (c Config) Validate() error {
 	if err := c.TriggerCertMode.Validate(); err != nil {
 		return fmt.Errorf("invalid TriggerCertMode config: %w", err)
 	}
+	if c.EnableDebugSendCertificate && c.DebugSendCertificateAuthAddress == (ethCommon.Address{}) {
+		return fmt.Errorf("DebugSendCertificateAuthAddress must be set when EnableDebugSendCertificate is enabled")
+	}
 	return nil
 }

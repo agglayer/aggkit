@@ -13,7 +13,7 @@ import (
 // ExecuteRecovery performs the on-chain recovery steps for the given diagnosis.
 // It activates emergency state (if not already active), runs BackwardLET and/or ForwardLET
 // as required by the case, and deactivates emergency state when done.
-func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) error {
+func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) (retErr error) {
 	l2ChainID, err := env.chainIDFn(ctx)
 	if err != nil {
 		return fmt.Errorf("get L2 chain ID: %w", err)
@@ -52,7 +52,11 @@ func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) 
 
 	defer func() {
 		if deactivateErr := stepDeactivateEmergency(ctx, env, unpauserAuth, callOpts); deactivateErr != nil {
-			fmt.Printf("WARNING: failed to deactivate emergency state: %v\n", deactivateErr)
+			if retErr != nil {
+				retErr = fmt.Errorf("%w; also failed to deactivate emergency state: %v", retErr, deactivateErr)
+			} else {
+				retErr = fmt.Errorf("failed to deactivate emergency state (bridge is still paused): %w", deactivateErr)
+			}
 		}
 	}()
 

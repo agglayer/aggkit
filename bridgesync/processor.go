@@ -1733,8 +1733,9 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-			// 1. archive and remove all the bridges whose
-			// deposit_count is greater than the one captured by the BackwardLET event
+			// 1. archive and remove all bridges at deposit_count >= newDepositCount.
+			// After BackwardLET to NewDepositCount=N, leaves 0..N-1 remain valid;
+			// any bridge at DC=N or above is no longer in the exit tree.
 			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
 			if err != nil {
 				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
@@ -1930,6 +1931,9 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
+	// PreviousDepositCount is the number of leaves already in the tree before this ForwardLET,
+	// which equals the deposit_count (leaf index) to assign to the first new leaf.
+	// When PreviousRoot is EmptyLER the tree is empty, so the first leaf index is 0 (Go zero value).
 	var newDepositCount uint32
 	if event.PreviousRoot != bridgesynctypes.EmptyLER {
 		newDepositCount = uint32(event.PreviousDepositCount.Uint64())

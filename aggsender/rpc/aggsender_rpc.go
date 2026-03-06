@@ -161,10 +161,15 @@ func (b *AggsenderRPC) DebugSendCertificate(signedRequest DebugSendCertificateRe
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error recovering signer: %v", err))
 	}
 	signer := crypto.PubkeyToAddress(*pubKey)
+	if b.debugAuthAddress == (ethCommon.Address{}) {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"debug endpoint requires DebugSendCertificateAuthAddress to be configured")
+	}
 	if signer != b.debugAuthAddress {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 			fmt.Sprintf("unauthorized: signer %s does not match auth address %s", signer.Hex(), b.debugAuthAddress.Hex()))
 	}
+	b.logger.Infof("debug: sending certificate height=%d signer=%s", signedRequest.Certificate.Height, signer.Hex())
 	ctx := context.Background()
 	certHash, err := b.agglayerClient.SendCertificate(ctx, &signedRequest.Certificate)
 	if err != nil {
