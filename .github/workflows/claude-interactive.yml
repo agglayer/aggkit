@@ -52,5 +52,4 @@ jobs:
 
             Use the MCP inline comment tool for specific code issues.
             Use gh pr comment to post an overall summary.
-          claude_args: |
-            --model claude-sonnet-4-5-20250929
+
