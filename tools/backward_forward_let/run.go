@@ -35,8 +35,8 @@ type l2BridgeContract interface {
 	// Write methods used by ExecuteRecovery.
 	ActivateEmergencyState(opts *bind.TransactOpts) (*gethTypes.Transaction, error)
 	DeactivateEmergencyState(opts *bind.TransactOpts) (*gethTypes.Transaction, error)
-	BackwardLET(opts *bind.TransactOpts, newDepositCount *big.Int, newFrontier [32][32]byte, nextLeaf [32]byte, proof [32][32]byte) (*gethTypes.Transaction, error)
-	ForwardLET(opts *bind.TransactOpts, newLeaves []agglayerbridgel2.AgglayerBridgeL2LeafData, expectedLER [32]byte) (*gethTypes.Transaction, error)
+	BackwardLET(opts *bind.TransactOpts, newDepositCount *big.Int, newFrontier [32][32]byte, nextLeaf [32]byte, proof [32][32]byte) (*gethTypes.Transaction, error) //nolint:lll
+	ForwardLET(opts *bind.TransactOpts, newLeaves []agglayerbridgel2.AgglayerBridgeL2LeafData, expectedLER [32]byte) (*gethTypes.Transaction, error)                //nolint:lll
 }
 
 // Env holds all connections and contract bindings needed by the backward/forward LET tool.
@@ -70,7 +70,7 @@ type Env struct {
 	chainIDFn func(ctx context.Context) (*big.Int, error)
 
 	// buildAuthFn builds a bind.TransactOpts for the given signer config. Override in tests.
-	buildAuthFn func(ctx context.Context, cfg signertypes.SignerConfig, l2ChainID *big.Int, name string) (*bind.TransactOpts, error)
+	buildAuthFn func(ctx context.Context, cfg signertypes.SignerConfig, l2ChainID *big.Int, name string) (*bind.TransactOpts, error) //nolint:lll
 
 	// waitReceiptFn waits for a transaction to be mined and returns its receipt.
 	// Defaults to waitForReceipt wrapping bind.WaitMined. Override in tests.

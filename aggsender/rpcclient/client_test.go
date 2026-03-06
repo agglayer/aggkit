@@ -125,6 +125,7 @@ func TestGetStatus_Errors(t *testing.T) {
 	})
 }
 
+//nolint:dupl
 func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
 	sut := NewClient("url")
 	height := uint64(1)
@@ -155,6 +156,7 @@ func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
 	})
 }
 
+//nolint:dupl
 func TestGetCertificateBridgeExits_Errors(t *testing.T) {
 	sut := NewClient("url")
 	height := uint64(5)

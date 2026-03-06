@@ -15,6 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testOriginAddr = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	testDestAddr   = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+)
+
 // TestMakeZeroHashes verifies the zero hash generation.
 func TestMakeZeroHashes(t *testing.T) {
 	t.Parallel()
@@ -190,11 +195,13 @@ func TestComputeRootFromFrontier_ErrorEmpty(t *testing.T) {
 }
 
 // TestBridgeExitToLeafData verifies conversion from BridgeExit to LeafData.
+//
+//nolint:dupl
 func TestBridgeExitToLeafData(t *testing.T) {
 	t.Parallel()
 
-	originAddr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	destAddr := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	originAddr := common.HexToAddress(testOriginAddr)
+	destAddr := common.HexToAddress(testDestAddr)
 	amount := big.NewInt(12345)
 
 	be := &agglayertypes.BridgeExit{
@@ -240,8 +247,8 @@ func TestBridgeExitToLeafData_NilTokenInfo(t *testing.T) {
 func TestBridgeResponseToLeafData(t *testing.T) {
 	t.Parallel()
 
-	originAddr := "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	destAddr := "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	originAddr := testOriginAddr
+	destAddr := testDestAddr
 
 	br := &bridgeservicetypes.BridgeResponse{
 		LeafType:           1,
@@ -281,7 +288,7 @@ func TestDecodeMetadata(t *testing.T) {
 	require.Nil(t, decodeMetadata("0x"))
 	require.Equal(t, []byte{0xde, 0xad}, decodeMetadata("0xdead"))
 	require.Equal(t, []byte{0xde, 0xad}, decodeMetadata("dead"))
-	require.Nil(t, decodeMetadata("0xzz"))    // invalid hex
+	require.Nil(t, decodeMetadata("0xzz"))        // invalid hex
 	require.Nil(t, decodeMetadata("0xzzInvalid")) // invalid hex no 0x prefix handling
 }
 
@@ -320,8 +327,8 @@ func TestComputeLERForNewLeaves_EmptyExisting(t *testing.T) {
 func TestLeafDataLeafHash(t *testing.T) {
 	t.Parallel()
 
-	originAddr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	destAddr := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	originAddr := common.HexToAddress(testOriginAddr)
+	destAddr := common.HexToAddress(testDestAddr)
 	amount := big.NewInt(5000)
 
 	be := &agglayertypes.BridgeExit{
@@ -365,17 +372,19 @@ func TestComputeBackwardLETParams_OutOfRange(t *testing.T) {
 		common.HexToHash("0x01"),
 		common.HexToHash("0x02"),
 	}
-	_, _, _, err := ComputeBackwardLETParams(leaves, 2) // index 2, len=2 → out of range
+	_, _, _, err := ComputeBackwardLETParams(leaves, 2) //nolint:dogsled // index 2, len=2 → out of range
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of range")
 }
 
 // TestBridgeExitToContractLeaf verifies the conversion from BridgeExit to contract leaf type.
+//
+//nolint:dupl
 func TestBridgeExitToContractLeaf(t *testing.T) {
 	t.Parallel()
 
-	originAddr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	destAddr := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	originAddr := common.HexToAddress(testOriginAddr)
+	destAddr := common.HexToAddress(testDestAddr)
 	amount := big.NewInt(777)
 
 	be := &agglayertypes.BridgeExit{
@@ -483,8 +492,8 @@ func TestComputeLERForNewLeaves_EmptyNewLeaves(t *testing.T) {
 func TestFetchL2LeafHashesUpTo_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	originAddr := "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	destAddr := "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	originAddr := testOriginAddr
+	destAddr := testDestAddr
 
 	br0 := &bridgeservicetypes.BridgeResponse{
 		LeafType:           0,
