@@ -53,7 +53,7 @@ func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) 
 	defer func() {
 		if deactivateErr := stepDeactivateEmergency(ctx, env, unpauserAuth, callOpts); deactivateErr != nil {
 			if retErr != nil {
-				retErr = fmt.Errorf("%w; also failed to deactivate emergency state: %v", retErr, deactivateErr)
+				retErr = fmt.Errorf("%w; also failed to deactivate emergency state: %w", retErr, deactivateErr)
 			} else {
 				retErr = fmt.Errorf("failed to deactivate emergency state (bridge is still paused): %w", deactivateErr)
 			}
