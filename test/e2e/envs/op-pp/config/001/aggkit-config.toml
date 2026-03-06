@@ -626,6 +626,3 @@ Capacity = 100
 [Validator.AgglayerClient.GRPC]
 URL = "http://agglayer:4443"
 UseTLS = false
-
-[L1Multidownloader]
-	Enabled = false
