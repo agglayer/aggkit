@@ -97,8 +97,6 @@ func TestDebugSendCertificate(t *testing.T) {
 }
 
 func TestGetStatus_Errors(t *testing.T) {
-	t.Parallel()
-
 	sut := NewClient("url")
 
 	t.Run("rpc call error", func(t *testing.T) {
@@ -128,8 +126,6 @@ func TestGetStatus_Errors(t *testing.T) {
 }
 
 func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
-	t.Parallel()
-
 	sut := NewClient("url")
 	height := uint64(1)
 
@@ -160,8 +156,6 @@ func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
 }
 
 func TestGetCertificateBridgeExits_Errors(t *testing.T) {
-	t.Parallel()
-
 	sut := NewClient("url")
 	height := uint64(5)
 
@@ -192,8 +186,6 @@ func TestGetCertificateBridgeExits_Errors(t *testing.T) {
 }
 
 func TestDebugSendCertificate_Errors(t *testing.T) {
-	t.Parallel()
-
 	sut := NewClient("url")
 	privateKey, err := crypto.GenerateKey()
 	require.NoError(t, err)
