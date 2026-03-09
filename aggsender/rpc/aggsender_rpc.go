@@ -186,16 +186,16 @@ func (b *AggsenderRPC) DebugSendCertificate(signedRequest DebugSendCertificateRe
 		certType := certTypeFromAggchainData(signedRequest.Certificate.AggchainData)
 		cert := types.Certificate{
 			Header: &types.CertificateHeader{
-				Height:              signedRequest.Certificate.Height,
-				CertificateID:       certHash,
-				NewLocalExitRoot:    signedRequest.Certificate.NewLocalExitRoot,
+				Height:                signedRequest.Certificate.Height,
+				CertificateID:         certHash,
+				NewLocalExitRoot:      signedRequest.Certificate.NewLocalExitRoot,
 				PreviousLocalExitRoot: &prevLER,
-				L1InfoTreeLeafCount: signedRequest.Certificate.L1InfoTreeLeafCount,
-				CertType:            certType,
-				Status:              agglayertypes.Pending,
-				CreatedAt:           now,
-				UpdatedAt:           now,
-				CertSource:          types.CertificateSourceLocal,
+				L1InfoTreeLeafCount:   signedRequest.Certificate.L1InfoTreeLeafCount,
+				CertType:              certType,
+				Status:                agglayertypes.Pending,
+				CreatedAt:             now,
+				UpdatedAt:             now,
+				CertSource:            types.CertificateSourceLocal,
 			},
 			SignedCertificate: &jsonCertStr,
 		}
