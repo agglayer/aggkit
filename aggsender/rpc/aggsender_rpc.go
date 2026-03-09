@@ -182,15 +182,20 @@ func (b *AggsenderRPC) DebugSendCertificate(signedRequest DebugSendCertificateRe
 	} else {
 		jsonCertStr := string(jsonCert)
 		now := uint32(time.Now().Unix())
+		prevLER := ethCommon.BytesToHash(signedRequest.Certificate.PrevLocalExitRoot[:])
+		certType := certTypeFromAggchainData(signedRequest.Certificate.AggchainData)
 		cert := types.Certificate{
 			Header: &types.CertificateHeader{
-				Height:           signedRequest.Certificate.Height,
-				CertificateID:    signedRequest.Certificate.CertificateID(),
-				NewLocalExitRoot: signedRequest.Certificate.NewLocalExitRoot,
-				Status:           agglayertypes.Pending,
-				CreatedAt:        now,
-				UpdatedAt:        now,
-				CertSource:       types.CertificateSourceLocal,
+				Height:              signedRequest.Certificate.Height,
+				CertificateID:       certHash,
+				NewLocalExitRoot:    signedRequest.Certificate.NewLocalExitRoot,
+				PreviousLocalExitRoot: &prevLER,
+				L1InfoTreeLeafCount: signedRequest.Certificate.L1InfoTreeLeafCount,
+				CertType:            certType,
+				Status:              agglayertypes.Pending,
+				CreatedAt:           now,
+				UpdatedAt:           now,
+				CertSource:          types.CertificateSourceLocal,
 			},
 			SignedCertificate: &jsonCertStr,
 		}
@@ -199,4 +204,14 @@ func (b *AggsenderRPC) DebugSendCertificate(signedRequest DebugSendCertificateRe
 		}
 	}
 	return certHash, nil
+}
+
+// certTypeFromAggchainData infers the certificate type from the AggchainData variant.
+func certTypeFromAggchainData(data agglayertypes.AggchainData) types.CertificateType {
+	switch data.(type) {
+	case *agglayertypes.AggchainDataProof, *agglayertypes.AggchainDataMultisigWithProof:
+		return types.CertificateTypeFEP
+	default:
+		return types.CertificateTypePP
+	}
 }
