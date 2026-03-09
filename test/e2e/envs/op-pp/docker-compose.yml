@@ -187,6 +187,7 @@ services:
       - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
       - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+      - ${AGGKIT_DATA_DIR}:/tmp  # persist DB so host-side tools can access aggsender.sqlite
     ports:
       - "11576:5576"    # RPC
       - "11577:5577"    # REST API

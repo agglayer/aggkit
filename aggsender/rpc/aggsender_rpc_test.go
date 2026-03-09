@@ -5,14 +5,10 @@ import (
 	"math/big"
 	"testing"
 
-	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -194,120 +190,6 @@ func TestAggsenderRPCGetCertificateBridgeExits(t *testing.T) {
 	}
 }
 
-func TestDebugSendCertificate_Disabled(t *testing.T) {
-	testData := newAggsenderData(t)
-	req := DebugSendCertificateRequest{
-		Certificate: agglayertypes.Certificate{},
-		Signature:   []byte{},
-	}
-	res, rpcErr := testData.sut.DebugSendCertificate(req)
-	require.Nil(t, res)
-	require.NotNil(t, rpcErr)
-	require.Contains(t, rpcErr.Error(), "disabled")
-}
-
-func TestDebugSendCertificate_InvalidSignature(t *testing.T) {
-	authKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	authAddr := crypto.PubkeyToAddress(authKey.PublicKey)
-
-	wrongKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	mockAgglayer := agglayermocks.NewAgglayerClientMock(t)
-	testData := newDebugAggsenderData(t, true, authAddr, mockAgglayer)
-
-	cert := agglayertypes.Certificate{Height: 1}
-	hash, err := HashCertificateForDebugAuth(&cert)
-	require.NoError(t, err)
-
-	sig, err := crypto.Sign(hash.Bytes(), wrongKey)
-	require.NoError(t, err)
-
-	req := DebugSendCertificateRequest{Certificate: cert, Signature: sig}
-	res, rpcErr := testData.sut.DebugSendCertificate(req)
-	require.Nil(t, res)
-	require.NotNil(t, rpcErr)
-	require.Contains(t, rpcErr.Error(), "unauthorized")
-}
-
-func TestDebugSendCertificate_Success(t *testing.T) {
-	authKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	authAddr := crypto.PubkeyToAddress(authKey.PublicKey)
-
-	mockAgglayer := agglayermocks.NewAgglayerClientMock(t)
-	testData := newDebugAggsenderData(t, true, authAddr, mockAgglayer)
-
-	cert := agglayertypes.Certificate{Height: 5}
-	hash, err := HashCertificateForDebugAuth(&cert)
-	require.NoError(t, err)
-
-	sig, err := crypto.Sign(hash.Bytes(), authKey)
-	require.NoError(t, err)
-
-	expectedCertHash := common.HexToHash("0xabcdef")
-	mockAgglayer.EXPECT().SendCertificate(mock.Anything, &cert).Return(expectedCertHash, nil).Once()
-	testData.mockStore.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
-
-	req := DebugSendCertificateRequest{Certificate: cert, Signature: sig}
-	res, rpcErr := testData.sut.DebugSendCertificate(req)
-	require.Nil(t, rpcErr)
-	require.Equal(t, expectedCertHash, res)
-}
-
-func TestDebugSendCertificate_SendCertificateError(t *testing.T) {
-	authKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	authAddr := crypto.PubkeyToAddress(authKey.PublicKey)
-
-	mockAgglayer := agglayermocks.NewAgglayerClientMock(t)
-	testData := newDebugAggsenderData(t, true, authAddr, mockAgglayer)
-
-	cert := agglayertypes.Certificate{Height: 7}
-	hash, err := HashCertificateForDebugAuth(&cert)
-	require.NoError(t, err)
-
-	sig, err := crypto.Sign(hash.Bytes(), authKey)
-	require.NoError(t, err)
-
-	mockAgglayer.EXPECT().SendCertificate(mock.Anything, &cert).
-		Return(common.Hash{}, fmt.Errorf("agglayer error")).Once()
-
-	req := DebugSendCertificateRequest{Certificate: cert, Signature: sig}
-	res, rpcErr := testData.sut.DebugSendCertificate(req)
-	require.Nil(t, res)
-	require.NotNil(t, rpcErr)
-	require.Contains(t, rpcErr.Error(), "agglayer error")
-}
-
-func TestDebugSendCertificate_SaveCertificateError(t *testing.T) {
-	authKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	authAddr := crypto.PubkeyToAddress(authKey.PublicKey)
-
-	mockAgglayer := agglayermocks.NewAgglayerClientMock(t)
-	testData := newDebugAggsenderData(t, true, authAddr, mockAgglayer)
-
-	cert := agglayertypes.Certificate{Height: 9}
-	hash, err := HashCertificateForDebugAuth(&cert)
-	require.NoError(t, err)
-
-	sig, err := crypto.Sign(hash.Bytes(), authKey)
-	require.NoError(t, err)
-
-	expectedCertHash := common.HexToHash("0x123456")
-	mockAgglayer.EXPECT().SendCertificate(mock.Anything, &cert).Return(expectedCertHash, nil).Once()
-	testData.mockStore.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).
-		Return(fmt.Errorf("db error")).Once()
-
-	req := DebugSendCertificateRequest{Certificate: cert, Signature: sig}
-	res, rpcErr := testData.sut.DebugSendCertificate(req)
-	// DB save error is a warning (not fatal) — cert hash is still returned.
-	require.Nil(t, rpcErr)
-	require.Equal(t, expectedCertHash, res)
-}
-
 type aggsenderRPCTestData struct {
 	sut           *AggsenderRPC
 	mockStore     *mocks.AggsenderStorer
@@ -318,20 +200,6 @@ func newAggsenderData(t *testing.T) *aggsenderRPCTestData {
 	t.Helper()
 	mockStore := mocks.NewAggsenderStorer(t)
 	mockAggsender := mocks.NewAggsenderInterface(t)
-	sut := NewAggsenderRPC(nil, mockStore, mockAggsender, false, common.Address{}, nil)
-	return &aggsenderRPCTestData{sut, mockStore, mockAggsender}
-}
-
-func newDebugAggsenderData(
-	t *testing.T,
-	enableDebug bool,
-	authAddr common.Address,
-	mockAgglayer *agglayermocks.AgglayerClientMock,
-) *aggsenderRPCTestData {
-	t.Helper()
-	mockStore := mocks.NewAggsenderStorer(t)
-	mockAggsender := mocks.NewAggsenderInterface(t)
-	logger := log.WithFields("module", "test")
-	sut := NewAggsenderRPC(logger, mockStore, mockAggsender, enableDebug, authAddr, mockAgglayer)
+	sut := NewAggsenderRPC(nil, mockStore, mockAggsender)
 	return &aggsenderRPCTestData{sut, mockStore, mockAggsender}
 }

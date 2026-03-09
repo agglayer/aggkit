@@ -3,7 +3,6 @@ package backward_forward_let
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"math/big"
@@ -60,10 +59,6 @@ func (s *stubAggsenderRPC) GetCertificateBridgeExits(height *uint64) ([]*agglaye
 
 func (s *stubAggsenderRPC) GetCertificateHeaderPerHeight(_ *uint64) (*aggsendertypes.Certificate, error) {
 	return nil, fmt.Errorf("stub: not implemented")
-}
-
-func (s *stubAggsenderRPC) DebugSendCertificate(_ *agglayertypes.Certificate, _ *ecdsa.PrivateKey) (common.Hash, error) {
-	return common.Hash{}, fmt.Errorf("stub: not implemented")
 }
 
 // TestClassifyCase verifies classifyCase returns the expected RecoveryCase for all 5 cases.

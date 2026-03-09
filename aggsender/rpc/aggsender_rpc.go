@@ -2,17 +2,12 @@ package aggsenderrpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
-	ethCommon "github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type AggsenderStorer interface {
@@ -27,20 +22,11 @@ type AggsenderInterface interface {
 	ForceTriggerCertificate()
 }
 
-// DebugSendCertificateRequest is the request body for the debug send certificate endpoint.
-type DebugSendCertificateRequest struct {
-	Certificate agglayertypes.Certificate `json:"certificate"`
-	Signature   []byte                    `json:"signature"` // 65-byte Ethereum signature
-}
-
 // AggsenderRPC is the RPC interface for the aggsender
 type AggsenderRPC struct {
-	logger           *log.Logger
-	storage          AggsenderStorer
-	aggsender        AggsenderInterface
-	enableDebug      bool
-	debugAuthAddress ethCommon.Address
-	agglayerClient   agglayer.AgglayerClientInterface
+	logger    *log.Logger
+	storage   AggsenderStorer
+	aggsender AggsenderInterface
 }
 
 // NewAggsenderRPC creates a new AggsenderRPC instance.
@@ -48,17 +34,11 @@ func NewAggsenderRPC(
 	logger *log.Logger,
 	storage AggsenderStorer,
 	aggsender AggsenderInterface,
-	enableDebug bool,
-	debugAuthAddress ethCommon.Address,
-	agglayerClient agglayer.AgglayerClientInterface,
 ) *AggsenderRPC {
 	return &AggsenderRPC{
-		logger:           logger,
-		storage:          storage,
-		aggsender:        aggsender,
-		enableDebug:      enableDebug,
-		debugAuthAddress: debugAuthAddress,
-		agglayerClient:   agglayerClient,
+		logger:    logger,
+		storage:   storage,
+		aggsender: aggsender,
 	}
 }
 
@@ -144,74 +124,4 @@ func (b *AggsenderRPC) GetCertificateBridgeExits(height *uint64) (interface{}, r
 			fmt.Sprintf("certificate not found at height %d", resolvedHeight))
 	}
 	return exits, nil
-}
-
-// DebugSendCertificate sends an arbitrary certificate to AggLayer (test-only endpoint).
-// Requires EnableDebugSendCertificate=true in config and a valid Ethereum signature.
-func (b *AggsenderRPC) DebugSendCertificate(signedRequest DebugSendCertificateRequest) (interface{}, rpc.Error) {
-	if !b.enableDebug {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "debug send certificate endpoint is disabled")
-	}
-	hash, err := HashCertificateForDebugAuth(&signedRequest.Certificate)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error hashing certificate: %v", err))
-	}
-	pubKey, err := crypto.SigToPub(hash.Bytes(), signedRequest.Signature)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error recovering signer: %v", err))
-	}
-	signer := crypto.PubkeyToAddress(*pubKey)
-	if b.debugAuthAddress == (ethCommon.Address{}) {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-			"debug endpoint requires DebugSendCertificateAuthAddress to be configured")
-	}
-	if signer != b.debugAuthAddress {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-			fmt.Sprintf("unauthorized: signer %s does not match auth address %s", signer.Hex(), b.debugAuthAddress.Hex()))
-	}
-	b.logger.Infof("debug: sending certificate height=%d signer=%s", signedRequest.Certificate.Height, signer.Hex())
-	ctx := context.Background()
-	certHash, err := b.agglayerClient.SendCertificate(ctx, &signedRequest.Certificate)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error sending certificate to AggLayer: %v", err))
-	}
-	// Store in DB so getCertificateBridgeExits can later retrieve the bridge exits
-	jsonCert, err := json.Marshal(&signedRequest.Certificate)
-	if err != nil {
-		b.logger.Warnf("debug: failed to marshal certificate for storage: %v", err)
-	} else {
-		jsonCertStr := string(jsonCert)
-		now := uint32(time.Now().Unix())
-		prevLER := ethCommon.BytesToHash(signedRequest.Certificate.PrevLocalExitRoot[:])
-		certType := certTypeFromAggchainData(signedRequest.Certificate.AggchainData)
-		cert := types.Certificate{
-			Header: &types.CertificateHeader{
-				Height:                signedRequest.Certificate.Height,
-				CertificateID:         certHash,
-				NewLocalExitRoot:      signedRequest.Certificate.NewLocalExitRoot,
-				PreviousLocalExitRoot: &prevLER,
-				L1InfoTreeLeafCount:   signedRequest.Certificate.L1InfoTreeLeafCount,
-				CertType:              certType,
-				Status:                agglayertypes.Pending,
-				CreatedAt:             now,
-				UpdatedAt:             now,
-				CertSource:            types.CertificateSourceLocal,
-			},
-			SignedCertificate: &jsonCertStr,
-		}
-		if err := b.storage.SaveLastSentCertificate(ctx, cert); err != nil {
-			b.logger.Warnf("debug: failed to store certificate in DB: %v", err)
-		}
-	}
-	return certHash, nil
-}
-
-// certTypeFromAggchainData infers the certificate type from the AggchainData variant.
-func certTypeFromAggchainData(data agglayertypes.AggchainData) types.CertificateType {
-	switch data.(type) {
-	case *agglayertypes.AggchainDataProof, *agglayertypes.AggchainDataMultisigWithProof:
-		return types.CertificateTypeFEP
-	default:
-		return types.CertificateTypePP
-	}
 }

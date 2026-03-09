@@ -195,8 +195,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | MaxL2BlockNumber                  | uint64                    | Set the last block to be included in a certificate (0 = disabled)
 |StopOnFinishedSendingAllCertificates| bool                      | Stop when there are no more certificates to send due to MaxL2BlockNumber
 |StorageRetainCertificatesPolicy| [StorageRetainCertificatesPolicy](#storageretaincertificatespolicy) | Configure the certificate retain policy
-| EnableDebugSendCertificate        | bool                                                      | Enables the `aggsender_debugSendCertificate` RPC endpoint for sending arbitrary certificates. When `true`, the normal certificate-sending loop is **disabled**. Default `false`. **Never enable in production.** |
-| DebugSendCertificateAuthAddress   | Address                                                   | Ethereum address whose signature is required to authorize calls to the debug send endpoint. Only used when `EnableDebugSendCertificate` is `true`. |
 | UnsetClaimsMaxLogBlockRange       | uint64                    | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error)
 
 ## StorageRetainCertificatesPolicy

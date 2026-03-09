@@ -74,8 +74,7 @@ func TestConfigString(t *testing.T) {
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
 		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n"+
 		"BlockFinalityForL1InfoTree: FinalizedBlock\n"+
-		"TriggerCertMode: Auto\nTriggerEpochBased: EpochNotificationPercentage: 50\n"+
-		"EnableDebugSendCertificate: false\n",
+		"TriggerCertMode: Auto\nTriggerEpochBased: EpochNotificationPercentage: 50\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())

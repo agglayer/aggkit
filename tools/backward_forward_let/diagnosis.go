@@ -2,7 +2,6 @@ package backward_forward_let
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +22,6 @@ import (
 type aggsenderRPCClient interface {
 	GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error)
 	GetCertificateHeaderPerHeight(height *uint64) (*aggsendertypes.Certificate, error)
-	DebugSendCertificate(cert *agglayertypes.Certificate, privateKey *ecdsa.PrivateKey) (common.Hash, error)
 }
 
 // bridgeServiceClient is the subset of bridgeservice.Client used by the diagnosis tool.

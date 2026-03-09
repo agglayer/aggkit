@@ -218,12 +218,6 @@ RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 # Max block range per eth_getLogs call for unset-claims queries. 0 disables proactive chunking.
 UnsetClaimsMaxLogBlockRange = 0
-# EnableDebugSendCertificate enables the debug RPC endpoint for sending arbitrary certificates.
-# WARNING: this disables the normal certificate-sending loop. NEVER enable in production.
-EnableDebugSendCertificate = false
-# DebugSendCertificateAuthAddress is the Ethereum address authorised to sign debug send requests.
-# Only used when EnableDebugSendCertificate = true.
-DebugSendCertificateAuthAddress = "0x0000000000000000000000000000000000000000"
 BlockFinalityForL1InfoTree = "FinalizedBlock"
 TriggerCertMode = "Auto"
 [AggSender.TriggerEpochBased]

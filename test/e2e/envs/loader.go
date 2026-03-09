@@ -52,6 +52,7 @@ type Env struct {
 	envName          ENVName
 	startedCompose   bool   // Track if we started docker compose (so we know if we should stop it)
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
+	aggkitDataDir    string // Host path of the aggkit container's /tmp bind-mount
 }
 
 // KeysConfig exposes key pools and special keys for tests
@@ -225,6 +226,19 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			_ = stopDockerCompose(context.Background(), envDir)
 		}
 		return nil, fmt.Errorf("wait for services: %w", err)
+	}
+
+	// Make aggkit's SQLite DB files world-writable so that host-side tools (e.g. the
+	// send-cert subcommand) can write to them while the container is running.
+	// The container's appuser creates files with mode 0644; other users need 0666.
+	// The aggkit image is distroless (no shell), so we use a separate alpine container
+	// mounted to the same bind-mount directory to perform the chmod.
+	dataDir := aggkit001DataDir(envDir)
+	chmodCmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"-v", dataDir+":/data",
+		"alpine", "sh", "-c", "chmod 666 /data/*.sqlite /data/*.sqlite-shm /data/*.sqlite-wal 2>/dev/null; true")
+	if chmodOut, chmodErr := chmodCmd.CombinedOutput(); chmodErr != nil {
+		log.Debugf("chmod aggkit SQLite files (ignored): %v\nOutput:\n%s\n", chmodErr, string(chmodOut))
 	}
 
 	// Parse L1 chain ID
@@ -421,6 +435,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		envName:          envName,
 		startedCompose:   startedCompose,
 		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
+		aggkitDataDir:    aggkit001DataDir(envDir),
 	}, nil
 }
 
@@ -534,10 +549,19 @@ func (e *Env) Stop(ctx context.Context) error {
 
 const aggkitServiceName = "aggkit-001"
 
+// newDockerComposeCmd creates a docker compose command with the correct working directory
+// and AGGKIT_DATA_DIR environment variable injected so compose interpolation works.
+func newDockerComposeCmd(ctx context.Context, envDir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "docker", append([]string{"compose"}, args...)...)
+	cmd.Dir = envDir
+	dataDir := aggkit001DataDir(envDir)
+	cmd.Env = append(os.Environ(), "AGGKIT_DATA_DIR="+dataDir)
+	return cmd
+}
+
 // StopAggkit stops only the aggkit service so the test can use the aggoracle key without conflicting with the running aggkit.
 func (e *Env) StopAggkit(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "stop", aggkitServiceName)
-	cmd.Dir = e.EnvDir
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "stop", aggkitServiceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose stop %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
@@ -550,8 +574,7 @@ func (e *Env) StopAggkit(ctx context.Context) error {
 
 // StartAggkit starts the aggkit service and waits for the bridge service to be ready.
 func (e *Env) StartAggkit(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "start", aggkitServiceName)
-	cmd.Dir = e.EnvDir
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "start", aggkitServiceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose start %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
@@ -568,6 +591,63 @@ func (e *Env) StartAggkit(ctx context.Context) error {
 // GetAggkitConfigPath returns the path to the aggkit config file on the host.
 func (e *Env) GetAggkitConfigPath() string {
 	return filepath.Join(e.EnvDir, "config", "001", "aggkit-config.toml")
+}
+
+// GetAggsenderDBPath returns the host path to the aggsender SQLite database file.
+// This is accessible because the aggkit container's /tmp is bind-mounted to the host.
+func (e *Env) GetAggsenderDBPath() string {
+	return filepath.Join(e.aggkitDataDir, "aggsender.sqlite")
+}
+
+// cleanAggkitDataDir removes the aggkit data directory and recreates it with correct
+// permissions. The container's appuser (a different UID) may have created subdirectories
+// (e.g. "certificates") with mode 0750 that the host user cannot delete directly. We use
+// a temporary Docker container running as root to do the removal before recreating.
+func cleanAggkitDataDir(ctx context.Context, dataDir string) error {
+	if _, statErr := os.Stat(dataDir); statErr == nil {
+		// Use a Docker container running as root to remove the directory so that files
+		// owned by the container's appuser (different UID) can be deleted.
+		parent := filepath.Dir(dataDir)
+		dirName := filepath.Base(dataDir)
+		dockerRmCmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+			"-v", parent+":/work",
+			"alpine", "rm", "-rf", "/work/"+dirName)
+		if out, err := dockerRmCmd.CombinedOutput(); err != nil {
+			// Fall back to os.RemoveAll (works if permissions are fine)
+			log.Debugf("docker rm aggkit data dir failed (%v), falling back to os.RemoveAll\nOutput:\n%s\n", err, string(out))
+			if rmErr := os.RemoveAll(dataDir); rmErr != nil {
+				return rmErr
+			}
+		}
+	}
+	if err := os.MkdirAll(dataDir, 0o777); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	// Explicitly chmod to 0777 so that appuser inside the aggkit container can write
+	// SQLite files to this bind-mounted directory regardless of who owns it on the host.
+	if err := os.Chmod(dataDir, 0o777); err != nil {
+		return fmt.Errorf("chmod dir: %w", err)
+	}
+	// Pre-create the certificates subdirectory with world-writable permissions so that
+	// the container's appuser writes into a host-owned directory, allowing the host to
+	// delete it on the next cleanup without permission errors.
+	certDir := filepath.Join(dataDir, "certificates")
+	if err := os.MkdirAll(certDir, 0o777); err != nil {
+		return fmt.Errorf("create certificates dir: %w", err)
+	}
+	if err := os.Chmod(certDir, 0o777); err != nil {
+		return fmt.Errorf("chmod certificates dir: %w", err)
+	}
+	return nil
+}
+
+// aggkit001DataDir returns the host directory that is bind-mounted into the aggkit-001
+// container as /tmp. It lives under <repo-root>/tmp/test/e2e/envs/<env-name>/aggkit-001-data.
+func aggkit001DataDir(envDir string) string {
+	// envDir is <repoRoot>/test/e2e/envs/<envName>; four levels up is <repoRoot>
+	repoRoot := filepath.Clean(filepath.Join(envDir, "..", "..", "..", ".."))
+	envName := filepath.Base(envDir)
+	return filepath.Join(repoRoot, "tmp", "test", "e2e", "envs", envName, "aggkit-001-data")
 }
 
 // StopAggkitAndEditConfig stops aggkit and calls editFn with the config file path.
@@ -602,12 +682,17 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 		return false, nil
 	}
 
-	// Not running, so start it
+	// Not running, so start it — first clean the aggkit data directory for a fresh state
+	dataDir := aggkit001DataDir(envDir)
+	if err := cleanAggkitDataDir(ctx, dataDir); err != nil {
+		return false, fmt.Errorf("clean aggkit data dir %s: %w", dataDir, err)
+	}
+	log.Debugf("prepared aggkit data dir: %s\n", dataDir)
+
 	networkName := projectName + "_default"
 
 	// Step 1: Remove all containers from this project
-	cleanupCmd := exec.CommandContext(ctx, "docker", "compose", "down", "-v", "--remove-orphans")
-	cleanupCmd.Dir = envDir
+	cleanupCmd := newDockerComposeCmd(ctx, envDir, "down", "-v", "--remove-orphans")
 	if cleanupOutput, err := cleanupCmd.CombinedOutput(); err != nil {
 		log.Debugf("docker compose cleanup (ignored): %v\nOutput:\n%s\n", err, string(cleanupOutput))
 	} else if len(cleanupOutput) > 0 {
@@ -648,8 +733,7 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 	}
 
 	log.Debugf("running docker compose up -d for %s\n", projectName)
-	cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
-	cmd.Dir = envDir
+	cmd := newDockerComposeCmd(ctx, envDir, "up", "-d")
 
 	// Capture output to include in error messages if the command fails
 	output, err := cmd.CombinedOutput()
@@ -667,8 +751,7 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 
 // stopDockerCompose stops the docker compose environment
 func stopDockerCompose(ctx context.Context, envDir string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "down", "-v", "--remove-orphans")
-	cmd.Dir = envDir
+	cmd := newDockerComposeCmd(ctx, envDir, "down", "-v", "--remove-orphans")
 
 	// Capture output to include in error messages if the command fails
 	output, err := cmd.CombinedOutput()
@@ -686,8 +769,7 @@ func stopDockerCompose(ctx context.Context, envDir string) error {
 
 // isDockerComposeRunning checks if docker compose is already running for this environment
 func isDockerComposeRunning(ctx context.Context, envDir string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "-q")
-	cmd.Dir = envDir
+	cmd := newDockerComposeCmd(ctx, envDir, "ps", "-q")
 
 	output, err := cmd.Output()
 	if err != nil {

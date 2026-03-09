@@ -16,8 +16,10 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggsenderdb "github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitdb "github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	bfl "github.com/agglayer/aggkit/tools/backward_forward_let"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -30,9 +32,18 @@ import (
 )
 
 const (
-	bflCertSettleTimeout = 2 * time.Minute
+	// bflCertSettleTimeout is used when waiting for a specific cert to settle.
+	// The test environment uses a PoS beacon chain with 12s L1 blocks and 15-block epochs (~3 min/epoch).
+	// A cert may take up to one full epoch to settle, so 5 minutes provides comfortable margin.
+	bflCertSettleTimeout = 5 * time.Minute
 	bflRestartTimeout    = 2 * time.Minute
 	bflBridgeIndexWait   = 2 * time.Minute
+	// bflNoPendingTimeout is used when waiting for the agglayer to have no in-flight certs.
+	// Same epoch-based reasoning as bflCertSettleTimeout; using a larger margin in case
+	// the cert is submitted early in an epoch and the epoch is longer than expected.
+	bflNoPendingTimeout = 10 * time.Minute
+	// nilStr is the display value used for nil pointer fields in debug log messages.
+	nilStr = "nil"
 )
 
 // bflRunNonce is a unique value computed once per test binary run.
@@ -81,10 +92,6 @@ type summaryForBFLToolConfig struct {
 	} `json:"networks"`
 }
 
-// bflOriginalConfig stores the backed-up aggkit config content for restoration.
-// Only valid between enableDebugSendCertEndpoint and disableDebugSendCertEndpoint calls.
-var bflOriginalConfig []byte
-
 // =============================================================================
 // Test functions
 // =============================================================================
@@ -112,13 +119,8 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-
-	authKey := testEnv.Keys.SovereignAdmin
-
-	// Enable debug endpoint so we can send certs manually.
-	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build bfl tool environment.
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
@@ -135,17 +137,13 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 	certSignerKey := loadCertSignerKey(t)
 
 	// Build and send 1 malicious cert with 1 fake bridge exit.
-	// On a fresh environment there is no settled cert, so buildMaliciousCert
-	// will start at height=0 from the empty L2 bridge state.
+	// sendMaliciousCertificateViaTool waits for no pending certs, builds, stops aggkit,
+	// sends to agglayer, writes to DB, then restarts aggkit.
 	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
-	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
+	cert := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	log.Infof("[Case1] sent malicious cert height=%d", cert.Height)
 
 	waitForCertificateToSettle(ctx, t, toolEnv, cert.Height)
-
-	// Restore normal aggkit mode before diagnosis.
-	disableDebugSendCertEndpoint(ctx, t)
 
 	// Re-build toolEnv with fresh state.
 	toolEnv.Close()
@@ -188,13 +186,8 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
-
-	authKey := testEnv.Keys.SovereignAdmin
-
-	// Enable debug endpoint first so we can send certs manually.
-	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build bfl tool environment.
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
@@ -206,25 +199,16 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 
 	// Build and send 1 malicious cert with 1 fake bridge exit.
 	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
-	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
+	cert := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	log.Infof("[Case2] sent malicious cert height=%d", cert.Height)
 
 	waitForCertificateToSettle(ctx, t, toolEnv, cert.Height)
 
-	// Create 2 real L2 bridge deposits BEFORE disabling debug mode so that the bridge service
-	// (already running and synced) can index them quickly within createL2BridgeNoClaim's own
-	// poll. After the subsequent aggkit restart we wait for re-sync separately.
+	// Create 2 real L2 bridge deposits. The bridge service is continuously running and
+	// synced, so createL2BridgeNoClaim polls until each bridge is indexed.
 	// With DivergencePoint=0 and l2CurrentDC=2, collectExtraL2Bridges(0,2)=[bridges at DC=0,1].
 	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
-
-	// Restore normal aggkit mode.
-	disableDebugSendCertEndpoint(ctx, t)
-
-	// After aggkit restart the bridge service re-syncs from genesis. Wait until it has
-	// re-indexed all L2 bridges so that Diagnose can see the extra bridges.
-	waitForBridgeServiceSynced(ctx, t)
 
 	// Re-build toolEnv.
 	toolEnv.Close()
@@ -266,13 +250,8 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
 	defer cancel()
-
-	authKey := testEnv.Keys.SovereignAdmin
-
-	// Enable debug endpoint first.
-	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build first bfl tool environment.
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
@@ -284,8 +263,7 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 
 	// Send first malicious cert.
 	fake1 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
-	cert1 := buildMaliciousCert(ctx, t, toolEnv, fake1, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert1, authKey)
+	cert1 := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fake1, certSignerKey)
 	log.Infof("[Case3] sent malicious cert1 height=%d", cert1.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert1.Height)
 
@@ -297,13 +275,9 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 
 	// Send second malicious cert.
 	fake2 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(1)}
-	cert2 := buildMaliciousCert(ctx, t, toolEnv, fake2, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert2, authKey)
+	cert2 := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fake2, certSignerKey)
 	log.Infof("[Case3] sent malicious cert2 height=%d", cert2.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert2.Height)
-
-	// Restore normal aggkit mode.
-	disableDebugSendCertEndpoint(ctx, t)
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
@@ -354,13 +328,8 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
 	defer cancel()
-
-	authKey := testEnv.Keys.SovereignAdmin
-
-	// Enable debug endpoint first.
-	enableDebugSendCertEndpoint(ctx, t, authKey)
 
 	// Build bfl tool environment.
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
@@ -372,8 +341,7 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 
 	// Send first malicious cert.
 	fake1 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
-	cert1 := buildMaliciousCert(ctx, t, toolEnv, fake1, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert1, authKey)
+	cert1 := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fake1, certSignerKey)
 	log.Infof("[Case4] sent malicious cert1 height=%d", cert1.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert1.Height)
 
@@ -384,24 +352,15 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	require.NoError(t, err)
 
 	fake2 := []*agglayertypes.BridgeExit{makeFakeBridgeExit(1)}
-	cert2 := buildMaliciousCert(ctx, t, toolEnv, fake2, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert2, authKey)
+	cert2 := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fake2, certSignerKey)
 	log.Infof("[Case4] sent malicious cert2 height=%d", cert2.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert2.Height)
 
-	// Create 2 real L2 bridge deposits BEFORE disabling debug mode so the bridge service
-	// (already running and synced) can index them quickly within createL2BridgeNoClaim's own
-	// poll. After the subsequent aggkit restart we wait for re-sync separately.
+	// Create 2 real L2 bridge deposits. The bridge service is continuously running and
+	// synced, so createL2BridgeNoClaim polls until each bridge is indexed.
 	// With DivergencePoint=0 and l2CurrentDC=2, collectExtraL2Bridges(0,2)=[bridges at DC=0,1].
 	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
-
-	// Restore normal aggkit mode.
-	disableDebugSendCertEndpoint(ctx, t)
-
-	// After aggkit restart the bridge service re-syncs from genesis. Wait until it has
-	// re-indexed all L2 bridges so that Diagnose can see the extra bridges.
-	waitForBridgeServiceSynced(ctx, t)
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
@@ -452,14 +411,10 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 
-	authKey := testEnv.Keys.SovereignAdmin
-
 	// Phase 1: Setup — same structure as TestBackwardForwardLET_Case2.
-	enableDebugSendCertEndpoint(ctx, t, authKey)
-
 	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
@@ -468,16 +423,12 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	certSignerKey := loadCertSignerKey(t)
 
 	fakeBridgeExits := []*agglayertypes.BridgeExit{makeFakeBridgeExit(0)}
-	cert := buildMaliciousCert(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
-	sendMaliciousCertificate(ctx, t, toolEnv, cert, authKey)
+	cert := sendMaliciousCertificateViaTool(ctx, t, toolEnv, fakeBridgeExits, certSignerKey)
 	log.Infof("[AggsenderFallback] sent malicious cert height=%d", cert.Height)
 	waitForCertificateToSettle(ctx, t, toolEnv, cert.Height)
 
 	createL2BridgeNoClaim(ctx, t)
 	createL2BridgeNoClaim(ctx, t)
-
-	disableDebugSendCertEndpoint(ctx, t)
-	waitForBridgeServiceSynced(ctx, t)
 
 	// Pre-collect cert IDs for all settled heights BEFORE wiping the aggsender DB.
 	// When run after prior tests, there are multiple settled heights but only the latest
@@ -515,6 +466,11 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 			return os.WriteFile(cfgPath, preWipeConfig, 0o600)
 		}); restoreErr != nil {
 			t.Logf("WARNING: failed to restore aggkit config after DB wipe: %v", restoreErr)
+		} else {
+			// Wait for bridge service to re-sync after config restore. This ensures
+			// l1infotreesync has processed any pending reorgs before the post-test
+			// bridge health check runs.
+			waitForBridgeServiceSynced(cleanupCtx, t)
 		}
 	})
 
@@ -640,91 +596,170 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 // Helper functions
 // =============================================================================
 
-// enableDebugSendCertEndpoint restarts aggkit with the DebugSendCertificate endpoint enabled.
-// Saves the original config for later restoration by disableDebugSendCertEndpoint.
-// A t.Cleanup is registered as a safety net.
-func enableDebugSendCertEndpoint(ctx context.Context, t *testing.T, authKey *ecdsa.PrivateKey) {
-	t.Helper()
-	authAddress := crypto.PubkeyToAddress(authKey.PublicKey)
-
-	// Save original config.
-	configPath := testEnv.GetAggkitConfigPath()
-	originalContent, err := os.ReadFile(configPath)
-	require.NoError(t, err, "read aggkit config for backup")
-	bflOriginalConfig = originalContent
-
-	restartCtx, restartCancel := context.WithTimeout(ctx, bflRestartTimeout)
-	defer restartCancel()
-
-	err = testEnv.RestartAggkitWithConfig(restartCtx, func(cfgPath string) error {
-		content, readErr := os.ReadFile(cfgPath)
-		if readErr != nil {
-			return readErr
-		}
-		// Inject debug settings right after the [AggSender] table header.
-		patched := strings.Replace(
-			string(content),
-			"[AggSender]",
-			fmt.Sprintf("[AggSender]\nEnableDebugSendCertificate = true\nDebugSendCertificateAuthAddress = %q",
-				authAddress.Hex()),
-			1,
-		)
-		return os.WriteFile(cfgPath, []byte(patched), 0o600)
-	})
-	require.NoError(t, err, "restart aggkit with debug cert endpoint")
-
-	// Safety-net cleanup.
-	t.Cleanup(func() {
-		if bflOriginalConfig != nil {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), bflRestartTimeout)
-			defer cleanupCancel()
-			restoreErr := testEnv.RestartAggkitWithConfig(cleanupCtx, func(cfgPath string) error {
-				return os.WriteFile(cfgPath, bflOriginalConfig, 0o600)
-			})
-			if restoreErr != nil {
-				t.Logf("WARNING: cleanup failed to restore aggkit config: %v", restoreErr)
-			} else {
-				bflOriginalConfig = nil
-			}
-		}
-	})
-}
-
-// disableDebugSendCertEndpoint restores the original aggkit config and restarts aggkit.
-func disableDebugSendCertEndpoint(ctx context.Context, t *testing.T) {
-	t.Helper()
-	if bflOriginalConfig == nil {
-		// Already restored (e.g. by cleanup or a prior explicit call).
-		return
-	}
-
-	savedContent := bflOriginalConfig
-	bflOriginalConfig = nil // clear so cleanup is a no-op
-
-	restartCtx, restartCancel := context.WithTimeout(ctx, bflRestartTimeout)
-	defer restartCancel()
-
-	err := testEnv.RestartAggkitWithConfig(restartCtx, func(cfgPath string) error {
-		return os.WriteFile(cfgPath, savedContent, 0o600)
-	})
-	require.NoError(t, err, "restart aggkit with original config")
-}
-
-// sendMaliciousCertificate signs and sends a malicious certificate via the aggsender debug endpoint.
-func sendMaliciousCertificate(
+// sendMaliciousCertificateViaTool builds and sends a malicious certificate to the agglayer,
+// and records it in the aggsender DB. This replaces the old DebugSendCertificate RPC endpoint.
+//
+// The function:
+//  1. Stops aggkit so the aggsender cannot submit new certs that would race with our injection.
+//  2. Waits for the agglayer to have no in-flight certs (possible now that aggkit is stopped).
+//  3. Opens the aggsender DB directly and builds the cert using agglayer settled state.
+//  4. Sends the cert to the agglayer and writes it to the aggsender DB.
+//  5. Restarts aggkit so it picks up the malicious cert from the DB.
+//
+// Returns the actual certificate that was sent.
+func sendMaliciousCertificateViaTool(
 	ctx context.Context, t *testing.T,
 	toolEnv *bfl.Env,
-	cert *agglayertypes.Certificate,
-	authKey *ecdsa.PrivateKey,
-) {
+	fakeBridgeExits []*agglayertypes.BridgeExit,
+	certSignerKey *ecdsa.PrivateKey,
+) *agglayertypes.Certificate {
 	t.Helper()
-	_ = ctx
-	certHash, err := toolEnv.AggsenderRPC.DebugSendCertificate(cert, authKey)
-	require.NoError(t, err, "DebugSendCertificate height=%d", cert.Height)
-	log.Infof("[sendMaliciousCertificate] sent cert height=%d hash=%s", cert.Height, certHash.Hex())
+
+	// Stop aggkit first so the aggsender cannot submit new certs while we prepare
+	// the injection. With aggkit stopped, any in-flight cert will settle and then
+	// LatestPendingHeight will become nil (no new submissions possible).
+	require.NoError(t, testEnv.StopAggkit(ctx), "stop aggkit before build+inject")
+
+	// Wait for the agglayer to have no in-flight certs. Now that aggkit is stopped,
+	// LatestPendingHeight will become nil once the last in-flight cert settles.
+	waitForAgglayerNoPendingCerts(ctx, t, toolEnv)
+
+	// Open the aggsender DB directly (aggkit RPC is unavailable since it is stopped).
+	dbPath := testEnv.GetAggsenderDBPath()
+	certStore := openAggsenderDBForTest(t, dbPath)
+
+	// Build the cert using the agglayer settled state and the aggsender DB.
+	cert := buildMaliciousCert(ctx, t, toolEnv, certStore, fakeBridgeExits, certSignerKey)
+
+	certJSON, err := json.Marshal(cert)
+	require.NoError(t, err, "marshal cert to JSON")
+	certFile := filepath.Join(t.TempDir(), "cert.json")
+	require.NoError(t, os.WriteFile(certFile, certJSON, 0o600))
+
+	cfgPath := prepareAgglayerOnlyConfigPath(t)
+	cliCtx := buildSendCertCLIContext(ctx, t, cfgPath, certFile, dbPath)
+	require.NoError(t, bfl.RunSendCert(cliCtx), "send-cert tool failed for cert height=%d", cert.Height)
+	log.Infof("[sendMaliciousCertificateViaTool] sent cert height=%d", cert.Height)
+
+	// RunSendCert stores the SignedCertificate as a file reference ("@<host-path>").
+	// The container aggkit resolves file references using container-side paths, so it
+	// cannot find the HOST-path file. Patch the DB to store the cert JSON inline so
+	// the aggsender inside the container can read bridge exits via GetCertificateBridgeExits.
+	patchCertToInlineJSON(t, dbPath, cert.Height, certJSON)
+
+	// Restart aggkit so it picks up the malicious cert from the DB.
+	require.NoError(t, testEnv.StartAggkit(ctx), "restart aggkit after DB write")
+
+	// Wait for the bridge service to re-sync after the restart. This ensures
+	// l1infotreesync has had time to process any zero-hash blocks that were
+	// created when aggkit was stopped, preventing GER injection index skips.
+	waitForBridgeServiceSynced(ctx, t)
+	return cert
+}
+
+// waitForAgglayerNoPendingCerts polls until the agglayer has no actively-processing
+// certificate for our L2 network. The condition is met when:
+//   - LatestPendingHeight is nil (no certs ever submitted), OR
+//   - LatestPendingStatus is Settled or InError (last cert is in a terminal state)
+//
+// Note: LatestPendingHeight never becomes nil once any cert has been submitted (it
+// tracks the last submitted height). We use LatestPendingStatus instead to detect when
+// the last cert has finished processing.
+// Used after stopping aggkit to wait for any in-flight cert to finish before injecting.
+func waitForAgglayerNoPendingCerts(ctx context.Context, t *testing.T, toolEnv *bfl.Env) {
+	t.Helper()
+	log.Infof("[waitForAgglayerNoPendingCerts] waiting for agglayer to finish processing in-flight certs")
+	err := pollWithBackoff(ctx, bflNoPendingTimeout, backoffInitial, backoffMax, "no-pending-certs",
+		func() (bool, error) {
+			info, pollErr := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
+			if pollErr != nil {
+				// UNKNOWN_NETWORK_TYPE means this L2 network has never submitted a cert to the
+				// agglayer, so there are definitely no in-flight certs. Proceed immediately.
+				if strings.Contains(pollErr.Error(), "UNKNOWN_NETWORK_TYPE") {
+					log.Debugf("[waitForAgglayerNoPendingCerts] network unknown (no certs ever submitted), proceeding")
+					return true, nil
+				}
+				log.Debugf("[waitForAgglayerNoPendingCerts] GetNetworkInfo error (retrying): %v", pollErr)
+				return false, nil // non-fatal, keep polling
+			}
+			pendingH := nilStr
+			settledH := nilStr
+			pendingS := nilStr
+			if info.LatestPendingHeight != nil {
+				pendingH = fmt.Sprintf("%d", *info.LatestPendingHeight)
+			}
+			if info.SettledHeight != nil {
+				settledH = fmt.Sprintf("%d", *info.SettledHeight)
+			}
+			if info.LatestPendingStatus != nil {
+				pendingS = info.LatestPendingStatus.String()
+			}
+			log.Debugf("[waitForAgglayerNoPendingCerts] pendingH=%s settledH=%s pendingStatus=%s", pendingH, settledH, pendingS)
+			// No cert has ever been submitted.
+			if info.LatestPendingHeight == nil {
+				return true, nil
+			}
+			// Last submitted cert has settled: SettledHeight >= LatestPendingHeight.
+			if info.SettledHeight != nil && *info.SettledHeight >= *info.LatestPendingHeight {
+				return true, nil
+			}
+			// Last cert went to InError (terminal failure state): no further processing.
+			if info.LatestPendingStatus != nil && *info.LatestPendingStatus == agglayertypes.InError {
+				return true, nil
+			}
+			return false, nil
+		})
+	require.NoError(t, err, "timeout waiting for agglayer to finish processing in-flight certs")
+	log.Infof("[waitForAgglayerNoPendingCerts] agglayer has no in-flight certs")
+}
+
+// prepareAgglayerOnlyConfigPath writes a minimal TOML config containing only the
+// [AgglayerClient] section — sufficient for RunSendCert to connect to the agglayer.
+func prepareAgglayerOnlyConfigPath(t *testing.T) string {
+	t.Helper()
+	summaryPath := filepath.Join(testEnv.EnvDir, "summary.json")
+	summaryData, err := os.ReadFile(summaryPath)
+	require.NoError(t, err)
+	var summary summaryForBFLToolConfig
+	require.NoError(t, json.Unmarshal(summaryData, &summary))
+	agglayerGRPCURL := summary.Networks.Agglayer.Services.GrpcRPC.External
+
+	content := fmt.Sprintf(`
+[AgglayerClient.GRPC]
+URL                = %q
+MinConnectTimeout  = "5s"
+RequestTimeout     = "300s"
+UseTLS             = false
+`, agglayerGRPCURL)
+
+	tmpFile := filepath.Join(t.TempDir(), "agglayer-client.toml")
+	require.NoError(t, os.WriteFile(tmpFile, []byte(content), 0o600))
+	return tmpFile
+}
+
+// buildSendCertCLIContext constructs a *cli.Context for the send-cert subcommand with
+// --cfg, --cert-file, and --db-path flags set.
+func buildSendCertCLIContext(ctx context.Context, t *testing.T, configPath, certFilePath, dbPath string) *cli.Context {
+	t.Helper()
+	app := cli.NewApp()
+	flags := []cli.Flag{
+		&cli.StringSliceFlag{Name: "cfg"},
+		&cli.StringFlag{Name: "cert-file"},
+		&cli.StringFlag{Name: "db-path"},
+	}
+	set := flag.NewFlagSet("", flag.ContinueOnError)
+	for _, f := range flags {
+		require.NoError(t, f.Apply(set))
+	}
+	require.NoError(t, set.Parse([]string{"--cfg", configPath, "--cert-file", certFilePath, "--db-path", dbPath}))
+	cliCtx := cli.NewContext(app, set, nil)
+	cliCtx.Context = ctx
+	return cliCtx
 }
 
 // waitForCertificateToSettle polls the AggLayer until the certificate at expectedHeight is settled.
+// Uses GetNetworkInfo.SettledHeight (same source as Diagnose) so the condition is consistent:
+// once this returns, a subsequent Diagnose call will also see the settled state.
 func waitForCertificateToSettle(
 	ctx context.Context, t *testing.T,
 	toolEnv *bfl.Env,
@@ -735,15 +770,43 @@ func waitForCertificateToSettle(
 	err := pollWithBackoff(ctx, bflCertSettleTimeout, backoffInitial, backoffMax,
 		fmt.Sprintf("cert-settle-h%d", expectedHeight),
 		func() (bool, error) {
-			hdr, pollErr := toolEnv.AgglayerClient.GetLatestSettledCertificateHeader(ctx, toolEnv.L2NetworkID)
+			info, pollErr := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
 			if pollErr != nil {
-				// Non-fatal: may not have settled certs yet.
+				// Non-fatal: UNKNOWN_NETWORK_TYPE or transient error — no settled certs yet.
+				log.Debugf("[waitForCertificateToSettle] GetNetworkInfo error (retrying): %v", pollErr)
 				return false, nil
 			}
-			if hdr == nil {
+			settledH := nilStr
+			if info.SettledHeight != nil {
+				settledH = fmt.Sprintf("%d", *info.SettledHeight)
+			}
+			pendingH := nilStr
+			if info.LatestPendingHeight != nil {
+				pendingH = fmt.Sprintf("%d", *info.LatestPendingHeight)
+			}
+			pendingS := nilStr
+			if info.LatestPendingStatus != nil {
+				pendingS = info.LatestPendingStatus.String()
+			}
+			settledLER := nilStr
+			if info.SettledLER != nil {
+				settledLER = info.SettledLER.Hex()
+			}
+			settledDC := nilStr
+			if info.SettledLETLeafCount != nil {
+				settledDC = fmt.Sprintf("%d", *info.SettledLETLeafCount)
+			}
+			log.Debugf("[waitForCertificateToSettle] settledH=%s settledLER=%s settledDC=%s pendingH=%s pendingStatus=%s",
+				settledH, settledLER, settledDC, pendingH, pendingS)
+			if info.SettledHeight == nil {
 				return false, nil
 			}
-			return hdr.Height >= expectedHeight && hdr.Status == agglayertypes.Settled, nil
+			done := *info.SettledHeight >= expectedHeight
+			if done {
+				log.Debugf("[waitForCertificateToSettle] settled height=%d >= expected=%d",
+					*info.SettledHeight, expectedHeight)
+			}
+			return done, nil
 		},
 	)
 	require.NoError(t, err, "timeout waiting for certificate at height=%d to settle", expectedHeight)
@@ -760,12 +823,44 @@ func loadCertSignerKey(t *testing.T) *ecdsa.PrivateKey {
 	return key.PrivateKey
 }
 
+// patchCertToInlineJSON updates the signed_certificate column for height to store
+// the raw cert JSON inline instead of a "@<host-path>" file reference. This is
+// necessary because send_cert.go writes certs to HOST filesystem paths, which the
+// container aggsender cannot resolve when trying to read bridge exits.
+func patchCertToInlineJSON(t *testing.T, dbPath string, height uint64, certJSON []byte) {
+	t.Helper()
+	sqlDB, err := aggkitdb.NewSQLiteDB(dbPath)
+	require.NoError(t, err, "open aggsender DB for inline patch at %s", dbPath)
+	defer sqlDB.Close()
+	_, err = sqlDB.Exec(
+		"UPDATE certificate_info SET signed_certificate = ? WHERE height = ?",
+		string(certJSON), height,
+	)
+	require.NoError(t, err, "patch signed_certificate to inline JSON at height=%d", height)
+	log.Debugf("[patchCertToInlineJSON] patched cert height=%d to inline JSON (%d bytes)", height, len(certJSON))
+}
+
+// openAggsenderDBForTest opens the aggsender SQLite DB at dbPath for direct queries.
+// Used when aggkit is stopped and the RPC server is unavailable.
+func openAggsenderDBForTest(t *testing.T, dbPath string) aggsenderdb.AggSenderStorage {
+	t.Helper()
+	storage, err := aggsenderdb.NewAggSenderSQLStorage(log.GetDefaultLogger(), aggsenderdb.AggSenderSQLStorageConfig{
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
+	})
+	require.NoError(t, err, "open aggsender DB at %s", dbPath)
+	return storage
+}
+
 // buildMaliciousCert builds a Certificate with the given fake bridge exits, rooted at the current
 // settled LET state (or height=0 if no settled cert exists yet), and signs it with certSignerKey.
-// The certificate is not sent; call sendMaliciousCertificate to submit it.
+// certStore is used to query bridge exits and cert headers directly from the aggsender DB
+// (without needing the aggsender RPC server to be running).
+// The certificate is not sent; call sendMaliciousCertificateViaTool to submit it.
 func buildMaliciousCert(
 	ctx context.Context, t *testing.T,
 	toolEnv *bfl.Env,
+	certStore aggsenderdb.AggSenderStorage,
 	fakeBridgeExits []*agglayertypes.BridgeExit,
 	certSignerKey *ecdsa.PrivateKey,
 ) *agglayertypes.Certificate {
@@ -789,10 +884,9 @@ func buildMaliciousCert(
 		// Get the L1InfoTreeLeafCount from the settled cert in the aggsender DB.
 		// We query the SETTLED height to avoid picking up a stale malicious cert
 		// stored by a previous (failed) test run.
-		if settledCert, certErr := toolEnv.AggsenderRPC.GetCertificateHeaderPerHeight(info.SettledHeight); certErr == nil &&
-			settledCert != nil && settledCert.Header != nil &&
-			settledCert.Header.L1InfoTreeLeafCount > 0 {
-			l1InfoTreeLeafCount = settledCert.Header.L1InfoTreeLeafCount
+		if header, certErr := certStore.GetCertificateHeaderByHeight(*info.SettledHeight); certErr == nil &&
+			header != nil && header.L1InfoTreeLeafCount > 0 {
+			l1InfoTreeLeafCount = header.L1InfoTreeLeafCount
 		}
 	} else {
 		// No settled cert yet — send the very first cert at height=0.
@@ -819,8 +913,7 @@ func buildMaliciousCert(
 	if infoErr == nil && info.SettledHeight != nil {
 		existingHashes = make([]common.Hash, 0, existingLeafCount)
 		for h := uint64(0); h <= *info.SettledHeight; h++ {
-			hh := h
-			exits, exitsErr := toolEnv.AggsenderRPC.GetCertificateBridgeExits(&hh)
+			exits, exitsErr := certStore.GetCertificateBridgeExits(h)
 			require.NoError(t, exitsErr, "GetCertificateBridgeExits height=%d", h)
 			for _, be := range exits {
 				existingHashes = append(existingHashes, bfl.BridgeExitLeafHash(be))
