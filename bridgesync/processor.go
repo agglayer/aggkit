@@ -1722,53 +1722,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
-			// we sanity check that the previous root matches the latest one in the exit tree
-			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.PreviousRoot); err != nil {
-				p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
-				return err
-			}
-
-			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
-			if err != nil {
-				return err
-			}
-
-			// 1. archive and remove all bridges at deposit_count >= newDepositCount.
-			// After BackwardLET to NewDepositCount=N, leaves 0..N-1 remain valid;
-			// any bridge at DC=N or above is no longer in the exit tree.
-			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
-			if err != nil {
-				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
-					newDepositCount, err)
-			}
-
-			// 2. Remove leaves from the exit tree so that exactly newDepositCount leaves remain.
-			// BackwardToIndex(N) keeps positions 0..N (N+1 leaves). To keep exactly newDepositCount
-			// leaves (positions 0..newDepositCount-1), we call BackwardToIndex(newDepositCount-1).
-			// Special case: for newDepositCount==0 the tree must be fully cleared, so use Reorg(0)
-			// which deletes all root entries (block_num >= 0 = all rows).
-			if leafIndex == 0 {
-				if err := p.exitTree.Reorg(tx, 0); err != nil {
-					p.log.Errorf("failed to clear exit tree for BackwardLET to DC=0: %v", err)
-					return err
-				}
-			} else {
-				if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex-1); err != nil {
-					p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-						leafIndex, newDepositCount)
-					return err
-				}
-			}
-
-			// 4. sanity check that the new root matches the latest one in the exit tree
-			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.NewRoot); err != nil {
-				p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
-				return err
-			}
-
-			// 5. insert the backward let event to designated table
-			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
-				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
+			if err := p.insertBackwardLET(ctx, tx, block.Num, event.BackwardLET); err != nil {
 				return err
 			}
 		}
@@ -1914,6 +1868,61 @@ func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error
 		return fmt.Errorf("local exit root mismatch: expected %s, got %s",
 			ler.String(), lastRootHash.String())
 	}
+	return nil
+}
+
+// insertBackwardLET processes a BackwardLET event and updates the database accordingly
+func (p *processor) insertBackwardLET(ctx context.Context, tx dbtypes.Txer, blockNum uint64, event *BackwardLET) error {
+	// we sanity check that the previous root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.PreviousRoot); err != nil {
+		p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
+		return err
+	}
+
+	newDepositCount, leafIndex, err := normalizeDepositCount(event.NewDepositCount)
+	if err != nil {
+		return err
+	}
+
+	// 1. archive and remove all bridges at deposit_count >= newDepositCount.
+	// After BackwardLET to NewDepositCount=N, leaves 0..N-1 remain valid;
+	// any bridge at DC=N or above is no longer in the exit tree.
+	err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
+	if err != nil {
+		return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
+			newDepositCount, err)
+	}
+
+	// 2. Remove leaves from the exit tree so that exactly newDepositCount leaves remain.
+	// BackwardToIndex(N) keeps positions 0..N (N+1 leaves). To keep exactly newDepositCount
+	// leaves (positions 0..newDepositCount-1), we call BackwardToIndex(newDepositCount-1).
+	// Special case: for newDepositCount==0 the tree must be fully cleared, so use Reorg(0)
+	// which deletes all root entries (block_num >= 0 = all rows).
+	if leafIndex == 0 {
+		if err := p.exitTree.Reorg(tx, 0); err != nil {
+			p.log.Errorf("failed to clear exit tree for BackwardLET to DC=0: %v", err)
+			return err
+		}
+	} else {
+		if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex-1); err != nil {
+			p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+				leafIndex, newDepositCount)
+			return err
+		}
+	}
+
+	// 4. sanity check that the new root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.NewRoot); err != nil {
+		p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
+		return err
+	}
+
+	// 5. insert the backward let event to designated table
+	if err = meddler.Insert(tx, backwardLETTableName, event); err != nil {
+		p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", blockNum, err)
+		return err
+	}
+
 	return nil
 }
 
