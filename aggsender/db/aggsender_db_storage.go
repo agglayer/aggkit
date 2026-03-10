@@ -283,7 +283,6 @@ func (a *AggSenderSQLStorage) GetLastSettledCertificate() (*types.CertificateHea
 	return &certificateHeader, nil
 }
 
-
 // SaveOrUpdateCertificate saves the certificate in the storage
 // It will insert a new certificate or update the existing one if it has the same height and certificate ID
 func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error {
@@ -358,7 +357,7 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	// Write the signed certificate content to the file. Use 0644 (world-readable) so that
 	// external tools (e.g. test helpers running as a different UID on the bind-mounted volume)
 	// can read these files. The certs contain already-public data submitted to the agglayer.
-	err := os.WriteFile(filePath, []byte(signedCertContent), 0o644) //nolint:mnd
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0o644) //nolint:mnd,gosec
 	if err != nil {
 		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
 	}

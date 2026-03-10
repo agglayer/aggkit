@@ -1450,4 +1450,3 @@ func Test_deleteCertificate(t *testing.T) {
 		require.ErrorIs(t, err, db.ErrNotFound)
 	})
 }
-
