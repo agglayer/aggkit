@@ -17,6 +17,7 @@ import (
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	aggsenderdb "github.com/agglayer/aggkit/aggsender/db"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitdb "github.com/agglayer/aggkit/db"
@@ -981,9 +982,18 @@ func buildMaliciousCert(
 	if infoErr == nil && info.SettledHeight != nil {
 		existingHashes = make([]common.Hash, 0, existingLeafCount)
 		for h := uint64(0); h <= *info.SettledHeight; h++ {
-			exits, exitsErr := certStore.GetCertificateBridgeExits(h)
-			require.NoError(t, exitsErr, "GetCertificateBridgeExits height=%d", h)
-			for _, be := range exits {
+			cert, certErr := certStore.GetCertificateByHeight(h)
+			require.NoError(t, certErr, "GetCertificateByHeight height=%d", h)
+			if cert == nil || cert.SignedCertificate == nil {
+				continue
+			}
+			if cert.Header != nil && cert.Header.CertSource == aggsendertypes.CertificateSourceAggLayer {
+				continue
+			}
+			var agglayerCert agglayertypes.Certificate
+			require.NoError(t, json.Unmarshal([]byte(*cert.SignedCertificate), &agglayerCert),
+				"unmarshal cert at height=%d", h)
+			for _, be := range agglayerCert.BridgeExits {
 				existingHashes = append(existingHashes, bfl.BridgeExitLeafHash(be))
 			}
 		}

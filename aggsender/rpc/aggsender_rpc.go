@@ -2,6 +2,7 @@ package aggsenderrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
@@ -13,7 +14,6 @@ import (
 type AggsenderStorer interface {
 	GetCertificateByHeight(height uint64) (*types.Certificate, error)
 	GetLastSentCertificate() (*types.Certificate, error)
-	GetCertificateBridgeExits(height uint64) ([]*agglayertypes.BridgeExit, error)
 	SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error
 }
 
@@ -114,14 +114,29 @@ func (b *AggsenderRPC) GetCertificateBridgeExits(height *uint64) (interface{}, r
 	} else {
 		resolvedHeight = *height
 	}
-	exits, err := b.storage.GetCertificateBridgeExits(resolvedHeight)
+	cert, err := b.storage.GetCertificateByHeight(resolvedHeight)
 	if err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-			fmt.Sprintf("error getting certificate bridge exits at height %d: %v", resolvedHeight, err))
+			fmt.Sprintf("error getting certificate at height %d: %v", resolvedHeight, err))
 	}
-	if exits == nil {
+	if cert == nil || cert.SignedCertificate == nil {
 		return nil, rpc.NewRPCError(rpc.NotFoundErrorCode,
 			fmt.Sprintf("certificate not found at height %d", resolvedHeight))
 	}
-	return exits, nil
+	// Certs recovered from agglayer use a placeholder signed certificate ("na/agglayer header").
+	// We don't have the actual signed cert data for these certs, so return not found.
+	if cert.Header != nil && cert.Header.CertSource == types.CertificateSourceAggLayer {
+		return nil, rpc.NewRPCError(rpc.NotFoundErrorCode,
+			fmt.Sprintf("certificate not found at height %d", resolvedHeight))
+	}
+	var agglayerCert agglayertypes.Certificate
+	if err := json.Unmarshal([]byte(*cert.SignedCertificate), &agglayerCert); err != nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			fmt.Sprintf("failed to unmarshal certificate at height %d: %v", resolvedHeight, err))
+	}
+	if agglayerCert.BridgeExits == nil {
+		return nil, rpc.NewRPCError(rpc.NotFoundErrorCode,
+			fmt.Sprintf("certificate not found at height %d", resolvedHeight))
+	}
+	return agglayerCert.BridgeExits, nil
 }

@@ -1,6 +1,7 @@
 package aggsenderrpc
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"testing"
@@ -104,23 +105,36 @@ func TestAggsenderRPCGetCertificateBridgeExits(t *testing.T) {
 			Amount:             big.NewInt(1000),
 		},
 	}
+	agglayerCert := agglayertypes.Certificate{
+		NetworkID:   1,
+		Height:      height,
+		BridgeExits: bridgeExits,
+	}
+	signedCertJSON, err := json.Marshal(agglayerCert)
+	require.NoError(t, err)
+	signedCertStr := string(signedCertJSON)
+
+	certWithExits := &types.Certificate{
+		Header:            &types.CertificateHeader{Height: height},
+		SignedCertificate: &signedCertStr,
+	}
 
 	cases := []struct {
 		name                  string
 		height                *uint64
 		lastCertResult        *types.Certificate
 		lastCertError         error
-		bridgeExitsResult     []*agglayertypes.BridgeExit
-		bridgeExitsError      error
+		certByHeightResult    *types.Certificate
+		certByHeightError     error
 		expectedErrorCode     int
 		expectedErrorContains string
 		expectNil             bool
 	}{
 		{
-			name:              "nil height, resolves last cert then returns exits",
-			height:            nil,
-			lastCertResult:    &types.Certificate{Header: &types.CertificateHeader{Height: height}},
-			bridgeExitsResult: bridgeExits,
+			name:               "nil height, resolves last cert then returns exits",
+			height:             nil,
+			lastCertResult:     &types.Certificate{Header: &types.CertificateHeader{Height: height}},
+			certByHeightResult: certWithExits,
 		},
 		{
 			name:                  "nil height, GetLastSentCertificate error",
@@ -137,21 +151,28 @@ func TestAggsenderRPCGetCertificateBridgeExits(t *testing.T) {
 			expectNil:             true,
 		},
 		{
-			name:              "specific height, returns exits",
-			height:            &height,
-			bridgeExitsResult: bridgeExits,
+			name:               "specific height, returns exits",
+			height:             &height,
+			certByHeightResult: certWithExits,
 		},
 		{
-			name:                  "specific height, bridge exits nil (not found)",
+			name:                  "specific height, cert nil (not found)",
 			height:                &height,
-			bridgeExitsResult:     nil,
+			certByHeightResult:    nil,
+			expectedErrorContains: fmt.Sprintf("certificate not found at height %d", height),
+			expectNil:             true,
+		},
+		{
+			name:                  "specific height, cert has nil SignedCertificate",
+			height:                &height,
+			certByHeightResult:    &types.Certificate{Header: &types.CertificateHeader{Height: height}},
 			expectedErrorContains: fmt.Sprintf("certificate not found at height %d", height),
 			expectNil:             true,
 		},
 		{
 			name:                  "specific height, storage error",
 			height:                &height,
-			bridgeExitsError:      fmt.Errorf("storage error"),
+			certByHeightError:     fmt.Errorf("storage error"),
 			expectedErrorContains: "storage error",
 			expectNil:             true,
 		},
@@ -166,12 +187,12 @@ func TestAggsenderRPCGetCertificateBridgeExits(t *testing.T) {
 					Return(tt.lastCertResult, tt.lastCertError).Once()
 				if tt.lastCertResult != nil && tt.lastCertError == nil {
 					resolvedHeight = tt.lastCertResult.Header.Height
-					testData.mockStore.EXPECT().GetCertificateBridgeExits(resolvedHeight).
-						Return(tt.bridgeExitsResult, tt.bridgeExitsError).Once()
+					testData.mockStore.EXPECT().GetCertificateByHeight(resolvedHeight).
+						Return(tt.certByHeightResult, tt.certByHeightError).Once()
 				}
 			} else {
-				testData.mockStore.EXPECT().GetCertificateBridgeExits(*tt.height).
-					Return(tt.bridgeExitsResult, tt.bridgeExitsError).Once()
+				testData.mockStore.EXPECT().GetCertificateByHeight(*tt.height).
+					Return(tt.certByHeightResult, tt.certByHeightError).Once()
 			}
 
 			res, rpcErr := testData.sut.GetCertificateBridgeExits(tt.height)
