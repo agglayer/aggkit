@@ -61,7 +61,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 
 			querier := NewLERDataQuerier(0, mockRollupQuerier)
 
-			result, err := querier.GetLastLocalExitRoot()
+			result, err := querier.GetInitialLocalExitRoot()
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

@@ -188,7 +188,7 @@ func (a *CertificateValidator) checkFirstCertificateBlocks(params types.VerifyIn
 		return fmt.Errorf("first certificate must have height 0, but got: %d",
 			params.Certificate.Height)
 	}
-	startLER, err := a.lerQuerier.GetLastLocalExitRoot()
+	startLER, err := a.lerQuerier.GetInitialLocalExitRoot()
 	if err != nil {
 		return fmt.Errorf("failed to get start LER: %w", err)
 	}

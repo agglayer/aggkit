@@ -39,12 +39,12 @@ func NewLERDataQuerier(
 	}
 }
 
-// GetLastLocalExitRoot retrieves the last local exit root for the rollup associated with this
+// GetInitialLocalExitRoot retrieves the last local exit root for the rollup associated with this
 // lerDataQuerier instance. It queries the RollupManager contract at the L1 genesis block for
 // the rollup data corresponding to the configured rollup ID. Returns the last local exit root
 // as a common.Hash, or an error if the contract call fails.
 // If the last local exit root is not set, it returns an empty LER.
-func (l *lerDataQuerier) GetLastLocalExitRoot() (common.Hash, error) {
+func (l *lerDataQuerier) GetInitialLocalExitRoot() (common.Hash, error) {
 	rollupData, err := l.rollupDataQuerier.GetRollupData(new(big.Int).SetUint64(l.l1GenesisBlock))
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to get rollup data: %w", err)
