@@ -50,7 +50,6 @@ type Env struct {
 	EnvDir           string
 	AggsenderRPCURL  string // External URL of the aggsender JSON-RPC endpoint
 	envName          ENVName
-	startedCompose   bool   // Track if we started docker compose (so we know if we should stop it)
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
 	aggkitDataDir    string // Host path of the aggkit container's /tmp bind-mount
 }
@@ -213,18 +212,14 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("parse summary.json: %w", err)
 	}
 
-	// Start docker compose environment (with locking and checking if already running)
-	startedCompose, err := ensureDockerComposeRunning(ctx, envDir)
-	if err != nil {
+	// Ensure containers are down and data dir is clean, then start fresh
+	if err := ensureDockerComposeRunning(ctx, envDir); err != nil {
 		return nil, fmt.Errorf("start docker compose: %w", err)
 	}
 
 	// Wait for services to be ready
 	if err := waitForServices(ctx, &summary); err != nil {
-		// Only stop services if we started them
-		if startedCompose {
-			_ = stopDockerCompose(context.Background(), envDir)
-		}
+		_ = stopDockerCompose(context.Background(), envDir)
 		return nil, fmt.Errorf("wait for services: %w", err)
 	}
 
@@ -433,7 +428,6 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		EnvDir:           envDir,
 		AggsenderRPCURL:  l2Network.Services.Aggkit.RPC.External,
 		envName:          envName,
-		startedCompose:   startedCompose,
 		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
 		aggkitDataDir:    aggkit001DataDir(envDir),
 	}, nil
@@ -538,24 +532,16 @@ func newKeyPool(keys []*ecdsa.PrivateKey, chainID *big.Int) *KeyPool {
 }
 
 // Stop stops the E2E test environment by running docker compose down
-// Only stops if this Env instance started the docker compose environment
 func (e *Env) Stop(ctx context.Context) error {
-	if !e.startedCompose {
-		// We didn't start docker compose, so don't stop it
-		return nil
-	}
 	return stopDockerCompose(ctx, e.EnvDir)
 }
 
 const aggkitServiceName = "aggkit-001"
 
-// newDockerComposeCmd creates a docker compose command with the correct working directory
-// and AGGKIT_DATA_DIR environment variable injected so compose interpolation works.
+// newDockerComposeCmd creates a docker compose command with the correct working directory.
 func newDockerComposeCmd(ctx context.Context, envDir string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "docker", append([]string{"compose"}, args...)...)
 	cmd.Dir = envDir
-	dataDir := aggkit001DataDir(envDir)
-	cmd.Env = append(os.Environ(), "AGGKIT_DATA_DIR="+dataDir)
 	return cmd
 }
 
@@ -597,6 +583,50 @@ func (e *Env) GetAggkitConfigPath() string {
 // This is accessible because the aggkit container's /tmp is bind-mounted to the host.
 func (e *Env) GetAggsenderDBPath() string {
 	return filepath.Join(e.aggkitDataDir, "aggsender.sqlite")
+}
+
+// GetAggkitDataDir returns the host path of the aggkit container's /tmp bind-mount directory.
+// Files written by the container to /tmp (e.g. aggsender.sqlite, certificates/) are accessible
+// at this path on the host.
+func (e *Env) GetAggkitDataDir() string {
+	return e.aggkitDataDir
+}
+
+// DockerComposeLogs runs "docker compose logs" with the given extra args for this environment,
+// injecting AGGKIT_DATA_DIR so compose can resolve the bind-mount variable.
+func (e *Env) DockerComposeLogs(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, append([]string{"logs"}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("docker compose logs: %w\nOutput:\n%s", err, string(out))
+	}
+	return out, nil
+}
+
+// FixCertDirPermissions makes all files in the aggkit certificates directory readable by
+// the host user. In rootless Docker, the aggkit container's appuser (UID 1000 inside)
+// writes cert files with mode 0600, which appear as a high UID on the host and are
+// unreadable. This runs a Docker helper container as root to set the directory to 0777
+// and all .json files to 0644 so the host user (world-other) can read them.
+// The directory is set to 0777 (not 0755) so the container can continue writing cert
+// files after aggkit restarts.
+// Must be called while aggkit is stopped.
+func (e *Env) FixCertDirPermissions(ctx context.Context) error {
+	certDir := filepath.Join(e.aggkitDataDir, "certificates")
+	if _, err := os.Stat(certDir); os.IsNotExist(err) {
+		return nil // nothing to fix
+	}
+	// Set directory to 777 (world-writable so the container can continue writing after this call)
+	// and all .json files to 644 so the host user can read them.
+	// Use find+chmod instead of -R to avoid applying file modes to the directory itself.
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"-v", certDir+":/certs",
+		"alpine", "sh", "-c", "chmod 777 /certs && find /certs -name '*.json' -exec chmod 644 {} \\;")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("fix cert dir permissions: %w\nOutput:\n%s", err, string(out))
+	}
+	return nil
 }
 
 // cleanAggkitDataDir removes the aggkit data directory and recreates it with correct
@@ -642,12 +672,11 @@ func cleanAggkitDataDir(ctx context.Context, dataDir string) error {
 }
 
 // aggkit001DataDir returns the host directory that is bind-mounted into the aggkit-001
-// container as /tmp. It lives under <repo-root>/tmp/test/e2e/envs/<env-name>/aggkit-001-data.
+// container as /tmp. It lives next to the docker-compose.yml file, at
+// <envDir>/aggkit-001-data, which matches the hardcoded ./aggkit-001-data volume path
+// in docker-compose.yml.
 func aggkit001DataDir(envDir string) string {
-	// envDir is <repoRoot>/test/e2e/envs/<envName>; four levels up is <repoRoot>
-	repoRoot := filepath.Clean(filepath.Join(envDir, "..", "..", "..", ".."))
-	envName := filepath.Base(envDir)
-	return filepath.Join(repoRoot, "tmp", "test", "e2e", "envs", envName, "aggkit-001-data")
+	return filepath.Join(envDir, "aggkit-001-data")
 }
 
 // StopAggkitAndEditConfig stops aggkit and calls editFn with the config file path.
@@ -672,38 +701,25 @@ func (e *Env) RestartAggkitWithConfig(ctx context.Context, editFn func(configPat
 	return e.StartAggkit(ctx)
 }
 
-// ensureDockerComposeRunning ensures docker compose is running for the given environment
-// Returns true if we started docker compose, false if it was already running
-func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error) {
+// ensureDockerComposeRunning brings down any running containers, cleans the aggkit data
+// directory, then starts docker compose fresh. This guarantees a predictable initial state
+// on every test run.
+func ensureDockerComposeRunning(ctx context.Context, envDir string) error {
 	projectName := filepath.Base(envDir)
-	alreadyRunning, err := isDockerComposeRunning(ctx, envDir)
-	if err == nil && alreadyRunning {
-		log.Debugf("docker compose is running for %s\n", projectName)
-		return false, nil
-	}
-
-	// Not running, so start it — first clean the aggkit data directory for a fresh state
-	dataDir := aggkit001DataDir(envDir)
-	if err := cleanAggkitDataDir(ctx, dataDir); err != nil {
-		return false, fmt.Errorf("clean aggkit data dir %s: %w", dataDir, err)
-	}
-	log.Debugf("prepared aggkit data dir: %s\n", dataDir)
-
 	networkName := projectName + "_default"
 
-	// Step 1: Remove all containers from this project
+	// Step 1: Bring down any running containers from this project (idempotent)
 	cleanupCmd := newDockerComposeCmd(ctx, envDir, "down", "-v", "--remove-orphans")
 	if cleanupOutput, err := cleanupCmd.CombinedOutput(); err != nil {
-		log.Debugf("docker compose cleanup (ignored): %v\nOutput:\n%s\n", err, string(cleanupOutput))
+		log.Debugf("docker compose down (ignored): %v\nOutput:\n%s\n", err, string(cleanupOutput))
 	} else if len(cleanupOutput) > 0 {
-		log.Debugf("docker compose cleanup output:\n%s\n", string(cleanupOutput))
+		log.Debugf("docker compose down output:\n%s\n", string(cleanupOutput))
 	}
 
 	// Step 2: Find and remove all networks with the project name (by ID to handle duplicates)
 	listNetworksCmd := exec.CommandContext(ctx, "docker", "network", "ls", "--filter", "name="+networkName, "--format", "{{.ID}}")
 	networkIDs, err := listNetworksCmd.Output()
 	if err == nil && len(networkIDs) > 0 {
-		// Split by newline and remove each network by ID
 		for _, networkID := range strings.Split(strings.TrimSpace(string(networkIDs)), "\n") {
 			if networkID != "" {
 				removeNetworkCmd := exec.CommandContext(ctx, "docker", "network", "rm", networkID)
@@ -732,21 +748,24 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 		}
 	}
 
+	// Step 4: Clean the aggkit data directory for a fresh state
+	dataDir := aggkit001DataDir(envDir)
+	if err := cleanAggkitDataDir(ctx, dataDir); err != nil {
+		return fmt.Errorf("clean aggkit data dir %s: %w", dataDir, err)
+	}
+	log.Debugf("prepared aggkit data dir: %s\n", dataDir)
+
+	// Step 5: Start fresh
 	log.Debugf("running docker compose up -d for %s\n", projectName)
 	cmd := newDockerComposeCmd(ctx, envDir, "up", "-d")
-
-	// Capture output to include in error messages if the command fails
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("docker compose up: %w\nOutput:\n%s", err, string(output))
+		return fmt.Errorf("docker compose up: %w\nOutput:\n%s", err, string(output))
 	}
-
-	// Log the output on success for debugging
 	if len(output) > 0 {
 		log.Debugf("docker compose up output:\n%s\n", string(output))
 	}
-
-	return true, nil
+	return nil
 }
 
 // stopDockerCompose stops the docker compose environment
@@ -765,20 +784,6 @@ func stopDockerCompose(ctx context.Context, envDir string) error {
 	}
 
 	return nil
-}
-
-// isDockerComposeRunning checks if docker compose is already running for this environment
-func isDockerComposeRunning(ctx context.Context, envDir string) (bool, error) {
-	cmd := newDockerComposeCmd(ctx, envDir, "ps", "-q")
-
-	output, err := cmd.Output()
-	if err != nil {
-		// If docker compose ps fails, assume it's not running
-		return false, nil
-	}
-
-	// If there's any output, containers are running
-	return len(output) > 0, nil
 }
 
 // waitForServices waits for all services to be ready

@@ -25,5 +25,8 @@
 # Test fixtures and E2E env (may contain keys/configs)
 test/e2e/envs/
 
+# Temporary E2E test data (aggkit bind-mount data, may be owned by container UID)
+tmp/
+
 # Local developer configs
 *.local

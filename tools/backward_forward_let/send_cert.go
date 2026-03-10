@@ -27,6 +27,9 @@ type agglayerSender interface {
 // certStorager is the subset of aggsenderdb.AggSenderStorage used by RunSendCert.
 type certStorager interface {
 	SaveLastSentCertificate(ctx context.Context, certificate aggsendertypes.Certificate) error
+	// GetCertificateHeaderByHeight returns the certificate header at the given height,
+	// used to derive the correct FromBlock for the stored certificate.
+	GetCertificateHeaderByHeight(height uint64) (*aggsendertypes.CertificateHeader, error)
 }
 
 // RunSendCert is the CLI action for the send-cert subcommand.
@@ -82,6 +85,18 @@ func sendCertificate(
 	}
 	fmt.Printf("Certificate sent. Hash: %s\n", certHash.Hex())
 
+	// Derive FromBlock from the previous certificate so that aggsender's retry
+	// verification (verifyRetryCertStartingBlock) passes when this cert goes InError.
+	// getLastSentBlockAndRetryCount computes: lastSentBlock = cert.FromBlock - 1 (if > 0),
+	// so it must match the computed next fromBlock = prevCert.ToBlock + 1.
+	var fromBlock uint64
+	if cert.Height > 0 {
+		prevHeader, prevErr := storage.GetCertificateHeaderByHeight(cert.Height - 1)
+		if prevErr == nil && prevHeader != nil && prevHeader.ToBlock > 0 {
+			fromBlock = prevHeader.ToBlock + 1
+		}
+	}
+
 	// Build aggsender certificate record.
 	now := uint32(time.Now().Unix())
 	prevLER := common.BytesToHash(cert.PrevLocalExitRoot[:])
@@ -98,6 +113,7 @@ func sendCertificate(
 			CreatedAt:             now,
 			UpdatedAt:             now,
 			CertSource:            aggsendertypes.CertificateSourceLocal,
+			FromBlock:             fromBlock,
 		},
 		SignedCertificate: &certJSON,
 	}

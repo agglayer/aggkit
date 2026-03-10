@@ -28,7 +28,9 @@ func (s *stubAgglayerSender) SendCertificate(_ context.Context, _ *agglayertypes
 }
 
 type stubCertStorager struct {
-	err error
+	err     error
+	prevErr error
+	prev    *aggsendertypes.CertificateHeader
 	// last call captured for assertions
 	saved *aggsendertypes.Certificate
 }
@@ -36,6 +38,10 @@ type stubCertStorager struct {
 func (s *stubCertStorager) SaveLastSentCertificate(_ context.Context, cert aggsendertypes.Certificate) error {
 	s.saved = &cert
 	return s.err
+}
+
+func (s *stubCertStorager) GetCertificateHeaderByHeight(_ uint64) (*aggsendertypes.CertificateHeader, error) {
+	return s.prev, s.prevErr
 }
 
 // --- helpers ---

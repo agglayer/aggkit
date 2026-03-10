@@ -443,15 +443,23 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	require.NoError(t, preInfoErr, "GetNetworkInfo before DB wipe")
 	require.NotNil(t, preInfo.SettledHeight, "expected settled certs before DB wipe")
 
-	preCertIDs := make(map[uint64]common.Hash)
-	for h := uint64(0); h <= *preInfo.SettledHeight; h++ {
-		hh := h
-		certData, certErr := toolEnv.AggsenderRPC.GetCertificateHeaderPerHeight(&hh)
-		if certErr == nil && certData != nil && certData.Header != nil {
-			preCertIDs[h] = certData.Header.CertificateID
+	// Pre-collect cert IDs by reading the aggsender DB directly (not via RPC).
+	// A cert submitted just before this point may be Pending in the DB (not yet settled).
+	// If it settles between now and Phase 3, it will appear in MissingCerts with
+	// CertIDResolved=false — but its ID won't be in preInfo.SettledHeight yet.
+	// Direct DB access captures cert IDs for ALL heights including Pending certs,
+	// ensuring the override file is complete even for late-settling certs.
+	preStore := openAggsenderDBForTest(t, testEnv.GetAggsenderDBPath())
+	allHeaders, headersErr := preStore.GetCertificateHeadersByStatus(nil)
+	require.NoError(t, headersErr, "read cert headers from aggsender DB before wipe")
+	preCertIDs := make(map[uint64]common.Hash, len(allHeaders))
+	for _, header := range allHeaders {
+		if header != nil && header.CertificateID != (common.Hash{}) {
+			preCertIDs[header.Height] = header.CertificateID
 		}
 	}
-	t.Logf("[AggsenderFallback] pre-collected %d cert IDs for heights 0..%d", len(preCertIDs), *preInfo.SettledHeight)
+	t.Logf("[AggsenderFallback] pre-collected %d cert IDs from aggsender DB (settled heights 0..%d)",
+		len(preCertIDs), *preInfo.SettledHeight)
 
 	// Phase 2: Wipe aggsender DB by restarting with a fresh StoragePath.
 	// Save the current config so Phase 8 cleanup can restore it.
@@ -538,8 +546,9 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 		if !mc.CertIDResolved {
 			preID, ok := preCertIDs[mc.Height]
 			if !ok {
-				t.Logf("[AggsenderFallback] skipping unresolved cert at height %d (no pre-collected ID)", mc.Height)
-				continue
+				require.Failf(t, "no pre-collected cert ID",
+					"[AggsenderFallback] no cert ID for height %d: not auto-resolved and not in pre-collected DB snapshot",
+					mc.Height)
 			}
 			certID = preID
 		}
@@ -627,6 +636,16 @@ func sendMaliciousCertificateViaTool(
 	// Open the aggsender DB directly (aggkit RPC is unavailable since it is stopped).
 	dbPath := testEnv.GetAggsenderDBPath()
 	certStore := openAggsenderDBForTest(t, dbPath)
+
+	// The aggkit container writes cert files as its appuser (UID 166535) with mode 0600.
+	// The host user cannot read them directly. Fix permissions via a Docker helper so that
+	// inlineContainerCertPaths can read the files.
+	require.NoError(t, testEnv.FixCertDirPermissions(ctx), "fix cert dir permissions before inlining")
+
+	// The aggkit container stores cert files at /tmp/certificates/ (container path), which is
+	// bind-mounted to aggkitDataDir on the host. Inline those file references so that
+	// GetCertificateBridgeExits can read cert content without needing the container filesystem.
+	inlineContainerCertPaths(t, dbPath)
 
 	// Build the cert using the agglayer settled state and the aggsender DB.
 	cert := buildMaliciousCert(ctx, t, toolEnv, certStore, fakeBridgeExits, certSignerKey)
@@ -838,6 +857,55 @@ func patchCertToInlineJSON(t *testing.T, dbPath string, height uint64, certJSON 
 	)
 	require.NoError(t, err, "patch signed_certificate to inline JSON at height=%d", height)
 	log.Debugf("[patchCertToInlineJSON] patched cert height=%d to inline JSON (%d bytes)", height, len(certJSON))
+}
+
+// inlineContainerCertPaths replaces "@/tmp/..." file references in the certificate_info table
+// with inline JSON content. The aggkit container writes cert files to /tmp/certificates (container
+// path), which is bind-mounted to aggkitDataDir on the host (= filepath.Dir(dbPath)). Without this
+// translation, host-side reads via GetCertificateBridgeExits fail because the container path
+// /tmp/certificates/... does not exist on the host.
+// Must be called while aggkit is stopped to avoid concurrent DB writes.
+func inlineContainerCertPaths(t *testing.T, dbPath string) {
+	t.Helper()
+	aggkitDataDir := filepath.Dir(dbPath) // dbPath = aggkitDataDir/aggsender.sqlite
+	sqlDB, err := aggkitdb.NewSQLiteDB(dbPath)
+	require.NoError(t, err, "open aggsender DB for cert path inlining at %s", dbPath)
+	defer sqlDB.Close()
+
+	rows, err := sqlDB.Query(
+		"SELECT height, signed_certificate FROM certificate_info WHERE signed_certificate LIKE '@/%'")
+	require.NoError(t, err, "query certificate_info for file-ref certs")
+
+	type entry struct {
+		height        int64
+		containerPath string
+	}
+	var entries []entry
+	for rows.Next() {
+		var h int64
+		var sc string
+		require.NoError(t, rows.Scan(&h, &sc))
+		entries = append(entries, entry{h, strings.TrimPrefix(sc, "@")})
+	}
+	require.NoError(t, rows.Err())
+	rows.Close()
+
+	const containerTmpPrefix = "/tmp/"
+	for _, e := range entries {
+		if !strings.HasPrefix(e.containerPath, containerTmpPrefix) {
+			continue
+		}
+		relPath := e.containerPath[len(containerTmpPrefix):]
+		hostPath := filepath.Join(aggkitDataDir, relPath)
+		content, readErr := os.ReadFile(hostPath)
+		require.NoError(t, readErr, "read cert file for height=%d at %s", e.height, hostPath)
+		_, execErr := sqlDB.Exec(
+			"UPDATE certificate_info SET signed_certificate = ? WHERE height = ?",
+			string(content), e.height,
+		)
+		require.NoError(t, execErr, "inline cert content at height=%d", e.height)
+		log.Debugf("[inlineContainerCertPaths] inlined cert height=%d (%d bytes)", e.height, len(content))
+	}
 }
 
 // openAggsenderDBForTest opens the aggsender SQLite DB at dbPath for direct queries.

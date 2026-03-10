@@ -140,39 +140,36 @@ func NewAggSenderSQLStorage(logger aggkitcommon.Logger, cfg AggSenderSQLStorageC
 		retainPolicy:     &cfg.RetainCertificatesPolicy}, nil
 }
 
-// GetCertificateHeadersByStatus returns a list of certificate headers by their status
+// GetCertificateHeadersByStatus returns a list of certificate headers by their status.
+// If statuses is nil or empty, all certificates are returned.
 func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
 	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error) {
-	condition := ""
-
+	whereClause := ""
 	args := make([]any, len(statuses))
 
 	if len(statuses) > 0 {
 		placeholders := make([]string, len(statuses))
-		// Build the WHERE clause for status filtering
 		for i := range statuses {
 			placeholders[i] = fmt.Sprintf("$%d", i+1)
 			args[i] = statuses[i]
 		}
-
-		// Build the WHERE clause with the joined placeholders
-		condition += "status IN (" + strings.Join(placeholders, ", ") + ")"
+		whereClause = "status IN (" + strings.Join(placeholders, ", ") + ")"
 	}
 
-	// Add ordering by creation date (oldest first)
-	condition += " ORDER BY height ASC"
-
-	return a.getCerts(nil, tableCertificate, condition, args)
+	return a.getCerts(nil, tableCertificate, whereClause, "ORDER BY height ASC", args)
 }
 
 func (a *AggSenderSQLStorage) getCerts(tx dbtypes.Querier, table tableName,
-	condition string, args []any) ([]*types.CertificateHeader, error) {
+	whereClause string, suffix string, args []any) ([]*types.CertificateHeader, error) {
 	if tx == nil {
 		tx = a.db
 	}
 	query := fmt.Sprintf("SELECT * FROM %s", table)
-	if condition != "" {
-		query += " WHERE " + condition
+	if whereClause != "" {
+		query += " WHERE " + whereClause
+	}
+	if suffix != "" {
+		query += " " + suffix
 	}
 	var certificates []*types.CertificateHeader
 	if err := meddler.QueryAll(tx, &certificates, query, args...); err != nil {
@@ -289,13 +286,19 @@ func (a *AggSenderSQLStorage) GetLastSettledCertificate() (*types.CertificateHea
 }
 
 // GetCertificateBridgeExits returns the bridge exits for the signed certificate at the given height.
-// Returns nil if no certificate exists at that height or the certificate has no signed certificate data.
+// Returns nil if no certificate exists at that height, the certificate has no signed certificate data,
+// or the certificate was recovered from agglayer (no locally-stored signed cert data available).
 func (a *AggSenderSQLStorage) GetCertificateBridgeExits(height uint64) ([]*agglayertypes.BridgeExit, error) {
 	cert, err := a.GetCertificateByHeight(height)
 	if err != nil {
 		return nil, err
 	}
 	if cert == nil || cert.SignedCertificate == nil {
+		return nil, nil
+	}
+	// Certs recovered from agglayer use a placeholder signed certificate ("na/agglayer header").
+	// We don't have the actual signed cert data for these certs, so return nil bridge exits.
+	if cert.Header != nil && cert.Header.CertSource == types.CertificateSourceAggLayer {
 		return nil, nil
 	}
 	var agglayerCert agglayertypes.Certificate
@@ -370,14 +373,16 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	signedCertContent string) (string, error) {
 	// Use the configured certificate directory
 	certDir := a.cfg.CertificatesDir
-	if err := os.MkdirAll(certDir, 0750); err != nil { //nolint:mnd
+	if err := os.MkdirAll(certDir, 0o755); err != nil { //nolint:mnd
 		return "", fmt.Errorf("failed to create certificates directory %s: %w", certDir, err)
 	}
 
 	filePath := filepath.Join(certDir, fileName)
 
-	// Write the signed certificate content to the file
-	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:mnd
+	// Write the signed certificate content to the file. Use 0644 (world-readable) so that
+	// external tools (e.g. test helpers running as a different UID on the bind-mounted volume)
+	// can read these files. The certs contain already-public data submitted to the agglayer.
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0o644) //nolint:mnd
 	if err != nil {
 		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
 	}
