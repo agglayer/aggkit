@@ -1632,7 +1632,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return sync.ErrInconsistentState
 	}
 
-	tx, err := db.NewTx(ctx, p.db)
+	// Create a context with database timeout for the transaction
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	tx, err := db.NewTx(dbCtx, p.db)
 	if err != nil {
 		p.log.Errorf("failed to start transaction for block %d: %v", block.Num, err)
 		return err
