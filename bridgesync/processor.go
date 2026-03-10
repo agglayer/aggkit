@@ -708,6 +708,12 @@ type BridgeQuerier interface {
 
 var _ BridgeQuerier = (*processor)(nil)
 
+// LERQuerier provides the initial local exit root for the rollup.
+// It is used to determine whether a given LER represents the initial (pre-sync) state.
+type LERQuerier interface {
+	GetInitialLocalExitRoot() (common.Hash, error)
+}
+
 type processor struct {
 	syncerID         string
 	db               *sql.DB
@@ -718,6 +724,7 @@ type processor struct {
 	haltedReason     string
 	dbQueryTimeout   time.Duration
 	bridgeSubscriber aggkitcommon.PubSub[uint64]
+	lerQuerier       LERQuerier
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -1841,6 +1848,15 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	return nil
 }
 
+// getInitialLER returns the initial local exit root, falling back to bridgesynctypes.EmptyLER
+// if no LERQuerier is configured.
+func (p *processor) getInitialLER() (common.Hash, error) {
+	if p.lerQuerier == nil {
+		return bridgesynctypes.EmptyLER, nil
+	}
+	return p.lerQuerier.GetInitialLocalExitRoot()
+}
+
 // sanityCheckLatestLER checks if the provided local exit root matches the latest one in the exit tree
 func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error {
 	var lastRootHash common.Hash
@@ -1855,11 +1871,16 @@ func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error
 		lastRootHash = root.Hash
 	}
 
-	if ler == bridgesynctypes.EmptyLER {
-		// if the provided LER is the empty hash, the LER on the DB should be 0x00...0
+	initialLER, err := p.getInitialLER()
+	if err != nil {
+		return fmt.Errorf("failed to get initial local exit root: %w", err)
+	}
+
+	if ler == initialLER {
+		// if the provided LER matches the initial LER, the DB should be empty (ZeroHash)
 		if lastRootHash != aggkitcommon.ZeroHash {
-			return fmt.Errorf("local exit root mismatch: expected %s, got %s. Note that %s is used to represent the empty LER",
-				aggkitcommon.ZeroHash.String(), lastRootHash.String(), bridgesynctypes.EmptyLER.String())
+			return fmt.Errorf("local exit root mismatch: expected %s, got %s. Note that %s is used to represent the initial LER",
+				aggkitcommon.ZeroHash.String(), lastRootHash.String(), initialLER.String())
 		}
 		return nil
 	}
@@ -1942,9 +1963,13 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 
 	// PreviousDepositCount is the number of leaves already in the tree before this ForwardLET,
 	// which equals the deposit_count (leaf index) to assign to the first new leaf.
-	// When PreviousRoot is EmptyLER the tree is empty, so the first leaf index is 0 (Go zero value).
+	// When PreviousRoot matches the initial LER, the tree is empty, so the first leaf index is 0 (Go zero value).
+	initialLER, err := p.getInitialLER()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get initial local exit root: %w", err)
+	}
 	var newDepositCount uint32
-	if event.PreviousRoot != bridgesynctypes.EmptyLER {
+	if event.PreviousRoot != initialLER {
 		newDepositCount = uint32(event.PreviousDepositCount.Uint64())
 	}
 	newBlockPos := event.BlockPos

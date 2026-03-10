@@ -117,6 +117,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
+		nil,
 	)
 
 	require.NoError(t, err)
@@ -135,6 +136,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
+		nil,
 	)
 	require.Error(t, err)
 	require.Nil(t, l2BridgeSyncer)
@@ -338,6 +340,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -508,6 +511,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -713,6 +717,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -894,6 +899,7 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
+		nil,
 	)
 	require.NoError(t, err)
 

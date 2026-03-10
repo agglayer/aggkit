@@ -127,8 +127,9 @@ func start(cliCtx *cli.Context) error {
 	}
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0, &backfillWg)
+	lerQuerier := query.NewLERDataQuerier(cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID, &backfillWg)
+		l2Client, rollupDataQuerier.RollupID, lerQuerier, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
@@ -775,6 +776,7 @@ func runBridgeSyncL2IfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
+	lerQuerier bridgesync.LERQuerier,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	fullClaimsNeeded := isNeeded([]string{
@@ -805,6 +807,7 @@ func runBridgeSyncL2IfNeeded(
 		rollupID,
 		fullClaimsNeeded,
 		syncFromInBridges,
+		lerQuerier,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

@@ -94,6 +94,7 @@ func NewL1(
 		originNetwork,
 		false,
 		syncFromInBridges,
+		nil,
 	)
 }
 
@@ -106,6 +107,7 @@ func NewL2(
 	originNetwork uint32,
 	syncFullClaims bool,
 	syncFromInBridges bool,
+	lerQuerier LERQuerier,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -117,6 +119,7 @@ func NewL2(
 		originNetwork,
 		syncFullClaims,
 		syncFromInBridges,
+		lerQuerier,
 	)
 }
 
@@ -130,6 +133,7 @@ func newBridgeSync(
 	networkID uint32,
 	syncFullClaims bool,
 	syncFromInBridges bool,
+	lerQuerier LERQuerier,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -152,6 +156,7 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	processor.lerQuerier = lerQuerier
 
 	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
 	if err != nil {
