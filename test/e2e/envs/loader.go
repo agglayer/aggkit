@@ -223,19 +223,6 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("wait for services: %w", err)
 	}
 
-	// Make aggkit's SQLite DB files world-writable so that host-side tools (e.g. the
-	// send-cert subcommand) can write to them while the container is running.
-	// The container's appuser creates files with mode 0644; other users need 0666.
-	// The aggkit image is distroless (no shell), so we use a separate alpine container
-	// mounted to the same bind-mount directory to perform the chmod.
-	dataDir := aggkit001DataDir(envDir)
-	chmodCmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"-v", dataDir+":/data",
-		"alpine", "sh", "-c", "chmod 666 /data/*.sqlite /data/*.sqlite-shm /data/*.sqlite-wal 2>/dev/null; true")
-	if chmodOut, chmodErr := chmodCmd.CombinedOutput(); chmodErr != nil {
-		log.Debugf("chmod aggkit SQLite files (ignored): %v\nOutput:\n%s\n", chmodErr, string(chmodOut))
-	}
-
 	// Parse L1 chain ID
 	l1ChainID := new(big.Int)
 	if _, ok := l1ChainID.SetString(summary.Networks.L1.ChainID, decimalBase); !ok {
@@ -539,9 +526,15 @@ func (e *Env) Stop(ctx context.Context) error {
 const aggkitServiceName = "aggkit-001"
 
 // newDockerComposeCmd creates a docker compose command with the correct working directory.
+// It injects UID and GID into the command environment so that docker-compose.yml can use
+// ${UID} and ${GID} to run containers as the current host user.
 func newDockerComposeCmd(ctx context.Context, envDir string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "docker", append([]string{"compose"}, args...)...)
 	cmd.Dir = envDir
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("UID=%d", os.Getuid()),
+		fmt.Sprintf("GID=%d", os.Getgid()),
+	)
 	return cmd
 }
 
@@ -603,70 +596,14 @@ func (e *Env) DockerComposeLogs(ctx context.Context, args ...string) ([]byte, er
 	return out, nil
 }
 
-// FixCertDirPermissions makes all files in the aggkit certificates directory readable by
-// the host user. In rootless Docker, the aggkit container's appuser (UID 1000 inside)
-// writes cert files with mode 0600, which appear as a high UID on the host and are
-// unreadable. This runs a Docker helper container as root to set the directory to 0777
-// and all .json files to 0644 so the host user (world-other) can read them.
-// The directory is set to 0777 (not 0755) so the container can continue writing cert
-// files after aggkit restarts.
-// Must be called while aggkit is stopped.
-func (e *Env) FixCertDirPermissions(ctx context.Context) error {
-	certDir := filepath.Join(e.aggkitDataDir, "certificates")
-	if _, err := os.Stat(certDir); os.IsNotExist(err) {
-		return nil // nothing to fix
-	}
-	// Set directory to 777 (world-writable so the container can continue writing after this call)
-	// and all .json files to 644 so the host user can read them.
-	// Use find+chmod instead of -R to avoid applying file modes to the directory itself.
-	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"-v", certDir+":/certs",
-		"alpine", "sh", "-c", "chmod 777 /certs && find /certs -name '*.json' -exec chmod 644 {} \\;")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("fix cert dir permissions: %w\nOutput:\n%s", err, string(out))
-	}
-	return nil
-}
-
 // cleanAggkitDataDir removes the aggkit data directory and recreates it with correct
-// permissions. The container's appuser (a different UID) may have created subdirectories
-// (e.g. "certificates") with mode 0750 that the host user cannot delete directly. We use
-// a temporary Docker container running as root to do the removal before recreating.
-func cleanAggkitDataDir(ctx context.Context, dataDir string) error {
-	if _, statErr := os.Stat(dataDir); statErr == nil {
-		// Use a Docker container running as root to remove the directory so that files
-		// owned by the container's appuser (different UID) can be deleted.
-		parent := filepath.Dir(dataDir)
-		dirName := filepath.Base(dataDir)
-		dockerRmCmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-			"-v", parent+":/work",
-			"alpine", "rm", "-rf", "/work/"+dirName)
-		if out, err := dockerRmCmd.CombinedOutput(); err != nil {
-			// Fall back to os.RemoveAll (works if permissions are fine)
-			log.Debugf("docker rm aggkit data dir failed (%v), falling back to os.RemoveAll\nOutput:\n%s\n", err, string(out))
-			if rmErr := os.RemoveAll(dataDir); rmErr != nil {
-				return rmErr
-			}
-		}
+// permissions for a fresh test run.
+func cleanAggkitDataDir(_ context.Context, dataDir string) error {
+	if err := os.RemoveAll(dataDir); err != nil {
+		return fmt.Errorf("remove dir: %w", err)
 	}
-	if err := os.MkdirAll(dataDir, 0o777); err != nil {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return fmt.Errorf("create dir: %w", err)
-	}
-	// Explicitly chmod to 0777 so that appuser inside the aggkit container can write
-	// SQLite files to this bind-mounted directory regardless of who owns it on the host.
-	if err := os.Chmod(dataDir, 0o777); err != nil {
-		return fmt.Errorf("chmod dir: %w", err)
-	}
-	// Pre-create the certificates subdirectory with world-writable permissions so that
-	// the container's appuser writes into a host-owned directory, allowing the host to
-	// delete it on the next cleanup without permission errors.
-	certDir := filepath.Join(dataDir, "certificates")
-	if err := os.MkdirAll(certDir, 0o777); err != nil {
-		return fmt.Errorf("create certificates dir: %w", err)
-	}
-	if err := os.Chmod(certDir, 0o777); err != nil {
-		return fmt.Errorf("chmod certificates dir: %w", err)
 	}
 	return nil
 }

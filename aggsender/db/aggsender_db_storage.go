@@ -348,16 +348,14 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	signedCertContent string) (string, error) {
 	// Use the configured certificate directory
 	certDir := a.cfg.CertificatesDir
-	if err := os.MkdirAll(certDir, 0o755); err != nil { //nolint:mnd
+	if err := os.MkdirAll(certDir, 0750); err != nil { //nolint:mnd
 		return "", fmt.Errorf("failed to create certificates directory %s: %w", certDir, err)
 	}
 
 	filePath := filepath.Join(certDir, fileName)
 
-	// Write the signed certificate content to the file. Use 0644 (world-readable) so that
-	// external tools (e.g. test helpers running as a different UID on the bind-mounted volume)
-	// can read these files. The certs contain already-public data submitted to the agglayer.
-	err := os.WriteFile(filePath, []byte(signedCertContent), 0o644) //nolint:mnd,gosec
+	// Write the signed certificate content to the file
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:mnd
 	if err != nil {
 		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
 	}

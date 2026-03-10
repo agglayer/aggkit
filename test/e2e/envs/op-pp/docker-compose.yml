@@ -177,6 +177,7 @@ services:
     image: aggkit:local
     container_name: cdk-20260216-212314-aggkit-001
     hostname: aggkit-001
+    user: "0:0"
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
       - "run"

@@ -638,11 +638,6 @@ func sendMaliciousCertificateViaTool(
 	dbPath := testEnv.GetAggsenderDBPath()
 	certStore := openAggsenderDBForTest(t, dbPath)
 
-	// The aggkit container writes cert files as its appuser (UID 166535) with mode 0600.
-	// The host user cannot read them directly. Fix permissions via a Docker helper so that
-	// inlineContainerCertPaths can read the files.
-	require.NoError(t, testEnv.FixCertDirPermissions(ctx), "fix cert dir permissions before inlining")
-
 	// The aggkit container stores cert files at /tmp/certificates/ (container path), which is
 	// bind-mounted to aggkitDataDir on the host. Inline those file references so that
 	// GetCertificateBridgeExits can read cert content without needing the container filesystem.
