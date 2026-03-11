@@ -113,11 +113,13 @@ const (
 		" ORDER BY block_num ASC, block_pos ASC"
 
 	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
+	// deposit_count is a unique monotonic counter per bridge event in the contract, so no
+	// additional origin_network filter is needed (it would incorrectly exclude L2-native tokens).
 	bridgeByDepositCountSQL = "SELECT * FROM " + bridgeTableName +
-		" WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1"
+		" WHERE deposit_count = $1 LIMIT 1"
 
 	// archiveByDepositCountSQL is the query used by GetBridgeByDepositCount for bridge_archive.
-	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1`
+	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 LIMIT 1`
 
 	// bridgesByContentWhereNoMeta is the WHERE clause for GetBridgesByContent without metadata.
 	bridgesByContentWhereNoMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
@@ -715,6 +717,7 @@ type processor struct {
 	haltedReason     string
 	dbQueryTimeout   time.Duration
 	bridgeSubscriber aggkitcommon.PubSub[uint64]
+	initialLER       common.Hash
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -1535,7 +1538,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 	restoreQuery := `
 		SELECT *
 		FROM bridge_archive
-		WHERE deposit_count > $1 AND deposit_count <= $2
+		WHERE deposit_count >= $1 AND deposit_count <= $2
 		ORDER BY deposit_count ASC
 	`
 
@@ -1579,7 +1582,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 		// cleanup bridge_archive
 		if _, err := tx.Exec(`
 			DELETE FROM bridge_archive
-			WHERE deposit_count > $1 AND deposit_count <= $2
+			WHERE deposit_count >= $1 AND deposit_count <= $2
 		`, next, prev); err != nil {
 			return err
 		}
@@ -1723,41 +1726,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.BackwardLET != nil {
-			// we sanity check that the previous root matches the latest one in the exit tree
-			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.PreviousRoot); err != nil {
-				p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
-				return err
-			}
-
-			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
-			if err != nil {
-				return err
-			}
-
-			// 1. archive and remove all the bridges whose
-			// deposit_count is greater than the one captured by the BackwardLET event
-			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
-			if err != nil {
-				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
-					newDepositCount, err)
-			}
-
-			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
-			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
-				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-					leafIndex, newDepositCount)
-				return err
-			}
-
-			// 4. sanity check that the new root matches the latest one in the exit tree
-			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.NewRoot); err != nil {
-				p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
-				return err
-			}
-
-			// 5. insert the backward let event to designated table
-			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
-				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
+			if err := p.insertBackwardLET(ctx, tx, block.Num, event.BackwardLET); err != nil {
 				return err
 			}
 		}
@@ -1820,10 +1789,12 @@ func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
 	return u64, u32, nil
 }
 
-// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than the provided one
+// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than or equal to
+// the provided one. After a BackwardLET to DC=N, leaves 0..N-1 remain valid; any bridge at deposit_count>=N
+// is no longer present in the exit tree and must be archived and removed.
 func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
 	// 1. Load candidates
-	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count > $1`, bridgeTableName)
+	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count >= $1`, bridgeTableName)
 	var bridges []*Bridge
 	if err := meddler.QueryAll(tx, &bridges, query, depositCount); err != nil {
 		return err
@@ -1836,9 +1807,20 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	deletedDepositCounts := make([]uint32, 0, len(bridges))
 	// 2. Archive
 	for _, b := range bridges {
-		b.Source = BridgeSourceBackwardLET
-		if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
-			return err
+		// Skip if already archived (can happen when a ForwardLET re-inserts a bridge that
+		// was previously archived by an earlier BackwardLET, and then a new BackwardLET
+		// targets the same deposit_count again).
+		var count int
+		if err := tx.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM bridge_archive WHERE deposit_count = ?", b.DepositCount,
+		).Scan(&count); err != nil {
+			return fmt.Errorf("failed to check bridge_archive for deposit_count %d: %w", b.DepositCount, err)
+		}
+		if count == 0 {
+			b.Source = BridgeSourceBackwardLET
+			if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
+				return err
+			}
 		}
 		deletedDepositCounts = append(deletedDepositCounts, b.DepositCount)
 	}
@@ -1846,7 +1828,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	// 3. Delete originals
 	deleteQuery := fmt.Sprintf(`
 		DELETE FROM %s
-		WHERE deposit_count > $1`,
+		WHERE deposit_count >= $1`,
 		bridgeTableName)
 
 	_, err := tx.ExecContext(ctx, deleteQuery, depositCount)
@@ -1855,7 +1837,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	}
 
 	if len(deletedDepositCounts) > 0 {
-		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
+		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count >= %d: %v",
 			len(deletedDepositCounts), depositCount, deletedDepositCounts,
 		)
 	}
@@ -1877,10 +1859,74 @@ func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error
 		lastRootHash = root.Hash
 	}
 
+	if ler == p.initialLER {
+		// if the provided LER matches the initial LER, the DB should be empty (ZeroHash)
+		if lastRootHash != aggkitcommon.ZeroHash {
+			return fmt.Errorf("local exit root mismatch: expected %s, got %s. Note that %s is used to represent the initial LER",
+				aggkitcommon.ZeroHash.String(), lastRootHash.String(), p.initialLER.String())
+		}
+		return nil
+	}
+
 	if lastRootHash != ler {
 		return fmt.Errorf("local exit root mismatch: expected %s, got %s",
 			ler.String(), lastRootHash.String())
 	}
+	return nil
+}
+
+// insertBackwardLET processes a BackwardLET event and updates the database accordingly
+func (p *processor) insertBackwardLET(ctx context.Context, tx dbtypes.Txer, blockNum uint64, event *BackwardLET) error {
+	// we sanity check that the previous root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.PreviousRoot); err != nil {
+		p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
+		return err
+	}
+
+	newDepositCount, leafIndex, err := normalizeDepositCount(event.NewDepositCount)
+	if err != nil {
+		return err
+	}
+
+	// 1. archive and remove all bridges at deposit_count >= newDepositCount.
+	// After BackwardLET to NewDepositCount=N, leaves 0..N-1 remain valid;
+	// any bridge at DC=N or above is no longer in the exit tree.
+	err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
+	if err != nil {
+		return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
+			newDepositCount, err)
+	}
+
+	// 2. Remove leaves from the exit tree so that exactly newDepositCount leaves remain.
+	// BackwardToIndex(N) keeps positions 0..N (N+1 leaves). To keep exactly newDepositCount
+	// leaves (positions 0..newDepositCount-1), we call BackwardToIndex(newDepositCount-1).
+	// Special case: for newDepositCount==0 the tree must be fully cleared, so use Reorg(0)
+	// which deletes all root entries (block_num >= 0 = all rows).
+	if leafIndex == 0 {
+		if err := p.exitTree.Reorg(tx, 0); err != nil {
+			p.log.Errorf("failed to clear exit tree for BackwardLET to DC=0: %v", err)
+			return err
+		}
+	} else {
+		if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex-1); err != nil {
+			p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+				leafIndex, newDepositCount)
+			return err
+		}
+	}
+
+	// 4. sanity check that the new root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.NewRoot); err != nil {
+		p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
+		return err
+	}
+
+	// 5. insert the backward let event to designated table
+	if err = meddler.Insert(tx, backwardLETTableName, event); err != nil {
+		p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", blockNum, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -1898,7 +1944,13 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
-	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+	// PreviousDepositCount is the number of leaves already in the tree before this ForwardLET,
+	// which equals the deposit_count (leaf index) to assign to the first new leaf.
+	// When PreviousRoot matches the initial LER, the tree is empty, so the first leaf index is 0 (Go zero value).
+	var newDepositCount uint32
+	if event.PreviousRoot != p.initialLER {
+		newDepositCount = uint32(event.PreviousDepositCount.Uint64())
+	}
 	newBlockPos := event.BlockPos
 	if blockPos != nil {
 		newBlockPos = *blockPos
@@ -1937,20 +1989,26 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			fromAddrPtr *common.Address
 		)
 
-		// let's see if we have exactly one archived bridge that matches the forward LET leaf
+		// let's see if we have exactly one archived bridge that matches the forward LET leaf.
 		// usually we should have exactly one match since to recover the LET on L2,
 		// we must have a backwards LET done which archives the bridges,
-		// and then a forward LET that re-adds them to the exit tree after fixing it
-		// however, in case of multiple matches, we cannot be sure which one to use,
-		// so we will just log and leave the txnSender and fromAddr fields empty
-		if len(archivedBridges) == 1 {
+		// and then a forward LET that re-adds them to the exit tree after fixing it.
+		// however, this is not always the case (e.g. when a ForwardLET is issued without
+		// a preceding BackwardLET). When no match is found, or when there are multiple matches
+		// (in which case we cannot determine which one to use), we leave the txnSender and
+		// fromAddr fields empty.
+		switch len(archivedBridges) {
+		case 1:
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
 			// It copies the fromAddr pointer, which could be nil
 			fromAddrPtr = archivedBridge.FromAddress
-		} else if len(archivedBridges) > 1 {
-			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s;"+
+		case 0:
+			p.log.Warnf("no archived bridge found that matches forward LET leaf %s; "+
+				"txnSender and fromAddr fields will be left empty", leaf.String())
+		default:
+			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s; "+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
 		}
 

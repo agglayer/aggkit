@@ -22,7 +22,7 @@ func (s *SetSyncSegment) String() string {
 	var builder strings.Builder
 	builder.WriteString("SetSyncSegment: ")
 	for i, segment := range s.segments {
-		builder.WriteString(fmt.Sprintf("SyncSegment[%d]=%s\n", i, segment.BlockRange.String()))
+		fmt.Fprintf(&builder, "SyncSegment[%d]=%s\n", i, segment.BlockRange.String())
 	}
 	return builder.String()
 }

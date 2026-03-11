@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -94,6 +95,7 @@ func NewL1(
 		originNetwork,
 		false,
 		syncFromInBridges,
+		bridgesynctypes.EmptyLER,
 	)
 }
 
@@ -106,6 +108,7 @@ func NewL2(
 	originNetwork uint32,
 	syncFullClaims bool,
 	syncFromInBridges bool,
+	initialLER common.Hash,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -117,6 +120,7 @@ func NewL2(
 		originNetwork,
 		syncFullClaims,
 		syncFromInBridges,
+		initialLER,
 	)
 }
 
@@ -130,6 +134,7 @@ func newBridgeSync(
 	networkID uint32,
 	syncFullClaims bool,
 	syncFromInBridges bool,
+	initialLER common.Hash,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -152,6 +157,7 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	processor.initialLER = initialLER
 
 	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
 	if err != nil {

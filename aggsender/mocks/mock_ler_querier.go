@@ -20,12 +20,12 @@ func (_m *LERQuerier) EXPECT() *LERQuerier_Expecter {
 	return &LERQuerier_Expecter{mock: &_m.Mock}
 }
 
-// GetLastLocalExitRoot provides a mock function with no fields
-func (_m *LERQuerier) GetLastLocalExitRoot() (common.Hash, error) {
+// GetInitialLocalExitRoot provides a mock function with no fields
+func (_m *LERQuerier) GetInitialLocalExitRoot() (common.Hash, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetLastLocalExitRoot")
+		panic("no return value specified for GetInitialLocalExitRoot")
 	}
 
 	var r0 common.Hash
@@ -50,29 +50,29 @@ func (_m *LERQuerier) GetLastLocalExitRoot() (common.Hash, error) {
 	return r0, r1
 }
 
-// LERQuerier_GetLastLocalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastLocalExitRoot'
-type LERQuerier_GetLastLocalExitRoot_Call struct {
+// LERQuerier_GetInitialLocalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInitialLocalExitRoot'
+type LERQuerier_GetInitialLocalExitRoot_Call struct {
 	*mock.Call
 }
 
-// GetLastLocalExitRoot is a helper method to define mock.On call
-func (_e *LERQuerier_Expecter) GetLastLocalExitRoot() *LERQuerier_GetLastLocalExitRoot_Call {
-	return &LERQuerier_GetLastLocalExitRoot_Call{Call: _e.mock.On("GetLastLocalExitRoot")}
+// GetInitialLocalExitRoot is a helper method to define mock.On call
+func (_e *LERQuerier_Expecter) GetInitialLocalExitRoot() *LERQuerier_GetInitialLocalExitRoot_Call {
+	return &LERQuerier_GetInitialLocalExitRoot_Call{Call: _e.mock.On("GetInitialLocalExitRoot")}
 }
 
-func (_c *LERQuerier_GetLastLocalExitRoot_Call) Run(run func()) *LERQuerier_GetLastLocalExitRoot_Call {
+func (_c *LERQuerier_GetInitialLocalExitRoot_Call) Run(run func()) *LERQuerier_GetInitialLocalExitRoot_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *LERQuerier_GetLastLocalExitRoot_Call) Return(_a0 common.Hash, _a1 error) *LERQuerier_GetLastLocalExitRoot_Call {
+func (_c *LERQuerier_GetInitialLocalExitRoot_Call) Return(_a0 common.Hash, _a1 error) *LERQuerier_GetInitialLocalExitRoot_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *LERQuerier_GetLastLocalExitRoot_Call) RunAndReturn(run func() (common.Hash, error)) *LERQuerier_GetLastLocalExitRoot_Call {
+func (_c *LERQuerier_GetInitialLocalExitRoot_Call) RunAndReturn(run func() (common.Hash, error)) *LERQuerier_GetInitialLocalExitRoot_Call {
 	_c.Call.Return(run)
 	return _c
 }

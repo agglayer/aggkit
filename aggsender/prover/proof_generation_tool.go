@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -110,7 +111,8 @@ func NewAggchainProofGenerationTool(
 		l2BridgeQuerier,
 		nil, // storage
 		l1InfoTreeQuerier,
-		nil, // lerQuerier
+		bridgesynctypes.EmptyLER,
+		nil, // certQuerier
 		flows.NewBaseFlowConfigDefault(),
 	)
 	aggchainProofQuerier := query.NewAggchainProofQuery(

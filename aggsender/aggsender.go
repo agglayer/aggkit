@@ -71,6 +71,7 @@ func New(
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	initialLER common.Hash,
 ) (*AggSender, error) {
 	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
@@ -106,6 +107,7 @@ func New(
 		rollupDataQuerier,
 		committeeQuerier,
 		certificateSendTrigger,
+		initialLER,
 	)
 }
 
@@ -122,6 +124,7 @@ func newAggsender(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	certificateSendTrigger types.CertificateSendTrigger,
+	initialLER common.Hash,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
@@ -132,6 +135,19 @@ func newAggsender(
 	if err != nil {
 		return nil, err
 	}
+
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
+		cfg.SovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPCaller,
+		aggLayerClient,
+		initialLER,
+	)
 
 	flowManager, err := flows.NewBuilderFlow(
 		ctx,
@@ -144,6 +160,8 @@ func newAggsender(
 		l2Syncer,
 		rollupDataQuerier,
 		committeeQuerier,
+		certQuerier,
+		initialLER,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
@@ -159,18 +177,6 @@ func newAggsender(
 			return db.RuntimeData{NetworkID: l2OriginNetwork}, nil
 		},
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
-	)
-
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
-		cfg.SovereignRollupAddr, l1Client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
-	}
-
-	certQuerier := query.NewCertificateQuerier(
-		l2Syncer,
-		aggchainFEPCaller,
-		aggLayerClient,
 	)
 
 	verifierFlow, err := flows.NewLocalVerifier(
@@ -197,7 +203,7 @@ func newAggsender(
 			verifierFlow,
 			l1InfoTreeQuerier,
 			certQuerier,
-			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+			initialLER,
 		),
 	)
 

@@ -12,6 +12,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -34,10 +35,10 @@ func NewAggsenderValidator(ctx context.Context,
 	aggLayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	certQuerier types.CertificateQuerier,
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
-	lerQuerier types.LERQuerier,
+	initialLER ethcommon.Hash,
 	signer signertypes.Signer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
-		logger, flow, l1InfoTreeDataQuerier, certQuerier, lerQuerier)
+		logger, flow, l1InfoTreeDataQuerier, certQuerier, initialLER)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)
 	if err != nil {
 		return nil, err

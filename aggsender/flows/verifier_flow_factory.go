@@ -26,6 +26,7 @@ func NewVerifierFlow(
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	initialLER common.Hash,
 ) (types.AggsenderVerifierFlow, *CommonFlowComponents, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
@@ -33,13 +34,15 @@ func NewVerifierFlow(
 			ctx, logger,
 			nil, // storage is not used in validator,
 			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			cfg.MaxCertSize, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			nil, // certQuerier not used in validator mode
+			initialLER,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -63,7 +66,7 @@ func NewVerifierFlow(
 			nil, // storage is not used in validator,
 			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier,
 			0, cfg.FEPConfig.RequireNoBlockGap,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
+			cfg.MaxCertSize,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
@@ -71,6 +74,8 @@ func NewVerifierFlow(
 			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			nil, // certQuerier not used in validator mode
+			initialLER,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)

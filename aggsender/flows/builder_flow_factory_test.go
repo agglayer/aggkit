@@ -197,6 +197,8 @@ func TestNewFlow(t *testing.T) {
 				mockL2BridgeSyncer,
 				mockRollupDataQuerier,
 				mockCommitteeQuerier,
+				nil, // certQuerier
+				common.Hash{},
 			)
 
 			if tc.expectedError != "" {

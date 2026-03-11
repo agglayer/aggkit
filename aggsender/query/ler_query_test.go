@@ -6,7 +6,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/aggsender/mocks"
-	"github.com/agglayer/aggkit/aggsender/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -37,7 +37,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 						LastLocalExitRoot: aggkitcommon.ZeroHash,
 					}, nil)
 			},
-			expectedLER: types.EmptyLER,
+			expectedLER: bridgesynctypes.EmptyLER,
 		},
 		{
 			name: "rollup manager contract returns valid data",
@@ -61,7 +61,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 
 			querier := NewLERDataQuerier(0, mockRollupQuerier)
 
-			result, err := querier.GetLastLocalExitRoot()
+			result, err := querier.GetInitialLocalExitRoot()
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

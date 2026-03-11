@@ -19,6 +19,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/test/contracts/mintableerc20"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -47,9 +48,10 @@ type Env struct {
 	Clients          ClientsConfig
 	Keys             KeysConfig
 	EnvDir           string
+	AggsenderRPCURL  string // External URL of the aggsender JSON-RPC endpoint
 	envName          ENVName
-	startedCompose   bool   // Track if we started docker compose (so we know if we should stop it)
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
+	aggkitDataDir    string // Host path of the aggkit container's /tmp bind-mount
 }
 
 // KeysConfig exposes key pools and special keys for tests
@@ -91,9 +93,11 @@ type L2Config struct {
 
 // L2Contracts contains initialized L2 contract bindings
 type L2Contracts struct {
-	L2Bridge        *agglayerbridgel2.Agglayerbridgel2
-	L2BridgeAddress common.Address
-	GlobalExitRoot  *agglayergerl2.Agglayergerl2
+	L2Bridge             *agglayerbridgel2.Agglayerbridgel2
+	L2BridgeAddress      common.Address
+	GlobalExitRoot       *agglayergerl2.Agglayergerl2
+	MintableERC20        *mintableerc20.Mintableerc20
+	MintableERC20Address common.Address
 }
 
 // ClientsConfig contains RPC clients
@@ -137,6 +141,9 @@ type summaryJSON struct {
 					} `json:"http_rpc"`
 				} `json:"op-geth"`
 				Aggkit struct {
+					RPC struct {
+						External string `json:"external"`
+					} `json:"rpc"`
 					BridgeService struct {
 						External string `json:"external"`
 					} `json:"rest_api"`
@@ -205,18 +212,14 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("parse summary.json: %w", err)
 	}
 
-	// Start docker compose environment (with locking and checking if already running)
-	startedCompose, err := ensureDockerComposeRunning(ctx, envDir)
-	if err != nil {
+	// Ensure containers are down and data dir is clean, then start fresh
+	if err := ensureDockerComposeRunning(ctx, envDir); err != nil {
 		return nil, fmt.Errorf("start docker compose: %w", err)
 	}
 
 	// Wait for services to be ready
 	if err := waitForServices(ctx, &summary); err != nil {
-		// Only stop services if we started them
-		if startedCompose {
-			_ = stopDockerCompose(context.Background(), envDir)
-		}
+		_ = stopDockerCompose(context.Background(), envDir)
 		return nil, fmt.Errorf("wait for services: %w", err)
 	}
 
@@ -285,6 +288,34 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize global exit root contract: %w", err)
 	}
+
+	// Deploy MintableERC20 on L2 for use in tests that need to bridge L2-native tokens.
+	// L2-native tokens bypass the Local Balance Tree underflow check in AgglayerBridgeL2.
+	var deployerKey *ecdsa.PrivateKey
+	for _, account := range l2Network.Accounts {
+		if account.PrivateKey != nil && *account.PrivateKey != "" {
+			deployerKey, err = parsePrivateKey(*account.PrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("parse deployer key for MintableERC20: %w", err)
+			}
+			break
+		}
+	}
+	if deployerKey == nil {
+		return nil, fmt.Errorf("no L2 account with private key found for MintableERC20 deployment")
+	}
+	deployerAuth, err := bind.NewKeyedTransactorWithChainID(deployerKey, l2ChainID)
+	if err != nil {
+		return nil, fmt.Errorf("create deployer transactor for MintableERC20: %w", err)
+	}
+	erc20Addr, erc20Tx, erc20Contract, err := mintableerc20.DeployMintableerc20(deployerAuth, l2Client, "TestToken", "TEST")
+	if err != nil {
+		return nil, fmt.Errorf("deploy MintableERC20: %w", err)
+	}
+	if _, err := bind.WaitMined(ctx, l2Client, erc20Tx); err != nil {
+		return nil, fmt.Errorf("wait for MintableERC20 deployment: %w", err)
+	}
+	log.Infof("[LoadEnv] MintableERC20 deployed at %s", erc20Addr.Hex())
 
 	// Collect all L1 keys with private_key for the pool (deduplicate by address)
 	seenL1Addr := make(map[common.Address]bool)
@@ -362,9 +393,11 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			ChainID:   l2ChainID,
 			NetworkID: l2NetworkID,
 			Contracts: L2Contracts{
-				L2Bridge:        l2Bridge,
-				L2BridgeAddress: l2BridgeAddr,
-				GlobalExitRoot:  globalExitRoot,
+				L2Bridge:             l2Bridge,
+				L2BridgeAddress:      l2BridgeAddr,
+				GlobalExitRoot:       globalExitRoot,
+				MintableERC20:        erc20Contract,
+				MintableERC20Address: erc20Addr,
 			},
 			Transactor: l2Transactor,
 		},
@@ -380,9 +413,10 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			SovereignAdmin: sovereignAdminKey,
 		},
 		EnvDir:           envDir,
+		AggsenderRPCURL:  l2Network.Services.Aggkit.RPC.External,
 		envName:          envName,
-		startedCompose:   startedCompose,
 		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
+		aggkitDataDir:    aggkit001DataDir(envDir),
 	}, nil
 }
 
@@ -485,21 +519,28 @@ func newKeyPool(keys []*ecdsa.PrivateKey, chainID *big.Int) *KeyPool {
 }
 
 // Stop stops the E2E test environment by running docker compose down
-// Only stops if this Env instance started the docker compose environment
 func (e *Env) Stop(ctx context.Context) error {
-	if !e.startedCompose {
-		// We didn't start docker compose, so don't stop it
-		return nil
-	}
 	return stopDockerCompose(ctx, e.EnvDir)
 }
 
 const aggkitServiceName = "aggkit-001"
 
+// newDockerComposeCmd creates a docker compose command with the correct working directory.
+// It injects UID and GID into the command environment so that docker-compose.yml can use
+// ${UID} and ${GID} to run containers as the current host user.
+func newDockerComposeCmd(ctx context.Context, envDir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "docker", append([]string{"compose"}, args...)...)
+	cmd.Dir = envDir
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("UID=%d", os.Getuid()),
+		fmt.Sprintf("GID=%d", os.Getgid()),
+	)
+	return cmd
+}
+
 // StopAggkit stops only the aggkit service so the test can use the aggoracle key without conflicting with the running aggkit.
 func (e *Env) StopAggkit(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "stop", aggkitServiceName)
-	cmd.Dir = e.EnvDir
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "stop", aggkitServiceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose stop %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
@@ -512,8 +553,7 @@ func (e *Env) StopAggkit(ctx context.Context) error {
 
 // StartAggkit starts the aggkit service and waits for the bridge service to be ready.
 func (e *Env) StartAggkit(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "start", aggkitServiceName)
-	cmd.Dir = e.EnvDir
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "start", aggkitServiceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose start %s: %w\nOutput:\n%s", aggkitServiceName, err, string(output))
@@ -527,33 +567,96 @@ func (e *Env) StartAggkit(ctx context.Context) error {
 	return nil
 }
 
-// ensureDockerComposeRunning ensures docker compose is running for the given environment
-// Returns true if we started docker compose, false if it was already running
-func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error) {
-	projectName := filepath.Base(envDir)
-	alreadyRunning, err := isDockerComposeRunning(ctx, envDir)
-	if err == nil && alreadyRunning {
-		log.Debugf("docker compose is running for %s\n", projectName)
-		return false, nil
-	}
+// GetAggkitConfigPath returns the path to the aggkit config file on the host.
+func (e *Env) GetAggkitConfigPath() string {
+	return filepath.Join(e.EnvDir, "config", "001", "aggkit-config.toml")
+}
 
-	// Not running, so start it
+// GetAggsenderDBPath returns the host path to the aggsender SQLite database file.
+// This is accessible because the aggkit container's /tmp is bind-mounted to the host.
+func (e *Env) GetAggsenderDBPath() string {
+	return filepath.Join(e.aggkitDataDir, "aggsender.sqlite")
+}
+
+// GetAggkitDataDir returns the host path of the aggkit container's /tmp bind-mount directory.
+// Files written by the container to /tmp (e.g. aggsender.sqlite, certificates/) are accessible
+// at this path on the host.
+func (e *Env) GetAggkitDataDir() string {
+	return e.aggkitDataDir
+}
+
+// DockerComposeLogs runs "docker compose logs" with the given extra args for this environment,
+// injecting AGGKIT_DATA_DIR so compose can resolve the bind-mount variable.
+func (e *Env) DockerComposeLogs(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, append([]string{"logs"}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("docker compose logs: %w\nOutput:\n%s", err, string(out))
+	}
+	return out, nil
+}
+
+// cleanAggkitDataDir removes the aggkit data directory and recreates it with correct
+// permissions for a fresh test run.
+func cleanAggkitDataDir(_ context.Context, dataDir string) error {
+	if err := os.RemoveAll(dataDir); err != nil {
+		return fmt.Errorf("remove dir: %w", err)
+	}
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	return nil
+}
+
+// aggkit001DataDir returns the host directory that is bind-mounted into the aggkit-001
+// container as /tmp. It lives next to the docker-compose.yml file, at
+// <envDir>/aggkit-001-data, which matches the hardcoded ./aggkit-001-data volume path
+// in docker-compose.yml.
+func aggkit001DataDir(envDir string) string {
+	return filepath.Join(envDir, "aggkit-001-data")
+}
+
+// StopAggkitAndEditConfig stops aggkit and calls editFn with the config file path.
+// The caller is responsible for restarting aggkit after editing the config.
+func (e *Env) StopAggkitAndEditConfig(ctx context.Context, editFn func(configPath string) error) error {
+	if err := e.StopAggkit(ctx); err != nil {
+		return fmt.Errorf("stop aggkit: %w", err)
+	}
+	configPath := e.GetAggkitConfigPath()
+	if err := editFn(configPath); err != nil {
+		return fmt.Errorf("edit aggkit config %s: %w", configPath, err)
+	}
+	return nil
+}
+
+// RestartAggkitWithConfig stops aggkit, calls editFn to modify the config, then starts aggkit.
+// Waits for the bridge service to be ready before returning.
+func (e *Env) RestartAggkitWithConfig(ctx context.Context, editFn func(configPath string) error) error {
+	if err := e.StopAggkitAndEditConfig(ctx, editFn); err != nil {
+		return err
+	}
+	return e.StartAggkit(ctx)
+}
+
+// ensureDockerComposeRunning brings down any running containers, cleans the aggkit data
+// directory, then starts docker compose fresh. This guarantees a predictable initial state
+// on every test run.
+func ensureDockerComposeRunning(ctx context.Context, envDir string) error {
+	projectName := filepath.Base(envDir)
 	networkName := projectName + "_default"
 
-	// Step 1: Remove all containers from this project
-	cleanupCmd := exec.CommandContext(ctx, "docker", "compose", "down", "-v", "--remove-orphans")
-	cleanupCmd.Dir = envDir
+	// Step 1: Bring down any running containers from this project (idempotent)
+	cleanupCmd := newDockerComposeCmd(ctx, envDir, "down", "-v", "--remove-orphans")
 	if cleanupOutput, err := cleanupCmd.CombinedOutput(); err != nil {
-		log.Debugf("docker compose cleanup (ignored): %v\nOutput:\n%s\n", err, string(cleanupOutput))
+		log.Debugf("docker compose down (ignored): %v\nOutput:\n%s\n", err, string(cleanupOutput))
 	} else if len(cleanupOutput) > 0 {
-		log.Debugf("docker compose cleanup output:\n%s\n", string(cleanupOutput))
+		log.Debugf("docker compose down output:\n%s\n", string(cleanupOutput))
 	}
 
 	// Step 2: Find and remove all networks with the project name (by ID to handle duplicates)
 	listNetworksCmd := exec.CommandContext(ctx, "docker", "network", "ls", "--filter", "name="+networkName, "--format", "{{.ID}}")
 	networkIDs, err := listNetworksCmd.Output()
 	if err == nil && len(networkIDs) > 0 {
-		// Split by newline and remove each network by ID
 		for _, networkID := range strings.Split(strings.TrimSpace(string(networkIDs)), "\n") {
 			if networkID != "" {
 				removeNetworkCmd := exec.CommandContext(ctx, "docker", "network", "rm", networkID)
@@ -582,28 +685,29 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string) (bool, error
 		}
 	}
 
-	log.Debugf("running docker compose up -d for %s\n", projectName)
-	cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
-	cmd.Dir = envDir
+	// Step 4: Clean the aggkit data directory for a fresh state
+	dataDir := aggkit001DataDir(envDir)
+	if err := cleanAggkitDataDir(ctx, dataDir); err != nil {
+		return fmt.Errorf("clean aggkit data dir %s: %w", dataDir, err)
+	}
+	log.Debugf("prepared aggkit data dir: %s\n", dataDir)
 
-	// Capture output to include in error messages if the command fails
+	// Step 5: Start fresh
+	log.Debugf("running docker compose up -d for %s\n", projectName)
+	cmd := newDockerComposeCmd(ctx, envDir, "up", "-d")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("docker compose up: %w\nOutput:\n%s", err, string(output))
+		return fmt.Errorf("docker compose up: %w\nOutput:\n%s", err, string(output))
 	}
-
-	// Log the output on success for debugging
 	if len(output) > 0 {
 		log.Debugf("docker compose up output:\n%s\n", string(output))
 	}
-
-	return true, nil
+	return nil
 }
 
 // stopDockerCompose stops the docker compose environment
 func stopDockerCompose(ctx context.Context, envDir string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "down", "-v", "--remove-orphans")
-	cmd.Dir = envDir
+	cmd := newDockerComposeCmd(ctx, envDir, "down", "-v", "--remove-orphans")
 
 	// Capture output to include in error messages if the command fails
 	output, err := cmd.CombinedOutput()
@@ -617,21 +721,6 @@ func stopDockerCompose(ctx context.Context, envDir string) error {
 	}
 
 	return nil
-}
-
-// isDockerComposeRunning checks if docker compose is already running for this environment
-func isDockerComposeRunning(ctx context.Context, envDir string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "-q")
-	cmd.Dir = envDir
-
-	output, err := cmd.Output()
-	if err != nil {
-		// If docker compose ps fails, assume it's not running
-		return false, nil
-	}
-
-	// If there's any output, containers are running
-	return len(output) > 0, nil
 }
 
 // waitForServices waits for all services to be ready

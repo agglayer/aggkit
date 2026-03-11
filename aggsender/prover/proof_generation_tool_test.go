@@ -147,6 +147,15 @@ func TestGetRPCServices(t *testing.T) {
 	require.NotNil(t, services[0].Service)
 }
 
+func TestOptimisticModeQuerierAlwaysOff(t *testing.T) {
+	t.Parallel()
+
+	o := &OptimisticModeQuerierAlwaysOff{}
+	on, err := o.IsOptimisticModeOn()
+	require.NoError(t, err)
+	require.False(t, on)
+}
+
 func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)

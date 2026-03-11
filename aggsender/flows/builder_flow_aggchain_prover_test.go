@@ -351,7 +351,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockOptimistic := mocks.NewOptimisticModeQuerier(t)
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			mockLERQuerier := mocks.NewLERQuerier(t)
 			mockSigner := mocks.NewSigner(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
 			flowBase := NewBaseFlow(
@@ -359,7 +358,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier,
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
-				mockLERQuerier,
+				bridgesynctypes.EmptyLER,
+				nil,
 				NewBaseFlowConfig(0, 0, false, true))
 			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverBuilderFlow(
@@ -478,7 +478,8 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // l2BridgeQuerier
 				nil, // sotrage
 				nil, // l1InfoTreeDataQuerier,
-				nil, // lerQuerier
+				bridgesynctypes.EmptyLER,
+				nil, // certQuerier
 				NewBaseFlowConfig(0, tc.startL2Block, false, true),
 			)
 			flow := NewAggchainProverBuilderFlow(
@@ -508,15 +509,14 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.BridgeQuerier, *mocks.LERQuerier)
+		mockFn         func(*mocks.BridgeQuerier)
 		buildParams    *types.CertificateBuildParams
 		expectedError  string
 		expectedResult *agglayertypes.Certificate
 	}{
 		{
 			name: "error building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(common.Hash{}, errors.New("some error"))
 			},
 			buildParams: &types.CertificateBuildParams{
@@ -530,9 +530,8 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		},
 		{
 			name: "success building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
@@ -561,11 +560,11 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			expectedResult: &agglayertypes.Certificate{
 				NetworkID:           1,
 				Height:              0,
-				NewLocalExitRoot:    types.EmptyLER,
+				NewLocalExitRoot:    bridgesynctypes.EmptyLER,
 				CustomChainData:     []byte("some-data"),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
-				PrevLocalExitRoot:   types.EmptyLER,
+				PrevLocalExitRoot:   bridgesynctypes.EmptyLER,
 				L1InfoTreeLeafCount: 0,
 				AggchainData: &agglayertypes.AggchainDataProof{
 					Proof:          []byte("some-proof"),
@@ -587,16 +586,16 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate")
 			mockSigner := mocks.NewSigner(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
-			mockLERQuerier := mocks.NewLERQuerier(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockL2BridgeQuerier, mockLERQuerier)
+				tc.mockFn(mockL2BridgeQuerier)
 			}
 			flowBase := NewBaseFlow(
 				logger,
 				mockL2BridgeQuerier,
 				nil, // mockStorage
 				nil, // mockL1InfoTreeDataQuerier
-				mockLERQuerier,
+				bridgesynctypes.EmptyLER,
+				nil, // certQuerier
 				NewBaseFlowConfigDefault(),
 			)
 			aggchainFlow := NewAggchainProverBuilderFlow(

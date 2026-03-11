@@ -110,7 +110,7 @@ Environment = "development"
 # log. Generally we'll switch to debug if we want to troubleshoot
 # something specifically otherwise we leave it at info
 # ------------------------------------------------------------------------------
-Level = "info"
+Level = "debug"
 
 # ------------------------------------------------------------------------------
 # Outputs define the output paths for writing logs. The default is to
@@ -470,6 +470,8 @@ BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
 # ------------------------------------------------------------------------------
 BlockFinality = "LatestBlock"
 
+DBQueryTimeout = "10m"
+
 [ReorgDetectorL2]
 # ------------------------------------------------------------------------------
 # FinalizedBlock defines which L2 block tag is used as the source of truth when
@@ -626,4 +628,3 @@ Capacity = 100
 [Validator.AgglayerClient.GRPC]
 URL = "http://agglayer:4443"
 UseTLS = false
-

@@ -513,7 +513,7 @@ var runbookErrorSubstrings = []string{
 // When expectedGER is non-nil, it returns only when that specific GER is found in a runbook error line (so later
 // tests that run in the same env don't pick up a GER from an earlier test). When expectedGER is nil, returns the
 // first GER found. Used so the test obtains the GER only via log detection (runbook-aligned).
-func detectInvalidGERFromAggkitLogs(ctx context.Context, t *testing.T, envDir string, timeout time.Duration, expectedGER *common.Hash) (common.Hash, error) {
+func detectInvalidGERFromAggkitLogs(ctx context.Context, t *testing.T, timeout time.Duration, expectedGER *common.Hash) (common.Hash, error) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	start := time.Now()
@@ -532,11 +532,9 @@ func detectInvalidGERFromAggkitLogs(ctx context.Context, t *testing.T, envDir st
 		if pollCount%10 == 0 {
 			log.Info("polling aggkit logs for invalid GER", "attempt", pollCount, "elapsed", time.Since(start))
 		}
-		cmd := exec.CommandContext(ctx, "docker", "compose", "logs", "--no-log-prefix", "aggkit-001")
-		cmd.Dir = envDir
-		out, err := cmd.CombinedOutput()
+		out, err := testEnv.DockerComposeLogs(ctx, "--no-log-prefix", "aggkit-001")
 		if err != nil {
-			return common.Hash{}, fmt.Errorf("docker compose logs: %w", err)
+			return common.Hash{}, err
 		}
 		logText := string(out)
 		for _, line := range strings.Split(logText, "\n") {
@@ -740,11 +738,7 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 	// --- GER detection (runbook-aligned): obtain GER only from logs ---
 	// Pass &injectedGER so we only accept this test's GER; when run in suite, logs contain
 	// GERs from earlier tests (CategoryA, CategoryB1) and nil would return the first one found.
-	envsDir, err := envs.FindEnvsDir()
-	require.NoError(t, err)
-	envDir := filepath.Join(envsDir, opPPEnvName)
-
-	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, envDir, 3*time.Minute, &injectedGER)
+	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, 3*time.Minute, &injectedGER)
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash{}, detectedGER, "detected GER must not be zero")
 	require.Equal(t, injectedGER, detectedGER, "detected GER must match injected (sanity check)")
@@ -833,11 +827,7 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	waitForClaimOnBridgeService(ctx, t, env, globalIndex, 2*time.Minute)
 
 	// --- GER detection (runbook-aligned) ---
-	envsDir, err := envs.FindEnvsDir()
-	require.NoError(t, err)
-	envDir := filepath.Join(envsDir, opPPEnvName)
-
-	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, envDir, 3*time.Minute, &injectedGER)
+	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, 3*time.Minute, &injectedGER)
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash{}, detectedGER)
 	require.Equal(t, injectedGER, detectedGER, "detected GER must match injected (sanity check)")
@@ -926,11 +916,8 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 
 	// --- GER detection (runbook-aligned) ---
 	log.Info("[B1] step: detectInvalidGERFromAggkitLogs (up to 6m)")
-	envsDir, err := envs.FindEnvsDir()
-	require.NoError(t, err)
-	envDir := filepath.Join(envsDir, opPPEnvName)
 	// B.1: wait for our injected GER to appear in logs (l2gersync logs when it processes the InsertGER block and fails to fetch L1 info)
-	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, envDir, 6*time.Minute, &proof.InvalidGER)
+	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, 6*time.Minute, &proof.InvalidGER)
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash{}, detectedGER)
 	require.Equal(t, proof.InvalidGER, detectedGER, "detected GER must match injected (sanity check)")
@@ -1070,11 +1057,7 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 
 	// --- Step 6: GER detection (runbook-aligned) ---
 	log.Info("[B2] step: detect invalid GER from aggkit logs (up to 6m)")
-	envsDir, err := envs.FindEnvsDir()
-	require.NoError(t, err)
-	envDir := filepath.Join(envsDir, opPPEnvName)
-
-	detectedGER1, err := detectInvalidGERFromAggkitLogs(ctx, t, envDir, 6*time.Minute, &fakeProof1.GER)
+	detectedGER1, err := detectInvalidGERFromAggkitLogs(ctx, t, 6*time.Minute, &fakeProof1.GER)
 	require.NoError(t, err)
 	require.Equal(t, fakeProof1.GER, detectedGER1, "detected GER must match injected")
 

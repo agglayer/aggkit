@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 )
 
@@ -55,4 +56,21 @@ func (c *Client) GetCertificateHeaderPerHeight(height *uint64) (*types.Certifica
 		return nil, err
 	}
 	return &cert, nil
+}
+
+// GetCertificateBridgeExits returns the bridge exits for the certificate at the given height.
+// If height is nil, returns the bridge exits of the last sent certificate.
+func (c *Client) GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error) {
+	response, err := jSONRPCCall(c.url, "aggsender_getCertificateBridgeExits", height)
+	if err != nil {
+		return nil, err
+	}
+	if response.Error != nil {
+		return nil, fmt.Errorf("error in the response calling aggsender_getCertificateBridgeExits: %v", response.Error)
+	}
+	var exits []*agglayertypes.BridgeExit
+	if err := json.Unmarshal(response.Result, &exits); err != nil {
+		return nil, err
+	}
+	return exits, nil
 }

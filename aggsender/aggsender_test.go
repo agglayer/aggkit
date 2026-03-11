@@ -123,6 +123,7 @@ func TestAggSenderStart(t *testing.T) {
 		rollupQuerierMock,
 		committeQuerierMock,
 		sendTrigger,
+		bridgetypes.EmptyLER,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
@@ -232,7 +233,6 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL1Querier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
 	mockSendTrigger := mocks.NewCertificateSendTrigger(t)
-	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
 	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
 	mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
@@ -250,7 +250,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		localValidator:         mockLocalValidator,
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
-				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
+				mockL1Querier, bridgetypes.EmptyLER, nil, flows.NewBaseFlowConfigDefault()),
 			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
 	}
 
@@ -559,6 +559,7 @@ func TestNewAggSender(t *testing.T) {
 		nil, // l2 client
 		mockRollupQuerier,
 		mockCommitteeQuerier,
+		bridgetypes.EmptyLER,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
@@ -827,7 +828,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	l2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	agglayerClientMock := agglayermocks.NewAgglayerClientMock(t)
 	l1InfoTreeQuerierMock := mocks.NewL1InfoTreeDataQuerier(t)
-	lerQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
 	var storage db.AggSenderStorage
@@ -862,7 +862,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
-				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
+				l1InfoTreeQuerierMock, bridgetypes.EmptyLER, nil, flows.NewBaseFlowConfigDefault()),
 			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
 	var flowMock *mocks.AggsenderBuilderFlow

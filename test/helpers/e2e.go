@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -341,7 +342,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, false)
+	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, false, bridgesynctypes.EmptyLER)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)
