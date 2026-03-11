@@ -97,7 +97,7 @@ func TestBigIntString(t *testing.T) {
 func TestProcessor(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgeSyncerProcessor.db")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 	actions := []processAction{
 		// processed: ~
@@ -870,7 +870,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, "foo", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "foo", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -956,7 +956,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestGetBridgesPublished_%s.sqlite", tc.name))
 			require.NoError(t, migrations.RunMigrations(path))
 			logger := log.WithFields("bridge-syncer", "foo")
-			p, err := newProcessor(path, "foo", logger, dbQueryTimeout)
+			p, err := newProcessor(path, "foo", logger, dbQueryTimeout, nil)
 			require.NoError(t, err)
 
 			tx, err := p.db.BeginTx(context.Background(), nil)
@@ -989,7 +989,7 @@ func TestGetBridgesPublished(t *testing.T) {
 func TestProcessBlockInvalidIndex(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTestProcessor.sqlite")
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, "foo", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "foo", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 	err = p.ProcessBlock(context.Background(), sync.Block{
 		Num: 0,
@@ -1041,7 +1041,7 @@ func TestGetBridgesPaged(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
 	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -1262,7 +1262,7 @@ func TestGetClaimsPaged(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
 	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -1397,7 +1397,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	allTokenMappings := make([]*TokenMapping, 0, tokenMappingsCount)
@@ -1496,7 +1496,7 @@ func TestProcessor_GetLegacyTokenMigrations(t *testing.T) {
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	const (
@@ -2041,7 +2041,7 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 func TestQueryBlockRangeOrdering(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgeSyncerProcessorOrdering.db")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	// Create test data with events in different blocks and positions
@@ -2262,7 +2262,7 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 func TestGetClaimByGlobalIndex(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgesyncTestGetClaimByGlobalIndex.sqlite")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2817,7 +2817,7 @@ func TestGetClaimsByGlobalIndex_Compact(t *testing.T) {
 			// Create a fresh database for each test case
 			dbPath := filepath.Join(t.TempDir(), "testcase.sqlite")
 			require.NoError(t, migrations.RunMigrations(dbPath))
-			testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+			testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout, nil)
 			require.NoError(t, err)
 
 			// Setup blocks
@@ -3065,7 +3065,7 @@ func createTestProcessor(t *testing.T, dbName string) *processor {
 
 	path := path.Join(t.TempDir(), dbName+".db")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 	return p
 }
@@ -3113,7 +3113,7 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 
 	path := path.Join(t.TempDir(), "bridgesyncGetUnsetClaimsPaged.sqlite")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	// Create test unset claims
@@ -3232,7 +3232,7 @@ func TestGetSetClaimsPaged(t *testing.T) {
 
 	path := path.Join(t.TempDir(), "bridgesyncGetSetClaimsPaged.sqlite")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	// Create test set claims
@@ -3357,7 +3357,7 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	logger := log.WithFields("module", "bridge-syncer-timeout")
 
 	// Create processor with normal timeout for setup
-	p, err := newProcessor(path, "bridge-syncer-timeout", logger, normalTimeout)
+	p, err := newProcessor(path, "bridge-syncer-timeout", logger, normalTimeout, nil)
 	require.NoError(t, err)
 
 	// Insert some test data to ensure the database is working
@@ -3372,7 +3372,7 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a new processor with short timeout for testing timeout behavior
-	pShortTimeout, err := newProcessor(path, "bridge-syncer-short-timeout", logger, shortTimeout)
+	pShortTimeout, err := newProcessor(path, "bridge-syncer-short-timeout", logger, shortTimeout, nil)
 	require.NoError(t, err)
 
 	// Test that operations timeout with short timeout
@@ -4522,7 +4522,7 @@ func TestGetClaims_Compact(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			dbPath := t.TempDir() + "/test.db"
-			p, err := newProcessor(dbPath, "test", log.GetDefaultLogger(), time.Second*10)
+			p, err := newProcessor(dbPath, "test", log.GetDefaultLogger(), time.Second*10, nil)
 			require.NoError(t, err)
 
 			// Setup blocks
@@ -4558,7 +4558,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 	path := path.Join(t.TempDir(), "claimsPaged_compaction.sqlite")
 	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	p, err := newProcessor(path, "bridge-syncer", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -4878,7 +4878,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		// Create a new database for this test
 		dbPath := filepath.Join(t.TempDir(), "case1.sqlite")
 		require.NoError(t, migrations.RunMigrations(dbPath))
-		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout, nil)
 		require.NoError(t, err)
 
 		// Setup: Insert 3 claims with same global_index and 1 unset_claim
@@ -4958,7 +4958,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		// Create a new database for this test
 		dbPath := filepath.Join(t.TempDir(), "case2.sqlite")
 		require.NoError(t, migrations.RunMigrations(dbPath))
-		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout, nil)
 		require.NoError(t, err)
 
 		// Setup: Insert 3 claims with same global_index, NO unset_claim
@@ -5058,7 +5058,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		// Create a new database for this test
 		dbPath := filepath.Join(t.TempDir(), "case3.sqlite")
 		require.NoError(t, migrations.RunMigrations(dbPath))
-		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout, nil)
 		require.NoError(t, err)
 
 		// Setup: Insert claims with two global_indexes to create valid pagination
@@ -5209,7 +5209,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		// Create a new database for this test
 		dbPath := filepath.Join(t.TempDir(), "case3_exception.sqlite")
 		require.NoError(t, migrations.RunMigrations(dbPath))
-		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout, nil)
 		require.NoError(t, err)
 
 		// Setup: Insert claims + unset_claim
@@ -5293,7 +5293,7 @@ func TestGetClaimsPaged_CompactionAcrossPages(t *testing.T) {
 		// Create a new database for this test
 		dbPath := filepath.Join(t.TempDir(), "multiple_indexes.sqlite")
 		require.NoError(t, migrations.RunMigrations(dbPath))
-		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+		testP, err := newProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout, nil)
 		require.NoError(t, err)
 
 		// Setup: Multiple global indexes with different scenarios
@@ -5785,7 +5785,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dbPath := filepath.Join(t.TempDir(), "backward_let_cases.sqlite")
 			require.NoError(t, migrations.RunMigrations(dbPath))
-			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout, nil)
 			require.NoError(t, err)
 
 			blocks := c.setupBlocks()
@@ -5914,7 +5914,7 @@ func TestGetBoundaryBlock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dbPath := filepath.Join(t.TempDir(), "get_boundary_block.sqlite")
 			require.NoError(t, migrations.RunMigrations(dbPath))
-			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout)
+			p, err := newProcessor(dbPath, "bridge-syncer", log.GetDefaultLogger(), dbQueryTimeout, nil)
 			require.NoError(t, err)
 
 			// Insert claims if any
@@ -6621,7 +6621,7 @@ func setupProcessorWithTransaction(t *testing.T) (*processor, dbtypes.Txer) {
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "test")
-	p, err := newProcessor(dbPath, "test", logger, dbQueryTimeout)
+	p, err := newProcessor(dbPath, "test", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 	p.initialLER = bridgesynctypes.EmptyLER
 
@@ -6652,7 +6652,7 @@ func calculateExpectedRootAfterForwardLET(t *testing.T, initialDepositCount uint
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "test-calc")
-	tempP, err := newProcessor(tempDBPath, "test-calc", logger, dbQueryTimeout)
+	tempP, err := newProcessor(tempDBPath, "test-calc", logger, dbQueryTimeout, nil)
 	require.NoError(t, err)
 
 	tempTx, err := db.NewTx(t.Context(), tempP.db)

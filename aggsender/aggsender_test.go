@@ -118,6 +118,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		mockL1InfoTreeSyncer, // l1 info tree syncer
 		bridgeL2SyncerMock,
+		nil, // claim syncer
 		nil, // l1 client
 		nil, // l2 client
 		rollupQuerierMock,
@@ -555,6 +556,7 @@ func TestNewAggSender(t *testing.T) {
 		mockAgglayerClient,
 		mockL1InfoTreeSyncer, // l1 info tree syncer
 		mockBridgeSyncer,
+		nil, // claim syncer
 		nil, // l1 client
 		nil, // l2 client
 		mockRollupQuerier,

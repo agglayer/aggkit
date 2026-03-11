@@ -22,6 +22,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -67,6 +68,7 @@ func New(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	claimSyncer claimsync.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -102,6 +104,7 @@ func New(
 		aggLayerClient,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		claimSyncer,
 		l1Client,
 		l2Client,
 		rollupDataQuerier,
@@ -119,6 +122,7 @@ func newAggsender(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	_ claimsync.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,

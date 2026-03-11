@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 
+	signertypes "github.com/agglayer/go_signer/signer/types"
+	ethcommon "github.com/ethereum/go-ethereum/common"
+
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
+	"github.com/agglayer/aggkit/claimsync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
-	signertypes "github.com/agglayer/go_signer/signer/types"
-	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -36,7 +38,8 @@ func NewAggsenderValidator(ctx context.Context,
 	certQuerier types.CertificateQuerier,
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 	initialLER ethcommon.Hash,
-	signer signertypes.Signer) (*AggsenderValidator, error) {
+	signer signertypes.Signer,
+	_ claimsync.ClaimSyncer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
 		logger, flow, l1InfoTreeDataQuerier, certQuerier, initialLER)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)

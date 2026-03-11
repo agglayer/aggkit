@@ -30,6 +30,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
@@ -196,6 +197,7 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				claimsync.NewFromBridgeSync(l2BridgeSync),
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
@@ -227,6 +229,7 @@ func start(cliCtx *cli.Context) error {
 				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				claimsync.NewFromBridgeSync(l2BridgeSync),
 				l1Client,
 				l2Client,
 				rollupDataQuerier,
@@ -293,6 +296,7 @@ func createAggSenderValidator(ctx context.Context,
 	cfg validator.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
+	claimSyncer claimsync.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
@@ -360,6 +364,7 @@ func createAggSenderValidator(ctx context.Context,
 		aggchainFEPQuerier,
 		flowParams.InitialLER,
 		flowParams.Signer,
+		claimSyncer,
 	)
 }
 
@@ -369,6 +374,7 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
 	l2Syncer aggsendertypes.L2BridgeSyncer,
+	claimSyncer claimsync.ClaimSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier aggsendertypes.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
@@ -386,7 +392,7 @@ func createAggSender(
 	}
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier, initialLER)
+		l1InfoTreeSync, l2Syncer, claimSyncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier, initialLER)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
@@ -819,6 +825,7 @@ func runBridgeSyncL2IfNeeded(
 		fullClaimsNeeded,
 		syncFromInBridges,
 		initialLER,
+		nil,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

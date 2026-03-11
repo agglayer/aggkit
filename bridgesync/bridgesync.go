@@ -96,10 +96,12 @@ func NewL1(
 		false,
 		syncFromInBridges,
 		bridgesynctypes.EmptyLER,
+		nil,
 	)
 }
 
-// NewL2 creates a bridge syncer that synchronizes the local exit tree
+// NewL2 creates a bridge syncer that synchronizes the local exit tree.
+// Pass a non-nil claimEventsProcessor to delegate claim storage to claimsync.
 func NewL2(
 	ctx context.Context,
 	cfg Config,
@@ -109,6 +111,7 @@ func NewL2(
 	syncFullClaims bool,
 	syncFromInBridges bool,
 	initialLER common.Hash,
+	claimEventsProcessor ClaimsSyncProcessor,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -121,6 +124,7 @@ func NewL2(
 		syncFullClaims,
 		syncFromInBridges,
 		initialLER,
+		claimEventsProcessor,
 	)
 }
 
@@ -135,6 +139,7 @@ func newBridgeSync(
 	syncFullClaims bool,
 	syncFromInBridges bool,
 	initialLER common.Hash,
+	claimEventsProcessor ClaimsSyncProcessor,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -153,7 +158,7 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	processor, err := newProcessor(cfg.DBPath, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
+	processor, err := newProcessor(cfg.DBPath, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration, claimEventsProcessor)
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +194,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, processor, cfg.BridgeAddr, syncFullClaims,
-		syncFromInBridges, bridgeDeployment, logger)
+	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFromInBridges, bridgeDeployment, logger, claimEventsProcessor)
 	if err != nil {
 		return nil, err
 	}

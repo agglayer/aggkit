@@ -342,7 +342,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, false, bridgesynctypes.EmptyLER)
+	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, false, bridgesynctypes.EmptyLER, nil)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)

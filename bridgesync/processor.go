@@ -707,17 +707,34 @@ type BridgeQuerier interface {
 
 var _ BridgeQuerier = (*processor)(nil)
 
+// ClaimsSyncProcessor handles storage of claim-related events within a bridgesync transaction.
+// Pass an implementation (e.g. from claimsync.NewEmbedded) to bridgesync to delegate claim
+// storage and event parsing to claimsync, keeping the two components in sync atomically.
+type ClaimsSyncProcessor interface {
+	// ProcessBlockWithTx stores Claim, UnsetClaim and SetClaim events using an existing tx.
+	// Bridgesync calls this from ProcessBlock, reusing its own tx so no new tx is needed.
+	// insertBlock must be false when bridgesync already inserted the block row.
+	ProcessBlockWithTx(ctx context.Context, tx dbtypes.Querier, block *sync.Block, insertBlock bool) error
+	// ReorgWithTx deletes claim data for all blocks >= firstReorgedBlock using the provided tx.
+	// The caller is responsible for commit and rollback.
+	ReorgWithTx(tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error)
+	// BuildAppender returns the LogAppenderMap for claim-related log events.
+	// Bridgesync merges this into its own appender so claimsync's handlers are used.
+	BuildAppender() sync.LogAppenderMap
+}
+
 type processor struct {
-	syncerID         string
-	db               *sql.DB
-	exitTree         types.FullTreer
-	log              *log.Logger
-	mu               mutex.RWMutex
-	halted           bool
-	haltedReason     string
-	dbQueryTimeout   time.Duration
-	bridgeSubscriber aggkitcommon.PubSub[uint64]
-	initialLER       common.Hash
+	syncerID             string
+	db                   *sql.DB
+	exitTree             types.FullTreer
+	log                  *log.Logger
+	mu                   mutex.RWMutex
+	halted               bool
+	haltedReason         string
+	dbQueryTimeout       time.Duration
+	bridgeSubscriber     aggkitcommon.PubSub[uint64]
+	initialLER           common.Hash
+	claimEventsProcessor ClaimsSyncProcessor
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -726,6 +743,7 @@ func newProcessor(
 	syncerID string,
 	logger *log.Logger,
 	dbQueryTimeout time.Duration,
+	claimEventsProcessor ClaimsSyncProcessor,
 ) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
@@ -739,12 +757,13 @@ func newProcessor(
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
-		syncerID:         syncerID,
-		db:               database,
-		exitTree:         exitTree,
-		log:              logger,
-		dbQueryTimeout:   dbQueryTimeout,
-		bridgeSubscriber: aggkitcommon.NewGenericSubscriber[uint64](),
+		syncerID:             syncerID,
+		db:                   database,
+		exitTree:             exitTree,
+		log:                  logger,
+		dbQueryTimeout:       dbQueryTimeout,
+		bridgeSubscriber:     aggkitcommon.NewGenericSubscriber[uint64](),
+		claimEventsProcessor: claimEventsProcessor,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			syncerID,
@@ -1649,6 +1668,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 	var blockPos *uint64
 	var hasAnyBridge bool
+	var claimEvents []Event
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
@@ -1681,9 +1701,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			// Mark that this block has at least one bridge
 			hasAnyBridge = true
 		}
-
+		// TODO: remove
 		if event.Claim != nil {
-			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
+			if p.claimEventsProcessor != nil {
+				claimEvents = append(claimEvents, event)
+			} else if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
 				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
 				return err
 			}
@@ -1710,16 +1732,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
-
+		// TODO: remove
 		if event.UnsetClaim != nil {
-			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
+			if p.claimEventsProcessor != nil {
+				claimEvents = append(claimEvents, event)
+			} else if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
 				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
-
+		// TODO: remove
 		if event.SetClaim != nil {
-			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
+			if p.claimEventsProcessor != nil {
+				claimEvents = append(claimEvents, event)
+			} else if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
 				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
 				return err
 			}
@@ -1740,8 +1766,14 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 			blockPos = &newBlockPos
 		}
+		if p.claimEventsProcessor != nil {
+			// ProcessBlock(ctx context.Context, block sync.Block)
+			if err := p.claimEventsProcessor.ProcessBlockWithTx(ctx, tx, &block, false); err != nil {
+				p.log.Errorf("failed to process claim events for block %d: %v", block.Num, err)
+				return err
+			}
+		}
 	}
-
 	if err := tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
 		return err
