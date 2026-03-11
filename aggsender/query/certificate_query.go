@@ -9,7 +9,6 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -21,17 +20,20 @@ type certificateQuerier struct {
 	l2BridgeSyncer     types.L2BridgeSyncer
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier
 	agglayerClient     agglayer.AgglayerClientInterface
+	initialLER         common.Hash
 }
 
 func NewCertificateQuerier(
 	bridgeSyncer types.L2BridgeSyncer,
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 	agglayerClient agglayer.AgglayerClientInterface,
+	initialLER common.Hash,
 ) types.CertificateQuerier {
 	return &certificateQuerier{
 		l2BridgeSyncer:     bridgeSyncer,
 		aggchainFEPQuerier: aggchainFEPQuerier,
 		agglayerClient:     agglayerClient,
+		initialLER:         initialLER,
 	}
 }
 
@@ -185,8 +187,8 @@ func (c *certificateQuerier) CalculateCertificateTypeFromToBlock(certToBlock uin
 }
 
 func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRoot common.Hash) (uint64, error) {
-	if localExitRoot == bridgesynctypes.EmptyLER {
-		return 0, nil // Empty LER means no exit root, so return 0
+	if localExitRoot == c.initialLER {
+		return 0, nil // Initial LER means no bridge exits, so return 0
 	}
 
 	exitRoot, err := c.l2BridgeSyncer.GetExitRootByHash(ctx, localExitRoot)

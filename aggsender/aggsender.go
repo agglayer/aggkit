@@ -71,6 +71,7 @@ func New(
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	initialLER common.Hash,
 ) (*AggSender, error) {
 	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
@@ -106,6 +107,7 @@ func New(
 		rollupDataQuerier,
 		committeeQuerier,
 		certificateSendTrigger,
+		initialLER,
 	)
 }
 
@@ -122,6 +124,7 @@ func newAggsender(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	certificateSendTrigger types.CertificateSendTrigger,
+	initialLER common.Hash,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
@@ -143,6 +146,7 @@ func newAggsender(
 		l2Syncer,
 		aggchainFEPCaller,
 		aggLayerClient,
+		initialLER,
 	)
 
 	flowManager, err := flows.NewBuilderFlow(
@@ -157,6 +161,7 @@ func newAggsender(
 		rollupDataQuerier,
 		committeeQuerier,
 		certQuerier,
+		initialLER,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
@@ -198,7 +203,7 @@ func newAggsender(
 			verifierFlow,
 			l1InfoTreeQuerier,
 			certQuerier,
-			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+			initialLER,
 		),
 	)
 

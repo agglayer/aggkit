@@ -40,6 +40,7 @@ func NewBuilderFlow(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	certQuerier types.CertificateQuerier,
+	initialLER ethCommon.Hash,
 ) (types.AggsenderBuilderFlow, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
@@ -47,7 +48,7 @@ func NewBuilderFlow(
 			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
-			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
+			cfg.MaxCertSize,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true, // fullClaims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
@@ -56,6 +57,7 @@ func NewBuilderFlow(
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 			certQuerier,
+			initialLER,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -98,7 +100,7 @@ func NewBuilderFlow(
 			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
-			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
+			cfg.MaxCertSize,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
@@ -107,6 +109,7 @@ func NewBuilderFlow(
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 			certQuerier,
+			initialLER,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -148,7 +151,7 @@ func NewBuilderFlow(
 type CommonFlowComponents struct {
 	L2BridgeQuerier       types.BridgeQuerier
 	L1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	LERQuerier            types.LERQuerier
+	InitialLER            ethCommon.Hash
 	BaseFlow              types.AggsenderFlowBaser
 	Signer                signertypes.Signer
 }
@@ -166,7 +169,6 @@ func CreateCommonFlowComponents(
 	startL2Block uint64,
 	requireNoFEPBlockGap bool,
 	maxCertSize uint,
-	rollupCreationBlockL1 uint64,
 	delayBetweenRetries time.Duration,
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
@@ -176,6 +178,7 @@ func CreateCommonFlowComponents(
 	globalExitRootL1Addr ethCommon.Address,
 	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality,
 	certQuerier types.CertificateQuerier,
+	initialLER ethCommon.Hash,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
@@ -203,10 +206,9 @@ func CreateCommonFlowComponents(
 	if err != nil {
 		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
 	}
-	lerQuerier := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
 
 	baseFlow := NewBaseFlow(
-		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
+		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, initialLER,
 		certQuerier,
 		NewBaseFlowConfig(
 			maxCertSize,
@@ -219,7 +221,7 @@ func CreateCommonFlowComponents(
 	return &CommonFlowComponents{
 		L2BridgeQuerier:       l2BridgeQuerier,
 		L1InfoTreeDataQuerier: l1InfoTreeQuerier,
-		LERQuerier:            lerQuerier,
+		InitialLER:            initialLER,
 		BaseFlow:              baseFlow,
 		Signer:                signer,
 	}, nil

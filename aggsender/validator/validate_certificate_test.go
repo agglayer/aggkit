@@ -80,7 +80,6 @@ func TestValidateCertificate(t *testing.T) {
 
 	t.Run("first cert bad previous LER", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(0), nil)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
@@ -120,7 +119,6 @@ func TestValidateCertificate(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(0), nil)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(nil, errGenericForTesting)
@@ -140,7 +138,6 @@ func TestValidateCertificate(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(0), nil)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -162,7 +159,6 @@ func TestValidateCertificate(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(0), nil)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -186,7 +182,6 @@ func TestValidateCertificate(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(0), nil)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -216,7 +211,6 @@ func TestValidateCertificate(t *testing.T) {
 
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(0), nil)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(mock.Anything, uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -239,18 +233,6 @@ func TestValidateCertificate(t *testing.T) {
 }
 
 func TestCheckContigousCertificates(t *testing.T) {
-	t.Run("Nil PreviousCertificate, err getting start LER", func(t *testing.T) {
-		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, errors.New("some error"))
-		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
-			Certificate: &agglayertypes.Certificate{
-				Height: 0,
-			},
-			PreviousCertificate: nil,
-		})
-		require.ErrorContains(t, err, "failed to get start LER: some error")
-	})
-
 	t.Run("Nil PreviousCertificate, cert height!= 0", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
@@ -264,7 +246,6 @@ func TestCheckContigousCertificates(t *testing.T) {
 
 	t.Run("Nil PreviousCertificate, cert height == 0, non expected LER", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
 		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:            0,
@@ -350,7 +331,6 @@ type testDataCertificateValidator struct {
 	mockFlow              *mocks.AggsenderVerifierFlow
 	mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier
 	mockCertQuerier       *mocks.CertificateQuerier
-	mockLERQuerier        *mocks.LERQuerier
 	sut                   *CertificateValidator
 }
 
@@ -360,7 +340,6 @@ func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator 
 	mockFlow := mocks.NewAggsenderVerifierFlow(t)
 	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockCertQuerier := mocks.NewCertificateQuerier(t)
-	lerQuerier := mocks.NewLERQuerier(t)
 
 	return testDataCertificateValidator{
 		ctx:                   context.TODO(),
@@ -368,7 +347,6 @@ func newTestDataCertificateValidator(t *testing.T) testDataCertificateValidator 
 		mockFlow:              mockFlow,
 		mockL1InfoTreeQuerier: mockL1InfoTreeQuerier,
 		mockCertQuerier:       mockCertQuerier,
-		mockLERQuerier:        lerQuerier,
-		sut:                   NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier, mockCertQuerier, lerQuerier),
+		sut:                   NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier, mockCertQuerier, bridgesynctypes.EmptyLER),
 	}
 }

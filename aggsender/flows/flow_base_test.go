@@ -129,7 +129,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				nil,
+				bridgesynctypes.EmptyLER,
 				nil,
 				NewBaseFlowConfig(tt.maxCertSize, 0, false, true))
 
@@ -330,39 +330,26 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 
 	testCases := []struct {
 		name           string
+		initialLER     common.Hash
 		lastSentCert   *types.CertificateHeader
 		expectedHeight uint64
 		expectedLER    common.Hash
 		expectedError  string
-		mockFn         func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage)
+		mockFn         func(mockStorage *mocks.AggSenderStorage)
 	}{
 		{
 			name:           "no last sent certificate - zero start LER",
+			initialLER:     bridgesynctypes.EmptyLER,
 			lastSentCert:   nil,
 			expectedHeight: 0,
 			expectedLER:    bridgesynctypes.EmptyLER,
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
-			},
 		},
 		{
 			name:           "no last sent certificate - has start LER",
+			initialLER:     common.HexToHash("0x1"),
 			lastSentCert:   nil,
 			expectedHeight: 0,
 			expectedLER:    common.HexToHash("0x1"),
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(common.HexToHash("0x1"), nil)
-			},
-		},
-		{
-			name:           "ler querier returns error",
-			lastSentCert:   nil,
-			expectedHeight: 0,
-			expectedLER:    aggkitcommon.ZeroHash,
-			expectedError:  "some error",
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(common.Hash{}, errors.New("some error"))
-			},
 		},
 		{
 			name: "last sent certificate is not Closed",
@@ -395,7 +382,8 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedLER:    previousLER,
 		},
 		{
-			name: "first certificate InError",
+			name:       "first certificate InError",
+			initialLER: bridgesynctypes.EmptyLER,
 			lastSentCert: &types.CertificateHeader{
 				Status:                agglayertypes.InError,
 				Height:                0,
@@ -404,9 +392,6 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			},
 			expectedHeight: 0,
 			expectedLER:    bridgesynctypes.EmptyLER,
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetInitialLocalExitRoot().Return(bridgesynctypes.EmptyLER, nil)
-			},
 		},
 		{
 			name: "error getting previously sent certificate",
@@ -418,7 +403,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "error getting last settled certificate: some error",
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(nil, errors.New("some error"))
 			},
@@ -433,7 +418,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "none settled certificate",
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(nil, nil)
 			},
@@ -448,7 +433,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "is not settled",
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(&types.CertificateHeader{Status: agglayertypes.Pending}, nil)
 			},
@@ -462,7 +447,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			},
 			expectedHeight: 5,
 			expectedLER:    common.HexToHash("0x789"),
-			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(&types.CertificateHeader{
 						Status:           agglayertypes.Settled,
@@ -478,15 +463,14 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockLERQuerier := mocks.NewLERQuerier(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockLERQuerier, mockStorage)
+				tc.mockFn(mockStorage)
 			}
 
 			log := log.WithFields("test", t.Name())
 			f := &baseFlow{
-				lerQuerier: mockLERQuerier,
+				initialLER: tc.initialLER,
 				storage:    mockStorage,
 				log:        log,
 			}

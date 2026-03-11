@@ -127,9 +127,13 @@ func start(cliCtx *cli.Context) error {
 	}
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0, &backfillWg)
-	lerQuerier := query.NewLERDataQuerier(cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
+	initialLER, err := query.NewLERDataQuerier(
+		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier).GetInitialLocalExitRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get initial local exit root: %w", err)
+	}
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID, lerQuerier, &backfillWg)
+		l2Client, rollupDataQuerier.RollupID, initialLER, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
@@ -195,6 +199,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
+				initialLER,
 			)
 			if err != nil {
 				log.Fatalf("failed to create AggSender: %v", err)
@@ -226,6 +231,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
+				initialLER,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -291,6 +297,7 @@ func createAggSenderValidator(ctx context.Context,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
+	initialLER common.Hash,
 ) (*aggsender.AggsenderValidator, error) {
 	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
@@ -326,6 +333,7 @@ func createAggSenderValidator(ctx context.Context,
 		l2Syncer,
 		aggchainFEPQuerier,
 		agglayerClient,
+		initialLER,
 	)
 
 	flow, flowParams, err := flows.NewVerifierFlow(
@@ -338,6 +346,7 @@ func createAggSenderValidator(ctx context.Context,
 		l2Syncer,
 		rollupDataQuerier,
 		committeeQuerier,
+		initialLER,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
@@ -349,7 +358,7 @@ func createAggSenderValidator(ctx context.Context,
 		agglayerClient,
 		certQuerier,
 		aggchainFEPQuerier,
-		flowParams.LERQuerier,
+		flowParams.InitialLER,
 		flowParams.Signer,
 	)
 }
@@ -362,7 +371,9 @@ func createAggSender(
 	l2Syncer aggsendertypes.L2BridgeSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier aggsendertypes.RollupDataQuerier,
-	committeeQuerier aggsendertypes.MultisigQuerier) (*aggsender.AggSender, error) {
+	committeeQuerier aggsendertypes.MultisigQuerier,
+	initialLER common.Hash,
+) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.Validate(); err != nil {
@@ -375,7 +386,7 @@ func createAggSender(
 	}
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
+		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier, initialLER)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
@@ -776,7 +787,7 @@ func runBridgeSyncL2IfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
-	lerQuerier bridgesync.LERQuerier,
+	initialLER common.Hash,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	fullClaimsNeeded := isNeeded([]string{
@@ -807,7 +818,7 @@ func runBridgeSyncL2IfNeeded(
 		rollupID,
 		fullClaimsNeeded,
 		syncFromInBridges,
-		lerQuerier,
+		initialLER,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

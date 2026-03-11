@@ -131,6 +131,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				mockL2Syncer,
 				mockRollupDataQuerier,
 				mockCommitteeQuerier,
+				common.Hash{},
 			)
 
 			if tc.expectedError != "" {

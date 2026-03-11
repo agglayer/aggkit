@@ -6623,6 +6623,7 @@ func setupProcessorWithTransaction(t *testing.T) (*processor, dbtypes.Txer) {
 	logger := log.WithFields("module", "test")
 	p, err := newProcessor(dbPath, "test", logger, dbQueryTimeout)
 	require.NoError(t, err)
+	p.initialLER = bridgesynctypes.EmptyLER
 
 	tx, err := db.NewTx(t.Context(), p.db)
 	require.NoError(t, err)

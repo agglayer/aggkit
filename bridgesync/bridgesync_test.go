@@ -10,6 +10,7 @@ import (
 	"time"
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -117,7 +118,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
-		nil,
+		bridgesynctypes.EmptyLER,
 	)
 
 	require.NoError(t, err)
@@ -136,7 +137,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
-		nil,
+		bridgesynctypes.EmptyLER,
 	)
 	require.Error(t, err)
 	require.Nil(t, l2BridgeSyncer)
@@ -340,7 +341,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
-		nil,
+		bridgesynctypes.EmptyLER,
 	)
 	require.NoError(t, err)
 
@@ -511,7 +512,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
-		nil,
+		bridgesynctypes.EmptyLER,
 	)
 	require.NoError(t, err)
 
@@ -717,7 +718,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
-		nil,
+		bridgesynctypes.EmptyLER,
 	)
 	require.NoError(t, err)
 
@@ -899,7 +900,7 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 		originNetwork,
 		false,
 		testSyncFromInBridges,
-		nil,
+		bridgesynctypes.EmptyLER,
 	)
 	require.NoError(t, err)
 

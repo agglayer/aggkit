@@ -190,6 +190,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				mockL2BridgeSyncer,
 				mockAggchainFEPQuerier,
 				mockAgglayerClient,
+				bridgesynctypes.EmptyLER,
 			)
 
 			block, err := certRangeQuerier.GetLastSettledCertificateToBlock(ctx, tc.certificate)
@@ -374,6 +375,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 				mockL2BridgeSyncer,
 				mockAggchainFEPQuerier,
 				mockAgglayerClient,
+				bridgesynctypes.EmptyLER,
 			)
 
 			block, err := certQuerier.GetNewCertificateToBlock(ctx, tc.certificate)
@@ -484,6 +486,7 @@ func TestCalculateCertificateTypeFromToBlock(t *testing.T) {
 				mockL2BridgeSyncer,
 				mockAggchainFEPQuerier,
 				mockAgglayerClient,
+				bridgesynctypes.EmptyLER,
 			)
 
 			certType := certQuerier.CalculateCertificateTypeFromToBlock(tc.certToBlock)
@@ -608,6 +611,7 @@ func TestCalculateCertificateType(t *testing.T) {
 				mockL2BridgeSyncer,
 				mockAggchainFEPQuerier,
 				mockAgglayerClient,
+				bridgesynctypes.EmptyLER,
 			)
 
 			certType := certQuerier.CalculateCertificateType(tc.certificate, tc.certToBlock)

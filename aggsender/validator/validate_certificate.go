@@ -30,20 +30,20 @@ type CertificateValidator struct {
 	flow                  types.AggsenderVerifierFlow
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
 	certQuerier           types.CertificateQuerier
-	lerQuerier            types.LERQuerier
+	initialLER            common.Hash
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
 	flow types.AggsenderVerifierFlow,
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
 	certQuerier types.CertificateQuerier,
-	lerQuerier types.LERQuerier) *CertificateValidator {
+	initialLER common.Hash) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
 		flow:                  flow,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		certQuerier:           certQuerier,
-		lerQuerier:            lerQuerier,
+		initialLER:            initialLER,
 	}
 }
 
@@ -188,13 +188,9 @@ func (a *CertificateValidator) checkFirstCertificateBlocks(params types.VerifyIn
 		return fmt.Errorf("first certificate must have height 0, but got: %d",
 			params.Certificate.Height)
 	}
-	startLER, err := a.lerQuerier.GetInitialLocalExitRoot()
-	if err != nil {
-		return fmt.Errorf("failed to get start LER: %w", err)
-	}
-	if params.Certificate.PrevLocalExitRoot != startLER {
+	if params.Certificate.PrevLocalExitRoot != a.initialLER {
 		return fmt.Errorf("first certificate must have correct starting PrevLocalExitRoot: %s, but got: %s",
-			startLER.String(),
+			a.initialLER.String(),
 			params.Certificate.PrevLocalExitRoot.String())
 	}
 	return nil

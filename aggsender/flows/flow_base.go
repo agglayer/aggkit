@@ -75,7 +75,7 @@ type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	lerQuerier            types.LERQuerier
+	initialLER            common.Hash
 	certQuerier           types.CertificateQuerier
 	cfg                   BaseFlowConfig
 	log                   types.Logger
@@ -89,7 +89,7 @@ func NewBaseFlow(
 	l2BridgeQuerier types.BridgeQuerier,
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
-	lerQuerier types.LERQuerier,
+	initialLER common.Hash,
 	certQuerier types.CertificateQuerier,
 	cfg BaseFlowConfig,
 ) *baseFlow {
@@ -98,7 +98,7 @@ func NewBaseFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
-		lerQuerier:            lerQuerier,
+		initialLER:            initialLER,
 		certQuerier:           certQuerier,
 		cfg:                   cfg,
 		timeNowFunc:           TimeNowUTC,
@@ -414,8 +414,7 @@ func (f *baseFlow) getImportedBridgeExits(
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		ler, err := f.lerQuerier.GetInitialLocalExitRoot()
-		return uint64(0), ler, err
+		return uint64(0), f.initialLER, nil
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
 		return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s is not closed (status: %s)",
@@ -432,8 +431,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			ler, err := f.lerQuerier.GetInitialLocalExitRoot()
-			return uint64(0), ler, err
+			return uint64(0), f.initialLER, nil
 		}
 		// We get previous certificate that must be settled
 		f.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",

@@ -198,6 +198,7 @@ func TestNewFlow(t *testing.T) {
 				mockRollupDataQuerier,
 				mockCommitteeQuerier,
 				nil, // certQuerier
+				common.Hash{},
 			)
 
 			if tc.expectedError != "" {
