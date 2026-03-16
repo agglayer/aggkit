@@ -1,6 +1,7 @@
 package claimsync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,11 +11,12 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
-	"github.com/agglayer/aggkit/bridgesync"
+	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	dbtypes "github.com/agglayer/aggkit/db/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -23,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	gethvm "github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/golang-collections/collections/stack"
 )
 
 var (
@@ -35,11 +38,31 @@ var (
 	))
 	unsetClaimEventSignature = crypto.Keccak256Hash([]byte("UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)"))
 	setClaimEventSignature   = crypto.Keccak256Hash([]byte("SetClaim(bytes32)"))
+
+	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
+	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
+	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
+	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
+)
+
+const (
+	// DebugTraceTxEndpoint is the name of the debug method used to trace a transaction.
+	DebugTraceTxEndpoint = "debug_traceTransaction"
+	// GetTransactionByHashEndpoint is the name of the method used to get transaction details by hash.
+	GetTransactionByHashEndpoint = "eth_getTransactionByHash"
+	// callTracerType is the name of the call tracer
+	callTracerType = "callTracer"
+
+	// methodIDLength is the length of the method ID in bytes
+	methodIDLength = 4
+
+	bridgeLeafTypeMessage = uint8(bridgesynctypes.LeafTypeMessage)
+	bridgeLeafTypeAsset   = uint8(bridgesynctypes.LeafTypeAsset)
 )
 
 // claimQuerier is used by event handlers to check the DetailedClaimEvent boundary.
 type ClaimQuerier interface {
-	GetBoundaryBlockForClaimType(tx dbtypes.Querier, claimType bridgesync.ClaimType) (uint64, error)
+	GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error)
 }
 
 // buildAppender creates the LogAppenderMap for claim events from the bridge contract.
@@ -57,10 +80,12 @@ func buildAppender(
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create PolygonZkEVMBridge binding: %w", err)
 	}
-
+	// TODO: Check syncfullclaims
+	syncFullClaims := true
 	appender := make(sync.LogAppenderMap)
-	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(legacyBridge, log)
-	appender[claimEventSignature] = buildClaimEventHandler(ctx, agglayerBridgeContract, querier, log)
+	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
+
+	appender[claimEventSignature] = buildClaimEventHandler(ctx, agglayerBridgeContract, ethClient, querier, bridgeAddr, syncFullClaims, log)
 
 	if isSovereign {
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(agglayerBridgeL2Contract)
@@ -97,12 +122,15 @@ func detectSovereignChain(
 func buildClaimEventHandler(
 	ctx context.Context,
 	contract *agglayerbridge.Agglayerbridge,
+	client aggkittypes.EthClienter,
 	querier ClaimQuerier,
+	bridgeAddr common.Address,
+	syncFullClaims bool,
 	log aggkitcommon.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		// Skip if DetailedClaimEvent indexing has already started at this block
-		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(nil, bridgesync.DetailedClaimEvent)
+		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(ctx, nil, DetailedClaimEvent)
 		if err != nil && !errors.Is(err, db.ErrNotFound) {
 			return fmt.Errorf("claimsync: failed checking DetailedClaimEvent boundary: %w", err)
 		}
@@ -114,8 +142,8 @@ func buildClaimEventHandler(
 
 		// Skip if a DetailedClaimEvent for the same tx is already in the block's events
 		for _, raw := range b.Events {
-			if e, ok := raw.(bridgesync.Event); ok && e.Claim != nil &&
-				e.Claim.Type == bridgesync.DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
+			if e, ok := raw.(Event); ok && e.Claim != nil &&
+				e.Claim.Type == DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
 				log.Debugf("claimsync: skipping ClaimEvent at block %d tx %s; DetailedClaimEvent already present",
 					l.BlockNumber, l.TxHash.Hex())
 				return nil
@@ -127,7 +155,7 @@ func buildClaimEventHandler(
 			return fmt.Errorf("claimsync: error parsing ClaimEvent log: %w", err)
 		}
 
-		b.Events = append(b.Events, bridgesync.Event{Claim: &bridgesync.Claim{
+		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
 			BlockTimestamp:     b.Timestamp,
@@ -137,8 +165,26 @@ func buildClaimEventHandler(
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
-			Type:               bridgesync.ClaimEvent,
-		}})
+			Type:               ClaimEvent,
+		}
+
+		// Extract root call for txn_sender and error checking
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, log, nil)
+		if err != nil {
+			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
+		}
+		// Check if the root call was successful
+		if rootCall.Err != nil {
+			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
+		}
+
+		if syncFullClaims {
+			if err := setClaimCalldataFromRoot(claim, rootCall, bridgeAddr, log); err != nil {
+				return err
+			}
+		}
+
+		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
 }
@@ -153,7 +199,7 @@ func buildDetailedClaimEventHandler(
 			return fmt.Errorf("claimsync: error parsing DetailedClaimEvent log: %w", err)
 		}
 
-		claim := &bridgesync.Claim{
+		claim := &Claim{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
 			BlockTimestamp:      b.Timestamp,
@@ -171,20 +217,20 @@ func buildDetailedClaimEventHandler(
 			ProofRollupExitRoot: treetypes.NewProof(claimEvent.SmtProofRollupExitRoot),
 			GlobalExitRoot:      crypto.Keccak256Hash(claimEvent.MainnetExitRoot[:], claimEvent.RollupExitRoot[:]),
 			IsMessage:           claimEvent.LeafType == uint8(bridgesynctypes.LeafTypeMessage),
-			Type:                bridgesync.DetailedClaimEvent,
+			Type:                DetailedClaimEvent,
 		}
 
 		// Remove any ClaimEvent for the same tx (DetailedClaimEvent takes precedence)
 		newEvents := make([]interface{}, 0, len(b.Events))
 		for _, raw := range b.Events {
-			if e, ok := raw.(bridgesync.Event); ok && e.Claim != nil &&
-				e.Claim.Type == bridgesync.ClaimEvent && e.Claim.TxHash == l.TxHash {
+			if e, ok := raw.(Event); ok && e.Claim != nil &&
+				e.Claim.Type == ClaimEvent && e.Claim.TxHash == l.TxHash {
 				continue
 			}
 			newEvents = append(newEvents, raw)
 		}
 		b.Events = newEvents
-		b.Events = append(b.Events, bridgesync.Event{Claim: claim})
+		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
 }
@@ -192,7 +238,10 @@ func buildDetailedClaimEventHandler(
 // buildClaimEventHandlerPreEtrog creates a handler for the pre-Etrog ClaimEvent log.
 func buildClaimEventHandlerPreEtrog(
 	contract *polygonzkevmbridge.Polygonzkevmbridge,
-	log aggkitcommon.Logger,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	syncFullClaims bool,
+	logger aggkitcommon.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
@@ -201,7 +250,7 @@ func buildClaimEventHandlerPreEtrog(
 		}
 
 		log.Debugf("claimsync: parsed pre-Etrog ClaimEvent: index %d block %d", claimEvent.Index, b.Num)
-		b.Events = append(b.Events, bridgesync.Event{Claim: &bridgesync.Claim{
+		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
 			BlockTimestamp:     b.Timestamp,
@@ -211,7 +260,24 @@ func buildClaimEventHandlerPreEtrog(
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
-		}})
+		}
+		// Extract root call for txn_sender and error checking
+		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
+		if err != nil {
+			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
+		}
+		// Check if the root call was successful
+		if rootCall.Err != nil {
+			return fmt.Errorf("execution reverted in root call (block %d, tx hash: %s): %s", b.Num, l.TxHash, *rootCall.Err)
+		}
+
+		if syncFullClaims {
+			if err := setClaimCalldataFromRoot(claim, rootCall, bridgeAddr, logger); err != nil {
+				return err
+			}
+		}
+
+		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
 }
@@ -226,7 +292,7 @@ func buildUnsetClaimEventHandler(
 			return fmt.Errorf("claimsync: error parsing UpdatedUnsetGlobalIndexHashChain log: %w", err)
 		}
 
-		b.Events = append(b.Events, bridgesync.Event{UnsetClaim: &bridgesync.UnsetClaim{
+		b.Events = append(b.Events, Event{UnsetClaim: &UnsetClaim{
 			BlockNum:                  b.Num,
 			BlockPos:                  uint64(l.Index),
 			TxHash:                    l.TxHash,
@@ -247,12 +313,206 @@ func buildSetClaimEventHandler(
 			return fmt.Errorf("claimsync: error parsing SetClaim log: %w", err)
 		}
 
-		b.Events = append(b.Events, bridgesync.Event{SetClaim: &bridgesync.SetClaim{
+		b.Events = append(b.Events, Event{SetClaim: &SetClaim{
 			BlockNum:    b.Num,
 			BlockPos:    uint64(l.Index),
 			TxHash:      l.TxHash,
 			GlobalIndex: new(big.Int).SetBytes(event.GlobalIndex[:]),
 		}})
 		return nil
+	}
+}
+
+type Call struct {
+	From  common.Address    `json:"from"`
+	To    common.Address    `json:"to"`
+	Value *rpctypes.ArgBig  `json:"value"`
+	Err   *string           `json:"error"`
+	Input rpctypes.ArgBytes `json:"input"`
+	Calls []Call            `json:"calls"`
+}
+
+type tracerCfg struct {
+	Tracer string `json:"tracer"`
+}
+
+// findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
+func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (bool, error), logger aggkitcommon.Logger,
+) ([]*Call, error) {
+	callStack := stack.New()
+	callStack.Push(rootCall)
+	matchingCalls := []*Call{}
+	for callStack.Len() > 0 {
+		currentCallInterface := callStack.Pop()
+		currentCall, ok := currentCallInterface.(Call)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
+		}
+
+		// Skip reverted calls
+		if currentCall.Err != nil {
+			logger.Debugf("skipping reverted call to %s from %s: %s",
+				currentCall.To.Hex(), currentCall.From.Hex(), *currentCall.Err)
+			continue
+		}
+
+		if currentCall.To == targetAddr {
+			if callback != nil {
+				found, err := callback(currentCall)
+				if err != nil {
+					return nil, err
+				}
+				if found {
+					matchingCalls = append(matchingCalls, &currentCall)
+				}
+			} else {
+				matchingCalls = append(matchingCalls, &currentCall)
+			}
+		}
+
+		// Add non-reverted calls to the stack
+		for _, c := range currentCall.Calls {
+			if c.Err == nil {
+				callStack.Push(c)
+			}
+		}
+	}
+	if len(matchingCalls) > 0 {
+		return matchingCalls, nil
+	}
+	return nil, db.ErrNotFound
+}
+
+// extractRootCall extracts the root call for a transaction using debug_traceTransaction.
+func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
+	rootCall := &Call{To: contractAddr}
+	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+	if err != nil {
+		return nil, err
+	}
+	return rootCall, nil
+}
+
+func extractCallData(
+	client aggkittypes.RPCClienter,
+	bridgeAddr common.Address,
+	txHash common.Hash,
+	logger aggkitcommon.Logger,
+	callback func(c Call) (bool, error),
+) (foundCalls []*Call, rootCall *Call, err error) {
+	// Extract root call first
+	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Find the specific call to the bridge contract
+	foundCalls, err = findCall(*rootCall, bridgeAddr, callback, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return foundCalls, rootCall, nil
+}
+
+// setClaimCalldataFromRoot finds and decodes calldata for the given bridge address using an already traced root call.
+//
+// Parameters:
+// - rootCall: Already traced root call.
+// - bridge: Target contract address.
+// - logger: Logger instance for debug logging.
+//
+// Returns an error if calldata isn't found.
+func setClaimCalldataFromRoot(
+	c *Claim,
+	rootCall *Call,
+	bridge common.Address,
+	logger aggkitcommon.Logger,
+) error {
+	_, err := findCall(*rootCall, bridge,
+		func(call Call) (bool, error) {
+			// Skip reverted calls
+			if call.Err != nil {
+				return false, nil
+			}
+			return tryDecodeClaimCalldata(c, call.Input, logger)
+		}, logger)
+
+	return err
+}
+
+// tryDecodeClaimCalldata attempts to find and decode the claim calldata from the provided input bytes.
+// It checks if the method ID corresponds to either the claim asset or claim message methods.
+// If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
+// Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
+func tryDecodeClaimCalldata(c *Claim, input []byte, logger aggkitcommon.Logger) (bool, error) {
+	if len(input) < methodIDLength {
+		return false, fmt.Errorf("input too short: %d bytes", len(input))
+	}
+	methodID := input[:methodIDLength]
+	switch {
+	case bytes.Equal(methodID, claimAssetEtrogMethodID):
+		fallthrough
+	case bytes.Equal(methodID, claimMessageEtrogMethodID):
+		bridgeV2ABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+		if err != nil {
+			return false, err
+		}
+		// Recover Method from signature and ABI
+		method, err := bridgeV2ABI.MethodById(methodID)
+		if err != nil {
+			return false, err
+		}
+
+		data, err := method.Inputs.Unpack(input[methodIDLength:])
+		if err != nil {
+			return false, err
+		}
+
+		found, err := c.DecodeEtrogCalldata(data)
+		if err != nil {
+			return false, err
+		}
+
+		if found {
+			c.IsMessage = bytes.Equal(methodID, claimMessageEtrogMethodID)
+		}
+
+		return found, nil
+
+	case bytes.Equal(methodID, claimAssetPreEtrogMethodID):
+		fallthrough
+	case bytes.Equal(methodID, claimMessagePreEtrogMethodID):
+		bridgeABI, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
+		if err != nil {
+			return false, err
+		}
+
+		// Recover Method from signature and ABI
+		method, err := bridgeABI.MethodById(methodID)
+		if err != nil {
+			return false, err
+		}
+
+		data, err := method.Inputs.Unpack(input[methodIDLength:])
+		if err != nil {
+			return false, err
+		}
+
+		found, err := c.DecodePreEtrogCalldata(data)
+		if err != nil {
+			return false, err
+		}
+
+		if found {
+			c.IsMessage = bytes.Equal(methodID, claimMessagePreEtrogMethodID)
+		}
+
+		return found, nil
+
+	default:
+		// Log unrecognized method ID for debugging but returns false to continue searching (DFS)
+		logger.Debugf("unrecognized method ID encountered during claim calldata extraction: %x", methodID)
+		return false, nil
 	}
 }

@@ -71,11 +71,11 @@ func buildAppender(
 	syncFromInBridges bool,
 	bridgeDeployment *bridgeDeployment,
 	logger *logger.Logger,
-	claimSync ClaimsSyncProcessor,
+	claimAppender sync.LogAppenderMap,
 ) (sync.LogAppenderMap, error) {
 	var appender sync.LogAppenderMap
-	if claimSync != nil {
-		appender = claimSync.BuildAppender()
+	if claimAppender != nil {
+		appender = claimAppender
 	} else {
 		appender = make(sync.LogAppenderMap)
 	}

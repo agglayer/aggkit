@@ -386,6 +386,17 @@ func (a *AggchainProverBuilderFlow) getLastProvenBlock(
 	return fromBlock - 1
 }
 
+// GeneratePreBuildParams generates the pre-build parameters delegating to the base flow
+func (a *AggchainProverBuilderFlow) GeneratePreBuildParams(ctx context.Context,
+	certType types.CertificateType) (*types.CertificatePreBuildParams, error) {
+	return a.baseFlow.GeneratePreBuildParams(ctx, certType)
+}
+
+// GetNextBlockNumber returns the first block number of the next certificate to generate
+func (a *AggchainProverBuilderFlow) GetNextBlockNumber() (uint64, error) {
+	return a.baseFlow.GetNextBlockNumber()
+}
+
 // Signer returns the signer used to sign the certificate
 func (a *AggchainProverBuilderFlow) Signer() signertypes.Signer {
 	return a.certificateSigner

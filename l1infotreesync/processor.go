@@ -248,9 +248,19 @@ func (p *processor) getInfoByIndexWithTx(tx dbtypes.DBer, index uint32) (*L1Info
 	)
 }
 
-// GetLastProcessedBlock returns the last processed block
-func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	return p.getLastProcessedBlockWithTx(p.db)
+// GetLastProcessedBlock returns the last processed block.
+// Returns (0, false, nil) if no blocks have been processed yet.
+func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	var lastProcessedBlockNum uint64
+	row := p.db.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
+	err := row.Scan(&lastProcessedBlockNum)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return lastProcessedBlockNum, true, nil
 }
 
 // GetLastProcessedBlockHeader returns the last processed block header

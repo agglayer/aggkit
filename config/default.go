@@ -163,6 +163,7 @@ WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
+EmbeddedClaimSync = "auto"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -176,6 +177,7 @@ WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
+EmbeddedClaimSync = "auto"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"

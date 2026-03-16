@@ -129,6 +129,7 @@ func TestNewVerifierFlow(t *testing.T) {
 				nil,
 				mockL1InfoTreeSyncer,
 				mockL2Syncer,
+				nil,
 				mockRollupDataQuerier,
 				mockCommitteeQuerier,
 				common.Hash{},

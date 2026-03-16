@@ -413,6 +413,8 @@ func (dh *EVMMultidownloader) WaitForNewLatestBlocks(ctx context.Context) error 
 		lastBlockHeader = &aggkittypes.BlockHeader{
 			Number: latestSyncedBlockNumber,
 		}
+		// Is not in DB, so must be finalized
+		finalized = true
 	}
 	dh.log.Infof("waiting new block (%s>%d)...", lastSyncedBlockTag.String(), latestSyncedBlockNumber)
 	_, err = dh.waitForNewBlocks(ctx, lastSyncedBlockTag, lastBlockHeader, finalized)

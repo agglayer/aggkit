@@ -1,4 +1,4 @@
-package bridgesync
+package claimsync
 
 import (
 	"context"
@@ -1103,7 +1103,7 @@ func TestClaimCalldata(t *testing.T) {
 			require.NoError(t, err)
 
 			// Use setClaimCalldataFromRoot instead of setClaimCalldata
-			err = actualClaim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
+			err = setClaimCalldataFromRoot(&actualClaim, rootCall, bridgeAddr, logger)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 		})

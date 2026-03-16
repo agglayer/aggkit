@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -37,6 +38,7 @@ func NewBuilderFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	certQuerier types.CertificateQuerier,
@@ -45,7 +47,7 @@ func NewBuilderFlow(
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, l2ClaimSyncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
 			cfg.MaxCertSize,
@@ -97,7 +99,7 @@ func NewBuilderFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, l2ClaimSyncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize,
@@ -164,6 +166,7 @@ func CreateCommonFlowComponents(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	startL2Block uint64,
@@ -200,7 +203,7 @@ func CreateCommonFlowComponents(
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, delayBetweenRetries, agglayerBridgeL2Reader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, l2ClaimSyncer, delayBetweenRetries, agglayerBridgeL2Reader)
 	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, globalExitRootL1Addr, l1InfoTreeSyncer,
 		blockFinalityForL1InfoTree)
 	if err != nil {

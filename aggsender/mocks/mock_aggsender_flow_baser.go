@@ -4,7 +4,7 @@ package mocks
 
 import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	bridgesync "github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 
 	common "github.com/ethereum/go-ethereum/common"
 
@@ -90,7 +90,7 @@ func (_c *AggsenderFlowBaser_BuildCertificate_Call) RunAndReturn(run func(contex
 }
 
 // ConvertClaimToImportedBridgeExit provides a mock function with given fields: claim
-func (_m *AggsenderFlowBaser) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+func (_m *AggsenderFlowBaser) ConvertClaimToImportedBridgeExit(claim claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error) {
 	ret := _m.Called(claim)
 
 	if len(ret) == 0 {
@@ -99,10 +99,10 @@ func (_m *AggsenderFlowBaser) ConvertClaimToImportedBridgeExit(claim bridgesync.
 
 	var r0 *agglayertypes.ImportedBridgeExit
 	var r1 error
-	if rf, ok := ret.Get(0).(func(bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)); ok {
+	if rf, ok := ret.Get(0).(func(claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error)); ok {
 		return rf(claim)
 	}
-	if rf, ok := ret.Get(0).(func(bridgesync.Claim) *agglayertypes.ImportedBridgeExit); ok {
+	if rf, ok := ret.Get(0).(func(claimsynctypes.Claim) *agglayertypes.ImportedBridgeExit); ok {
 		r0 = rf(claim)
 	} else {
 		if ret.Get(0) != nil {
@@ -110,7 +110,7 @@ func (_m *AggsenderFlowBaser) ConvertClaimToImportedBridgeExit(claim bridgesync.
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(bridgesync.Claim) error); ok {
+	if rf, ok := ret.Get(1).(func(claimsynctypes.Claim) error); ok {
 		r1 = rf(claim)
 	} else {
 		r1 = ret.Error(1)
@@ -125,14 +125,14 @@ type AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call struct {
 }
 
 // ConvertClaimToImportedBridgeExit is a helper method to define mock.On call
-//   - claim bridgesync.Claim
+//   - claim claimsynctypes.Claim
 func (_e *AggsenderFlowBaser_Expecter) ConvertClaimToImportedBridgeExit(claim interface{}) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
 	return &AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call{Call: _e.mock.On("ConvertClaimToImportedBridgeExit", claim)}
 }
 
-func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) Run(run func(claim bridgesync.Claim)) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
+func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) Run(run func(claim claimsynctypes.Claim)) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(bridgesync.Claim))
+		run(args[0].(claimsynctypes.Claim))
 	})
 	return _c
 }
@@ -142,7 +142,7 @@ func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) Return(_a0 *
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) RunAndReturn(run func(bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
+func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) RunAndReturn(run func(claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error)) *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -482,6 +482,61 @@ func (_c *AggsenderFlowBaser_StartL2Block_Call) Return(_a0 uint64) *AggsenderFlo
 }
 
 func (_c *AggsenderFlowBaser_StartL2Block_Call) RunAndReturn(run func() uint64) *AggsenderFlowBaser_StartL2Block_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetNextBlockNumber provides a mock function with no fields
+func (_m *AggsenderFlowBaser) GetNextBlockNumber() (uint64, error) {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetNextBlockNumber")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (uint64, error)); ok {
+		return rf()
+	}
+	if rf, ok := ret.Get(0).(func() uint64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlowBaser_GetNextBlockNumber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNextBlockNumber'
+type AggsenderFlowBaser_GetNextBlockNumber_Call struct {
+	*mock.Call
+}
+
+// GetNextBlockNumber is a helper method to define mock.On call
+func (_e *AggsenderFlowBaser_Expecter) GetNextBlockNumber() *AggsenderFlowBaser_GetNextBlockNumber_Call {
+	return &AggsenderFlowBaser_GetNextBlockNumber_Call{Call: _e.mock.On("GetNextBlockNumber")}
+}
+
+func (_c *AggsenderFlowBaser_GetNextBlockNumber_Call) Run(run func()) *AggsenderFlowBaser_GetNextBlockNumber_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_GetNextBlockNumber_Call) Return(_a0 uint64, _a1 error) *AggsenderFlowBaser_GetNextBlockNumber_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_GetNextBlockNumber_Call) RunAndReturn(run func() (uint64, error)) *AggsenderFlowBaser_GetNextBlockNumber_Call {
 	_c.Call.Return(run)
 	return _c
 }

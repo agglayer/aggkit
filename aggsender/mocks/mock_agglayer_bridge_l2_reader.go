@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	types "github.com/agglayer/aggkit/bridgesync/types"
+	types "github.com/agglayer/aggkit/claimsync/types"
 	mock "github.com/stretchr/testify/mock"
 )
 

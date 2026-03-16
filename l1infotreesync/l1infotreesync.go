@@ -158,7 +158,7 @@ func NewLegacy(
 	}
 
 	// TODO: get the initialBlock from L1 to simplify config
-	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
+	lastProcessedBlock, _, err := processor.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +363,8 @@ func (s *L1InfoTreeSync) GetLastProcessedBlock(ctx context.Context) (uint64, err
 	if s.processor.isHalted() {
 		return 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetLastProcessedBlock(ctx)
+	num, _, err := s.processor.GetLastProcessedBlock(ctx)
+	return num, err
 }
 
 func (s *L1InfoTreeSync) GetLocalExitRoot(
@@ -475,7 +476,7 @@ func (s *L1InfoTreeSync) IsUpToDate(ctx context.Context, l1Client aggkittypes.Ba
 		return false, sync.ErrInconsistentState
 	}
 
-	lastProcessedBlock, err := s.processor.GetLastProcessedBlock(ctx)
+	lastProcessedBlock, _, err := s.processor.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get last processed block: %w", err)
 	}

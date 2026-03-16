@@ -27,6 +27,8 @@ const (
 	AGGCHAINPROOFGEN = "aggchain-proof-gen"
 	// AGGSENDERVALIDATOR runs aggsender certificate validator
 	AGGSENDERVALIDATOR = "aggsender-validator"
+	// L2CLAIMSYNC name to identify the l2 claim sync component
+	L2CLAIMSYNC = "l2claimsync"
 )
 
 // ValidateComponents validates that all provided components are known/supported.
@@ -42,6 +44,7 @@ func ValidateComponents(components []string) error {
 		L2GERSYNC:          {},
 		AGGCHAINPROOFGEN:   {},
 		AGGSENDERVALIDATOR: {},
+		L2CLAIMSYNC:        {},
 	}
 
 	// build a sorted list of valid component names for error messages

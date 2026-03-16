@@ -156,7 +156,8 @@ func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo,
 
 // GetLastProcessedBlock retrieves the most recent block processed by the processor,
 // including those without events.
-func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+// Returns (0, false, nil) if no blocks have been processed yet.
+func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	var block BlockNum
 	if err := meddler.QueryRow(
 		p.database,
@@ -164,11 +165,11 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 		"SELECT num FROM block ORDER BY num DESC LIMIT 1;",
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil
+			return 0, false, nil
 		}
-		return 0, err
+		return 0, false, err
 	}
-	return block.Num, nil
+	return block.Num, true, nil
 }
 
 // getLatestL1InfoTreeIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root_v2 table

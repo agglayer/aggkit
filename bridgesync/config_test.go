@@ -11,79 +11,79 @@ func TestSyncFromInBridgesMode_UnmarshalText(t *testing.T) {
 	tests := []struct {
 		name          string
 		input         string
-		expected      SyncFromInBridgesMode
+		expected      TrueFalseAutoMode
 		expectedError string
 	}{
 		{
 			name:          "true lowercase",
 			input:         "true",
-			expected:      SyncFromInBridgesTrue,
+			expected:      TrueMode,
 			expectedError: "",
 		},
 		{
 			name:          "true uppercase",
 			input:         "TRUE",
-			expected:      SyncFromInBridgesTrue,
+			expected:      TrueMode,
 			expectedError: "",
 		},
 		{
 			name:          "true mixed case",
 			input:         "TrUe",
-			expected:      SyncFromInBridgesTrue,
+			expected:      TrueMode,
 			expectedError: "",
 		},
 		{
 			name:          "true with whitespace",
 			input:         "  true  ",
-			expected:      SyncFromInBridgesTrue,
+			expected:      TrueMode,
 			expectedError: "",
 		},
 		{
 			name:          "false lowercase",
 			input:         "false",
-			expected:      SyncFromInBridgesFalse,
+			expected:      FalseMode,
 			expectedError: "",
 		},
 		{
 			name:          "false uppercase",
 			input:         "FALSE",
-			expected:      SyncFromInBridgesFalse,
+			expected:      FalseMode,
 			expectedError: "",
 		},
 		{
 			name:          "false mixed case",
 			input:         "FaLsE",
-			expected:      SyncFromInBridgesFalse,
+			expected:      FalseMode,
 			expectedError: "",
 		},
 		{
 			name:          "false with whitespace",
 			input:         "  false  ",
-			expected:      SyncFromInBridgesFalse,
+			expected:      FalseMode,
 			expectedError: "",
 		},
 		{
 			name:          "auto lowercase",
 			input:         "auto",
-			expected:      SyncFromInBridgesAuto,
+			expected:      AutoValue,
 			expectedError: "",
 		},
 		{
 			name:          "auto uppercase",
 			input:         "AUTO",
-			expected:      SyncFromInBridgesAuto,
+			expected:      AutoValue,
 			expectedError: "",
 		},
 		{
 			name:          "auto mixed case",
 			input:         "AuTo",
-			expected:      SyncFromInBridgesAuto,
+			expected:      AutoValue,
 			expectedError: "",
 		},
 		{
 			name:          "auto with whitespace",
 			input:         "  auto  ",
-			expected:      SyncFromInBridgesAuto,
+			expected:      AutoValue,
 			expectedError: "",
 		},
 		{
@@ -114,7 +114,7 @@ func TestSyncFromInBridgesMode_UnmarshalText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var mode SyncFromInBridgesMode
+			var mode TrueFalseAutoMode
 			err := mode.UnmarshalText([]byte(tt.input))
 
 			if tt.expectedError == "" {
@@ -131,32 +131,32 @@ func TestSyncFromInBridgesMode_UnmarshalText(t *testing.T) {
 func TestSyncFromInBridgesMode_String(t *testing.T) {
 	tests := []struct {
 		name     string
-		mode     SyncFromInBridgesMode
+		mode     TrueFalseAutoMode
 		expected string
 	}{
 		{
 			name:     "true mode",
-			mode:     SyncFromInBridgesTrue,
+			mode:     TrueMode,
 			expected: "true",
 		},
 		{
 			name:     "false mode",
-			mode:     SyncFromInBridgesFalse,
+			mode:     FalseMode,
 			expected: "false",
 		},
 		{
 			name:     "auto mode",
-			mode:     SyncFromInBridgesAuto,
+			mode:     AutoValue,
 			expected: "auto",
 		},
 		{
 			name:     "empty mode",
-			mode:     SyncFromInBridgesMode(""),
+			mode:     TrueFalseAutoMode(""),
 			expected: "",
 		},
 		{
 			name:     "invalid mode",
-			mode:     SyncFromInBridgesMode("invalid"),
+			mode:     TrueFalseAutoMode("invalid"),
 			expected: "invalid",
 		},
 	}
@@ -172,67 +172,67 @@ func TestSyncFromInBridgesMode_String(t *testing.T) {
 func TestSyncFromInBridgesMode_Resolve(t *testing.T) {
 	tests := []struct {
 		name               string
-		mode               SyncFromInBridgesMode
+		mode               TrueFalseAutoMode
 		hasBridgeComponent bool
 		expected           bool
 	}{
 		{
 			name:               "true mode with bridge component",
-			mode:               SyncFromInBridgesTrue,
+			mode:               TrueMode,
 			hasBridgeComponent: true,
 			expected:           true,
 		},
 		{
 			name:               "true mode without bridge component",
-			mode:               SyncFromInBridgesTrue,
+			mode:               TrueMode,
 			hasBridgeComponent: false,
 			expected:           true,
 		},
 		{
 			name:               "false mode with bridge component",
-			mode:               SyncFromInBridgesFalse,
+			mode:               FalseMode,
 			hasBridgeComponent: true,
 			expected:           false,
 		},
 		{
 			name:               "false mode without bridge component",
-			mode:               SyncFromInBridgesFalse,
+			mode:               FalseMode,
 			hasBridgeComponent: false,
 			expected:           false,
 		},
 		{
 			name:               "auto mode with bridge component",
-			mode:               SyncFromInBridgesAuto,
+			mode:               AutoValue,
 			hasBridgeComponent: true,
 			expected:           true,
 		},
 		{
 			name:               "auto mode without bridge component",
-			mode:               SyncFromInBridgesAuto,
+			mode:               AutoValue,
 			hasBridgeComponent: false,
 			expected:           false,
 		},
 		{
 			name:               "invalid mode with bridge component",
-			mode:               SyncFromInBridgesMode("invalid"),
+			mode:               TrueFalseAutoMode("invalid"),
 			hasBridgeComponent: true,
 			expected:           false,
 		},
 		{
 			name:               "invalid mode without bridge component",
-			mode:               SyncFromInBridgesMode("invalid"),
+			mode:               TrueFalseAutoMode("invalid"),
 			hasBridgeComponent: false,
 			expected:           false,
 		},
 		{
 			name:               "empty mode with bridge component",
-			mode:               SyncFromInBridgesMode(""),
+			mode:               TrueFalseAutoMode(""),
 			hasBridgeComponent: true,
 			expected:           false,
 		},
 		{
 			name:               "empty mode without bridge component",
-			mode:               SyncFromInBridgesMode(""),
+			mode:               TrueFalseAutoMode(""),
 			hasBridgeComponent: false,
 			expected:           false,
 		},
@@ -263,7 +263,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with SyncFromInBridges true",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: SyncFromInBridgesTrue,
+				SyncFromInBridges: TrueMode,
 			},
 			expectedError: "",
 		},
@@ -271,7 +271,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with SyncFromInBridges false",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: SyncFromInBridgesFalse,
+				SyncFromInBridges: FalseMode,
 			},
 			expectedError: "",
 		},
@@ -279,7 +279,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with SyncFromInBridges auto",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: SyncFromInBridgesAuto,
+				SyncFromInBridges: AutoValue,
 			},
 			expectedError: "",
 		},

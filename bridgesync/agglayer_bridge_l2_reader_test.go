@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -432,10 +432,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(
 			ctx, 0, 2999, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, unclaims)
@@ -455,10 +455,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(
 			ctx, 0, 2500, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, unclaims)
@@ -475,10 +475,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 500, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, unclaims)
@@ -498,10 +498,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 2000, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.ErrorContains(t, err, "rpc error")
 		require.Empty(t, unclaims)
@@ -517,10 +517,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 		// Should return error immediately without making any calls
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 1000, 0,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.ErrorContains(t, err, "maxRange must be greater than 0")
 		require.Empty(t, unclaims)

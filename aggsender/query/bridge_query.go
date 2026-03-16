@@ -7,7 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -17,6 +17,7 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 type bridgeDataQuerier struct {
 	log                    types.Logger
 	bridgeSyncer           types.L2BridgeSyncer
+	claimSyncer            claimsynctypes.ClaimSyncer
 	delayBetweenRetries    time.Duration
 	agglayerBridgeL2Reader types.AgglayerBridgeL2Reader
 
@@ -27,12 +28,14 @@ type bridgeDataQuerier struct {
 func NewBridgeDataQuerier(
 	log types.Logger,
 	bridgeSyncer types.L2BridgeSyncer,
+	claimSyncer claimsynctypes.ClaimSyncer,
 	delayBetweenRetries time.Duration,
 	agglayerBridgeL2Reader types.AgglayerBridgeL2Reader,
 ) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
 		log:                    log,
 		bridgeSyncer:           bridgeSyncer,
+		claimSyncer:            claimSyncer,
 		delayBetweenRetries:    delayBetweenRetries,
 		originNetwork:          bridgeSyncer.OriginNetwork(),
 		agglayerBridgeL2Reader: agglayerBridgeL2Reader,
@@ -56,13 +59,13 @@ func NewBridgeDataQuerier(
 func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
-) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
+) ([]bridgesync.Bridge, []claimsynctypes.Claim, error) {
 	bridges, err := b.bridgeSyncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
 
-	claims, err := b.bridgeSyncer.GetClaims(ctx, fromBlock, toBlock)
+	claims, err := b.claimSyncer.GetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting claims: %w", err)
 	}
@@ -83,17 +86,30 @@ func (b *bridgeDataQuerier) GetExitRootByIndex(ctx context.Context, index uint32
 	return exitRoot.Hash, nil
 }
 
-// GetLastProcessedBlock retrieves the last processed block number from the bridge syncer.
-// Returns:
-//   - uint64: The last processed block number.
-//   - error: An error if there is an issue retrieving the block number.
-func (b *bridgeDataQuerier) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	lastProcessedBlock, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
+// GetLastProcessedBlock retrieves the last processed block number considering both the bridge syncer
+// and the claim syncer. It returns the minimum of the two so that the reported block is one where
+// both syncers have completed processing.
+func (b *bridgeDataQuerier) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	bridgeBlock, found, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("error getting last processed block: %w", err)
+		return 0, false, fmt.Errorf("error getting bridge syncer last processed block: %w", err)
+	}
+	if !found {
+		return 0, false, nil
 	}
 
-	return lastProcessedBlock, nil
+	claimBlock, claimFound, err := b.claimSyncer.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return 0, false, fmt.Errorf("error getting claim syncer last processed block: %w", err)
+	}
+	if !claimFound {
+		return 0, false, nil
+	}
+
+	if claimBlock < bridgeBlock {
+		return claimBlock, true, nil
+	}
+	return bridgeBlock, true, nil
 }
 
 // OriginNetwork returns the origin network id related to given bridge syncer.
@@ -101,10 +117,10 @@ func (b *bridgeDataQuerier) OriginNetwork() uint32 {
 	return b.originNetwork
 }
 
-// WaitForSyncerToCatchUp waits for the bridge syncer to catch up to a specified block.
+// WaitForSyncerToCatchUp waits for both the bridge syncer and the claim syncer to catch up to a specified block.
 func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block uint64) error {
-	b.log.Infof("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d", block)
-	defer b.log.Infof("bridgeDataQuerier - finished waiting for L2 syncer to catch up to block: %d", block)
+	b.log.Infof("bridgeDataQuerier - waiting for L2 syncers to catch up to block: %d", block)
+	defer b.log.Infof("bridgeDataQuerier - finished waiting for L2 syncers to catch up to block: %d", block)
 
 	if b.delayBetweenRetries <= 0 {
 		b.log.Warnf("bridgeDataQuerier - invalid delayBetweenRetries: %v, falling back to default value of 1s",
@@ -116,18 +132,19 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 	defer ticker.Stop()
 
 	for {
-		lastProcessedBlock, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
+		bridgeReady, err := b.isSyncerCaughtUp(ctx, block)
 		if err != nil {
-			return fmt.Errorf("bridgeDataQuerier - error getting last processed block: %w", err)
+			return fmt.Errorf("bridgeDataQuerier - error checking bridge syncer: %w", err)
 		}
 
-		if lastProcessedBlock >= block {
-			b.log.Infof("bridgeDataQuerier - L2 syncer caught up to block: %d", block)
+		claimReady, err := b.isClaimSyncerCaughtUp(ctx, block)
+		if err != nil {
+			return fmt.Errorf("bridgeDataQuerier - error checking claim syncer: %w", err)
+		}
+
+		if bridgeReady && claimReady {
 			return nil
 		}
-
-		b.log.Infof("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d, current last processed block: %d",
-			block, lastProcessedBlock)
 
 		select {
 		case <-ctx.Done():
@@ -138,9 +155,52 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 	}
 }
 
+// isSyncerCaughtUp checks whether the bridge syncer has processed up to the given block.
+// Returns true if caught up, false if not yet.
+func (b *bridgeDataQuerier) isSyncerCaughtUp(ctx context.Context, block uint64) (bool, error) {
+	lastProcessedBlock, found, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if !found {
+		b.log.Infof("bridgeDataQuerier - bridge syncer: no blocks have been processed yet, waiting to reach block: %d", block)
+		return false, nil
+	}
+
+	if lastProcessedBlock >= block {
+		b.log.Infof("bridgeDataQuerier - bridge syncer caught up to block: %d", block)
+		return true, nil
+	}
+
+	b.log.Infof("bridgeDataQuerier - bridge syncer waiting to reach block: %d, current: %d", block, lastProcessedBlock)
+	return false, nil
+}
+
+// isClaimSyncerCaughtUp checks whether the claim syncer has processed up to the given block.
+// Returns true if caught up, false if not yet.
+func (b *bridgeDataQuerier) isClaimSyncerCaughtUp(ctx context.Context, block uint64) (bool, error) {
+	lastProcessedBlock, found, err := b.claimSyncer.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		b.log.Infof("bridgeDataQuerier - claim syncer: no blocks have been processed yet, waiting to reach block: %d", block)
+		return false, nil
+	}
+
+	if lastProcessedBlock >= block {
+		b.log.Infof("bridgeDataQuerier - claim syncer caught up to block: %d", block)
+		return true, nil
+	}
+
+	b.log.Infof("bridgeDataQuerier - claim syncer waiting to reach block: %d, current: %d", block, lastProcessedBlock)
+	return false, nil
+}
+
 // GetUnsetClaimsForBlockRange gets unset claims from agglayer bridge L2 and converts to unclaim map
 func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error) {
+	fromBlock, toBlock uint64) ([]claimsynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
 	return b.agglayerBridgeL2Reader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 }

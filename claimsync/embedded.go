@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
-	"github.com/agglayer/aggkit/bridgesync"
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -31,13 +31,34 @@ func newEmbeddedProcessor(logger aggkitcommon.Logger, storage claimsynctypes.Cla
 
 // --- Embedded mode ---
 
-// embeddedClaimSync is passed to bridgesync as a ClaimEventsProcessor.
+// EmbeddedClaimSync is passed to bridgesync as a ClaimEventsProcessor.
 // It has no own EVMDriver; bridgesync drives event download and calls ProcessClaimEvents
 // from its own ProcessBlock, reusing bridgesync's transaction for atomicity.
-type embeddedClaimSync struct {
+type EmbeddedClaimSync struct {
 	Appender  sync.LogAppenderMap
-	Processor *claimEmbeddedProcessor
+	Processor claimsynctypes.EmbeddedProcessor
 	Reader    claimsynctypes.ClaimsReader
+}
+
+// Event combination claim events
+type Event struct {
+	Claim      *Claim
+	UnsetClaim *UnsetClaim
+	SetClaim   *SetClaim
+}
+
+func (e Event) String() string {
+	parts := []string{}
+	if e.Claim != nil {
+		parts = append(parts, e.Claim.String())
+	}
+	if e.UnsetClaim != nil {
+		parts = append(parts, e.UnsetClaim.String())
+	}
+	if e.SetClaim != nil {
+		parts = append(parts, e.SetClaim.String())
+	}
+	return "claimsync.Event{" + strings.Join(parts, ", ") + "}"
 }
 
 // NewClaimStorage creates a claim storage instance for embedded mode, using the provided database connection.
@@ -45,8 +66,9 @@ func NewClaimStorage(
 	database *sql.DB,
 	logger aggkitcommon.Logger,
 	syncerID claimsynctypes.ClaimSyncerID,
+	dbQueryTimeout time.Duration,
 ) (claimsynctypes.ClaimStorager, error) {
-	store, err := claimsyncStorage.New(logger, database, syncerID.String())
+	store, err := claimsyncStorage.New(logger, database, syncerID.String(), dbQueryTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
 	}
@@ -66,20 +88,19 @@ func NewEmbedded(
 	syncerID claimsynctypes.ClaimSyncerID,
 	dbQueryTimeout time.Duration,
 	logger aggkitcommon.Logger,
-) (*embeddedClaimSync, error) {
+) (*EmbeddedClaimSync, error) {
 	proc := newEmbeddedProcessor(logger, storage)
 	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to create AgglayerBridge binding: %w", err)
 	}
-	reader := NewProcessorReader(logger, storage)
 
 	isSovereign, agglayerBridgeL2Contract, err := detectSovereignChain(ctx, bridgeAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to detect chain type: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, reader, bridgeAddr,
+	appender, err := buildAppender(ctx, ethClient, storage, bridgeAddr,
 		agglayerBridgeContract, agglayerBridgeL2Contract, isSovereign, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to build appender: %w", err)
@@ -87,47 +108,39 @@ func NewEmbedded(
 
 	logger.Infof("claimsync embedded created: bridgeAddr=%s sovereign=%t", bridgeAddr.String(), isSovereign)
 
-	return &embeddedClaimSync{
+	return &EmbeddedClaimSync{
 		Processor: proc,
-		Reader:    reader,
+		Reader:    storage,
 		Appender:  appender}, nil
 }
-func (p *claimEmbeddedProcessor) ProcessBlockWithTx(tx dbtypes.Querier, block *sync.Block, insertBlock bool) error {
-	if insertBlock {
-		if err := p.storage.InsertBlock(tx, block.Num, block.Hash.String()); err != nil {
-			p.log.Errorf("failed to insert block %d: %v", block.Num, err)
+func (p *claimEmbeddedProcessor) ProcessBlockWithTx(ctx context.Context, tx dbtypes.Querier, block sync.Block, eventRaw any) error {
+
+	event, ok := eventRaw.(Event)
+	if !ok {
+		return fmt.Errorf("claimsync ProcessBlock: unexpected event type %T in block %d", event, block.Num)
+	}
+
+	if event.Claim != nil {
+		if err := p.storage.InsertClaim(ctx, tx, *event.Claim); err != nil {
+			p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
 			return err
 		}
 	}
 
-	for _, e := range block.Events {
-		event, ok := e.(bridgesync.Event)
-		if !ok {
-			p.log.Errorf("failed to convert event to bridgesync.Event type in block %d", block.Num)
-			return fmt.Errorf("claimsync ProcessBlock: unexpected event type %T in block %d", e, block.Num)
-		}
-
-		if event.Claim != nil {
-			if err := p.storage.InsertClaim(tx, *event.Claim); err != nil {
-				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
-				return err
-			}
-		}
-
-		if event.UnsetClaim != nil {
-			if err := p.storage.InsertUnsetClaim(tx, *event.UnsetClaim); err != nil {
-				p.log.Errorf("failed to insert unset_claim event at block %d: %v", block.Num, err)
-				return err
-			}
-		}
-
-		if event.SetClaim != nil {
-			if err := p.storage.InsertSetClaim(tx, *event.SetClaim); err != nil {
-				p.log.Errorf("failed to insert set_claim event at block %d: %v", block.Num, err)
-				return err
-			}
+	if event.UnsetClaim != nil {
+		if err := p.storage.InsertUnsetClaim(ctx, tx, *event.UnsetClaim); err != nil {
+			p.log.Errorf("failed to insert unset_claim event at block %d: %v", block.Num, err)
+			return err
 		}
 	}
+
+	if event.SetClaim != nil {
+		if err := p.storage.InsertSetClaim(ctx, tx, *event.SetClaim); err != nil {
+			p.log.Errorf("failed to insert set_claim event at block %d: %v", block.Num, err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -137,12 +150,12 @@ func (p *claimEmbeddedProcessor) ProcessBlockWithTx(tx dbtypes.Querier, block *s
 // it returns:
 // - the number of rows affected (currently the number of blocks deleted)
 // - error if the deletion failed, or nil if successful
-func (p *claimEmbeddedProcessor) ReorgWithTx(tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error) {
-	return p.deleteBlocksFrom(tx, firstReorgedBlock)
+func (p *claimEmbeddedProcessor) ReorgWithTx(ctx context.Context, tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error) {
+	return p.deleteBlocksFrom(ctx, tx, firstReorgedBlock)
 }
 
-func (p *claimEmbeddedProcessor) deleteBlocksFrom(tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error) {
-	rowsAffected, err := p.storage.DeleteBlocksFrom(tx, firstReorgedBlock)
+func (p *claimEmbeddedProcessor) deleteBlocksFrom(ctx context.Context, tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error) {
+	rowsAffected, err := p.storage.DeleteBlocksFrom(ctx, tx, firstReorgedBlock)
 	if err != nil {
 		return 0, fmt.Errorf("claimsync deleteBlocksFrom: %w", err)
 	}

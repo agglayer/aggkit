@@ -10,6 +10,8 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/claimsync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -66,9 +68,10 @@ type ReorgDetector interface {
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
 type BridgeSync struct {
-	processor  *processor
-	driver     *sync.EVMDriver
-	downloader *sync.EVMDownloader
+	processor   *processor
+	driver      *sync.EVMDriver
+	downloader  *sync.EVMDownloader
+	claimReader claimsynctypes.ClaimsReader
 
 	originNetwork  uint32
 	reorgDetector  ReorgDetector
@@ -83,7 +86,6 @@ func NewL1(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
-	syncFromInBridges bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -94,9 +96,9 @@ func NewL1(
 		L1BridgeSyncer,
 		originNetwork,
 		false,
-		syncFromInBridges,
+		*cfg.SyncFromInBridgesResolved,
 		bridgesynctypes.EmptyLER,
-		nil,
+		*cfg.EmbeddedClaimSyncResolved,
 	)
 }
 
@@ -109,9 +111,7 @@ func NewL2(
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
 	syncFullClaims bool,
-	syncFromInBridges bool,
 	initialLER common.Hash,
-	claimEventsProcessor ClaimsSyncProcessor,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -122,9 +122,9 @@ func NewL2(
 		L2BridgeSyncer,
 		originNetwork,
 		syncFullClaims,
-		syncFromInBridges,
+		*cfg.SyncFromInBridgesResolved,
 		initialLER,
-		claimEventsProcessor,
+		*cfg.EmbeddedClaimSyncResolved,
 	)
 }
 
@@ -139,7 +139,7 @@ func newBridgeSync(
 	syncFullClaims bool,
 	syncFromInBridges bool,
 	initialLER common.Hash,
-	claimEventsProcessor ClaimsSyncProcessor,
+	embeddedClaimSyncFlag bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -157,19 +157,48 @@ func newBridgeSync(
 			cfg.BridgeAddr.String(), err)
 		return nil, err
 	}
+	database, err := newSqliteDB(cfg.DBPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sqlite database  %s: %w", cfg.DBPath, err)
+	}
 
-	processor, err := newProcessor(cfg.DBPath, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration, claimEventsProcessor)
+	var embeddedClaimSync claimsync.EmbeddedClaimSync
+	if embeddedClaimSyncFlag {
+		claimID := claimsynctypes.ClaimSyncerID(syncerID)
+		logger.Info("initializing embedded claim sync for bridge sync %s", claimID)
+		claimStorage, err := claimsync.NewClaimStorage(database, logger, claimID, cfg.DBQueryTimeout.Duration)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create claim storage: %w", err)
+		}
+
+		embeddedClaimSyncObject, err := claimsync.NewEmbedded(
+			ctx, claimStorage,
+			cfg.BridgeAddr,
+			ethClient,
+			nil,
+			claimID,
+			cfg.DBQueryTimeout.Duration,
+			logger,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize embedded claim sync: %w", err)
+		}
+		embeddedClaimSync = *embeddedClaimSyncObject
+
+	}
+
+	processor, err := newProcessor(database, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration, embeddedClaimSync.Processor)
 	if err != nil {
 		return nil, err
 	}
 	processor.initialLER = initialLER
 
-	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
+	lastProcessedBlock, found, err := processor.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if lastProcessedBlock < cfg.InitialBlockNum {
+	if !found || (lastProcessedBlock < cfg.InitialBlockNum) {
 		header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(cfg.InitialBlockNum))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial block %d: %w", cfg.InitialBlockNum, err)
@@ -194,7 +223,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFromInBridges, bridgeDeployment, logger, claimEventsProcessor)
+	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFromInBridges, bridgeDeployment, logger, embeddedClaimSync.Appender)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +277,10 @@ func newBridgeSync(
 			"  retryAfterErrorPeriod: %s\n"+
 			"  syncBlockChunkSize: %d\n"+
 			"  ReorgDetector: %s\n"+
-			"  waitForNewBlocksPeriod: %s",
+			"  waitForNewBlocksPeriod: %s\n"+
+			"  syncFullClaims: %t\n"+
+			"  syncFromInBridges: %t\n"+
+			"  embeddedClaimSyncFlag: %t",
 		syncerID,
 		cfg.DBPath,
 		cfg.InitialBlockNum,
@@ -260,6 +292,9 @@ func newBridgeSync(
 		cfg.SyncBlockChunkSize,
 		rd.String(),
 		cfg.WaitForNewBlocksPeriod.String(),
+		syncFullClaims,
+		syncFromInBridges,
+		embeddedClaimSyncFlag,
 	)
 
 	return &BridgeSync{
@@ -339,38 +374,46 @@ func (s *BridgeSync) GetBridgesPaged(
 
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
+	page, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*claimsynctypes.Claim, int, error) {
+	return claimReaderDelegatePaged(s, func() ([]*claimsynctypes.Claim, int, error) {
+		return s.claimReader.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
+	})
 }
 
 func (s *BridgeSync) GetUnsetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32, globalIndex *big.Int) ([]*UnsetClaim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get unset claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
+	page, pageSize uint32, globalIndex *big.Int) ([]*claimsynctypes.UnsetClaim, int, error) {
+	return claimReaderDelegatePaged(s, func() ([]*claimsynctypes.UnsetClaim, int, error) {
+		return s.claimReader.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
+	})
 }
 
 func (s *BridgeSync) GetSetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32, globalIndex *big.Int) ([]*SetClaim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get set claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
+	page, pageSize uint32, globalIndex *big.Int) ([]*claimsynctypes.SetClaim, int, error) {
+	return claimReaderDelegatePaged(s, func() ([]*claimsynctypes.SetClaim, int, error) {
+		return s.claimReader.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
+	})
 }
 
-func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+func (c *BridgeSync) SetNextRequiredBlock(ctx context.Context, nextBlockNum uint64) error {
+	num, found, err := c.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get last processed block: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("last processed block not found")
+	}
+	if nextBlockNum > num {
+		return fmt.Errorf("cannot set next required block to %d, last processed block is %d", nextBlockNum, num)
+	}
+	return nil
+}
+
+func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	if s.processor.isHalted() {
 		s.processor.log.Error("processor is halted, cannot get last processed block")
-		return 0, sync.ErrInconsistentState
+		return 0, false, sync.ErrInconsistentState
 	}
 	return s.processor.GetLastProcessedBlock(ctx)
 }
@@ -382,18 +425,16 @@ func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*
 	return s.processor.exitTree.GetRootByHash(ctx, root)
 }
 
-func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaimsByGlobalIndex(ctx, globalIndex)
+func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
+	return claimReaderDelegate(s, func() ([]claimsynctypes.Claim, error) {
+		return s.claimReader.GetClaimsByGlobalIndex(ctx, nil, globalIndex)
+	})
 }
 
-func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaims(ctx, fromBlock, toBlock)
+func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error) {
+	return claimReaderDelegate(s, func() ([]claimsynctypes.Claim, error) {
+		return s.claimReader.GetClaims(ctx, nil, fromBlock, toBlock)
+	})
 }
 
 func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
@@ -567,8 +608,28 @@ func (s *BridgeSync) IsActive(ctx context.Context) bool {
 }
 
 // GetClaimsByGER returns all DetailedClaimEvent claims for the given global exit root.
-func (s *BridgeSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
-	return s.processor.GetClaimsByGER(ctx, globalExitRoot)
+func (s *BridgeSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctypes.Claim, error) {
+	return claimReaderDelegate(s, func() ([]*claimsynctypes.Claim, error) {
+		return s.claimReader.GetClaimsByGER(ctx, globalExitRoot)
+	})
+}
+
+// claimReaderDelegate checks the halted state and, if healthy, calls fn.
+func claimReaderDelegate[T any](s *BridgeSync, fn func() (T, error)) (T, error) {
+	if s.processor.isHalted() {
+		var zero T
+		return zero, sync.ErrInconsistentState
+	}
+	return fn()
+}
+
+// claimReaderDelegatePaged is like claimReaderDelegate for functions returning (T, int, error).
+func claimReaderDelegatePaged[T any](s *BridgeSync, fn func() (T, int, error)) (T, int, error) {
+	if s.processor.isHalted() {
+		var zero T
+		return zero, 0, sync.ErrInconsistentState
+	}
+	return fn()
 }
 
 // GetBridgeByDepositCount returns the bridge with the given deposit count (bridge or bridge_archive).

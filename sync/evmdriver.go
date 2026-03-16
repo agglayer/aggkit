@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -79,7 +80,7 @@ func (r RuntimeData) IsCompatible(other RuntimeData) (*RuntimeData, error) {
 }
 
 type processorInterface interface {
-	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
 }
@@ -136,6 +137,7 @@ reset:
 		lastProcessedBlock uint64
 		attempts           int
 		err                error
+		found              bool
 	)
 	for {
 		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
@@ -148,12 +150,23 @@ reset:
 	}
 
 	for {
-		lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
+		// Now we let to have no processed block and wait until appears
+		lastProcessedBlock, found, err = d.processor.GetLastProcessedBlock(ctx)
 		if err != nil {
 			attempts++
 			d.log.Error("error getting last processed block: ", err)
 			d.rh.Handle(ctx, "Sync", attempts)
 			continue
+		}
+		if !found {
+			d.log.Infof("no processed blocks found, waiting %s", d.rh.RetryAfterErrorPeriod)
+			select {
+			case <-ctx.Done():
+				d.log.Info("context done while waiting for processed blocks, exiting sync")
+				return
+			case <-time.After(d.rh.RetryAfterErrorPeriod):
+				continue
+			}
 		}
 		break
 	}

@@ -30,6 +30,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/metrics"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -482,7 +483,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		networkID, pageNumber, pageSize, networkIDs, includeAllFieldsFlag, globalIndex)
 
 	var (
-		claims []*bridgesync.Claim
+		claims []*claimsynctypes.Claim
 		count  int
 	)
 
@@ -579,7 +580,7 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		b.networkID, pageNumber, pageSize, globalIndex)
 
 	var (
-		unsetClaims []*bridgesync.UnsetClaim
+		unsetClaims []*claimsynctypes.UnsetClaim
 		count       int
 		err         error
 	)
@@ -653,7 +654,7 @@ func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
 		b.networkID, pageNumber, pageSize, globalIndex)
 
 	var (
-		setClaims []*bridgesync.SetClaim
+		setClaims []*claimsynctypes.SetClaim
 		count     int
 		err       error
 	)
@@ -1322,7 +1323,7 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	networkInfo.IsSynced = networkInfo.ContractDepositCount == networkInfo.SynchronizedDepositCount
 
 	if !networkInfo.IsSynced {
-		lastProcessedBlock, err := bridge.GetLastProcessedBlock(ctx)
+		lastProcessedBlock, _, err := bridge.GetLastProcessedBlock(ctx)
 		if err != nil {
 			b.logger.Warnf("failed to get last processed block for %s: %s", networkName, err)
 		} else {
@@ -1645,7 +1646,7 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	}
 	ger := common.HexToHash(gerStr)
 
-	var claims []*bridgesync.Claim
+	var claims []*claimsynctypes.Claim
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {

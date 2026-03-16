@@ -3078,7 +3078,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			// Add expectations for block information when not synced
 			if !tc.l1IsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(1234), nil).
+					Return(uint64(1234), false, nil).
 					Once()
 				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
 					Return(uint64(2555), nil).
@@ -3086,7 +3086,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			}
 			if !tc.l2IsSynced {
 				b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(1234), nil).
+					Return(uint64(1234), false, nil).
 					Once()
 				b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).
 					Return(uint64(2555), nil).
@@ -3457,7 +3457,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 			if !tc.expectedIsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(tc.lastProcessedBlock, nil).
+					Return(tc.lastProcessedBlock, false, nil).
 					Once()
 				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
 					Return(tc.networkBlock, nil).

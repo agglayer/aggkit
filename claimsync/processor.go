@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -49,9 +48,16 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			p.rollbackTx(tx)
 		}
 	}()
-	result := p.embeddedProcessor.ProcessBlockWithTx(tx, &block, true)
-	if result != nil {
-		return result
+
+	if err := p.storage.InsertBlock(ctx, tx, block.Num, block.Hash); err != nil {
+		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
+		return err
+	}
+	for _, e := range block.Events {
+		result := p.embeddedProcessor.ProcessBlockWithTx(dbCtx, tx, block, e)
+		if result != nil {
+			return result
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit block %d: %v", block.Num, err)
@@ -79,7 +85,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
-	rowsAffected, err := p.embeddedProcessor.ReorgWithTx(tx, firstReorgedBlock)
+	rowsAffected, err := p.embeddedProcessor.ReorgWithTx(dbCtx, tx, firstReorgedBlock)
 	if err != nil {
 		return fmt.Errorf("claimsync Reorg: %w", err)
 	}
@@ -93,14 +99,19 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	return nil
 }
 
+// GetFirstProcessedBlock returns the lowest block number stored.
+func (p *processor) GetFirstProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	return p.storage.GetFirstProcessedBlock(ctx, nil)
+}
+
 // GetLastProcessedBlock returns the highest block number stored.
-func (p *processor) GetLastProcessedBlock(_ context.Context) (uint64, error) {
-	return p.storage.GetLastProcessedBlock(nil)
+func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	return p.storage.GetLastProcessedBlock(ctx, nil)
 }
 
 // GetBoundaryBlockForClaimType returns the max block_num for claims of the given type.
-func (p *processor) GetBoundaryBlockForClaimType(tx dbtypes.Querier, claimType bridgesync.ClaimType) (uint64, error) {
-	return p.storage.GetBoundaryBlockForClaimType(tx, claimType)
+func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error) {
+	return p.storage.GetBoundaryBlockForClaimType(ctx, tx, claimType)
 }
 
 func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {

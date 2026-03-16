@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
+	"time"
 
-	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync/storage/migrations"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -15,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	aggsync "github.com/agglayer/aggkit/sync"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
@@ -27,6 +29,7 @@ type blockRecord struct {
 }
 
 const (
+	// claimColumnsSQL is the list of all claim columns
 	claimColumnsSQL = `block_num,
 		block_pos,
 		tx_hash,
@@ -46,6 +49,8 @@ const (
 		block_timestamp,
 		type`
 
+	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
+	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
 	compactedClaimsSelectSQL = `
 		o.block_num,
 		o.block_pos,
@@ -65,17 +70,25 @@ const (
 		o.is_message,
 		o.block_timestamp,
 		o.type`
+
+	// claimsByGERSQL is the query used by GetClaimsByGER.
+	claimsByGERSQL = "SELECT " + claimColumnsSQL +
+		" FROM claim WHERE global_exit_root = $1 AND type = $2" +
+		" ORDER BY block_num ASC, block_pos ASC"
 )
 
 type claimStorage struct {
-	database    dbtypes.DBer
-	compatStore compatibility.CompatibilityDataStorager[aggsync.RuntimeData]
+	database       *sql.DB
+	compatStore    compatibility.CompatibilityDataStorager[aggsync.RuntimeData]
+	log            aggkitcommon.Logger
+	dbQueryTimeout time.Duration
 }
 
 // NewStandalone opens (or creates) the SQLite database at dbPath, runs all pending migrations,
 // and returns a ready-to-use Storage along with the underlying *sql.DB
 // (needed by the processor for transaction management).
-func NewStandalone(logger aggkitcommon.Logger, dbPath string, ownerName string) (claimsynctypes.ClaimStorager, error) {
+func NewStandalone(logger aggkitcommon.Logger, dbPath string, ownerName string,
+	dbQueryTimeout time.Duration) (claimsynctypes.ClaimStorager, error) {
 	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync storage: failed to open SQLite DB at %s: %w", dbPath, err)
@@ -87,16 +100,20 @@ func NewStandalone(logger aggkitcommon.Logger, dbPath string, ownerName string) 
 	}
 
 	return &claimStorage{
-		database:    database,
-		compatStore: compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](db.NewKeyValueStorage(database), ownerName),
+		database:       database,
+		compatStore:    compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](db.NewKeyValueStorage(database), ownerName),
+		log:            logger,
+		dbQueryTimeout: dbQueryTimeout,
 	}, nil
 }
 
 // New creates a Storage using the provided sql.DB, so it can share
-func New(logger aggkitcommon.Logger, database *sql.DB, ownerName string) (claimsynctypes.ClaimStorager, error) {
+func New(logger aggkitcommon.Logger, database *sql.DB, ownerName string, dbQueryTimeout time.Duration) (claimsynctypes.ClaimStorager, error) {
 	return &claimStorage{
-		database:    database,
-		compatStore: compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](db.NewKeyValueStorage(database), ownerName),
+		database:       database,
+		compatStore:    compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](db.NewKeyValueStorage(database), ownerName),
+		log:            logger,
+		dbQueryTimeout: dbQueryTimeout,
 	}, nil
 }
 
@@ -124,15 +141,15 @@ func (s *claimStorage) getQuerier(tx dbtypes.Querier) dbtypes.Querier {
 }
 
 // InsertBlock inserts a block row using meddler.
-func (s *claimStorage) InsertBlock(tx dbtypes.Querier, blockNum uint64, blockHash string) error {
-	if err := meddler.Insert(s.getQuerier(tx), "block", &blockRecord{Num: blockNum, Hash: blockHash}); err != nil {
+func (s *claimStorage) InsertBlock(_ context.Context, tx dbtypes.Querier, blockNum uint64, blockHash common.Hash) error {
+	if err := meddler.Insert(s.getQuerier(tx), "block", &blockRecord{Num: blockNum, Hash: blockHash.Hex()}); err != nil {
 		return fmt.Errorf("InsertBlock %d: %w", blockNum, err)
 	}
 	return nil
 }
 
 // InsertClaim persists a claim. The referenced block must already exist.
-func (s *claimStorage) InsertClaim(tx dbtypes.Querier, claim bridgesync.Claim) error {
+func (s *claimStorage) InsertClaim(_ context.Context, tx dbtypes.Querier, claim claimsynctypes.Claim) error {
 	if err := meddler.Insert(s.getQuerier(tx), "claim", &claim); err != nil {
 		return fmt.Errorf("InsertClaim (block %d, pos %d): %w", claim.BlockNum, claim.BlockPos, err)
 	}
@@ -140,7 +157,7 @@ func (s *claimStorage) InsertClaim(tx dbtypes.Querier, claim bridgesync.Claim) e
 }
 
 // InsertUnsetClaim persists an unset claim. The referenced block must already exist.
-func (s *claimStorage) InsertUnsetClaim(tx dbtypes.Querier, u bridgesync.UnsetClaim) error {
+func (s *claimStorage) InsertUnsetClaim(_ context.Context, tx dbtypes.Querier, u claimsynctypes.UnsetClaim) error {
 	if err := meddler.Insert(s.getQuerier(tx), "unset_claim", &u); err != nil {
 		return fmt.Errorf("InsertUnsetClaim (block %d, pos %d): %w", u.BlockNum, u.BlockPos, err)
 	}
@@ -148,7 +165,7 @@ func (s *claimStorage) InsertUnsetClaim(tx dbtypes.Querier, u bridgesync.UnsetCl
 }
 
 // InsertSetClaim persists a set claim. The referenced block must already exist.
-func (s *claimStorage) InsertSetClaim(tx dbtypes.Querier, sc bridgesync.SetClaim) error {
+func (s *claimStorage) InsertSetClaim(_ context.Context, tx dbtypes.Querier, sc claimsynctypes.SetClaim) error {
 	if err := meddler.Insert(s.getQuerier(tx), "set_claim", &sc); err != nil {
 		return fmt.Errorf("InsertSetClaim (block %d, pos %d): %w", sc.BlockNum, sc.BlockPos, err)
 	}
@@ -158,7 +175,7 @@ func (s *claimStorage) InsertSetClaim(tx dbtypes.Querier, sc bridgesync.SetClaim
 // GetClaims returns claims in [fromBlock, toBlock] using compaction logic:
 // claims with an unset_claim are returned uncompacted; others are compacted
 // (oldest metadata + newest proofs per global_index).
-func (s *claimStorage) GetClaims(tx dbtypes.Querier, fromBlock, toBlock uint64) ([]bridgesync.Claim, error) {
+func (s *claimStorage) GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error) {
 	query := fmt.Sprintf(`
 	WITH all_claims_ranked AS (
 		SELECT
@@ -188,10 +205,14 @@ func (s *claimStorage) GetClaims(tx dbtypes.Querier, fromBlock, toBlock uint64) 
 	ORDER BY block_num ASC, block_pos ASC;
 	`, claimColumnsSQL, compactedClaimsSelectSQL)
 
-	rows, err := s.getQuerier(tx).Query(query, fromBlock, toBlock)
+	// Create a context with database timeout
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := s.getQuerier(tx).QueryContext(dbCtx, query, fromBlock, toBlock)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return []bridgesync.Claim{}, nil
+			return []claimsynctypes.Claim{}, nil
 		}
 		return nil, fmt.Errorf("GetClaims [%d, %d]: %w", fromBlock, toBlock, err)
 	}
@@ -201,7 +222,7 @@ func (s *claimStorage) GetClaims(tx dbtypes.Querier, fromBlock, toBlock uint64) 
 }
 
 // GetClaimsByGlobalIndex returns claims for the given global index using compaction logic.
-func (s *claimStorage) GetClaimsByGlobalIndex(tx dbtypes.Querier, globalIndex *big.Int) ([]bridgesync.Claim, error) {
+func (s *claimStorage) GetClaimsByGlobalIndex(ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
 	if globalIndex == nil {
 		return nil, errors.New("GetClaimsByGlobalIndex: globalIndex cannot be nil")
 	}
@@ -233,10 +254,13 @@ func (s *claimStorage) GetClaimsByGlobalIndex(tx dbtypes.Querier, globalIndex *b
 	ORDER BY block_num ASC, block_pos ASC;
 	`, claimColumnsSQL, compactedClaimsSelectSQL)
 
-	rows, err := s.getQuerier(tx).Query(query, globalIndex.String())
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := s.getQuerier(tx).QueryContext(dbCtx, query, globalIndex.String())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return []bridgesync.Claim{}, nil
+			return []claimsynctypes.Claim{}, nil
 		}
 		return nil, fmt.Errorf("GetClaimsByGlobalIndex %s: %w", globalIndex.String(), err)
 	}
@@ -245,21 +269,44 @@ func (s *claimStorage) GetClaimsByGlobalIndex(tx dbtypes.Querier, globalIndex *b
 	return scanClaims(rows)
 }
 
-// GetLastProcessedBlock returns the highest block number stored.
-func (s *claimStorage) GetLastProcessedBlock(tx dbtypes.Querier) (uint64, error) {
+// GetFirstProcessedBlock returns the lowest block number stored.
+// Returns (0, false, nil) if there are no blocks on DB.
+func (s *claimStorage) GetFirstProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
 	var num uint64
-	err := s.getQuerier(tx).QueryRow(`SELECT num FROM block ORDER BY num DESC LIMIT 1`).Scan(&num)
+	err := s.getQuerier(tx).QueryRowContext(dbCtx, `SELECT num FROM block ORDER BY num ASC LIMIT 1`).Scan(&num)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return 0, false, nil
 	}
-	return num, err
+
+	return num, err == nil, err
+}
+
+// GetLastProcessedBlock returns the highest block number stored.
+// Returns (0, false, nil) if there are no blocks on DB.
+func (s *claimStorage) GetLastProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	var num uint64
+	err := s.getQuerier(tx).QueryRowContext(dbCtx, `SELECT num FROM block ORDER BY num DESC LIMIT 1`).Scan(&num)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+
+	return num, err == nil, err
 }
 
 // GetBoundaryBlockForClaimType returns the max block_num for claims of the given type.
 // Returns db.ErrNotFound if no claims of that type exist.
-func (s *claimStorage) GetBoundaryBlockForClaimType(tx dbtypes.Querier, claimType bridgesync.ClaimType) (uint64, error) {
+func (s *claimStorage) GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType claimsynctypes.ClaimType) (uint64, error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
 	var blockNum *uint64
-	if err := s.getQuerier(tx).QueryRow(`SELECT MAX(block_num) FROM claim WHERE type = $1`, claimType).
+	if err := s.getQuerier(tx).QueryRowContext(dbCtx, `SELECT MAX(block_num) FROM claim WHERE type = $1`, claimType).
 		Scan(&blockNum); err != nil {
 		return 0, err
 	}
@@ -269,10 +316,40 @@ func (s *claimStorage) GetBoundaryBlockForClaimType(tx dbtypes.Querier, claimTyp
 	return *blockNum, nil
 }
 
+// GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root,
+// ordered by block_num/block_pos ascending. If the claim table does not exist (e.g. L1
+// processor), returns nil, nil gracefully.
+func (p *claimStorage) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctypes.Claim, error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := p.database.QueryContext(dbCtx, claimsByGERSQL, globalExitRoot.Hex(), claimsynctypes.DetailedClaimEvent)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	claims := []*claimsynctypes.Claim{}
+	if err = meddler.ScanAll(rows, &claims); err != nil {
+		return nil, fmt.Errorf("GetClaimsByGER: scan: %w", err)
+	}
+	return claims, nil
+}
+
 // DeleteBlocksFrom deletes all blocks with num >= firstBlock and returns the count deleted.
 // Cascade constraints automatically remove associated claims, unset_claims and set_claims.
-func (s *claimStorage) DeleteBlocksFrom(tx dbtypes.Querier, firstBlock uint64) (int64, error) {
-	res, err := s.getQuerier(tx).Exec(`DELETE FROM block WHERE num >= $1`, firstBlock)
+func (s *claimStorage) DeleteBlocksFrom(ctx context.Context, tx dbtypes.Querier, firstBlock uint64) (int64, error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	res, err := s.getQuerier(tx).ExecContext(dbCtx, `DELETE FROM block WHERE num >= $1`, firstBlock)
 	if err != nil {
 		return 0, fmt.Errorf("DeleteBlocksFrom %d: %w", firstBlock, err)
 	}
@@ -280,17 +357,30 @@ func (s *claimStorage) DeleteBlocksFrom(tx dbtypes.Querier, firstBlock uint64) (
 	return n, nil
 }
 
-func scanClaims(rows *sql.Rows) ([]bridgesync.Claim, error) {
-	var ptrs []*bridgesync.Claim
+func scanClaims(rows *sql.Rows) ([]claimsynctypes.Claim, error) {
+	var ptrs []*claimsynctypes.Claim
 	if err := meddler.ScanAll(rows, &ptrs); err != nil {
 		return nil, fmt.Errorf("scanClaims: %w", err)
 	}
 
 	iface := db.SlicePtrsToSlice(ptrs)
-	claims, ok := iface.([]bridgesync.Claim)
+	claims, ok := iface.([]claimsynctypes.Claim)
 	if !ok {
 		return nil, errors.New("scanClaims: type assertion from []*Claim to []Claim failed")
 	}
 
 	return claims, nil
+}
+
+// buildNetworkIDsFilter builds SQL filter for the given network IDs
+func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
+	placeholders := make([]string, len(networkIDs))
+	for i, id := range networkIDs {
+		placeholders[i] = fmt.Sprintf("%d", id)
+	}
+	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
+}
+
+func (p *claimStorage) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, p.dbQueryTimeout)
 }

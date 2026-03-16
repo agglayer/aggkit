@@ -85,6 +85,7 @@ func TestNewLx(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
 	}
+
 	l1BridgeSync, err := NewL1(
 		ctx,
 		bridgeSyncL1Cfg,

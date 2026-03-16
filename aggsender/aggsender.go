@@ -21,8 +21,8 @@ import (
 	"github.com/agglayer/aggkit/aggsender/trigger"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -49,6 +49,7 @@ type AggSender struct {
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
+	l2ClaimSyncer    claimsynctypes.ClaimSyncer
 
 	certificateSendTrigger types.CertificateSendTrigger
 
@@ -68,7 +69,7 @@ func New(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	claimSyncer claimsync.ClaimSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -104,7 +105,7 @@ func New(
 		aggLayerClient,
 		l1InfoTreeSyncer,
 		l2Syncer,
-		claimSyncer,
+		l2ClaimSyncer,
 		l1Client,
 		l2Client,
 		rollupDataQuerier,
@@ -122,7 +123,7 @@ func newAggsender(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	_ claimsync.ClaimSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
@@ -148,6 +149,7 @@ func newAggsender(
 
 	certQuerier := query.NewCertificateQuerier(
 		l2Syncer,
+		l2ClaimSyncer,
 		aggchainFEPCaller,
 		aggLayerClient,
 		initialLER,
@@ -162,6 +164,7 @@ func newAggsender(
 		l2Client,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		l2ClaimSyncer,
 		rollupDataQuerier,
 		committeeQuerier,
 		certQuerier,
@@ -234,6 +237,7 @@ func newAggsender(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 		l1Client:               l1Client,
 		l1InfoTreeSyncer:       l1InfoTreeSyncer,
+		l2ClaimSyncer:          l2ClaimSyncer,
 		certificateSendTrigger: certificateSendTrigger,
 	}, nil
 }
@@ -323,6 +327,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 		a.log.Debugf("AggSender: OnIdle")
 		a.certificateSendTrigger.OnIdle()
 	}
+	a.setClaimSyncerNextRequiredBlock(ctx)
 
 	a.status.Status = types.StatusCertificateStage
 	iteration := 0
@@ -388,6 +393,33 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Info("AggSender stopped")
 			return
 		}
+	}
+}
+
+func (a *AggSender) setClaimSyncerNextRequiredBlock(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		nextBlock, err := a.flow.GetNextBlockNumber()
+		if err != nil {
+			a.log.Errorf("error getting next block number for claim syncer: %v", err)
+			time.Sleep(a.cfg.DelayBetweenRetries.Duration)
+			continue
+		}
+		a.log.Infof("Setting starting Claim L2 Syncer block to %d", nextBlock)
+		if a.l2ClaimSyncer == nil {
+			a.log.Fatalf("l2 claim syncer is nil, so we are not going to set the next required block for claim syncer")
+		}
+		if err := a.l2ClaimSyncer.SetNextRequiredBlock(ctx, nextBlock); err != nil {
+			a.log.Errorf("error setting next required block for claim syncer: %v", err)
+			time.Sleep(a.cfg.DelayBetweenRetries.Duration)
+			continue
+		}
+		a.log.Infof("Set next required block for claim syncer to %d", nextBlock)
+		break
 	}
 }
 

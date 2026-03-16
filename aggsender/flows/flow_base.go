@@ -11,7 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitdb "github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -110,12 +110,26 @@ func (f *baseFlow) StartL2Block() uint64 {
 	return f.cfg.StartL2Block
 }
 
+// GetNextBlockNumber returns the first block number of the next certificate to generate.
+// It reads the last sent certificate from storage to determine the starting block.
+func (f *baseFlow) GetNextBlockNumber() (uint64, error) {
+	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
+	if err != nil {
+		return 0, fmt.Errorf("error getting last sent certificate: %w", err)
+	}
+	previousToBlock, _ := f.getLastSentBlockAndRetryCount(lastSentCertificate)
+	return previousToBlock + 1, nil
+}
+
 // NextCertificateBlockRange returns the block range and retryCount for the next certificate
 func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 	lastSentCertificate *types.CertificateHeader) (aggkitcommon.BlockRange, int, error) {
-	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
+	lastL2BlockSynced, found, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return aggkitcommon.BlockRangeZero, 0, fmt.Errorf("error getting last processed block from l2: %w", err)
+	}
+	if !found {
+		return aggkitcommon.BlockRangeZero, 0, fmt.Errorf("no processed block yet found from l2")
 	}
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
@@ -361,7 +375,7 @@ func (f *baseFlow) getNewLocalExitRoot(
 }
 
 // ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error) {
 	return converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
 }
 
@@ -373,8 +387,8 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context,
-	claims []bridgesync.Claim,
-	unclaims []bridgesynctypes.Unclaim,
+	claims []claimsynctypes.Claim,
+	unclaims []claimsynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	// Build unclaim counts by GlobalIndex
@@ -387,7 +401,7 @@ func (f *baseFlow) getImportedBridgeExits(
 		}
 	}
 
-	filteredClaims := make([]bridgesync.Claim, 0)
+	filteredClaims := make([]claimsynctypes.Claim, 0)
 	for _, c := range claims {
 		if c.GlobalIndex != nil {
 			key := c.GlobalIndex.String()
@@ -455,7 +469,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 }
 
 // verifyClaimGERs verifies the correctnes GERs of the claims
-func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
+func (f *baseFlow) verifyClaimGERs(claims []claimsynctypes.Claim) error {
 	for _, claim := range claims {
 		ger := l1infotreesync.CalculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
 		if ger != claim.GlobalExitRoot {

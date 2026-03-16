@@ -164,7 +164,8 @@ func (s *L2GERSync) GetInjectedGERsForRange(ctx context.Context,
 
 // GetLastProcessedBlock returns the last processed block number
 func (s *L2GERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	return s.processor.GetLastProcessedBlock(ctx)
+	num, _, err := s.processor.GetLastProcessedBlock(ctx)
+	return num, err
 }
 
 // GetRemoveGEREvents retrieves remove GER events from the database with optional filters

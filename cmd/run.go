@@ -31,6 +31,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
@@ -133,11 +134,18 @@ func start(cliCtx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
 	}
-	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
+	l2BridgeSync, l2ClaimSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, initialLER, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
+	if l2ClaimSync == nil {
+		standaloneClaimSync := runClaimSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
+		if standaloneClaimSync != nil {
+			rpcServices = append(rpcServices, standaloneClaimSync.GetRPCServices()...)
+			l2ClaimSync = standaloneClaimSync
+		}
+	}
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
 		&cfg.AggSender.CommitteeOverride)
@@ -197,7 +205,7 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
-				claimsync.NewFromBridgeSync(l2BridgeSync),
+				l2ClaimSync,
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
@@ -217,6 +225,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l2ClaimSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -229,7 +238,7 @@ func start(cliCtx *cli.Context) error {
 				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
-				claimsync.NewFromBridgeSync(l2BridgeSync),
+				l2ClaimSync,
 				l1Client,
 				l2Client,
 				rollupDataQuerier,
@@ -273,6 +282,7 @@ func createAggchainProofGen(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
+	l2ClaimSync claimsynctypes.ClaimSyncer,
 ) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
 
@@ -283,6 +293,7 @@ func createAggchainProofGen(
 		l1Client,
 		l2Client,
 		l2Syncer,
+		l2ClaimSync,
 		l1InfoTreeSync,
 	)
 	if err != nil {
@@ -296,7 +307,7 @@ func createAggSenderValidator(ctx context.Context,
 	cfg validator.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
-	claimSyncer claimsync.ClaimSyncer,
+	claimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
@@ -335,6 +346,7 @@ func createAggSenderValidator(ctx context.Context,
 
 	certQuerier := query.NewCertificateQuerier(
 		l2Syncer,
+		claimSyncer,
 		aggchainFEPQuerier,
 		agglayerClient,
 		initialLER,
@@ -348,6 +360,7 @@ func createAggSenderValidator(ctx context.Context,
 		l2Client,
 		l1InfoTreeSync,
 		l2Syncer,
+		claimSyncer,
 		rollupDataQuerier,
 		committeeQuerier,
 		initialLER,
@@ -364,7 +377,6 @@ func createAggSenderValidator(ctx context.Context,
 		aggchainFEPQuerier,
 		flowParams.InitialLER,
 		flowParams.Signer,
-		claimSyncer,
 	)
 }
 
@@ -374,7 +386,7 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
 	l2Syncer aggsendertypes.L2BridgeSyncer,
-	claimSyncer claimsync.ClaimSyncer,
+	claimSyncer claimsynctypes.ClaimSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier aggsendertypes.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
@@ -605,7 +617,8 @@ func runL2ClientIfNeeded(ctx context.Context,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.L2BRIDGESYNC,
-		aggkitcommon.L2GERSYNC}, components) {
+		aggkitcommon.L2GERSYNC,
+		aggkitcommon.L2CLAIMSYNC}, components) {
 		return nil
 	}
 	logger := log.WithFields("module", "l2client")
@@ -691,7 +704,8 @@ func runReorgDetectorL2IfNeeded(
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.L2BRIDGESYNC,
-		aggkitcommon.L2GERSYNC}, components) {
+		aggkitcommon.L2GERSYNC,
+		aggkitcommon.L2CLAIMSYNC}, components) {
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
@@ -736,6 +750,20 @@ func runL2GERSyncIfNeeded(
 	return l2GERSync
 }
 
+func resolveL1BridgeConfig(cfg *bridgesync.Config, components []string, logprefix string) {
+	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
+
+	syncFromInBridgesResolved := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
+	cfg.SyncFromInBridgesResolved = &syncFromInBridgesResolved
+
+	embeddedClaimSyncResolved := cfg.EmbeddedClaimSync.Resolve(hasBridgeComponent)
+	cfg.EmbeddedClaimSyncResolved = &embeddedClaimSyncResolved
+
+	for _, line := range cfg.ResolvedString() {
+		log.Info(logprefix+"BridgeConfig Resolved: ", line)
+	}
+}
+
 func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -753,11 +781,7 @@ func runBridgeSyncL1IfNeeded(
 		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
 
-	// Resolve SyncFromInBridges mode based on components
-	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
-	syncFromInBridges := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
-	log.Infof("BridgeL1Sync SyncFromInBridges mode: %s, resolved to: %t (BRIDGE component active: %t)",
-		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
+	resolveL1BridgeConfig(&cfg, components, "L1")
 
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
@@ -765,7 +789,6 @@ func runBridgeSyncL1IfNeeded(
 		reorgDetectorL1,
 		l1Client,
 		rollupID,
-		syncFromInBridges,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -786,6 +809,50 @@ func runBridgeSyncL1IfNeeded(
 	return bridgeSyncL1
 }
 
+func runClaimSyncL1IfNeeded(
+	ctx context.Context,
+	components []string,
+	cfg bridgesync.Config,
+	reorgDetectorL1 bridgesync.ReorgDetector,
+	l1Client aggkittypes.EthClienter,
+	rollupID uint32,
+	wg *sync.WaitGroup,
+) *claimsync.ClaimSync {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+		return nil
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid BridgeL1Sync config: %v", err)
+	}
+	cfgClaim := claimsync.ConfigStandalone{
+		ConfigEmbedded: claimsync.ConfigEmbedded{
+			DBQueryTimeout: cfg.DBQueryTimeout,
+			BridgeAddr:     cfg.BridgeAddr,
+		},
+		DBPath:                             cfg.DBPath + "_claim.sqlite",
+		BlockFinality:                      cfg.BlockFinality,
+		InitialBlockNum:                    0,
+		SyncBlockChunkSize:                 1000,
+		RetryAfterErrorPeriod:              cfg.RetryAfterErrorPeriod,
+		MaxRetryAttemptsAfterError:         cfg.MaxRetryAttemptsAfterError,
+		WaitForNewBlocksPeriod:             cfg.WaitForNewBlocksPeriod,
+		RequireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
+	}
+	res, err := claimsync.NewStandaloneClaimSync(
+		ctx,
+		cfgClaim,
+		reorgDetectorL1,
+		l1Client,
+		claimsynctypes.L1ClaimSyncer,
+		rollupID,
+	)
+	if err != nil {
+		log.Fatalf("error creating ClaimSyncL2: %s", err)
+	}
+	go res.Start(ctx)
+	return res
+}
+
 func runBridgeSyncL2IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -795,7 +862,7 @@ func runBridgeSyncL2IfNeeded(
 	rollupID uint32,
 	initialLER common.Hash,
 	wg *sync.WaitGroup,
-) *bridgesync.BridgeSync {
+) (*bridgesync.BridgeSync, claimsynctypes.ClaimSyncer) {
 	fullClaimsNeeded := isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
@@ -807,14 +874,11 @@ func runBridgeSyncL2IfNeeded(
 
 	if !fullClaimsNeeded && !fullClaimsNotNeeded {
 		// no bridge sync needed
-		return nil
+		return nil, nil
 	}
 
 	// Resolve SyncFromInBridges mode based on components
-	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
-	syncFromInBridges := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
-	log.Infof("BridgeL2Sync SyncFromInBridges mode: %s, resolved to: %t (BRIDGE component active: %t)",
-		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
+	resolveL1BridgeConfig(&cfg, components, "L2")
 
 	bridgeSyncL2, err := bridgesync.NewL2(
 		ctx,
@@ -823,9 +887,7 @@ func runBridgeSyncL2IfNeeded(
 		l2Client,
 		rollupID,
 		fullClaimsNeeded,
-		syncFromInBridges,
 		initialLER,
-		nil,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
@@ -840,10 +902,58 @@ func runBridgeSyncL2IfNeeded(
 			// Don't fail the entire process, just log the error and continue
 		}
 	}()
-
+	log.Infof("Starting BridgeSyncL2 with SyncFromInBridges: %t EmbeddedClaimSyncResolved:%t",
+		*cfg.SyncFromInBridgesResolved,
+		*cfg.EmbeddedClaimSyncResolved)
 	go bridgeSyncL2.Start(ctx)
+	if *cfg.EmbeddedClaimSyncResolved {
+		return bridgeSyncL2, bridgeSyncL2
+	}
+	return bridgeSyncL2, nil
+}
 
-	return bridgeSyncL2
+func runClaimSyncL2IfNeeded(
+	ctx context.Context,
+	components []string,
+	cfg bridgesync.Config,
+	reorgDetectorL2 *reorgdetector.ReorgDetector,
+	l2Client aggkittypes.EthClienter,
+	originNetwork uint32,
+) *claimsync.ClaimSync {
+	if !isNeeded([]string{
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2CLAIMSYNC}, components) {
+		return nil
+	}
+	cfgClaim := claimsync.ConfigStandalone{
+		ConfigEmbedded: claimsync.ConfigEmbedded{
+			DBQueryTimeout: cfg.DBQueryTimeout,
+			BridgeAddr:     cfg.BridgeAddr,
+		},
+		DBPath:                             cfg.DBPath + "_claim.sqlite",
+		BlockFinality:                      cfg.BlockFinality,
+		InitialBlockNum:                    0,
+		SyncBlockChunkSize:                 1000,
+		RetryAfterErrorPeriod:              cfg.RetryAfterErrorPeriod,
+		MaxRetryAttemptsAfterError:         cfg.MaxRetryAttemptsAfterError,
+		WaitForNewBlocksPeriod:             cfg.WaitForNewBlocksPeriod,
+		RequireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
+	}
+	res, err := claimsync.NewStandaloneClaimSync(
+		ctx,
+		cfgClaim,
+		reorgDetectorL2,
+		l2Client,
+		claimsynctypes.L2ClaimSyncer,
+		originNetwork,
+	)
+	if err != nil {
+		log.Fatalf("error creating ClaimSyncL2: %s", err)
+	}
+	go res.Start(ctx)
+	return res
 }
 
 func runAggsenderMultisigCommitteeIfNeeded(

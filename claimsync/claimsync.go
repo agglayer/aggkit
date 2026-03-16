@@ -3,10 +3,10 @@ package claimsync
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
-	"github.com/agglayer/aggkit/bridgesync"
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -22,50 +22,36 @@ const (
 	defaultDBTimeout   = 30 * time.Second
 )
 
-// ClaimSyncer is the interface for the claim syncer component used by aggsender.
-type ClaimSyncer interface {
-	Start(ctx context.Context)
-}
-
-// NewFromBridgeSync creates a ClaimSyncer backed by an existing BridgeSync that
-// has an embedded claim processor. It returns nil if bs is nil.
-func NewFromBridgeSync(bs *bridgesync.BridgeSync) ClaimSyncer {
-	if bs == nil {
-		return nil
-	}
-	return &bridgeSyncClaimSyncer{bs: bs}
-}
-
-type bridgeSyncClaimSyncer struct {
-	bs *bridgesync.BridgeSync
-}
-
-func (b *bridgeSyncClaimSyncer) Start(_ context.Context) {}
-
 // ClaimSync is the standalone implementation that independently processes claim events.
 type ClaimSync struct {
-	processor *processor
-	driver    *sync.EVMDriver
+	processor     *processor
+	driver        *sync.EVMDriver
+	reader        claimsynctypes.ClaimsReader
+	ethClient     aggkittypes.EthClienter
+	logger        aggkitcommon.Logger
+	originNetwork uint32
 }
 
 // NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
 func NewStandaloneClaimSync(
 	ctx context.Context,
-	cfg bridgesync.Config,
+	cfg ConfigStandalone,
 	rd sync.ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	syncerID claimsynctypes.ClaimSyncerID,
+	originNetwork uint32,
 ) (*ClaimSync, error) {
 	logger := log.WithFields("module", syncerID.String())
-	return NewClaimSync(ctx, cfg, rd, ethClient, syncerID, logger)
+	return NewClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
 }
 
 // NewClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
 func NewClaimSync(
 	ctx context.Context,
-	cfg bridgesync.Config,
+	cfg ConfigStandalone,
 	rd sync.ReorgDetector,
 	ethClient aggkittypes.EthClienter,
+	originNetwork uint32,
 	syncerID claimsynctypes.ClaimSyncerID,
 	logger aggkitcommon.Logger,
 ) (*ClaimSync, error) {
@@ -74,7 +60,7 @@ func NewClaimSync(
 	if dbQueryTimeout == 0 {
 		dbQueryTimeout = defaultDBTimeout
 	}
-	store, err := claimsyncStorage.NewStandalone(logger, cfg.DBPath, syncerID.String())
+	store, err := claimsyncStorage.NewStandalone(logger, cfg.DBPath, syncerID.String(), cfg.DBQueryTimeout.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
 	}
@@ -121,20 +107,20 @@ func NewClaimSync(
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDownloader: %w", err)
 	}
-
-	lastBlock, err := proc.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("claimsync: get last processed block: %w", err)
-	}
-	if lastBlock < cfg.InitialBlockNum {
-		header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(cfg.InitialBlockNum))
-		if err != nil {
-			return nil, fmt.Errorf("claimsync: get initial block %d: %w", cfg.InitialBlockNum, err)
-		}
-		if err := proc.ProcessBlock(ctx, sync.Block{Num: cfg.InitialBlockNum, Hash: header.Hash}); err != nil {
-			return nil, fmt.Errorf("claimsync: process initial block %d: %w", cfg.InitialBlockNum, err)
-		}
-	}
+	// TODO: Remove
+	// lastBlock, _, err := proc.GetLastProcessedBlock(ctx)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("claimsync: get last processed block: %w", err)
+	// }
+	// if lastBlock < cfg.InitialBlockNum {
+	// 	header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(cfg.InitialBlockNum))
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("claimsync: get initial block %d: %w", cfg.InitialBlockNum, err)
+	// 	}
+	// 	if err := proc.ProcessBlock(ctx, sync.Block{Num: cfg.InitialBlockNum, Hash: header.Hash}); err != nil {
+	// 		return nil, fmt.Errorf("claimsync: process initial block %d: %w", cfg.InitialBlockNum, err)
+	// 	}
+	// }
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
@@ -153,12 +139,81 @@ func NewClaimSync(
 	)
 
 	return &ClaimSync{
-		processor: proc,
-		driver:    driver,
+		processor:     proc,
+		driver:        driver,
+		reader:        store,
+		ethClient:     ethClient,
+		logger:        logger,
+		originNetwork: originNetwork,
 	}, nil
 }
 
 // Start starts the synchronization process.
 func (c *ClaimSync) Start(ctx context.Context) {
+	c.logger.Info("starting claim synchronizer")
 	c.driver.Sync(ctx)
+}
+
+// OriginNetwork returns the network ID of the origin chain
+
+func (c *ClaimSync) OriginNetwork() uint32 {
+	return c.originNetwork
+}
+
+func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64) error {
+	lastBlock, found, err := c.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("claimsync: failed to get last processed block: %w", err)
+	}
+	if !found {
+		if blockNumber == 0 {
+			err := fmt.Errorf("claimsync: cannot set next required block to 0, invalid block number")
+			c.logger.Error(err)
+			return err
+		}
+		if err := c.createStartingPoint(ctx, blockNumber-1); err != nil {
+			return fmt.Errorf("claimsync: failed to createStartingPoint: %w", err)
+		}
+		c.logger.Infof("Set next required block to %d (no processed blocks found)", blockNumber)
+		return nil
+	}
+	firstBlock, _, err := c.processor.GetFirstProcessedBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("claimsync: failed to get first processed block: %w", err)
+	}
+	if blockNumber <= firstBlock {
+		return fmt.Errorf("claimsync: cannot set next required block to %d, it must be greater than the first block in DB (%d)",
+			blockNumber, firstBlock)
+	}
+	if blockNumber > lastBlock {
+		c.logger.Infof("Cannot set next required block to %d because is running,"+
+			" last processed block is %d. Distance: %d", blockNumber, lastBlock,
+			blockNumber-lastBlock)
+	}
+
+	return nil
+}
+
+func (c *ClaimSync) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	return c.reader.GetLastProcessedBlock(ctx, nil)
+}
+
+func (c *ClaimSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error) {
+	return c.reader.GetClaims(ctx, nil, fromBlock, toBlock)
+}
+
+func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
+	return c.reader.GetClaimsByGlobalIndex(ctx, nil, globalIndex)
+}
+
+func (c *ClaimSync) createStartingPoint(ctx context.Context, blockNumber uint64) error {
+	c.logger.Infof("creating starting point at block %d:", blockNumber)
+	header, err := c.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
+	if err != nil {
+		return fmt.Errorf("claimsync: get header for block %d: %w", blockNumber, err)
+	}
+	if err := c.processor.ProcessBlock(ctx, sync.Block{Num: blockNumber, Hash: header.Hash}); err != nil {
+		return fmt.Errorf("claimsync: process block %d: %w", blockNumber, err)
+	}
+	return nil
 }
