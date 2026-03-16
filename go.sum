@@ -1,9 +1,9 @@
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251003171624-441244f9c27c.2 h1:23CS9MxO55S+gDXVpwVoa4hwKat+d8T1NPgzLTfXYpU=
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20251003171624-441244f9c27c.2/go.mod h1:rp+z1JBVbnfL6GxedjchGBRkkNR0JyIrgxej27KKx60=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.10-20251003171624-441244f9c27c.1 h1:a5KZLl8exodMB2arDu0Z01GyUzGZgzCtYObFWD5IkBk=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.10-20251003171624-441244f9c27c.1/go.mod h1:/HWm/smObsOmsOsLxM5r3Py0tqUvi6mAP/m2pX6Ldqk=
-buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.10-20250923143526-220bf697ba47.1 h1:T6T0F/TU9tq+8UDVb5U9oZRiE6V0RN6HBREDwYKqdIQ=
-buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.10-20250923143526-220bf697ba47.1/go.mod h1:j8EqojEdmnuL9uVgWyb3w9LBRebDCHk1pZW9pygiiao=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.6.1-20260313083409-67f1062dbaa3.1 h1:kpcyChVPvstQG/gin3gHavURNcQBk5RGQ2yfEU5UzbQ=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.6.1-20260313083409-67f1062dbaa3.1/go.mod h1:sOWkD4fVtTFd20J2Hr1HnFFzayvgDXFQAObbQlPcu3E=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.11-20260313083409-67f1062dbaa3.1 h1:U7/ZlnurNr1arp2JcLJjwWKw5Utols3bd8SIFDnjY3w=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.11-20260313083409-67f1062dbaa3.1/go.mod h1:1QQpHQhR0jwIQYRXdhwRiL+wfY+2JILlu7lWdyobnNY=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.11-00000000000000-29048f73ad53.1 h1:TOvZYsw1GXgbqf1VlxOZnH++8Hps+IFYvPI71qtCQgk=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.11-00000000000000-29048f73ad53.1/go.mod h1:Q20jjlFF2+/sLkh7FOqO8UVjlbClRa1Twzdb7yNPi+U=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2 h1:gV+6xXfMHDXA4XI5jCpJmMITl6A51SUaoECeRO4/GAY=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2/go.mod h1:NJnqmcfr760oCyvQ8MC6H8HsXRTHtzqAkzhEj+ms0uU=
 buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.10-20251103121356-e8eff0e259e6.1 h1:wR6BW+nHB6gITbVJ1EIp5DxlZZOUKHKiVtbc9jd9UTE=
@@ -156,8 +156,6 @@ github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab h1:rvv6MJ
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
 github.com/ethereum/go-ethereum v1.17.0 h1:2D+1Fe23CwZ5tQoAS5DfwKFNI1HGcTwi65/kRlAVxes=
 github.com/ethereum/go-ethereum v1.17.0/go.mod h1:2W3msvdosS/MCWytpqTcqgFiRYbTH59FxDJzqah120o=
-github.com/ethereum/go-verkle v0.2.2 h1:I2W0WjnrFUIzzVPwm8ykY+7pL2d4VhlsePn4j7cnFk8=
-github.com/ethereum/go-verkle v0.2.2/go.mod h1:M3b90YRnzqKyyzBEWJGqj8Qff4IDeXnzFw0P9bFw3uk=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/ferranbt/fastssz v0.1.4 h1:OCDB+dYDEQDvAgtAGnTSidK1Pe2tW3nFV40XyMkTeDY=
