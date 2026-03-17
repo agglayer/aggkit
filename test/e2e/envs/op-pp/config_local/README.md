@@ -2,6 +2,7 @@
 
 ## aggkit-parallel.toml
 This configuration differents ports to be able to run at the same time as docker `aggkit-001`
+
 To launch using vscode add next configuration to `.vscode/launch.json`: 
 ```
  {

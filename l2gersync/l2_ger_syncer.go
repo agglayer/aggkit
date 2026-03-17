@@ -41,6 +41,7 @@ type L1InfoTreeQuerier interface {
 type L2GERSync struct {
 	driver    *sync.EVMDriver
 	processor *processor
+	cfg       Config
 }
 
 // New initializes and returns a new instance of L2GERSync
@@ -109,6 +110,7 @@ func New(
 	return &L2GERSync{
 		driver:    driver,
 		processor: processor,
+		cfg:       cfg,
 	}, nil
 }
 
@@ -144,7 +146,7 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 // Start initiates the synchronization process.
 func (s *L2GERSync) Start(ctx context.Context) {
 	s.processor.log.Info("starting l2gersync")
-	s.driver.Sync(ctx)
+	s.driver.Sync(ctx, &s.cfg.InitialBlockNum)
 }
 
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index

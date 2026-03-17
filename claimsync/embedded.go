@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -90,23 +89,17 @@ func NewEmbedded(
 	logger aggkitcommon.Logger,
 ) (*EmbeddedClaimSync, error) {
 	proc := newEmbeddedProcessor(logger, storage)
-	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
-	if err != nil {
-		return nil, fmt.Errorf("claimsync embedded: failed to create AgglayerBridge binding: %w", err)
-	}
-
-	isSovereign, agglayerBridgeL2Contract, err := detectSovereignChain(ctx, bridgeAddr, ethClient)
+	deployment, err := resolveBridgeDeployment(ctx, bridgeAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to detect chain type: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, storage, bridgeAddr,
-		agglayerBridgeContract, agglayerBridgeL2Contract, isSovereign, logger)
+	appender, err := buildAppender(ctx, ethClient, storage, bridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to build appender: %w", err)
 	}
 
-	logger.Infof("claimsync embedded created: bridgeAddr=%s sovereign=%t", bridgeAddr.String(), isSovereign)
+	logger.Infof("claimsync embedded created: bridgeAddr=%s sovereign=%t", bridgeAddr.String(), deployment.kind == SovereignChain)
 
 	return &EmbeddedClaimSync{
 		Processor: proc,

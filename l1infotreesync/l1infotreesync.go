@@ -39,7 +39,7 @@ var (
 )
 
 type DriverInterface interface {
-	Sync(ctx context.Context)
+	Sync(ctx context.Context, firstBlockNumber *uint64)
 	GetCompletionPercentage() *float64
 }
 
@@ -51,6 +51,7 @@ type L1InfoTreeSync struct {
 	processor  *processor
 	driver     DriverInterface
 	downloader DownloaderInterface
+	cfg        Config
 }
 
 type RuntimeData = mdrsync.RuntimeData
@@ -141,6 +142,7 @@ func NewMultidownloadBased(
 		processor:  processor,
 		driver:     driver,
 		downloader: downloader,
+		cfg:        cfg,
 	}, nil
 }
 
@@ -157,27 +159,6 @@ func NewLegacy(
 		return nil, err
 	}
 
-	// TODO: get the initialBlock from L1 to simplify config
-	lastProcessedBlock, _, err := processor.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	parentBlockNumber := cfg.InitialBlock - 1
-	if cfg.InitialBlock > 0 && lastProcessedBlock < parentBlockNumber {
-		block, err := l1Client.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(parentBlockNumber))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get initial block %d: %w", parentBlockNumber, err)
-		}
-
-		err = processor.ProcessBlock(ctx, sync.Block{
-			Num:  parentBlockNumber,
-			Hash: block.Hash,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
 	rh := &sync.RetryHandler{
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
@@ -237,6 +218,7 @@ func NewLegacy(
 		processor:  processor,
 		driver:     driver,
 		downloader: downloader,
+		cfg:        cfg,
 	}, nil
 }
 
@@ -263,7 +245,7 @@ func (a *L1InfoTreeSync) GetRPCServices() []jRPC.Service {
 // Start starts the synchronization process
 func (s *L1InfoTreeSync) Start(ctx context.Context) {
 	s.processor.log.Info("starting l1infotreesync")
-	s.driver.Sync(ctx)
+	s.driver.Sync(ctx, &s.cfg.InitialBlock)
 }
 
 // GetRollupExitTreeMerkleProof creates a merkle proof for the rollup exit tree

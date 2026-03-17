@@ -5,7 +5,6 @@ import (
 	"math/big"
 
 	"github.com/agglayer/aggkit/bridgesync"
-	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -22,18 +21,11 @@ type Bridger interface {
 		originTokenAddress string) ([]*bridgesync.TokenMapping, int, error)
 	GetLegacyTokenMigrations(ctx context.Context,
 		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
-	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
-		networkIDs []uint32, globalIndex *big.Int) ([]*claimsynctypes.Claim, int, error)
-	GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
-		globalIndex *big.Int) ([]*claimsynctypes.UnsetClaim, int, error)
-	GetSetClaimsPaged(ctx context.Context, page, pageSize uint32,
-		globalIndex *big.Int) ([]*claimsynctypes.SetClaim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
 	IsActive(ctx context.Context) bool
-	GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctypes.Claim, error)
 	GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*bridgesync.Bridge, error)
 	GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address,
 		destinationNetwork uint32, destinationAddress common.Address,

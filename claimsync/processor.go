@@ -64,6 +64,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return err
 	}
 	shouldRollback = false
+	p.log.Debugf("claimSyncer: successfully processed block %d with %d events", block.Num, len(block.Events))
 	return nil
 }
 

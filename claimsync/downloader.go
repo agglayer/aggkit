@@ -65,15 +65,28 @@ type ClaimQuerier interface {
 	GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error)
 }
 
+// BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
+type BridgeDeployment byte
+
+const (
+	Unknown BridgeDeployment = iota
+	NonSovereignChain
+	SovereignChain
+)
+
+type bridgeDeployment struct {
+	kind             BridgeDeployment
+	agglayerBridge   *agglayerbridge.Agglayerbridge
+	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
+}
+
 // buildAppender creates the LogAppenderMap for claim events from the bridge contract.
 func buildAppender(
 	ctx context.Context,
 	ethClient aggkittypes.EthClienter,
 	querier ClaimQuerier,
 	bridgeAddr common.Address,
-	agglayerBridgeContract *agglayerbridge.Agglayerbridge,
-	agglayerBridgeL2Contract *agglayerbridgel2.Agglayerbridgel2,
-	isSovereign bool,
+	deployment *bridgeDeployment,
 	log aggkitcommon.Logger,
 ) (sync.LogAppenderMap, error) {
 	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, ethClient)
@@ -85,37 +98,62 @@ func buildAppender(
 	appender := make(sync.LogAppenderMap)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
 
-	appender[claimEventSignature] = buildClaimEventHandler(ctx, agglayerBridgeContract, ethClient, querier, bridgeAddr, syncFullClaims, log)
+	appender[claimEventSignature] = buildClaimEventHandler(ctx, deployment.agglayerBridge, ethClient, querier, bridgeAddr, syncFullClaims, log)
 
-	if isSovereign {
-		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(agglayerBridgeL2Contract)
-		appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(agglayerBridgeL2Contract)
-		appender[setClaimEventSignature] = buildSetClaimEventHandler(agglayerBridgeL2Contract)
+	if deployment.kind == SovereignChain {
+		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
+		appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
+		appender[setClaimEventSignature] = buildSetClaimEventHandler(deployment.agglayerBridgeL2)
 	}
 
 	return appender, nil
 }
 
-// detectSovereignChain returns true if bridgeAddr is a sovereign chain bridge (AgglayerBridgeL2).
-// It also returns the AgglayerBridgeL2 binding regardless (always created).
-func detectSovereignChain(
+// resolveBridgeDeployment resolves which bridge contract flavor is deployed:
+// AgglayerBridge => NonSovereign bridge
+// AgglayerBridgeL2 => Sovereign bridge
+func resolveBridgeDeployment(
 	ctx context.Context,
 	bridgeAddr common.Address,
 	backend bind.ContractBackend,
-) (bool, *agglayerbridgel2.Agglayerbridgel2, error) {
-	contract, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, backend)
+) (*bridgeDeployment, error) {
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, backend)
 	if err != nil {
-		return false, nil, fmt.Errorf("claimsync: failed to create AgglayerBridgeL2 binding: %w", err)
+		return nil, fmt.Errorf("claimsync: failed to create AgglayerBridge binding (%s): %w", bridgeAddr, err)
+	}
+
+	agglayerBridgeL2, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, backend)
+	if err != nil {
+		return nil, fmt.Errorf("claimsync: failed to create AgglayerBridgeL2 binding (%s): %w", bridgeAddr, err)
 	}
 
 	callOpts := &bind.CallOpts{Pending: false, Context: ctx}
-	if _, err := contract.BridgeManager(callOpts); err == nil {
-		return true, contract, nil
+
+	// 1. Try calling bridgeManager function — only exists on AgglayerBridgeL2
+	if _, err := agglayerBridgeL2.BridgeManager(callOpts); err == nil {
+		return &bridgeDeployment{
+			kind:             SovereignChain,
+			agglayerBridge:   agglayerBridge,
+			agglayerBridgeL2: agglayerBridgeL2,
+		}, nil
 	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
-		return false, nil, fmt.Errorf("claimsync: unexpected error querying AgglayerBridgeL2.BridgeManager: %w", err)
+		return nil, fmt.Errorf("claimsync: unexpected error querying AgglayerBridgeL2.BridgeManager (%s): %w",
+			bridgeAddr.Hex(), err)
 	}
 
-	return false, contract, nil
+	// 2. If that failed, try lastUpdatedDepositCount function — exists on base AgglayerBridge
+	if _, err := agglayerBridge.LastUpdatedDepositCount(callOpts); err == nil {
+		return &bridgeDeployment{
+			kind:             NonSovereignChain,
+			agglayerBridge:   agglayerBridge,
+			agglayerBridgeL2: agglayerBridgeL2,
+		}, nil
+	} else if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
+		return nil, fmt.Errorf("claimsync: unexpected error querying AgglayerBridge.lastUpdatedDepositCount (%s): %w",
+			bridgeAddr.Hex(), err)
+	}
+
+	return nil, fmt.Errorf("claimsync: unable to determine bridge contract type at address %s", bridgeAddr)
 }
 
 // buildClaimEventHandler creates a handler for the ClaimEvent log.

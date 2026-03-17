@@ -12,7 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l2gersync"
@@ -194,7 +194,7 @@ func CreateCommonFlowComponents(
 		return nil, err
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
+	agglayerBridgeL2Reader, err := claimsync.NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
 		agglayerBridgeL2Addr,
 		l2Client,
 		unsetClaimsMaxLogBlockRange,

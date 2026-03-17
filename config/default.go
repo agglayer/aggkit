@@ -165,6 +165,21 @@ DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
 
+[ClaimL1Sync]
+DBPath = "{{PathRWData}}/claiml1sync.sqlite"
+DBQueryTimeout = "{{BridgeL1Sync.DBQueryTimeout}}"
+
+BlockFinality = "{{BridgeL1Sync.BlockFinality}}"
+InitialBlockNum = {{BridgeL1Sync.InitialBlockNum}}
+AutoStart = "auto"
+
+BridgeAddr = "{{BridgeL1Sync.BridgeAddr}}"
+SyncBlockChunkSize = {{BridgeL1Sync.SyncBlockChunkSize}}
+RetryAfterErrorPeriod = "{{BridgeL1Sync.RetryAfterErrorPeriod}}"
+MaxRetryAttemptsAfterError = {{BridgeL1Sync.MaxRetryAttemptsAfterError}}
+WaitForNewBlocksPeriod = "{{BridgeL1Sync.WaitForNewBlocksPeriod}}"
+RequireStorageContentCompatibility = {{BridgeL1Sync.RequireStorageContentCompatibility}}
+
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
 BlockFinality = "LatestBlock"
@@ -178,6 +193,21 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
+
+[ClaimL2Sync]
+DBPath = "{{PathRWData}}/claiml2sync.sqlite"
+DBQueryTimeout = "{{BridgeL2Sync.DBQueryTimeout}}"
+
+BlockFinality = "{{BridgeL2Sync.BlockFinality}}"
+InitialBlockNum = {{BridgeL2Sync.InitialBlockNum}}
+AutoStart = "auto"
+
+BridgeAddr = "{{BridgeL2Sync.BridgeAddr}}"
+SyncBlockChunkSize = {{BridgeL2Sync.SyncBlockChunkSize}}
+RetryAfterErrorPeriod = "{{BridgeL2Sync.RetryAfterErrorPeriod}}"
+MaxRetryAttemptsAfterError = {{BridgeL2Sync.MaxRetryAttemptsAfterError}}
+WaitForNewBlocksPeriod = "{{BridgeL2Sync.WaitForNewBlocksPeriod}}"
+RequireStorageContentCompatibility = {{BridgeL2Sync.RequireStorageContentCompatibility}}
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"

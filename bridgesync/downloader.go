@@ -71,14 +71,8 @@ func buildAppender(
 	syncFromInBridges bool,
 	bridgeDeployment *bridgeDeployment,
 	logger *logger.Logger,
-	claimAppender sync.LogAppenderMap,
 ) (sync.LogAppenderMap, error) {
-	var appender sync.LogAppenderMap
-	if claimAppender != nil {
-		appender = claimAppender
-	} else {
-		appender = make(sync.LogAppenderMap)
-	}
+	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(

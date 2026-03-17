@@ -14,7 +14,6 @@ import (
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
-	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -484,8 +483,6 @@ type processor struct {
 	dbQueryTimeout       time.Duration
 	bridgeSubscriber     aggkitcommon.PubSub[uint64]
 	initialLER           common.Hash
-	claimEventsProcessor claimsynctypes.EmbeddedProcessor
-
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -506,18 +503,16 @@ func newProcessor(
 	syncerID string,
 	logger *log.Logger,
 	dbQueryTimeout time.Duration,
-	claimEventsProcessor claimsynctypes.EmbeddedProcessor,
 ) (*processor, error) {
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
-		syncerID:             syncerID,
-		db:                   database,
-		exitTree:             exitTree,
-		log:                  logger,
-		dbQueryTimeout:       dbQueryTimeout,
-		bridgeSubscriber:     aggkitcommon.NewGenericSubscriber[uint64](),
-		claimEventsProcessor: claimEventsProcessor,
+		syncerID:         syncerID,
+		db:               database,
+		exitTree:         exitTree,
+		log:              logger,
+		dbQueryTimeout:   dbQueryTimeout,
+		bridgeSubscriber: aggkitcommon.NewGenericSubscriber[uint64](),
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			syncerID,
@@ -646,25 +641,6 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		return " WHERE " + strings.Join(clauses, " AND "), args
 	}
 	return "", nil
-}
-
-// GetBoundaryBlockForClaimType returns the max (latest) block number for a given claim type
-func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, claimType claimsynctypes.ClaimType) (uint64, error) {
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	query := `SELECT MAX(block_num) FROM claim WHERE type = $1;`
-	var blockNumber *uint64
-	if err := p.db.QueryRowContext(dbCtx, query, claimType).Scan(&blockNumber); err != nil {
-		return 0, err
-	}
-
-	if blockNumber == nil {
-		p.log.Debugf("no boundary block found for claim type %s", claimType)
-		return 0, db.ErrNotFound
-	}
-
-	return *blockNumber, nil
 }
 
 // buildGlobalIndexFilterClause builds a WHERE clause for filtering by global_index
@@ -1039,17 +1015,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
-			// Try to process with embedded claimProcessor
-			if p.claimEventsProcessor != nil {
-				if err := p.claimEventsProcessor.ProcessBlockWithTx(dbCtx, tx, block, e); err != nil {
-					p.log.Errorf("ProcessBlock: failed to process event type %T using embedded claimProcessor in block %d: %v",
-						e,
-						block.Num, err)
-					return err
-				}
-				// It have been processed by embedded claimProcessor, do next item in loop
-				continue
-			}
 			err = fmt.Errorf("ProcessBlock: failed to convert event %T to Event type in block %d", e, block.Num)
 			p.log.Errorf(err.Error())
 			return err

@@ -10,7 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
@@ -102,7 +102,7 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.AgglayerBridgeL2Addr, l2Client)
+	agglayerBridgeL2Reader, err := claimsync.NewAgglayerBridgeL2Reader(cfg.AgglayerBridgeL2Addr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
