@@ -35,6 +35,7 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 	// Deploy contracts
 	bridgeAddr, _, bridgeContract, err := claimmock.DeployClaimmock(auth, client)
 	require.NoError(t, err)
+	log.Infof("Deployed fake bridge contract %s", bridgeAddr.Hex())
 	dbPathSyncer := path.Join(t.TempDir(), "claimsyncer.sqlite")
 
 	cfg := ConfigStandalone{
@@ -49,6 +50,7 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 			DBQueryTimeout: configtypes.NewDuration(5 * time.Second),
 			BridgeAddr:     bridgeAddr,
 		},
+		AutoStart: configtypes.FalseMode,
 	}
 	logger := log.WithFields("test", "TestClaimSync")
 	reorgDetector, err := reorgdetector.New(client, reorgdetector.Config{

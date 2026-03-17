@@ -72,6 +72,9 @@ func NewClaimSync(
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to detect chain type: %w", err)
 	}
+	if deployment.kind == Unknown {
+		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
+	}
 
 	appender, err := buildAppender(ctx, ethClient, proc, cfg.BridgeAddr, deployment, logger)
 	if err != nil {
@@ -126,9 +129,8 @@ func NewClaimSync(
 	}
 
 	logger.Infof(
-		"claimsync created: dbPath=%s initialBlock=%d blockFinality=%s bridgeAddr=%s sovereign=%t",
-		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(),
-		cfg.BridgeAddr.String(), deployment.kind == SovereignChain,
+		"claimsync created: dbPath=%s initialBlock=%d blockFinality=%s bridgeAddr=%s bridgeKind=%s",
+		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(), cfg.BridgeAddr.String(), deployment.kind.String(),
 	)
 
 	return &ClaimSync{
@@ -145,8 +147,8 @@ func NewClaimSync(
 
 // Start starts the synchronization process.
 func (c *ClaimSync) Start(ctx context.Context) {
-	c.logger.Infof("starting claim synchronizer AutoStart: %t InitialBlock: %d",
-		*c.cfg.AutoStart.Resolved, c.cfg.InitialBlockNum)
+	c.logger.Infof("starting claim synchronizer AutoStart: %s InitialBlock: %d",
+		c.cfg.AutoStart.String(), c.cfg.InitialBlockNum)
 	if *c.cfg.AutoStart.Resolved {
 		c.driver.Sync(ctx, &c.cfg.InitialBlockNum)
 	} else {
@@ -233,23 +235,21 @@ func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 	return c.reader.GetClaimsByGlobalIndex(ctx, nil, globalIndex)
 }
 
-func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
-	return c.reader.GetClaimsByGER(ctx, nil, globalExitRoot)
-}
-
 func (c *ClaimSync) GetClaimsPaged(ctx context.Context, page, pageSize uint32,
-	networkIDs []uint32, globalIndex *big.Int) ([]*claimsynctypes.Claim, int, error) {
+	networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error) {
 	return c.reader.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
 }
-
 func (c *ClaimSync) GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
-	globalIndex *big.Int) ([]*claimsynctypes.UnsetClaim, int, error) {
+	globalIndex *big.Int) ([]*UnsetClaim, int, error) {
 	return c.reader.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
 }
-
 func (c *ClaimSync) GetSetClaimsPaged(ctx context.Context, page, pageSize uint32,
-	globalIndex *big.Int) ([]*claimsynctypes.SetClaim, int, error) {
+	globalIndex *big.Int) ([]*SetClaim, int, error) {
 	return c.reader.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
+}
+
+func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
+	return c.reader.GetClaimsByGER(ctx, nil, globalExitRoot)
 }
 
 func (c *ClaimSync) createStartingPoint(ctx context.Context, blockNumber uint64) error {

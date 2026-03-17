@@ -71,6 +71,17 @@ const (
 	SovereignChain
 )
 
+func (b BridgeDeployment) String() string {
+	switch b {
+	case NonSovereignChain:
+		return "NonSovereignChain"
+	case SovereignChain:
+		return "SovereignChain"
+	default:
+		return "Unknown"
+	}
+}
+
 type bridgeDeployment struct {
 	kind             BridgeDeployment
 	agglayerBridge   *agglayerbridge.Agglayerbridge
@@ -99,11 +110,9 @@ func buildAppender(
 	appender[claimEventSignature] = buildClaimEventHandler(
 		ctx, deployment.agglayerBridge, ethClient, querier, bridgeAddr, syncFullClaims, log)
 
-	if deployment.kind == SovereignChain {
-		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
-		appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
-		appender[setClaimEventSignature] = buildSetClaimEventHandler(deployment.agglayerBridgeL2)
-	}
+	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
+	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
+	appender[setClaimEventSignature] = buildSetClaimEventHandler(deployment.agglayerBridgeL2)
 
 	return appender, nil
 }
@@ -151,8 +160,12 @@ func resolveBridgeDeployment(
 		return nil, fmt.Errorf("claimsync: unexpected error querying AgglayerBridge.lastUpdatedDepositCount (%s): %w",
 			bridgeAddr.Hex(), err)
 	}
-
-	return nil, fmt.Errorf("claimsync: unable to determine bridge contract type at address %s", bridgeAddr)
+	// It can't be determined if the bridge is non-sovereign or sovereign
+	return &bridgeDeployment{
+		kind:             Unknown,
+		agglayerBridge:   agglayerBridge,
+		agglayerBridgeL2: agglayerBridgeL2,
+	}, nil
 }
 
 // buildClaimEventHandler creates a handler for the ClaimEvent log.

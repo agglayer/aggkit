@@ -20,9 +20,9 @@ const (
 
 var (
 	// TrueMode always activates the feature.
-	TrueMode = TrueFalseAutoMode{Mode: trueModeStr}
+	TrueMode = TrueFalseAutoMode{Mode: trueModeStr, Resolved: func() *bool { b := true; return &b }()}
 	// FalseMode always deactivates the feature.
-	FalseMode = TrueFalseAutoMode{Mode: falseModeStr}
+	FalseMode = TrueFalseAutoMode{Mode: falseModeStr, Resolved: func() *bool { b := false; return &b }()}
 	// AutoMode decides automatically based on context.
 	AutoMode = TrueFalseAutoMode{Mode: autoModeStr}
 )
@@ -45,7 +45,11 @@ func (m *TrueFalseAutoMode) UnmarshalText(text []byte) error {
 
 // String returns the string representation.
 func (m TrueFalseAutoMode) String() string {
-	return m.Mode
+	if m.Resolved != nil {
+		return fmt.Sprintf("{Mode: %s, Resolved: %t}", m.Mode, *m.Resolved)
+	} else {
+		return fmt.Sprintf("{Mode: %s, Resolved: <not yet resolved>}", m.Mode)
+	}
 }
 
 // Validate checks that the mode is a valid value. Empty mode is allowed.
