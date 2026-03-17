@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -77,27 +78,27 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						LastProvenBlock: 1,
 						EndBlock:        10,
 					}, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []claimsynctypes.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
 						MainnetExitRoot: mer,
 						RollupExitRoot:  rer,
 					}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:  1,
 				ToBlock:    10,
 				RetryCount: 1,
 				Bridges:    []bridgesync.Bridge{{}},
-				Claims: []bridgesync.Claim{{
+				Claims: []claimsynctypes.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
 					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []claimsynctypes.Unclaim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -134,14 +135,14 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					FinalizedL1InfoTreeRoot: &finalizedL1Root,
 					L1InfoTreeLeafCount:     11,
 				}, nil, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []claimsynctypes.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
 						MainnetExitRoot: mer,
 						RollupExitRoot:  rer,
 					}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -165,13 +166,13 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				},
 				Bridges:             []bridgesync.Bridge{{}},
 				L1InfoTreeLeafCount: 11,
-				Claims: []bridgesync.Claim{{
+				Claims: []claimsynctypes.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
 					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []claimsynctypes.Unclaim{},
 				L1InfoTreeRootFromWhichToProve: finalizedL1Root,
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -193,15 +194,15 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10}, nil, nil)
-				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), true, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []claimsynctypes.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
 						MainnetExitRoot: mer,
 						RollupExitRoot:  rer,
 					}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
 					Return(nil, errors.New("some error"))
@@ -216,11 +217,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), true, nil)
 				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10}, nil, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []claimsynctypes.Claim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				wrappedErr := fmt.Errorf("wrapped error: %w", query.ErrNoProofBuiltYet)
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
 					Return(nil, wrappedErr)
@@ -241,14 +242,14 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10, Index: 10}, nil, nil)
-				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), true, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []claimsynctypes.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					GlobalExitRoot:  ger,
 					MainnetExitRoot: mer,
 					RollupExitRoot:  rer,
 				}}, nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(11)).Return(true, nil).Once()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
@@ -266,13 +267,13 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				},
 				Bridges:             []bridgesync.Bridge{{}},
 				L1InfoTreeLeafCount: 11,
-				Claims: []bridgesync.Claim{{
+				Claims: []claimsynctypes.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
 					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []claimsynctypes.Unclaim{},
 				L1InfoTreeRootFromWhichToProve: finalizedL1Root,
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -296,14 +297,14 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10, Index: 10}, nil, nil)
-				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), true, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
 					[]bridgesync.Bridge{{BlockNum: 6}, {BlockNum: 10}},
-					[]bridgesync.Claim{
+					[]claimsynctypes.Claim{
 						{BlockNum: 8, GlobalIndex: big.NewInt(1), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer},
 						{BlockNum: 9, GlobalIndex: big.NewInt(2), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer}},
 					nil)
-				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]bridgesynctypes.Unclaim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(11)).Return(true, nil).Once()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
@@ -321,14 +322,14 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					ToBlock: 5,
 				},
 				Bridges: []bridgesync.Bridge{{BlockNum: 6}},
-				Claims: []bridgesync.Claim{{
+				Claims: []claimsynctypes.Claim{{
 					BlockNum:        8,
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
 					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
-				Unclaims:                       []bridgesynctypes.Unclaim{},
+				Unclaims:                       []claimsynctypes.Unclaim{},
 				L1InfoTreeRootFromWhichToProve: finalizedL1Root,
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -523,7 +524,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				FromBlock:                      1,
 				ToBlock:                        10,
 				Bridges:                        []bridgesync.Bridge{{}},
-				Claims:                         []bridgesync.Claim{},
+				Claims:                         []claimsynctypes.Claim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 			},
 			expectedError: "error getting exit root by index",
@@ -537,7 +538,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				FromBlock:                      1,
 				ToBlock:                        10,
 				Bridges:                        []bridgesync.Bridge{},
-				Claims:                         []bridgesync.Claim{},
+				Claims:                         []claimsynctypes.Claim{},
 				CreatedAt:                      uint32(createdAt.Unix()),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				CertificateType:                types.CertificateTypeFEP,
@@ -837,7 +838,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 					ToBlock:         10,
 					RetryCount:      0,
 					Bridges:         []bridgesync.Bridge{{}},
-					Claims:          []bridgesync.Claim{},
+					Claims:          []claimsynctypes.Claim{},
 					CreatedAt:       timeNowUTCForTest(),
 					CertificateType: types.CertificateTypeFEP,
 				}
@@ -851,7 +852,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 				ToBlock:         10,
 				RetryCount:      0,
 				Bridges:         []bridgesync.Bridge{{}},
-				Claims:          []bridgesync.Claim{},
+				Claims:          []claimsynctypes.Claim{},
 				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},

@@ -14,7 +14,7 @@ type ClaimsReader interface {
 	GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error)
 	GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]Claim, error)
 	GetClaimsByGlobalIndex(ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int) ([]Claim, error)
-	GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error)
+	GetClaimsByGER(ctx context.Context, tx dbtypes.Querier, globalExitRoot common.Hash) ([]*Claim, error)
 	GetClaimsPaged(
 		ctx context.Context, pageNumber, pageSize uint32,
 		networkIDs []uint32, globalIndex *big.Int,

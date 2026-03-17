@@ -30,6 +30,7 @@ var (
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 )
 
+//nolint:dupl
 func (p *claimStorage) GetSetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	globalIndex *big.Int,

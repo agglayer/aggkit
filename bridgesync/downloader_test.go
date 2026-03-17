@@ -23,6 +23,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	claimAssetEtrogMethodID   = common.Hex2Bytes("ccaa2d11")
+	claimMessageEtrogMethodID = common.Hex2Bytes("f5efcd79")
+)
+
 // mainnet:
 // case https://etherscan.io/tx/0x8db8e288d25102b64d8a37ad05769817d1b43f0384dd05da075d24d2cee9cb65 (bn: 19566985) -> fix
 // case: https://etherscan.io/tx/0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab  (bn: 22770713)
@@ -563,7 +568,6 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 	require.Contains(t, err.Error(), "not found")
 }
 
-
 func TestTxnSenderField(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
@@ -571,7 +575,6 @@ func TestTxnSenderField(t *testing.T) {
 
 	agglayerBridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
-
 
 	tests := []struct {
 		name              string

@@ -84,7 +84,7 @@ func TestSync(t *testing.T) {
 		})
 
 	// Mocking this actions, the driver should "store" all the blocks from the downloader
-	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), true, nil)
 	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock1.Num, expectedBlock1.Hash).Return(nil)
 	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock1.Num, Events: expectedBlock1.Events, Hash: expectedBlock1.Hash}).
 		Return(nil)
@@ -93,7 +93,7 @@ func TestSync(t *testing.T) {
 	pm.EXPECT().
 		ProcessBlock(mock.Anything, Block{Num: expectedBlock2.Num, Events: expectedBlock2.Events, Hash: expectedBlock2.Hash}).
 		Return(nil)
-	go driver.Sync(ctx)
+	go driver.Sync(ctx, nil)
 	time.Sleep(time.Millisecond * 200) // time to download expectedBlock1
 
 	// Trigger reorg 1
@@ -169,7 +169,7 @@ func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 			}
 		})
 
-	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), true, nil)
 
 	// AddBlockToTrack always returns nil
 	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).
@@ -188,7 +188,7 @@ func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 			}
 		})
 
-	go driver.Sync(ctx)
+	go driver.Sync(ctx, nil)
 
 	time.Sleep(300 * time.Millisecond) // Let it retry a few times
 
@@ -392,12 +392,12 @@ func TestCheckCompatibility(t *testing.T) {
 	driver.compatibilityChecker = compatibilityCheckerMock
 	t.Run("pass compatibility check", func(t *testing.T) {
 		compatibilityCheckerMock.EXPECT().Check(context.Background(), nil).Return(nil)
-		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), errUnittest)
+		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), false, errUnittest)
 		LogFatalf = func(format string, args ...any) {
 			panic("should not call log.Fatalf")
 		}
 		require.Panics(t, func() {
-			driver.Sync(context.Background())
+			driver.Sync(context.Background(), nil)
 		}, "should stop because GetLastProcessedBlock failed")
 	})
 	t.Run("fails compatibility check ", func(t *testing.T) {
@@ -406,7 +406,7 @@ func TestCheckCompatibility(t *testing.T) {
 			panic("should not call log.Fatalf")
 		}
 		require.Panics(t, func() {
-			driver.Sync(context.Background())
+			driver.Sync(context.Background(), nil)
 		}, "should stop because GetLastProcessedBlock failed")
 	})
 }
@@ -431,7 +431,7 @@ func TestEVMDriver_Sync(t *testing.T) {
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
-			d.Sync(context.Background())
+			d.Sync(context.Background(), nil)
 		})
 	}
 }

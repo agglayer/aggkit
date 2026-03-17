@@ -12,25 +12,31 @@ type TrueFalseAutoMode struct {
 	Resolved *bool  `mapstructure:"-"`
 }
 
+const (
+	trueModeStr  = "true"
+	falseModeStr = "false"
+	autoModeStr  = "auto"
+)
+
 var (
 	// TrueMode always activates the feature.
-	TrueMode = TrueFalseAutoMode{Mode: "true"}
+	TrueMode = TrueFalseAutoMode{Mode: trueModeStr}
 	// FalseMode always deactivates the feature.
-	FalseMode = TrueFalseAutoMode{Mode: "false"}
+	FalseMode = TrueFalseAutoMode{Mode: falseModeStr}
 	// AutoMode decides automatically based on context.
-	AutoMode = TrueFalseAutoMode{Mode: "auto"}
+	AutoMode = TrueFalseAutoMode{Mode: autoModeStr}
 )
 
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (m *TrueFalseAutoMode) UnmarshalText(text []byte) error {
 	str := strings.ToLower(strings.TrimSpace(string(text)))
 	switch str {
-	case "true":
-		m.Mode = "true"
-	case "false":
-		m.Mode = "false"
-	case "auto":
-		m.Mode = "auto"
+	case trueModeStr:
+		m.Mode = trueModeStr
+	case falseModeStr:
+		m.Mode = falseModeStr
+	case autoModeStr:
+		m.Mode = autoModeStr
 	default:
 		return fmt.Errorf("invalid TrueFalseAutoMode: %s (valid values: true, false, auto)", str)
 	}
@@ -59,11 +65,11 @@ func (m TrueFalseAutoMode) Validate(fieldName string) error {
 func (m *TrueFalseAutoMode) Resolve(autoModeResult bool) bool {
 	var result bool
 	switch m.Mode {
-	case "true":
+	case trueModeStr:
 		result = true
-	case "false":
+	case falseModeStr:
 		result = false
-	case "auto":
+	case autoModeStr:
 		result = autoModeResult
 	}
 	m.Resolved = &result

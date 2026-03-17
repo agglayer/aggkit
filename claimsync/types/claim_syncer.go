@@ -9,7 +9,7 @@ type ClaimSyncer interface {
 	OriginNetwork() uint32
 	// GetLastProcessedBlock is deprecated in favour GetProcessedBlockRange
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
-	//GetStatus(ctx context.Context) (Status, error)
+	// GetStatus(ctx context.Context) (Status, error)
 	// SetNextRequiredBlock sets the next required block number. It is used by aggsender that
 	// set the next required block to the next one from the previous settled certificate
 	// If the syncer have no block yet is going to use this as starting point

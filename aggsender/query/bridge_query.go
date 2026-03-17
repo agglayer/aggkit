@@ -92,10 +92,14 @@ func (b *bridgeDataQuerier) GetExitRootByIndex(ctx context.Context, index uint32
 func (b *bridgeDataQuerier) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	bridgeBlock, found, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
 	if err != nil {
-		return 0, false, fmt.Errorf("error getting bridge syncer last processed block: %w", err)
+		return 0, false, fmt.Errorf("error getting last processed block: %w", err)
 	}
 	if !found {
 		return 0, false, nil
+	}
+
+	if b.claimSyncer == nil {
+		return bridgeBlock, true, nil
 	}
 
 	claimBlock, claimFound, err := b.claimSyncer.GetLastProcessedBlock(ctx)
@@ -134,7 +138,7 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 	for {
 		bridgeReady, err := b.isSyncerCaughtUp(ctx, block)
 		if err != nil {
-			return fmt.Errorf("bridgeDataQuerier - error checking bridge syncer: %w", err)
+			return fmt.Errorf("bridgeDataQuerier - error getting last processed block: %w", err)
 		}
 
 		claimReady, err := b.isClaimSyncerCaughtUp(ctx, block)
@@ -180,6 +184,9 @@ func (b *bridgeDataQuerier) isSyncerCaughtUp(ctx context.Context, block uint64) 
 // isClaimSyncerCaughtUp checks whether the claim syncer has processed up to the given block.
 // Returns true if caught up, false if not yet.
 func (b *bridgeDataQuerier) isClaimSyncerCaughtUp(ctx context.Context, block uint64) (bool, error) {
+	if b.claimSyncer == nil {
+		return true, nil
+	}
 	lastProcessedBlock, found, err := b.claimSyncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return false, err

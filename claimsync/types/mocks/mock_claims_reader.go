@@ -147,9 +147,9 @@ func (_c *ClaimsReader_GetClaims_Call) RunAndReturn(run func(context.Context, ty
 	return _c
 }
 
-// GetClaimsByGER provides a mock function with given fields: ctx, globalExitRoot
-func (_m *ClaimsReader) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctypes.Claim, error) {
-	ret := _m.Called(ctx, globalExitRoot)
+// GetClaimsByGER provides a mock function with given fields: ctx, tx, globalExitRoot
+func (_m *ClaimsReader) GetClaimsByGER(ctx context.Context, tx types.Querier, globalExitRoot common.Hash) ([]*claimsynctypes.Claim, error) {
+	ret := _m.Called(ctx, tx, globalExitRoot)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClaimsByGER")
@@ -157,19 +157,19 @@ func (_m *ClaimsReader) GetClaimsByGER(ctx context.Context, globalExitRoot commo
 
 	var r0 []*claimsynctypes.Claim
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) ([]*claimsynctypes.Claim, error)); ok {
-		return rf(ctx, globalExitRoot)
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier, common.Hash) ([]*claimsynctypes.Claim, error)); ok {
+		return rf(ctx, tx, globalExitRoot)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) []*claimsynctypes.Claim); ok {
-		r0 = rf(ctx, globalExitRoot)
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier, common.Hash) []*claimsynctypes.Claim); ok {
+		r0 = rf(ctx, tx, globalExitRoot)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*claimsynctypes.Claim)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
-		r1 = rf(ctx, globalExitRoot)
+	if rf, ok := ret.Get(1).(func(context.Context, types.Querier, common.Hash) error); ok {
+		r1 = rf(ctx, tx, globalExitRoot)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -184,14 +184,15 @@ type ClaimsReader_GetClaimsByGER_Call struct {
 
 // GetClaimsByGER is a helper method to define mock.On call
 //   - ctx context.Context
+//   - tx types.Querier
 //   - globalExitRoot common.Hash
-func (_e *ClaimsReader_Expecter) GetClaimsByGER(ctx interface{}, globalExitRoot interface{}) *ClaimsReader_GetClaimsByGER_Call {
-	return &ClaimsReader_GetClaimsByGER_Call{Call: _e.mock.On("GetClaimsByGER", ctx, globalExitRoot)}
+func (_e *ClaimsReader_Expecter) GetClaimsByGER(ctx interface{}, tx interface{}, globalExitRoot interface{}) *ClaimsReader_GetClaimsByGER_Call {
+	return &ClaimsReader_GetClaimsByGER_Call{Call: _e.mock.On("GetClaimsByGER", ctx, tx, globalExitRoot)}
 }
 
-func (_c *ClaimsReader_GetClaimsByGER_Call) Run(run func(ctx context.Context, globalExitRoot common.Hash)) *ClaimsReader_GetClaimsByGER_Call {
+func (_c *ClaimsReader_GetClaimsByGER_Call) Run(run func(ctx context.Context, tx types.Querier, globalExitRoot common.Hash)) *ClaimsReader_GetClaimsByGER_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(common.Hash))
+		run(args[0].(context.Context), args[1].(types.Querier), args[2].(common.Hash))
 	})
 	return _c
 }
@@ -201,7 +202,7 @@ func (_c *ClaimsReader_GetClaimsByGER_Call) Return(_a0 []*claimsynctypes.Claim, 
 	return _c
 }
 
-func (_c *ClaimsReader_GetClaimsByGER_Call) RunAndReturn(run func(context.Context, common.Hash) ([]*claimsynctypes.Claim, error)) *ClaimsReader_GetClaimsByGER_Call {
+func (_c *ClaimsReader_GetClaimsByGER_Call) RunAndReturn(run func(context.Context, types.Querier, common.Hash) ([]*claimsynctypes.Claim, error)) *ClaimsReader_GetClaimsByGER_Call {
 	_c.Call.Return(run)
 	return _c
 }

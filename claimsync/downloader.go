@@ -55,9 +55,6 @@ const (
 
 	// methodIDLength is the length of the method ID in bytes
 	methodIDLength = 4
-
-	bridgeLeafTypeMessage = uint8(bridgesynctypes.LeafTypeMessage)
-	bridgeLeafTypeAsset   = uint8(bridgesynctypes.LeafTypeAsset)
 )
 
 // claimQuerier is used by event handlers to check the DetailedClaimEvent boundary.
@@ -96,9 +93,11 @@ func buildAppender(
 	// TODO: Check syncfullclaims
 	syncFullClaims := true
 	appender := make(sync.LogAppenderMap)
-	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
+		legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
 
-	appender[claimEventSignature] = buildClaimEventHandler(ctx, deployment.agglayerBridge, ethClient, querier, bridgeAddr, syncFullClaims, log)
+	appender[claimEventSignature] = buildClaimEventHandler(
+		ctx, deployment.agglayerBridge, ethClient, querier, bridgeAddr, syncFullClaims, log)
 
 	if deployment.kind == SovereignChain {
 		appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
@@ -207,7 +206,7 @@ func buildClaimEventHandler(
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, log, nil)
+		rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, log, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -300,7 +299,7 @@ func buildClaimEventHandlerPreEtrog(
 			Amount:             claimEvent.Amount,
 		}
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
+		rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -376,15 +375,15 @@ type tracerCfg struct {
 
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
 func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (bool, error), logger aggkitcommon.Logger,
-) ([]*Call, error) {
+) error {
 	callStack := stack.New()
 	callStack.Push(rootCall)
-	matchingCalls := []*Call{}
+	found := false
 	for callStack.Len() > 0 {
 		currentCallInterface := callStack.Pop()
 		currentCall, ok := currentCallInterface.(Call)
 		if !ok {
-			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
+			return fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
 		}
 
 		// Skip reverted calls
@@ -395,16 +394,15 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 		}
 
 		if currentCall.To == targetAddr {
+			found = true
 			if callback != nil {
-				found, err := callback(currentCall)
+				ok, err := callback(currentCall)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				if found {
-					matchingCalls = append(matchingCalls, &currentCall)
+				if !ok {
+					found = false
 				}
-			} else {
-				matchingCalls = append(matchingCalls, &currentCall)
 			}
 		}
 
@@ -415,10 +413,10 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 			}
 		}
 	}
-	if len(matchingCalls) > 0 {
-		return matchingCalls, nil
+	if !found {
+		return db.ErrNotFound
 	}
-	return nil, db.ErrNotFound
+	return nil
 }
 
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
@@ -437,20 +435,19 @@ func extractCallData(
 	txHash common.Hash,
 	logger aggkitcommon.Logger,
 	callback func(c Call) (bool, error),
-) (foundCalls []*Call, rootCall *Call, err error) {
+) (*Call, error) {
 	// Extract root call first
-	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
+	rootCall, err := extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Find the specific call to the bridge contract
-	foundCalls, err = findCall(*rootCall, bridgeAddr, callback, logger)
-	if err != nil {
-		return nil, nil, err
+	if err = findCall(*rootCall, bridgeAddr, callback, logger); err != nil {
+		return nil, err
 	}
 
-	return foundCalls, rootCall, nil
+	return rootCall, nil
 }
 
 // setClaimCalldataFromRoot finds and decodes calldata for the given bridge address using an already traced root call.
@@ -467,7 +464,7 @@ func setClaimCalldataFromRoot(
 	bridge common.Address,
 	logger aggkitcommon.Logger,
 ) error {
-	_, err := findCall(*rootCall, bridge,
+	err := findCall(*rootCall, bridge,
 		func(call Call) (bool, error) {
 			// Skip reverted calls
 			if call.Err != nil {

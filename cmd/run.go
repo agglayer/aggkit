@@ -106,7 +106,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 	var rpcServices []jRPC.Service
-	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(components,l1Client, cfg.L1Multidownloader)
+	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(components, l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}
@@ -145,7 +145,8 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
 	}
 
-	l2ClaimSync := runClaimSyncL2IfNeeded(ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
+	l2ClaimSync := runClaimSyncL2IfNeeded(
+		ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
 	if l2ClaimSync != nil {
 		rpcServices = append(rpcServices, l2ClaimSync.GetRPCServices()...)
 	}
@@ -179,6 +180,8 @@ func start(cliCtx *cli.Context) error {
 			l2GERSync,
 			l1BridgeSync,
 			l2BridgeSync,
+			l1ClaimSync,
+			l2ClaimSync,
 		)
 		go b.Start(ctx)
 		log.Info("Bridge service started")
@@ -560,13 +563,10 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 }
 
 func l1InfoTreeMustRun(components []string) bool {
-	if !isNeeded([]string{
+	return isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
-		return false
-	}
-	return true
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components)
 }
 
 func runL1InfoTreeSyncerIfNeeded(
@@ -689,9 +689,9 @@ func runL1MultiDownloaderIfNeeded(
 		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
 		return nil, nil, nil
 	}
-	if !l1InfoTreeMustRun(components){
+	if !l1InfoTreeMustRun(components) {
 		log.Infof("L1 MultiDownloader not going to run because components: %v", components)
-		return nil, nil,nil
+		return nil, nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 
@@ -982,6 +982,8 @@ func createBridgeService(
 	injectedGERs bridgeservice.L2GERSyncer,
 	bridgeL1 bridgeservice.Bridger,
 	bridgeL2 bridgeservice.Bridger,
+	claimL1 bridgeservice.Claimer,
+	claimL2 bridgeservice.Claimer,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
@@ -999,7 +1001,9 @@ func createBridgeService(
 		l1InfoTree,
 		injectedGERs,
 		bridgeL1,
+		claimL1,
 		bridgeL2,
+		claimL2,
 	)
 }
 

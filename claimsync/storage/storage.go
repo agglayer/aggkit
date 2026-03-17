@@ -95,23 +95,27 @@ func NewStandalone(logger aggkitcommon.Logger, dbPath string, ownerName string,
 	}
 
 	if err := migrations.RunMigrations(logger, database); err != nil {
-		database.Close() //nolint:errcheck
+		database.Close()
 		return nil, fmt.Errorf("claimsync storage: failed to run migrations: %w", err)
 	}
 
 	return &claimStorage{
-		database:       database,
-		compatStore:    compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](db.NewKeyValueStorage(database), ownerName),
+		database: database,
+		compatStore: compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](
+			db.NewKeyValueStorage(database), ownerName),
 		log:            logger,
 		dbQueryTimeout: dbQueryTimeout,
 	}, nil
 }
 
 // New creates a Storage using the provided sql.DB, so it can share
-func New(logger aggkitcommon.Logger, database *sql.DB, ownerName string, dbQueryTimeout time.Duration) (claimsynctypes.ClaimStorager, error) {
+func New(
+	logger aggkitcommon.Logger, database *sql.DB, ownerName string, dbQueryTimeout time.Duration,
+) (claimsynctypes.ClaimStorager, error) {
 	return &claimStorage{
-		database:       database,
-		compatStore:    compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](db.NewKeyValueStorage(database), ownerName),
+		database: database,
+		compatStore: compatibility.NewKeyValueToCompatibilityStorage[aggsync.RuntimeData](
+			db.NewKeyValueStorage(database), ownerName),
 		log:            logger,
 		dbQueryTimeout: dbQueryTimeout,
 	}, nil
@@ -123,7 +127,9 @@ func (s *claimStorage) NewTx(ctx context.Context) (dbtypes.Txer, error) {
 }
 
 // GetCompatibilityData implements claimsynctypes.ClaimStorager.
-func (s *claimStorage) GetCompatibilityData(ctx context.Context, tx dbtypes.Querier) (bool, aggsync.RuntimeData, error) {
+func (s *claimStorage) GetCompatibilityData(
+	ctx context.Context, tx dbtypes.Querier,
+) (bool, aggsync.RuntimeData, error) {
 	return s.compatStore.GetCompatibilityData(ctx, tx)
 }
 
@@ -141,7 +147,9 @@ func (s *claimStorage) getQuerier(tx dbtypes.Querier) dbtypes.Querier {
 }
 
 // InsertBlock inserts a block row using meddler.
-func (s *claimStorage) InsertBlock(_ context.Context, tx dbtypes.Querier, blockNum uint64, blockHash common.Hash) error {
+func (s *claimStorage) InsertBlock(
+	_ context.Context, tx dbtypes.Querier, blockNum uint64, blockHash common.Hash,
+) error {
 	if err := meddler.Insert(s.getQuerier(tx), "block", &blockRecord{Num: blockNum, Hash: blockHash.Hex()}); err != nil {
 		return fmt.Errorf("InsertBlock %d: %w", blockNum, err)
 	}
@@ -175,7 +183,9 @@ func (s *claimStorage) InsertSetClaim(_ context.Context, tx dbtypes.Querier, sc 
 // GetClaims returns claims in [fromBlock, toBlock] using compaction logic:
 // claims with an unset_claim are returned uncompacted; others are compacted
 // (oldest metadata + newest proofs per global_index).
-func (s *claimStorage) GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error) {
+func (s *claimStorage) GetClaims(
+	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64,
+) ([]claimsynctypes.Claim, error) {
 	query := fmt.Sprintf(`
 	WITH all_claims_ranked AS (
 		SELECT
@@ -222,7 +232,9 @@ func (s *claimStorage) GetClaims(ctx context.Context, tx dbtypes.Querier, fromBl
 }
 
 // GetClaimsByGlobalIndex returns claims for the given global index using compaction logic.
-func (s *claimStorage) GetClaimsByGlobalIndex(ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
+func (s *claimStorage) GetClaimsByGlobalIndex(
+	ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int,
+) ([]claimsynctypes.Claim, error) {
 	if globalIndex == nil {
 		return nil, errors.New("GetClaimsByGlobalIndex: globalIndex cannot be nil")
 	}
@@ -301,7 +313,9 @@ func (s *claimStorage) GetLastProcessedBlock(ctx context.Context, tx dbtypes.Que
 
 // GetBoundaryBlockForClaimType returns the max block_num for claims of the given type.
 // Returns db.ErrNotFound if no claims of that type exist.
-func (s *claimStorage) GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType claimsynctypes.ClaimType) (uint64, error) {
+func (s *claimStorage) GetBoundaryBlockForClaimType(
+	ctx context.Context, tx dbtypes.Querier, claimType claimsynctypes.ClaimType,
+) (uint64, error) {
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
@@ -319,11 +333,14 @@ func (s *claimStorage) GetBoundaryBlockForClaimType(ctx context.Context, tx dbty
 // GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root,
 // ordered by block_num/block_pos ascending. If the claim table does not exist (e.g. L1
 // processor), returns nil, nil gracefully.
-func (p *claimStorage) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctypes.Claim, error) {
+func (p *claimStorage) GetClaimsByGER(
+	ctx context.Context, tx dbtypes.Querier, globalExitRoot common.Hash,
+) ([]*claimsynctypes.Claim, error) {
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	rows, err := p.database.QueryContext(dbCtx, claimsByGERSQL, globalExitRoot.Hex(), claimsynctypes.DetailedClaimEvent)
+	rows, err := p.getQuerier(tx).QueryContext(
+		dbCtx, claimsByGERSQL, globalExitRoot.Hex(), claimsynctypes.DetailedClaimEvent)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
 			return nil, nil

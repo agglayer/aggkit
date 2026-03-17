@@ -106,11 +106,11 @@ type L2BridgeSyncer interface {
 	GetBlockByLER(ctx context.Context, ler common.Hash) (uint64, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
-	//GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error)
+	// GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error)
 	OriginNetwork() uint32
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
-	//GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error)
+	// GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error)
 	SubscribeToSync(subscriberID string) <-chan sync.Block
 	SubscribeToNewBridge(subscriberID string) <-chan uint64
 }

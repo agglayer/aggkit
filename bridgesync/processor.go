@@ -36,20 +36,11 @@ const (
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
 
-	// claimTableName is the name of the table that stores claim events
-	claimTableName = "claim"
-
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
-
-	// unsetClaimTableName is the name of the table that stores unset claim events
-	unsetClaimTableName = "unset_claim"
-
-	// setClaimTableName is the name of the table that stores set claim events
-	setClaimTableName = "set_claim"
 
 	// backwardLETTableName is the name of the table that stores backward local exit tree events
 	backwardLETTableName = "backward_let"
@@ -64,48 +55,6 @@ const (
 const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
-
-	// claimColumnsSQL is the list of all claim columns
-	claimColumnsSQL = `block_num,
-		block_pos,
-		tx_hash,
-		global_index,
-		origin_network,
-		origin_address,
-		destination_address,
-		amount,
-		proof_local_exit_root,
-		proof_rollup_exit_root,
-		mainnet_exit_root,
-		rollup_exit_root,
-		global_exit_root,
-		destination_network,
-		metadata,
-		is_message,
-		block_timestamp,
-		type`
-
-	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
-	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
-	compactedClaimsSelectSQL = `
-		o.block_num,
-		o.block_pos,
-		o.tx_hash,
-		o.global_index,
-		o.origin_network,
-		o.origin_address,
-		o.destination_address,
-		o.amount,
-		n.proof_local_exit_root,
-		n.proof_rollup_exit_root,
-		n.mainnet_exit_root,
-		n.rollup_exit_root,
-		n.global_exit_root,
-		o.destination_network,
-		o.metadata,
-		o.is_message,
-		o.block_timestamp,
-		o.type`
 
 	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
 	// deposit_count is a unique monotonic counter per bridge event in the contract, so no
@@ -135,9 +84,6 @@ const (
 )
 
 var (
-	// errFailToConvertClaims indicates that the conversion from []*Claim to []Claim failed.
-	errFailToConvertClaims = errors.New("failed to convert from []*Claim to []Claim")
-
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
@@ -364,9 +310,9 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 	BackwardLET          *BackwardLET
 	ForwardLET           *ForwardLET
-	//Claim                *Claim
-	//UnsetClaim           *UnsetClaim
-	//SetClaim             *SetClaim
+	// Claim                *Claim
+	// UnsetClaim           *UnsetClaim
+	// SetClaim             *SetClaim
 
 }
 
@@ -473,16 +419,16 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 }
 
 type processor struct {
-	syncerID             string
-	db                   *sql.DB
-	exitTree             types.FullTreer
-	log                  *log.Logger
-	mu                   mutex.RWMutex
-	halted               bool
-	haltedReason         string
-	dbQueryTimeout       time.Duration
-	bridgeSubscriber     aggkitcommon.PubSub[uint64]
-	initialLER           common.Hash
+	syncerID         string
+	db               *sql.DB
+	exitTree         types.FullTreer
+	log              *log.Logger
+	mu               mutex.RWMutex
+	halted           bool
+	haltedReason     string
+	dbQueryTimeout   time.Duration
+	bridgeSubscriber aggkitcommon.PubSub[uint64]
+	initialLER       common.Hash
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -641,15 +587,6 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		return " WHERE " + strings.Join(clauses, " AND "), args
 	}
 	return "", nil
-}
-
-// buildGlobalIndexFilterClause builds a WHERE clause for filtering by global_index
-func buildGlobalIndexFilterClause(globalIndex *big.Int) string {
-	if globalIndex != nil {
-		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
-	}
-
-	return ""
 }
 
 // buildTokenMappingsFilterClause builds the WHERE clause for the token_mapping table

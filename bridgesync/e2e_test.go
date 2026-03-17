@@ -31,8 +31,6 @@ var (
 	}
 )
 
-const testSyncFromInBridges = true
-
 // bridgeSyncAdapter wraps BridgeSync to satisfy helpers.Processorer interface.
 type bridgeSyncAdapter struct {
 	*bridgesync.BridgeSync
@@ -42,7 +40,6 @@ func (a *bridgeSyncAdapter) GetLastProcessedBlock(ctx context.Context) (uint64, 
 	block, _, err := a.BridgeSync.GetLastProcessedBlock(ctx)
 	return block, err
 }
-
 
 func mockClientCallGetTransactionByHash(t *testing.T,
 	mockClient *mocks.RPCClienter,

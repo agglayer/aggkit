@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctype "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -30,6 +31,16 @@ type Bridger interface {
 	GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address,
 		destinationNetwork uint32, destinationAddress common.Address,
 		amount *big.Int, metadata []byte) ([]*bridgesync.Bridge, error)
+}
+
+type Claimer interface {
+	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
+		networkIDs []uint32, globalIndex *big.Int) ([]*claimsynctype.Claim, int, error)
+	GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
+		globalIndex *big.Int) ([]*claimsynctype.UnsetClaim, int, error)
+	GetSetClaimsPaged(ctx context.Context, page, pageSize uint32,
+		globalIndex *big.Int) ([]*claimsynctype.SetClaim, int, error)
+	GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctype.Claim, error)
 }
 
 type L2GERSyncer interface {

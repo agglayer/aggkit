@@ -167,7 +167,8 @@ func TestEVMMultidownloaderExploratory(t *testing.T) {
 		timer := aggkitcommon.TimeTracker{}
 		timer.Start()
 		if syncer != nil {
-			syncer.Sync(t.Context())
+			fromBlock := uint64(5157574)
+			syncer.Sync(t.Context(), &fromBlock)
 		}
 		timer.Stop()
 		log.Infof("L1InfoTree sync finished in %s", timer.String())

@@ -99,15 +99,18 @@ func NewEmbedded(
 		return nil, fmt.Errorf("claimsync embedded: failed to build appender: %w", err)
 	}
 
-	logger.Infof("claimsync embedded created: bridgeAddr=%s sovereign=%t", bridgeAddr.String(), deployment.kind == SovereignChain)
+	logger.Infof("claimsync embedded created: bridgeAddr=%s sovereign=%t",
+		bridgeAddr.String(), deployment.kind == SovereignChain)
 
 	return &EmbeddedClaimSync{
 		Processor: proc,
 		Reader:    storage,
 		Appender:  appender}, nil
 }
-func (p *claimEmbeddedProcessor) ProcessBlockWithTx(ctx context.Context, tx dbtypes.Querier, block sync.Block, eventRaw any) error {
 
+func (p *claimEmbeddedProcessor) ProcessBlockWithTx(
+	ctx context.Context, tx dbtypes.Querier, block sync.Block, eventRaw any,
+) error {
 	event, ok := eventRaw.(Event)
 	if !ok {
 		return fmt.Errorf("claimsync ProcessBlock: unexpected event type %T in block %d", event, block.Num)
@@ -143,11 +146,15 @@ func (p *claimEmbeddedProcessor) ProcessBlockWithTx(ctx context.Context, tx dbty
 // it returns:
 // - the number of rows affected (currently the number of blocks deleted)
 // - error if the deletion failed, or nil if successful
-func (p *claimEmbeddedProcessor) ReorgWithTx(ctx context.Context, tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error) {
+func (p *claimEmbeddedProcessor) ReorgWithTx(
+	ctx context.Context, tx dbtypes.Querier, firstReorgedBlock uint64,
+) (int64, error) {
 	return p.deleteBlocksFrom(ctx, tx, firstReorgedBlock)
 }
 
-func (p *claimEmbeddedProcessor) deleteBlocksFrom(ctx context.Context, tx dbtypes.Querier, firstReorgedBlock uint64) (int64, error) {
+func (p *claimEmbeddedProcessor) deleteBlocksFrom(
+	ctx context.Context, tx dbtypes.Querier, firstReorgedBlock uint64,
+) (int64, error) {
 	rowsAffected, err := p.storage.DeleteBlocksFrom(ctx, tx, firstReorgedBlock)
 	if err != nil {
 		return 0, fmt.Errorf("claimsync deleteBlocksFrom: %w", err)

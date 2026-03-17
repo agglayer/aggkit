@@ -152,7 +152,7 @@ func TestPreconfTriggerForceTriggerEvent(t *testing.T) {
 	// Create a mock subscription channel
 	syncCh := make(chan sync.Block, 3)
 	mockL2BridgeSync.EXPECT().SubscribeToSync("aggsender").Return(syncCh)
-	mockL2BridgeSync.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(12345), nil).Once()
+	mockL2BridgeSync.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(12345), true, nil).Once()
 	sut := newPreconfTrigger(
 		logger,
 		mockL2BridgeSync,

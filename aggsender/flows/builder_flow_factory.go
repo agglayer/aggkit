@@ -203,7 +203,8 @@ func CreateCommonFlowComponents(
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, l2ClaimSyncer, delayBetweenRetries, agglayerBridgeL2Reader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(
+		logger, l2Syncer, l2ClaimSyncer, delayBetweenRetries, agglayerBridgeL2Reader)
 	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, globalExitRootL1Addr, l1InfoTreeSyncer,
 		blockFinalityForL1InfoTree)
 	if err != nil {

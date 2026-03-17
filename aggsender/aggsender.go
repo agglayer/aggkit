@@ -397,6 +397,10 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 }
 
 func (a *AggSender) setClaimSyncerNextRequiredBlock(ctx context.Context) {
+	if a.l2ClaimSyncer == nil {
+		a.log.Debugf("l2 claim syncer is nil, skipping setClaimSyncerNextRequiredBlock")
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -410,9 +414,6 @@ func (a *AggSender) setClaimSyncerNextRequiredBlock(ctx context.Context) {
 			continue
 		}
 		a.log.Infof("Setting starting Claim L2 Syncer block to %d", nextBlock)
-		if a.l2ClaimSyncer == nil {
-			a.log.Fatalf("l2 claim syncer is nil, so we are not going to set the next required block for claim syncer")
-		}
 		if err := a.l2ClaimSyncer.SetNextRequiredBlock(ctx, nextBlock); err != nil {
 			a.log.Errorf("error setting next required block for claim syncer: %v", err)
 			time.Sleep(a.cfg.DelayBetweenRetries.Duration)

@@ -375,7 +375,9 @@ func (f *baseFlow) getNewLocalExitRoot(
 }
 
 // ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+func (f *baseFlow) ConvertClaimToImportedBridgeExit(
+	claim claimsynctypes.Claim,
+) (*agglayertypes.ImportedBridgeExit, error) {
 	return converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
 }
 

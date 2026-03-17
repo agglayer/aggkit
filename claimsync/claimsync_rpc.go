@@ -71,7 +71,8 @@ func (r *ClaimSyncRPC) GetClaims(fromBlock, toBlock uint64) (interface{}, jRPC.E
 func (r *ClaimSyncRPC) GetClaimsByGlobalIndex(globalIndexStr string) (interface{}, jRPC.Error) {
 	r.logger.Infof("RPC call: lclaimsync_getClaimsByGlobalIndex(%s)", globalIndexStr)
 	globalIndex := new(big.Int)
-	if _, ok := globalIndex.SetString(globalIndexStr, 10); !ok {
+	const decimalBase = 10
+	if _, ok := globalIndex.SetString(globalIndexStr, decimalBase); !ok {
 		return nil, jRPC.NewRPCError(jRPC.DefaultErrorCode,
 			"ClaimSyncRPC.GetClaimsByGlobalIndex: invalid global index: %s", globalIndexStr)
 	}

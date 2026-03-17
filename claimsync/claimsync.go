@@ -57,7 +57,6 @@ func NewClaimSync(
 	syncerID claimsynctypes.ClaimSyncerID,
 	logger aggkitcommon.Logger,
 ) (*ClaimSync, error) {
-
 	dbQueryTimeout := cfg.DBQueryTimeout.Duration
 	if dbQueryTimeout == 0 {
 		dbQueryTimeout = defaultDBTimeout
@@ -67,10 +66,7 @@ func NewClaimSync(
 		return nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
 	}
 
-	proc, err := newProcessor(logger, store, dbQueryTimeout)
-	if err != nil {
-		return nil, err
-	}
+	proc := newProcessor(logger, store, dbQueryTimeout)
 
 	deployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
 	if err != nil {
@@ -131,7 +127,8 @@ func NewClaimSync(
 
 	logger.Infof(
 		"claimsync created: dbPath=%s initialBlock=%d blockFinality=%s bridgeAddr=%s sovereign=%t",
-		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(), cfg.BridgeAddr.String(), deployment.kind == SovereignChain,
+		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(),
+		cfg.BridgeAddr.String(), deployment.kind == SovereignChain,
 	)
 
 	return &ClaimSync{
@@ -150,7 +147,7 @@ func NewClaimSync(
 func (c *ClaimSync) Start(ctx context.Context) {
 	c.logger.Infof("starting claim synchronizer AutoStart: %t InitialBlock: %d",
 		*c.cfg.AutoStart.Resolved, c.cfg.InitialBlockNum)
-	if *c.cfg.AutoStart.Resolved == true {
+	if *c.cfg.AutoStart.Resolved {
 		c.driver.Sync(ctx, &c.cfg.InitialBlockNum)
 	} else {
 		c.driver.Sync(ctx, nil)
@@ -211,7 +208,8 @@ func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64
 		return fmt.Errorf("claimsync: failed to get first processed block: %w", err)
 	}
 	if blockNumber <= firstBlock {
-		return fmt.Errorf("claimsync: cannot set next required block to %d, it must be greater than the first block in DB (%d)",
+		return fmt.Errorf("claimsync: cannot set next required block to %d, "+
+			"it must be greater than the first block in DB (%d)",
 			blockNumber, firstBlock)
 	}
 	if blockNumber > lastBlock {
@@ -233,6 +231,25 @@ func (c *ClaimSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 
 func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
 	return c.reader.GetClaimsByGlobalIndex(ctx, nil, globalIndex)
+}
+
+func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
+	return c.reader.GetClaimsByGER(ctx, nil, globalExitRoot)
+}
+
+func (c *ClaimSync) GetClaimsPaged(ctx context.Context, page, pageSize uint32,
+	networkIDs []uint32, globalIndex *big.Int) ([]*claimsynctypes.Claim, int, error) {
+	return c.reader.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
+}
+
+func (c *ClaimSync) GetUnsetClaimsPaged(ctx context.Context, page, pageSize uint32,
+	globalIndex *big.Int) ([]*claimsynctypes.UnsetClaim, int, error) {
+	return c.reader.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
+}
+
+func (c *ClaimSync) GetSetClaimsPaged(ctx context.Context, page, pageSize uint32,
+	globalIndex *big.Int) ([]*claimsynctypes.SetClaim, int, error) {
+	return c.reader.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
 }
 
 func (c *ClaimSync) createStartingPoint(ctx context.Context, blockNumber uint64) error {

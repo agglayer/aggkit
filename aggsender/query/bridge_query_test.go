@@ -8,6 +8,8 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
+	claimsynctypesmocks "github.com/agglayer/aggkit/claimsync/types/mocks"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,27 +24,27 @@ func TestGetBridgesAndClaims(t *testing.T) {
 		name            string
 		fromBlock       uint64
 		toBlock         uint64
-		mockFn          func(*mocks.L2BridgeSyncer)
+		mockFn          func(*mocks.L2BridgeSyncer, *claimsynctypesmocks.ClaimSyncer)
 		expectedBridges []bridgesync.Bridge
-		expectedClaims  []bridgesync.Claim
+		expectedClaims  []claimsynctypes.Claim
 		expectedError   string
 	}{
 		{
 			name:      "success - valid bridges and claims",
 			fromBlock: 100,
 			toBlock:   200,
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer, mockClaimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
 					{BlockNum: 100, BlockPos: 1},
 				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
+				mockClaimSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]claimsynctypes.Claim{
 					{BlockNum: 200, BlockPos: 1},
 				}, nil)
 			},
 			expectedBridges: []bridgesync.Bridge{
 				{BlockNum: 100, BlockPos: 1},
 			},
-			expectedClaims: []bridgesync.Claim{
+			expectedClaims: []claimsynctypes.Claim{
 				{BlockNum: 200, BlockPos: 1},
 			},
 		},
@@ -50,7 +52,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "error - failed to fetch bridges",
 			fromBlock: 100,
 			toBlock:   200,
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer, mockClaimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
 			},
 			expectedBridges: nil,
@@ -61,11 +63,11 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "error - failed to fetch claims",
 			fromBlock: 100,
 			toBlock:   200,
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer, mockClaimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
 					{BlockNum: 100, BlockPos: 1},
 				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
+				mockClaimSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting claims: some error",
 		},
@@ -73,9 +75,9 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "no bridges and claims - empty cert",
 			fromBlock: 100,
 			toBlock:   200,
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer, mockClaimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, nil)
+				mockClaimSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, nil)
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
@@ -90,10 +92,11 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 			mockSyncer := new(mocks.L2BridgeSyncer)
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
+			mockClaimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
-			tc.mockFn(mockSyncer)
+			tc.mockFn(mockSyncer, mockClaimSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, mockClaimSyncer, 0, AgglayerBridgeL2Reader)
 
 			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
@@ -152,7 +155,7 @@ func TestGetExitRootByIndex(t *testing.T) {
 			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, nil, 0, AgglayerBridgeL2Reader)
 
 			hash, err := bridgeQuerier.GetExitRootByIndex(ctx, tc.index)
 			if tc.expectedError != "" {
@@ -180,14 +183,14 @@ func TestGetLastProcessedBlock(t *testing.T) {
 		{
 			name: "success - valid last processed block",
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), nil)
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
 			},
 			expectedBlock: 150,
 		},
 		{
 			name: "error - failed to fetch last processed block",
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("some error"))
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("some error"))
 			},
 			expectedError: "error getting last processed block: some error",
 		},
@@ -204,9 +207,9 @@ func TestGetLastProcessedBlock(t *testing.T) {
 			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, nil, 0, AgglayerBridgeL2Reader)
 
-			block, err := bridgeQuerier.GetLastProcessedBlock(ctx)
+			block, _, err := bridgeQuerier.GetLastProcessedBlock(ctx)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -227,7 +230,7 @@ func TestOriginNetwork(t *testing.T) {
 
 	AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 
-	bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, AgglayerBridgeL2Reader)
+	bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, nil, 0, AgglayerBridgeL2Reader)
 
 	originNetwork := bridgeQuerier.OriginNetwork()
 	require.Equal(t, uint32(1), originNetwork)
@@ -251,7 +254,7 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 			name:  "fail to get last processed block",
 			block: 100,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("some error")).Once()
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("some error")).Once()
 			},
 			expectedError: "bridgeDataQuerier - error getting last processed block: some error",
 		},
@@ -260,7 +263,7 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 			delayBetweenRetries: 0,
 			block:               10,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), nil).Once()
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), true, nil).Once()
 			},
 		},
 		{
@@ -268,8 +271,8 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 			block:               10,
 			delayBetweenRetries: 10 * time.Millisecond,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), nil).Times(3)
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil).Once()
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil).Times(3)
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), true, nil).Once()
 			},
 		},
 	}
@@ -347,7 +350,7 @@ func TestGetUnsetClaimsForBlockRange(t *testing.T) {
 			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
 			tc.mockFn(AgglayerBridgeL2Reader)
 
-			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", "TestGetUnsetClaimsForBlockRange"), mockSyncer, 0, AgglayerBridgeL2Reader)
+			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", "TestGetUnsetClaimsForBlockRange"), mockSyncer, nil, 0, AgglayerBridgeL2Reader)
 
 			unclaims, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {

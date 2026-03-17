@@ -20,6 +20,7 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	dbtypes "github.com/agglayer/aggkit/db/types"
@@ -62,7 +63,7 @@ func TestBigIntString(t *testing.T) {
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 
-	claim := &Claim{
+	claim := &claimsynctypes.Claim{
 		BlockNum:            1,
 		BlockPos:            0,
 		GlobalIndex:         GenerateGlobalIndex(true, 0, 1093),
@@ -76,7 +77,7 @@ func TestBigIntString(t *testing.T) {
 		RollupExitRoot:      common.Hash{},
 		GlobalExitRoot:      common.Hash{},
 		DestinationNetwork:  12,
-		Type:                ClaimEvent,
+		Type:                claimsynctypes.ClaimEvent,
 	}
 
 	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, claim.BlockNum)
@@ -94,7 +95,7 @@ func TestBigIntString(t *testing.T) {
 	`, claim.BlockNum, claim.BlockNum)
 	require.NoError(t, err)
 
-	claimsFromDB := []*Claim{}
+	claimsFromDB := []*claimsynctypes.Claim{}
 	require.NoError(t, meddler.ScanAll(rows, &claimsFromDB))
 	require.Len(t, claimsFromDB, 1)
 	require.Equal(t, claim, claimsFromDB[0])
@@ -500,31 +501,6 @@ func (a *processBlockAction) execute(t *testing.T) {
 	require.Equal(t, a.expectedErr, actualErr)
 }
 
-// getTotalRecordsAction
-
-type getTotalRecordsAction struct {
-	p                  *processor
-	description        string
-	tableName          string
-	expectedRecordsNum int
-}
-
-func (a *getTotalRecordsAction) method() string {
-	return "getTotalRecordsAction"
-}
-
-func (a *getTotalRecordsAction) desc() string {
-	return a.description
-}
-
-func (a *getTotalRecordsAction) execute(t *testing.T) {
-	t.Helper()
-
-	recordsNum, err := a.p.GetTotalNumberOfRecords(context.Background(), a.tableName, "")
-	require.NoError(t, err)
-	require.Equal(t, a.expectedRecordsNum, recordsNum)
-}
-
 func eventsToBridges(events []any) []Bridge {
 	bridges := []Bridge{}
 	for _, event := range events {
@@ -538,7 +514,6 @@ func eventsToBridges(events []any) []Bridge {
 	}
 	return bridges
 }
-
 
 func TestHashBridge(t *testing.T) {
 	data, err := os.ReadFile("../tree/testvectors/leaf-vectors.json")
@@ -719,7 +694,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		})
 	}
 }
-
 
 func TestGetBridgesPublished(t *testing.T) {
 	t.Parallel()
@@ -1048,7 +1022,6 @@ func TestGetBridgesPaged(t *testing.T) {
 	}
 }
 
-
 func TestProcessor_GetTokenMappings(t *testing.T) {
 	t.Parallel()
 
@@ -1260,7 +1233,7 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 		}
 	}
 
-	expectedClaim := &Claim{
+	expectedClaim := &claimsynctypes.Claim{
 		GlobalIndex:        new(big.Int).SetUint64(uint64(globalIndex)),
 		MainnetExitRoot:    common.HexToHash("0xdead"),
 		RollupExitRoot:     common.HexToHash("0xbeef"),
@@ -1285,9 +1258,10 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	actualClaim := &Claim{
+	actualClaim := &claimsynctypes.Claim{
 		GlobalIndex: new(big.Int).SetUint64(uint64(globalIndex)),
 	}
+	claimAssetPreEtrogMethodID := common.Hex2Bytes("2cffd02e")
 	method, err := bridgeV1ABI.MethodById(claimAssetPreEtrogMethodID)
 	require.NoError(t, err)
 
@@ -1483,7 +1457,7 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			claim := &Claim{
+			claim := &claimsynctypes.Claim{
 				GlobalIndex:        new(big.Int).SetUint64(uint64(globalIndex)),
 				MainnetExitRoot:    common.Hash{},
 				RollupExitRoot:     common.Hash{},
@@ -1686,7 +1660,7 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			claim := &Claim{GlobalIndex: globalIndex}
+			claim := &claimsynctypes.Claim{GlobalIndex: globalIndex}
 
 			isDecoded, err := claim.DecodeEtrogCalldata(tt.data)
 			if tt.expectError {
@@ -1921,7 +1895,6 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 	}
 }
 
-
 func intPtr(i int) *int {
 	return &i
 }
@@ -1961,7 +1934,6 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		require.Len(t, bridges, 1)
 		require.Equal(t, 1, count)
 	})
-
 
 	t.Run("GetLegacyTokenMigrations error paths", func(t *testing.T) {
 		t.Parallel()
@@ -2149,8 +2121,6 @@ func createTestTokenMapping(blockNum uint64, blockPos int) *TokenMapping {
 	}
 }
 
-
-
 func TestDatabaseQueryTimeout(t *testing.T) {
 	normalTimeout := 100 * time.Millisecond
 	shortTimeout := 1 * time.Nanosecond
@@ -2185,9 +2155,7 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 	_, err = pShortTimeout.GetBridges(ctx, 1, 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
-
 }
-
 
 func TestProcessor_BackwardLET(t *testing.T) {
 	buildBlocksWithSequentialBridges := func(blocksCount, bridgesPerBlock uint64,
@@ -2549,7 +2517,6 @@ func TestProcessor_BackwardLET(t *testing.T) {
 		})
 	}
 }
-
 
 func TestHandleForwardLETEvent(t *testing.T) {
 	t.Run("successfully process single leaf with no archived bridge", func(t *testing.T) {
@@ -3354,7 +3321,6 @@ func encodeLeafDataArrayForTest(t *testing.T, leaves []LeafData) []byte {
 
 	return encodedBytes
 }
-
 
 func TestProcessor_GetBridgeByDepositCount(t *testing.T) {
 	t.Helper()

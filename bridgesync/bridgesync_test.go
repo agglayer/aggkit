@@ -70,10 +70,6 @@ func TestNewLx(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
-	// CustomHeaderByNumber is called once (for L1 on fresh DB; L2 reuses the same DB)
-	mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
-		Return(aggkittypes.NewBlockHeader(0, common.Hash{}, 0, nil), nil).Once()
-
 	dbQueryTimeout := 30 * time.Second
 
 	syncFromInBridgesResolved := testSyncFromInBridges
@@ -310,8 +306,6 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
-	mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
-		Return(aggkittypes.NewBlockHeader(0, common.Hash{}, 0, nil), nil).Once()
 
 	dbQueryTimeout := 30 * time.Second
 
@@ -483,8 +477,6 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
-	mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
-		Return(aggkittypes.NewBlockHeader(0, common.Hash{}, 0, nil), nil).Once()
 
 	dbQueryTimeout := 30 * time.Second
 
@@ -673,8 +665,6 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
-	mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
-		Return(aggkittypes.NewBlockHeader(0, common.Hash{}, 0, nil), nil).Once()
 
 	dbQueryTimeout := 30 * time.Second
 
@@ -856,8 +846,6 @@ func TestBridgeSync_SubscribeToSync(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
-	mockEthClient.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
-		Return(aggkittypes.NewBlockHeader(0, common.Hash{}, 0, nil), nil).Once()
 
 	dbQueryTimeout := 30 * time.Second
 

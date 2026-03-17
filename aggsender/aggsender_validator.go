@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 
-	signertypes "github.com/agglayer/go_signer/signer/types"
-	ethcommon "github.com/ethereum/go-ethereum/common"
-
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -14,6 +11,8 @@ import (
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
+	signertypes "github.com/agglayer/go_signer/signer/types"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (

@@ -22,14 +22,16 @@ type processor struct {
 	embeddedProcessor claimsynctypes.EmbeddedProcessor
 }
 
-func newProcessor(logger aggkitcommon.Logger, storage claimsynctypes.ClaimStorager, dbQueryTimeout time.Duration) (*processor, error) {
+func newProcessor(
+	logger aggkitcommon.Logger, storage claimsynctypes.ClaimStorager, dbQueryTimeout time.Duration,
+) *processor {
 	return &processor{
 		storage:                   storage,
 		log:                       logger,
 		dbQueryTimeout:            dbQueryTimeout,
 		CompatibilityDataStorager: storage,
 		embeddedProcessor:         newEmbeddedProcessor(logger, storage),
-	}, nil
+	}
 }
 
 // ProcessBlock stores the block and its claim-related events atomically.
@@ -111,7 +113,9 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, er
 }
 
 // GetBoundaryBlockForClaimType returns the max block_num for claims of the given type.
-func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error) {
+func (p *processor) GetBoundaryBlockForClaimType(
+	ctx context.Context, tx dbtypes.Querier, claimType ClaimType,
+) (uint64, error) {
 	return p.storage.GetBoundaryBlockForClaimType(ctx, tx, claimType)
 }
 

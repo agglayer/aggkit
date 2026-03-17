@@ -284,7 +284,8 @@ func TestE2E_CustomSyncer(t *testing.T) {
 		}
 	}()
 	go func() {
-		driver.Sync(ctx)
+		fromBlock := syncerConfig.FromBlock
+		driver.Sync(ctx, &fromBlock)
 	}()
 
 	for numReorgs := 0; numReorgs < 3; numReorgs++ {
