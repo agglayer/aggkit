@@ -199,6 +199,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 
+	syncFromL1Bridges := cfg.L1RPCClient != nil
 	bridgeSyncCfg := bridgesync.Config{
 		DBPath:                             dbPathBridgeSyncL1,
 		BridgeAddr:                         bridgeL1Addr,
@@ -211,6 +212,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
+	bridgeSyncCfg.SyncFromInBridges.Resolved = &syncFromL1Bridges
 	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork)
 	require.NoError(t, err)
 

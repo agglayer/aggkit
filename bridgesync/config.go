@@ -2,69 +2,24 @@ package bridgesync
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// TrueFalseAutoMode represents the mode for FromAddress extraction
-type TrueFalseAutoMode string
+// TrueFalseAutoMode is an alias for config/types.TrueFalseAutoMode.
+type TrueFalseAutoMode = types.TrueFalseAutoMode
 
-const (
+// Re-export the TrueFalseAutoMode values from config/types.
+var (
 	// TrueMode always extracts FromAddress using debug_traceTransaction
-	TrueMode TrueFalseAutoMode = "true"
+	TrueMode = types.TrueMode
 	// FalseMode never extracts FromAddress
-	FalseMode TrueFalseAutoMode = "false"
+	FalseMode = types.FalseMode
 	// AutoMode decides automatically based on whether BRIDGE component is active
-	AutoMode TrueFalseAutoMode = "auto"
+	AutoMode = types.AutoMode
 )
-
-// UnmarshalText implements encoding.TextUnmarshaler
-func (m *TrueFalseAutoMode) UnmarshalText(text []byte) error {
-	str := strings.ToLower(strings.TrimSpace(string(text)))
-	switch str {
-	case "true":
-		*m = TrueMode
-	case "false":
-		*m = FalseMode
-	case "auto":
-		*m = AutoMode
-	default:
-		return fmt.Errorf("invalid TrueFalseAutoMode: value %s (valid values: true, false, auto)", str)
-	}
-	return nil
-}
-
-// String returns the string representation
-func (m TrueFalseAutoMode) String() string {
-	return string(m)
-}
-
-func (m TrueFalseAutoMode) Validate(fieldName string) error {
-	cpy := m
-	if err := cpy.UnmarshalText([]byte(m.String())); err != nil {
-		return fmt.Errorf("invalid %s configuration: %w", fieldName, err)
-	}
-	return nil
-}
-
-// Resolve converts the mode to a boolean, using the provided components list to resolve "auto"
-func (m TrueFalseAutoMode) Resolve(autoModeResult bool) bool {
-	switch m {
-	case TrueMode:
-		return true
-	case FalseMode:
-		return false
-	case AutoMode:
-		// Resolve to auto mode
-		return autoModeResult
-	default:
-		// Default to false
-		return false
-	}
-}
 
 type Config struct {
 	// DBPath path of the DB
@@ -98,16 +53,8 @@ type Config struct {
 	//   - "auto": automatically decides based on whether BRIDGE component is active
 	// Note: TxnSender and ToAddress are always extracted via standard eth_getTransactionByHash.
 	// Default: "auto"
-	SyncFromInBridges TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" 	mapstructure:"SyncFromInBridges"`
-	// EmbeddedClaimSync controls whether to use embedded claim synchronization mode.
-	// If brridge-service is running then we must use embedded claim sync, if not it runs in standalone
-	EmbeddedClaimSync TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" 	mapstructure:"EmbeddedClaimSync"`
-	// SyncFromInBridgesResolved is the resolved boolean value of SyncFromInBridges after "auto" is evaluated.
-	// Not read from config file; set programmatically after resolution.
-	SyncFromInBridgesResolved *bool `mapstructure:"-"`
-	// EmbeddedClaimSyncResolved is the resolved boolean value of EmbeddedClaimSync after "auto" is evaluated.
-	// Not read from config file; set programmatically after resolution.
-	EmbeddedClaimSyncResolved *bool `mapstructure:"-"`
+	// SyncFromInBridges.Resolved is set programmatically after resolution; not read from config.
+	SyncFromInBridges TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
 }
 
 // Validate checks if the configuration is valid
@@ -115,13 +62,12 @@ func (c Config) Validate() error {
 	if err := c.BlockFinality.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
 	}
-	// Validate SyncFromInBridges
-	if err := c.SyncFromInBridges.Validate("SyncFromInBridges"); err != nil {
-		return err
-	}
-	// Validate EmbeddedClaimSync
-	if err := c.EmbeddedClaimSync.Validate("EmbeddedClaimSync"); err != nil {
-		return err
+	// Validate SyncFromInBridges (empty is allowed — means not configured)
+	if c.SyncFromInBridges.Mode != "" {
+		var m TrueFalseAutoMode
+		if err := m.UnmarshalText([]byte(c.SyncFromInBridges.Mode)); err != nil {
+			return fmt.Errorf("invalid SyncFromInBridges value: %w", err)
+		}
 	}
 	return nil
 }
@@ -130,16 +76,10 @@ func (c Config) Validate() error {
 // to log it
 func (c *Config) ResolvedString() []string {
 	var result []string
-	if c.SyncFromInBridgesResolved != nil {
-		result = append(result, fmt.Sprintf("SyncFromInBridges:%s -> %t", c.SyncFromInBridges, *c.SyncFromInBridgesResolved))
+	if c.SyncFromInBridges.Resolved != nil {
+		result = append(result, fmt.Sprintf("SyncFromInBridges:%s -> %t", c.SyncFromInBridges, *c.SyncFromInBridges.Resolved))
 	} else {
 		result = append(result, fmt.Sprintf("SyncFromInBridges: %s -> ???", c.SyncFromInBridges))
 	}
-	if c.EmbeddedClaimSyncResolved != nil {
-		result = append(result, fmt.Sprintf("EmbeddedClaimSync:%s -> %t", c.EmbeddedClaimSync, *c.EmbeddedClaimSyncResolved))
-	} else {
-		result = append(result, fmt.Sprintf("EmbeddedClaimSync: %s -> ???", c.EmbeddedClaimSync))
-	}
 	return result
-
 }

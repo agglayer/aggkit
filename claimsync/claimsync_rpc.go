@@ -56,7 +56,7 @@ func (r *ClaimSyncRPC) Status() (interface{}, jRPC.Error) {
 // curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
 // -d '{"method":"l2claimsync_getClaims", "params":[0, 1000], "id":1}'
 func (r *ClaimSyncRPC) GetClaims(fromBlock, toBlock uint64) (interface{}, jRPC.Error) {
-	r.logger.Infof("RPC call: l2claimsync_getClaims(%d, %d)", fromBlock, toBlock)
+	r.logger.Infof("RPC call: lclaimsync_getClaims(%d, %d)", fromBlock, toBlock)
 	claims, err := r.claimSync.GetClaims(context.Background(), fromBlock, toBlock)
 	if err != nil {
 		return nil, jRPC.NewRPCError(jRPC.DefaultErrorCode,
@@ -69,7 +69,7 @@ func (r *ClaimSyncRPC) GetClaims(fromBlock, toBlock uint64) (interface{}, jRPC.E
 // curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
 // -d '{"method":"l2claimsync_getClaimsByGlobalIndex", "params":["123"], "id":1}'
 func (r *ClaimSyncRPC) GetClaimsByGlobalIndex(globalIndexStr string) (interface{}, jRPC.Error) {
-	r.logger.Infof("RPC call: l2claimsync_getClaimsByGlobalIndex(%s)", globalIndexStr)
+	r.logger.Infof("RPC call: lclaimsync_getClaimsByGlobalIndex(%s)", globalIndexStr)
 	globalIndex := new(big.Int)
 	if _, ok := globalIndex.SetString(globalIndexStr, 10); !ok {
 		return nil, jRPC.NewRPCError(jRPC.DefaultErrorCode,
@@ -91,7 +91,7 @@ func (r *ClaimSyncRPC) GetClaimsByGlobalIndex(globalIndexStr string) (interface{
 // curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
 // -d '{"method":"l2claimsync_setNextRequiredBlock", "params":[1000], "id":1}'
 func (r *ClaimSyncRPC) SetNextRequiredBlock(blockNum uint64) (interface{}, jRPC.Error) {
-	r.logger.Infof("RPC call: l2claimsync_setNextRequiredBlock(%d)", blockNum)
+	r.logger.Infof("RPC call: lclaimsync_setNextRequiredBlock(%d)", blockNum)
 	if err := r.claimSync.SetNextRequiredBlock(context.Background(), blockNum); err != nil {
 		return nil, jRPC.NewRPCError(jRPC.DefaultErrorCode,
 			fmt.Sprintf("ClaimSyncRPC.SetNextRequiredBlock: %s", err.Error()))
@@ -105,10 +105,14 @@ func (r *ClaimSyncRPC) SetNextRequiredBlock(blockNum uint64) (interface{}, jRPC.
 
 // GetRPCServices returns the RPC services exposed by ClaimSync.
 func (c *ClaimSync) GetRPCServices() []jRPC.Service {
-	logger := log.WithFields("module", "l2claimsync-rpc")
+	name := "l1claimsync"
+	if c.syncerID == claimsynctypes.L2ClaimSyncer {
+		name = "l2claimsync"
+	}
+	logger := log.WithFields("module", name+"-rpc")
 	return []jRPC.Service{
 		{
-			Name:    "l2claimsync",
+			Name:    name,
 			Service: NewClaimSyncRPC(logger, c),
 		},
 	}

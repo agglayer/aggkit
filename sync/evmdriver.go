@@ -14,7 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
+var (
+	ErrInconsistentState    = errors.New("state is inconsistent, try again later once the state is consolidated")
+	ErrNoLastProcessedBlock = errors.New("no block has been processed yet")
+	ErrAlreadyBootstrapped  = errors.New("SyncNextBlock: already bootstrapped, a processed block already exists")
+)
 
 var _ fmt.Stringer = (*Block)(nil)
 
@@ -131,7 +135,37 @@ func (d *EVMDriver) GetCompletionPercentage() *float64 {
 	return nil
 }
 
-func (d *EVMDriver) Sync(ctx context.Context) {
+// SyncNextBlock downloads and processes the given blockNum as a bootstrap step.
+// It requires that no block has been processed yet (GetLastProcessedBlock returns found=false).
+// Returns ErrAlreadyBootstrapped if a processed block already exists — callers may safely ignore this.
+func (d *EVMDriver) SyncNextBlock(ctx context.Context, blockNum uint64) error {
+	_, found, err := d.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("SyncNextBlock: getting last processed block: %w", err)
+	}
+	if found {
+		return ErrAlreadyBootstrapped
+	}
+
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	downloadCh := make(chan EVMBlock, 1)
+	go d.downloader.Download(cancelCtx, blockNum, downloadCh)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case b, ok := <-downloadCh:
+		if !ok {
+			return fmt.Errorf("SyncNextBlock: download channel closed unexpectedly")
+		}
+		cancel() // stop the downloader after receiving the first block
+		return d.handleNewBlock(ctx, b)
+	}
+}
+
+func (d *EVMDriver) Sync(ctx context.Context, firstBlockNumber *uint64) {
 reset:
 	var (
 		lastProcessedBlock uint64
@@ -148,10 +182,14 @@ reset:
 		}
 		break
 	}
-
+	var nextBlock uint64
 	for {
 		// Now we let to have no processed block and wait until appears
 		lastProcessedBlock, found, err = d.processor.GetLastProcessedBlock(ctx)
+		if err == nil && found {
+			nextBlock = lastProcessedBlock + 1
+			break
+		}
 		if err != nil {
 			attempts++
 			d.log.Error("error getting last processed block: ", err)
@@ -159,6 +197,11 @@ reset:
 			continue
 		}
 		if !found {
+			if firstBlockNumber != nil {
+				d.log.Infof("no processed blocks found, starting from configured initial block number %d", *firstBlockNumber)
+				nextBlock = *firstBlockNumber // we will start syncing from the initial block number
+				break
+			}
 			d.log.Infof("no processed blocks found, waiting %s", d.rh.RetryAfterErrorPeriod)
 			select {
 			case <-ctx.Done():
@@ -175,11 +218,12 @@ reset:
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)
+	d.log.Infof("Starting sync... lastProcessedBlock %d NextBlock: %d",
+		lastProcessedBlock, nextBlock)
 	// start downloading
 	downloadCh := make(chan EVMBlock, d.downloadBufferSize)
 	go func() {
-		d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
+		d.downloader.Download(cancellableCtx, nextBlock, downloadCh)
 		log.Warnf("downloader.Download exited, cancelling context")
 		cancel()
 	}()

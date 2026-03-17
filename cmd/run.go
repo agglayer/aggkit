@@ -52,6 +52,10 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const (
+	MainnetID = uint32(0)
+)
+
 func start(cliCtx *cli.Context) error {
 	// Validate components first before loading configuration
 	components := cliCtx.StringSlice(config.FlagComponents)
@@ -102,7 +106,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 	var rpcServices []jRPC.Service
-	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(l1Client, cfg.L1Multidownloader)
+	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(components,l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}
@@ -110,7 +114,7 @@ func start(cliCtx *cli.Context) error {
 		rpcServices = append(rpcServices, l1mdServices...)
 	}
 
-	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, l1Client)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, components, cfg.L1NetworkConfig, l1Client)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
@@ -127,25 +131,30 @@ func start(cliCtx *cli.Context) error {
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
+
+	l1ClaimSync := runClaimSyncL1IfNeeded(ctx, components, cfg.ClaimL1Sync, reorgDetectorL1, l1Client, MainnetID)
+	if l1ClaimSync != nil {
+		rpcServices = append(rpcServices, l1ClaimSync.GetRPCServices()...)
+	}
+
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
-		l1Client, 0, &backfillWg)
+		l1Client, MainnetID, &backfillWg)
 	initialLER, err := query.NewLERDataQuerier(
 		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier).GetInitialLocalExitRoot()
 	if err != nil {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
 	}
-	l2BridgeSync, l2ClaimSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
+
+	l2ClaimSync := runClaimSyncL2IfNeeded(ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
+	if l2ClaimSync != nil {
+		rpcServices = append(rpcServices, l2ClaimSync.GetRPCServices()...)
+	}
+
+	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, initialLER, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
-	if l2ClaimSync == nil {
-		standaloneClaimSync := runClaimSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
-		if standaloneClaimSync != nil {
-			rpcServices = append(rpcServices, standaloneClaimSync.GetRPCServices()...)
-			l2ClaimSync = standaloneClaimSync
-		}
-	}
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
 		&cfg.AggSender.CommitteeOverride)
@@ -550,6 +559,16 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	return false
 }
 
+func l1InfoTreeMustRun(components []string) bool {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		return false
+	}
+	return true
+}
+
 func runL1InfoTreeSyncerIfNeeded(
 	ctx context.Context,
 	components []string,
@@ -558,10 +577,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1MultiDownloader *multidownloader.EVMMultidownloader,
 ) *l1infotreesync.L1InfoTreeSync {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
+	if !l1InfoTreeMustRun(components) {
 		return nil
 	}
 	var l1InfoTreeSync *l1infotreesync.L1InfoTreeSync
@@ -660,6 +676,7 @@ func runReorgDetectorL1IfNeeded(
 }
 
 func runL1MultiDownloaderIfNeeded(
+	components []string,
 	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
 ) (*multidownloader.EVMMultidownloader, []jRPC.Service, error) {
@@ -671,6 +688,10 @@ func runL1MultiDownloaderIfNeeded(
 	if !cfg.Enabled {
 		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
 		return nil, nil, nil
+	}
+	if !l1InfoTreeMustRun(components){
+		log.Infof("L1 MultiDownloader not going to run because components: %v", components)
+		return nil, nil,nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 
@@ -753,11 +774,7 @@ func runL2GERSyncIfNeeded(
 func resolveL1BridgeConfig(cfg *bridgesync.Config, components []string, logprefix string) {
 	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
 
-	syncFromInBridgesResolved := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
-	cfg.SyncFromInBridgesResolved = &syncFromInBridgesResolved
-
-	embeddedClaimSyncResolved := cfg.EmbeddedClaimSync.Resolve(hasBridgeComponent)
-	cfg.EmbeddedClaimSyncResolved = &embeddedClaimSyncResolved
+	cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
 
 	for _, line := range cfg.ResolvedString() {
 		log.Info(logprefix+"BridgeConfig Resolved: ", line)
@@ -812,11 +829,10 @@ func runBridgeSyncL1IfNeeded(
 func runClaimSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
-	cfg bridgesync.Config,
+	cfg claimsync.ConfigStandalone,
 	reorgDetectorL1 bridgesync.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
-	wg *sync.WaitGroup,
 ) *claimsync.ClaimSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
@@ -824,32 +840,26 @@ func runClaimSyncL1IfNeeded(
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
-	cfgClaim := claimsync.ConfigStandalone{
-		ConfigEmbedded: claimsync.ConfigEmbedded{
-			DBQueryTimeout: cfg.DBQueryTimeout,
-			BridgeAddr:     cfg.BridgeAddr,
-		},
-		DBPath:                             cfg.DBPath + "_claim.sqlite",
-		BlockFinality:                      cfg.BlockFinality,
-		InitialBlockNum:                    0,
-		SyncBlockChunkSize:                 1000,
-		RetryAfterErrorPeriod:              cfg.RetryAfterErrorPeriod,
-		MaxRetryAttemptsAfterError:         cfg.MaxRetryAttemptsAfterError,
-		WaitForNewBlocksPeriod:             cfg.WaitForNewBlocksPeriod,
-		RequireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
-	}
+
+	autoStart := cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components))
+
 	res, err := claimsync.NewStandaloneClaimSync(
 		ctx,
-		cfgClaim,
+		cfg,
 		reorgDetectorL1,
 		l1Client,
 		claimsynctypes.L1ClaimSyncer,
 		rollupID,
 	)
 	if err != nil {
-		log.Fatalf("error creating ClaimSyncL2: %s", err)
+		log.Fatalf("error creating ClaimSyncL1: %s", err)
 	}
-	go res.Start(ctx)
+	if autoStart {
+		log.Infof("Starting ClaimSyncL1 (autoStart=true)")
+		go res.Start(ctx)
+	} else {
+		log.Infof("ClaimSyncL1 created (autoStart=false, on-demand)")
+	}
 	return res
 }
 
@@ -862,7 +872,7 @@ func runBridgeSyncL2IfNeeded(
 	rollupID uint32,
 	initialLER common.Hash,
 	wg *sync.WaitGroup,
-) (*bridgesync.BridgeSync, claimsynctypes.ClaimSyncer) {
+) *bridgesync.BridgeSync {
 	fullClaimsNeeded := isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
@@ -874,7 +884,7 @@ func runBridgeSyncL2IfNeeded(
 
 	if !fullClaimsNeeded && !fullClaimsNotNeeded {
 		// no bridge sync needed
-		return nil, nil
+		return nil
 	}
 
 	// Resolve SyncFromInBridges mode based on components
@@ -902,20 +912,16 @@ func runBridgeSyncL2IfNeeded(
 			// Don't fail the entire process, just log the error and continue
 		}
 	}()
-	log.Infof("Starting BridgeSyncL2 with SyncFromInBridges: %t EmbeddedClaimSyncResolved:%t",
-		*cfg.SyncFromInBridgesResolved,
-		*cfg.EmbeddedClaimSyncResolved)
+	log.Infof("Starting BridgeSyncL2 with SyncFromInBridges: %t",
+		*cfg.SyncFromInBridges.Resolved)
 	go bridgeSyncL2.Start(ctx)
-	if *cfg.EmbeddedClaimSyncResolved {
-		return bridgeSyncL2, bridgeSyncL2
-	}
-	return bridgeSyncL2, nil
+	return bridgeSyncL2
 }
 
 func runClaimSyncL2IfNeeded(
 	ctx context.Context,
 	components []string,
-	cfg bridgesync.Config,
+	cfg claimsync.ConfigStandalone,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	originNetwork uint32,
@@ -927,23 +933,12 @@ func runClaimSyncL2IfNeeded(
 		aggkitcommon.L2CLAIMSYNC}, components) {
 		return nil
 	}
-	cfgClaim := claimsync.ConfigStandalone{
-		ConfigEmbedded: claimsync.ConfigEmbedded{
-			DBQueryTimeout: cfg.DBQueryTimeout,
-			BridgeAddr:     cfg.BridgeAddr,
-		},
-		DBPath:                             cfg.DBPath + "_claim.sqlite",
-		BlockFinality:                      cfg.BlockFinality,
-		InitialBlockNum:                    0,
-		SyncBlockChunkSize:                 1000,
-		RetryAfterErrorPeriod:              cfg.RetryAfterErrorPeriod,
-		MaxRetryAttemptsAfterError:         cfg.MaxRetryAttemptsAfterError,
-		WaitForNewBlocksPeriod:             cfg.WaitForNewBlocksPeriod,
-		RequireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
-	}
+
+	autoStart := cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components))
+
 	res, err := claimsync.NewStandaloneClaimSync(
 		ctx,
-		cfgClaim,
+		cfg,
 		reorgDetectorL2,
 		l2Client,
 		claimsynctypes.L2ClaimSyncer,
@@ -952,7 +947,12 @@ func runClaimSyncL2IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating ClaimSyncL2: %s", err)
 	}
-	go res.Start(ctx)
+	if autoStart {
+		log.Infof("Starting ClaimSyncL2 (autoStart=true)")
+		go res.Start(ctx)
+	} else {
+		log.Infof("ClaimSyncL2 created (autoStart=false, on-demand)")
+	}
 	return res
 }
 
@@ -1044,10 +1044,22 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
 // the provided L1 network configuration and uses default implementations for creating Ethereum
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
-func createRollupDataQuerier(ctx context.Context,
+func createRollupDataQuerier(
+	ctx context.Context,
+	components []string,
 	cfg ethermanconfig.L1NetworkConfig,
 	l1Client aggkittypes.BaseEthereumClienter,
 ) (*ethermanquierier.RollupDataQuerier, error) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.L1BRIDGESYNC,
+		aggkitcommon.L2BRIDGESYNC,
+	}, components) {
+		return nil, nil
+	}
 	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, l1Client,
 		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (ethermanquierier.RollupManagerContract, error) {

@@ -2,11 +2,11 @@ package claimsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -30,6 +30,8 @@ type ClaimSync struct {
 	ethClient     aggkittypes.EthClienter
 	logger        aggkitcommon.Logger
 	originNetwork uint32
+	syncerID      claimsynctypes.ClaimSyncerID
+	cfg           ConfigStandalone
 }
 
 // NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
@@ -70,18 +72,12 @@ func NewClaimSync(
 		return nil, err
 	}
 
-	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
-	if err != nil {
-		return nil, fmt.Errorf("claimsync: failed to create AgglayerBridge binding: %w", err)
-	}
-
-	isSovereign, agglayerBridgeL2Contract, err := detectSovereignChain(ctx, cfg.BridgeAddr, ethClient)
+	deployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to detect chain type: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, proc, cfg.BridgeAddr,
-		agglayerBridgeContract, agglayerBridgeL2Contract, isSovereign, logger)
+	appender, err := buildAppender(ctx, ethClient, proc, cfg.BridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}
@@ -135,7 +131,7 @@ func NewClaimSync(
 
 	logger.Infof(
 		"claimsync created: dbPath=%s initialBlock=%d blockFinality=%s bridgeAddr=%s sovereign=%t",
-		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(), cfg.BridgeAddr.String(), isSovereign,
+		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(), cfg.BridgeAddr.String(), deployment.kind == SovereignChain,
 	)
 
 	return &ClaimSync{
@@ -145,13 +141,46 @@ func NewClaimSync(
 		ethClient:     ethClient,
 		logger:        logger,
 		originNetwork: originNetwork,
+		syncerID:      syncerID,
+		cfg:           cfg,
 	}, nil
 }
 
 // Start starts the synchronization process.
 func (c *ClaimSync) Start(ctx context.Context) {
-	c.logger.Info("starting claim synchronizer")
-	c.driver.Sync(ctx)
+	c.logger.Infof("starting claim synchronizer AutoStart: %t InitialBlock: %d",
+		*c.cfg.AutoStart.Resolved, c.cfg.InitialBlockNum)
+	if *c.cfg.AutoStart.Resolved == true {
+		c.driver.Sync(ctx, &c.cfg.InitialBlockNum)
+	} else {
+		c.driver.Sync(ctx, nil)
+	}
+}
+
+func (c *ClaimSync) syncNextBlockInfinite(ctx context.Context, blockNumber uint64) {
+	c.logger.Infof("autoStartDownloading: bootstrapping block %d", blockNumber)
+	for {
+		err := c.driver.SyncNextBlock(ctx, blockNumber)
+		if err == nil || errors.Is(err, sync.ErrAlreadyBootstrapped) {
+			return
+		}
+		c.logger.Warnf("autoStartDownloading: failed to process block %d: %v — retrying in %s",
+			blockNumber, err, c.cfg.RetryAfterErrorPeriod.Duration)
+		select {
+		case <-ctx.Done():
+			c.logger.Info("autoStartDownloading: context cancelled, stopping")
+			return
+		case <-time.After(c.cfg.RetryAfterErrorPeriod.Duration):
+		}
+	}
+}
+
+// SyncNextBlock downloads and processes blockNum as a bootstrap step.
+// Returns sync.ErrAlreadyBootstrapped (ignorable) if a processed block already exists.
+func (c *ClaimSync) SyncNextBlock(ctx context.Context, blockNum uint64) error {
+	c.logger.Infof("SyncNextBlock: syncing block %d", blockNum)
+	c.syncNextBlockInfinite(ctx, blockNum)
+	return nil
 }
 
 // OriginNetwork returns the network ID of the origin chain

@@ -17,7 +17,7 @@ type ConfigEmbedded struct {
 }
 
 type ConfigStandalone struct {
-	ConfigEmbedded
+	ConfigEmbedded `mapstructure:",squash"`
 	// DBPath path of the DB
 	DBPath string `mapstructure:"DBPath"`
 	// BlockFinality indicates the status of the blocks that will be queried in order to sync
@@ -37,6 +37,12 @@ type ConfigStandalone struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+	// AutoStart controls whether the synchronizer should start automatically after initialization.
+	// Possible values:
+	//   - "true": automatically starts after initialization using InitialBlockNum
+	//   - "false": does not start automatically; requires manual start
+	//   - "auto": automatically decides based on which component is active
+	AutoStart types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"AutoStart"`
 }
 
 func (c ConfigEmbedded) Validate() error {
@@ -49,6 +55,9 @@ func (c ConfigStandalone) Validate() error {
 	}
 	if err := c.BlockFinality.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
+	}
+	if err := c.AutoStart.Validate("AutoStart"); err != nil {
+		return err
 	}
 	return nil
 }

@@ -1,0 +1,71 @@
+package types
+
+import (
+	"fmt"
+	"strings"
+)
+
+// TrueFalseAutoMode represents a tri-state config value: true, false, or auto.
+// Mode is set from the config file via UnmarshalText; Resolved is set programmatically.
+type TrueFalseAutoMode struct {
+	Mode     string `mapstructure:"-"`
+	Resolved *bool  `mapstructure:"-"`
+}
+
+var (
+	// TrueMode always activates the feature.
+	TrueMode = TrueFalseAutoMode{Mode: "true"}
+	// FalseMode always deactivates the feature.
+	FalseMode = TrueFalseAutoMode{Mode: "false"}
+	// AutoMode decides automatically based on context.
+	AutoMode = TrueFalseAutoMode{Mode: "auto"}
+)
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (m *TrueFalseAutoMode) UnmarshalText(text []byte) error {
+	str := strings.ToLower(strings.TrimSpace(string(text)))
+	switch str {
+	case "true":
+		m.Mode = "true"
+	case "false":
+		m.Mode = "false"
+	case "auto":
+		m.Mode = "auto"
+	default:
+		return fmt.Errorf("invalid TrueFalseAutoMode: %s (valid values: true, false, auto)", str)
+	}
+	return nil
+}
+
+// String returns the string representation.
+func (m TrueFalseAutoMode) String() string {
+	return m.Mode
+}
+
+// Validate checks that the mode is a valid value. Empty mode is allowed.
+func (m TrueFalseAutoMode) Validate(fieldName string) error {
+	if m.Mode == "" {
+		return nil
+	}
+	var cpy TrueFalseAutoMode
+	if err := cpy.UnmarshalText([]byte(m.Mode)); err != nil {
+		return fmt.Errorf("invalid %s configuration: %w", fieldName, err)
+	}
+	return nil
+}
+
+// Resolve converts the mode to a boolean using autoModeResult for AutoMode,
+// stores the result in Resolved, and returns it.
+func (m *TrueFalseAutoMode) Resolve(autoModeResult bool) bool {
+	var result bool
+	switch m.Mode {
+	case "true":
+		result = true
+	case "false":
+		result = false
+	case "auto":
+		result = autoModeResult
+	}
+	m.Resolved = &result
+	return result
+}
