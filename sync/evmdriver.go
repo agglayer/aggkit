@@ -213,7 +213,6 @@ reset:
 		}
 		break
 	}
-
 	// setup context to cancel downloader and/or block processor
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

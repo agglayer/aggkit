@@ -33,9 +33,11 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 	// Setup Docker L1
 	client, auth := startGeth(t, ctx, cancelFn)
 	// Deploy contracts
-	bridgeAddr, _, bridgeContract, err := claimmock.DeployClaimmock(auth, client)
+	bridgeAddr, deployTx, bridgeContract, err := claimmock.DeployClaimmock(auth, client)
 	require.NoError(t, err)
-	log.Infof("Deployed fake bridge contract %s", bridgeAddr.Hex())
+	_, err = waitForReceipt(ctx, client, deployTx.Hash(), 10)
+	require.NoError(t, err)
+	log.Infof("*** Deployed fake bridge contract %s", bridgeAddr.Hex())
 	dbPathSyncer := path.Join(t.TempDir(), "claimsyncer.sqlite")
 
 	cfg := ConfigStandalone{
@@ -43,8 +45,8 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 		BlockFinality:                      aggkittypes.LatestBlock,
 		InitialBlockNum:                    0,
 		SyncBlockChunkSize:                 100,
-		RetryAfterErrorPeriod:              configtypes.NewDuration(time.Second),
-		WaitForNewBlocksPeriod:             configtypes.NewDuration(time.Second),
+		RetryAfterErrorPeriod:              configtypes.NewDuration(time.Millisecond * 100),
+		WaitForNewBlocksPeriod:             configtypes.NewDuration(time.Millisecond * 100),
 		RequireStorageContentCompatibility: true,
 		ConfigEmbedded: ConfigEmbedded{
 			DBQueryTimeout: configtypes.NewDuration(5 * time.Second),
@@ -81,18 +83,32 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = waitForReceipt(ctx, client, tx.Hash(), 10)
+	txReceipt, err := waitForReceipt(ctx, client, tx.Hash(), 10)
 	require.NoError(t, err)
+	waitTillBlockNumber := txReceipt.BlockNumber.Uint64()
 	logger.Info("*** ClaimSyncer must be waiting to receive the starting point")
 	_, found, err2 := claimSyncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err2)
 	require.False(t, found)
 	logger.Info("*** Setting next required block to 1, so must starting syncing and sync the ClaimAsset")
-	err = claimSyncer.SetNextRequiredBlock(ctx, 1)
+	err = claimSyncer.SetNextRequiredBlock(ctx, 0)
 	require.NoError(t, err)
-	time.Sleep(time.Second * 5)
+	for i := 0; i < 10; i++ {
+		currentBlockNumber, _, err := claimSyncer.GetLastProcessedBlock(ctx)
+		require.NoError(t, err)
+		logger.Infof("*** Wait for block %d, current %d", waitTillBlockNumber, currentBlockNumber)
+		if currentBlockNumber >= waitTillBlockNumber {
+			break
+		}
+		time.Sleep(time.Second)
+	}
 	lastBlockProcessed, found, err2 := claimSyncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err2)
 	require.True(t, found)
+	require.GreaterOrEqual(t, lastBlockProcessed, waitTillBlockNumber)
 	logger.Infof("*** Last block processed: %d", lastBlockProcessed)
+	claims, err := claimSyncer.GetClaims(ctx, 0, lastBlockProcessed)
+	require.NoError(t, err)
+	logger.Infof("*** Claims retrieved: %v", claims)
+	require.Equal(t, 1, len(claims))
 }

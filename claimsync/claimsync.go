@@ -194,15 +194,10 @@ func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64
 		return fmt.Errorf("claimsync: failed to get last processed block: %w", err)
 	}
 	if !found {
-		if blockNumber == 0 {
-			err := fmt.Errorf("claimsync: cannot set next required block to 0, invalid block number")
-			c.logger.Error(err)
-			return err
-		}
-		if err := c.createStartingPoint(ctx, blockNumber-1); err != nil {
+		c.logger.Infof("Starting to sync from block %d (no processed blocks found)", blockNumber)
+		if err := c.driver.SyncNextBlock(ctx, blockNumber); err != nil {
 			return fmt.Errorf("claimsync: failed to createStartingPoint: %w", err)
 		}
-		c.logger.Infof("Set next required block to %d (no processed blocks found)", blockNumber)
 		return nil
 	}
 	firstBlock, _, err := c.processor.GetFirstProcessedBlock(ctx)
@@ -250,16 +245,4 @@ func (c *ClaimSync) GetSetClaimsPaged(ctx context.Context, page, pageSize uint32
 
 func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
 	return c.reader.GetClaimsByGER(ctx, nil, globalExitRoot)
-}
-
-func (c *ClaimSync) createStartingPoint(ctx context.Context, blockNumber uint64) error {
-	c.logger.Infof("creating starting point at block %d:", blockNumber)
-	header, err := c.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
-	if err != nil {
-		return fmt.Errorf("claimsync: get header for block %d: %w", blockNumber, err)
-	}
-	if err := c.processor.ProcessBlock(ctx, sync.Block{Num: blockNumber, Hash: header.Hash}); err != nil {
-		return fmt.Errorf("claimsync: process block %d: %w", blockNumber, err)
-	}
-	return nil
 }
