@@ -953,3 +953,185 @@ func TestRuntimeData_IsCompatible_NilAddresses(t *testing.T) {
 		require.Contains(t, err.Error(), "addresses len mismatch")
 	})
 }
+
+// makeDriver is a helper that creates an EVMDriver with fresh mocks for each test.
+func makeDriver(t *testing.T) (*EVMDriver, *ReorgDetectorMock, *ProcessorMock, *DownloaderMock) {
+	t.Helper()
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	if err != nil {
+		t.Fatalf("could not construct EVMDriver: %v", err)
+	}
+	return driver, rdm, pm, dm
+}
+
+// --- SyncNextBlock ---
+
+func TestSyncNextBlock_AlreadyBootstrapped(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, _ := makeDriver(t)
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(5), true, nil)
+
+	err := driver.SyncNextBlock(t.Context(), 1)
+	require.ErrorIs(t, err, ErrAlreadyBootstrapped)
+}
+
+func TestSyncNextBlock_GetLastProcessedBlockError(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, _ := makeDriver(t)
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, errUnittest)
+
+	err := driver.SyncNextBlock(t.Context(), 1)
+	require.ErrorContains(t, err, "SyncNextBlock: getting last processed block")
+	require.ErrorIs(t, err, errUnittest)
+}
+
+func TestSyncNextBlock_DownloadChannelClosedUnexpectedly(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, dm := makeDriver(t)
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything).
+		Run(func(_ context.Context, _ uint64, ch chan EVMBlock) {
+			close(ch)
+		})
+
+	err := driver.SyncNextBlock(t.Context(), 5)
+	require.ErrorContains(t, err, "download channel closed unexpectedly")
+}
+
+func TestSyncNextBlock_ContextCancelledBeforeBlock(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, dm := makeDriver(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+	// The goroutine may or may not start before the select returns ctx.Done()
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock) {
+			<-downloadCtx.Done()
+		}).Maybe()
+	cancel()
+
+	err := driver.SyncNextBlock(ctx, 5)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestSyncNextBlock_HappyPath(t *testing.T) {
+	t.Parallel()
+	driver, rdm, pm, dm := makeDriver(t)
+	ctx := t.Context()
+	expectedBlock := EVMBlock{
+		EVMBlockHeader: EVMBlockHeader{Num: 5, Hash: common.HexToHash("0x5")},
+	}
+
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock) {
+			ch <- expectedBlock
+			<-downloadCtx.Done() // wait for cancel() triggered inside SyncNextBlock
+		})
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).Return(nil)
+	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).Return(nil)
+
+	err := driver.SyncNextBlock(ctx, 5)
+	require.NoError(t, err)
+}
+
+// --- Sync with firstBlockNumber ---
+
+func TestSync_WithFirstBlockNumber_StartsFromGivenBlock(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	compatMock.EXPECT().Check(mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{
+		ReorgedBlock:   make(chan uint64),
+		ReorgProcessed: make(chan bool),
+	}, nil)
+
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	require.NoError(t, err)
+
+	firstBlockNum := uint64(42)
+	// no processed blocks exist yet
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+
+	downloadStartedFrom := make(chan uint64, 1)
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, fromBlock uint64, ch chan EVMBlock) {
+			downloadStartedFrom <- fromBlock
+			<-downloadCtx.Done()
+			close(ch)
+		})
+
+	go driver.Sync(ctx, &firstBlockNum)
+
+	select {
+	case from := <-downloadStartedFrom:
+		require.Equal(t, firstBlockNum, from, "Download should start from firstBlockNumber when no processed blocks exist")
+		cancel()
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for Download to be called with firstBlockNumber")
+	}
+}
+
+// --- Sync waits when no processed blocks and no firstBlockNumber ---
+
+func TestSync_WaitsWhenNoProcessedBlockAndNoFirstBlock(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	compatMock.EXPECT().Check(mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{
+		ReorgedBlock:   make(chan uint64),
+		ReorgProcessed: make(chan bool),
+	}, nil)
+
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	require.NoError(t, err)
+
+	// GetLastProcessedBlock returns not-found on every call
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil).Maybe()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		driver.Sync(ctx, nil)
+	}()
+
+	time.Sleep(50 * time.Millisecond) // let it loop a few times with RetryAfterErrorPeriod
+	cancel()
+
+	select {
+	case <-done:
+		// good: Sync exited cleanly after context cancellation
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Sync did not exit after context cancellation")
+	}
+}
