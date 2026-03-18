@@ -1057,6 +1057,7 @@ func createRollupDataQuerier(
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1BRIDGESYNC,

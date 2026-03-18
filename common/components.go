@@ -11,8 +11,6 @@ const (
 	AGGORACLE = "aggoracle"
 	// BRIDGE name to identify the bridge component (have RPC)
 	BRIDGE = "bridge"
-	// PROVER name to identify the prover component
-	PROVER = "prover"
 	// AGGSENDER name to identify the aggsender component
 	AGGSENDER = "aggsender"
 	// L1INFOTREESYNC name to identify the l1infotreesync component
@@ -36,7 +34,6 @@ func ValidateComponents(components []string) error {
 	validComponents := map[string]struct{}{
 		AGGORACLE:          {},
 		BRIDGE:             {},
-		PROVER:             {},
 		AGGSENDER:          {},
 		L1INFOTREESYNC:     {},
 		L2BRIDGESYNC:       {},
