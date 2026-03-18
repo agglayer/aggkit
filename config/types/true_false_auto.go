@@ -43,13 +43,9 @@ func (m *TrueFalseAutoMode) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// String returns the string representation.
+// String returns the mode string ("true", "false", "auto", or "").
 func (m TrueFalseAutoMode) String() string {
-	if m.Resolved != nil {
-		return fmt.Sprintf("{Mode: %s, Resolved: %t}", m.Mode, *m.Resolved)
-	} else {
-		return fmt.Sprintf("{Mode: %s, Resolved: <not yet resolved>}", m.Mode)
-	}
+	return m.Mode
 }
 
 // Validate checks that the mode is a valid value. Empty mode is allowed.

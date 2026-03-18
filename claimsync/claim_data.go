@@ -20,3 +20,6 @@ type UnsetClaim = claimsynctypes.UnsetClaim
 
 // SetClaim is an alias for claimsynctypes.SetClaim
 type SetClaim = claimsynctypes.SetClaim
+
+// ClaimQuerier is an alias for claimsynctypes.ClaimQuerier
+type ClaimQuerier = claimsynctypes.ClaimQuerier

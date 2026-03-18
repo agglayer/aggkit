@@ -15,7 +15,6 @@ import (
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
-	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -56,11 +55,6 @@ const (
 	// methodIDLength is the length of the method ID in bytes
 	methodIDLength = 4
 )
-
-// claimQuerier is used by event handlers to check the DetailedClaimEvent boundary.
-type ClaimQuerier interface {
-	GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error)
-}
 
 // BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
 type BridgeDeployment byte
@@ -446,6 +440,7 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 	return rootCall, nil
 }
 
+//nolint:unparam // foundCalls is part of the public API and may be used by callers
 func extractCallData(
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
