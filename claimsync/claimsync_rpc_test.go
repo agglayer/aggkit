@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/claimsync/mocks"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -30,10 +30,11 @@ func TestClaimSyncRPC_Status_OK(t *testing.T) {
 	require.Nil(t, rpcErr)
 	require.NotNil(t, result)
 
-	status := result.(struct {
+	status, ok := result.(struct {
 		Status             string `json:"status"`
 		LastProcessedBlock uint64 `json:"lastProcessedBlock"`
 	})
+	require.True(t, ok)
 	require.Equal(t, "running", status.Status)
 	require.Equal(t, uint64(42), status.LastProcessedBlock)
 }
@@ -138,9 +139,10 @@ func TestClaimSyncRPC_SetNextRequiredBlock_OK(t *testing.T) {
 	require.Nil(t, rpcErr)
 	require.NotNil(t, result)
 
-	msg := result.(struct {
+	msg, ok := result.(struct {
 		Message string `json:"message"`
 	})
+	require.True(t, ok)
 	require.Equal(t, "next required block set to 500", msg.Message)
 }
 

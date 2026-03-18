@@ -82,10 +82,10 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 		{
 			name: "Valid calldata",
 			data: []any{
-				[treetypes.DefaultHeight][common.HashLength]byte{},    // Proof
-				globalIndex,                                           // GlobalIndex
-				[common.HashLength]byte(mainnetExitRoot.Bytes()),      // MainnetExitRoot
-				[common.HashLength]byte(rollupExitRoot.Bytes()),       // RollupExitRoot
+				[treetypes.DefaultHeight][common.HashLength]byte{}, // Proof
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()),  // RollupExitRoot
 				uint32(1),        // OriginNetwork (not used)
 				common.Address{}, // OriginTokenAddress (not used)
 				destinationNetwork,
@@ -350,7 +350,7 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 				[treetypes.DefaultHeight][common.HashLength]byte{},
 				[treetypes.DefaultHeight][common.HashLength]byte{},
 				globalIndex,
-				invalidTypePlaceholder,                           // MainnetExitRoot
+				invalidTypePlaceholder, // MainnetExitRoot
 				[common.HashLength]byte(rollupExitRoot.Bytes()), // RollupExitRoot
 				uint32(0),
 				common.Address{},

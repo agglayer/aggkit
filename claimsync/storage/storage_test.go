@@ -610,8 +610,8 @@ func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 
 func TestGetBoundaryBlockForClaimType(t *testing.T) {
 	testCases := []struct {
-		name          string
-		claimType     claimsynctypes.ClaimType
+		name           string
+		claimType      claimsynctypes.ClaimType
 		claimsToInsert []struct {
 			blockNum  uint64
 			claimType claimsynctypes.ClaimType
@@ -621,11 +621,11 @@ func TestGetBoundaryBlockForClaimType(t *testing.T) {
 		errorIs       error
 	}{
 		{
-			name:          "no claims -> db.ErrNotFound",
-			claimType:     claimsynctypes.DetailedClaimEvent,
+			name:           "no claims -> db.ErrNotFound",
+			claimType:      claimsynctypes.DetailedClaimEvent,
 			claimsToInsert: nil,
-			expectError:   true,
-			errorIs:       db.ErrNotFound,
+			expectError:    true,
+			errorIs:        db.ErrNotFound,
 		},
 		{
 			name:      "DetailedClaimEvent at blocks 1 and 6 -> returns 6",
@@ -764,29 +764,31 @@ func TestGetClaimsByGER(t *testing.T) {
 }
 
 func TestGetUnsetClaimsPaged(t *testing.T) {
+	t.Parallel()
+
 	s, _ := newTestStorage(t)
 	ctx := context.Background()
 
 	unset := []claimsynctypes.UnsetClaim{
 		{ // unset[0]: block=1, gi=100
-			BlockNum:    1,
-			BlockPos:    0,
-			TxHash:      common.HexToHash("0x123"),
-			GlobalIndex: big.NewInt(100),
+			BlockNum:                  1,
+			BlockPos:                  0,
+			TxHash:                    common.HexToHash("0x123"),
+			GlobalIndex:               big.NewInt(100),
 			UnsetGlobalIndexHashChain: common.HexToHash("0xabc123"),
 		},
 		{ // unset[1]: block=2, gi=200
-			BlockNum:    2,
-			BlockPos:    0,
-			TxHash:      common.HexToHash("0x456"),
-			GlobalIndex: big.NewInt(200),
+			BlockNum:                  2,
+			BlockPos:                  0,
+			TxHash:                    common.HexToHash("0x456"),
+			GlobalIndex:               big.NewInt(200),
 			UnsetGlobalIndexHashChain: common.HexToHash("0xdef456"),
 		},
 		{ // unset[2]: block=3, gi=100 (same gi as first)
-			BlockNum:    3,
-			BlockPos:    0,
-			TxHash:      common.HexToHash("0x789"),
-			GlobalIndex: big.NewInt(100),
+			BlockNum:                  3,
+			BlockPos:                  0,
+			TxHash:                    common.HexToHash("0x789"),
+			GlobalIndex:               big.NewInt(100),
 			UnsetGlobalIndexHashChain: common.HexToHash("0x987654"),
 		},
 	}
@@ -878,6 +880,8 @@ func TestGetUnsetClaimsPaged(t *testing.T) {
 }
 
 func TestGetSetClaimsPaged(t *testing.T) {
+	t.Parallel()
+
 	s, _ := newTestStorage(t)
 	ctx := context.Background()
 
@@ -997,6 +1001,8 @@ func TestGetSetClaimsPaged(t *testing.T) {
 }
 
 func TestGetClaimsPaged(t *testing.T) {
+	t.Parallel()
+
 	s, _ := newTestStorage(t)
 	ctx := context.Background()
 

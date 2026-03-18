@@ -590,7 +590,9 @@ func TestBuildClaimEventHandler_SameTxDetailedSkip(t *testing.T) {
 	err = handler(block, log)
 	require.NoError(t, err)
 	require.Len(t, block.Events, 1, "ClaimEvent should be skipped; DetailedClaimEvent for same tx already present")
-	require.Equal(t, DetailedClaimEvent, block.Events[0].(Event).Claim.Type)
+	event, ok := block.Events[0].(Event)
+	require.True(t, ok)
+	require.Equal(t, DetailedClaimEvent, event.Claim.Type)
 }
 
 // --- buildDetailedClaimEventHandler: removes ClaimEvent for same tx ---
@@ -634,7 +636,7 @@ func TestBuildDetailedClaimEventHandler_RemovesClaimEvent(t *testing.T) {
 	log := types.Log{
 		Topics: []common.Hash{
 			detailedClaimEventSignature,
-			common.BigToHash(big.NewInt(42)),      // globalIndex (indexed)
+			common.BigToHash(big.NewInt(42)),             // globalIndex (indexed)
 			common.BytesToHash(common.Address{}.Bytes()), // destinationAddress (indexed)
 		},
 		Data:   data,
@@ -651,7 +653,9 @@ func TestBuildDetailedClaimEventHandler_RemovesClaimEvent(t *testing.T) {
 	err = handler(block, log)
 	require.NoError(t, err)
 	require.Len(t, block.Events, 1)
-	require.Equal(t, DetailedClaimEvent, block.Events[0].(Event).Claim.Type,
+	ev, ok := block.Events[0].(Event)
+	require.True(t, ok)
+	require.Equal(t, DetailedClaimEvent, ev.Claim.Type,
 		"ClaimEvent should be replaced by DetailedClaimEvent for the same tx")
 }
 
@@ -717,7 +721,9 @@ func TestBuildClaimEventHandlerPreEtrog_OK(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, block.Events, 1)
 
-	claim := block.Events[0].(Event).Claim
+	ev, ok := block.Events[0].(Event)
+	require.True(t, ok)
+	claim := ev.Claim
 	require.Equal(t, new(big.Int).SetUint64(uint64(globalIndex)), claim.GlobalIndex)
 	require.Equal(t, txHash, claim.TxHash)
 }
