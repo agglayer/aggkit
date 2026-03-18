@@ -2,12 +2,15 @@ package claimsync
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	claimtypemocks "github.com/agglayer/aggkit/claimsync/types/mocks"
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
@@ -434,4 +437,287 @@ func TestBuildAppender(t *testing.T) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+// --- BridgeDeployment.String() ---
+
+func TestBridgeDeploymentString(t *testing.T) {
+	require.Equal(t, "NonSovereignChain", NonSovereignChain.String())
+	require.Equal(t, "SovereignChain", SovereignChain.String())
+	require.Equal(t, "Unknown", Unknown.String())
+	require.Equal(t, "Unknown", BridgeDeployment(99).String())
+}
+
+// --- resolveBridgeDeployment ---
+
+func TestResolveBridgeDeployment(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	ctx := context.Background()
+
+	// ABI-encoded zero-value returns: address(0) and uint32(0) are both 32 zero bytes
+	validReturn := make([]byte, 32)
+	revertErr := errors.New("execution reverted")
+
+	tests := []struct {
+		name         string
+		setupMock    func(c *mocks.EthClienter)
+		expectedKind BridgeDeployment
+		expectErr    bool
+	}{
+		{
+			name: "SovereignChain: BridgeManager succeeds",
+			setupMock: func(c *mocks.EthClienter) {
+				c.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(validReturn, nil).Once()
+			},
+			expectedKind: SovereignChain,
+		},
+		{
+			name: "NonSovereignChain: BridgeManager reverts, LastUpdatedDepositCount succeeds",
+			setupMock: func(c *mocks.EthClienter) {
+				c.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, revertErr).Once()
+				c.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(validReturn, nil).Once()
+			},
+			expectedKind: NonSovereignChain,
+		},
+		{
+			name: "Unknown: both calls revert",
+			setupMock: func(c *mocks.EthClienter) {
+				c.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, revertErr).Once()
+				c.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, revertErr).Once()
+			},
+			expectedKind: Unknown,
+		},
+		{
+			name: "error: BridgeManager returns unexpected error",
+			setupMock: func(c *mocks.EthClienter) {
+				c.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, errors.New("connection refused")).Once()
+			},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ethClient := mocks.NewEthClienter(t)
+			tt.setupMock(ethClient)
+
+			deployment, err := resolveBridgeDeployment(ctx, bridgeAddr, ethClient)
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedKind, deployment.kind)
+		})
+	}
+}
+
+// --- buildClaimEventHandler edge cases ---
+
+// buildClaimEventLog packs a valid etrog ClaimEvent log for the given globalIndex.
+func buildClaimEventLog(t *testing.T, globalIndex *big.Int, txHash common.Hash, blockNum uint64) types.Log {
+	t.Helper()
+	agglayerBridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+	event, err := agglayerBridgeABI.EventByID(claimEventSignature)
+	require.NoError(t, err)
+	data, err := event.Inputs.Pack(globalIndex, uint32(1), common.Address{}, common.Address{}, big.NewInt(10))
+	require.NoError(t, err)
+	return types.Log{
+		Topics:      []common.Hash{claimEventSignature},
+		Data:        data,
+		TxHash:      txHash,
+		BlockNumber: blockNum,
+	}
+}
+
+func TestBuildClaimEventHandler_BoundarySkip(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	lg := logger.WithFields("module", "test")
+	txHash := common.HexToHash("0xABCD")
+	blockNum := uint64(5)
+
+	ethClient := mocks.NewEthClienter(t)
+	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
+	require.NoError(t, err)
+
+	querier := claimtypemocks.NewClaimQuerier(t)
+	// Boundary is at block 5 — log is also at block 5, so it should be skipped
+	querier.EXPECT().GetBoundaryBlockForClaimType(mock.Anything, mock.Anything, DetailedClaimEvent).
+		Return(blockNum, nil)
+
+	handler := buildClaimEventHandler(t.Context(), agglayerBridgeContract, ethClient, querier, bridgeAddr, true, lg)
+
+	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
+	log := buildClaimEventLog(t, big.NewInt(100), txHash, blockNum)
+
+	err = handler(block, log)
+	require.NoError(t, err)
+	require.Empty(t, block.Events, "ClaimEvent should be skipped when at or after DetailedClaimEvent boundary")
+}
+
+func TestBuildClaimEventHandler_SameTxDetailedSkip(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	lg := logger.WithFields("module", "test")
+	txHash := common.HexToHash("0xABCD")
+	blockNum := uint64(3)
+
+	ethClient := mocks.NewEthClienter(t)
+	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
+	require.NoError(t, err)
+
+	querier := claimtypemocks.NewClaimQuerier(t)
+	querier.EXPECT().GetBoundaryBlockForClaimType(mock.Anything, mock.Anything, DetailedClaimEvent).
+		Return(uint64(0), db.ErrNotFound)
+
+	handler := buildClaimEventHandler(t.Context(), agglayerBridgeContract, ethClient, querier, bridgeAddr, true, lg)
+
+	// Block already has a DetailedClaimEvent for the same tx
+	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
+	block.Events = append(block.Events, Event{Claim: &Claim{
+		Type:   DetailedClaimEvent,
+		TxHash: txHash,
+	}})
+
+	log := buildClaimEventLog(t, big.NewInt(100), txHash, blockNum)
+
+	err = handler(block, log)
+	require.NoError(t, err)
+	require.Len(t, block.Events, 1, "ClaimEvent should be skipped; DetailedClaimEvent for same tx already present")
+	require.Equal(t, DetailedClaimEvent, block.Events[0].(Event).Claim.Type)
+}
+
+// --- buildDetailedClaimEventHandler: removes ClaimEvent for same tx ---
+
+func TestBuildDetailedClaimEventHandler_RemovesClaimEvent(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	txHash := common.HexToHash("0xDEAD")
+
+	ethClient := mocks.NewEthClienter(t)
+	agglayerBridgeL2Contract, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, ethClient)
+	require.NoError(t, err)
+
+	handler := buildDetailedClaimEventHandler(agglayerBridgeL2Contract)
+
+	l2ABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
+	require.NoError(t, err)
+
+	detailedEvent, err := l2ABI.EventByID(detailedClaimEventSignature)
+	require.NoError(t, err)
+
+	var nonIndexed abi.Arguments
+	for _, inp := range detailedEvent.Inputs {
+		if !inp.Indexed {
+			nonIndexed = append(nonIndexed, inp)
+		}
+	}
+	data, err := nonIndexed.Pack(
+		[tree.DefaultHeight][common.HashLength]byte{},
+		[tree.DefaultHeight][common.HashLength]byte{},
+		[common.HashLength]byte{},
+		[common.HashLength]byte{},
+		uint8(0),
+		uint32(1),
+		common.Address{},
+		uint32(0),
+		big.NewInt(50),
+		[]byte{},
+	)
+	require.NoError(t, err)
+
+	log := types.Log{
+		Topics: []common.Hash{
+			detailedClaimEventSignature,
+			common.BigToHash(big.NewInt(42)),      // globalIndex (indexed)
+			common.BytesToHash(common.Address{}.Bytes()), // destinationAddress (indexed)
+		},
+		Data:   data,
+		TxHash: txHash,
+	}
+
+	// Block already contains a ClaimEvent for the same tx
+	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}
+	block.Events = append(block.Events, Event{Claim: &Claim{
+		Type:   ClaimEvent,
+		TxHash: txHash,
+	}})
+
+	err = handler(block, log)
+	require.NoError(t, err)
+	require.Len(t, block.Events, 1)
+	require.Equal(t, DetailedClaimEvent, block.Events[0].(Event).Claim.Type,
+		"ClaimEvent should be replaced by DetailedClaimEvent for the same tx")
+}
+
+// --- buildClaimEventHandlerPreEtrog ---
+
+func TestBuildClaimEventHandlerPreEtrog_OK(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	lg := logger.WithFields("module", "test")
+	globalIndex := uint32(77)
+	txHash := common.HexToHash("0xBEEF")
+
+	// Build pre-etrog ClaimEvent log
+	preEtrogABI, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+	event, err := preEtrogABI.EventByID(claimEventSignaturePreEtrog)
+	require.NoError(t, err)
+	data, err := event.Inputs.Pack(
+		globalIndex,
+		uint32(1),
+		common.Address{},
+		common.Address{},
+		big.NewInt(10),
+	)
+	require.NoError(t, err)
+	logEntry := types.Log{
+		Topics: []common.Hash{claimEventSignaturePreEtrog},
+		Data:   data,
+		TxHash: txHash,
+	}
+
+	// Build valid pre-etrog claimAsset calldata
+	claimAssetCalldata, err := preEtrogABI.Methods["claimAsset"].Inputs.Pack(
+		[tree.DefaultHeight][common.HashLength]byte{},
+		globalIndex,
+		[common.HashLength]byte{},
+		[common.HashLength]byte{},
+		uint32(1),
+		common.Address{},
+		uint32(0),
+		common.Address{},
+		big.NewInt(10),
+		[]byte{},
+	)
+	require.NoError(t, err)
+	claimAssetInput := append(append([]byte{}, claimAssetPreEtrogMethodID...), claimAssetCalldata...)
+
+	ethClient := mocks.NewEthClienter(t)
+	ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg, ok := result.(*Call)
+			require.True(t, ok)
+			*arg = Call{To: bridgeAddr, From: common.HexToAddress("0x01"), Input: claimAssetInput}
+		}).
+		Return(nil)
+
+	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, ethClient)
+	require.NoError(t, err)
+
+	handler := buildClaimEventHandlerPreEtrog(legacyBridge, ethClient, bridgeAddr, true, lg)
+
+	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}
+	err = handler(block, logEntry)
+	require.NoError(t, err)
+	require.Len(t, block.Events, 1)
+
+	claim := block.Events[0].(Event).Claim
+	require.Equal(t, new(big.Int).SetUint64(uint64(globalIndex)), claim.GlobalIndex)
+	require.Equal(t, txHash, claim.TxHash)
 }
