@@ -29,9 +29,6 @@ import (
 //  5. Call SetNextRequiredBlock(ctx, 1) to unlock the syncer.
 //  6. Assert GetLastProcessedBlock returns found=true — the syncer processed the blocks and captured the event.
 func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping test in short mode")
-	}
 	ctx, cancelFn := context.WithCancel(context.Background())
 	// Setup Docker L1
 	client, auth := startGeth(t, ctx, cancelFn)
