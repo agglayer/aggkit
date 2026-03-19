@@ -220,6 +220,10 @@ func (c *ClaimSync) GetLastProcessedBlock(ctx context.Context) (uint64, bool, er
 	return c.reader.GetLastProcessedBlock(ctx, nil)
 }
 
+func (c *ClaimSync) GetFirstProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	return c.reader.GetFirstProcessedBlock(ctx, nil)
+}
+
 func (c *ClaimSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error) {
 	return c.reader.GetClaims(ctx, nil, fromBlock, toBlock)
 }

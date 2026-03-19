@@ -277,9 +277,14 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
-
+	a.status.SetStatus(types.StatusCheckingDBCompatibility, a.log)
 	a.checkDBCompatibility(ctx)
+	a.status.SetStatus(types.StatusCheckingInitialStage, a.log)
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
+	a.status.SetStatus(types.StartingClaimSyncerStage, a.log)
+	a.setClaimSyncerNextRequiredBlock(ctx)
+
+	a.status.SetStatus(types.StatusFlowCheckingInitialStage, a.log)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
@@ -327,9 +332,8 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 		a.log.Debugf("AggSender: OnIdle")
 		a.certificateSendTrigger.OnIdle()
 	}
-	a.setClaimSyncerNextRequiredBlock(ctx)
 
-	a.status.Status = types.StatusCertificateStage
+	a.status.SetStatus(types.StatusCertificateStage, a.log)
 	iteration := 0
 	for {
 		select {

@@ -149,7 +149,9 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 		if bridgeReady && claimReady {
 			return nil
 		}
-
+		b.log.Infof("bridgeDataQuerier - waiting for syncers to catch up to block: %d "+
+			"(bridgeReady: %t, claimReady: %t), retrying in %s",
+			block, bridgeReady, claimReady, b.delayBetweenRetries)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

@@ -10,6 +10,7 @@ import (
 
 // ClaimsReader provides read-only access
 type ClaimsReader interface {
+	GetFirstProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error)
 	GetLastProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error)
 	GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error)
 	GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]Claim, error)

@@ -43,11 +43,7 @@ func (_e *DownloaderMock_Expecter) Download(ctx interface{}, fromBlock interface
 
 func (_c *DownloaderMock_Download_Call) Run(run func(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock, lastBlockNum *uint64, includeEmptyFirstBlock bool)) *DownloaderMock_Download_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var lastBlockNum *uint64
-		if args[3] != nil {
-			lastBlockNum = args[3].(*uint64)
-		}
-		run(args[0].(context.Context), args[1].(uint64), args[2].(chan EVMBlock), lastBlockNum, args[4].(bool))
+		run(args[0].(context.Context), args[1].(uint64), args[2].(chan EVMBlock), args[3].(*uint64), args[4].(bool))
 	})
 	return _c
 }

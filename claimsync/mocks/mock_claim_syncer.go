@@ -144,6 +144,69 @@ func (_c *ClaimSyncer_GetClaimsByGlobalIndex_Call) RunAndReturn(run func(context
 	return _c
 }
 
+// GetFirstProcessedBlock provides a mock function with given fields: ctx
+func (_m *ClaimSyncer) GetFirstProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFirstProcessedBlock")
+	}
+
+	var r0 uint64
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, bool, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) bool); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = rf(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// ClaimSyncer_GetFirstProcessedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstProcessedBlock'
+type ClaimSyncer_GetFirstProcessedBlock_Call struct {
+	*mock.Call
+}
+
+// GetFirstProcessedBlock is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *ClaimSyncer_Expecter) GetFirstProcessedBlock(ctx interface{}) *ClaimSyncer_GetFirstProcessedBlock_Call {
+	return &ClaimSyncer_GetFirstProcessedBlock_Call{Call: _e.mock.On("GetFirstProcessedBlock", ctx)}
+}
+
+func (_c *ClaimSyncer_GetFirstProcessedBlock_Call) Run(run func(ctx context.Context)) *ClaimSyncer_GetFirstProcessedBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *ClaimSyncer_GetFirstProcessedBlock_Call) Return(_a0 uint64, _a1 bool, _a2 error) *ClaimSyncer_GetFirstProcessedBlock_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *ClaimSyncer_GetFirstProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, bool, error)) *ClaimSyncer_GetFirstProcessedBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLastProcessedBlock provides a mock function with given fields: ctx
 func (_m *ClaimSyncer) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	ret := _m.Called(ctx)

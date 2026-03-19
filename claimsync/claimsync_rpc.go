@@ -14,6 +14,7 @@ import (
 // ClaimSyncer is the interface required by ClaimSyncRPC.
 type ClaimSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
+	GetFirstProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]claimsynctypes.Claim, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error)
 	SetNextRequiredBlock(ctx context.Context, blockNum uint64) error
@@ -37,17 +38,25 @@ func NewClaimSyncRPC(logger aggkitcommon.Logger, claimSync ClaimSyncer) *ClaimSy
 // curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
 // -d '{"method":"l2claimsync_status", "params":[], "id":1}'
 func (r *ClaimSyncRPC) Status() (interface{}, jRPC.Error) {
-	lastBlock, _, err := r.claimSync.GetLastProcessedBlock(context.Background())
+	lastBlock, foundLast, err := r.claimSync.GetLastProcessedBlock(context.Background())
 	if err != nil {
 		return nil, jRPC.NewRPCError(jRPC.DefaultErrorCode,
 			"ClaimSyncRPC.Status: getting last processed block: %v", err)
 	}
+	firstBlock, foundFirst, err := r.claimSync.GetFirstProcessedBlock(context.Background())
+	if err != nil {
+		return nil, jRPC.NewRPCError(jRPC.DefaultErrorCode,
+			"ClaimSyncRPC.Status: getting first processed block: %v", err)
+	}
 	info := struct {
-		Status             string `json:"status"`
-		LastProcessedBlock uint64 `json:"lastProcessedBlock"`
-	}{
-		Status:             "running",
-		LastProcessedBlock: lastBlock,
+		FirstProcessedBlock *uint64 `json:"firstProcessedBlock,omitempty"`
+		LastProcessedBlock  *uint64 `json:"lastProcessedBlock"`
+	}{}
+	if foundFirst {
+		info.FirstProcessedBlock = &firstBlock
+	}
+	if foundLast {
+		info.LastProcessedBlock = &lastBlock
 	}
 	return info, nil
 }
