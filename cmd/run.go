@@ -841,7 +841,7 @@ func runClaimSyncL1IfNeeded(
 		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
 
-	autoStart := cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components))
+	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components))
 
 	res, err := claimsync.NewStandaloneClaimSync(
 		ctx,
@@ -854,12 +854,8 @@ func runClaimSyncL1IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating ClaimSyncL1: %s", err)
 	}
-	if autoStart {
-		log.Infof("Starting ClaimSyncL1 (autoStart=true)")
-		go res.Start(ctx)
-	} else {
-		log.Infof("ClaimSyncL1 created (autoStart=false, on-demand)")
-	}
+	log.Infof("Starting ClaimSyncL1 (autoStart=%t)", *cfg.AutoStart.Resolved)
+	go res.Start(ctx)
 	return res
 }
 
@@ -934,7 +930,7 @@ func runClaimSyncL2IfNeeded(
 		return nil
 	}
 
-	autoStart := cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components))
+	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components))
 
 	res, err := claimsync.NewStandaloneClaimSync(
 		ctx,
@@ -947,12 +943,9 @@ func runClaimSyncL2IfNeeded(
 	if err != nil {
 		log.Fatalf("error creating ClaimSyncL2: %s", err)
 	}
-	if autoStart {
-		log.Infof("Starting ClaimSyncL2 (autoStart=true)")
-		go res.Start(ctx)
-	} else {
-		log.Infof("ClaimSyncL2 created (autoStart=false, on-demand)")
-	}
+
+	log.Infof("Starting ClaimSyncL2 (autoStart=%t)", *cfg.AutoStart.Resolved)
+	go res.Start(ctx)
 	return res
 }
 

@@ -102,20 +102,6 @@ func NewClaimSync(
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDownloader: %w", err)
 	}
-	// TODO: Remove
-	// lastBlock, _, err := proc.GetLastProcessedBlock(ctx)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("claimsync: get last processed block: %w", err)
-	// }
-	// if lastBlock < cfg.InitialBlockNum {
-	// 	header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(cfg.InitialBlockNum))
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("claimsync: get initial block %d: %w", cfg.InitialBlockNum, err)
-	// 	}
-	// 	if err := proc.ProcessBlock(ctx, sync.Block{Num: cfg.InitialBlockNum, Hash: header.Hash}); err != nil {
-	// 		return nil, fmt.Errorf("claimsync: process initial block %d: %w", cfg.InitialBlockNum, err)
-	// 	}
-	// }
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,

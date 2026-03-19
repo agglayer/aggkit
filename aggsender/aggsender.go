@@ -283,7 +283,6 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	a.status.SetStatus(types.StartingClaimSyncerStage, a.log)
 	a.setClaimSyncerNextRequiredBlock(ctx)
-
 	a.status.SetStatus(types.StatusFlowCheckingInitialStage, a.log)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
