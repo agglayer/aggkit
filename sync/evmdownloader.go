@@ -141,7 +141,10 @@ func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 	}, nil
 }
 
-func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock, lastBlockNum *uint64, includeEmptyFirstBlock bool) {
+func (d *EVMDownloader) Download(
+	ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock,
+	lastBlockNum *uint64, includeEmptyFirstBlock bool,
+) {
 	timeTracker := aggkitcommon.NewTimeTracker()
 	timeTracker.Start()
 	defer func() {
@@ -254,11 +257,9 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 					if lastBlockNum != nil {
 						toBlock = min(toBlock, *lastBlockNum)
 					}
-				} else {
-					if lastBlockNum == nil {
-						// Extend range until find logs or reach the last finalized block
-						toBlock += d.syncBlockChunkSize
-					}
+				} else if lastBlockNum == nil {
+					// Extend range until find logs or reach the last finalized block
+					toBlock += d.syncBlockChunkSize
 					// If lastBlockNum is set, don't extend; stop condition below handles it
 				}
 			} else {

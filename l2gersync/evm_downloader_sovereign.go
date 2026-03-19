@@ -91,7 +91,9 @@ func (d *downloaderSovereign) RuntimeData(ctx context.Context) (sync.RuntimeData
 	}, nil
 }
 
-func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock, _ *uint64, _ bool) {
+func (d *downloaderSovereign) Download(
+	ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock, _ *uint64, _ bool,
+) {
 	for {
 		select {
 		case <-ctx.Done():

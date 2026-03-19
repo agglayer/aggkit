@@ -844,7 +844,7 @@ func blockHeader(num uint64) EVMBlockHeader {
 }
 
 func drainChannel(ch chan EVMBlock) []EVMBlock {
-	var result []EVMBlock
+	result := make([]EVMBlock, 0)
 	for b := range ch {
 		result = append(result, b)
 	}
@@ -881,85 +881,46 @@ func TestDownload_LastBlockNum_BlockWithEvents(t *testing.T) {
 	require.True(t, received[0].IsFinalizedBlock)
 }
 
-// TestDownload_LastBlockNum_EmptyFinalizedBlock verifies that when lastBlockNum is set and the
-// target block is empty in the finalized zone, an empty block is reported and Download stops.
-func TestDownload_LastBlockNum_EmptyFinalizedBlock(t *testing.T) {
+// TestDownload_EmptyBlock verifies empty-block reporting for every combination of
+// includeEmptyFirstBlock and finality zone. GetBlockHeader must always be called exactly once.
+func TestDownload_EmptyBlock(t *testing.T) {
 	t.Parallel()
-	downloader, iface := newMockDownloader(t)
+	cases := []struct {
+		name                 string
+		finalizedBlock       uint64
+		includeEmptyFirst    bool
+		wantIsFinalizedBlock bool
+	}{
+		// finalized zone — normal path (includeEmptyFirstBlock=false)
+		{"finalized/noFlag", 10, false, true},
+		// finalized zone — pre-report path (includeEmptyFirstBlock=true); GetBlockHeader called once, not twice
+		{"finalized/withFlag", 10, true, true},
+		// not-finalized zone — pre-report path forces immediate report without waiting for finality
+		{"notFinalized/withFlag", 3, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			downloader, iface := newMockDownloader(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
+			lastBlock := uint64(5)
+			iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
+			iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(tc.finalizedBlock, nil).Once()
+			iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{}).Once()
+			iface.EXPECT().GetBlockHeader(mock.Anything, uint64(5)).Return(blockHeader(5), false).Once()
 
-	lastBlock := uint64(5)
-	iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
-	iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(uint64(10), nil).Once()
-	iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{}).Once()
-	hdr := blockHeader(5)
-	iface.EXPECT().GetBlockHeader(mock.Anything, uint64(5)).Return(hdr, false).Once()
+			downloadCh := make(chan EVMBlock, 10)
+			downloader.Download(ctx, 5, downloadCh, &lastBlock, tc.includeEmptyFirst)
 
-	downloadCh := make(chan EVMBlock, 10)
-	downloader.Download(ctx, 5, downloadCh, &lastBlock, false)
-
-	received := drainChannel(downloadCh)
-	require.Len(t, received, 1)
-	require.Equal(t, uint64(5), received[0].Num)
-	require.Empty(t, received[0].Events)
-	require.True(t, received[0].IsFinalizedBlock)
-}
-
-// TestDownload_IncludeEmptyFirstBlock_FinalizedZone verifies that with includeEmptyFirstBlock=true,
-// the initial block is reported via the pre-report path (not doubled) when in the finalized zone.
-func TestDownload_IncludeEmptyFirstBlock_FinalizedZone(t *testing.T) {
-	t.Parallel()
-	downloader, iface := newMockDownloader(t)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-
-	lastBlock := uint64(5)
-	iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
-	iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(uint64(10), nil).Once()
-	iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{}).Once()
-	// GetBlockHeader called exactly once — by the pre-report path, not duplicated by the finalized zone path
-	hdr := blockHeader(5)
-	iface.EXPECT().GetBlockHeader(mock.Anything, uint64(5)).Return(hdr, false).Once()
-
-	downloadCh := make(chan EVMBlock, 10)
-	downloader.Download(ctx, 5, downloadCh, &lastBlock, true)
-
-	received := drainChannel(downloadCh)
-	require.Len(t, received, 1)
-	require.Equal(t, uint64(5), received[0].Num)
-	require.Empty(t, received[0].Events)
-	require.True(t, received[0].IsFinalizedBlock)
-}
-
-// TestDownload_IncludeEmptyFirstBlock_NotFinalizedZone verifies that with includeEmptyFirstBlock=true,
-// the initial block is reported immediately even when it is not yet finalized.
-func TestDownload_IncludeEmptyFirstBlock_NotFinalizedZone(t *testing.T) {
-	t.Parallel()
-	downloader, iface := newMockDownloader(t)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-
-	lastBlock := uint64(5)
-	// finalizedBlock=3 is below fromBlock=5 → not-finalized zone
-	iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
-	iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(uint64(3), nil).Once()
-	iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{}).Once()
-	hdr := blockHeader(5)
-	iface.EXPECT().GetBlockHeader(mock.Anything, uint64(5)).Return(hdr, false).Once()
-
-	downloadCh := make(chan EVMBlock, 10)
-	downloader.Download(ctx, 5, downloadCh, &lastBlock, true)
-
-	received := drainChannel(downloadCh)
-	require.Len(t, received, 1)
-	require.Equal(t, uint64(5), received[0].Num)
-	require.Empty(t, received[0].Events)
-	// Block 5 > finalizedBlock 3 → not finalized
-	require.False(t, received[0].IsFinalizedBlock)
+			received := drainChannel(downloadCh)
+			require.Len(t, received, 1)
+			require.Equal(t, uint64(5), received[0].Num)
+			require.Empty(t, received[0].Events)
+			require.Equal(t, tc.wantIsFinalizedBlock, received[0].IsFinalizedBlock)
+		})
+	}
 }
 
 // TestDownload_LastBlockNum_MultipleBlocksInRange verifies that when lastBlockNum > fromBlock,

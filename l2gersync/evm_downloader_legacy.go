@@ -90,7 +90,9 @@ func (d *downloaderLegacy) RuntimeData(ctx context.Context) (sync.RuntimeData, e
 	}, nil
 }
 
-func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock, _ *uint64, _ bool) {
+func (d *downloaderLegacy) Download(
+	ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock, _ *uint64, _ bool,
+) {
 	var (
 		attempts            int
 		nextL1InfoTreeIndex uint32

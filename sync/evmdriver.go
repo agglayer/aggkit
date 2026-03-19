@@ -37,7 +37,8 @@ type Downloader interface {
 	// Download downloads blocks starting from fromBlock, sending them to downloadedCh.
 	// If lastBlockNum is not nil, it stops after processing that block.
 	// If includeEmptyFirstBlock is true, fromBlock is always sent even if it has no events.
-	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock, lastBlockNum *uint64, includeEmptyFirstBlock bool)
+	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock,
+		lastBlockNum *uint64, includeEmptyFirstBlock bool)
 	// RuntimeData returns the runtime data from this downloader
 	// this is used to check that DB is compatible with the runtime data
 	RuntimeData(ctx context.Context) (RuntimeData, error)
