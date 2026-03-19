@@ -90,7 +90,7 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 	_, found, err2 := claimSyncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err2)
 	require.False(t, found)
-	logger.Info("*** Setting next required block to 1, so must starting syncing and sync the ClaimAsset")
+	logger.Info("*** Setting next required block to 0, so must starting syncing and sync the ClaimAsset")
 	err = claimSyncer.SetNextRequiredBlock(ctx, 0)
 	require.NoError(t, err)
 	for i := 0; i < 10; i++ {
@@ -111,4 +111,7 @@ func TestClaimSyncerWaitUntilSetNextRequiredBlock(t *testing.T) {
 	require.NoError(t, err)
 	logger.Infof("*** Claims retrieved: %v", claims)
 	require.Equal(t, 1, len(claims))
+	logger.Info("*** Setting next required block to 0, it have started but 0 is synced so no error")
+	err = claimSyncer.SetNextRequiredBlock(ctx, 0)
+	require.NoError(t, err)
 }

@@ -60,8 +60,8 @@ func TestSync(t *testing.T) {
 		green bool
 	}
 	reorg1Completed := reorgSemaphore{}
-	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, _ uint64, downloadedCh chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, downloadedCh chan EVMBlock, _ *uint64, _ bool) {
 			log.Info("entering mock loop")
 			for {
 				select {
@@ -155,8 +155,8 @@ func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 	cancelObserved := make(chan struct{})
 
 	// infinite loop that keeps feeding the same block
-	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, _ uint64, ch chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
 			for {
 				ch <- expectedBlock
 				select {
@@ -998,8 +998,8 @@ func TestSyncNextBlock_DownloadChannelClosedUnexpectedly(t *testing.T) {
 	t.Parallel()
 	driver, _, pm, dm := makeDriver(t)
 	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
-	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything).
-		Run(func(_ context.Context, _ uint64, ch chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
 			close(ch)
 		})
 
@@ -1013,8 +1013,8 @@ func TestSyncNextBlock_ContextCancelledBeforeBlock(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
 	// The goroutine may or may not start before the select returns ctx.Done()
-	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything).
-		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock, _ *uint64, _ bool) {
 			<-downloadCtx.Done()
 		}).Maybe()
 	cancel()
@@ -1032,8 +1032,8 @@ func TestSyncNextBlock_HappyPath(t *testing.T) {
 	}
 
 	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
-	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything).
-		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
 			ch <- expectedBlock
 			<-downloadCtx.Done() // wait for cancel() triggered inside SyncNextBlock
 		})
@@ -1074,8 +1074,8 @@ func TestSync_WithFirstBlockNumber_StartsFromGivenBlock(t *testing.T) {
 	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
 
 	downloadStartedFrom := make(chan uint64, 1)
-	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(downloadCtx context.Context, fromBlock uint64, ch chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, fromBlock uint64, ch chan EVMBlock, _ *uint64, _ bool) {
 			downloadStartedFrom <- fromBlock
 			<-downloadCtx.Done()
 			close(ch)

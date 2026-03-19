@@ -141,7 +141,7 @@ func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 	}, nil
 }
 
-func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
+func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock, lastBlockNum *uint64, includeEmptyFirstBlock bool) {
 	timeTracker := aggkitcommon.NewTimeTracker()
 	timeTracker.Start()
 	defer func() {
@@ -149,7 +149,14 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 		d.log.Infof("EVMDownloader.Download finished in %s", timeTracker.String())
 	}()
 	lastBlock := d.WaitForNewBlocks(ctx, 0)
+	initialFromBlock := fromBlock
+	// initialBlockSent tracks whether fromBlock has been sent on the channel.
+	// When includeEmptyFirstBlock is false we treat it as already sent (no special handling needed).
+	initialBlockSent := !includeEmptyFirstBlock
 	toBlock := fromBlock + d.syncBlockChunkSize
+	if lastBlockNum != nil {
+		toBlock = min(toBlock, *lastBlockNum)
+	}
 	iteration := 0
 	reachTop := false
 	for {
@@ -172,6 +179,9 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 
 			if fromBlock-toBlock < d.syncBlockChunkSize {
 				toBlock = fromBlock + d.syncBlockChunkSize
+				if lastBlockNum != nil {
+					toBlock = min(toBlock, *lastBlockNum)
+				}
 			}
 		}
 		reachTop = false
@@ -188,39 +198,85 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			requestToBlock = lastBlock
 			reachTop = true
 		}
+		if lastBlockNum != nil && requestToBlock > *lastBlockNum {
+			requestToBlock = *lastBlockNum
+		}
 		d.log.Debugf("getting events from blocks [%d to %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
 			fromBlock, requestToBlock, toBlock, lastFinalizedBlockNumber, lastBlock)
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, requestToBlock)
 		d.log.Debugf("result events from blocks [%d to %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
+
+		// Force-report initialFromBlock if not yet sent (even when it has no events).
+		// preReportedInitial tracks whether we sent it as empty this iteration,
+		// so we can avoid double-reporting it in the normal reporting paths below.
+		preReportedInitial := false
+		if !initialBlockSent && requestToBlock >= initialFromBlock {
+			initialInBlocks := false
+			for _, b := range blocks {
+				if b.Num == initialFromBlock {
+					initialInBlocks = true
+					break
+				}
+			}
+			if !initialInBlocks {
+				d.reportEmptyBlock(ctx, downloadedCh, initialFromBlock, lastFinalizedBlockNumber)
+				preReportedInitial = true
+			}
+			initialBlockSent = true
+		}
+
 		if requestToBlock <= lastFinalizedBlockNumber {
 			d.log.Debugf("range is in a safe zone (requestToBlock: %d <= finalized: %d)",
 				requestToBlock, lastFinalizedBlockNumber)
 			d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
-			if blocks.Len() == 0 || blocks[blocks.Len()-1].Num < requestToBlock {
+			skipEmpty := preReportedInitial && requestToBlock == initialFromBlock
+			if !skipEmpty && (blocks.Len() == 0 || blocks[blocks.Len()-1].Num < requestToBlock) {
 				d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, lastFinalizedBlockNumber)
 			}
 			fromBlock = requestToBlock + 1
 			toBlock = fromBlock + d.syncBlockChunkSize
+			if lastBlockNum != nil {
+				toBlock = min(toBlock, *lastBlockNum)
+			}
 		} else {
 			d.log.Debugf("range is not in a safe zone (requestToBlock: %d > finalized: %d)",
 				requestToBlock, lastFinalizedBlockNumber)
 			if blocks.Len() == 0 {
 				if lastFinalizedBlockNumber >= fromBlock {
 					emptyBlock := lastFinalizedBlockNumber
-					d.reportEmptyBlock(ctx, downloadedCh, emptyBlock, lastFinalizedBlockNumber)
+					skipEmpty := preReportedInitial && emptyBlock == initialFromBlock
+					if !skipEmpty {
+						d.reportEmptyBlock(ctx, downloadedCh, emptyBlock, lastFinalizedBlockNumber)
+					}
 					fromBlock = emptyBlock + 1
 					toBlock = fromBlock + d.syncBlockChunkSize
+					if lastBlockNum != nil {
+						toBlock = min(toBlock, *lastBlockNum)
+					}
 				} else {
-					// Extend range until find logs or reach the last finalized block
-					toBlock += d.syncBlockChunkSize
+					if lastBlockNum == nil {
+						// Extend range until find logs or reach the last finalized block
+						toBlock += d.syncBlockChunkSize
+					}
+					// If lastBlockNum is set, don't extend; stop condition below handles it
 				}
 			} else {
 				d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
 				fromBlock = blocks[blocks.Len()-1].Num + 1
 				toBlock = fromBlock + d.syncBlockChunkSize
+				if lastBlockNum != nil {
+					toBlock = min(toBlock, *lastBlockNum)
+				}
 			}
 		}
+
+		// Stop once we have processed up to lastBlockNum
+		if lastBlockNum != nil && (fromBlock > *lastBlockNum || requestToBlock >= *lastBlockNum) {
+			close(downloadedCh)
+			return
+		}
+
 		iteration++
 		if d.stopDownloaderOnIterationN != 0 && iteration >= d.stopDownloaderOnIterationN {
 			d.log.Infof("stop downloader on iteration %d", iteration)

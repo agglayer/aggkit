@@ -204,16 +204,14 @@ func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64
 	if err != nil {
 		return fmt.Errorf("claimsync: failed to get first processed block: %w", err)
 	}
-	if blockNumber <= firstBlock {
+	if blockNumber < firstBlock {
 		return fmt.Errorf("claimsync: cannot set next required block to %d, "+
-			"it must be greater than the first block in DB (%d)",
+			"it must be greater or equal than the first block in DB (%d)",
 			blockNumber, firstBlock)
 	}
-	if blockNumber > lastBlock {
-		c.logger.Infof("Cannot set next required block to %d because is running,"+
-			" last processed block is %d. Distance: %d", blockNumber, lastBlock,
-			blockNumber-lastBlock)
-	}
+
+	c.logger.Infof("Cannot set next required block to %d because is running, but is included. "+
+		" Processed blocks [%d - %d]", blockNumber, firstBlock, lastBlock)
 
 	return nil
 }

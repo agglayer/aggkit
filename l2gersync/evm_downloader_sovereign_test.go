@@ -101,7 +101,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	downloader.Download(ctx, fromBlock, downloadedCh)
+	downloader.Download(ctx, fromBlock, downloadedCh, nil, false)
 
 	// Collect blocks sent through the channel
 	for block := range downloadedCh {

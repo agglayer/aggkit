@@ -21,9 +21,9 @@ func (_m *DownloaderMock) EXPECT() *DownloaderMock_Expecter {
 	return &DownloaderMock_Expecter{mock: &_m.Mock}
 }
 
-// Download provides a mock function with given fields: ctx, fromBlock, downloadedCh
-func (_m *DownloaderMock) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
-	_m.Called(ctx, fromBlock, downloadedCh)
+// Download provides a mock function with given fields: ctx, fromBlock, downloadedCh, lastBlockNum, includeEmptyFirstBlock
+func (_m *DownloaderMock) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock, lastBlockNum *uint64, includeEmptyFirstBlock bool) {
+	_m.Called(ctx, fromBlock, downloadedCh, lastBlockNum, includeEmptyFirstBlock)
 }
 
 // DownloaderMock_Download_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Download'
@@ -35,13 +35,19 @@ type DownloaderMock_Download_Call struct {
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - downloadedCh chan EVMBlock
-func (_e *DownloaderMock_Expecter) Download(ctx interface{}, fromBlock interface{}, downloadedCh interface{}) *DownloaderMock_Download_Call {
-	return &DownloaderMock_Download_Call{Call: _e.mock.On("Download", ctx, fromBlock, downloadedCh)}
+//   - lastBlockNum *uint64
+//   - includeEmptyFirstBlock bool
+func (_e *DownloaderMock_Expecter) Download(ctx interface{}, fromBlock interface{}, downloadedCh interface{}, lastBlockNum interface{}, includeEmptyFirstBlock interface{}) *DownloaderMock_Download_Call {
+	return &DownloaderMock_Download_Call{Call: _e.mock.On("Download", ctx, fromBlock, downloadedCh, lastBlockNum, includeEmptyFirstBlock)}
 }
 
-func (_c *DownloaderMock_Download_Call) Run(run func(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)) *DownloaderMock_Download_Call {
+func (_c *DownloaderMock_Download_Call) Run(run func(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock, lastBlockNum *uint64, includeEmptyFirstBlock bool)) *DownloaderMock_Download_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint64), args[2].(chan EVMBlock))
+		var lastBlockNum *uint64
+		if args[3] != nil {
+			lastBlockNum = args[3].(*uint64)
+		}
+		run(args[0].(context.Context), args[1].(uint64), args[2].(chan EVMBlock), lastBlockNum, args[4].(bool))
 	})
 	return _c
 }
@@ -51,7 +57,7 @@ func (_c *DownloaderMock_Download_Call) Return() *DownloaderMock_Download_Call {
 	return _c
 }
 
-func (_c *DownloaderMock_Download_Call) RunAndReturn(run func(context.Context, uint64, chan EVMBlock)) *DownloaderMock_Download_Call {
+func (_c *DownloaderMock_Download_Call) RunAndReturn(run func(context.Context, uint64, chan EVMBlock, *uint64, bool)) *DownloaderMock_Download_Call {
 	_c.Run(run)
 	return _c
 }
