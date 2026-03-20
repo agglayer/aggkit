@@ -946,6 +946,7 @@ func runClaimSyncL2IfNeeded(
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE,
 		aggkitcommon.L2CLAIMSYNC}, components) {
 		return nil
 	}
