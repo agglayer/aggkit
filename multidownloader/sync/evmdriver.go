@@ -51,17 +51,21 @@ func NewEVMDriver(
 		compatibilityChecker: compatibilityChecker,
 	}
 }
-
+func (d *EVMDriver) checkFirstBlockNumberParams(firstBlockNumber *uint64) error {
+	if firstBlockNumber == nil {
+		return fmt.Errorf("multidownloader doesnt support firstBlockNumber==nil")
+	}
+	if *firstBlockNumber != d.syncerConfig.FromBlock {
+		return fmt.Errorf("multidownloader doesnt support firstBlockNumber different than FromBlock, got %d, expected %d",
+			*firstBlockNumber, d.syncerConfig.FromBlock)
+	}
+	return nil
+}
 func (d *EVMDriver) Sync(ctx context.Context, firstBlockNumber *uint64) {
 	// firstBlockNumber is unused and not support in the current implementation
 	// it just check that is equal to syncerConfig.InitialBlockNum
-	if firstBlockNumber == nil {
-		d.logger.Fatalf("multidownloader doesnt support firstBlockNumber==nil")
-		return
-	}
-	if *firstBlockNumber != d.syncerConfig.FromBlock {
-		d.logger.Fatalf("multidownloader doesnt support firstBlockNumber different than FromBlock, got %d, expected %d",
-			*firstBlockNumber, d.syncerConfig.FromBlock)
+	if err := d.checkFirstBlockNumberParams(firstBlockNumber); err != nil {
+		d.logger.Fatalf("error in firstBlockNumber parameter: %v", err)
 	}
 	attempts := 0
 	for {

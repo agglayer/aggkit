@@ -174,50 +174,124 @@ func TestGetLastProcessedBlock(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	testCases := []struct {
-		name          string
-		mockFn        func(*mocks.L2BridgeSyncer)
-		expectedBlock uint64
-		expectedError string
-	}{
+
+	type testCase struct {
+		name           string
+		claimSyncer    claimsynctypes.ClaimSyncer
+		setupBridge    func(*mocks.L2BridgeSyncer)
+		expectedBlock  uint64
+		expectedFound  bool
+		expectedErrMsg string
+	}
+
+	tests := []testCase{
 		{
-			name: "success - valid last processed block",
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			name: "bridge error",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("bridge error"))
 			},
-			expectedBlock: 150,
+			expectedErrMsg: "error getting last processed block: bridge error",
 		},
 		{
-			name: "error - failed to fetch last processed block",
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("some error"))
+			name: "bridge not found",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 			},
-			expectedError: "error getting last processed block: some error",
+			expectedFound: false,
+		},
+		{
+			name: "no claim syncer returns bridge block",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			},
+			expectedBlock: 150,
+			expectedFound: true,
+		},
+		{
+			name: "claim syncer error",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			},
+			claimSyncer: func() claimsynctypes.ClaimSyncer {
+				m := claimsynctypesmocks.NewClaimSyncer(t)
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("claim error"))
+				return m
+			}(),
+			expectedErrMsg: "error getting claim syncer last processed block: claim error",
+		},
+		{
+			name: "claim syncer not found",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			},
+			claimSyncer: func() claimsynctypes.ClaimSyncer {
+				m := claimsynctypesmocks.NewClaimSyncer(t)
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
+				return m
+			}(),
+			expectedFound: false,
+		},
+		{
+			name: "claim block is behind bridge block - returns claim block",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			},
+			claimSyncer: func() claimsynctypes.ClaimSyncer {
+				m := claimsynctypesmocks.NewClaimSyncer(t)
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), true, nil)
+				return m
+			}(),
+			expectedBlock: 100,
+			expectedFound: true,
+		},
+		{
+			name: "claim block is ahead of bridge block - returns bridge block",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			},
+			claimSyncer: func() claimsynctypes.ClaimSyncer {
+				m := claimsynctypesmocks.NewClaimSyncer(t)
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(200), true, nil)
+				return m
+			}(),
+			expectedBlock: 150,
+			expectedFound: true,
+		},
+		{
+			name: "claim block equals bridge block - returns bridge block",
+			setupBridge: func(m *mocks.L2BridgeSyncer) {
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+			},
+			claimSyncer: func() claimsynctypes.ClaimSyncer {
+				m := claimsynctypesmocks.NewClaimSyncer(t)
+				m.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), true, nil)
+				return m
+			}(),
+			expectedBlock: 150,
+			expectedFound: true,
 		},
 	}
 
-	for _, tc := range testCases {
-		tc := tc
-
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockSyncer := new(mocks.L2BridgeSyncer)
-			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
-			AgglayerBridgeL2Reader := new(mocks.AgglayerBridgeL2Reader)
-			tc.mockFn(mockSyncer)
+			mockBridge := mocks.NewL2BridgeSyncer(t)
+			mockBridge.EXPECT().OriginNetwork().Return(uint32(1)).Once()
+			tc.setupBridge(mockBridge)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, nil, 0, AgglayerBridgeL2Reader)
+			querier := NewBridgeDataQuerier(nil, mockBridge, tc.claimSyncer, 0, mocks.NewAgglayerBridgeL2Reader(t))
 
-			block, _, err := bridgeQuerier.GetLastProcessedBlock(ctx)
-			if tc.expectedError != "" {
-				require.ErrorContains(t, err, tc.expectedError)
+			block, found, err := querier.GetLastProcessedBlock(ctx)
+			if tc.expectedErrMsg != "" {
+				require.ErrorContains(t, err, tc.expectedErrMsg)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedBlock, block)
+				require.Equal(t, tc.expectedFound, found)
+				if tc.expectedFound {
+					require.Equal(t, tc.expectedBlock, block)
+				}
 			}
-
-			mockSyncer.AssertExpectations(t)
 		})
 	}
 }

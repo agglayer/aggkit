@@ -8,19 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// TrueFalseAutoMode is an alias for config/types.TrueFalseAutoMode.
-type TrueFalseAutoMode = types.TrueFalseAutoMode
-
-// Re-export the TrueFalseAutoMode values from config/types.
-var (
-	// TrueMode always extracts FromAddress using debug_traceTransaction
-	TrueMode = types.TrueMode
-	// FalseMode never extracts FromAddress
-	FalseMode = types.FalseMode
-	// AutoMode decides automatically based on whether BRIDGE component is active
-	AutoMode = types.AutoMode
-)
-
 type Config struct {
 	// DBPath path of the DB
 	DBPath string `mapstructure:"DBPath"`
@@ -54,7 +41,7 @@ type Config struct {
 	// Note: TxnSender and ToAddress are always extracted via standard eth_getTransactionByHash.
 	// Default: "auto"
 	// SyncFromInBridges.Resolved is set programmatically after resolution; not read from config.
-	SyncFromInBridges TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
+	SyncFromInBridges types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
 }
 
 // Validate checks if the configuration is valid
@@ -64,7 +51,7 @@ func (c Config) Validate() error {
 	}
 	// Validate SyncFromInBridges (empty is allowed — means not configured)
 	if c.SyncFromInBridges.Mode != "" {
-		var m TrueFalseAutoMode
+		var m types.TrueFalseAutoMode
 		if err := m.UnmarshalText([]byte(c.SyncFromInBridges.Mode)); err != nil {
 			return fmt.Errorf("invalid SyncFromInBridges value: %w", err)
 		}

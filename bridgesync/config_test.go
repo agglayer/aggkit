@@ -3,6 +3,7 @@ package bridgesync
 import (
 	"testing"
 
+	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +25,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with SyncFromInBridges true",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: TrueMode,
+				SyncFromInBridges: types.TrueMode,
 			},
 			expectedError: "",
 		},
@@ -32,7 +33,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with SyncFromInBridges false",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: FalseMode,
+				SyncFromInBridges: types.FalseMode,
 			},
 			expectedError: "",
 		},
@@ -40,7 +41,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with SyncFromInBridges auto",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: AutoMode,
+				SyncFromInBridges: types.AutoMode,
 			},
 			expectedError: "",
 		},
@@ -48,7 +49,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "valid config with empty SyncFromInBridges",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: TrueFalseAutoMode{},
+				SyncFromInBridges: types.TrueFalseAutoMode{},
 			},
 			expectedError: "",
 		},
@@ -66,7 +67,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid config with invalid SyncFromInBridges",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: TrueFalseAutoMode{Mode: "invalid_value"},
+				SyncFromInBridges: types.TrueFalseAutoMode{Mode: "invalid_value"},
 			},
 			expectedError: "invalid SyncFromInBridges value:",
 		},
@@ -74,7 +75,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "invalid config with numeric SyncFromInBridges",
 			config: Config{
 				BlockFinality:     aggkittypes.SafeBlock,
-				SyncFromInBridges: TrueFalseAutoMode{Mode: "123"},
+				SyncFromInBridges: types.TrueFalseAutoMode{Mode: "123"},
 			},
 			expectedError: "invalid SyncFromInBridges value:",
 		},

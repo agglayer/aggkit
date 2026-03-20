@@ -72,8 +72,7 @@ func (a *AggsenderValidator) Start(ctx context.Context) {
 		1)
 	err := a.initialBlockClaimSyncerSetter.SetClaimSyncerNextRequiredBlock(ctx, a.l2ClaimSyncer, rh)
 	if err != nil {
-		a.log.Fatalf("failed to set claim syncer next required block: %v", err)
-		return
+		a.log.Panicf("failed to set claim syncer next required block: %v", err)
 	}
 	a.validatorService.Start(ctx)
 }
