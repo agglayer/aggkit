@@ -16,7 +16,6 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
-
 type AggsenderValidator struct {
 	log                           aggkitcommon.Logger
 	validator                     types.CertificateValidator
@@ -60,9 +59,11 @@ func NewAggsenderValidator(ctx context.Context,
 		initialBlockClaimSyncerSetter: initialBlockClaimSyncerSetter,
 	}, nil
 }
+
+// Start starts the AggsenderValidator service.
 func (a *AggsenderValidator) Start(ctx context.Context) {
 	metrics.Register()
-	// This is hardcoded because validator to just do 1 retry if fails it and stop
+	// The validator only attempts once: if it fails, it stops.
 	rh := aggkitcommon.NewRetryHandler([]configtypes.Duration{{Duration: a.cfg.DelayBetweenRetries.Duration}},
 		1)
 	err := a.initialBlockClaimSyncerSetter.SetClaimSyncerNextRequiredBlock(ctx, a.l2ClaimSyncer, rh)

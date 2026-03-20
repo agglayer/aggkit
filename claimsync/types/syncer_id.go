@@ -16,8 +16,12 @@ const (
 )
 
 func (b ClaimSyncerID) String() string {
-	if b < L1ClaimSyncer || b > L2ClaimSyncer {
+	switch b {
+	case L1ClaimSyncer:
+		return "L1ClaimSyncer"
+	case L2ClaimSyncer:
+		return "L2ClaimSyncer"
+	default:
 		return fmt.Sprintf("UnknownClaimSyncerID(%d)", b)
 	}
-	return [...]string{"L1ClaimSyncer", "L2ClaimSyncer"}[b]
 }

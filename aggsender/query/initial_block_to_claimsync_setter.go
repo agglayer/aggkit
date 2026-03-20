@@ -69,8 +69,8 @@ func (n *SetInitialBlockToClaimSyncer) SetClaimSyncerNextRequiredBlock(
 	return nil
 }
 
-// getNextBlockNumber returns the first block number of the next certificate to generate.
-// It reads the last sent certificate from agglayer to determine the starting block.
+// getNextBlockNumber returns the starting block number for the claim syncer.
+// It queries the latest settled certificate from agglayer to determine from which block claims must be synced.
 func (n *SetInitialBlockToClaimSyncer) getNextBlockNumber(ctx context.Context) (uint64, error) {
 	certHeader, err := n.agglayerClient.GetLatestSettledCertificateHeader(ctx, n.l2OriginNetwork)
 	if err != nil {

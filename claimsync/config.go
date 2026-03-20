@@ -23,13 +23,13 @@ type ConfigStandalone struct {
 	// BlockFinality indicates the status of the blocks that will be queried in order to sync
 	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// InitialBlockNum is the first block that will be queried when starting the synchronization from scratch.
-	// It should be a number equal or bellow the creation of the bridge contract
+	// It should be a number equal or below the creation of the bridge contract
 	InitialBlockNum uint64 `mapstructure:"InitialBlockNum"`
 	// SyncBlockChunkSize is the amount of blocks that will be queried to the client on each request
 	SyncBlockChunkSize uint64 `mapstructure:"SyncBlockChunkSize"`
 	// RetryAfterErrorPeriod is the time that will be waited when an unexpected error happens before retry
 	RetryAfterErrorPeriod types.Duration `mapstructure:"RetryAfterErrorPeriod"`
-	// MaxRetryAttemptsAfterError is the maximum number of consecutive attempts that will happen before panicing.
+	// MaxRetryAttemptsAfterError is the maximum number of consecutive attempts that will happen before panicking.
 	// Any number smaller than zero will be considered as unlimited retries
 	MaxRetryAttemptsAfterError int `mapstructure:"MaxRetryAttemptsAfterError"`
 

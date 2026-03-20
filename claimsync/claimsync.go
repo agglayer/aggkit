@@ -161,15 +161,13 @@ func (c *ClaimSync) syncNextBlockInfinite(ctx context.Context, blockNumber uint6
 }
 
 // SyncNextBlock downloads and processes blockNum as a bootstrap step.
-// Returns sync.ErrAlreadyBootstrapped (ignorable) if a processed block already exists.
 func (c *ClaimSync) SyncNextBlock(ctx context.Context, blockNum uint64) error {
 	c.logger.Infof("SyncNextBlock: syncing block %d", blockNum)
 	c.syncNextBlockInfinite(ctx, blockNum)
 	return nil
 }
 
-// OriginNetwork returns the network ID of the origin chain
-
+// OriginNetwork returns the network ID of the origin chain.
 func (c *ClaimSync) OriginNetwork() uint32 {
 	return c.originNetwork
 }
@@ -182,7 +180,7 @@ func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64
 	if !found {
 		c.logger.Infof("Starting to sync from block %d (no processed blocks found)", blockNumber)
 		if err := c.driver.SyncNextBlock(ctx, blockNumber); err != nil {
-			return fmt.Errorf("claimsync: failed to createStartingPoint: %w", err)
+			return fmt.Errorf("claimsync: failed to create starting point: %w", err)
 		}
 		return nil
 	}
@@ -196,8 +194,8 @@ func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64
 			blockNumber, firstBlock)
 	}
 
-	c.logger.Infof("Cannot set next required block to %d because is running, but is included. "+
-		" Processed blocks [%d - %d]", blockNumber, firstBlock, lastBlock)
+	c.logger.Infof("Syncer is already running; block %d is within the processed range [%d - %d], no action needed",
+		blockNumber, firstBlock, lastBlock)
 
 	return nil
 }
