@@ -51,7 +51,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if err := p.storage.InsertBlock(ctx, tx, block.Num, block.Hash); err != nil {
+	if err := p.storage.InsertBlock(dbCtx, tx, block.Num, block.Hash); err != nil {
 		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
 		return err
 	}

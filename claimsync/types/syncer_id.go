@@ -1,5 +1,7 @@
 package types
 
+import "fmt"
+
 // ClaimSyncerID represents the type of bridge syncer
 type ClaimSyncerID int
 
@@ -14,5 +16,8 @@ const (
 )
 
 func (b ClaimSyncerID) String() string {
+	if b < L1ClaimSyncer || b > L2ClaimSyncer {
+		return fmt.Sprintf("UnknownClaimSyncerID(%d)", b)
+	}
 	return [...]string{"L1ClaimSyncer", "L2ClaimSyncer"}[b]
 }

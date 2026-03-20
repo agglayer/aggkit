@@ -113,7 +113,7 @@ func (p *claimEmbeddedProcessor) ProcessBlockWithTx(
 ) error {
 	event, ok := eventRaw.(Event)
 	if !ok {
-		return fmt.Errorf("claimsync ProcessBlock: unexpected event type %T in block %d", event, block.Num)
+		return fmt.Errorf("claimsync ProcessBlock: unexpected event type %T in block %d", eventRaw, block.Num)
 	}
 
 	if event.Claim != nil {

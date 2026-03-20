@@ -10,17 +10,14 @@ import (
 	"github.com/agglayer/aggkit/db/types"
 )
 
-// ClaimSync0001 is public because bridegsync needs it to
-// set the migrations:this 0001 is equivalent to bridgesync0014,
-//
 //go:embed claimsync0001.sql
-var ClaimSync0001 string
+var claimSync0001 string
 
 func GetClaimSyncMigrations() []types.Migration {
 	return []types.Migration{
 		{
 			ID:  "claimsync0001",
-			SQL: ClaimSync0001,
+			SQL: claimSync0001,
 		},
 	}
 }

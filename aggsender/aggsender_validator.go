@@ -2,7 +2,6 @@ package aggsender
 
 import (
 	"context"
-	"errors"
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/metrics"
@@ -17,10 +16,6 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
-var (
-	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
-	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
-)
 
 type AggsenderValidator struct {
 	log                           aggkitcommon.Logger
