@@ -55,16 +55,16 @@ func (n *SetInitialBlockToClaimSyncer) SetClaimSyncerNextRequiredBlock(
 		func() (bool, error) {
 			nextBlock, err := n.getNextBlockNumber(ctx)
 			if err != nil {
-				return true, fmt.Errorf("error getting next block number for claim syncer: %v", err)
+				return true, fmt.Errorf("error getting next block number for claim syncer: %w", err)
 			}
 			if err := l2ClaimSyncer.SetNextRequiredBlock(ctx, nextBlock); err != nil {
-				return true, fmt.Errorf("error setting next required block for claim syncer: %v", err)
+				return true, fmt.Errorf("error setting next required block for claim syncer: %w", err)
 			}
 			n.logger.Infof("Set next required block for claim syncer to %d", nextBlock)
 			return true, nil
 		})
 	if err != nil {
-		return fmt.Errorf("error setting next required block for claim syncer: %v", err)
+		return fmt.Errorf("error setting next required block for claim syncer: %w", err)
 	}
 	return nil
 }

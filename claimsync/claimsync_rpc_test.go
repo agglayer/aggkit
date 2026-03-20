@@ -25,18 +25,21 @@ func newTestRPC(t *testing.T) (*ClaimSyncRPC, *mocks.ClaimSyncer) {
 func TestClaimSyncRPC_Status_OK(t *testing.T) {
 	rpc, syncer := newTestRPC(t)
 	syncer.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(42), true, nil)
+	syncer.EXPECT().GetFirstProcessedBlock(mock.Anything).Return(uint64(10), true, nil)
 
 	result, rpcErr := rpc.Status()
 	require.Nil(t, rpcErr)
 	require.NotNil(t, result)
 
 	status, ok := result.(struct {
-		Status             string `json:"status"`
-		LastProcessedBlock uint64 `json:"lastProcessedBlock"`
+		FirstProcessedBlock *uint64 `json:"firstProcessedBlock,omitempty"`
+		LastProcessedBlock  *uint64 `json:"lastProcessedBlock"`
 	})
 	require.True(t, ok)
-	require.Equal(t, "running", status.Status)
-	require.Equal(t, uint64(42), status.LastProcessedBlock)
+	require.NotNil(t, status.FirstProcessedBlock)
+	require.Equal(t, uint64(10), *status.FirstProcessedBlock)
+	require.NotNil(t, status.LastProcessedBlock)
+	require.Equal(t, uint64(42), *status.LastProcessedBlock)
 }
 
 func TestClaimSyncRPC_Status_Error(t *testing.T) {

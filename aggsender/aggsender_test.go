@@ -578,6 +578,9 @@ func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow|testDataFlagMockStatusChecker)
 	testData.sut.cfg.RequireStorageContentCompatibility = false
 	testData.certStatusCheckerMock.EXPECT().CheckInitialStatus(mock.Anything, mock.Anything, testData.sut.status).Once()
+	mockInitialBlockSetter := mocks.NewInitialBlockClaimSyncerSetter(t)
+	mockInitialBlockSetter.EXPECT().SetClaimSyncerNextRequiredBlock(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	testData.sut.initialBlockClaimSyncerSetter = mockInitialBlockSetter
 	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
 
 	require.Panics(t, func() {
