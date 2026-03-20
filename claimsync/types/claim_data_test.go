@@ -432,3 +432,61 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 		})
 	}
 }
+
+func TestClaim_String(t *testing.T) {
+	t.Run("nil GlobalIndex and Amount", func(t *testing.T) {
+		c := &Claim{}
+		s := c.String()
+		require.Contains(t, s, "GlobalIndex: nil")
+		require.Contains(t, s, "Amount: nil")
+	})
+
+	t.Run("with GlobalIndex and Amount set", func(t *testing.T) {
+		c := &Claim{
+			BlockNum:           10,
+			BlockPos:           2,
+			TxHash:             common.HexToHash("0xaabb"),
+			GlobalIndex:        big.NewInt(42),
+			OriginNetwork:      1,
+			OriginAddress:      common.HexToAddress("0x1111"),
+			DestinationAddress: common.HexToAddress("0x2222"),
+			Amount:             big.NewInt(1000),
+			DestinationNetwork: 3,
+			IsMessage:          true,
+			BlockTimestamp:     9999,
+			Type:               ClaimEvent,
+		}
+		s := c.String()
+		require.Contains(t, s, "BlockNum: 10")
+		require.Contains(t, s, "BlockPos: 2")
+		require.Contains(t, s, "GlobalIndex: 42")
+		require.Contains(t, s, "Amount: 1000")
+		require.Contains(t, s, "OriginNetwork: 1")
+		require.Contains(t, s, "DestinationNetwork: 3")
+		require.Contains(t, s, "IsMessage: true")
+		require.Contains(t, s, "BlockTimestamp: 9999")
+		require.Contains(t, s, fmt.Sprintf("Type: %s", ClaimEvent))
+	})
+}
+
+func TestSetClaim_String(t *testing.T) {
+	t.Run("nil GlobalIndex", func(t *testing.T) {
+		s := (&SetClaim{}).String()
+		require.Contains(t, s, "GlobalIndex: nil")
+	})
+
+	t.Run("with all fields set", func(t *testing.T) {
+		sc := &SetClaim{
+			BlockNum:    5,
+			BlockPos:    1,
+			TxHash:      common.HexToHash("0xccdd"),
+			GlobalIndex: big.NewInt(7),
+			CreatedAt:   12345,
+		}
+		s := sc.String()
+		require.Contains(t, s, "BlockNum: 5")
+		require.Contains(t, s, "BlockPos: 1")
+		require.Contains(t, s, "GlobalIndex: 7")
+		require.Contains(t, s, "CreatedAt: 12345")
+	})
+}
