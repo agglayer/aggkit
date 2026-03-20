@@ -318,8 +318,8 @@ func createAggchainProofGen(
 func createAggSenderValidator(ctx context.Context,
 	cfg validator.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync,
-	claimSyncer claimsynctypes.ClaimSyncer,
+	l2BridgeSyncer *bridgesync.BridgeSync,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
@@ -357,8 +357,8 @@ func createAggSenderValidator(ctx context.Context,
 	}
 
 	certQuerier := query.NewCertificateQuerier(
-		l2Syncer,
-		claimSyncer,
+		l2BridgeSyncer,
+		l2ClaimSyncer,
 		aggchainFEPQuerier,
 		agglayerClient,
 		initialLER,
@@ -371,8 +371,8 @@ func createAggSenderValidator(ctx context.Context,
 		l1Client,
 		l2Client,
 		l1InfoTreeSync,
-		l2Syncer,
-		claimSyncer,
+		l2BridgeSyncer,
+		l2ClaimSyncer,
 		rollupDataQuerier,
 		committeeQuerier,
 		initialLER,
@@ -380,15 +380,25 @@ func createAggSenderValidator(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
 	}
+	l2OriginNetwork := l2BridgeSyncer.OriginNetwork()
+
+	nextBlockQuerier := query.NewSetInitialBlockToClaimSyncer(
+		certQuerier,
+		agglayerClient,
+		l2OriginNetwork,
+		logger)
 
 	return aggsender.NewAggsenderValidator(
-		ctx, logger, cfg, flow,
+		ctx, logger, cfg,
+		l2ClaimSyncer,
+		flow,
 		flowParams.L1InfoTreeDataQuerier,
 		agglayerClient,
 		certQuerier,
 		aggchainFEPQuerier,
 		flowParams.InitialLER,
 		flowParams.Signer,
+		nextBlockQuerier,
 	)
 }
 

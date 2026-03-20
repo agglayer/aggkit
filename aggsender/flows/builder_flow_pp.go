@@ -153,11 +153,6 @@ func (p *PPBuilderFlow) GeneratePreBuildParams(ctx context.Context,
 	return p.baseFlow.GeneratePreBuildParams(ctx, certType)
 }
 
-// GetNextBlockNumber returns the first block number of the next certificate to generate
-func (p *PPBuilderFlow) GetNextBlockNumber() (uint64, error) {
-	return p.baseFlow.GetNextBlockNumber()
-}
-
 // Signer returns the signer used to sign the certificate
 func (p *PPBuilderFlow) Signer() signertypes.Signer {
 	return p.certificateSigner

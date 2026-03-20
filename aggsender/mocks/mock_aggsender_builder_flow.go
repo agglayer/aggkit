@@ -308,61 +308,6 @@ func (_c *AggsenderBuilderFlow_GetCertificateBuildParams_Call) RunAndReturn(run 
 	return _c
 }
 
-// GetNextBlockNumber provides a mock function with no fields
-func (_m *AggsenderBuilderFlow) GetNextBlockNumber() (uint64, error) {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetNextBlockNumber")
-	}
-
-	var r0 uint64
-	var r1 error
-	if rf, ok := ret.Get(0).(func() (uint64, error)); ok {
-		return rf()
-	}
-	if rf, ok := ret.Get(0).(func() uint64); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(uint64)
-	}
-
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggsenderBuilderFlow_GetNextBlockNumber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNextBlockNumber'
-type AggsenderBuilderFlow_GetNextBlockNumber_Call struct {
-	*mock.Call
-}
-
-// GetNextBlockNumber is a helper method to define mock.On call
-func (_e *AggsenderBuilderFlow_Expecter) GetNextBlockNumber() *AggsenderBuilderFlow_GetNextBlockNumber_Call {
-	return &AggsenderBuilderFlow_GetNextBlockNumber_Call{Call: _e.mock.On("GetNextBlockNumber")}
-}
-
-func (_c *AggsenderBuilderFlow_GetNextBlockNumber_Call) Run(run func()) *AggsenderBuilderFlow_GetNextBlockNumber_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *AggsenderBuilderFlow_GetNextBlockNumber_Call) Return(_a0 uint64, _a1 error) *AggsenderBuilderFlow_GetNextBlockNumber_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggsenderBuilderFlow_GetNextBlockNumber_Call) RunAndReturn(run func() (uint64, error)) *AggsenderBuilderFlow_GetNextBlockNumber_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Signer provides a mock function with no fields
 func (_m *AggsenderBuilderFlow) Signer() signertypes.Signer {
 	ret := _m.Called()

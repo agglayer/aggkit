@@ -392,11 +392,6 @@ func (a *AggchainProverBuilderFlow) GeneratePreBuildParams(ctx context.Context,
 	return a.baseFlow.GeneratePreBuildParams(ctx, certType)
 }
 
-// GetNextBlockNumber returns the first block number of the next certificate to generate
-func (a *AggchainProverBuilderFlow) GetNextBlockNumber() (uint64, error) {
-	return a.baseFlow.GetNextBlockNumber()
-}
-
 // Signer returns the signer used to sign the certificate
 func (a *AggchainProverBuilderFlow) Signer() signertypes.Signer {
 	return a.certificateSigner

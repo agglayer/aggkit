@@ -32,6 +32,7 @@ type ConfigStandalone struct {
 	// MaxRetryAttemptsAfterError is the maximum number of consecutive attempts that will happen before panicing.
 	// Any number smaller than zero will be considered as unlimited retries
 	MaxRetryAttemptsAfterError int `mapstructure:"MaxRetryAttemptsAfterError"`
+
 	// WaitForNewBlocksPeriod time that will be waited when the synchronizer has reached the latest block
 	WaitForNewBlocksPeriod types.Duration `mapstructure:"WaitForNewBlocksPeriod"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database

@@ -38,14 +38,15 @@ type RateLimiter interface {
 type AggSender struct {
 	log aggkitcommon.Logger
 
-	storage                      db.AggSenderStorage
-	aggLayerClient               agglayer.AgglayerClientInterface
-	compatibilityStoragedChecker compatibility.CompatibilityChecker
-	certStatusChecker            types.CertificateStatusChecker
-	certQuerier                  types.CertificateQuerier
-	rollupDataQuerier            types.RollupDataQuerier
-	validatorPoller              types.ValidatorPoller
-	localValidator               types.CertificateValidateAndSigner
+	storage                       db.AggSenderStorage
+	aggLayerClient                agglayer.AgglayerClientInterface
+	compatibilityStoragedChecker  compatibility.CompatibilityChecker
+	certStatusChecker             types.CertificateStatusChecker
+	certQuerier                   types.CertificateQuerier
+	rollupDataQuerier             types.RollupDataQuerier
+	initialBlockClaimSyncerSetter types.InitialBlockClaimSyncerSetter
+	validatorPoller               types.ValidatorPoller
+	localValidator                types.CertificateValidateAndSigner
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
@@ -154,6 +155,13 @@ func newAggsender(
 		aggLayerClient,
 		initialLER,
 	)
+	l2OriginNetwork := l2Syncer.OriginNetwork()
+	initialBlockClaimSyncerSetter := query.NewSetInitialBlockToClaimSyncer(
+		certQuerier,
+		aggLayerClient,
+		l2OriginNetwork,
+		logger,
+	)
 
 	flowManager, err := flows.NewBuilderFlow(
 		ctx,
@@ -175,8 +183,6 @@ func newAggsender(
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
-
-	l2OriginNetwork := l2Syncer.OriginNetwork()
 
 	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
@@ -235,10 +241,11 @@ func newAggsender(
 		),
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
-		l1Client:               l1Client,
-		l1InfoTreeSyncer:       l1InfoTreeSyncer,
-		l2ClaimSyncer:          l2ClaimSyncer,
-		certificateSendTrigger: certificateSendTrigger,
+		l1Client:                      l1Client,
+		l1InfoTreeSyncer:              l1InfoTreeSyncer,
+		l2ClaimSyncer:                 l2ClaimSyncer,
+		certificateSendTrigger:        certificateSendTrigger,
+		initialBlockClaimSyncerSetter: initialBlockClaimSyncerSetter,
 	}, nil
 }
 
@@ -282,7 +289,10 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.status.SetStatus(types.StatusCheckingInitialStage, a.log)
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	a.status.SetStatus(types.StartingClaimSyncerStage, a.log)
-	a.setClaimSyncerNextRequiredBlock(ctx)
+	err := a.initialBlockClaimSyncerSetter.SetClaimSyncerNextRequiredBlock(ctx, a.l2ClaimSyncer, nil)
+	if err != nil {
+		a.log.Panicf("error setting next required block for claim syncer: %v", err)
+	}
 	a.status.SetStatus(types.StatusFlowCheckingInitialStage, a.log)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
@@ -396,34 +406,6 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Info("AggSender stopped")
 			return
 		}
-	}
-}
-
-func (a *AggSender) setClaimSyncerNextRequiredBlock(ctx context.Context) {
-	if a.l2ClaimSyncer == nil {
-		a.log.Debugf("l2 claim syncer is nil, skipping setClaimSyncerNextRequiredBlock")
-		return
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		nextBlock, err := a.flow.GetNextBlockNumber()
-		if err != nil {
-			a.log.Errorf("error getting next block number for claim syncer: %v", err)
-			time.Sleep(a.cfg.DelayBetweenRetries.Duration)
-			continue
-		}
-		a.log.Infof("Setting starting Claim L2 Syncer block to %d", nextBlock)
-		if err := a.l2ClaimSyncer.SetNextRequiredBlock(ctx, nextBlock); err != nil {
-			a.log.Errorf("error setting next required block for claim syncer: %v", err)
-			time.Sleep(a.cfg.DelayBetweenRetries.Duration)
-			continue
-		}
-		a.log.Infof("Set next required block for claim syncer to %d", nextBlock)
-		break
 	}
 }
 

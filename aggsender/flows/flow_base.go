@@ -110,17 +110,6 @@ func (f *baseFlow) StartL2Block() uint64 {
 	return f.cfg.StartL2Block
 }
 
-// GetNextBlockNumber returns the first block number of the next certificate to generate.
-// It reads the last sent certificate from storage to determine the starting block.
-func (f *baseFlow) GetNextBlockNumber() (uint64, error) {
-	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
-	if err != nil {
-		return 0, fmt.Errorf("error getting last sent certificate: %w", err)
-	}
-	previousToBlock, _ := f.getLastSentBlockAndRetryCount(lastSentCertificate)
-	return previousToBlock + 1, nil
-}
-
 // NextCertificateBlockRange returns the block range and retryCount for the next certificate
 func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 	lastSentCertificate *types.CertificateHeader) (aggkitcommon.BlockRange, int, error) {

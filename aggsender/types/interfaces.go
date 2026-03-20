@@ -11,6 +11,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/sync"
@@ -41,8 +42,6 @@ type AggsenderBuilderFlow interface {
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
 	// Signer is the signer used to sign the certificate
 	Signer() signertypes.Signer
-	// GetNextBlockNumber returns the first block number of the next certificate to generate
-	GetNextBlockNumber() (uint64, error)
 }
 
 // AggsenderVerifierFlow is an interface that defines the methods to verify the certificate
@@ -77,8 +76,6 @@ type AggsenderFlowBaser interface {
 		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
-	// GetNextBlockNumber returns the first block number of the next certificate to generate
-	GetNextBlockNumber() (uint64, error)
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)
 	GenerateBuildParams(ctx context.Context,
@@ -412,4 +409,12 @@ type CertificateSendTrigger interface {
 	ForceTriggerEvent()
 	// OnIdle Aggsender is waiting for a trigger to generate a new certificate
 	OnIdle()
+}
+
+// InitialBlockClaimSyncerSetter is an interface that defines the method to set the initial block for the claim syncer
+type InitialBlockClaimSyncerSetter interface {
+	SetClaimSyncerNextRequiredBlock(
+		ctx context.Context,
+		l2ClaimSyncer claimsynctypes.ClaimSyncer,
+		retryHandler commontypes.RetryHandler) error
 }
