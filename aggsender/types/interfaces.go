@@ -32,9 +32,6 @@ type AggsenderBuilderFlow interface {
 	// BuildCertificate builds a certificate based on the buildParams
 	BuildCertificate(ctx context.Context,
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
-	// GeneratePreBuildParams generates the pre-build parameters based on the certificate type
-	GeneratePreBuildParams(ctx context.Context,
-		certType CertificateType) (*CertificatePreBuildParams, error)
 	// GenerateBuildParams generates the build parameters based on the preParams
 	GenerateBuildParams(ctx context.Context,
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)

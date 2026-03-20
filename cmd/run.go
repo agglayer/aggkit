@@ -139,8 +139,7 @@ func start(cliCtx *cli.Context) error {
 
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, MainnetID, &backfillWg)
-	initialLER, err := query.NewLERDataQuerier(
-		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier).GetInitialLocalExitRoot()
+	initialLER, err := GetInitialLER(cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
 	if err != nil {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
 	}
@@ -152,7 +151,7 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID, initialLER, &backfillWg)
+		l2Client, rollupDataQuerier.RollupID, *initialLER, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
@@ -221,7 +220,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
-				initialLER,
+				*initialLER,
 			)
 			if err != nil {
 				log.Fatalf("failed to create AggSender: %v", err)
@@ -255,7 +254,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
-				initialLER,
+				*initialLER,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -791,6 +790,17 @@ func resolveL1BridgeConfig(cfg *bridgesync.Config, components []string, logprefi
 	}
 }
 
+func GetInitialLER(
+	rollupCreationBlockL1 uint64,
+	rollupDataQuerier *ethermanquierier.RollupDataQuerier) (*common.Hash, error) {
+	if rollupDataQuerier == nil {
+		return nil, nil
+	}
+	lerQuery := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
+	ler, err := lerQuery.GetInitialLocalExitRoot()
+	return &ler, err
+}
+
 func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -1064,7 +1074,9 @@ func createRollupDataQuerier(
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1BRIDGESYNC,
+		aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.L2GERSYNC,
 	}, components) {
 		return nil, nil
 	}

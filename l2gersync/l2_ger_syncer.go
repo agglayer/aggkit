@@ -145,7 +145,7 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 
 // Start initiates the synchronization process.
 func (s *L2GERSync) Start(ctx context.Context) {
-	s.processor.log.Info("starting l2gersync")
+	s.processor.log.Info("starting l2gersync at block %d", s.cfg.InitialBlockNum)
 	s.driver.Sync(ctx, &s.cfg.InitialBlockNum)
 }
 

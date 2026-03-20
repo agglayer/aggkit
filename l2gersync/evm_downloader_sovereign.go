@@ -148,8 +148,8 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
-			log.Errorf("failed to fetch l1 info tree for global exit root %s: %v",
-				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
+			log.Errorf("failed to fetch l1 info tree for global exit root %s (block: %d): %v",
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), b.Num, err)
 			ctx := context.Background()
 			isUpToDate, upToDateErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
 			if upToDateErr != nil {
