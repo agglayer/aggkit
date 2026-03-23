@@ -12,7 +12,6 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/log"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -582,10 +581,14 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 	return nil, db.ErrNotFound
 }
 
+var AllowDebugTraceCalls = true
+
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
 func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
 	rootCall := &Call{To: contractAddr}
-	log.Warn("*** USE DEBUG_TRACE :extractRootCall:  " + DebugTraceTxEndpoint)
+	if !AllowDebugTraceCalls {
+		logger.Fatal("*** USE DEBUG_TRACE :extractRootCall:  " + DebugTraceTxEndpoint)
+	}
 	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
