@@ -33,11 +33,14 @@ const requiredBridgeMigration = "bridgesync0012"
 // skipped (INSERT OR IGNORE).
 //
 // Column-level differences between schema versions are handled automatically:
-//   - block.hash              – present since bridgesync migration 0003; defaults to ''.
-//   - claim.tx_hash           – present since bridgesync migration 0002; defaults to ''.
+//   - block.hash              – present since bridgesync migration 0003; defaults to ”.
+//   - claim.tx_hash           – present since bridgesync migration 0002; defaults to ”.
 //   - claim.block_timestamp   – present since bridgesync migration 0002; defaults to 0.
-//   - claim.type              – present since bridgesync migration 0012; defaults to ''.
-func ImportDataFromBridgesyncer(ctx context.Context, logger aggkitcommon.Logger, bridgeDBFilename string, claimDBFilename string) error {
+//   - claim.type              – present since bridgesync migration 0012; defaults to ”.
+func ImportDataFromBridgesyncer(ctx context.Context,
+	logger aggkitcommon.Logger,
+	bridgeDBFilename string,
+	claimDBFilename string) error {
 	if logger == nil {
 		logger = log.WithFields("module", "ImportDataFromBridgesyncer")
 	}
@@ -195,7 +198,7 @@ func checkBridgeTablesOnConn(ctx context.Context, conn *sql.Conn) (bool, error) 
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = name
 	}
-	query := fmt.Sprintf(
+	query := fmt.Sprintf( //nolint:gosec // placeholders contain only "$N" positional markers, no user input
 		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN (%s)`,
 		strings.Join(placeholders, ","),
 	)
@@ -392,4 +395,3 @@ func readBridgeKeyValueRow(ctx context.Context, bridgeDBFilename string) (*keyVa
 	}
 	return row, nil
 }
-
