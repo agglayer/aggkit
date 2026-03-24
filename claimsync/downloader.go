@@ -430,14 +430,9 @@ func findCall(rootCall Call,
 	return nil, db.ErrNotFound
 }
 
-var AllowDebugTraceCalls = true
-
 // extractRootCall extracts the root call for a transaction using debug_traceTransaction.
 func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
 	rootCall := &Call{To: contractAddr}
-	if !AllowDebugTraceCalls {
-		log.Fatal("*** USE DEBUG_TRACE :extractRootCall:  " + DebugTraceTxEndpoint)
-	}
 	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err

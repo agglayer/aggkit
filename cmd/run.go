@@ -90,9 +90,6 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	log.Debugf("Components to run: %v", components)
-	isBridgeRunning := isNeeded([]string{aggkitcommon.BRIDGE}, components)
-	bridgesync.AllowDebugTraceCalls = isBridgeRunning
-	claimsync.AllowDebugTraceCalls = isBridgeRunning
 
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
