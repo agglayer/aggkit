@@ -39,6 +39,14 @@ type BridgeSyncerStatus struct {
 	HasClaimData bool
 }
 
+// String returns a human-readable summary of the status.
+func (s BridgeSyncerStatus) String() string {
+	return fmt.Sprintf(
+		"BridgeDBExists=%t ClaimDBExists=%t MigrationOK=%t HasClaimData=%t ShouldMigrate=%t",
+		s.BridgeDBExists, s.ClaimDBExists, s.MigrationOK, s.HasClaimData, s.ShouldMigrate(),
+	)
+}
+
 // ShouldMigrate reports whether a data migration from the bridgesync DB into the
 // claimsync DB should be performed. It returns true only when all of the following
 // conditions hold:
@@ -128,10 +136,10 @@ func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename 
 // function. No precondition checks are performed here.
 //
 // Column-level differences between bridge schema versions are handled automatically:
-//   - block.hash            - present since bridgesync migration 0003; defaults to ”.
-//   - claim.tx_hash         - present since bridgesync migration 0002; defaults to ”.
+//   - block.hash            - present since bridgesync migration 0003; defaults to ".
+//   - claim.tx_hash         - present since bridgesync migration 0002; defaults to ".
 //   - claim.block_timestamp - present since bridgesync migration 0002; defaults to 0.
-//   - claim.type            - present since bridgesync migration 0012; defaults to ”.
+//   - claim.type            - present since bridgesync migration 0012; defaults to ".
 func ImportDataFromBridgesyncer(ctx context.Context,
 	logger aggkitcommon.Logger,
 	bridgeDBFilename string,

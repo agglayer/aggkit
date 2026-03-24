@@ -91,7 +91,6 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	log.Debugf("Components to run: %v", components)
-
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
@@ -1000,10 +999,10 @@ func runImportFromBridgeSyncerIfNeeded(
 		logger.Fatalf("failed to inspect bridge DB: %v", err)
 	}
 	if !status.ShouldMigrate() {
-		logger.Infof("no migration needed")
+		logger.Infof("no migration needed. %s", status.String())
 		return
 	}
-	logger.Infof("migration from bridgesyncer to claimsyncer needed, starting migration process")
+	logger.Infof("migration from bridgesyncer to claimsyncer needed, starting migration process. %s", status.String())
 	if err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath); err != nil {
 		logger.Fatalf("failed to import claim data from bridge DB: %v", err)
 	}
