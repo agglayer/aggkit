@@ -49,24 +49,6 @@ func TestMigration0001(t *testing.T) {
 			metadata,
 			deposit_count
 		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0);
-
-		INSERT INTO claim (
-			block_num,
-			block_pos,
-    		global_index,
-			origin_network,
-			origin_address,
-			destination_address,
-			amount,
-			proof_local_exit_root,
-			proof_rollup_exit_root,
-			mainnet_exit_root,
-			rollup_exit_root,
-			global_exit_root,
-			destination_network,
-			metadata,
-			is_message
-		) VALUES (1, 0, 0, 0, '0x0000', '0x0000', 0, '0x000,0x000', '0x000,0x000', '0x000', '0x000', '0x0', 0, NULL, FALSE);
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -118,20 +100,6 @@ func TestMigration0002(t *testing.T) {
 			from_address
 		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123');
 
-		INSERT INTO claim (
-			block_num,
-			block_pos,
-    		global_index,
-			origin_network,
-			origin_address,
-			destination_address,
-			amount,
-			destination_network,
-			metadata,
-			is_message,
-			block_timestamp,
-			tx_hash
-		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd');
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -185,27 +153,6 @@ func TestMigration0002(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bridge)
 	require.Equal(t, uint64(1739270804), bridge.BlockTimestamp)
-
-	var claim struct {
-		BlockNum           uint64   `meddler:"block_num"`
-		BlockPos           uint64   `meddler:"block_pos"`
-		GlobalIndex        *big.Int `meddler:"global_index,bigint"`
-		OriginNetwork      uint32   `meddler:"origin_network"`
-		OriginAddress      string   `meddler:"origin_address"`
-		DestinationAddress string   `meddler:"destination_address"`
-		Amount             *big.Int `meddler:"amount,bigint"`
-		DestinationNetwork uint32   `meddler:"destination_network"`
-		Metadata           []byte   `meddler:"metadata"`
-		IsMessage          bool     `meddler:"is_message"`
-		BlockTimestamp     uint64   `meddler:"block_timestamp"`
-		TxHash             string   `meddler:"tx_hash"`
-	}
-
-	err = meddler.QueryRow(db, &claim,
-		`SELECT * FROM claim`)
-	require.NoError(t, err)
-	require.NotNil(t, claim)
-	require.Equal(t, uint64(1739270804), claim.BlockTimestamp)
 }
 
 func TestMigrations0003(t *testing.T) {
@@ -763,6 +710,40 @@ func TestMigration0013(t *testing.T) {
 	err = tx.Commit()
 	require.NoError(t, err)
 }
+func TestMigration0015(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0015.sqlite")
+
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+
+	// Run migrations up to 0014 — claim, set_claim and unset_claim still exist.
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(),
+		database, GetUpTo("bridgesync0014"), nil, migrate.Up, db.NoLimitMigrations)
+	require.NoError(t, err)
+
+	tableExists := func(name string) bool {
+		var count int
+		err := database.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&count)
+		require.NoError(t, err)
+		return count > 0
+	}
+
+	require.True(t, tableExists("claim"), "claim table should exist before migration 0015")
+	require.True(t, tableExists("set_claim"), "set_claim table should exist before migration 0015")
+	require.True(t, tableExists("unset_claim"), "unset_claim table should exist before migration 0015")
+
+	// Apply migration 0015.
+	err = db.RunMigrationsDBExtended(log.GetDefaultLogger(),
+		database, GetUpTo("bridgesync0015"), nil, migrate.Up, db.NoLimitMigrations)
+	require.NoError(t, err)
+
+	require.False(t, tableExists("claim"), "claim table should be dropped by migration 0015")
+	require.False(t, tableExists("set_claim"), "set_claim table should be dropped by migration 0015")
+	require.False(t, tableExists("unset_claim"), "unset_claim table should be dropped by migration 0015")
+}
+
 func TestMigrationsDown(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "bridgesyncTestDown.sqlite")
 	err := RunMigrations(dbPath)
