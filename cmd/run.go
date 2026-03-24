@@ -995,8 +995,12 @@ func runImportFromBridgeSyncerIfNeeded(
 		return
 	}
 	logger := log.WithFields("module", "ImportFromBridgeSyncer", "syncerID", syncerID.String())
-	if err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath); err != nil {
+	migrated, err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath)
+	if err != nil {
 		log.Fatalf("failed to import claim data from bridge DB: %v", err)
+	}
+	if !migrated {
+		return
 	}
 	if err := claimsyncstorage.ImportKeyValueFromBridgesyncer(bridgeDBPath, claimDBPath, syncerID.String()); err != nil {
 		log.Fatalf("failed to import key_value from bridge DB: %v", err)
