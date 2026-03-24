@@ -998,6 +998,9 @@ func runImportFromBridgeSyncerIfNeeded(
 	if err != nil {
 		logger.Fatalf("failed to inspect bridge DB: %v", err)
 	}
+	if err := status.Validate(); err != nil {
+		logger.Fatalf("bridge DB migration blocked: %v", err)
+	}
 	if !status.ShouldMigrate() {
 		logger.Infof("no migration needed. %s", status.String())
 		return

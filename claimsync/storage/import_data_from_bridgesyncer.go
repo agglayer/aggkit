@@ -35,7 +35,8 @@ type BridgeSyncerStatus struct {
 	// bridge DB. Only meaningful when BridgeDBExists is true.
 	MigrationOK bool
 	// HasClaimData reports whether any of the claim, set_claim or unset_claim tables
-	// contain at least one row. Only meaningful when MigrationOK is true.
+	// contain at least one row. Only meaningful when BridgeDBExists is true and the
+	// required tables are present.
 	HasClaimData bool
 }
 
@@ -45,6 +46,21 @@ func (s BridgeSyncerStatus) String() string {
 		"BridgeDBExists=%t ClaimDBExists=%t MigrationOK=%t HasClaimData=%t ShouldMigrate=%t",
 		s.BridgeDBExists, s.ClaimDBExists, s.MigrationOK, s.HasClaimData, s.ShouldMigrate(),
 	)
+}
+
+// Validate returns an error when the status indicates a blocking condition that
+// requires user intervention. Specifically, it errors when the bridge DB contains
+// claim data but the required bridge migration has not been applied, meaning the
+// node must first be upgraded to an intermediate version that runs that migration.
+func (s BridgeSyncerStatus) Validate() error {
+	if s.BridgeDBExists && !s.ClaimDBExists && s.HasClaimData && !s.MigrationOK {
+		return fmt.Errorf(
+			"bridge DB contains claim data but required migration %q has not been applied; "+
+				"upgrade to the intermediate version first",
+			requiredBridgeMigration,
+		)
+	}
+	return nil
 }
 
 // ShouldMigrate reports whether a data migration from the bridgesync DB into the
@@ -105,10 +121,8 @@ func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename 
 		status.MigrationOK = migCount > 0
 	}
 
-	if !status.MigrationOK {
-		return status, nil
-	}
-
+	// Always check for claim data, even when the migration is missing, so that
+	// Validate() can distinguish a harmless empty-DB case from a blocking one.
 	// Check whether any claim-related tables contain data.
 	var rowCount int
 	err = conn.QueryRowContext(ctx, `

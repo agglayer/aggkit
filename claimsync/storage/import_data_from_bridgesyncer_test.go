@@ -211,6 +211,52 @@ func TestBridgeSyncerStatus_ShouldMigrate(t *testing.T) {
 	}
 }
 
+// ── BridgeSyncerStatus.Validate ───────────────────────────────────────────────
+
+func TestBridgeSyncerStatus_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  BridgeSyncerStatus
+		wantErr bool
+	}{
+		{
+			name:    "blocking: bridge has data but migration missing",
+			status:  BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: false, MigrationOK: false, HasClaimData: true},
+			wantErr: true,
+		},
+		{
+			name:    "ok: bridge has data and migration applied",
+			status:  BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: false, MigrationOK: true, HasClaimData: true},
+			wantErr: false,
+		},
+		{
+			name:    "ok: bridge DB missing",
+			status:  BridgeSyncerStatus{BridgeDBExists: false, ClaimDBExists: false, MigrationOK: false, HasClaimData: false},
+			wantErr: false,
+		},
+		{
+			name:    "ok: claim DB already exists (no migration needed)",
+			status:  BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: true, MigrationOK: false, HasClaimData: true},
+			wantErr: false,
+		},
+		{
+			name:    "ok: migration missing but no claim data",
+			status:  BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: false, MigrationOK: false, HasClaimData: false},
+			wantErr: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.status.Validate()
+			if tc.wantErr {
+				require.ErrorContains(t, err, requiredBridgeMigration)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // ── InspectBridgeSyncer ───────────────────────────────────────────────────────
 
 func TestInspectBridgeSyncer_BridgeDBNotExist(t *testing.T) {
@@ -256,7 +302,10 @@ func TestInspectBridgeSyncer_MigrationMissing(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, status.BridgeDBExists)
 	require.False(t, status.MigrationOK)
-	require.False(t, status.HasClaimData)
+	// HasClaimData is populated even when the migration is missing so that
+	// Validate() can distinguish the blocking case from a harmless empty DB.
+	require.True(t, status.HasClaimData)
+	require.ErrorContains(t, status.Validate(), requiredBridgeMigration)
 }
 
 func TestInspectBridgeSyncer_NoClaimData(t *testing.T) {
