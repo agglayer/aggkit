@@ -23,156 +23,86 @@ var requiredBridgeTables = []string{"block", "claim", "set_claim", "unset_claim"
 //   - bridgesync0012 - ALTER TABLE claim ADD COLUMN type
 const requiredBridgeMigration = "bridgesync0012"
 
-// ImportDataFromBridgesyncer copies block, claim, set_claim and unset_claim data from a
-// bridgesync SQLite database (bridgeDBFilename) into the claimsync SQLite database
-// (claimDBFilename), creating and migrating it if it does not yet exist.
-//
-// Return values:
-//   - (false, nil)  - nothing to migrate: bridge DB not found, claimDB already exists,
-//     or bridge DB has no claim data. The claimDB is not created.
-//   - (true, nil)   - migration completed successfully.
-//   - (true, error) - migration was needed but failed (e.g. missing required bridge
-//     migration, DB I/O error). The claimDB may be left in a partial state.
-//
-// Column-level differences between bridge schema versions are handled automatically:
-//   - block.hash              - present since bridgesync migration 0003; defaults to ”.
-//   - claim.tx_hash           - present since bridgesync migration 0002; defaults to ”.
-//   - claim.block_timestamp   - present since bridgesync migration 0002; defaults to 0.
-//   - claim.type              - present since bridgesync migration 0012; defaults to ”.
-func ImportDataFromBridgesyncer(ctx context.Context,
-	logger aggkitcommon.Logger,
-	bridgeDBFilename string,
-	claimDBFilename string) (bool, error) {
-	if logger == nil {
-		logger = log.WithFields("module", "ImportDataFromBridgesyncer")
-	}
-
-	// Skip import if the bridge DB does not exist yet.
-	if _, err := os.Stat(bridgeDBFilename); os.IsNotExist(err) {
-		logger.Infof("bridge DB not found - skipping import")
-		return false, nil
-	}
-
-	// Skip import if the claim DB already exists (import was already performed).
-	if _, err := os.Stat(claimDBFilename); err == nil {
-		logger.Infof("claim DB already exists - skipping import")
-		return false, nil
-	}
-
-	// Phase 1 - inspect the bridge DB without touching the claim DB.
-	hasData, err := bridgeHasClaimData(ctx, bridgeDBFilename)
-	if err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to inspect bridge DB: %w", err)
-	}
-	if !hasData {
-		logger.Infof("no claim data found in bridge DB - skipping import")
-		return false, nil
-	}
-
-	// Phase 2 - open / create the claim DB and run migrations.
-	claimDB, err := db.NewSQLiteDB(claimDBFilename)
-	if err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to open claim DB: %w", err)
-	}
-	defer claimDB.Close()
-
-	if err := migrations.RunMigrations(logger, claimDB); err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to run claim DB migrations: %w", err)
-	}
-
-	// Use a single connection so that ATTACH and the subsequent transaction share the
-	// same SQLite connection (ATTACH is per-connection in SQLite).
-	conn, err := claimDB.Conn(ctx)
-	if err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to acquire DB connection: %w", err)
-	}
-	defer conn.Close()
-
-	// ATTACH the bridge DB so we can SELECT from it in the same query.
-	attachSQL := fmt.Sprintf(`ATTACH DATABASE 'file:%s' AS bridge`, bridgeDBFilename)
-	if _, err := conn.ExecContext(ctx, attachSQL); err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to attach bridge DB: %w", err)
-	}
-	defer conn.ExecContext(ctx, `DETACH DATABASE bridge`) //nolint:errcheck
-
-	hasBlockHash, err := bridgeColumnExists(ctx, conn, "block", "hash")
-	if err != nil {
-		return true, err
-	}
-	hasClaimTxHash, err := bridgeColumnExists(ctx, conn, "claim", "tx_hash")
-	if err != nil {
-		return true, err
-	}
-	hasClaimBlockTimestamp, err := bridgeColumnExists(ctx, conn, "claim", "block_timestamp")
-	if err != nil {
-		return true, err
-	}
-	hasClaimType, err := bridgeColumnExists(ctx, conn, "claim", "type")
-	if err != nil {
-		return true, err
-	}
-
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	blocksImported, err := importBlocks(tx, hasBlockHash)
-	if err != nil {
-		return true, err
-	}
-	claimsImported, err := importClaims(tx, hasClaimTxHash, hasClaimBlockTimestamp, hasClaimType)
-	if err != nil {
-		return true, err
-	}
-	unsetClaimsImported, err := importUnsetClaims(tx)
-	if err != nil {
-		return true, err
-	}
-	setClaimsImported, err := importSetClaims(tx)
-	if err != nil {
-		return true, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return true, fmt.Errorf("ImportDataFromBridgesyncer: failed to commit transaction: %w", err)
-	}
-
-	logger.Infof("import from bridgesyncer complete: blocks=%d claims=%d set_claims=%d unset_claims=%d",
-		blocksImported, claimsImported, setClaimsImported, unsetClaimsImported)
-	return true, nil
+// BridgeSyncerStatus holds the read-only inspection results produced by
+// InspectBridgeSyncer. Each field is only meaningful when the fields it depends
+// on are true (see field comments).
+type BridgeSyncerStatus struct {
+	// BridgeDBExists reports whether the bridgesync database file exists on disk.
+	BridgeDBExists bool
+	// ClaimDBExists reports whether the claimsync database file already exists on disk.
+	ClaimDBExists bool
+	// MigrationOK reports whether requiredBridgeMigration has been applied to the
+	// bridge DB. Only meaningful when BridgeDBExists is true.
+	MigrationOK bool
+	// HasClaimData reports whether any of the claim, set_claim or unset_claim tables
+	// contain at least one row. Only meaningful when MigrationOK is true.
+	HasClaimData bool
 }
 
-// bridgeHasClaimData opens bridgeDBFilename directly, checks that all required tables
-// exist, and returns true if any of claim/set_claim/unset_claim contain at least one row.
-func bridgeHasClaimData(ctx context.Context, bridgeDBFilename string) (bool, error) {
+// ShouldMigrate reports whether a data migration from the bridgesync DB into the
+// claimsync DB should be performed. It returns true only when all of the following
+// conditions hold:
+//   - the bridge DB exists on disk,
+//   - the claim DB does not yet exist (migration not already done),
+//   - the required bridge migration has been applied, and
+//   - the bridge DB contains claim data worth copying.
+func (s BridgeSyncerStatus) ShouldMigrate() bool {
+	return s.BridgeDBExists && !s.ClaimDBExists && s.MigrationOK && s.HasClaimData
+}
+
+// InspectBridgeSyncer performs a read-only inspection of the bridge and claim
+// database files and returns a BridgeSyncerStatus summary. It never writes to
+// either database.
+func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename string) (BridgeSyncerStatus, error) {
+	var status BridgeSyncerStatus
+
+	if _, err := os.Stat(bridgeDBFilename); err == nil {
+		status.BridgeDBExists = true
+	}
+	if _, err := os.Stat(claimDBFilename); err == nil {
+		status.ClaimDBExists = true
+	}
+
+	if !status.BridgeDBExists {
+		return status, nil
+	}
+
 	bdb, err := db.NewSQLiteDB(bridgeDBFilename)
 	if err != nil {
-		return false, fmt.Errorf("bridgeHasClaimData: failed to open bridge DB: %w", err)
+		return status, fmt.Errorf("InspectBridgeSyncer: failed to open bridge DB: %w", err)
 	}
 	defer bdb.Close()
 
 	conn, err := bdb.Conn(ctx)
 	if err != nil {
-		return false, fmt.Errorf("bridgeHasClaimData: failed to acquire connection: %w", err)
+		return status, fmt.Errorf("InspectBridgeSyncer: failed to acquire connection: %w", err)
 	}
 	defer conn.Close()
 
-	// Re-use the existing helper but against the main schema of the bridge DB.
+	// Check that the required tables exist before querying anything else.
 	present, err := checkBridgeTablesOnConn(ctx, conn)
 	if err != nil {
-		return false, err
+		return status, fmt.Errorf("InspectBridgeSyncer: failed to check bridge tables: %w", err)
 	}
 	if !present {
-		return false, nil
+		return status, nil
 	}
 
-	if err := checkBridgeMigration(ctx, conn); err != nil {
-		return false, err
+	// Check whether the required migration has been applied.
+	// A missing gorp_migrations table is treated as MigrationOK = false, not an error.
+	var migCount int
+	err = conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM gorp_migrations WHERE id = $1`, requiredBridgeMigration).Scan(&migCount)
+	if err == nil {
+		status.MigrationOK = migCount > 0
 	}
 
-	var count int
+	if !status.MigrationOK {
+		return status, nil
+	}
+
+	// Check whether any claim-related tables contain data.
+	var rowCount int
 	err = conn.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT 1 FROM (SELECT 1 FROM claim       LIMIT 1)
@@ -180,26 +110,107 @@ func bridgeHasClaimData(ctx context.Context, bridgeDBFilename string) (bool, err
 			SELECT 1 FROM (SELECT 1 FROM set_claim   LIMIT 1)
 			UNION ALL
 			SELECT 1 FROM (SELECT 1 FROM unset_claim LIMIT 1)
-		)`).Scan(&count)
+		)`).Scan(&rowCount)
 	if err != nil {
-		return false, fmt.Errorf("bridgeHasClaimData: failed to count claim rows: %w", err)
+		return status, fmt.Errorf("InspectBridgeSyncer: failed to count claim rows: %w", err)
 	}
-	return count > 0, nil
+	status.HasClaimData = rowCount > 0
+
+	return status, nil
 }
 
-// checkBridgeMigration returns an error if requiredBridgeMigration has not been applied
-// to the bridge DB, which means its schema may be incomplete for a safe import.
-func checkBridgeMigration(ctx context.Context, conn *sql.Conn) error {
-	var count int
-	err := conn.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM gorp_migrations WHERE id = $1`, requiredBridgeMigration).
-		Scan(&count)
+// ImportDataFromBridgesyncer copies block, claim, set_claim and unset_claim data from a
+// bridgesync SQLite database (bridgeDBFilename) into the claimsync SQLite database
+// (claimDBFilename), creating and migrating it if it does not yet exist.
+//
+// The caller is responsible for deciding whether a migration is needed (e.g. via
+// InspectBridgeSyncer and BridgeSyncerStatus.ShouldMigrate) before calling this
+// function. No precondition checks are performed here.
+//
+// Column-level differences between bridge schema versions are handled automatically:
+//   - block.hash            - present since bridgesync migration 0003; defaults to ”.
+//   - claim.tx_hash         - present since bridgesync migration 0002; defaults to ”.
+//   - claim.block_timestamp - present since bridgesync migration 0002; defaults to 0.
+//   - claim.type            - present since bridgesync migration 0012; defaults to ”.
+func ImportDataFromBridgesyncer(ctx context.Context,
+	logger aggkitcommon.Logger,
+	bridgeDBFilename string,
+	claimDBFilename string) error {
+	if logger == nil {
+		logger = log.WithFields("module", "ImportDataFromBridgesyncer")
+	}
+
+	claimDB, err := db.NewSQLiteDB(claimDBFilename)
 	if err != nil {
-		return fmt.Errorf("checkBridgeMigration: failed to query gorp_migrations: %w", err)
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to open claim DB: %w", err)
 	}
-	if count == 0 {
-		return fmt.Errorf("checkBridgeMigration: bridge DB has not applied required migration %q", requiredBridgeMigration)
+	defer claimDB.Close()
+
+	if err := migrations.RunMigrations(logger, claimDB); err != nil {
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to run claim DB migrations: %w", err)
 	}
+
+	// Use a single connection so that ATTACH and the subsequent transaction share the
+	// same SQLite connection (ATTACH is per-connection in SQLite).
+	conn, err := claimDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to acquire DB connection: %w", err)
+	}
+	defer conn.Close()
+
+	// ATTACH the bridge DB so we can SELECT from it in the same query.
+	attachSQL := fmt.Sprintf(`ATTACH DATABASE 'file:%s' AS bridge`, bridgeDBFilename)
+	if _, err := conn.ExecContext(ctx, attachSQL); err != nil {
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to attach bridge DB: %w", err)
+	}
+	defer conn.ExecContext(ctx, `DETACH DATABASE bridge`) //nolint:errcheck
+
+	hasBlockHash, err := bridgeColumnExists(ctx, conn, "block", "hash")
+	if err != nil {
+		return err
+	}
+	hasClaimTxHash, err := bridgeColumnExists(ctx, conn, "claim", "tx_hash")
+	if err != nil {
+		return err
+	}
+	hasClaimBlockTimestamp, err := bridgeColumnExists(ctx, conn, "claim", "block_timestamp")
+	if err != nil {
+		return err
+	}
+	hasClaimType, err := bridgeColumnExists(ctx, conn, "claim", "type")
+	if err != nil {
+		return err
+	}
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	blocksImported, err := importBlocks(tx, hasBlockHash)
+	if err != nil {
+		return err
+	}
+	claimsImported, err := importClaims(tx, hasClaimTxHash, hasClaimBlockTimestamp, hasClaimType)
+	if err != nil {
+		return err
+	}
+	unsetClaimsImported, err := importUnsetClaims(tx)
+	if err != nil {
+		return err
+	}
+	setClaimsImported, err := importSetClaims(tx)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to commit transaction: %w", err)
+	}
+
+	logger.Infof("import from bridgesyncer complete: blocks=%d claims=%d set_claims=%d unset_claims=%d",
+		blocksImported, claimsImported, setClaimsImported, unsetClaimsImported)
 	return nil
 }
 

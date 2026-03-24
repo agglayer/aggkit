@@ -995,16 +995,22 @@ func runImportFromBridgeSyncerIfNeeded(
 		return
 	}
 	logger := log.WithFields("module", "ImportFromBridgeSyncer", "syncerID", syncerID.String())
-	migrated, err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath)
+	status, err := claimsyncstorage.InspectBridgeSyncer(ctx, bridgeDBPath, claimDBPath)
 	if err != nil {
-		log.Fatalf("failed to import claim data from bridge DB: %v", err)
+		logger.Fatalf("failed to inspect bridge DB: %v", err)
 	}
-	if !migrated {
+	if !status.ShouldMigrate() {
+		logger.Infof("no migration needed")
 		return
 	}
-	if err := claimsyncstorage.ImportKeyValueFromBridgesyncer(bridgeDBPath, claimDBPath, syncerID.String()); err != nil {
-		log.Fatalf("failed to import key_value from bridge DB: %v", err)
+	logger.Infof("migration from bridgesyncer to claimsyncer needed, starting migration process")
+	if err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath); err != nil {
+		logger.Fatalf("failed to import claim data from bridge DB: %v", err)
 	}
+	if err := claimsyncstorage.ImportKeyValueFromBridgesyncer(bridgeDBPath, claimDBPath, syncerID.String()); err != nil {
+		logger.Fatalf("failed to import key_value from bridge DB: %v", err)
+	}
+	logger.Infof("migration from bridgesyncer to claimsyncer completed successfully")
 }
 
 func runAggsenderMultisigCommitteeIfNeeded(

@@ -131,100 +131,6 @@ func countRows(t *testing.T, claimPath, table string) int {
 // Tests
 // ---------------------------------------------------------------------------------
 
-func TestImportDataFromBridgesyncer_BridgeDBNotExist(t *testing.T) {
-	dir := t.TempDir()
-	bridgePath := filepath.Join(dir, "bridge.db") // file does not exist
-	claimPath := filepath.Join(dir, "claim.db")
-
-	migrated, err := ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, err)
-	require.False(t, migrated, "nothing to migrate when bridge DB does not exist")
-
-	// claim DB must not be created.
-	_, statErr := os.Stat(claimPath)
-	require.True(t, os.IsNotExist(statErr), "claim DB should not be created when bridge DB does not exist")
-}
-
-func TestImportDataFromBridgesyncer_ClaimDBAlreadyExists(t *testing.T) {
-	dir := t.TempDir()
-	bridgePath := filepath.Join(dir, "bridge.db")
-	claimPath := filepath.Join(dir, "claim.db")
-
-	// Bridge DB with data that would normally be migrated.
-	bdb := newBridgeDB(t, bridgePath)
-	insertBridgeBlock(t, bdb, 1, common.HexToHash("0x01").Hex())
-	insertBridgeClaim(t, bdb, 1, 0, big.NewInt(1).String())
-	bdb.Close()
-
-	// Create claim DB beforehand (simulates a node restart after a previous migration).
-	// Use os.Create to guarantee the file exists on disk before calling the import.
-	f, err := os.Create(claimPath)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	migrated, err := ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, err)
-	require.False(t, migrated, "nothing to migrate when claim DB already exists")
-
-	// Import must have been skipped: claim DB has no tables (migrations never ran).
-	cdb2, err := db.NewSQLiteDB(claimPath)
-	require.NoError(t, err)
-	defer cdb2.Close()
-	var tableCount int
-	require.NoError(t, cdb2.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='claim'`).Scan(&tableCount))
-	require.Equal(t, 0, tableCount, "claim table must not exist when import was skipped")
-}
-
-func TestImportDataFromBridgesyncer_NoDataToMigrate(t *testing.T) {
-	dir := t.TempDir()
-	bridgePath := filepath.Join(dir, "bridge.db")
-	claimPath := filepath.Join(dir, "claim.db")
-
-	// Bridge DB has blocks but no claim/set_claim/unset_claim rows.
-	bdb := newBridgeDB(t, bridgePath)
-	insertBridgeBlock(t, bdb, 1, common.HexToHash("0xdeadbeef").Hex())
-	bdb.Close()
-
-	migrated, err := ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, err)
-	require.False(t, migrated, "nothing to migrate when bridge has no claim rows")
-
-	// claim DB must not be created.
-	_, statErr := os.Stat(claimPath)
-	require.True(t, os.IsNotExist(statErr), "claim DB should not be created when bridge has no claim data")
-}
-
-func TestImportDataFromBridgesyncer_NoTables(t *testing.T) {
-	dir := t.TempDir()
-	bridgePath := filepath.Join(dir, "bridge.db")
-	claimPath := filepath.Join(dir, "claim.db")
-
-	// Bridge DB exists but has NO required tables
-	emptyDB, err := db.NewSQLiteDB(bridgePath)
-	require.NoError(t, err)
-	emptyDB.Close()
-
-	_, err = ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, err)
-}
-
-func TestImportDataFromBridgesyncer_EmptyTables(t *testing.T) {
-	dir := t.TempDir()
-	bridgePath := filepath.Join(dir, "bridge.db")
-	claimPath := filepath.Join(dir, "claim.db")
-
-	// Bridge DB has all required tables but no rows – claimDB must not be created.
-	bdb := newBridgeDB(t, bridgePath)
-	bdb.Close()
-
-	_, err := ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, err)
-
-	// The claim DB must not have been created.
-	_, statErr := os.Stat(claimPath)
-	require.True(t, os.IsNotExist(statErr), "claim DB should not be created when bridge has no claim data")
-}
-
 func TestImportDataFromBridgesyncer_Success(t *testing.T) {
 	dir := t.TempDir()
 	bridgePath := filepath.Join(dir, "bridge.db")
@@ -238,8 +144,7 @@ func TestImportDataFromBridgesyncer_Success(t *testing.T) {
 	insertBridgeUnsetClaim(t, bdb, 10, 3, big.NewInt(4).String())
 	bdb.Close()
 
-	_, err := ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, err)
+	require.NoError(t, ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath))
 
 	require.Equal(t, 1, countRows(t, claimPath, "block"))
 	require.Equal(t, 2, countRows(t, claimPath, "claim"))
@@ -257,14 +162,133 @@ func TestImportDataFromBridgesyncer_Idempotent(t *testing.T) {
 	insertBridgeClaim(t, bdb, 5, 0, big.NewInt(99).String())
 	bdb.Close()
 
-	_, errImport := ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, errImport)
-	// Second call must succeed and not duplicate rows
-	_, errImport = ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.NoError(t, errImport)
+	require.NoError(t, ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath))
+	// Second call must succeed and not duplicate rows.
+	require.NoError(t, ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath))
 
 	require.Equal(t, 1, countRows(t, claimPath, "block"))
 	require.Equal(t, 1, countRows(t, claimPath, "claim"))
+}
+
+// ── BridgeSyncerStatus.ShouldMigrate ─────────────────────────────────────────
+
+func TestBridgeSyncerStatus_ShouldMigrate(t *testing.T) {
+	tests := []struct {
+		name   string
+		status BridgeSyncerStatus
+		want   bool
+	}{
+		{
+			name:   "all conditions met",
+			status: BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: false, MigrationOK: true, HasClaimData: true},
+			want:   true,
+		},
+		{
+			name:   "bridge DB missing",
+			status: BridgeSyncerStatus{BridgeDBExists: false, ClaimDBExists: false, MigrationOK: true, HasClaimData: true},
+			want:   false,
+		},
+		{
+			name:   "claim DB already exists",
+			status: BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: true, MigrationOK: true, HasClaimData: true},
+			want:   false,
+		},
+		{
+			name:   "migration not applied",
+			status: BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: false, MigrationOK: false, HasClaimData: true},
+			want:   false,
+		},
+		{
+			name:   "no claim data",
+			status: BridgeSyncerStatus{BridgeDBExists: true, ClaimDBExists: false, MigrationOK: true, HasClaimData: false},
+			want:   false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.status.ShouldMigrate())
+		})
+	}
+}
+
+// ── InspectBridgeSyncer ───────────────────────────────────────────────────────
+
+func TestInspectBridgeSyncer_BridgeDBNotExist(t *testing.T) {
+	dir := t.TempDir()
+	status, err := InspectBridgeSyncer(context.Background(),
+		filepath.Join(dir, "bridge.db"), filepath.Join(dir, "claim.db"))
+	require.NoError(t, err)
+	require.False(t, status.BridgeDBExists)
+	require.False(t, status.ClaimDBExists)
+	require.False(t, status.MigrationOK)
+	require.False(t, status.HasClaimData)
+}
+
+func TestInspectBridgeSyncer_ClaimDBExists(t *testing.T) {
+	dir := t.TempDir()
+	bridgePath := filepath.Join(dir, "bridge.db")
+	claimPath := filepath.Join(dir, "claim.db")
+
+	bdb := newBridgeDB(t, bridgePath)
+	bdb.Close()
+	f, err := os.Create(claimPath)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	status, err := InspectBridgeSyncer(context.Background(), bridgePath, claimPath)
+	require.NoError(t, err)
+	require.True(t, status.BridgeDBExists)
+	require.True(t, status.ClaimDBExists)
+}
+
+func TestInspectBridgeSyncer_MigrationMissing(t *testing.T) {
+	dir := t.TempDir()
+	bridgePath := filepath.Join(dir, "bridge.db")
+
+	bdb := newBridgeDB(t, bridgePath)
+	_, err := bdb.Exec(`DELETE FROM gorp_migrations WHERE id = ?`, requiredBridgeMigration)
+	require.NoError(t, err)
+	insertBridgeBlock(t, bdb, 1, common.HexToHash("0x01").Hex())
+	insertBridgeClaim(t, bdb, 1, 0, big.NewInt(1).String())
+	bdb.Close()
+
+	status, err := InspectBridgeSyncer(context.Background(), bridgePath, filepath.Join(dir, "claim.db"))
+	require.NoError(t, err)
+	require.True(t, status.BridgeDBExists)
+	require.False(t, status.MigrationOK)
+	require.False(t, status.HasClaimData)
+}
+
+func TestInspectBridgeSyncer_NoClaimData(t *testing.T) {
+	dir := t.TempDir()
+	bridgePath := filepath.Join(dir, "bridge.db")
+
+	bdb := newBridgeDB(t, bridgePath)
+	insertBridgeBlock(t, bdb, 1, common.HexToHash("0xdeadbeef").Hex())
+	bdb.Close()
+
+	status, err := InspectBridgeSyncer(context.Background(), bridgePath, filepath.Join(dir, "claim.db"))
+	require.NoError(t, err)
+	require.True(t, status.BridgeDBExists)
+	require.True(t, status.MigrationOK)
+	require.False(t, status.HasClaimData)
+}
+
+func TestInspectBridgeSyncer_WithClaimData(t *testing.T) {
+	dir := t.TempDir()
+	bridgePath := filepath.Join(dir, "bridge.db")
+
+	bdb := newBridgeDB(t, bridgePath)
+	insertBridgeBlock(t, bdb, 1, common.HexToHash("0xaabb").Hex())
+	insertBridgeClaim(t, bdb, 1, 0, big.NewInt(42).String())
+	bdb.Close()
+
+	status, err := InspectBridgeSyncer(context.Background(), bridgePath, filepath.Join(dir, "claim.db"))
+	require.NoError(t, err)
+	require.True(t, status.BridgeDBExists)
+	require.False(t, status.ClaimDBExists)
+	require.True(t, status.MigrationOK)
+	require.True(t, status.HasClaimData)
 }
 
 // ── ImportKeyValueFromBridgesyncer ────────────────────────────────────────────
@@ -363,23 +387,6 @@ func TestImportKeyValueFromBridgesyncer_Idempotent(t *testing.T) {
 	require.Equal(t, 1, countRows(t, claimPath, "key_value"))
 }
 
-func TestImportDataFromBridgesyncer_MissingRequiredMigration(t *testing.T) {
-	dir := t.TempDir()
-	bridgePath := filepath.Join(dir, "bridge.db")
-	claimPath := filepath.Join(dir, "claim.db")
-
-	// Bridge DB has all tables and data but the required migration is absent.
-	bdb := newBridgeDB(t, bridgePath)
-	_, err := bdb.Exec(`DELETE FROM gorp_migrations WHERE id = ?`, requiredBridgeMigration)
-	require.NoError(t, err)
-	insertBridgeBlock(t, bdb, 1, common.HexToHash("0x01").Hex())
-	insertBridgeClaim(t, bdb, 1, 0, big.NewInt(1).String())
-	bdb.Close()
-
-	_, err = ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
-	require.ErrorContains(t, err, requiredBridgeMigration)
-}
-
 // ── OldSchemaNoHash ───────────────────────────────────────────────────────────
 
 func TestImportDataFromBridgesyncer_OldSchemaNoHash(t *testing.T) {
@@ -445,7 +452,7 @@ func TestImportDataFromBridgesyncer_OldSchemaNoHash(t *testing.T) {
 	require.NoError(t, err)
 	bdb.Close()
 
-	_, err = ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
+	err = ImportDataFromBridgesyncer(context.Background(), nil, bridgePath, claimPath)
 	require.NoError(t, err)
 
 	// block.hash should default to ''
