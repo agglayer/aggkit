@@ -7,7 +7,8 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
+	claimsynctypesmocks "github.com/agglayer/aggkit/claimsync/types/mocks"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -25,6 +26,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 		setupMocks func(
 			ctx context.Context,
 			mockL2Syncer *mocks.L2BridgeSyncer,
+			mockL2ClaimSyncer *claimsynctypesmocks.ClaimSyncer,
 			mockAggchainProofClient *mocks.AggchainProofClientInterface,
 			mockFlow *mocks.AggchainProofFlow,
 		)
@@ -35,13 +37,14 @@ func TestGenerateAggchainProof(t *testing.T) {
 			name: "Success",
 			setupMocks: func(ctx context.Context,
 				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockL2ClaimSyncer *claimsynctypesmocks.ClaimSyncer,
 				mockAggchainProofClient *mocks.AggchainProofClientInterface,
 				mockFlow *mocks.AggchainProofFlow,
 			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
+				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), true, nil)
+				mockL2ClaimSyncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Claim{}, nil)
 				certBuildParams := &types.CertificateBuildParams{
-					Claims: []bridgesync.Claim{},
+					Claims: []claimsynctypes.Claim{},
 				}
 				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), certBuildParams).Return(
 					&types.AggchainProof{SP1StarkProof: &types.SP1StarkProof{Proof: []byte("proof")}}, nil)
@@ -52,10 +55,11 @@ func TestGenerateAggchainProof(t *testing.T) {
 			name: "Failure_GetLastProcessedBlock",
 			setupMocks: func(ctx context.Context,
 				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockL2ClaimSyncer *claimsynctypesmocks.ClaimSyncer,
 				mockAggchainProofClient *mocks.AggchainProofClientInterface,
 				mockFlow *mocks.AggchainProofFlow,
 			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("test error"))
+				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("test error"))
 			},
 			expectedError: "error getting last processed block from l2: test error",
 		},
@@ -63,11 +67,12 @@ func TestGenerateAggchainProof(t *testing.T) {
 			name: "Failure_GetClaims",
 			setupMocks: func(ctx context.Context,
 				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockL2ClaimSyncer *claimsynctypesmocks.ClaimSyncer,
 				mockAggchainProofClient *mocks.AggchainProofClientInterface,
 				mockFlow *mocks.AggchainProofFlow,
 			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return(nil, errors.New("test error"))
+				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), true, nil)
+				mockL2ClaimSyncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return(nil, errors.New("test error"))
 			},
 			expectedError: "error getting claims (imported bridge exits)",
 		},
@@ -75,13 +80,14 @@ func TestGenerateAggchainProof(t *testing.T) {
 			name: "Failure_GenerateAggchainProof",
 			setupMocks: func(ctx context.Context,
 				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockL2ClaimSyncer *claimsynctypesmocks.ClaimSyncer,
 				mockAggchainProofClient *mocks.AggchainProofClientInterface,
 				mockFlow *mocks.AggchainProofFlow,
 			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
+				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), true, nil)
+				mockL2ClaimSyncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Claim{}, nil)
 				certBuildParams := &types.CertificateBuildParams{
-					Claims: []bridgesync.Claim{},
+					Claims: []claimsynctypes.Claim{},
 				}
 				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), certBuildParams).Return(
 					nil, errors.New("test error"))
@@ -102,17 +108,19 @@ func TestGenerateAggchainProof(t *testing.T) {
 
 			mockLogger := log.WithFields("test", tt.name)
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			mockL2ClaimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 			mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
 			mockFlow := mocks.NewAggchainProofFlow(t)
 
 			tool := &AggchainProofGenerationTool{
 				logger:              mockLogger,
 				l2Syncer:            mockL2Syncer,
+				l2ClaimSyncer:       mockL2ClaimSyncer,
 				aggchainProofClient: mockAggchainProofClient,
 				flow:                mockFlow,
 			}
 
-			tt.setupMocks(ctx, mockL2Syncer, mockAggchainProofClient, mockFlow)
+			tt.setupMocks(ctx, mockL2Syncer, mockL2ClaimSyncer, mockAggchainProofClient, mockFlow)
 
 			proof, err := tool.GenerateAggchainProof(ctx, lastProvenBlock, toBlock)
 			if tt.expectedError != "" {
@@ -158,6 +166,7 @@ func TestOptimisticModeQuerierAlwaysOff(t *testing.T) {
 
 func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+	mockL2ClaimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 	mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
@@ -168,7 +177,7 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
 
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, mockL1InfoTreeSyncer)
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, mockL2ClaimSyncer, mockL1InfoTreeSyncer)
 	require.Error(t, err)
 
 	cfg := Config{
@@ -177,6 +186,6 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	}
 
 	_, err = NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		cfg, mockL1Client, mockL2Client, mockL2Syncer, mockL1InfoTreeSyncer)
+		cfg, mockL1Client, mockL2Client, mockL2Syncer, mockL2ClaimSyncer, mockL1InfoTreeSyncer)
 	require.ErrorContains(t, err, "L2 GER reader")
 }

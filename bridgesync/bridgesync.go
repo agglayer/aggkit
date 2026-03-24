@@ -74,6 +74,7 @@ type BridgeSync struct {
 	reorgDetector  ReorgDetector
 	ethClient      aggkittypes.EthClienter
 	agglayerBridge *agglayerbridge.Agglayerbridge
+	cfg            Config
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -83,8 +84,8 @@ func NewL1(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
-	syncFromInBridges bool,
 ) (*BridgeSync, error) {
+	syncFromInBridges := cfg.SyncFromInBridges.Resolved != nil && *cfg.SyncFromInBridges.Resolved
 	return newBridgeSync(
 		ctx,
 		cfg,
@@ -99,7 +100,7 @@ func NewL1(
 	)
 }
 
-// NewL2 creates a bridge syncer that synchronizes the local exit tree
+// NewL2 creates a bridge syncer that synchronizes the local exit tree.
 func NewL2(
 	ctx context.Context,
 	cfg Config,
@@ -107,9 +108,9 @@ func NewL2(
 	ethClient aggkittypes.EthClienter,
 	originNetwork uint32,
 	syncFullClaims bool,
-	syncFromInBridges bool,
 	initialLER common.Hash,
 ) (*BridgeSync, error) {
+	syncFromInBridges := cfg.SyncFromInBridges.Resolved != nil && *cfg.SyncFromInBridges.Resolved
 	return newBridgeSync(
 		ctx,
 		cfg,
@@ -152,32 +153,16 @@ func newBridgeSync(
 			cfg.BridgeAddr.String(), err)
 		return nil, err
 	}
+	database, err := newSqliteDB(cfg.DBPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sqlite database  %s: %w", cfg.DBPath, err)
+	}
 
-	processor, err := newProcessor(cfg.DBPath, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
+	processor, err := newProcessor(database, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
 	if err != nil {
 		return nil, err
 	}
 	processor.initialLER = initialLER
-
-	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if lastProcessedBlock < cfg.InitialBlockNum {
-		header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(cfg.InitialBlockNum))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get initial block %d: %w", cfg.InitialBlockNum, err)
-		}
-
-		err = processor.ProcessBlock(ctx, sync.Block{
-			Num:  cfg.InitialBlockNum,
-			Hash: header.Hash,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	rh := &sync.RetryHandler{
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
@@ -189,8 +174,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, processor, cfg.BridgeAddr, syncFullClaims,
-		syncFromInBridges, bridgeDeployment, logger)
+	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFromInBridges, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +228,8 @@ func newBridgeSync(
 			"  retryAfterErrorPeriod: %s\n"+
 			"  syncBlockChunkSize: %d\n"+
 			"  ReorgDetector: %s\n"+
-			"  waitForNewBlocksPeriod: %s",
+			"  waitForNewBlocksPeriod: %s\n"+
+			"  syncFromInBridges: %t",
 		syncerID,
 		cfg.DBPath,
 		cfg.InitialBlockNum,
@@ -256,6 +241,7 @@ func newBridgeSync(
 		cfg.SyncBlockChunkSize,
 		rd.String(),
 		cfg.WaitForNewBlocksPeriod.String(),
+		syncFromInBridges,
 	)
 
 	return &BridgeSync{
@@ -266,6 +252,7 @@ func newBridgeSync(
 		reorgDetector:  rd,
 		ethClient:      ethClient,
 		agglayerBridge: agglayerBridge,
+		cfg:            cfg,
 	}, nil
 }
 
@@ -319,8 +306,8 @@ func resolveBridgeDeployment(ctx context.Context,
 
 // Start starts the synchronization process
 func (s *BridgeSync) Start(ctx context.Context) {
-	s.processor.log.Info("starting bridge synchronizer")
-	s.driver.Sync(ctx)
+	s.processor.log.Infof("starting bridge synchronizer InitialBlockNum: %d", s.cfg.InitialBlockNum)
+	s.driver.Sync(ctx, &s.cfg.InitialBlockNum)
 }
 
 func (s *BridgeSync) GetBridgesPaged(
@@ -333,40 +320,10 @@ func (s *BridgeSync) GetBridgesPaged(
 	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount, networkIDs, fromAddress)
 }
 
-func (s *BridgeSync) GetClaimsPaged(
-	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*Claim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, globalIndex)
-}
-
-func (s *BridgeSync) GetUnsetClaimsPaged(
-	ctx context.Context,
-	page, pageSize uint32, globalIndex *big.Int) ([]*UnsetClaim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get unset claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetUnsetClaimsPaged(ctx, page, pageSize, globalIndex)
-}
-
-func (s *BridgeSync) GetSetClaimsPaged(
-	ctx context.Context,
-	page, pageSize uint32, globalIndex *big.Int) ([]*SetClaim, int, error) {
-	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get set claims")
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetSetClaimsPaged(ctx, page, pageSize, globalIndex)
-}
-
-func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	if s.processor.isHalted() {
 		s.processor.log.Error("processor is halted, cannot get last processed block")
-		return 0, sync.ErrInconsistentState
+		return 0, false, sync.ErrInconsistentState
 	}
 	return s.processor.GetLastProcessedBlock(ctx)
 }
@@ -376,20 +333,6 @@ func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.exitTree.GetRootByHash(ctx, root)
-}
-
-func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaimsByGlobalIndex(ctx, globalIndex)
-}
-
-func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetClaims(ctx, fromBlock, toBlock)
 }
 
 func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
@@ -560,11 +503,6 @@ func (s *BridgeSync) GetLatestNetworkBlock(ctx context.Context) (uint64, error) 
 // IsActive returns true if the syncer is active (not halted)
 func (s *BridgeSync) IsActive(ctx context.Context) bool {
 	return !s.processor.isHalted()
-}
-
-// GetClaimsByGER returns all DetailedClaimEvent claims for the given global exit root.
-func (s *BridgeSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
-	return s.processor.GetClaimsByGER(ctx, globalExitRoot)
 }
 
 // GetBridgeByDepositCount returns the bridge with the given deposit count (bridge or bridge_archive).

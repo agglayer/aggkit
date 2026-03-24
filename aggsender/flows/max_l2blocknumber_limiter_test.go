@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/stretchr/testify/require"
 )
@@ -160,7 +161,7 @@ func TestAdaptCertificateForPP(t *testing.T) {
 						BlockNum: 120,
 					},
 				},
-				Claims: []bridgesync.Claim{
+				Claims: []claimsynctypes.Claim{
 					{
 						BlockNum: 120,
 					},
@@ -189,7 +190,7 @@ func TestAdaptCertificateForPP(t *testing.T) {
 			buildParams: &types.CertificateBuildParams{
 				FromBlock: 100,
 				ToBlock:   200,
-				Claims: []bridgesync.Claim{
+				Claims: []claimsynctypes.Claim{
 					{
 						BlockNum: 120,
 					},

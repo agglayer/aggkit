@@ -68,9 +68,9 @@ func (_c *DriverInterfaceMock_GetCompletionPercentage_Call) RunAndReturn(run fun
 	return _c
 }
 
-// Sync provides a mock function with given fields: ctx
-func (_m *DriverInterfaceMock) Sync(ctx context.Context) {
-	_m.Called(ctx)
+// Sync provides a mock function with given fields: ctx, firstBlockNumber
+func (_m *DriverInterfaceMock) Sync(ctx context.Context, firstBlockNumber *uint64) {
+	_m.Called(ctx, firstBlockNumber)
 }
 
 // DriverInterfaceMock_Sync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sync'
@@ -80,13 +80,14 @@ type DriverInterfaceMock_Sync_Call struct {
 
 // Sync is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *DriverInterfaceMock_Expecter) Sync(ctx interface{}) *DriverInterfaceMock_Sync_Call {
-	return &DriverInterfaceMock_Sync_Call{Call: _e.mock.On("Sync", ctx)}
+//   - firstBlockNumber *uint64
+func (_e *DriverInterfaceMock_Expecter) Sync(ctx interface{}, firstBlockNumber interface{}) *DriverInterfaceMock_Sync_Call {
+	return &DriverInterfaceMock_Sync_Call{Call: _e.mock.On("Sync", ctx, firstBlockNumber)}
 }
 
-func (_c *DriverInterfaceMock_Sync_Call) Run(run func(ctx context.Context)) *DriverInterfaceMock_Sync_Call {
+func (_c *DriverInterfaceMock_Sync_Call) Run(run func(ctx context.Context, firstBlockNumber *uint64)) *DriverInterfaceMock_Sync_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run(args[0].(context.Context), args[1].(*uint64))
 	})
 	return _c
 }
@@ -96,7 +97,7 @@ func (_c *DriverInterfaceMock_Sync_Call) Return() *DriverInterfaceMock_Sync_Call
 	return _c
 }
 
-func (_c *DriverInterfaceMock_Sync_Call) RunAndReturn(run func(context.Context)) *DriverInterfaceMock_Sync_Call {
+func (_c *DriverInterfaceMock_Sync_Call) RunAndReturn(run func(context.Context, *uint64)) *DriverInterfaceMock_Sync_Call {
 	_c.Run(run)
 	return _c
 }

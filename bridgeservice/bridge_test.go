@@ -19,6 +19,7 @@ import (
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -44,7 +45,9 @@ type bridgeWithMocks struct {
 	l1InfoTree     *mocks.L1InfoTreeSyncer
 	injectedGERs   *mocks.L2GERSyncer
 	bridgeL1       *mocks.Bridger
+	claimL1        *mocks.Claimer
 	bridgeL2       *mocks.Bridger
+	claimL2        *mocks.Claimer
 }
 
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
@@ -54,7 +57,9 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
 		injectedGERs:   mocks.NewL2GERSyncer(t),
 		bridgeL1:       mocks.NewBridger(t),
+		claimL1:        mocks.NewClaimer(t),
 		bridgeL2:       mocks.NewBridger(t),
+		claimL2:        mocks.NewClaimer(t),
 	}
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
@@ -64,7 +69,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	return b
 }
 
@@ -766,7 +771,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -778,11 +783,11 @@ func TestGetClaimsHandler(t *testing.T) {
 				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, false)
 		})
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
@@ -808,7 +813,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -820,12 +825,12 @@ func TestGetClaimsHandler(t *testing.T) {
 				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, false)
 		})
 
 		bridgeMocks.bridge.networkID = 10
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
@@ -858,7 +863,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
@@ -874,7 +879,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 	t.Run("GetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
@@ -949,7 +954,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		// Create claims with proof data
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -973,11 +978,11 @@ func TestGetClaimsHandler(t *testing.T) {
 				},
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, true)
 		})
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
@@ -1021,7 +1026,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		// Create claims with proof data
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -1045,12 +1050,12 @@ func TestGetClaimsHandler(t *testing.T) {
 				},
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, true)
 		})
 
 		bridgeMocks.bridge.networkID = 10
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
@@ -1093,7 +1098,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		// Create claims with proof data
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -1117,11 +1122,11 @@ func TestGetClaimsHandler(t *testing.T) {
 				},
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, false)
 		})
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
@@ -1205,7 +1210,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		// Create 2 claims with the same global_index (should be compacted to 1)
 		globalIndex, _ := new(big.Int).SetString("18446744073709551617", 10)
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        globalIndex,
@@ -1219,10 +1224,10 @@ func TestGetClaimsHandler(t *testing.T) {
 		}
 
 		expectedCount := 1
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, false)
 		})
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, expectedCount, nil)
 
@@ -1248,7 +1253,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		// Create 3 claims with the same global_index but with unset_claim (all should be returned)
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(100),
@@ -1283,11 +1288,11 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		// The count should be 3 (all claims, no compaction when unset_claim exists)
 		expectedCount := 3
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, false)
 		})
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, expectedCount, nil)
 
@@ -1317,7 +1322,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		// - global_index=100: 2 claims, no unset_claim → compacted to 1
 		// - global_index=200: 3 claims, has unset_claim → all 3 returned
 		// - global_index=300: 1 claim, no unset_claim → 1 returned
-		expectedClaims := []*bridgesync.Claim{
+		expectedClaims := []*claimsynctypes.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(100),
@@ -1372,11 +1377,11 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		// Expected count: 1 (compacted) + 3 (all with unset_claim) + 1 (single) = 5
 		expectedCount := 5
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *claimsynctypes.Claim) *bridgetypes.ClaimResponse {
 			return NewClaimResponse(claim, false)
 		})
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, expectedCount, nil)
 
@@ -1404,7 +1409,7 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedUnsetClaims := []*bridgesync.UnsetClaim{
+		expectedUnsetClaims := []*claimsynctypes.UnsetClaim{
 			{
 				BlockNum:                  1,
 				BlockPos:                  1,
@@ -1415,7 +1420,7 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 			},
 		}
 
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetUnsetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(expectedUnsetClaims, len(expectedUnsetClaims), nil)
 
@@ -1439,7 +1444,7 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 
 	t.Run("GetUnsetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetUnsetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
@@ -1479,7 +1484,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedSetClaims := []*bridgesync.SetClaim{
+		expectedSetClaims := []*claimsynctypes.SetClaim{
 			{
 				BlockNum:    1,
 				BlockPos:    1,
@@ -1489,7 +1494,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 			},
 		}
 
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetSetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(expectedSetClaims, len(expectedSetClaims), nil)
 
@@ -1519,7 +1524,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedSetClaims := []*bridgesync.SetClaim{
+		expectedSetClaims := []*claimsynctypes.SetClaim{
 			{
 				BlockNum:    2,
 				BlockPos:    0,
@@ -1529,7 +1534,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 			},
 		}
 
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetSetClaimsPaged(mock.Anything, page, pageSize, globalIndex).
 			Return(expectedSetClaims, len(expectedSetClaims), nil)
 
@@ -1554,7 +1559,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 
 	t.Run("GetSetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetSetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
@@ -3078,7 +3083,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			// Add expectations for block information when not synced
 			if !tc.l1IsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(1234), nil).
+					Return(uint64(1234), false, nil).
 					Once()
 				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
 					Return(uint64(2555), nil).
@@ -3086,7 +3091,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			}
 			if !tc.l2IsSynced {
 				b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(1234), nil).
+					Return(uint64(1234), false, nil).
 					Once()
 				b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).
 					Return(uint64(2555), nil).
@@ -3457,7 +3462,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 			if !tc.expectedIsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(tc.lastProcessedBlock, nil).
+					Return(tc.lastProcessedBlock, false, nil).
 					Once()
 				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
 					Return(tc.networkBlock, nil).
@@ -3805,7 +3810,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 	validGER := "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
 	gerHash := common.HexToHash(validGER)
 
-	sampleClaim := &bridgesync.Claim{
+	sampleClaim := &claimsynctypes.Claim{
 		BlockNum:           1,
 		GlobalIndex:        big.NewInt(1),
 		OriginNetwork:      0,
@@ -3818,9 +3823,9 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 
 	t.Run("L2 network success", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectedClaims := []*bridgesync.Claim{sampleClaim}
+		expectedClaims := []*claimsynctypes.Claim{sampleClaim}
 
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetClaimsByGER(mock.Anything, gerHash).
 			Return(expectedClaims, nil)
 
@@ -3841,9 +3846,9 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 
 	t.Run("L1 network success", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectedClaims := []*bridgesync.Claim{sampleClaim}
+		expectedClaims := []*claimsynctypes.Claim{sampleClaim}
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsByGER(mock.Anything, gerHash).
 			Return(expectedClaims, nil)
 
@@ -3900,7 +3905,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 
 	t.Run("L1 bridge nil", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridge.bridgeL1 = nil
+		bridgeMocks.bridge.claimL1 = nil
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "0")
@@ -3909,12 +3914,12 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
-		require.Contains(t, w.Body.String(), "L1 bridge syncer is not available")
+		require.Contains(t, w.Body.String(), "L1 claim syncer is not available")
 	})
 
 	t.Run("L2 bridge nil", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridge.bridgeL2 = nil
+		bridgeMocks.bridge.claimL2 = nil
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
@@ -3923,13 +3928,13 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
-		require.Contains(t, w.Body.String(), "L2 bridge syncer is not available")
+		require.Contains(t, w.Body.String(), "L2 claim syncer is not available")
 	})
 
 	t.Run("L1 service error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL1.EXPECT().
+		bridgeMocks.claimL1.EXPECT().
 			GetClaimsByGER(mock.Anything, gerHash).
 			Return(nil, errors.New("db error"))
 
@@ -3946,7 +3951,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 	t.Run("L2 service error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetClaimsByGER(mock.Anything, gerHash).
 			Return(nil, errors.New("db error"))
 
@@ -3963,9 +3968,9 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 	t.Run("empty result", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL2.EXPECT().
+		bridgeMocks.claimL2.EXPECT().
 			GetClaimsByGER(mock.Anything, gerHash).
-			Return([]*bridgesync.Claim{}, nil)
+			Return([]*claimsynctypes.Claim{}, nil)
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))

@@ -10,7 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -184,7 +184,7 @@ func (a *aggchainProofQuery) generateOptimisticAggchainProof(ctx context.Context
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
 // so that the aggchain prover can use them to generate the aggchain proof
 func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
-	claims []bridgesync.Claim) ([]*agglayertypes.ImportedBridgeExitWithBlockNumber, error) {
+	claims []claimsynctypes.Claim) ([]*agglayertypes.ImportedBridgeExitWithBlockNumber, error) {
 	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExitWithBlockNumber, 0, len(claims))
 	for _, claim := range claims {
 		// we do not need claim data and proofs here, only imported bridge exit data like:
@@ -207,7 +207,7 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 }
 
 func (a *aggchainProofQuery) convertUnclaimsToAgglayerUnclaims(
-	unclaims []bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
+	unclaims []claimsynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
 	unclaimsConverted := make([]*agglayertypes.Unclaim, 0, len(unclaims))
 
 	for _, unclaim := range unclaims {

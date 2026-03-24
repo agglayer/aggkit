@@ -710,7 +710,7 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 				})
 			}
 		}
-		downloader.Download(ctx1, fromBlock, downloadCh)
+		downloader.Download(ctx1, fromBlock, downloadCh, nil, false)
 		mockEthDownloader.AssertExpectations(t)
 		for _, expectedBlock := range expectedBlocks {
 			log.Debugf("waiting block %d ", expectedBlock.Num)
@@ -825,4 +825,134 @@ func TestGetLastFinalizedBlock(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(200), blockNumber)
 	})
+}
+
+// newMockDownloader returns an EVMDownloader with a mocked EVMDownloaderInterface injected.
+func newMockDownloader(t *testing.T) (*EVMDownloader, *EVMDownloaderMock) {
+	t.Helper()
+	downloader, _ := NewTestDownloader(t, time.Millisecond)
+	iface := NewEVMDownloaderMock(t)
+	downloader.EVMDownloaderInterface = iface
+	return downloader, iface
+}
+
+func blockHeader(num uint64) EVMBlockHeader {
+	return EVMBlockHeader{
+		Num:  num,
+		Hash: common.HexToHash(fmt.Sprintf("0x%x", num)),
+	}
+}
+
+func drainChannel(ch chan EVMBlock) []EVMBlock {
+	result := make([]EVMBlock, 0)
+	for b := range ch {
+		result = append(result, b)
+	}
+	return result
+}
+
+// TestDownload_LastBlockNum_BlockWithEvents verifies that when lastBlockNum is set and the
+// target block has events, the block is reported and Download stops.
+func TestDownload_LastBlockNum_BlockWithEvents(t *testing.T) {
+	t.Parallel()
+	downloader, iface := newMockDownloader(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	lastBlock := uint64(5)
+	// Initial WaitForNewBlocks called with 0
+	iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
+	iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(uint64(10), nil).Once()
+	eventsBlock := &EVMBlock{
+		IsFinalizedBlock: true,
+		EVMBlockHeader:   blockHeader(5),
+		Events:           []any{testEvent(common.HexToHash("0xAA"))},
+	}
+	iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{eventsBlock}).Once()
+
+	downloadCh := make(chan EVMBlock, 10)
+	downloader.Download(ctx, 5, downloadCh, &lastBlock, false)
+
+	received := drainChannel(downloadCh)
+	require.Len(t, received, 1)
+	require.Equal(t, uint64(5), received[0].Num)
+	require.Equal(t, eventsBlock.Events, received[0].Events)
+	require.True(t, received[0].IsFinalizedBlock)
+}
+
+// TestDownload_EmptyBlock verifies empty-block reporting for every combination of
+// includeEmptyFirstBlock and finality zone. GetBlockHeader must always be called exactly once.
+func TestDownload_EmptyBlock(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name                 string
+		finalizedBlock       uint64
+		includeEmptyFirst    bool
+		wantIsFinalizedBlock bool
+	}{
+		// finalized zone — normal path (includeEmptyFirstBlock=false)
+		{"finalized/noFlag", 10, false, true},
+		// finalized zone — pre-report path (includeEmptyFirstBlock=true); GetBlockHeader called once, not twice
+		{"finalized/withFlag", 10, true, true},
+		// not-finalized zone — pre-report path forces immediate report without waiting for finality
+		{"notFinalized/withFlag", 3, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			downloader, iface := newMockDownloader(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+
+			lastBlock := uint64(5)
+			iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
+			iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(tc.finalizedBlock, nil).Once()
+			iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{}).Once()
+			iface.EXPECT().GetBlockHeader(mock.Anything, uint64(5)).Return(blockHeader(5), false).Once()
+
+			downloadCh := make(chan EVMBlock, 10)
+			downloader.Download(ctx, 5, downloadCh, &lastBlock, tc.includeEmptyFirst)
+
+			received := drainChannel(downloadCh)
+			require.Len(t, received, 1)
+			require.Equal(t, uint64(5), received[0].Num)
+			require.Empty(t, received[0].Events)
+			require.Equal(t, tc.wantIsFinalizedBlock, received[0].IsFinalizedBlock)
+		})
+	}
+}
+
+// TestDownload_LastBlockNum_MultipleBlocksInRange verifies that when lastBlockNum > fromBlock,
+// all blocks up to lastBlockNum are reported and Download stops after that.
+func TestDownload_LastBlockNum_MultipleBlocksInRange(t *testing.T) {
+	t.Parallel()
+	downloader, iface := newMockDownloader(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	lastBlock := uint64(7)
+	iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
+	iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(uint64(10), nil).Once()
+	// Block 6 has events; block 7 is empty → reportEmptyBlock(7) called
+	eventsBlock6 := &EVMBlock{
+		IsFinalizedBlock: true,
+		EVMBlockHeader:   blockHeader(6),
+		Events:           []any{testEvent(common.HexToHash("0xBB"))},
+	}
+	iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(7)).Return(EVMBlocks{eventsBlock6}).Once()
+	hdr7 := blockHeader(7)
+	iface.EXPECT().GetBlockHeader(mock.Anything, uint64(7)).Return(hdr7, false).Once()
+
+	downloadCh := make(chan EVMBlock, 10)
+	downloader.Download(ctx, 5, downloadCh, &lastBlock, false)
+
+	received := drainChannel(downloadCh)
+	require.Len(t, received, 2)
+	require.Equal(t, uint64(6), received[0].Num)
+	require.Equal(t, eventsBlock6.Events, received[0].Events)
+	require.Equal(t, uint64(7), received[1].Num)
+	require.Empty(t, received[1].Events)
+	require.True(t, received[1].IsFinalizedBlock)
 }

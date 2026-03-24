@@ -10,8 +10,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/claimsync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -56,8 +57,9 @@ type Config struct {
 type AggchainProofGenerationTool struct {
 	cfg Config
 
-	logger   *log.Logger
-	l2Syncer types.L2BridgeSyncer
+	logger        *log.Logger
+	l2Syncer      types.L2BridgeSyncer
+	l2ClaimSyncer claimsynctypes.ClaimSyncer
 
 	aggchainProofClient types.AggchainProofClientInterface
 	flow                AggchainProofFlow
@@ -77,6 +79,7 @@ func NewAggchainProofGenerationTool(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 ) (*AggchainProofGenerationTool, error) {
 	if err := cfg.AggkitProverClient.Validate(); err != nil {
@@ -99,12 +102,12 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(cfg.AgglayerBridgeL2Addr, l2Client)
+	agglayerBridgeL2Reader, err := claimsync.NewAgglayerBridgeL2Reader(cfg.AgglayerBridgeL2Addr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, l2ClaimSyncer, time.Second, agglayerBridgeL2Reader)
 
 	baseFlow := flows.NewBaseFlow(
 		logger,
@@ -122,13 +125,14 @@ func NewAggchainProofGenerationTool(
 		nil, // optimistic signer is not used in the tool, so we pass nil
 		baseFlow,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
-		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, agglayerBridgeL2Reader),
+		query.NewBridgeDataQuerier(logger, l2Syncer, l2ClaimSyncer, time.Second, agglayerBridgeL2Reader),
 	)
 
 	return &AggchainProofGenerationTool{
 		cfg:                 cfg,
 		logger:              logger,
 		l2Syncer:            l2Syncer,
+		l2ClaimSyncer:       l2ClaimSyncer,
 		flow:                aggchainProofQuerier,
 		aggchainProofClient: aggchainProofClient,
 	}, nil
@@ -152,9 +156,12 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 		"Max end block: %d", lastProvenBlock, maxEndBlock)
 
 	// get last L2 block synced
-	lastL2BlockSynced, err := a.l2Syncer.GetLastProcessedBlock(ctx)
+	lastL2BlockSynced, found, err := a.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
+	}
+	if !found {
+		return nil, fmt.Errorf("no processed block yet found from l2")
 	}
 
 	a.logger.Debugf("Last L2 block synced: %d", lastL2BlockSynced)
@@ -173,7 +180,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	// get claims for the block range
 	a.logger.Debugf("Getting claims for block range [%d : %d]", fromBlock, maxEndBlock)
 
-	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, maxEndBlock)
+	claims, err := a.l2ClaimSyncer.GetClaims(ctx, fromBlock, maxEndBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error getting claims (imported bridge exits): %w", err)
 	}
