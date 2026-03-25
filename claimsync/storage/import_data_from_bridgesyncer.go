@@ -120,7 +120,7 @@ func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename 
 		`SELECT COUNT(*) FROM gorp_migrations WHERE id = $1`, requiredBridgeMigration).Scan(&migCount)
 	if err != nil {
 		errMsg := strings.ToLower(err.Error())
-		if !(strings.Contains(errMsg, "no such table") && strings.Contains(errMsg, "gorp_migrations")) {
+		if !strings.Contains(errMsg, "no such table") || !strings.Contains(errMsg, "gorp_migrations") {
 			return status, fmt.Errorf("InspectBridgeSyncer: failed to query gorp_migrations: %w", err)
 		}
 	} else {
@@ -174,7 +174,7 @@ func ImportDataFromBridgesyncer(ctx context.Context,
 
 	tmpFilename := claimDBFilename + ".import.tmp"
 	// Remove any leftover tmp file from a previous failed attempt.
-	os.Remove(tmpFilename) //nolint:errcheck
+	os.Remove(tmpFilename)
 
 	// All DB work happens on tmpFilename. The defers inside importDataToTmpFile
 	// guarantee the DB/connection/transaction are fully closed before we return,
@@ -182,12 +182,12 @@ func ImportDataFromBridgesyncer(ctx context.Context,
 	blocksImported, claimsImported, setClaimsImported, unsetClaimsImported, err :=
 		importDataToTmpFile(ctx, logger, bridgeDBFilename, tmpFilename)
 	if err != nil {
-		os.Remove(tmpFilename) //nolint:errcheck
+		os.Remove(tmpFilename)
 		return err
 	}
 
 	if err := os.Rename(tmpFilename, claimDBFilename); err != nil {
-		os.Remove(tmpFilename) //nolint:errcheck
+		os.Remove(tmpFilename)
 		return fmt.Errorf("ImportDataFromBridgesyncer: failed to promote tmp DB: %w", err)
 	}
 
@@ -410,7 +410,8 @@ func importSetClaims(tx *sql.Tx) (int64, error) {
 // contains no rows. In that case the claimDB is not created at all.
 // The import is idempotent: an existing row with the same (owner, key) is silently skipped
 // (INSERT OR IGNORE).
-func ImportKeyValueFromBridgesyncer(ctx context.Context, bridgeDBFilename string, claimDBFilename string, owner string) error {
+func ImportKeyValueFromBridgesyncer(
+	ctx context.Context, bridgeDBFilename string, claimDBFilename string, owner string) error {
 	logger := log.WithFields("module", "ImportKeyValueFromBridgesyncer")
 
 	// Phase 1 - read the single key_value row from the bridge DB without touching the claim DB.

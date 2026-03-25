@@ -45,7 +45,6 @@ func newTestProcessor(dbPath string, syncerID string, logger *log.Logger, dbQuer
 	return newProcessor(database, syncerID, logger, dbQueryTimeout)
 }
 
-
 func TestProcessor(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgeSyncerProcessor.db")
 	logger := log.WithFields("module", "bridge-syncer")
