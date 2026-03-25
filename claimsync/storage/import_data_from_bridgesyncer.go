@@ -149,6 +149,10 @@ func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename 
 // InspectBridgeSyncer and BridgeSyncerStatus.ShouldMigrate) before calling this
 // function. No precondition checks are performed here.
 //
+// The import is atomic: data is written to a temporary file first and only renamed
+// to claimDBFilename on success, so a crash mid-import leaves claimDBFilename absent
+// and the migration will be retried on the next startup.
+//
 // Column-level differences between bridge schema versions are handled automatically:
 //   - block.hash            - present since bridgesync migration 0003; defaults to ".
 //   - claim.tx_hash         - present since bridgesync migration 0002; defaults to ".
@@ -162,78 +166,107 @@ func ImportDataFromBridgesyncer(ctx context.Context,
 		logger = log.WithFields("module", "ImportDataFromBridgesyncer")
 	}
 
-	claimDB, err := db.NewSQLiteDB(claimDBFilename)
+	tmpFilename := claimDBFilename + ".import.tmp"
+	// Remove any leftover tmp file from a previous failed attempt.
+	os.Remove(tmpFilename) //nolint:errcheck
+
+	// All DB work happens on tmpFilename. The defers inside importDataToTmpFile
+	// guarantee the DB/connection/transaction are fully closed before we return,
+	// so the subsequent Rename is safe even on platforms that lock open files.
+	blocksImported, claimsImported, setClaimsImported, unsetClaimsImported, err :=
+		importDataToTmpFile(ctx, logger, bridgeDBFilename, tmpFilename)
 	if err != nil {
-		return fmt.Errorf("ImportDataFromBridgesyncer: failed to open claim DB: %w", err)
+		os.Remove(tmpFilename) //nolint:errcheck
+		return err
+	}
+
+	if err := os.Rename(tmpFilename, claimDBFilename); err != nil {
+		os.Remove(tmpFilename) //nolint:errcheck
+		return fmt.Errorf("ImportDataFromBridgesyncer: failed to promote tmp DB: %w", err)
+	}
+
+	logger.Infof("import from bridgesyncer complete: blocks=%d claims=%d set_claims=%d unset_claims=%d",
+		blocksImported, claimsImported, setClaimsImported, unsetClaimsImported)
+	return nil
+}
+
+// importDataToTmpFile performs the actual copy from bridgeDBFilename into destFilename.
+// It is a pure helper for ImportDataFromBridgesyncer: all deferred closes run when this
+// function returns, ensuring the file is fully closed before the caller renames it.
+func importDataToTmpFile(ctx context.Context,
+	logger aggkitcommon.Logger,
+	bridgeDBFilename string,
+	destFilename string) (blocksImported, claimsImported, setClaimsImported, unsetClaimsImported int64, err error) {
+	claimDB, err := db.NewSQLiteDB(destFilename)
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to open claim DB: %w", err)
 	}
 	defer claimDB.Close()
 
 	if err := migrations.RunMigrations(logger, claimDB); err != nil {
-		return fmt.Errorf("ImportDataFromBridgesyncer: failed to run claim DB migrations: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to run claim DB migrations: %w", err)
 	}
 
 	// Use a single connection so that ATTACH and the subsequent transaction share the
 	// same SQLite connection (ATTACH is per-connection in SQLite).
 	conn, err := claimDB.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("ImportDataFromBridgesyncer: failed to acquire DB connection: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to acquire DB connection: %w", err)
 	}
 	defer conn.Close()
 
 	// ATTACH the bridge DB so we can SELECT from it in the same query.
 	attachSQL := fmt.Sprintf(`ATTACH DATABASE 'file:%s' AS bridge`, bridgeDBFilename)
 	if _, err := conn.ExecContext(ctx, attachSQL); err != nil {
-		return fmt.Errorf("ImportDataFromBridgesyncer: failed to attach bridge DB: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to attach bridge DB: %w", err)
 	}
 	defer conn.ExecContext(ctx, `DETACH DATABASE bridge`) //nolint:errcheck
 
 	hasBlockHash, err := bridgeColumnExists(ctx, conn, "block", "hash")
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
 	hasClaimTxHash, err := bridgeColumnExists(ctx, conn, "claim", "tx_hash")
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
 	hasClaimBlockTimestamp, err := bridgeColumnExists(ctx, conn, "claim", "block_timestamp")
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
 	hasClaimType, err := bridgeColumnExists(ctx, conn, "claim", "type")
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
 
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("ImportDataFromBridgesyncer: failed to begin transaction: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	blocksImported, err := importBlocks(tx, hasBlockHash)
+	blocksImported, err = importBlocks(tx, hasBlockHash)
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
-	claimsImported, err := importClaims(tx, hasClaimTxHash, hasClaimBlockTimestamp, hasClaimType)
+	claimsImported, err = importClaims(tx, hasClaimTxHash, hasClaimBlockTimestamp, hasClaimType)
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
-	unsetClaimsImported, err := importUnsetClaims(tx)
+	unsetClaimsImported, err = importUnsetClaims(tx)
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
-	setClaimsImported, err := importSetClaims(tx)
+	setClaimsImported, err = importSetClaims(tx)
 	if err != nil {
-		return err
+		return 0, 0, 0, 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("ImportDataFromBridgesyncer: failed to commit transaction: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to commit transaction: %w", err)
 	}
 
-	logger.Infof("import from bridgesyncer complete: blocks=%d claims=%d set_claims=%d unset_claims=%d",
-		blocksImported, claimsImported, setClaimsImported, unsetClaimsImported)
-	return nil
+	return blocksImported, claimsImported, setClaimsImported, unsetClaimsImported, nil
 }
 
 // checkBridgeTablesOnConn returns true only when all requiredBridgeTables exist in the
