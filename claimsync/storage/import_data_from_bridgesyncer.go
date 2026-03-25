@@ -114,10 +114,16 @@ func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename 
 
 	// Check whether the required migration has been applied.
 	// A missing gorp_migrations table is treated as MigrationOK = false, not an error.
+	// Any other failure (corruption, permissions, …) is surfaced so it is not silently masked.
 	var migCount int
 	err = conn.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM gorp_migrations WHERE id = $1`, requiredBridgeMigration).Scan(&migCount)
-	if err == nil {
+	if err != nil {
+		errMsg := strings.ToLower(err.Error())
+		if !(strings.Contains(errMsg, "no such table") && strings.Contains(errMsg, "gorp_migrations")) {
+			return status, fmt.Errorf("InspectBridgeSyncer: failed to query gorp_migrations: %w", err)
+		}
+	} else {
 		status.MigrationOK = migCount > 0
 	}
 
@@ -216,8 +222,13 @@ func importDataToTmpFile(ctx context.Context,
 	defer conn.Close()
 
 	// ATTACH the bridge DB so we can SELECT from it in the same query.
-	attachSQL := fmt.Sprintf(`ATTACH DATABASE 'file:%s' AS bridge`, bridgeDBFilename)
-	if _, err := conn.ExecContext(ctx, attachSQL); err != nil {
+	// The three characters that act as URI delimiters inside a SQLite file URI path
+	// ('%', '?', '#') are percent-encoded so they cannot be mistaken for query
+	// separators or fragment identifiers.  The full URI is then passed as a bound
+	// parameter (not interpolated into SQL) to eliminate any injection risk.
+	escapedPath := strings.NewReplacer("%", "%25", "?", "%3F", "#", "%23").Replace(bridgeDBFilename)
+	attachURI := "file:" + escapedPath + "?mode=ro"
+	if _, err := conn.ExecContext(ctx, `ATTACH DATABASE ? AS bridge`, attachURI); err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("ImportDataFromBridgesyncer: failed to attach bridge DB: %w", err)
 	}
 	defer conn.ExecContext(ctx, `DETACH DATABASE bridge`) //nolint:errcheck
@@ -399,9 +410,8 @@ func importSetClaims(tx *sql.Tx) (int64, error) {
 // contains no rows. In that case the claimDB is not created at all.
 // The import is idempotent: an existing row with the same (owner, key) is silently skipped
 // (INSERT OR IGNORE).
-func ImportKeyValueFromBridgesyncer(bridgeDBFilename string, claimDBFilename string, owner string) error {
+func ImportKeyValueFromBridgesyncer(ctx context.Context, bridgeDBFilename string, claimDBFilename string, owner string) error {
 	logger := log.WithFields("module", "ImportKeyValueFromBridgesyncer")
-	ctx := context.Background()
 
 	// Phase 1 - read the single key_value row from the bridge DB without touching the claim DB.
 	row, err := readBridgeKeyValueRow(ctx, bridgeDBFilename)
@@ -464,8 +474,21 @@ func readBridgeKeyValueRow(ctx context.Context, bridgeDBFilename string) (*keyVa
 		return nil, nil
 	}
 
+	const compatibilityKey = "compatibility_content"
+
+	var count int
+	err = bdb.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM key_value WHERE key = $1`, compatibilityKey).Scan(&count)
+	if err != nil {
+		return nil, fmt.Errorf("readBridgeKeyValueRow: failed to count key_value rows: %w", err)
+	}
+	if count != 1 {
+		return nil, fmt.Errorf("readBridgeKeyValueRow: expected exactly 1 row with key=%q, got %d", compatibilityKey, count)
+	}
+
 	row := &keyValueRow{}
-	err = bdb.QueryRowContext(ctx, `SELECT key, value, updated_at FROM key_value LIMIT 1`).
+	err = bdb.QueryRowContext(ctx,
+		`SELECT key, value, updated_at FROM key_value WHERE key = $1`, compatibilityKey).
 		Scan(&row.key, &row.value, &row.updatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

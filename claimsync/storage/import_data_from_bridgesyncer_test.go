@@ -353,7 +353,7 @@ func TestImportKeyValueFromBridgesyncer_NoTable(t *testing.T) {
 	require.NoError(t, bdb.Ping())
 	bdb.Close()
 
-	require.NoError(t, ImportKeyValueFromBridgesyncer(bridgePath, claimPath, "my-owner"))
+	require.NoError(t, ImportKeyValueFromBridgesyncer(context.Background(), bridgePath, claimPath, "my-owner"))
 
 	// Claim DB must not have been created.
 	_, statErr := os.Stat(claimPath)
@@ -374,10 +374,7 @@ func TestImportKeyValueFromBridgesyncer_EmptyTable(t *testing.T) {
 	require.NoError(t, err)
 	bdb.Close()
 
-	require.NoError(t, ImportKeyValueFromBridgesyncer(bridgePath, claimPath, "my-owner"))
-
-	_, statErr := os.Stat(claimPath)
-	require.True(t, os.IsNotExist(statErr))
+	require.ErrorContains(t, ImportKeyValueFromBridgesyncer(context.Background(), bridgePath, claimPath, "my-owner"), `expected exactly 1 row with key="compatibility_content"`)
 }
 
 func TestImportKeyValueFromBridgesyncer_Success(t *testing.T) {
@@ -392,11 +389,11 @@ func TestImportKeyValueFromBridgesyncer_Success(t *testing.T) {
 		value VARCHAR, updated_at INTEGER NOT NULL,
 		PRIMARY KEY (key, owner))`)
 	require.NoError(t, err)
-	_, err = bdb.Exec(`INSERT INTO key_value (owner, key, value, updated_at) VALUES ('old-owner', 'compat', 'data', 1000)`)
+	_, err = bdb.Exec(`INSERT INTO key_value (owner, key, value, updated_at) VALUES ('old-owner', 'compatibility_content', 'data', 1000)`)
 	require.NoError(t, err)
 	bdb.Close()
 
-	require.NoError(t, ImportKeyValueFromBridgesyncer(bridgePath, claimPath, "new-owner"))
+	require.NoError(t, ImportKeyValueFromBridgesyncer(context.Background(), bridgePath, claimPath, "new-owner"))
 
 	cdb, err := db.NewSQLiteDB(claimPath)
 	require.NoError(t, err)
@@ -408,7 +405,7 @@ func TestImportKeyValueFromBridgesyncer_Success(t *testing.T) {
 		Scan(&owner, &key, &value, &updatedAt)
 	require.NoError(t, err)
 	require.Equal(t, "new-owner", owner)
-	require.Equal(t, "compat", key)
+	require.Equal(t, "compatibility_content", key)
 	require.Equal(t, "data", value)
 	require.Equal(t, int64(1000), updatedAt)
 }
@@ -425,13 +422,13 @@ func TestImportKeyValueFromBridgesyncer_Idempotent(t *testing.T) {
 		value VARCHAR, updated_at INTEGER NOT NULL,
 		PRIMARY KEY (key, owner))`)
 	require.NoError(t, err)
-	_, err = bdb.Exec(`INSERT INTO key_value (owner, key, value, updated_at) VALUES ('old-owner', 'compat', 'data', 1000)`)
+	_, err = bdb.Exec(`INSERT INTO key_value (owner, key, value, updated_at) VALUES ('old-owner', 'compatibility_content', 'data', 1000)`)
 	require.NoError(t, err)
 	bdb.Close()
 
-	require.NoError(t, ImportKeyValueFromBridgesyncer(bridgePath, claimPath, "new-owner"))
+	require.NoError(t, ImportKeyValueFromBridgesyncer(context.Background(), bridgePath, claimPath, "new-owner"))
 	// Second call must not fail and must not duplicate the row.
-	require.NoError(t, ImportKeyValueFromBridgesyncer(bridgePath, claimPath, "new-owner"))
+	require.NoError(t, ImportKeyValueFromBridgesyncer(context.Background(), bridgePath, claimPath, "new-owner"))
 
 	require.Equal(t, 1, countRows(t, claimPath, "key_value"))
 }
