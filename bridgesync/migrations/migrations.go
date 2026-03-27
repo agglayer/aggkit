@@ -75,7 +75,6 @@ func addSourceField(database *sql.DB) error {
 	return nil
 }
 
-
 func GetFullMigrations() []types.Migration {
 	baseMigrations := dbmigrations.GetBaseMigrations()
 	total := len(baseMigrations) + len(migrations) + len(treemigrations.Migrations)

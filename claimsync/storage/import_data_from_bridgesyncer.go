@@ -160,10 +160,10 @@ func InspectBridgeSyncer(ctx context.Context, bridgeDBFilename, claimDBFilename 
 // and the migration will be retried on the next startup.
 //
 // Column-level differences between bridge schema versions are handled automatically:
-//   - block.hash            - present since bridgesync migration 0003; defaults to ".
-//   - claim.tx_hash         - present since bridgesync migration 0002; defaults to ".
+//   - block.hash            - present since bridgesync migration 0003; defaults to ''.
+//   - claim.tx_hash         - present since bridgesync migration 0002; defaults to ''.
 //   - claim.block_timestamp - present since bridgesync migration 0002; defaults to 0.
-//   - claim.type            - present since bridgesync migration 0012; defaults to ".
+//   - claim.type            - present since bridgesync migration 0012; defaults to ''.
 func ImportDataFromBridgesyncer(ctx context.Context,
 	logger aggkitcommon.Logger,
 	bridgeDBFilename string,
