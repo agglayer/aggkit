@@ -144,10 +144,12 @@ func start(cliCtx *cli.Context) error {
 
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, MainnetID, &backfillWg)
-	initialLER, err := GetInitialLER(cfg.L2NetworkConfig.InitialLER, cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
+	initialLER, err := GetInitialLER(cfg.L2NetworkConfig.InitialLER,
+		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
 	if err != nil {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
 	}
+	log.Infof("Initial Local Exit Root (LER): %s", initialLER.Hex())
 
 	if isNeeded([]string{
 		aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR, aggkitcommon.AGGCHAINPROOFGEN,

@@ -81,6 +81,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
 	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
+	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
