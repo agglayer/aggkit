@@ -81,6 +81,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader := multidownloader.NewConfigDefault("l2", "")
 	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
+	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
@@ -123,6 +124,57 @@ func newCliContextConfigFlag(t *testing.T, values ...string) *cli.Context {
 		require.NoError(t, err)
 	}
 	return cli.NewContext(nil, flagSet, nil)
+}
+
+func TestL2NetworkConfigInitialLER(t *testing.T) {
+	specificHash := "0xaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd"
+	zeroHash := "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+	tests := []struct {
+		name          string
+		toml          string
+		expectNil     bool
+		expectedValue string
+	}{
+		{
+			name: "InitialLER set to a specific hash",
+			toml: `
+[L2NetworkConfig]
+InitialLER = "` + specificHash + `"
+`,
+			expectNil:     false,
+			expectedValue: specificHash,
+		},
+		{
+			name: "InitialLER set to zero hash is valid and not nil",
+			toml: `
+[L2NetworkConfig]
+InitialLER = "` + zeroHash + `"
+`,
+			expectNil:     false,
+			expectedValue: zeroHash,
+		},
+		{
+			name:      "InitialLER not set returns nil",
+			toml:      ``,
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadFileFromString(tt.toml, ConfigType)
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+
+			if tt.expectNil {
+				require.Nil(t, cfg.L2NetworkConfig.InitialLER)
+			} else {
+				require.NotNil(t, cfg.L2NetworkConfig.InitialLER)
+				require.Equal(t, tt.expectedValue, cfg.L2NetworkConfig.InitialLER.Hex())
+			}
+		})
+	}
 }
 
 func TestLoadConfigWithDeprecatedFields(t *testing.T) {

@@ -92,10 +92,10 @@ const (
 
 	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
 	bridgeByDepositCountSQL = "SELECT * FROM " + bridgeTableName +
-		" WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1"
+		" WHERE deposit_count = $1 LIMIT 1"
 
 	// archiveByDepositCountSQL is the query used by GetBridgeByDepositCount for bridge_archive.
-	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 AND origin_network = 0 LIMIT 1`
+	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 LIMIT 1`
 
 	// bridgesByContentWhereNoMeta is the WHERE clause for GetBridgesByContent without metadata.
 	bridgesByContentWhereNoMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
@@ -668,6 +668,7 @@ type processor struct {
 	halted         bool
 	haltedReason   string
 	dbQueryTimeout time.Duration
+	initialLER     common.Hash
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -676,6 +677,16 @@ func newProcessor(
 	syncerID string,
 	logger *log.Logger,
 	dbQueryTimeout time.Duration,
+) (*processor, error) {
+	return newProcessorWithInitialLER(dbPath, syncerID, logger, dbQueryTimeout, common.Hash{})
+}
+
+func newProcessorWithInitialLER(
+	dbPath string,
+	syncerID string,
+	logger *log.Logger,
+	dbQueryTimeout time.Duration,
+	initialLER common.Hash,
 ) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
@@ -694,6 +705,7 @@ func newProcessor(
 		exitTree:       exitTree,
 		log:            logger,
 		dbQueryTimeout: dbQueryTimeout,
+		initialLER:     initialLER,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			syncerID,
@@ -1576,18 +1588,25 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 
 			// 1. archive and remove all the bridges whose
-			// deposit_count is greater than the one captured by the BackwardLET event
+			// deposit_count is greater than or equal to the one captured by the BackwardLET event
 			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
 			if err != nil {
-				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
+				return fmt.Errorf("failed to delete bridges starting from deposit count %d: %w",
 					newDepositCount, err)
 			}
 
-			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
-			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
-				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-					leafIndex, newDepositCount)
-				return err
+			// 2. remove all leafs from the exit tree with indices greater than or equal to leafIndex
+			if leafIndex == 0 {
+				if err := p.exitTree.Reorg(tx, 0); err != nil {
+					p.log.Errorf("failed to clear local exit tree (deposit count: %d)", newDepositCount)
+					return err
+				}
+			} else {
+				if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex-1); err != nil {
+					p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+						leafIndex-1, newDepositCount)
+					return err
+				}
 			}
 
 			// 4. sanity check that the new root matches the latest one in the exit tree
@@ -1656,10 +1675,11 @@ func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
 	return u64, u32, nil
 }
 
-// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than the provided one
+// archiveAndDeleteBridgesAbove archives and removes all bridges whose depositCount is greater than or equal
+// to the provided one.
 func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
 	// 1. Load candidates
-	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count > $1`, bridgeTableName)
+	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count >= $1`, bridgeTableName)
 	var bridges []*Bridge
 	if err := meddler.QueryAll(tx, &bridges, query, depositCount); err != nil {
 		return err
@@ -1672,9 +1692,20 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	deletedDepositCounts := make([]uint32, 0, len(bridges))
 	// 2. Archive
 	for _, b := range bridges {
-		b.Source = BridgeSourceBackwardLET
-		if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
-			return err
+		var existing int
+		if err := tx.QueryRowContext(
+			ctx,
+			"SELECT COUNT(*) FROM bridge_archive WHERE deposit_count = $1",
+			b.DepositCount,
+		).Scan(&existing); err != nil {
+			return fmt.Errorf("failed to query bridge_archive for deposit_count %d: %w", b.DepositCount, err)
+		}
+
+		if existing == 0 {
+			b.Source = BridgeSourceBackwardLET
+			if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
+				return err
+			}
 		}
 		deletedDepositCounts = append(deletedDepositCounts, b.DepositCount)
 	}
@@ -1682,7 +1713,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	// 3. Delete originals
 	deleteQuery := fmt.Sprintf(`
 		DELETE FROM %s
-		WHERE deposit_count > $1`,
+		WHERE deposit_count >= $1`,
 		bridgeTableName)
 
 	_, err := tx.ExecContext(ctx, deleteQuery, depositCount)
@@ -1691,7 +1722,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	}
 
 	if len(deletedDepositCounts) > 0 {
-		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
+		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count >= %d: %v",
 			len(deletedDepositCounts), depositCount, deletedDepositCounts,
 		)
 	}
@@ -1714,6 +1745,9 @@ func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error
 	}
 
 	if lastRootHash != ler {
+		if ler == p.initialLER && lastRootHash == aggkitcommon.ZeroHash {
+			return nil
+		}
 		return fmt.Errorf("local exit root mismatch: expected %s, got %s",
 			ler.String(), lastRootHash.String())
 	}
@@ -1734,7 +1768,10 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
-	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+	var newDepositCount uint32
+	if event.PreviousRoot != p.initialLER {
+		newDepositCount = uint32(event.PreviousDepositCount.Uint64())
+	}
 	newBlockPos := event.BlockPos
 	if blockPos != nil {
 		newBlockPos = *blockPos
@@ -1772,18 +1809,16 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			txnSender, fromAddr common.Address
 		)
 
-		// let's see if we have exactly one archived bridge that matches the forward LET leaf
-		// usually we should have exactly one match since to recover the LET on L2,
-		// we must have a backwards LET done which archives the bridges,
-		// and then a forward LET that re-adds them to the exit tree after fixing it
-		// however, in case of multiple matches, we cannot be sure which one to use,
-		// so we will just log and leave the txnSender and fromAddr fields empty
-		if len(archivedBridges) == 1 {
+		// If a matching archived bridge exists, reuse its original transaction fields.
+		switch len(archivedBridges) {
+		case 1:
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
 			fromAddr = archivedBridge.FromAddress
-		} else if len(archivedBridges) > 1 {
+		case 0:
+			p.log.Debugf("no archived bridge found that matches forward LET leaf %s", leaf.String())
+		default:
 			p.log.Debugf("multiple archived bridges found that match forward LET leaf %s;"+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
 		}

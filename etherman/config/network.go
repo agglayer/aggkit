@@ -24,6 +24,14 @@ type CommonConfig struct {
 	L2RPC L2RPCClientConfig `mapstructure:"L2RPC"`
 }
 
+// L2NetworkConfig holds configuration specific to the L2 network
+type L2NetworkConfig struct {
+	// InitialLER is an optional override for the initial Local Exit Root.
+	// If set, the RollupManager contract is not queried for the initial LER.
+	// Note: 0x000...000 is a valid value. Omit this field to use the contract.
+	InitialLER *gethcommon.Hash `mapstructure:"InitialLER"`
+}
+
 // L1NetworkConfig represents the configuration of the network used in L1
 type L1NetworkConfig struct {
 	// RPC client configuration for the L1 network

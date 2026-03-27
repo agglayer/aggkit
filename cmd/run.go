@@ -125,8 +125,16 @@ func start(cliCtx *cli.Context) error {
 	}
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0, &backfillWg)
+
+	initialLER, err := GetInitialLER(cfg.L2NetworkConfig.InitialLER,
+		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
+	if err != nil {
+		return fmt.Errorf("failed to get initial local exit root: %w", err)
+	}
+	log.Infof("Initial Local Exit Root (LER): %s", initialLER.Hex())
+
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID, &backfillWg)
+		l2Client, rollupDataQuerier.RollupID, *initialLER, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
@@ -705,6 +713,21 @@ func runL2GERSyncIfNeeded(
 	return l2GERSync
 }
 
+func GetInitialLER(
+	initialLEROverride *common.Hash,
+	rollupCreationBlockL1 uint64,
+	rollupDataQuerier *ethermanquierier.RollupDataQuerier) (*common.Hash, error) {
+	if initialLEROverride != nil {
+		return initialLEROverride, nil
+	}
+	if rollupDataQuerier == nil {
+		return nil, nil
+	}
+	lerQuery := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
+	ler, err := lerQuery.GetLastLocalExitRoot()
+	return &ler, err
+}
+
 func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -755,6 +778,7 @@ func runBridgeSyncL2IfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
+	initialLER common.Hash,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	fullClaimsNeeded := isNeeded([]string{
@@ -771,12 +795,13 @@ func runBridgeSyncL2IfNeeded(
 		return nil
 	}
 
-	bridgeSyncL2, err := bridgesync.NewL2(
+	bridgeSyncL2, err := bridgesync.NewL2WithInitialLER(
 		ctx,
 		cfg,
 		reorgDetectorL2,
 		l2Client,
 		rollupID,
+		initialLER,
 		fullClaimsNeeded,
 	)
 	if err != nil {

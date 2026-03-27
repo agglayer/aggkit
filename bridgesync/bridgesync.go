@@ -91,6 +91,7 @@ func NewL1(
 		ethClient,
 		L1BridgeSyncer,
 		originNetwork,
+		common.Hash{},
 		false,
 	)
 }
@@ -104,6 +105,20 @@ func NewL2(
 	originNetwork uint32,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
+	return NewL2WithInitialLER(ctx, cfg, rd, ethClient, originNetwork, common.Hash{}, syncFullClaims)
+}
+
+// NewL2WithInitialLER creates a bridge syncer that synchronizes the local exit tree
+// using the configured initial local exit root for LET sanity checks.
+func NewL2WithInitialLER(
+	ctx context.Context,
+	cfg Config,
+	rd ReorgDetector,
+	ethClient aggkittypes.EthClienter,
+	originNetwork uint32,
+	initialLER common.Hash,
+	syncFullClaims bool,
+) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
 		cfg,
@@ -112,6 +127,7 @@ func NewL2(
 		ethClient,
 		L2BridgeSyncer,
 		originNetwork,
+		initialLER,
 		syncFullClaims,
 	)
 }
@@ -124,6 +140,7 @@ func newBridgeSync(
 	ethClient aggkittypes.EthClienter,
 	syncerID BridgeSyncerID,
 	networkID uint32,
+	initialLER common.Hash,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
@@ -142,7 +159,13 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	processor, err := newProcessor(cfg.DBPath, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
+	processor, err := newProcessorWithInitialLER(
+		cfg.DBPath,
+		"bridge_sync_"+syncerID.String(),
+		logger,
+		cfg.DBQueryTimeout.Duration,
+		initialLER,
+	)
 	if err != nil {
 		return nil, err
 	}

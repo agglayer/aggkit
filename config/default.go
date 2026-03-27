@@ -81,6 +81,11 @@ BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 
+[L2NetworkConfig]
+# InitialLER: optional override for the initial Local Exit Root (0x000...000 is a valid value).
+# If not set, the value is queried from the RollupManager contract on L1.
+# InitialLER =
+
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
 FinalizedBlock = "FinalizedBlock"
