@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -54,7 +55,7 @@ func addSourceField(database *sql.DB) error {
 		return fmt.Errorf("error getting applied migrations: %w", err)
 	}
 	// This code is to undo the change where bridgesync0014 drops the field
-	if !contains(migrations, "bridgesync0014") {
+	if !slices.Contains(migrations, "bridgesync0014") {
 		log.Warn("migration 'bridgesync0014' not applied, skipping addSourceField." +
 			" This means that the 'source' column on 'bridge' table will not be added.")
 		return nil
@@ -74,14 +75,6 @@ func addSourceField(database *sql.DB) error {
 	return nil
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
 
 func GetFullMigrations() []types.Migration {
 	baseMigrations := dbmigrations.GetBaseMigrations()

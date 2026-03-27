@@ -21,6 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRunMigrationsExploratory(t *testing.T) {
+	t.Skip("This test is for exploratory testing of migrations during development. It is not meant to be run as part of automated tests.")
+	dbPath := "/tmp/bridgel1sync.sqlite"
+	err := RunMigrations(dbPath)
+	require.NoError(t, err)
+}
+
 func TestMigration0001(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "bridgesyncTest001.sqlite")
 
@@ -769,8 +776,23 @@ func TestMigrationFromPreviousVersion(t *testing.T) {
 
 	referenceHash := schemaHash(t, freshDB)
 
+	// Build the expected set of migration IDs from the full migration list.
+	expectedIDs := make(map[string]struct{})
+	for _, m := range GetFullMigrations() {
+		expectedIDs[m.ID] = struct{}{}
+	}
+
+	// Verify the fresh DB itself has all expected migrations applied.
+	appliedIDs, err := db.GetMigrationsIDsApplied(freshDB)
+	require.NoError(t, err)
+	for _, id := range appliedIDs {
+		delete(expectedIDs, id)
+	}
+	require.Empty(t, expectedIDs, "fresh DB is missing migrations: %v", expectedIDs)
+
 	// For each testdata/*.sqlite, copy it, apply all remaining migrations, and
-	// verify that the resulting schema hash matches the reference.
+	// verify that the resulting schema hash matches the reference and that all
+	// expected migrations are recorded in gorp_migrations.
 	testdataEntries, err := os.ReadDir("testdata")
 	require.NoError(t, err)
 
@@ -791,6 +813,18 @@ func TestMigrationFromPreviousVersion(t *testing.T) {
 
 			require.Equal(t, referenceHash, schemaHash(t, migratedDB),
 				"schema mismatch for %s after applying all migrations", entry.Name())
+
+			// Verify all expected migrations are recorded in gorp_migrations.
+			applied, err := db.GetMigrationsIDsApplied(migratedDB)
+			require.NoError(t, err)
+			appliedSet := make(map[string]struct{}, len(applied))
+			for _, id := range applied {
+				appliedSet[id] = struct{}{}
+			}
+			for _, m := range GetFullMigrations() {
+				require.Contains(t, appliedSet, m.ID,
+					"migration %q missing from gorp_migrations after migrating %s", m.ID, entry.Name())
+			}
 		})
 	}
 }
