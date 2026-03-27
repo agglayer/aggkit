@@ -31,6 +31,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
+	claimsyncstorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
@@ -90,7 +91,6 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	log.Debugf("Components to run: %v", components)
-
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
@@ -133,6 +133,10 @@ func start(cliCtx *cli.Context) error {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
 
+	if isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL1Sync.DBPath, cfg.ClaimL1Sync.DBPath, claimsynctypes.L1ClaimSyncer)
+	}
+
 	l1ClaimSync := runClaimSyncL1IfNeeded(ctx, components, cfg.ClaimL1Sync, reorgDetectorL1, l1Client, MainnetID)
 	if l1ClaimSync != nil {
 		rpcServices = append(rpcServices, l1ClaimSync.GetRPCServices()...)
@@ -143,6 +147,12 @@ func start(cliCtx *cli.Context) error {
 	initialLER, err := GetInitialLER(cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
 	if err != nil {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
+	}
+
+	if isNeeded([]string{
+		aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR, aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE, aggkitcommon.L2CLAIMSYNC, aggkitcommon.L2BRIDGESYNC}, components) {
+		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL2Sync.DBPath, cfg.ClaimL2Sync.DBPath, claimsynctypes.L2ClaimSyncer)
 	}
 
 	l2ClaimSync := runClaimSyncL2IfNeeded(
@@ -969,6 +979,41 @@ func runClaimSyncL2IfNeeded(
 	log.Infof("Starting ClaimSyncL2 (autoStart=%t)", *cfg.AutoStart.Resolved)
 	go res.Start(ctx)
 	return res
+}
+
+// runImportFromBridgeSyncerIfNeeded migrates claim data from an existing bridgesync
+// database into the claimsync database before the syncer starts. It is a no-op when
+// bridgeDBPath is empty or the bridge DB contains no claim data.
+func runImportFromBridgeSyncerIfNeeded(
+	ctx context.Context,
+	bridgeDBPath string,
+	claimDBPath string,
+	syncerID claimsynctypes.ClaimSyncerID,
+) {
+	if bridgeDBPath == "" {
+		return
+	}
+	logger := log.WithFields("module", "ImportFromBridgeSyncer", "syncerID", syncerID.String())
+	status, err := claimsyncstorage.InspectBridgeSyncer(ctx, bridgeDBPath, claimDBPath)
+	if err != nil {
+		logger.Fatalf("failed to inspect bridge DB: %v", err)
+	}
+	if err := status.Validate(); err != nil {
+		logger.Fatalf("bridge DB migration blocked: %v", err)
+	}
+	if !status.ShouldMigrate() {
+		logger.Infof("no migration needed. %s", status.String())
+		return
+	}
+	logger.Infof("migration from bridgesyncer to claimsyncer needed, starting migration process. %s", status.String())
+	if err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath); err != nil {
+		logger.Fatalf("failed to import claim data from bridge DB: %v", err)
+	}
+	if err := claimsyncstorage.ImportKeyValueFromBridgesyncer(
+		ctx, bridgeDBPath, claimDBPath, syncerID.String()); err != nil {
+		logger.Fatalf("failed to import key_value from bridge DB: %v", err)
+	}
+	logger.Infof("migration from bridgesyncer to claimsyncer completed successfully")
 }
 
 func runAggsenderMultisigCommitteeIfNeeded(

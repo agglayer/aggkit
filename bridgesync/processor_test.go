@@ -45,62 +45,6 @@ func newTestProcessor(dbPath string, syncerID string, logger *log.Logger, dbQuer
 	return newProcessor(database, syncerID, logger, dbQueryTimeout)
 }
 
-func TestBigIntString(t *testing.T) {
-	globalIndex := GenerateGlobalIndex(true, 0, 1093)
-	fmt.Println(globalIndex.String())
-
-	_, ok := new(big.Int).SetString(globalIndex.String(), 10)
-	require.True(t, ok)
-
-	dbPath := filepath.Join(t.TempDir(), "bridgesyncTestBigIntString.sqlite")
-
-	err := migrations.RunMigrations(dbPath)
-	require.NoError(t, err)
-	db, err := db.NewSQLiteDB(dbPath)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
-	require.NoError(t, err)
-
-	claim := &claimsynctypes.Claim{
-		BlockNum:            1,
-		BlockPos:            0,
-		GlobalIndex:         GenerateGlobalIndex(true, 0, 1093),
-		OriginNetwork:       11,
-		Amount:              big.NewInt(11),
-		OriginAddress:       common.HexToAddress("0x11"),
-		DestinationAddress:  common.HexToAddress("0x11"),
-		ProofLocalExitRoot:  types.Proof{},
-		ProofRollupExitRoot: types.Proof{},
-		MainnetExitRoot:     common.Hash{},
-		RollupExitRoot:      common.Hash{},
-		GlobalExitRoot:      common.Hash{},
-		DestinationNetwork:  12,
-		Type:                claimsynctypes.ClaimEvent,
-	}
-
-	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, claim.BlockNum)
-	require.NoError(t, err)
-	require.NoError(t, meddler.Insert(tx, "claim", claim))
-
-	require.NoError(t, tx.Commit())
-
-	tx, err = db.BeginTx(ctx, nil)
-	require.NoError(t, err)
-
-	rows, err := tx.Query(`
-		SELECT * FROM claim
-		WHERE block_num >= $1 AND block_num <= $2;
-	`, claim.BlockNum, claim.BlockNum)
-	require.NoError(t, err)
-
-	claimsFromDB := []*claimsynctypes.Claim{}
-	require.NoError(t, meddler.ScanAll(rows, &claimsFromDB))
-	require.Len(t, claimsFromDB, 1)
-	require.Equal(t, claim, claimsFromDB[0])
-}
-
 func TestProcessor(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgeSyncerProcessor.db")
 	logger := log.WithFields("module", "bridge-syncer")
