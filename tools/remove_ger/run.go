@@ -41,6 +41,7 @@ type Env struct {
 	// L2 contract bindings
 	L2Bridge     *agglayerbridgel2.Agglayerbridgel2
 	L2GERManager *agglayergerl2.Agglayergerl2
+	L2BridgeAddr common.Address
 }
 
 // Close closes all RPC connections. BridgeService has no Close.
@@ -169,6 +170,7 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		L1GERManager:  l1GER,
 		L2Bridge:      l2Bridge,
 		L2GERManager:  l2GER,
+		L2BridgeAddr:  cfg.BridgeL2Sync.BridgeAddr,
 	}, nil
 }
 
