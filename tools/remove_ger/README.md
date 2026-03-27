@@ -26,6 +26,7 @@ The tool uses the **same** config file(s) as the main aggkit binary: standard `a
 | Field | Type | Description |
 | ----- | ---- | ------------ |
 | **BridgeServiceURL** | string | Bridge service REST API base URL (**required**). Used for querying claims and bridges. The tool runs a health check at startup and will fail if the service is unreachable. |
+| **L2NetworkID** | uint32 | L2 network ID served by the bridge service (**required** for diagnose/recover). Used when querying claims and bridges for the target L2. Set this to the same network ID that the bridge service uses for your L2. |
 | **SovereignAdminKey** | section | Signing key with sovereign admin privileges (activate/deactivate emergency state, remove GER, unset/set claims, force-emit claim events). Supports local keystore, AWS KMS, and GCP KMS. See sub-fields below. |
 
 **SovereignAdminKey** sub-fields (depends on `Method`):
@@ -43,6 +44,7 @@ Append the following to your existing `aggkit-config.toml` (adjust paths and URL
 ```toml
 [RemoveGER]
 BridgeServiceURL = "http://localhost:8080"
+L2NetworkID = 12
 SovereignAdminKey = { Method = "local", Path = "/path/to/sovereign_admin_keystore.json", Password = "your-keystore-password" }
 ```
 
@@ -65,6 +67,11 @@ The tool has two modes: the default **diagnose & recover** command and the **gen
 ```
 
 You can pass multiple config files; later files override earlier ones (e.g. `--cfg base.toml --cfg overrides.toml`).
+
+The `[RemoveGER]` section for the default diagnose/recover command must include both:
+
+- `RemoveGER.BridgeServiceURL`
+- `RemoveGER.L2NetworkID`
 
 #### CLI flags
 
