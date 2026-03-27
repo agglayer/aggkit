@@ -7,6 +7,7 @@ DROP TABLE _bridge_to_address_backup;
 
 -- +migrate Up
 CREATE TABLE _bridge_to_address_backup AS SELECT block_num, block_pos, to_address FROM bridge;
+CREATE INDEX _bridge_to_address_backup_idx ON _bridge_to_address_backup(block_num, block_pos);
 ALTER TABLE bridge DROP COLUMN to_address;
 ALTER TABLE bridge ADD COLUMN to_address VARCHAR DEFAULT '';
 -- Only set to_address for rows != null

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/migrations"
@@ -31,6 +32,7 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 // execute some extra SQL statements that are not included in the migrations or to do some checks.
 func RunMigrationsExtended(dbPath string, migrations []types.Migration,
 	idempotentFunc func(*sql.DB) error) error {
+	start := time.Now()
 	db, err := NewSQLiteDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("error creating DB %s: %w", dbPath, err)
@@ -45,6 +47,7 @@ func RunMigrationsExtended(dbPath string, migrations []types.Migration,
 		return fmt.Errorf("error migrating DB %s: %w", dbPath, err)
 	}
 
+	log.GetDefaultLogger().Infof("migrations for DB %s completed in %s", dbPath, time.Since(start))
 	return nil
 }
 
