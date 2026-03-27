@@ -42,7 +42,7 @@ PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
 # Default database query timeout
-defaultDBQueryTimeout = "60s"
+defaultDBQueryTimeout = "5m"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
@@ -144,8 +144,8 @@ MaxRequestsPerIPAndSecond = 10
 [REST]
 Host = "0.0.0.0"
 Port = 5577
-ReadTimeout = "2s"
-WriteTimeout = "2s"
+ReadTimeout = "5m"
+WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
