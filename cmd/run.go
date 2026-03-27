@@ -983,7 +983,9 @@ func runClaimSyncL2IfNeeded(
 	}
 
 	log.Infof("Starting ClaimSyncL2 (autoStart=%t)", *cfg.AutoStart.Resolved)
-	go res.Start(ctx)
+	log.Warnf("***TESTING NO RUN CLAIM SYNC L2***")
+	// TODO: Uncomment this line
+	//go res.Start(ctx)
 	return res
 }
 
