@@ -258,6 +258,9 @@ type Config struct {
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
 	L1NetworkConfig ethermanconfig.L1NetworkConfig
 
+	// L2NetworkConfig holds configuration specific to the L2 network.
+	L2NetworkConfig ethermanconfig.L2NetworkConfig
+
 	// REST contains the configuration settings for the REST service in the Aggkit
 	REST common.RESTConfig
 
