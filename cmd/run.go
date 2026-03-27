@@ -144,7 +144,7 @@ func start(cliCtx *cli.Context) error {
 
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, MainnetID, &backfillWg)
-	initialLER, err := GetInitialLER(cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
+	initialLER, err := GetInitialLER(cfg.L2NetworkConfig.InitialLER, cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
 	if err != nil {
 		return fmt.Errorf("failed to get initial local exit root: %w", err)
 	}
@@ -802,8 +802,12 @@ func resolveL1BridgeConfig(cfg *bridgesync.Config, components []string, logprefi
 }
 
 func GetInitialLER(
+	initialLEROverride *common.Hash,
 	rollupCreationBlockL1 uint64,
 	rollupDataQuerier *ethermanquierier.RollupDataQuerier) (*common.Hash, error) {
+	if initialLEROverride != nil {
+		return initialLEROverride, nil
+	}
 	if rollupDataQuerier == nil {
 		return nil, nil
 	}
