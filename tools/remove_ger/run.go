@@ -89,7 +89,7 @@ func Run(c *cli.Context) error {
 
 	PrintDiagnosis(diagnosis)
 
-	if !diagnosis.GERExistsOnL2 {
+	if !diagnosis.hasRecoveryActions() {
 		fmt.Println("Nothing to do (GER is not on L2).")
 		return nil
 	}

@@ -21,6 +21,10 @@ const (
 // ExecuteRecovery runs the recovery flow for the given diagnosis. All steps execute on L2.
 // On any error, returns immediately; the bridge may remain in emergency state for manual intervention.
 func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *DiagnosisResult) error {
+	if !diagnosis.hasRecoveryActions() {
+		return nil
+	}
+
 	l2ChainID, err := env.L2.ChainID(ctx)
 	if err != nil {
 		return fmt.Errorf("get L2 chain ID: %w", err)
@@ -37,8 +41,10 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
 			return err
 		}
-		if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-			return err
+		if diagnosis.needsGERRemoval() {
+			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
+				return err
+			}
 		}
 		if err := stepRestoreBridge(ctx, env, auth, callOpts); err != nil {
 			return err
@@ -49,8 +55,10 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
 			return err
 		}
-		if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-			return err
+		if diagnosis.needsGERRemoval() {
+			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
+				return err
+			}
 		}
 		if err := stepUnsetClaims(ctx, env, auth, callOpts, diagnosis.Claims); err != nil {
 			return err
@@ -64,8 +72,10 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
 			return err
 		}
-		if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-			return err
+		if diagnosis.needsGERRemoval() {
+			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
+				return err
+			}
 		}
 		if err := stepForceEmitDetailedClaimEvents(ctx, cfg, env, auth, diagnosis.Claims); err != nil {
 			return err
@@ -79,8 +89,10 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
 			return err
 		}
-		if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-			return err
+		if diagnosis.needsGERRemoval() {
+			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
+				return err
+			}
 		}
 		if err := stepUnsetClaims(ctx, env, auth, callOpts, diagnosis.Claims); err != nil {
 			return err

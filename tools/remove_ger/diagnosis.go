@@ -43,6 +43,18 @@ type DiagnosisResult struct {
 	Scenario       Scenario
 }
 
+func (r *DiagnosisResult) hasClaims() bool {
+	return r != nil && len(r.Claims) > 0
+}
+
+func (r *DiagnosisResult) needsGERRemoval() bool {
+	return r != nil && r.GERExistsOnL2
+}
+
+func (r *DiagnosisResult) hasRecoveryActions() bool {
+	return r != nil && (r.needsGERRemoval() || r.hasClaims())
+}
+
 // ClaimDiagnosis holds the classification for a single claim.
 type ClaimDiagnosis struct {
 	GlobalIndex   *big.Int
@@ -90,9 +102,6 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	}
 	result.GERTimestampL2 = l2Timestamp
 	result.GERExistsOnL2 = l2Timestamp != nil && l2Timestamp.Sign() > 0
-	if !result.GERExistsOnL2 {
-		return result, nil
-	}
 
 	// Step 3 — Find claims using the GER (via bridge service)
 	claims, err := GetClaimsByGER(ctx, env.BridgeService, env.L2NetworkID, gerHash)
@@ -464,6 +473,8 @@ func PrintDiagnosis(result *DiagnosisResult) {
 			ts = result.GERTimestampL2.String()
 		}
 		fmt.Printf("  L2: EXISTS (timestamp: %s)\n", ts)
+	} else if result.hasClaims() {
+		fmt.Println("  L2: NOT FOUND (already removed, but related claims still exist)")
 	} else {
 		fmt.Println("  L2: NOT FOUND (nothing to do)")
 	}
@@ -527,39 +538,51 @@ func scenarioDescription(s Scenario) string {
 
 func printRecoveryPlanSteps(result *DiagnosisResult) {
 	fmt.Println("The following steps will be executed:")
-	step := 1
-	fmt.Printf("  %d. Freeze bridge (activateEmergencyState)\n", step)
-	step++
-	fmt.Printf("  %d. Remove GER %s (removeGlobalExitRoots)\n", step, result.InvalidGER.Hex())
-	step++
+	steps := buildRecoveryPlanSteps(result)
+	if len(steps) == 0 {
+		fmt.Println("  No on-chain action required.")
+		return
+	}
+	for i, step := range steps {
+		fmt.Printf("  %d. %s\n", i+1, step)
+	}
+}
+
+func buildRecoveryPlanSteps(result *DiagnosisResult) []string {
+	if !result.hasRecoveryActions() {
+		return nil
+	}
+
+	steps := []string{"Freeze bridge (activateEmergencyState)"}
+	if result.needsGERRemoval() {
+		steps = append(steps, fmt.Sprintf("Remove GER %s (removeGlobalExitRoots)", result.InvalidGER.Hex()))
+	}
 
 	switch result.Scenario {
 	case ScenarioNoClaims:
 		// no unset/set/emit
 	case ScenarioCategoryA:
 		for _, cd := range result.Claims {
-			fmt.Printf("  %d. Unset claim %s (unsetMultipleClaims)\n", step, formatGlobalIndex(cd.GlobalIndex))
-			step++
+			steps = append(steps, fmt.Sprintf("Unset claim %s (unsetMultipleClaims)", formatGlobalIndex(cd.GlobalIndex)))
 		}
 	case ScenarioCategoryB1:
 		for _, cd := range result.Claims {
-			fmt.Printf("  %d. Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)\n",
-				step, formatGlobalIndex(cd.GlobalIndex))
-			step++
+			steps = append(steps, fmt.Sprintf(
+				"Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)",
+				formatGlobalIndex(cd.GlobalIndex)))
 		}
 	case ScenarioCategoryB2:
 		for _, cd := range result.Claims {
-			fmt.Printf("  %d. Unset claim %s (unsetMultipleClaims)\n", step, formatGlobalIndex(cd.GlobalIndex))
-			step++
+			steps = append(steps, fmt.Sprintf("Unset claim %s (unsetMultipleClaims)", formatGlobalIndex(cd.GlobalIndex)))
 		}
-		fmt.Printf("  %d. Set claims with correct global indexes (setMultipleClaims)\n", step)
-		step++
+		steps = append(steps, "Set claims with correct global indexes (setMultipleClaims)")
 		for _, cd := range result.Claims {
-			fmt.Printf("  %d. Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)\n",
-				step, formatGlobalIndex(cd.GlobalIndex))
-			step++
+			steps = append(steps, fmt.Sprintf(
+				"Force emit corrected claim event for %s (forceEmitDetailedClaimEvent)",
+				formatGlobalIndex(cd.GlobalIndex)))
 		}
 	}
 
-	fmt.Printf("  %d. Restore bridge (deactivateEmergencyState)\n", step)
+	steps = append(steps, "Restore bridge (deactivateEmergencyState)")
+	return steps
 }
