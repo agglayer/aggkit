@@ -725,10 +725,14 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 		}
 
 		// Check 2: Ensure we can include this claim's unclaim without being forced to include
-		// a later unfinalized claim that doesn't exist on L1.
-		// We need to cut certificate if:
-		// - a later unfinalized claim (that doesn't exist on L1) appears at or before our unclaim block
-		// - and that later claim either has no unclaim OR has an unclaim after our unclaim
+		// a later unfinalized claim that doesn't exist on L1 and remains active in the same
+		// certificate range.
+		//
+		// If the later claim also has an unclaim somewhere within the candidate certificate,
+		// getImportedBridgeExits will cancel that claim out regardless of the relative order of
+		// the two unclaims inside the range. What matters here is whether the later claim is
+		// still active by the end of the certificate, not whether its unclaim happens before the
+		// current claim's unclaim.
 		for j := i + 1; j < len(certParams.Claims); j++ {
 			laterClaim := certParams.Claims[j]
 			if laterClaim.BlockNum > unclaimBlock {
@@ -746,14 +750,13 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 				continue
 			}
 
-			// Later unfinalized claim that doesn't exist on L1
-			// Check if it also has an unclaim at or before the current claim's unclaim block
-			laterUnclaimBlock, hasLaterUnclaim := unclaimMap[laterClaim.GlobalIndex.String()]
-			if hasLaterUnclaim && laterUnclaimBlock <= unclaimBlock {
-				// Both claims have unclaims at or before the same block, so we can include both
+			// Later unfinalized claim that doesn't exist on L1.
+			// If it also has an unclaim within the current certificate range, both claims will be
+			// canceled out when imported bridge exits are built.
+			if _, hasLaterUnclaim := unclaimMap[laterClaim.GlobalIndex.String()]; hasLaterUnclaim {
 				continue
 			}
-			// Later claim doesn't have an unclaim or has unclaim after current claim's unclaim
+			// Later claim doesn't have an unclaim in the current certificate range.
 			// We need to cut before the current claim
 			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
 				earliestCutBlock = claim.BlockNum

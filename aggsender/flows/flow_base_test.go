@@ -1778,3 +1778,71 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 		})
 	}
 }
+
+func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_AllLaterClaimsAlsoUnset(t *testing.T) {
+	ger1 := common.HexToHash("0xc25c5ca89b3565ba44c3d4690704c837c20b1dda78eb30f03d65c9b47a2fcfe2")
+	ger2 := common.HexToHash("0x0ff59119bdd2f7772fb69150ebc4696d36bb1ba728fe5e474d3cf50db4cf9f66")
+	ger3 := common.HexToHash("0xb2865ced0c61aca3e191a4cca2531d10bf59f9143341fb2258dcbaf388a71425")
+
+	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	for _, ger := range []common.Hash{ger1, ger2, ger3} {
+		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(false, nil).Once()
+		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+	}
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+
+	certParams := &types.CertificateBuildParams{
+		FromBlock:           6280614,
+		ToBlock:             8992722,
+		L1InfoTreeLeafCount: 1,
+		Claims: []bridgesync.Claim{
+			{
+				BlockNum:       6311588,
+				GlobalIndex:    mustBigIntFromString(t, "18446744073709593685"),
+				GlobalExitRoot: ger1,
+			},
+			{
+				BlockNum:       8731494,
+				GlobalIndex:    mustBigIntFromString(t, "18446744076382801904"),
+				GlobalExitRoot: ger2,
+			},
+			{
+				BlockNum:       8733846,
+				GlobalIndex:    mustBigIntFromString(t, "18446744073714758527"),
+				GlobalExitRoot: ger3,
+			},
+		},
+		Unclaims: []bridgesynctypes.Unclaim{
+			{
+				GlobalIndex: mustBigIntFromString(t, "18446744073714758527"),
+				BlockNumber: 8734557,
+			},
+			{
+				GlobalIndex: mustBigIntFromString(t, "18446744073709593685"),
+				BlockNumber: 8992703,
+			},
+			{
+				GlobalIndex: mustBigIntFromString(t, "18446744076382801904"),
+				BlockNumber: 8992722,
+			},
+		},
+	}
+
+	result, err := f.adjustCertificateIfNonFinalizedClaims(certParams)
+
+	require.NoError(t, err)
+	require.Equal(t, certParams.FromBlock, result.FromBlock)
+	require.Equal(t, certParams.ToBlock, result.ToBlock)
+}
+
+func mustBigIntFromString(t *testing.T, value string) *big.Int {
+	t.Helper()
+
+	v, ok := new(big.Int).SetString(value, 10)
+	require.True(t, ok)
+	return v
+}
