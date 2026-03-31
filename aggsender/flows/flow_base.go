@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -239,11 +240,17 @@ func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.Certif
 // size is expressed in bytes
 func (f *baseFlow) LimitCertSize(
 	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+	originalCert := certParams
 	currentCert := certParams
 	var err error
 	maxCertSize := f.cfg.MaxCertSize
 	for {
 		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
+			if originalCert != nil && currentCert != nil && currentCert.ToBlock < originalCert.ToBlock {
+				if err := f.logLimiterBlockedInvalidClaim(originalCert, currentCert, "MaxCertSize"); err != nil {
+					f.log.Warnf("unable to assess non-finalized claim after MaxCertSize reduction: %v", err)
+				}
+			}
 			return currentCert, nil
 		}
 
@@ -548,6 +555,22 @@ type gerStatusCache struct {
 	errors     map[common.Hash]error
 }
 
+type invalidClaimAssessmentReason string
+
+const (
+	invalidClaimAssessmentReasonRecoverable invalidClaimAssessmentReason = "recoverable"
+	invalidClaimAssessmentReasonNoUnclaim   invalidClaimAssessmentReason = "no_unclaim"
+)
+
+type invalidClaimAssessment struct {
+	reason            invalidClaimAssessmentReason
+	cutBlock          uint64
+	cutClaim          *bridgesync.Claim
+	culpritClaim      *bridgesync.Claim
+	culpritUnclaim    uint64
+	hasCulpritUnclaim bool
+}
+
 // newGERStatusCache creates a new GER status cache
 func newGERStatusCache() *gerStatusCache {
 	return &gerStatusCache{
@@ -656,19 +679,24 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 	//    that appears after a later unfinalized claim
 	// 2. If any previous claims with unfinalized GERs that don't exist on L1 have their
 	//    unclaims before the current block
-	cutBlock, err := f.validateUnclaimsForUnfinalizedGERs(certParams, cache)
+	assessment, err := f.validateUnclaimsForUnfinalizedGERs(certParams, cache)
 	if err != nil {
 		return nil, fmt.Errorf("error validating unclaims for unfinalized GERs: %w", err)
 	}
-	if cutBlock != 0 {
-		newToBlock := cutBlock - 1
+	if assessment != nil && assessment.reason == invalidClaimAssessmentReasonRecoverable {
+		f.log.Infof("found invalid claim with matching unclaim in current cert, aggsender can proceed. %s, unclaim_block=%d, cert_range=%d-%d",
+			formatClaimForLogs(*assessment.culpritClaim), assessment.culpritUnclaim, certParams.FromBlock, certParams.ToBlock)
+	}
+	if assessment != nil && assessment.cutBlock != 0 {
+		f.logInvalidClaimNeedsUnclaim(certParams, assessment)
+		newToBlock := assessment.cutBlock - 1
 		if newToBlock < certParams.FromBlock {
 			return nil, fmt.Errorf(
 				"cannot create certificate: claim at block %d (start block %d) cannot be included and no valid blocks before it",
-				cutBlock, certParams.FromBlock)
+				assessment.cutBlock, certParams.FromBlock)
 		}
 		f.log.Warnf("found claim with unclaim after later unfinalized claim at block %d, cutting certificate at block %d",
-			cutBlock, newToBlock)
+			assessment.cutBlock, newToBlock)
 		return certParams.AdjustToBlock(newToBlock)
 	}
 
@@ -686,7 +714,7 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 // Returns the earliest cut block found (or 0 if no cut is needed) and an error if validation fails.
 func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 	certParams *types.CertificateBuildParams,
-	cache *gerStatusCache) (uint64, error) {
+	cache *gerStatusCache) (*invalidClaimAssessment, error) {
 	// Build a map of unclaims by GlobalIndex for quick lookup
 	unclaimMap := make(map[string]uint64)
 	for _, unclaim := range certParams.Unclaims {
@@ -697,14 +725,14 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 		}
 	}
 
-	var earliestCutBlock uint64
+	var recoverableClaim *invalidClaimAssessment
 
 	// Single pass through all claims to perform both checks
 	for i, claim := range certParams.Claims {
 		// Check if this claim's GER is finalized
 		isGERFinalized, err := f.getGERFinalizedStatus(cache, claim.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
 		if err != nil {
-			return 0, fmt.Errorf("error checking if claim's GER %s is finalized: %w",
+			return nil, fmt.Errorf("error checking if claim's GER %s is finalized: %w",
 				claim.GlobalExitRoot.String(), err)
 		}
 
@@ -717,11 +745,13 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 		// have their unclaims before currentBlockNum
 		unclaimBlock, hasUnclaim := unclaimMap[claim.GlobalIndex.String()]
 		if !hasUnclaim {
-			// Found a claim without an unclaim - this is a cut point
-			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
-				earliestCutBlock = claim.BlockNum
-			}
-			return earliestCutBlock, nil
+			currentClaim := claim
+			return &invalidClaimAssessment{
+				reason:       invalidClaimAssessmentReasonNoUnclaim,
+				cutBlock:     claim.BlockNum,
+				cutClaim:     &currentClaim,
+				culpritClaim: &currentClaim,
+			}, nil
 		}
 
 		// Check 2: Ensure we can include this claim's unclaim without being forced to include
@@ -743,7 +773,7 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 			// Check if the later claim is unfinalized
 			isLaterGERFinalized, err := f.getGERFinalizedStatus(cache, laterClaim.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
 			if err != nil {
-				return 0, fmt.Errorf("error checking if later claim's GER %s is finalized: %w",
+				return nil, fmt.Errorf("error checking if later claim's GER %s is finalized: %w",
 					laterClaim.GlobalExitRoot.String(), err)
 			}
 			if isLaterGERFinalized {
@@ -758,11 +788,131 @@ func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
 			}
 			// Later claim doesn't have an unclaim in the current certificate range.
 			// We need to cut before the current claim
-			if earliestCutBlock == 0 || claim.BlockNum < earliestCutBlock {
-				earliestCutBlock = claim.BlockNum
+			cutClaim := claim
+			blockingClaim := laterClaim
+			return &invalidClaimAssessment{
+				reason:       invalidClaimAssessmentReasonNoUnclaim,
+				cutBlock:     claim.BlockNum,
+				cutClaim:     &cutClaim,
+				culpritClaim: &blockingClaim,
+			}, nil
+		}
+
+		if recoverableClaim == nil {
+			currentClaim := claim
+			recoverableClaim = &invalidClaimAssessment{
+				reason:            invalidClaimAssessmentReasonRecoverable,
+				culpritClaim:      &currentClaim,
+				culpritUnclaim:    unclaimBlock,
+				hasCulpritUnclaim: true,
 			}
 		}
 	}
 
-	return earliestCutBlock, nil
+	return recoverableClaim, nil
+}
+
+func (f *baseFlow) logInvalidClaimNeedsUnclaim(
+	certParams *types.CertificateBuildParams,
+	assessment *invalidClaimAssessment,
+) {
+	if assessment == nil || assessment.culpritClaim == nil {
+		return
+	}
+
+	msg := fmt.Sprintf("blocking invalid claim requires an unclaim before aggsender can proceed. %s, synced_cert_range=%d-%d",
+		formatClaimForLogs(*assessment.culpritClaim), certParams.FromBlock, certParams.ToBlock)
+	if assessment.cutClaim != nil && assessment.cutClaim.GlobalIndex != nil &&
+		assessment.culpritClaim.GlobalIndex != nil &&
+		assessment.cutClaim.GlobalIndex.Cmp(assessment.culpritClaim.GlobalIndex) != 0 {
+		msg += fmt.Sprintf(", current_cut_claim_block=%d, current_cut_claim_global_index=%s",
+			assessment.cutClaim.BlockNum, assessment.cutClaim.GlobalIndex.String())
+	}
+	f.log.Warnf("%s. No matching unclaim was found in the current DB-backed candidate certificate. An unclaim needs to happen for aggsender to get unstuck.", msg)
+}
+
+func (f *baseFlow) logLimiterBlockedInvalidClaim(
+	fullCert *types.CertificateBuildParams,
+	limitedCert *types.CertificateBuildParams,
+	limiterName string,
+) error {
+	if fullCert == nil || limitedCert == nil || limitedCert.ToBlock >= fullCert.ToBlock {
+		return nil
+	}
+
+	cache := newGERStatusCache()
+	unclaimMap := make(map[string]uint64)
+	for _, unclaim := range fullCert.Unclaims {
+		key := bigIntKey(unclaim.GlobalIndex)
+		if key == "" {
+			continue
+		}
+		if existing, ok := unclaimMap[key]; !ok || unclaim.BlockNumber < existing {
+			unclaimMap[key] = unclaim.BlockNumber
+		}
+	}
+
+	for _, claim := range fullCert.Claims {
+		if claim.BlockNum > limitedCert.ToBlock {
+			break
+		}
+
+		isGERFinalized, err := f.getGERFinalizedStatus(cache, claim.GlobalExitRoot, fullCert.L1InfoTreeLeafCount)
+		if err != nil {
+			return fmt.Errorf("error checking if claim's GER %s is finalized: %w", claim.GlobalExitRoot.String(), err)
+		}
+		if isGERFinalized {
+			continue
+		}
+
+		unclaimBlock, hasUnclaim := unclaimMap[bigIntKey(claim.GlobalIndex)]
+		if !hasUnclaim || unclaimBlock <= limitedCert.ToBlock {
+			continue
+		}
+
+		suggestion := fmt.Sprintf("increase %s so block %d fits in the same certificate as this claim", limiterName, unclaimBlock)
+		if limiterName == "MaxL2BlockNumber" {
+			suggestion = fmt.Sprintf("increase MaxL2BlockNumber to at least %d", unclaimBlock)
+		}
+
+		f.log.Warnf("%s prevents aggsender from including the unclaim that clears a blocking invalid claim. %s, required_unclaim_block=%d, full_cert_range=%d-%d, limited_cert_range=%d-%d. Suggested config change: %s.",
+			limiterName, formatClaimForLogs(claim), unclaimBlock, fullCert.FromBlock, fullCert.ToBlock, limitedCert.FromBlock, limitedCert.ToBlock, suggestion)
+		return nil
+	}
+
+	return nil
+}
+
+func formatClaimForLogs(claim bridgesync.Claim) string {
+	amount := "nil"
+	if claim.Amount != nil {
+		amount = claim.Amount.String()
+	}
+
+	return fmt.Sprintf("claim_block=%d, global_index=%s, token=%s, amount=%s",
+		claim.BlockNum, bigIntKey(claim.GlobalIndex), claim.OriginAddress.Hex(), amount)
+}
+
+func bigIntKey(value *big.Int) string {
+	if value == nil {
+		return "nil"
+	}
+
+	return value.String()
+}
+
+func logLimiterBlockedInvalidClaim(
+	base types.AggsenderFlowBaser,
+	fullCert *types.CertificateBuildParams,
+	limitedCert *types.CertificateBuildParams,
+	limiterName string,
+) {
+	concreteBaseFlow, ok := base.(*baseFlow)
+	if !ok {
+		return
+	}
+
+	if err := concreteBaseFlow.logLimiterBlockedInvalidClaim(fullCert, limitedCert, limiterName); err != nil {
+		concreteBaseFlow.log.Warnf("unable to assess non-finalized claim after %s reduction: %v", limiterName, err)
+	}
 }

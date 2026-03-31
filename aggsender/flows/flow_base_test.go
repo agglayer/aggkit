@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -21,6 +22,53 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+type capturedLogEntry struct {
+	level string
+	msg   string
+}
+
+type captureLogger struct {
+	entries []capturedLogEntry
+}
+
+func (l *captureLogger) add(level string, format string, args ...interface{}) {
+	l.entries = append(l.entries, capturedLogEntry{
+		level: level,
+		msg:   fmt.Sprintf(format, args...),
+	})
+}
+
+func (l *captureLogger) Panicf(format string, args ...interface{}) { l.add("panic", format, args...) }
+func (l *captureLogger) Fatalf(format string, args ...interface{}) { l.add("fatal", format, args...) }
+func (l *captureLogger) Info(args ...interface{})                  { l.add("info", "%s", fmt.Sprint(args...)) }
+func (l *captureLogger) Infof(format string, args ...interface{})  { l.add("info", format, args...) }
+func (l *captureLogger) Error(args ...interface{})                 { l.add("error", "%s", fmt.Sprint(args...)) }
+func (l *captureLogger) Errorf(format string, args ...interface{}) { l.add("error", format, args...) }
+func (l *captureLogger) Warn(args ...interface{})                  { l.add("warn", "%s", fmt.Sprint(args...)) }
+func (l *captureLogger) Warnf(format string, args ...interface{})  { l.add("warn", format, args...) }
+func (l *captureLogger) Debug(args ...interface{})                 { l.add("debug", "%s", fmt.Sprint(args...)) }
+func (l *captureLogger) Debugf(format string, args ...interface{}) { l.add("debug", format, args...) }
+
+func (l *captureLogger) hasEntry(level string, parts ...string) bool {
+	for _, entry := range l.entries {
+		if entry.level != level {
+			continue
+		}
+		matches := true
+		for _, part := range parts {
+			if !strings.Contains(entry.msg, part) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+
+	return false
+}
 
 func Test_baseFlow_limitCertSize(t *testing.T) {
 	tests := []struct {
@@ -1837,6 +1885,132 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_AllLaterClaimsAlsoUnset
 	require.NoError(t, err)
 	require.Equal(t, certParams.FromBlock, result.FromBlock)
 	require.Equal(t, certParams.ToBlock, result.ToBlock)
+}
+
+func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_LogsBlockingClaimWithoutUnclaim(t *testing.T) {
+	ger := common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	logger := &captureLogger{}
+	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(false, nil).Once()
+	mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
+		log:                   logger,
+	}
+
+	result, err := f.adjustCertificateIfNonFinalizedClaims(&types.CertificateBuildParams{
+		FromBlock:           1,
+		ToBlock:             20,
+		L1InfoTreeLeafCount: 1,
+		Claims: []bridgesync.Claim{{
+			BlockNum:       5,
+			GlobalIndex:    big.NewInt(42),
+			OriginAddress:  common.HexToAddress("0x00000000000000000000000000000000000000aa"),
+			Amount:         big.NewInt(77),
+			GlobalExitRoot: ger,
+		}},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, uint64(4), result.ToBlock)
+	require.True(t, logger.hasEntry("warn",
+		"blocking invalid claim requires an unclaim before aggsender can proceed",
+		"claim_block=5",
+		"global_index=42",
+		"token=0x00000000000000000000000000000000000000AA",
+		"amount=77",
+		"An unclaim needs to happen for aggsender to get unstuck",
+	))
+}
+
+func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_LogsRecoverableInvalidClaim(t *testing.T) {
+	ger := common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	logger := &captureLogger{}
+	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(false, nil).Once()
+	mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
+		log:                   logger,
+	}
+
+	result, err := f.adjustCertificateIfNonFinalizedClaims(&types.CertificateBuildParams{
+		FromBlock:           1,
+		ToBlock:             20,
+		L1InfoTreeLeafCount: 1,
+		Claims: []bridgesync.Claim{{
+			BlockNum:       5,
+			GlobalIndex:    big.NewInt(43),
+			OriginAddress:  common.HexToAddress("0x00000000000000000000000000000000000000bb"),
+			Amount:         big.NewInt(88),
+			GlobalExitRoot: ger,
+		}},
+		Unclaims: []bridgesynctypes.Unclaim{{
+			GlobalIndex: big.NewInt(43),
+			BlockNumber: 18,
+		}},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, uint64(20), result.ToBlock)
+	require.True(t, logger.hasEntry("info",
+		"found invalid claim with matching unclaim in current cert, aggsender can proceed",
+		"claim_block=5",
+		"global_index=43",
+		"token=0x00000000000000000000000000000000000000bb",
+		"amount=88",
+		"unclaim_block=18",
+	))
+}
+
+func Test_baseFlow_limitCertSize_LogsWhenLimiterSeparatesClaimFromUnclaim(t *testing.T) {
+	ger := common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+	logger := &captureLogger{}
+	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(false, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
+		log:                   logger,
+		cfg:                   NewBaseFlowConfig(3000, 0, false, true),
+	}
+
+	result, err := f.LimitCertSize(&types.CertificateBuildParams{
+		FromBlock:           1,
+		ToBlock:             10,
+		L1InfoTreeLeafCount: 1,
+		Bridges: []bridgesync.Bridge{
+			{BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10},
+		},
+		Claims: []bridgesync.Claim{{
+			BlockNum:       5,
+			GlobalIndex:    big.NewInt(99),
+			OriginAddress:  common.HexToAddress("0x00000000000000000000000000000000000000cc"),
+			Amount:         big.NewInt(99),
+			GlobalExitRoot: ger,
+		}},
+		Unclaims: []bridgesynctypes.Unclaim{{
+			GlobalIndex: big.NewInt(99),
+			BlockNumber: 10,
+		}},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, uint64(9), result.ToBlock)
+	require.True(t, logger.hasEntry("warn",
+		"MaxCertSize prevents aggsender from including the unclaim that clears a blocking invalid claim",
+		"claim_block=5",
+		"global_index=99",
+		"token=0x00000000000000000000000000000000000000cc",
+		"amount=99",
+		"required_unclaim_block=10",
+		"Suggested config change: increase MaxCertSize so block 10 fits in the same certificate as this claim",
+	))
 }
 
 func mustBigIntFromString(t *testing.T, value string) *big.Int {

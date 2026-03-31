@@ -106,10 +106,12 @@ func (p *PPBuilderFlow) GetCertificateBuildParams(ctx context.Context) (*types.C
 	}
 	if p.maxL2BlockLimiter != nil {
 		// If the feature is enabled, we need to adapt the build params
+		originalBuildParams := buildParams
 		buildParams, err = p.maxL2BlockLimiter.AdaptCertificate(buildParams)
 		if err != nil {
 			return nil, fmt.Errorf("ppFlow - error adapting  certificate to MaxL2Block. Err: %w", err)
 		}
+		logLimiterBlockedInvalidClaim(p.baseFlow, originalBuildParams, buildParams, "MaxL2BlockNumber")
 	}
 
 	if err := p.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {

@@ -222,10 +222,12 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		}
 		if a.featureMaxL2Block != nil {
 			// If the feature is enabled, we need to adapt the build params
+			originalBuildParams := buildParams
 			buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
 			if err != nil {
 				return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block.Err: %w", err)
 			}
+			logLimiterBlockedInvalidClaim(a.baseFlow, originalBuildParams, buildParams, "MaxL2BlockNumber")
 		}
 
 		if proof == nil {
@@ -259,10 +261,12 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 	}
 	if a.featureMaxL2Block != nil {
 		// If the feature is enabled, we need to adapt the build params
+		originalBuildParams := buildParams
 		buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block. Err: %w", err)
 		}
+		logLimiterBlockedInvalidClaim(a.baseFlow, originalBuildParams, buildParams, "MaxL2BlockNumber")
 	}
 
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
