@@ -685,3 +685,84 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 
 	return certParams, nil
 }
+
+// validateUnclaimsForUnfinalizedGERs validates unclaims for unfinalized GERs that don't exist on L1
+// in a single pass. This function combines two checks:
+//  1. Checks if any claim with unfinalized GER that doesn't exist on L1 has an unclaim that appears
+//     after a later unfinalized claim. If so, returns the block number to cut at.
+//  2. Validates that any previous claims with unfinalized GERs that don't exist on L1 have their
+//     unclaims before the current claim's block. If a claim without an unclaim is found, returns
+//     the block number to cut at.
+//
+// Returns the earliest cut block found (or 0 if no cut is needed) and an error if validation fails.
+func (f *baseFlow) validateUnclaimsForUnfinalizedGERs(
+	certParams *types.CertificateBuildParams,
+	cache *gerStatusCache) (*invalidClaimAssessment, error) {
+	unclaimMap := earliestUnclaimByGlobalIndex(certParams.Unclaims)
+
+	var recoverableClaim *invalidClaimAssessment
+
+	for i, claim := range certParams.Claims {
+		isGERFinalized, err := f.getGERFinalizedStatus(cache, claim.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+		if err != nil {
+			return nil, fmt.Errorf("error checking if claim's GER %s is finalized: %w",
+				claim.GlobalExitRoot.String(), err)
+		}
+		if isGERFinalized {
+			continue
+		}
+
+		unclaimBlock, hasUnclaim := unclaimMap[claim.GlobalIndex.String()]
+		if !hasUnclaim {
+			currentClaim := claim
+			return &invalidClaimAssessment{
+				reason:       invalidClaimAssessmentReasonNoUnclaim,
+				cutBlock:     claim.BlockNum,
+				cutClaim:     &currentClaim,
+				culpritClaim: &currentClaim,
+			}, nil
+		}
+
+		for j := i + 1; j < len(certParams.Claims); j++ {
+			laterClaim := certParams.Claims[j]
+			if laterClaim.BlockNum > unclaimBlock {
+				continue
+			}
+
+			isLaterGERFinalized, err := f.getGERFinalizedStatus(
+				cache, laterClaim.GlobalExitRoot, certParams.L1InfoTreeLeafCount)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if later claim's GER %s is finalized: %w",
+					laterClaim.GlobalExitRoot.String(), err)
+			}
+			if isLaterGERFinalized {
+				continue
+			}
+
+			if _, hasLaterUnclaim := unclaimMap[laterClaim.GlobalIndex.String()]; hasLaterUnclaim {
+				continue
+			}
+
+			cutClaim := claim
+			blockingClaim := laterClaim
+			return &invalidClaimAssessment{
+				reason:       invalidClaimAssessmentReasonNoUnclaim,
+				cutBlock:     claim.BlockNum,
+				cutClaim:     &cutClaim,
+				culpritClaim: &blockingClaim,
+			}, nil
+		}
+
+		if recoverableClaim == nil {
+			currentClaim := claim
+			recoverableClaim = &invalidClaimAssessment{
+				reason:            invalidClaimAssessmentReasonRecoverable,
+				culpritClaim:      &currentClaim,
+				culpritUnclaim:    unclaimBlock,
+				hasCulpritUnclaim: true,
+			}
+		}
+	}
+
+	return recoverableClaim, nil
+}
