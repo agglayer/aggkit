@@ -33,7 +33,8 @@ func (f *baseFlow) logInvalidClaimNeedsUnclaim(
 		return
 	}
 
-	msg := fmt.Sprintf("blocking invalid claim requires an unclaim before aggsender can proceed. %s, synced_cert_range=%d-%d",
+	msg := fmt.Sprintf(
+		"blocking invalid claim requires an unclaim before aggsender can proceed. %s, synced_cert_range=%d-%d",
 		formatClaimForLogs(*assessment.culpritClaim), certParams.FromBlock, certParams.ToBlock)
 	if assessment.cutClaim != nil && assessment.cutClaim.GlobalIndex != nil &&
 		assessment.culpritClaim.GlobalIndex != nil &&
@@ -41,7 +42,11 @@ func (f *baseFlow) logInvalidClaimNeedsUnclaim(
 		msg += fmt.Sprintf(", current_cut_claim_block=%d, current_cut_claim_global_index=%s",
 			assessment.cutClaim.BlockNum, assessment.cutClaim.GlobalIndex.String())
 	}
-	f.log.Warnf("%s. No matching unclaim was found in the current DB-backed candidate certificate. An unclaim needs to happen for aggsender to get unstuck.", msg)
+	f.log.Warnf(
+		"%s. No matching unclaim was found in the current DB-backed candidate certificate. "+
+			"An unclaim needs to happen for aggsender to get unstuck.",
+		msg,
+	)
 }
 
 func (f *baseFlow) logLimiterBlockedInvalidClaim(
@@ -74,13 +79,28 @@ func (f *baseFlow) logLimiterBlockedInvalidClaim(
 			continue
 		}
 
-		suggestion := fmt.Sprintf("increase %s so block %d fits in the same certificate as this claim", limiterName, unclaimBlock)
+		suggestion := fmt.Sprintf(
+			"increase %s so block %d fits in the same certificate as this claim",
+			limiterName,
+			unclaimBlock,
+		)
 		if limiterName == "MaxL2BlockNumber" {
 			suggestion = fmt.Sprintf("increase MaxL2BlockNumber to at least %d", unclaimBlock)
 		}
 
-		f.log.Warnf("%s prevents aggsender from including the unclaim that clears a blocking invalid claim. %s, required_unclaim_block=%d, full_cert_range=%d-%d, limited_cert_range=%d-%d. Suggested config change: %s.",
-			limiterName, formatClaimForLogs(claim), unclaimBlock, fullCert.FromBlock, fullCert.ToBlock, limitedCert.FromBlock, limitedCert.ToBlock, suggestion)
+		f.log.Warnf(
+			"%s prevents aggsender from including the unclaim that clears a blocking invalid claim. "+
+				"%s, required_unclaim_block=%d, full_cert_range=%d-%d, limited_cert_range=%d-%d. "+
+				"Suggested config change: %s.",
+			limiterName,
+			formatClaimForLogs(claim),
+			unclaimBlock,
+			fullCert.FromBlock,
+			fullCert.ToBlock,
+			limitedCert.FromBlock,
+			limitedCert.ToBlock,
+			suggestion,
+		)
 		return nil
 	}
 

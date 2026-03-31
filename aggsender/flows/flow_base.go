@@ -667,7 +667,9 @@ func (f *baseFlow) adjustCertificateIfNonFinalizedClaims(
 		return nil, fmt.Errorf("error validating unclaims for unfinalized GERs: %w", err)
 	}
 	if assessment != nil && assessment.reason == invalidClaimAssessmentReasonRecoverable {
-		f.log.Infof("found invalid claim with matching unclaim in current cert, aggsender can proceed. %s, unclaim_block=%d, cert_range=%d-%d",
+		f.log.Infof(
+			"found invalid claim with matching unclaim in current cert, aggsender can proceed. "+
+				"%s, unclaim_block=%d, cert_range=%d-%d",
 			formatClaimForLogs(*assessment.culpritClaim), assessment.culpritUnclaim, certParams.FromBlock, certParams.ToBlock)
 	}
 	if assessment != nil && assessment.cutBlock != 0 {
