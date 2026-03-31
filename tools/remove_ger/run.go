@@ -3,6 +3,7 @@ package remove_ger
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -10,7 +11,9 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/agglayer/aggkit/bridgeservice/client"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
@@ -21,6 +24,21 @@ const (
 	dialTimeout     = 10 * time.Second
 	recoveryTimeout = 10 * time.Minute
 )
+
+type l2BridgeContract interface {
+	IsEmergencyState(opts *bind.CallOpts) (bool, error)
+	ActivateEmergencyState(opts *bind.TransactOpts) (*gethtypes.Transaction, error)
+	DeactivateEmergencyState(opts *bind.TransactOpts) (*gethtypes.Transaction, error)
+	UnsetMultipleClaims(opts *bind.TransactOpts, globalIndexes []*big.Int) (*gethtypes.Transaction, error)
+	SetMultipleClaims(opts *bind.TransactOpts, globalIndexes []*big.Int) (*gethtypes.Transaction, error)
+	ForceEmitDetailedClaimEvent(
+		opts *bind.TransactOpts,
+		claimData []agglayerbridgel2.AgglayerBridgeL2ClaimData,
+	) (*gethtypes.Transaction, error)
+	IsClaimed(opts *bind.CallOpts, index uint32, originNetwork uint32) (bool, error)
+	ParseDetailedClaimEvent(log gethtypes.Log) (*agglayerbridgel2.Agglayerbridgel2DetailedClaimEvent, error)
+	ParseClaimEvent(log gethtypes.Log) (*agglayerbridgel2.Agglayerbridgel2ClaimEvent, error)
+}
 
 // Env holds all connections and contract bindings needed by the remove-ger tool.
 // Pass it to diagnosis and recovery methods in later chunks.
@@ -39,9 +57,11 @@ type Env struct {
 	L1GERManager *agglayerger.Agglayerger
 
 	// L2 contract bindings
-	L2Bridge     *agglayerbridgel2.Agglayerbridgel2
+	L2Bridge     l2BridgeContract
 	L2GERManager *agglayergerl2.Agglayergerl2
 	L2BridgeAddr common.Address
+
+	waitReceiptFn func(ctx context.Context, tx *gethtypes.Transaction) (*gethtypes.Receipt, error)
 }
 
 // Close closes all RPC connections. BridgeService has no Close.
@@ -171,6 +191,9 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		L2Bridge:      l2Bridge,
 		L2GERManager:  l2GER,
 		L2BridgeAddr:  cfg.BridgeL2Sync.BridgeAddr,
+		waitReceiptFn: func(ctx context.Context, tx *gethtypes.Transaction) (*gethtypes.Receipt, error) {
+			return waitForReceipt(ctx, l2Client, tx)
+		},
 	}, nil
 }
 

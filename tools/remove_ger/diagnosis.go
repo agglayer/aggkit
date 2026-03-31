@@ -108,6 +108,10 @@ func Diagnose(ctx context.Context, env *Env, gerHash common.Hash, force bool) (*
 	if err != nil {
 		return nil, fmt.Errorf("get claims by GER: %w", err)
 	}
+	claims, err = filterActiveClaims(ctx, env.L2Bridge, claims)
+	if err != nil {
+		return nil, fmt.Errorf("filter active claims by GER: %w", err)
+	}
 	if len(claims) == 0 {
 		return result, nil
 	}
@@ -171,6 +175,30 @@ func GetClaimsByGER(
 		claims = append(claims, claimResponseToClaim(cr))
 	}
 	return claims, nil
+}
+
+func filterActiveClaims(
+	ctx context.Context,
+	l2Bridge l2ClaimStateLookup,
+	claims []*claimsynctypes.Claim,
+) ([]*claimsynctypes.Claim, error) {
+	if len(claims) == 0 {
+		return nil, nil
+	}
+
+	activeClaims := make([]*claimsynctypes.Claim, 0, len(claims))
+	for _, claim := range claims {
+		active, err := isClaimStillActive(ctx, l2Bridge, claim.GlobalIndex)
+		if err != nil {
+			return nil, fmt.Errorf("global index %s: %w", claim.GlobalIndex.String(), err)
+		}
+		if !active {
+			continue
+		}
+		activeClaims = append(activeClaims, claim)
+	}
+
+	return activeClaims, nil
 }
 
 // claimResponseToClaim converts a bridge service ClaimResponse to a claimsynctypes.Claim.

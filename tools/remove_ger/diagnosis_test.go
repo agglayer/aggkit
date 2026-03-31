@@ -1,9 +1,12 @@
 package remove_ger
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -111,4 +114,30 @@ func TestBuildRecoveryPlanSteps(t *testing.T) {
 			"Restore bridge (deactivateEmergencyState)",
 		}, buildRecoveryPlanSteps(result))
 	})
+}
+
+func TestFilterActiveClaims_DropsUnsetClaims(t *testing.T) {
+	t.Helper()
+
+	activeClaim := &claimsynctypes.Claim{
+		GlobalIndex: bridgesync.GenerateGlobalIndexForNetworkID(0, 7),
+	}
+	inactiveClaim := &claimsynctypes.Claim{
+		GlobalIndex: bridgesync.GenerateGlobalIndexForNetworkID(0, 8),
+	}
+
+	bridge := &stubL2Bridge{
+		claimed: map[string]bool{
+			claimStateKey(7, 0): true,
+			claimStateKey(8, 0): false,
+		},
+	}
+
+	filtered, err := filterActiveClaims(context.Background(), bridge, []*claimsynctypes.Claim{
+		activeClaim,
+		inactiveClaim,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []*claimsynctypes.Claim{activeClaim}, filtered)
 }

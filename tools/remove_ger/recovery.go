@@ -123,12 +123,21 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 
 func stepFreezeBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts) error {
 	fmt.Println("Step: Freeze bridge (activateEmergencyState)")
+
+	inEmergency, err := env.L2Bridge.IsEmergencyState(callOpts)
+	if err != nil {
+		return fmt.Errorf("check IsEmergencyState before activateEmergencyState: %w", err)
+	}
+	if inEmergency {
+		return fmt.Errorf("bridge is already in emergency state before activateEmergencyState")
+	}
+
 	tx, err := env.L2Bridge.ActivateEmergencyState(auth)
 	if err != nil {
 		return fmt.Errorf("activateEmergencyState: %w (bridge may remain in previous state)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
-	receipt, err := waitForReceipt(ctx, env.L2, tx)
+	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for activateEmergencyState receipt: %w", err)
 	}
@@ -156,7 +165,7 @@ func stepRemoveGERs(
 		return fmt.Errorf("removeGlobalExitRoots: %w (bridge may remain in emergency state)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
-	receipt, err := waitForReceipt(ctx, env.L2, tx)
+	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for removeGlobalExitRoots receipt: %w", err)
 	}
@@ -200,7 +209,7 @@ func stepRestoreBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, c
 			" (bridge remains in emergency state — manual intervention required)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
-	receipt, err := waitForReceipt(ctx, env.L2, tx)
+	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for deactivateEmergencyState receipt: %w", err)
 	}
@@ -235,7 +244,7 @@ func stepUnsetClaims(
 		return fmt.Errorf("unsetMultipleClaims: %w (bridge may remain in emergency state)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
-	receipt, err := waitForReceipt(ctx, env.L2, tx)
+	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for unsetMultipleClaims receipt: %w", err)
 	}
@@ -270,7 +279,7 @@ func stepSetClaims(
 		return fmt.Errorf("setMultipleClaims: %w (bridge may remain in emergency state)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
-	receipt, err := waitForReceipt(ctx, env.L2, tx)
+	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for setMultipleClaims receipt: %w", err)
 	}
@@ -313,7 +322,7 @@ func stepForceEmitDetailedClaimEvents(
 		return fmt.Errorf("forceEmitDetailedClaimEvent: %w (bridge may remain in emergency state)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
-	receipt, err := waitForReceipt(ctx, env.L2, tx)
+	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("wait for forceEmitDetailedClaimEvent receipt: %w", err)
 	}

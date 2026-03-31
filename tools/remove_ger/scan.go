@@ -12,6 +12,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
+	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -34,6 +35,10 @@ var (
 
 type l1GERLookup interface {
 	GlobalExitRootMap(opts *bind.CallOpts, gerHash [32]byte) (*big.Int, error)
+}
+
+type l2ClaimStateLookup interface {
+	IsClaimed(opts *bind.CallOpts, index uint32, originNetwork uint32) (bool, error)
 }
 
 type scanClaimRecord struct {
@@ -141,6 +146,9 @@ func SetupScanEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		L2Bridge:     l2Bridge,
 		L2GERManager: l2GER,
 		L2BridgeAddr: cfg.BridgeL2Sync.BridgeAddr,
+		waitReceiptFn: func(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
+			return waitForReceipt(ctx, l2Client, tx)
+		},
 	}, nil
 }
 
@@ -172,7 +180,7 @@ func ScanInvalidClaims(
 		return nil, 0, 0, err
 	}
 
-	usages, err := findInvalidGERUsages(ctx, env.L1GERManager, claims)
+	usages, err := findInvalidGERUsages(ctx, env.L1GERManager, env.L2Bridge, claims)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -283,6 +291,7 @@ func parseClaimLog(ctx context.Context, env *Env, lg types.Log) (scanClaimRecord
 func findInvalidGERUsages(
 	ctx context.Context,
 	l1GER l1GERLookup,
+	l2Bridge l2ClaimStateLookup,
 	claims []scanClaimRecord,
 ) ([]invalidGERUsage, error) {
 	validityCache := make(map[common.Hash]bool, len(claims))
@@ -299,6 +308,14 @@ func findInvalidGERUsages(
 			validityCache[claim.GlobalGER] = valid
 		}
 		if valid {
+			continue
+		}
+
+		active, err := isClaimStillActive(ctx, l2Bridge, claim.GlobalIdx)
+		if err != nil {
+			return nil, fmt.Errorf("check current claim state for global index %s: %w", claim.GlobalIdx.String(), err)
+		}
+		if !active {
 			continue
 		}
 
@@ -334,6 +351,33 @@ func findInvalidGERUsages(
 	})
 
 	return result, nil
+}
+
+func isClaimStillActive(ctx context.Context, l2Bridge l2ClaimStateLookup, globalIndex *big.Int) (bool, error) {
+	if globalIndex == nil {
+		return false, fmt.Errorf("global index is nil")
+	}
+
+	mainnetFlag, rollupIndex, localExitRootIndex, err := bridgesync.DecodeGlobalIndex(globalIndex)
+	if err != nil {
+		return false, fmt.Errorf("decode global index: %w", err)
+	}
+
+	originNetwork := rollupIndex + 1
+	if mainnetFlag {
+		originNetwork = 0
+	}
+
+	claimed, err := l2Bridge.IsClaimed(
+		&bind.CallOpts{Context: ctx},
+		localExitRootIndex,
+		originNetwork,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return claimed, nil
 }
 
 func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash, error) {
