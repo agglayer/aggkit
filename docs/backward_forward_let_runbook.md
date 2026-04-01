@@ -115,6 +115,10 @@ backward-forward-let --cfg aggkit-config.toml \
 The override file is only a fallback for missing certificate exits. Diagnosis and
 recovery still stay tool-driven.
 
+For the detailed fallback procedure, including AggLayer admin/debug endpoint
+prerequisites and override-file handling examples, see
+[`tools/backward_forward_let/RECOVERY_PROCEDURE.md`](../tools/backward_forward_let/RECOVERY_PROCEDURE.md).
+
 ### Step 1: fetch missing certificates from the AggLayer admin API
 
 For each certificate ID reported by the tool, call `admin_getCertificate`:
