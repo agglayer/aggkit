@@ -34,7 +34,7 @@ type certStorager interface {
 
 // RunSendCert is the CLI action for the send-cert subcommand.
 // It reads a certificate from JSON (--cert-json or --cert-file), sends it to the agglayer,
-// and stores it in the aggsender SQLite DB.
+// and optionally stores it in the aggsender SQLite DB.
 func RunSendCert(c *cli.Context) error {
 	// Load config.
 	cfg, err := LoadConfig(c)
@@ -59,11 +59,13 @@ func RunSendCert(c *cli.Context) error {
 		return fmt.Errorf("create agglayer client: %w", err)
 	}
 
-	// Open aggsender DB.
-	dbPath := c.String("db-path")
-	storage, err := openAggsenderStorage(logger, dbPath)
-	if err != nil {
-		return err
+	var storage certStorager
+	if !c.Bool("no-db") {
+		dbPath := c.String("db-path")
+		storage, err = openAggsenderStorage(logger, dbPath)
+		if err != nil {
+			return err
+		}
 	}
 
 	return sendCertificate(c.Context, cert, certJSON, agglayerClient, storage)
@@ -84,6 +86,11 @@ func sendCertificate(
 		return fmt.Errorf("send certificate to agglayer: %w", err)
 	}
 	fmt.Printf("Certificate sent. Hash: %s\n", certHash.Hex())
+
+	if storage == nil {
+		fmt.Println("Skipping aggsender DB storage (--no-db).")
+		return nil
+	}
 
 	// Derive FromBlock from the previous certificate so that aggsender's retry
 	// verification (verifyRetryCertStartingBlock) passes when this cert goes InError.

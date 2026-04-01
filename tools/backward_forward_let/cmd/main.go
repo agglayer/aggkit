@@ -110,9 +110,12 @@ func main() {
 					Usage:   "Path to a file containing the certificate JSON (mutually exclusive with --cert-json)",
 				},
 				&cli.StringFlag{
-					Name:     "db-path",
-					Usage:    "Path to the aggsender SQLite DB file (e.g. /path/to/aggsender.sqlite)",
-					Required: true,
+					Name:  "db-path",
+					Usage: "Path to the aggsender SQLite DB file (e.g. /path/to/aggsender.sqlite)",
+				},
+				&cli.BoolFlag{
+					Name:  "no-db",
+					Usage: "Send the certificate to the agglayer without storing it in the aggsender DB",
 				},
 				&cli.StringFlag{
 					Name:  "signer-key-path",

@@ -142,7 +142,7 @@ Flags:
 
 ### `backward-forward-let send-cert`
 
-Send a certificate JSON to the AggLayer and store it in the aggsender DB.
+Send a certificate JSON to the AggLayer and optionally store it in the aggsender DB.
 
 This is primarily useful for controlled staging drills and test tooling.
 
@@ -155,17 +155,28 @@ backward-forward-let send-cert \
   --db-path /path/to/aggsender.sqlite
 ```
 
+For fallback-mechanism drills where aggsender must not retain the certificate, send to
+AggLayer only:
+
+```bash
+backward-forward-let send-cert \
+  --cfg agglayer-only.toml \
+  --cert-file /tmp/cert.json \
+  --no-db
+```
+
 Flags:
 
 - `--cfg`, `-c`: config file containing at least `AgglayerClient`
 - `--cert-json`: certificate JSON string
 - `--cert-file`, `-f`: certificate JSON file
 - `--db-path`: aggsender SQLite DB path
+- `--no-db`: skip aggsender DB storage entirely
 
 Behavior:
 
 - sends the certificate to the AggLayer,
-- stores it in aggsender DB as the last sent certificate,
+- stores it in aggsender DB as the last sent certificate unless `--no-db` is set,
 - derives `FromBlock` from the previous certificate when possible so aggsender retry logic remains coherent.
 
 ### `backward-forward-let craft-cert`
@@ -232,6 +243,8 @@ To simulate divergence on a staging network:
 1. Stop aggkit/aggsender so no genuine certificate races with the drill.
 2. Craft a malicious certificate with `craft-cert`.
 3. Submit it with `send-cert`.
+   Use `--no-db` if you specifically want to test the fallback path where aggsender cannot
+   provide certificate bridge exits and operators must use the AggLayer admin/debug endpoint.
 4. Restart aggkit/aggsender and wait for the certificate to settle.
 5. Optionally create extra real L2 bridges if you want a Case 2 or Case 4 drill.
 6. Run `backward-forward-let --cfg ...` to diagnose and recover.
