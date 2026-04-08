@@ -1,6 +1,7 @@
 package types
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgesync"
@@ -87,4 +88,32 @@ func TestGetClaimsFilteringUnclaims_NoUnclaimsReturnsCopy(t *testing.T) {
 	require.Equal(t, params.Claims, filtered)
 	filtered[0].BlockNum = 99
 	require.Equal(t, uint64(10), params.Claims[0].BlockNum)
+}
+
+func TestGetClaimsFilteringUnclaims_IgnoresNilGlobalIndexes(t *testing.T) {
+	t.Parallel()
+
+	matchingIndex := big.NewInt(7)
+	otherIndex := big.NewInt(8)
+	params := &CertificateBuildParams{
+		Claims: []claimsynctypes.Claim{
+			{GlobalIndex: nil, BlockNum: 10},
+			{GlobalIndex: matchingIndex, BlockNum: 11},
+			{GlobalIndex: otherIndex, BlockNum: 12},
+		},
+		Unclaims: []claimsynctypes.Unclaim{
+			{GlobalIndex: nil, BlockNumber: 20},
+			{GlobalIndex: matchingIndex, BlockNumber: 21},
+		},
+	}
+
+	require.NotPanics(t, func() {
+		filtered := params.GetClaimsFilteringUnclaims()
+
+		require.Len(t, filtered, 2)
+		require.Nil(t, filtered[0].GlobalIndex)
+		require.Equal(t, uint64(10), filtered[0].BlockNum)
+		require.Equal(t, otherIndex, filtered[1].GlobalIndex)
+		require.Equal(t, uint64(12), filtered[1].BlockNum)
+	})
 }

@@ -164,7 +164,8 @@ func (c *CertificateBuildParams) GetClaimsFilteringUnclaims() []claimsynctypes.C
 	for _, claim := range c.Claims {
 		isUnclaimed := false
 		for i, unclaim := range c.Unclaims {
-			if claim.GlobalIndex.Cmp(unclaim.GlobalIndex) == 0 && !usedUnclaims[i] {
+			if claim.GlobalIndex != nil && unclaim.GlobalIndex != nil &&
+				claim.GlobalIndex.Cmp(unclaim.GlobalIndex) == 0 && !usedUnclaims[i] {
 				isUnclaimed = true
 				usedUnclaims[i] = true
 				break
