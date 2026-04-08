@@ -50,6 +50,7 @@ func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
 			},
 			options: types.BlockRangeAdjustmentOptions{},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(1), result.FromBlock)
 				require.Equal(t, uint64(10), result.ToBlock)
 			},
@@ -62,6 +63,7 @@ func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
 			},
 			options: types.BlockRangeAdjustmentOptions{MaxL2BlockNumber: 5},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(1), result.FromBlock)
 				require.Equal(t, uint64(5), result.ToBlock)
 			},
@@ -119,6 +121,7 @@ func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
 			},
 			options: types.BlockRangeAdjustmentOptions{MaxL2BlockNumber: 9},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(1), result.FromBlock)
 				require.Equal(t, uint64(9), result.ToBlock)
 				require.Len(t, result.Bridges, 2)
@@ -143,6 +146,7 @@ func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
 			},
 			options: types.BlockRangeAdjustmentOptions{MaxL2BlockNumber: 9},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(1), result.FromBlock)
 				require.Equal(t, uint64(9), result.ToBlock)
 				require.Empty(t, result.Bridges)
@@ -300,6 +304,7 @@ func Test_baseFlow_adjustInvalidClaimsAreNotUnclaimed(t *testing.T) {
 				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
 			},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(9), result.ToBlock)
 				require.Len(t, result.Claims, 1)
 			},
@@ -316,6 +321,7 @@ func Test_baseFlow_adjustInvalidClaimsAreNotUnclaimed(t *testing.T) {
 				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
 			},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(9), result.ToBlock)
 				require.Len(t, result.Claims, 1)
 			},
@@ -346,6 +352,7 @@ func Test_baseFlow_adjustInvalidClaimsAreNotUnclaimed(t *testing.T) {
 				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
 			},
 			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
 				require.Equal(t, uint64(5), result.ToBlock)
 				require.Empty(t, result.Claims)
 			},
