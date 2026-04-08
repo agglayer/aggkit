@@ -30,7 +30,6 @@ type AggchainProverBuilderFlow struct {
 	optimisticModeQuerier types.OptimisticModeQuerier
 	aggchainProofQuerier  types.AggchainProofQuerier
 	config                AggchainProverFlowConfig
-	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
@@ -83,12 +82,6 @@ func NewAggchainProverBuilderFlow(
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	aggchainProofQuerier types.AggchainProofQuerier,
 ) *AggchainProverBuilderFlow {
-	feature := NewMaxL2BlockNumberLimiter(
-		aggChainProverConfig.maxL2BlockNumber,
-		log,
-		false, // AggchainProverFlow allows to resize retry certs
-		false, // AggchainProverFlow allows to send no bridges certs
-	)
 	return &AggchainProverBuilderFlow{
 		log:                   log,
 		storage:               storage,
@@ -99,7 +92,6 @@ func NewAggchainProverBuilderFlow(
 		optimisticModeQuerier: optimisticModeQuerier,
 		aggchainProofQuerier:  aggchainProofQuerier,
 		baseFlow:              baseFlow,
-		featureMaxL2Block:     feature,
 	}
 }
 
@@ -154,6 +146,11 @@ func (a *AggchainProverBuilderFlow) GenerateBuildParams(ctx context.Context,
 	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error generating build params: %w", err)
+	}
+
+	params, err = a.baseFlow.AdjustBlockRange(ctx, params, a.adjustmentOptions(true))
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range: %w", err)
 	}
 
 	if err := a.baseFlow.VerifyBuildParams(ctx, params); err != nil {
@@ -220,12 +217,9 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 			L1InfoTreeRootFromWhichToProve: *lastSentCert.FinalizedL1InfoTreeRoot,
 			L1InfoTreeLeafCount:            lastSentCert.L1InfoTreeLeafCount,
 		}
-		if a.featureMaxL2Block != nil {
-			// If the feature is enabled, we need to adapt the build params
-			buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
-			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block.Err: %w", err)
-			}
+		buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range: %w", err)
 		}
 
 		if proof == nil {
@@ -257,19 +251,19 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 		}
 		return nil, err
 	}
-	if a.featureMaxL2Block != nil {
-		// If the feature is enabled, we need to adapt the build params
-		buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block. Err: %w", err)
-		}
+	buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range: %w", err)
 	}
 
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
 	if buildParams.FromBlock != lastProvenBlock+1 {
-		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - setting fromBlock to %d instead of %d",
+		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - slicing fromBlock to %d instead of %d",
 			lastProvenBlock+1, buildParams.FromBlock)
-		buildParams.FromBlock = lastProvenBlock + 1
+		buildParams, err = cloneCertificateBuildParamsWithRange(buildParams, lastProvenBlock+1, buildParams.ToBlock)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adjusting fromBlock to %d: %w", lastProvenBlock+1, err)
+		}
 	}
 
 	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
@@ -302,8 +296,18 @@ func (a *AggchainProverBuilderFlow) verifyBuildParamsAndGenerateProof(
 		lastProvenBlock, buildParams.ToBlock, aggchainProof.EndBlock, len(aggchainProof.SP1StarkProof.Proof))
 
 	buildParams.AggchainProof = aggchainProof
+	buildParams, err = cloneCertificateBuildParamsWithRange(buildParams, buildParams.FromBlock, aggchainProof.EndBlock)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error adjusting certificate to prover end block %d: %w",
+			aggchainProof.EndBlock, err)
+	}
 
-	return buildParams.AdjustToBlock(aggchainProof.EndBlock)
+	buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range after prover result: %w", err)
+	}
+
+	return buildParams, nil
 }
 
 // BuildCertificate builds a certificate based on the buildParams
@@ -359,6 +363,15 @@ func (a *AggchainProverBuilderFlow) UpdateAggchainData(
 	}
 
 	return nil
+}
+
+func (a *AggchainProverBuilderFlow) adjustmentOptions(validateRootToProve bool) types.BlockRangeAdjustmentOptions {
+	return types.BlockRangeAdjustmentOptions{
+		MaxL2BlockNumber:              a.config.maxL2BlockNumber,
+		AllowResizeRetryCert:          false,
+		RequireOneBridgeInCertificate: false,
+		ValidateRootToProve:           validateRootToProve,
+	}
 }
 
 func (a *AggchainProverBuilderFlow) getLastProvenBlock(

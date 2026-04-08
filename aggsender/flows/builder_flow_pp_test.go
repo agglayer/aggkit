@@ -342,13 +342,12 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []claimsynctypes.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(true, nil).Once()
 			},
 			expectedParams: nil,
 		},
 		{
 			name:               "error checking if GER finalized",
-			forceOneBridgeExit: true,
+			forceOneBridgeExit: false,
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
@@ -358,10 +357,13 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []claimsynctypes.Claim{{GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 10}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(false, errors.New("some error")).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(
+					ctx, common.HexToHash("0x1"), common.HexToHash("0x123"),
+				).Return(nil, treetypes.Proof{}, errors.New("some error")).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(common.HexToHash("0x1")).Return(false, errors.New("some error")).Once()
 			},
 			expectedParams: nil,
-			expectedError:  "error checking if GER 0x0000000000000000000000000000000000000000000000000000000000000001 is finalized: some error",
+			expectedError:  "error adjusting block range: error checking if GER 0x0000000000000000000000000000000000000000000000000000000000000001 exists on L1: some error",
 		},
 		{
 			name:               "GER not finalized - adjust certificate build params",
@@ -393,8 +395,10 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(1)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(1)).Return(false, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger1, common.HexToHash("0x123")).
+					Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger2, common.HexToHash("0x123")).
+					Return(nil, treetypes.Proof{}, errors.New("not provable")).Once()
 				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -439,7 +443,8 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 1}, nil, nil)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger, common.HexToHash("0x123")).
+					Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -473,7 +478,9 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
 					[]bridgesync.Bridge{{}}, []claimsynctypes.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(common.HexToHash("0x1"), uint32(1)).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(
+					ctx, common.HexToHash("0x1"), common.HexToHash("0x123"),
+				).Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
 			},
 			expectedError: "GER mismatch",
 		},
@@ -507,7 +514,8 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
 				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger, uint32(1)).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger, common.HexToHash("0x123")).
+					Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -547,6 +555,9 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
+			mockL1InfoTreeQuerier.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).
+				Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Maybe()
+			mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(mock.Anything).Return(true, nil).Maybe()
 
 			params, err := ppFlow.GetCertificateBuildParams(ctx)
 			if tc.expectedError != "" {

@@ -21,7 +21,7 @@ type PPBuilderFlow struct {
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 
 	forceOneBridgeExit bool
-	maxL2BlockLimiter  types.MaxL2BlockNumberLimiterInterface
+	maxL2BlockNumber   uint64
 }
 
 // NewPPBuilderFlow returns a new instance of the PPBuilderFlow
@@ -33,19 +33,13 @@ func NewPPBuilderFlow(log types.Logger,
 	signer signertypes.Signer,
 	forceOneBridgeExit bool,
 	maxL2BlockNumber uint64) *PPBuilderFlow {
-	feature := NewMaxL2BlockNumberLimiter(
-		maxL2BlockNumber,
-		log,
-		true,
-		forceOneBridgeExit,
-	)
 	return &PPBuilderFlow{
 		certificateSigner:     signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		baseFlow:              baseFlow,
 		forceOneBridgeExit:    forceOneBridgeExit,
-		maxL2BlockLimiter:     feature,
+		maxL2BlockNumber:      maxL2BlockNumber,
 	}
 }
 
@@ -66,9 +60,9 @@ func (p *PPBuilderFlow) GenerateBuildParams(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error generating build params: %w", err)
 	}
-	params, err = p.baseFlow.LimitCertSize(params)
+	params, err = p.baseFlow.AdjustBlockRange(ctx, params, p.adjustmentOptions(true))
 	if err != nil {
-		return nil, fmt.Errorf("ppFlow - error applying limit size: %w", err)
+		return nil, fmt.Errorf("ppFlow - error adjusting block range: %w", err)
 	}
 	if err := p.baseFlow.VerifyBuildParams(ctx, params); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
@@ -104,12 +98,10 @@ func (p *PPBuilderFlow) GetCertificateBuildParams(ctx context.Context) (*types.C
 			buildParams.FromBlock, buildParams.ToBlock)
 		return nil, nil
 	}
-	if p.maxL2BlockLimiter != nil {
-		// If the feature is enabled, we need to adapt the build params
-		buildParams, err = p.maxL2BlockLimiter.AdaptCertificate(buildParams)
-		if err != nil {
-			return nil, fmt.Errorf("ppFlow - error adapting  certificate to MaxL2Block. Err: %w", err)
-		}
+
+	buildParams, err = p.baseFlow.AdjustBlockRange(ctx, buildParams, p.adjustmentOptions(false))
+	if err != nil {
+		return nil, fmt.Errorf("ppFlow - error adjusting block range: %w", err)
 	}
 
 	if err := p.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
@@ -150,4 +142,13 @@ func (p *PPBuilderFlow) UpdateAggchainData(
 // Signer returns the signer used to sign the certificate
 func (p *PPBuilderFlow) Signer() signertypes.Signer {
 	return p.certificateSigner
+}
+
+func (p *PPBuilderFlow) adjustmentOptions(validateRootToProve bool) types.BlockRangeAdjustmentOptions {
+	return types.BlockRangeAdjustmentOptions{
+		MaxL2BlockNumber:              p.maxL2BlockNumber,
+		AllowResizeRetryCert:          true,
+		RequireOneBridgeInCertificate: p.forceOneBridgeExit,
+		ValidateRootToProve:           validateRootToProve,
+	}
 }

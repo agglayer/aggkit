@@ -134,7 +134,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				NewBaseFlowConfig(tt.maxCertSize, 0, false, true))
 
-			result, err := f.LimitCertSize(tt.fullCert)
+			result, err := f.limitCertSize(tt.fullCert)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -1060,676 +1060,101 @@ func Test_baseFlow_getImportedBridgeExits(t *testing.T) {
 	}
 }
 
-func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *testing.T) {
+func Test_baseFlow_AdjustBlockRange_RootProvabilityAndUnclaims(t *testing.T) {
 	t.Parallel()
 
-	// Helper to create a GER hash
-	ger1 := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
-	ger2 := common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
-	ger3 := common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333")
-	ger4 := common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444")
-	ger5 := common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555")
-
-	// Helper to create GlobalIndex
-	globalIndex1 := big.NewInt(100)
-	globalIndex2 := big.NewInt(200)
-	globalIndex3 := big.NewInt(300)
-	globalIndex4 := big.NewInt(400)
-	globalIndex5 := big.NewInt(500)
-
-	// Helper functions for common mock patterns
-	mockTwoClaimsGER1NotOnL1GER2OnL1 := func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier, l1InfoTreeLeafCount uint32) {
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
-	}
-
-	mockThreeClaimsGER1GER2NotOnL1GER3OnL1 := func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier, l1InfoTreeLeafCount uint32) {
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger3).Return(true, nil).Once()
-	}
-
-	mockFourClaimsGER1GER2GER3NotOnL1GER4OnL1 := func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier, l1InfoTreeLeafCount uint32) {
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger3).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger4, l1InfoTreeLeafCount).Return(false, nil).Once()
-		mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger4).Return(true, nil).Once()
-	}
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	latestFinalizedRoot := &treetypes.Root{Hash: common.HexToHash("0x999"), Index: 20}
+	rootForLeafCount := &treetypes.Root{Hash: finalizedRoot, Index: 10}
+	gerProvable := common.HexToHash("0x1")
+	gerMissing := common.HexToHash("0x2")
+	globalIndex := big.NewInt(7)
 
 	tests := []struct {
 		name            string
-		certParams      *types.CertificateBuildParams
+		buildParams     *types.CertificateBuildParams
 		mockFn          func(*mocks.L1InfoTreeDataQuerier)
-		expectedError   string
 		expectedToBlock uint64
+		expectedError   string
 	}{
 		{
-			name: "valid: unclaim appears before claim with GER that exists on L1",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
+			name: "claim provable against finalized root keeps range",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        10,
+				L1InfoTreeRootFromWhichToProve: finalizedRoot,
+				L1InfoTreeLeafCount:            11,
 				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, exists on L1
-					},
+					{BlockNum: 8, GlobalExitRoot: gerProvable},
+				},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuerier.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(rootForLeafCount, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
+					Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
+			},
+			expectedToBlock: 10,
+		},
+		{
+			name: "claim not provable against finalized root gets trimmed",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        12,
+				L1InfoTreeRootFromWhichToProve: finalizedRoot,
+				L1InfoTreeLeafCount:            11,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 9, GlobalExitRoot: gerProvable},
+				},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuerier.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(rootForLeafCount, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
+					Return(nil, treetypes.Proof{}, errors.New("not provable")).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
+			},
+			expectedToBlock: 8,
+		},
+		{
+			name: "missing GER requires posterior unclaim and fails otherwise",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        12,
+				L1InfoTreeRootFromWhichToProve: finalizedRoot,
+				L1InfoTreeLeafCount:            11,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 8, GlobalExitRoot: gerMissing, GlobalIndex: globalIndex},
 				},
 				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 10, // Unclaim appears BEFORE claim at block 15
-					},
+					{BlockNumber: 7, GlobalIndex: globalIndex},
 				},
 			},
 			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockTwoClaimsGER1NotOnL1GER2OnL1(mockL1InfoTreeQuerier, uint32(10))
+				mockL1InfoTreeQuerier.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(rootForLeafCount, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, gerMissing, finalizedRoot).
+					Return(nil, treetypes.Proof{}, errors.New("missing")).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerMissing).Return(false, nil).Once()
 			},
-			expectedToBlock: 14, // Adjusted to block 14 (15 - 1)
+			expectedToBlock: 7,
 		},
 		{
-			name: "valid: no unclaim found for previous claim with unfinalized GER that doesn't exist on L1 - cert cut at block 4",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{}, // No unclaim for first claim
+			name: "root must already be finalized",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        12,
+				L1InfoTreeRootFromWhichToProve: finalizedRoot,
+				L1InfoTreeLeafCount:            11,
 			},
 			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				// First claim (block 5) - unfinalized, doesn't exist on L1
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-				// Second claim (block 15) - unfinalized, exists on L1
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).
+					Return(&treetypes.Root{Hash: finalizedRoot, Index: 30}, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
 			},
-			expectedToBlock: 4, // Cut at block 4 (5 - 1) because C1 can't be included
-		},
-		{
-			name: "valid: all claims have finalized GERs",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1,
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2,
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: both claims have finalized GERs (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(true, nil).Once()
-			},
-			expectedToBlock: 20, // No adjustment needed
-		},
-		{
-			name: "valid: claim with unfinalized GER that exists on L1, but no previous claims with non-existent GERs",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Finalized
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims
-				// First claim - finalized
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
-				// Second claim - unfinalized, exists on L1
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
-			},
-			expectedToBlock: 14, // Adjusted to block 14 (15 - 1)
-		},
-		{
-			name: "valid: multiple claims with unfinalized GERs not existing on L1, missing unclaims - cert cut at block 4",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       10,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 12, // Has unclaim
-					},
-					// Missing unclaim for globalIndex2
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger3).Return(true, nil).Once()
-			},
-			expectedToBlock: 4, // Cut at block 4 (5 - 1) because block 5's unclaim at 12 requires including block 10 which is unfinalized
-		},
-		{
-			name: "valid: multiple claims with unfinalized GERs not existing on L1, all have unclaims before earliest existent GER",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       10,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 8, // Before block 15
-					},
-					{
-						GlobalIndex: globalIndex2,
-						BlockNumber: 12, // Before block 15
-					},
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockThreeClaimsGER1GER2NotOnL1GER3OnL1(mockL1InfoTreeQuerier, uint32(10))
-			},
-			expectedToBlock: 14, // Adjusted to block 14 (15 - 1)
-		},
-		{
-			name: "valid: one unclaim appears after claim with GER that exists on L1 - cert cut at block 9",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       10,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 8, // Before block 15 - valid
-					},
-					{
-						GlobalIndex: globalIndex2,
-						BlockNumber: 18, // After block 15 - but block 15 can't be included
-					},
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockThreeClaimsGER1GER2NotOnL1GER3OnL1(mockL1InfoTreeQuerier, uint32(10))
-			},
-			expectedToBlock: 9, // Cut at block 9 (10 - 1) because block 10's unclaim at 18 requires including block 15 which is unfinalized
-		},
-		{
-			name: "valid: complex scenario with 5 claims - mix of finalized, unfinalized existing, and unfinalized not existing",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             50,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Finalized
-					},
-					{
-						BlockNum:       10,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Finalized
-					},
-					{
-						BlockNum:       20,
-						GlobalIndex:    globalIndex4,
-						GlobalExitRoot: ger4, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       25,
-						GlobalIndex:    globalIndex5,
-						GlobalExitRoot: ger5, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex2,
-						BlockNumber: 12, // Before block 25
-					},
-					{
-						GlobalIndex: globalIndex4,
-						BlockNumber: 22, // Before block 25
-					},
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger3, uint32(10)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger4, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger4).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger5, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger5).Return(true, nil).Once()
-			},
-			expectedToBlock: 24, // Adjusted to block 24 (25 - 1)
-		},
-		{
-			name: "valid: multiple claims with unfinalized GERs not existing on L1, one missing unclaim - cert cut at block 4",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       8,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       12,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       20,
-						GlobalIndex:    globalIndex4,
-						GlobalExitRoot: ger4, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 15, // Has unclaim
-					},
-					{
-						GlobalIndex: globalIndex3,
-						BlockNumber: 18, // Has unclaim
-					},
-					// Missing unclaim for globalIndex2
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockFourClaimsGER1GER2GER3NotOnL1GER4OnL1(mockL1InfoTreeQuerier, uint32(10))
-			},
-			expectedToBlock: 4, // Cut at block 4 (5 - 1) because block 5's unclaim at 15 requires including block 8 which is unfinalized
-		},
-		{
-			name: "valid: unclaims at exact boundary for multiple claims",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       10,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 14, // Exactly at boundary
-					},
-					{
-						GlobalIndex: globalIndex2,
-						BlockNumber: 14, // Exactly at boundary
-					},
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockThreeClaimsGER1GER2NotOnL1GER3OnL1(mockL1InfoTreeQuerier, uint32(10))
-			},
-			expectedToBlock: 14, // Create cert till 14 as 5 and 10 have unclaims before 15 which is valid
-		},
-		{
-			name: "valid: unclaim appears at or after block with GER that exists on L1 - cert cut at block 4",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 15, // Exactly at block 15, but block 15 can't be included
-					},
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
-			},
-			expectedToBlock: 4, // Cut at block 4 (5 - 1) because block 5's unclaim at 15 requires including block 15 which is unfinalized
-		},
-		{
-			name: "valid: multiple unfinalized GERs existing on L1, earliest one triggers adjustment",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             40,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Finalized
-					},
-					{
-						BlockNum:       10,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, exists on L1 (earliest)
-					},
-					{
-						BlockNum:       20,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, exists on L1
-					},
-					{
-						BlockNum:       30,
-						GlobalIndex:    globalIndex4,
-						GlobalExitRoot: ger4, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
-			},
-			expectedToBlock: 9, // Adjusted to block 9 (10 - 1) - earliest unfinalized existent GER
-		},
-		{
-			name: "valid: multiple claims without unclaims, cert cut at earliest problematic claim",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             30,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1, has unclaim
-					},
-					{
-						BlockNum:       8,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, doesn't exist on L1, no unclaim (earliest problematic)
-					},
-					{
-						BlockNum:       12,
-						GlobalIndex:    globalIndex3,
-						GlobalExitRoot: ger3, // Unfinalized, doesn't exist on L1, no unclaim
-					},
-					{
-						BlockNum:       20,
-						GlobalIndex:    globalIndex4,
-						GlobalExitRoot: ger4, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{
-					{
-						GlobalIndex: globalIndex1,
-						BlockNumber: 7, // C1 has unclaim
-					},
-					// C2 and C3 have no unclaims
-				},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				mockFourClaimsGER1GER2GER3NotOnL1GER4OnL1(mockL1InfoTreeQuerier, uint32(10))
-			},
-			expectedToBlock: 7, // Cut at block 7 (8 - 1) because C2 can't be included
-		},
-		{
-			name: "invalid: claim at start block without unclaim, later claim with GER on L1 - cannot create cert",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       1, // At start block
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1, // Unfinalized, doesn't exist on L1, no unclaim
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2, // Unfinalized, exists on L1
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{}, // No unclaim for C1
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
-			},
-			expectedError: "cannot create certificate: claim at block 1 (start block 1) cannot be included and no valid blocks before it",
-		},
-		{
-			name: "invalid: error checking if GER is finalized",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1,
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, errors.New("some error")).Once()
-			},
-			expectedError: "error checking if GER",
-		},
-		{
-			name: "invalid: error checking if GER exists on L1",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1,
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger1).Return(false, errors.New("some error")).Once()
-			},
-			expectedError: "error checking if GER",
-		},
-		{
-			name: "invalid: error checking if GER is finalized for second claim",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1,
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2,
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, errors.New("some error")).Once()
-			},
-			expectedError: "error checking if GER",
-		},
-		{
-			name: "invalid: error checking if GER exists on L1 for second claim",
-			certParams: &types.CertificateBuildParams{
-				FromBlock:           1,
-				ToBlock:             20,
-				L1InfoTreeLeafCount: 10,
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:       5,
-						GlobalIndex:    globalIndex1,
-						GlobalExitRoot: ger1,
-					},
-					{
-						BlockNum:       15,
-						GlobalIndex:    globalIndex2,
-						GlobalExitRoot: ger2,
-					},
-				},
-				Unclaims: []claimsynctypes.Unclaim{},
-			},
-			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				// First pass: check all claims (cached results will be reused in subsequent calls)
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger1, uint32(10)).Return(true, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(10)).Return(false, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(false, errors.New("some error")).Once()
-			},
-			expectedError: "error checking if GER",
+			expectedError: "not finalized yet",
 		},
 	}
 
@@ -1748,19 +1173,20 @@ func Test_baseFlow_adjustCertificateIfNonFinalizedClaims_UnclaimValidation(t *te
 				log:                   log.WithFields("test", t.Name()),
 			}
 
-			result, err := f.adjustCertificateIfNonFinalizedClaims(tc.certParams)
+			result, err := f.AdjustBlockRange(ctx, tc.buildParams, types.BlockRangeAdjustmentOptions{
+				ValidateRootToProve: true,
+			})
 
 			if tc.expectedError != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError)
 				require.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				require.Equal(t, tc.expectedToBlock, result.ToBlock)
+				return
 			}
 
-			mockL1InfoTreeQuerier.AssertExpectations(t)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tc.expectedToBlock, result.ToBlock)
 		})
 	}
 }
