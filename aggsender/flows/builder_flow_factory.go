@@ -139,7 +139,6 @@ func NewBuilderFlow(
 			storage,
 			commonFlowComponents.L1InfoTreeDataQuerier,
 			commonFlowComponents.L2BridgeQuerier,
-			l1Client,
 			commonFlowComponents.Signer,
 			optimisticModeQuerier,
 			aggchainProofQuerier,
