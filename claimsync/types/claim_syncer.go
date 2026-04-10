@@ -3,6 +3,8 @@ package types
 import (
 	"context"
 	"math/big"
+
+	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
 type ClaimSyncer interface {
@@ -18,4 +20,5 @@ type ClaimSyncer interface {
 
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error)
 	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error)
+	GetLatestBlockNumByGlobalIndexFromRPC(ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality) (uint64, bool, error)
 }

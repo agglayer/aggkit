@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	goSync "sync"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -30,9 +31,18 @@ import (
 var (
 	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
+	// AgglayerBridgeL2 version >= v12.2.1
 	detailedClaimEventSignature = crypto.Keccak256Hash([]byte(
 		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
 			"uint256,bytes32,bytes32,uint8,uint32," +
+			"address,uint32,address,uint256,bytes)",
+	))
+	// This event belongs to the AgglayerBridgeL2 v12.1.6 - v12.2.0
+	// Is a intermediate version, but not valid
+	// because the field uint8 leafType, is missing
+	detailedClaimEventOutdatedSignature = crypto.Keccak256Hash([]byte(
+		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
+			"uint256,bytes32,bytes32,uint32," +
 			"address,uint32,address,uint256,bytes)",
 	))
 	unsetClaimEventSignature = crypto.Keccak256Hash([]byte("UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)"))
@@ -107,6 +117,14 @@ func buildAppender(
 	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[setClaimEventSignature] = buildSetClaimEventHandler(deployment.agglayerBridgeL2)
+	appender[detailedClaimEventOutdatedSignature] = buildOutdatedContractWarningHandler(bridgeAddr, log)
+
+	log.Debugf("claimEventSignature:                 %s", claimEventSignature.Hex())
+	log.Debugf("claimEventSignaturePreEtrog:         %s", claimEventSignaturePreEtrog.Hex())
+	log.Debugf("detailedClaimEventSignature:         %s", detailedClaimEventSignature.Hex())
+	log.Debugf("detailedClaimEventOutdatedSignature: %s", detailedClaimEventOutdatedSignature.Hex())
+	log.Debugf("unsetClaimEventSignature:            %s", unsetClaimEventSignature.Hex())
+	log.Debugf("setClaimEventSignature:              %s", setClaimEventSignature.Hex())
 
 	return appender, nil
 }
@@ -160,6 +178,24 @@ func resolveBridgeDeployment(
 		agglayerBridge:   agglayerBridge,
 		agglayerBridgeL2: agglayerBridgeL2,
 	}, nil
+}
+
+// buildOutdatedContractWarningHandler returns a handler that warns once when the bridge contract
+// emits the old DetailedClaimEvent variant (without the leafType field, v12.1.6–v12.2.0).
+// The event is dropped — callers should upgrade the contract to >= v12.2.1.
+func buildOutdatedContractWarningHandler(bridgeAddr common.Address, logger aggkitcommon.Logger) func(*sync.EVMBlock, types.Log) error {
+	var once goSync.Once
+	return func(b *sync.EVMBlock, l types.Log) error {
+		once.Do(func() {
+			logger.Warnf(
+				"claimsync: detected outdated DetailedClaimEvent (missing leafType field) "+
+					"from bridge contract %s at block %d. "+
+					"This event will be ignored. Please upgrade the bridge contract to >= v12.2.1.",
+				bridgeAddr.Hex(), l.BlockNumber,
+			)
+		})
+		return nil
+	}
 }
 
 // buildClaimEventHandler creates a handler for the ClaimEvent log.
@@ -364,6 +400,37 @@ func buildSetClaimEventHandler(
 			GlobalIndex: new(big.Int).SetBytes(event.GlobalIndex[:]),
 		}})
 		return nil
+	}
+}
+
+// NewPreferDetailedClaimLogsHook returns a LogsHookFunc that removes ClaimEvent logs when
+// a DetailedClaimEvent log exists for the same transaction, so only the richer event is processed.
+func NewPreferDetailedClaimLogsHook(logger aggkitcommon.Logger) sync.LogsHookFunc {
+	return func(ctx context.Context, fromBlock, toBlock uint64, logs []types.Log) []types.Log {
+		// Collect tx hashes that have a DetailedClaimEvent.
+		detailedTxs := make(map[common.Hash]struct{})
+		for _, l := range logs {
+			if len(l.Topics) > 0 && l.Topics[0] == detailedClaimEventSignature {
+				detailedTxs[l.TxHash] = struct{}{}
+			}
+		}
+		if len(detailedTxs) == 0 {
+			return logs
+		}
+
+		// Filter out ClaimEvent logs whose tx already has a DetailedClaimEvent.
+		filtered := logs[:0]
+		for _, l := range logs {
+			if len(l.Topics) > 0 && l.Topics[0] == claimEventSignature {
+				if _, ok := detailedTxs[l.TxHash]; ok {
+					logger.Debugf("claimsync: dropping ClaimEvent log (tx %s, block %d): DetailedClaimEvent present",
+						l.TxHash.Hex(), l.BlockNumber)
+					continue
+				}
+			}
+			filtered = append(filtered, l)
+		}
+		return filtered
 	}
 }
 

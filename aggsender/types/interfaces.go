@@ -336,6 +336,9 @@ type CertificateQuerier interface {
 	GetLastSettledCertificateToBlock(
 		ctx context.Context,
 		cert *agglayertypes.CertificateHeader) (uint64, error)
+	GetBlockNumbersFromCertHeader(
+		ctx context.Context,
+		cert *agglayertypes.CertificateHeader) SettledBlocks
 	GetNewCertificateToBlock(
 		ctx context.Context,
 		cert *agglayertypes.Certificate) (uint64, error)

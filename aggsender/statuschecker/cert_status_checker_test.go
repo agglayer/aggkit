@@ -184,7 +184,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 				}
 			}
 
-			sut := NewCertStatusChecker(mockLogger, mockStorage, mockAggLayerClient, nil, 1)
+			sut := NewCertStatusChecker(mockLogger, mockStorage, mockAggLayerClient, nil, nil, nil, 1)
 			certStatusChecker, ok := sut.(*certStatusChecker)
 			require.True(t, ok)
 			ctx := context.TODO()

@@ -117,6 +117,9 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, claimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x789")).Return(nil, errors.New("exit root not found"))
+				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedErr: "failed to resolve the bridge exit block number for NewLocalExitRoot",
 		},
@@ -128,6 +131,8 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, claimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, errors.New("agglayer error"))
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedErr: "failed to get latest settled imported bridge exit from agglayer",
 		},
@@ -146,6 +151,8 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				}
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(networkStatus, nil)
 				claimSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex).Return(nil, errors.New("claim not found"))
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedErr: "failed to get claim(s) by global index",
 		},
