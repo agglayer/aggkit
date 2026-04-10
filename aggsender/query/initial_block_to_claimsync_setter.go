@@ -114,8 +114,7 @@ func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockBasedOnLatestSett
 		globalIdx := blocks.SettledImportedBridgeExit.GlobalIndex
 		blockNumber, found, err := l2ClaimSyncer.GetLatestBlockNumByGlobalIndexFromRPC(ctx, globalIdx, nil)
 		if err != nil {
-			return 0, fmt.Errorf("no claim found for global index %s via RPC fallback (original error: %w)",
-				globalIdx.String(), blocks.LastImportedBridgeExitBlockErr)
+			return 0, fmt.Errorf("error searching global index %s via RPC fallback: %w", globalIdx.String(), err)
 		}
 		if !found {
 			return 0, fmt.Errorf("no claim found for global index %s via RPC fallback", globalIdx.String())

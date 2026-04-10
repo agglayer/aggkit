@@ -28,10 +28,10 @@
 - Database migrations in `migrations/` subdirectories
 
 
-## Github
+## GitHub
 
-- To create a new PR use next template: 
-``
+- To create a new PR use the following template:
+```
 ## 🔄 Changes Summary
 [Provide a concise summary of the changes in this PR here.]
 ## ⚠️ Breaking Changes
@@ -51,5 +51,6 @@
 ## 📝 Notes
 ```
 
-## Type to use
-- To set a block reference (as tag or as number) use the type `BlockNumberFinality` (in types folder). You can use `NewBlockNumberFinality` for block tags or `NewBlockNumber` for block numbers
+## Types to use
+
+- To set a block reference (as a tag or block number) use the type `BlockNumberFinality` (in the types folder). Use `NewBlockNumberFinality` for block tags or `NewBlockNumber` for block numbers.

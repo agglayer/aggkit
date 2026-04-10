@@ -442,3 +442,141 @@ func TestSettledBlocks_String(t *testing.T) {
 		})
 	}
 }
+
+func TestSettledBlocks_EarliestBlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		input         SettledBlocks
+		expectedBlock uint64
+		expectedErr   string
+	}{
+		{
+			name:          "all zeros — no error, returns 0",
+			input:         SettledBlocks{},
+			expectedBlock: 0,
+		},
+		{
+			name: "all three sources have values — returns minimum",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         100,
+				LastImportedBridgeExitBlock: 50,
+				LastSettledL2BlockNum:       200,
+			},
+			expectedBlock: 50,
+		},
+		{
+			name: "LastSettledL2BlockNum is 0 (not found) — excluded from minimum",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         100,
+				LastImportedBridgeExitBlock: 80,
+				LastSettledL2BlockNum:       0,
+			},
+			expectedBlock: 80,
+		},
+		{
+			name: "LastSettledL2BlockNum is smallest and non-zero — included in minimum",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         100,
+				LastImportedBridgeExitBlock: 80,
+				LastSettledL2BlockNum:       10,
+			},
+			expectedBlock: 10,
+		},
+		{
+			name: "bridge exit block error — propagated",
+			input: SettledBlocks{
+				LastBridgeExitBlockErr: errors.New("bridge error"),
+			},
+			expectedErr: "bridge error",
+		},
+		{
+			name: "imported bridge exit block error — propagated",
+			input: SettledBlocks{
+				LastImportedBridgeExitBlockErr: errors.New("ibe error"),
+			},
+			expectedErr: "ibe error",
+		},
+		{
+			name: "L2 settled block error — propagated",
+			input: SettledBlocks{
+				LastSettledL2BlockNumErr: errors.New("l2 error"),
+			},
+			expectedErr: "l2 error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			block, err := tt.input.EarliestBlock()
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBlock, block)
+			}
+		})
+	}
+}
+
+func TestSettledBlocks_LatestBlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		input         SettledBlocks
+		expectedBlock uint64
+		expectedErr   string
+	}{
+		{
+			name:          "all zeros — no error, returns 0",
+			input:         SettledBlocks{},
+			expectedBlock: 0,
+		},
+		{
+			name: "all three sources have values — returns maximum",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         100,
+				LastImportedBridgeExitBlock: 50,
+				LastSettledL2BlockNum:       200,
+			},
+			expectedBlock: 200,
+		},
+		{
+			name: "bridge exit block error — propagated",
+			input: SettledBlocks{
+				LastBridgeExitBlockErr: errors.New("bridge error"),
+			},
+			expectedErr: "bridge error",
+		},
+		{
+			name: "imported bridge exit block error — propagated",
+			input: SettledBlocks{
+				LastImportedBridgeExitBlockErr: errors.New("ibe error"),
+			},
+			expectedErr: "ibe error",
+		},
+		{
+			name: "L2 settled block error — propagated",
+			input: SettledBlocks{
+				LastSettledL2BlockNumErr: errors.New("l2 error"),
+			},
+			expectedErr: "l2 error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			block, err := tt.input.LatestBlock()
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBlock, block)
+			}
+		})
+	}
+}
