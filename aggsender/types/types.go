@@ -421,10 +421,10 @@ func (s SettledBlocks) String() string {
 }
 
 // EarliestBlock returns the smallest block number among the settled sources.
-// - LastImportedBridgeExitBlock is excluded when SettledImportedBridgeExit is nil,
-//   because in that case the field is 0 with no error (no IBE was settled), and
-//   including it would incorrectly pull the minimum down to 0.
-// - LastSettledL2BlockNum is excluded when it is 0 (PP networks or no FEP data yet).
+//   - LastImportedBridgeExitBlock is excluded when SettledImportedBridgeExit is nil,
+//     because in that case the field is 0 with no error (no IBE was settled), and
+//     including it would incorrectly pull the minimum down to 0.
+//   - LastSettledL2BlockNum is excluded when it is 0 (PP networks or no FEP data yet).
 func (s SettledBlocks) EarliestBlock() (uint64, error) {
 	if s.LastBridgeExitBlockErr != nil {
 		return 0, s.LastBridgeExitBlockErr
