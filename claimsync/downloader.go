@@ -37,9 +37,9 @@ var (
 			"uint256,bytes32,bytes32,uint8,uint32," +
 			"address,uint32,address,uint256,bytes)",
 	))
-	// This event belongs to the AgglayerBridgeL2 v12.1.6 - v12.2.0
-	// Is a intermediate version, but not valid
-	// because the field uint8 leafType, is missing
+	// This event signature was used by AgglayerBridgeL2 versions v12.1.6 through v12.2.0.
+	// It corresponds to an intermediate event definition and is now considered outdated
+	// because it is missing the `uint8 leafType` field.
 	detailedClaimEventOutdatedSignature = crypto.Keccak256Hash([]byte(
 		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
 			"uint256,bytes32,bytes32,uint32," +

@@ -458,13 +458,24 @@ func TestSettledBlocks_EarliestBlock(t *testing.T) {
 			expectedBlock: 0,
 		},
 		{
-			name: "all three sources have values — returns minimum",
+			name: "all three sources have values with settled IBE — returns minimum",
 			input: SettledBlocks{
 				LastBridgeExitBlock:         100,
 				LastImportedBridgeExitBlock: 50,
 				LastSettledL2BlockNum:       200,
+				SettledImportedBridgeExit:   &agglayertypes.SettledImportedBridgeExit{},
 			},
 			expectedBlock: 50,
+		},
+		{
+			name: "no settled IBE — LastImportedBridgeExitBlock excluded from minimum",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         100,
+				LastImportedBridgeExitBlock: 0, // zero with no error, no IBE
+				LastSettledL2BlockNum:       0,
+				SettledImportedBridgeExit:   nil,
+			},
+			expectedBlock: 100,
 		},
 		{
 			name: "LastSettledL2BlockNum is 0 (not found) — excluded from minimum",
@@ -472,6 +483,7 @@ func TestSettledBlocks_EarliestBlock(t *testing.T) {
 				LastBridgeExitBlock:         100,
 				LastImportedBridgeExitBlock: 80,
 				LastSettledL2BlockNum:       0,
+				SettledImportedBridgeExit:   &agglayertypes.SettledImportedBridgeExit{},
 			},
 			expectedBlock: 80,
 		},
@@ -481,6 +493,7 @@ func TestSettledBlocks_EarliestBlock(t *testing.T) {
 				LastBridgeExitBlock:         100,
 				LastImportedBridgeExitBlock: 80,
 				LastSettledL2BlockNum:       10,
+				SettledImportedBridgeExit:   &agglayertypes.SettledImportedBridgeExit{},
 			},
 			expectedBlock: 10,
 		},

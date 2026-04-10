@@ -81,51 +81,30 @@ func (n *SetInitialBlockToClaimSyncer) SetClaimSyncerNextRequiredBlock(
 
 // claimSyncerStartingBlock returns the starting block number for the claim syncer.
 // It queries the latest settled certificate from agglayer to determine from which block claims must be synced.
+// If certHeader is nil (no settled certificate yet), GetBlockNumbersFromCertHeader handles it
+// by skipping the per-cert queries and returning only the FEP start block.
 func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlock(ctx context.Context,
 	l2ClaimSyncer claimsynctypes.ClaimSyncer) (uint64, error) {
 	certHeader, err := n.agglayerClient.GetLatestSettledCertificateHeader(ctx, n.l2OriginNetwork)
 	if err != nil {
 		return 0, fmt.Errorf("error getting latest settled certificate header from agglayer: %w", err)
 	}
-	if certHeader == nil {
-		toBlock, err := n.claimSyncerStartingBlockFromScratch(ctx)
-		if err != nil {
-			return 0, fmt.Errorf("error getting starting block from scratch: %w", err)
-		}
-		return toBlock, nil
-	}
-	// Even if certHeader is nil it returns the first block number
 	toBlock, err := n.claimSyncerStartingBlockBasedOnLatestSettledCert(ctx, l2ClaimSyncer, certHeader)
 	if err != nil {
 		return 0, fmt.Errorf("error getting last settled certificate to block: %w", err)
 	}
 	return toBlock, nil
 }
-func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockFromScratch(ctx context.Context) (uint64, error) {
-	blocks := n.certQuerier.GetBlockNumbersFromCertHeader(ctx, nil)
-	if blocks.LastSettledL2BlockNumErr != nil {
-		return 0, fmt.Errorf("claimSyncerStartingBlockFromScratch: error getting last settled "+
-			"L2 block number from cert querier: %w", blocks.LastSettledL2BlockNumErr)
-	}
-	// It can be 0 (not found)
-	return blocks.LastSettledL2BlockNum, nil
-}
+
 func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockBasedOnLatestSettledCert(
 	ctx context.Context,
 	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	agglayerLastSettledCert *agglayertypes.CertificateHeader,
 ) (uint64, error) {
-	// There is no certificate in the local database, so we need to start claim syncer because
-	// the GetLastSettledCertificateToBlock to obtain toBlock need to find the latest claim
-	if agglayerLastSettledCert == nil {
-		n.logger.Debugf("no settled certificate in agglayer, skipping setClaimSyncerFromEmptyDB. Nothing to do")
-		return 0, fmt.Errorf("no settled certificate in agglayer, cannot set claim syncer from empty DB")
-	}
-
 	blocks := n.certQuerier.GetBlockNumbersFromCertHeader(ctx, agglayerLastSettledCert)
 
-	// If the problem is that can't find the block for latest claim, use RPC for it
-	if blocks.LastImportedBridgeExitBlockErr != nil {
+	// If the problem is that can't find the block for latest claim, use RPC as fallback
+	if blocks.LastImportedBridgeExitBlockErr != nil && blocks.SettledImportedBridgeExit != nil {
 		globalIdx := blocks.SettledImportedBridgeExit.GlobalIndex
 		blockNumber, found, err := l2ClaimSyncer.GetLatestBlockNumByGlobalIndexFromRPC(ctx, globalIdx, nil)
 		if err != nil {

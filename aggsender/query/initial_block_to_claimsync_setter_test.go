@@ -141,13 +141,14 @@ func TestSetClaimSyncerNextRequiredBlock_NilCertFromAgglayer(t *testing.T) {
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(nil, nil)
-	// nil cert causes claimSyncerStartingBlockBasedOnLatestSettledCert to error immediately;
-	// GetBlockNumbersFromCertHeader must not be called.
-	_ = certQuerier
+	// nil cert means no settled certificate yet; GetBlockNumbersFromCertHeader is still called
+	// with nil and returns only the FEP start block (bridge/import queries are skipped).
+	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, (*agglayertypes.CertificateHeader)(nil)).
+		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlock: 10, LastImportedBridgeExitBlock: 10})
+	claimSyncer.EXPECT().SetNextRequiredBlock(ctx, uint64(10)).Return(nil)
 
 	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
-	require.ErrorIs(t, err, aggkitcommon.ErrExecutionFails)
-	require.ErrorContains(t, err, "no settled certificate in agglayer")
+	require.NoError(t, err)
 }
 
 func TestSetClaimSyncerNextRequiredBlock_RPCFallback_Success(t *testing.T) {
