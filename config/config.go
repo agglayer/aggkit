@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/prover"
 	validator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/common"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -257,6 +258,9 @@ type Config struct {
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
 	L1NetworkConfig ethermanconfig.L1NetworkConfig
 
+	// L2NetworkConfig holds configuration specific to the L2 network.
+	L2NetworkConfig ethermanconfig.L2NetworkConfig
+
 	// REST contains the configuration settings for the REST service in the Aggkit
 	REST common.RESTConfig
 
@@ -277,9 +281,13 @@ type Config struct {
 
 	// BridgeL1Sync is the configuration for the synchronizer of the bridge of the L1
 	BridgeL1Sync bridgesync.Config
+	// ClaimL1Sync is the configuration for the synchronizer of the claims of the L1
+	ClaimL1Sync claimsync.ConfigStandalone
 
 	// BridgeL2Sync is the configuration for the synchronizer of the bridge of the L2
 	BridgeL2Sync bridgesync.Config
+	// ClaimL2Sync is the configuration for the synchronizer of the claims of the L2
+	ClaimL2Sync claimsync.ConfigStandalone
 
 	// L2GERSync is the config for the synchronizer in charge of syncing the GER injected on L2.
 	// Needed for the bridge service (RPC)

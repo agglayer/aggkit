@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -148,7 +149,7 @@ func (e GERExistsOnL1Error) Error() string {
 // Exported so E2E tests can use the same query for wait and assertion as the tool.
 func GetClaimsByGER(
 	ctx context.Context, bridgeService *client.Client, networkID uint32, gerHash common.Hash,
-) ([]*bridgesync.Claim, error) {
+) ([]*claimsynctypes.Claim, error) {
 	res, err := bridgeService.GetClaimsByGER(ctx, networkID, gerHash.Hex())
 	if err != nil {
 		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
@@ -156,15 +157,15 @@ func GetClaimsByGER(
 	if res == nil || len(res.Claims) == 0 {
 		return nil, nil
 	}
-	claims := make([]*bridgesync.Claim, 0, len(res.Claims))
+	claims := make([]*claimsynctypes.Claim, 0, len(res.Claims))
 	for _, cr := range res.Claims {
 		claims = append(claims, claimResponseToClaim(cr))
 	}
 	return claims, nil
 }
 
-// claimResponseToClaim converts a bridge service ClaimResponse to a bridgesync.Claim.
-func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
+// claimResponseToClaim converts a bridge service ClaimResponse to a claimsynctypes.Claim.
+func claimResponseToClaim(r *bridgetypes.ClaimResponse) *claimsynctypes.Claim {
 	globalIndex, ok := new(big.Int).SetString(string(r.GlobalIndex), decimalBase)
 	if !ok {
 		log.Warnf("claimResponseToClaim: failed to parse GlobalIndex %q, defaulting to 0", r.GlobalIndex)
@@ -175,7 +176,7 @@ func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
 		log.Warnf("claimResponseToClaim: failed to parse Amount %q, defaulting to 0", r.Amount)
 		amount = big.NewInt(0)
 	}
-	return &bridgesync.Claim{
+	return &claimsynctypes.Claim{
 		BlockNum:           r.BlockNum,
 		BlockTimestamp:     r.BlockTimestamp,
 		TxHash:             common.HexToHash(string(r.TxHash)),
@@ -190,7 +191,7 @@ func claimResponseToClaim(r *bridgetypes.ClaimResponse) *bridgesync.Claim {
 		GlobalExitRoot:     common.HexToHash(string(r.GlobalExitRoot)),
 		Metadata:           decodeMetadataHex(r.Metadata),
 		IsMessage:          r.IsMessage,
-		Type:               bridgesync.DetailedClaimEvent,
+		Type:               claimsynctypes.DetailedClaimEvent,
 	}
 }
 
@@ -226,7 +227,7 @@ func decodeMetadataHex(s string) []byte {
 }
 
 // classifyClaim classifies a single claim (A, B.1, B.2) using the runbook decision tree.
-func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (ClaimDiagnosis, error) {
+func classifyClaim(ctx context.Context, env *Env, claim *claimsynctypes.Claim) (ClaimDiagnosis, error) {
 	cd := ClaimDiagnosis{
 		GlobalIndex:   claim.GlobalIndex,
 		OriginNetwork: claim.OriginNetwork,
@@ -343,7 +344,7 @@ func classifyClaim(ctx context.Context, env *Env, claim *bridgesync.Claim) (Clai
 // (either not found or content mismatch). It searches all L1 bridges with the same content fields as the
 // claim. If a match is found at a different deposit_count, the claim is B.2. Otherwise Category A.
 func classifyByClaimContent(
-	ctx context.Context, env *Env, claim *bridgesync.Claim, claimLeafType uint8, cd ClaimDiagnosis,
+	ctx context.Context, env *Env, claim *claimsynctypes.Claim, claimLeafType uint8, cd ClaimDiagnosis,
 ) (ClaimDiagnosis, error) {
 	cd.Category = ScenarioCategoryA // default
 

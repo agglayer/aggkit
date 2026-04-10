@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,8 +77,8 @@ func TestCertificateBuildParamsString(t *testing.T) {
 				FromBlock:       100,
 				ToBlock:         200,
 				Bridges:         []bridgesync.Bridge{},
-				Claims:          []bridgesync.Claim{},
-				Unclaims:        []bridgesynctypes.Unclaim{},
+				Claims:          []claimsynctypes.Claim{},
+				Unclaims:        []claimsynctypes.Unclaim{},
 				CreatedAt:       1234567890,
 			},
 			expected: "Type: pp FromBlock: 100, ToBlock: 200, numBridges: 0, numClaims: 0, numUnclaims: 0, createdAt: 1234567890",
@@ -93,10 +93,10 @@ func TestCertificateBuildParamsString(t *testing.T) {
 					{BlockNum: 1001},
 					{BlockNum: 1002},
 				},
-				Claims: []bridgesync.Claim{
+				Claims: []claimsynctypes.Claim{
 					{BlockNum: 1500},
 				},
-				Unclaims: []bridgesynctypes.Unclaim{
+				Unclaims: []claimsynctypes.Unclaim{
 					{BlockNumber: 1600},
 					{BlockNumber: 1700},
 					{BlockNumber: 1800},
@@ -114,8 +114,8 @@ func TestCertificateBuildParamsString(t *testing.T) {
 				Bridges: []bridgesync.Bridge{
 					{BlockNum: 550},
 				},
-				Claims:    []bridgesync.Claim{},
-				Unclaims:  []bridgesynctypes.Unclaim{},
+				Claims:    []claimsynctypes.Claim{},
+				Unclaims:  []claimsynctypes.Unclaim{},
 				CreatedAt: 1111111111,
 			},
 			expected: "Type: optimistic FromBlock: 500, ToBlock: 600, numBridges: 1, numClaims: 0, numUnclaims: 0, createdAt: 1111111111",
@@ -127,8 +127,8 @@ func TestCertificateBuildParamsString(t *testing.T) {
 				FromBlock:       1,
 				ToBlock:         10,
 				Bridges:         []bridgesync.Bridge{},
-				Claims:          []bridgesync.Claim{},
-				Unclaims:        []bridgesynctypes.Unclaim{},
+				Claims:          []claimsynctypes.Claim{},
+				Unclaims:        []claimsynctypes.Unclaim{},
 				CreatedAt:       0,
 			},
 			expected: "Type:  FromBlock: 1, ToBlock: 10, numBridges: 0, numClaims: 0, numUnclaims: 0, createdAt: 0",
@@ -144,11 +144,11 @@ func TestCertificateBuildParamsString(t *testing.T) {
 					{BlockNum: 2000000000},
 					{BlockNum: 3000000000},
 				},
-				Claims: []bridgesync.Claim{
+				Claims: []claimsynctypes.Claim{
 					{BlockNum: 4000000000},
 					{BlockNum: 5000000000},
 				},
-				Unclaims:  []bridgesynctypes.Unclaim{},
+				Unclaims:  []claimsynctypes.Unclaim{},
 				CreatedAt: 4294967295,
 			},
 			expected: "Type: pp FromBlock: 999999999, ToBlock: 9999999999, numBridges: 3, numClaims: 2, numUnclaims: 0, createdAt: 4294967295",
@@ -190,7 +190,7 @@ func TestAdjustToBlock(t *testing.T) {
 				Bridges: []bridgesync.Bridge{
 					{BlockNum: 150, DepositCount: 1},
 				},
-				Claims: []bridgesync.Claim{
+				Claims: []claimsynctypes.Claim{
 					{BlockNum: 180},
 				},
 			},
@@ -217,11 +217,11 @@ func TestAdjustToBlock(t *testing.T) {
 					{BlockNum: 180, DepositCount: 2},
 					{BlockNum: 250, DepositCount: 3}, // This should be excluded
 				},
-				Claims: []bridgesync.Claim{
+				Claims: []claimsynctypes.Claim{
 					{BlockNum: 150},
 					{BlockNum: 220}, // This should be excluded
 				},
-				Unclaims: []bridgesynctypes.Unclaim{
+				Unclaims: []claimsynctypes.Unclaim{
 					{BlockNumber: 140},
 					{BlockNumber: 280}, // This should be excluded
 				},
@@ -281,8 +281,8 @@ func TestAdjustToBlock(t *testing.T) {
 				ToBlock:         200,
 				CertificateType: CertificateTypeOptimistic,
 				Bridges:         []bridgesync.Bridge{},
-				Claims:          []bridgesync.Claim{},
-				Unclaims:        []bridgesynctypes.Unclaim{},
+				Claims:          []claimsynctypes.Claim{},
+				Unclaims:        []claimsynctypes.Unclaim{},
 			},
 			newToBlock: 150,
 			validate: func(t *testing.T, result *CertificateBuildParams) {
@@ -340,7 +340,7 @@ func TestEstimateSize(t *testing.T) {
 		FromBlock: 100,
 		ToBlock:   200,
 		Bridges:   make([]bridgesync.Bridge, 50),
-		Claims:    make([]bridgesync.Claim, 150),
+		Claims:    make([]claimsynctypes.Claim, 150),
 	}
 
 	estimatedSize := sut.EstimatedSize()

@@ -9,7 +9,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/go_signer/signer"
@@ -142,7 +142,7 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 
 	newLocalExitRoot := common.HexToHash("0xdef")
 	certBuildParams := &types.CertificateBuildParams{
-		Claims: []bridgesync.Claim{},
+		Claims: []claimsynctypes.Claim{},
 	}
 
 	testCases := []struct {

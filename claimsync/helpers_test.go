@@ -1,4 +1,4 @@
-package bridgesync
+package claimsync
 
 import (
 	"context"

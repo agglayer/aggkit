@@ -166,3 +166,12 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  github.com/agglayer/aggkit/claimsync:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+    interfaces:
+      ClaimSyncer:
+  github.com/agglayer/aggkit/claimsync/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true

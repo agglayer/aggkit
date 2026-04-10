@@ -9,6 +9,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -18,6 +19,7 @@ var _ types.CertificateQuerier = (*certificateQuerier)(nil)
 // settled and pending certificates
 type certificateQuerier struct {
 	l2BridgeSyncer     types.L2BridgeSyncer
+	l2ClaimSyncer      claimsynctypes.ClaimSyncer
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier
 	agglayerClient     agglayer.AgglayerClientInterface
 	initialLER         common.Hash
@@ -25,12 +27,14 @@ type certificateQuerier struct {
 
 func NewCertificateQuerier(
 	bridgeSyncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 	agglayerClient agglayer.AgglayerClientInterface,
 	initialLER common.Hash,
 ) types.CertificateQuerier {
 	return &certificateQuerier{
 		l2BridgeSyncer:     bridgeSyncer,
+		l2ClaimSyncer:      l2ClaimSyncer,
 		aggchainFEPQuerier: aggchainFEPQuerier,
 		agglayerClient:     agglayerClient,
 		initialLER:         initialLER,
@@ -202,7 +206,7 @@ func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRo
 
 func (c *certificateQuerier) getBlockNumFromGlobalIndex(
 	ctx context.Context, globalIndex *big.Int, bridgeExitHash common.Hash) (uint64, error) {
-	claims, err := c.l2BridgeSyncer.GetClaimsByGlobalIndex(ctx, globalIndex)
+	claims, err := c.l2ClaimSyncer.GetClaimsByGlobalIndex(ctx, globalIndex)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get claim(s) by global index %s: %w", globalIndex.String(), err)
 	}

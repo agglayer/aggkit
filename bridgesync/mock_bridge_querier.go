@@ -5,6 +5,7 @@ package bridgesync
 import (
 	context "context"
 
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -22,7 +23,7 @@ func (_m *BridgeQuerierMock) EXPECT() *BridgeQuerierMock_Expecter {
 }
 
 // GetBoundaryBlockForClaimType provides a mock function with given fields: ctx, claimType
-func (_m *BridgeQuerierMock) GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error) {
+func (_m *BridgeQuerierMock) GetBoundaryBlockForClaimType(ctx context.Context, claimType claimsynctypes.ClaimType) (uint64, error) {
 	ret := _m.Called(ctx, claimType)
 
 	if len(ret) == 0 {
@@ -31,16 +32,16 @@ func (_m *BridgeQuerierMock) GetBoundaryBlockForClaimType(ctx context.Context, c
 
 	var r0 uint64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, ClaimType) (uint64, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, claimsynctypes.ClaimType) (uint64, error)); ok {
 		return rf(ctx, claimType)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, ClaimType) uint64); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, claimsynctypes.ClaimType) uint64); ok {
 		r0 = rf(ctx, claimType)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, ClaimType) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, claimsynctypes.ClaimType) error); ok {
 		r1 = rf(ctx, claimType)
 	} else {
 		r1 = ret.Error(1)
@@ -56,14 +57,14 @@ type BridgeQuerierMock_GetBoundaryBlockForClaimType_Call struct {
 
 // GetBoundaryBlockForClaimType is a helper method to define mock.On call
 //   - ctx context.Context
-//   - claimType ClaimType
+//   - claimType claimsynctypes.ClaimType
 func (_e *BridgeQuerierMock_Expecter) GetBoundaryBlockForClaimType(ctx interface{}, claimType interface{}) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
 	return &BridgeQuerierMock_GetBoundaryBlockForClaimType_Call{Call: _e.mock.On("GetBoundaryBlockForClaimType", ctx, claimType)}
 }
 
-func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) Run(run func(ctx context.Context, claimType ClaimType)) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
+func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) Run(run func(ctx context.Context, claimType claimsynctypes.ClaimType)) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(ClaimType))
+		run(args[0].(context.Context), args[1].(claimsynctypes.ClaimType))
 	})
 	return _c
 }
@@ -73,7 +74,7 @@ func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) Return(_a0 uint64
 	return _c
 }
 
-func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) RunAndReturn(run func(context.Context, ClaimType) (uint64, error)) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
+func (_c *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call) RunAndReturn(run func(context.Context, claimsynctypes.ClaimType) (uint64, error)) *BridgeQuerierMock_GetBoundaryBlockForClaimType_Call {
 	_c.Call.Return(run)
 	return _c
 }
