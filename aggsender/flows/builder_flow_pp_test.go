@@ -367,7 +367,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError:  "error adjusting block range: error checking if GER 0x0000000000000000000000000000000000000000000000000000000000000001 exists on L1: some error",
 		},
 		{
-			name:               "GER not finalized - adjust certificate build params",
+			name:               "GER exists on L1 but is not provable against selected root",
 			forceOneBridgeExit: false,
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
@@ -402,26 +402,8 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
-			expectedParams: &types.CertificateBuildParams{
-				FromBlock:           6,
-				ToBlock:             9,
-				RetryCount:          0,
-				L1InfoTreeLeafCount: 1,
-				CertificateType:     types.CertificateTypePP,
-				LastSentCertificate: &types.CertificateHeader{ToBlock: 5},
-				Bridges:             []bridgesync.Bridge{},
-				Claims: []claimsynctypes.Claim{
-					{
-						BlockNum:        9,
-						RollupExitRoot:  common.HexToHash("0x1"),
-						MainnetExitRoot: common.HexToHash("0x2"),
-						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
-					},
-				},
-				Unclaims:                       []claimsynctypes.Unclaim{},
-				CreatedAt:                      timeNowUTCForTest(),
-				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
-			},
+			expectedParams: nil,
+			expectedError:  "error adjusting block range: GER",
 		},
 		{
 			name:               "no bridges when forceOneBridgeExit is false, but has claims",

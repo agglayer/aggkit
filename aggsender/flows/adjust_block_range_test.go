@@ -740,7 +740,7 @@ func Test_baseFlow_validateRootToProveIsFinalized_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_TrimsProvableRange(t *testing.T) {
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsForExistingGERNotProvableAgainstRoot(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -767,8 +767,8 @@ func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_TrimsProvableRange(t *test
 
 	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
 
-	require.NoError(t, err)
-	require.Equal(t, uint64(8), result.ToBlock)
+	require.ErrorContains(t, err, "exists on L1 but cannot be proved against selected root")
+	require.Nil(t, result)
 }
 
 func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsHardForLookupErrorsOnL1GER(t *testing.T) {

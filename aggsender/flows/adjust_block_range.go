@@ -186,15 +186,13 @@ func (f *baseFlow) adjustClaimsNotProvableAgainstRoot(
 			continue
 		}
 
-		if !errors.Is(err, query.ErrGERNotProvableAgainstRoot) {
-			return nil, fmt.Errorf("proof lookup failed for GER %s against root %s: %w",
+		if errors.Is(err, query.ErrGERNotProvableAgainstRoot) {
+			return nil, fmt.Errorf("GER %s exists on L1 but cannot be proved against selected root %s: %w",
 				claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
 		}
 
-		f.log.Warnf("found a GER %s on block %d that cannot be proved against L1 info root %s; "+
-			"trimming certificate to exclude it and subsequent blocks",
-			claim.GlobalExitRoot.Hex(), claim.BlockNum, buildParams.L1InfoTreeRootFromWhichToProve.Hex())
-		return trimCertificateToBlock(buildParams, claim.BlockNum-1)
+		return nil, fmt.Errorf("proof lookup failed for GER %s against root %s: %w",
+			claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
 	}
 
 	return buildParams, nil

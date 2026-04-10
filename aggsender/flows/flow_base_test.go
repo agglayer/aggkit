@@ -1099,7 +1099,7 @@ func Test_baseFlow_AdjustBlockRange_RootProvabilityAndUnclaims(t *testing.T) {
 			expectedToBlock: 10,
 		},
 		{
-			name: "claim not provable against finalized root gets trimmed",
+			name: "claim not provable against finalized root fails hard",
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      5,
 				ToBlock:                        12,
@@ -1116,7 +1116,7 @@ func Test_baseFlow_AdjustBlockRange_RootProvabilityAndUnclaims(t *testing.T) {
 					Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
 			},
-			expectedToBlock: 8,
+			expectedError: "exists on L1 but cannot be proved against selected root",
 		},
 		{
 			name: "proof lookup failure for existing GER fails hard",

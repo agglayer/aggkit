@@ -217,9 +217,16 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 			L1InfoTreeRootFromWhichToProve: *lastSentCert.FinalizedL1InfoTreeRoot,
 			L1InfoTreeLeafCount:            lastSentCert.L1InfoTreeLeafCount,
 		}
+		originalFromBlock := buildParams.FromBlock
+		originalToBlock := buildParams.ToBlock
 		buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range: %w", err)
+		}
+		rangeChanged := buildParams.FromBlock != originalFromBlock || buildParams.ToBlock != originalToBlock
+
+		if !a.canReuseRetryProof(buildParams, lastSentCert, proof, rangeChanged) {
+			proof = nil
 		}
 
 		if proof == nil {
@@ -387,6 +394,38 @@ func (a *AggchainProverBuilderFlow) adjustmentOptions(validateRootToProve bool) 
 		ValidateRootToProve:           validateRootToProve,
 		DisableSizeLimit:              validateRootToProve,
 	}
+}
+
+func (a *AggchainProverBuilderFlow) canReuseRetryProof(
+	buildParams *types.CertificateBuildParams,
+	lastSentCert *types.CertificateHeader,
+	proof *types.AggchainProof,
+	rangeChanged bool,
+) bool {
+	if proof == nil {
+		return false
+	}
+
+	if rangeChanged {
+		a.log.Warnf("aggchainProverFlow - rejecting cached retry proof reuse because retry range changed to [%d,%d]",
+			buildParams.FromBlock, buildParams.ToBlock)
+		return false
+	}
+
+	expectedLastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
+	if proof.LastProvenBlock != expectedLastProvenBlock {
+		a.log.Warnf("aggchainProverFlow - rejecting cached retry proof reuse because LastProvenBlock mismatch. expected=%d got=%d",
+			expectedLastProvenBlock, proof.LastProvenBlock)
+		return false
+	}
+
+	if proof.EndBlock != buildParams.ToBlock {
+		a.log.Warnf("aggchainProverFlow - rejecting cached retry proof reuse because EndBlock mismatch. expected=%d got=%d",
+			buildParams.ToBlock, proof.EndBlock)
+		return false
+	}
+
+	return true
 }
 
 func (a *AggchainProverBuilderFlow) getLastProvenBlock(
