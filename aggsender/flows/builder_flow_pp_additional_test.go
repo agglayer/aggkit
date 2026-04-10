@@ -28,6 +28,7 @@ func Test_PPFlow_GenerateBuildParams(t *testing.T) {
 		AllowResizeRetryCert:          true,
 		RequireOneBridgeInCertificate: true,
 		ValidateRootToProve:           true,
+		DisableSizeLimit:              true,
 	}
 
 	tests := []struct {

@@ -9,6 +9,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
@@ -1094,7 +1095,6 @@ func Test_baseFlow_AdjustBlockRange_RootProvabilityAndUnclaims(t *testing.T) {
 				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
 					Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
-				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
 			},
 			expectedToBlock: 10,
 		},
@@ -1113,10 +1113,30 @@ func Test_baseFlow_AdjustBlockRange_RootProvabilityAndUnclaims(t *testing.T) {
 				mockL1InfoTreeQuerier.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(rootForLeafCount, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
-					Return(nil, treetypes.Proof{}, errors.New("not provable")).Once()
+					Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
 			},
 			expectedToBlock: 8,
+		},
+		{
+			name: "proof lookup failure for existing GER fails hard",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        12,
+				L1InfoTreeRootFromWhichToProve: finalizedRoot,
+				L1InfoTreeLeafCount:            11,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 9, GlobalExitRoot: gerProvable},
+				},
+			},
+			mockFn: func(mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuerier.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(rootForLeafCount, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetTargetL1InfoRoot(ctx).Return(latestFinalizedRoot, nil, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
+					Return(nil, treetypes.Proof{}, errors.New("temporary failure")).Once()
+				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
+			},
+			expectedError: "proof lookup failed for GER",
 		},
 		{
 			name: "missing GER requires posterior unclaim and fails otherwise",

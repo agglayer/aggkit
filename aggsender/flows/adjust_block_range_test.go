@@ -8,6 +8,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
@@ -327,6 +328,92 @@ func Test_baseFlow_adjustInvalidClaimsAreNotUnclaimed(t *testing.T) {
 			},
 		},
 		{
+			name: "later invalid claim forces earlier dependent claim out of final range",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   10,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 6, GlobalExitRoot: ger, GlobalIndex: big.NewInt(1)},
+					{BlockNum: 8, GlobalExitRoot: ger, GlobalIndex: big.NewInt(2)},
+				},
+				Unclaims: []claimsynctypes.Unclaim{
+					{BlockNumber: 10, GlobalIndex: big.NewInt(1)},
+				},
+			},
+			mockFn: func(mockQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+			},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(5), result.ToBlock)
+				require.Empty(t, result.Claims)
+				require.Empty(t, result.Unclaims)
+			},
+		},
+		{
+			name: "same block later unclaim keeps claim",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   8,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 7, BlockPos: 10, GlobalExitRoot: ger, GlobalIndex: globalIndex},
+				},
+				Unclaims: []claimsynctypes.Unclaim{
+					{BlockNumber: 7, LogIndex: 11, GlobalIndex: globalIndex},
+				},
+			},
+			mockFn: func(mockQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+			},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(8), result.ToBlock)
+				require.Len(t, result.Claims, 1)
+			},
+		},
+		{
+			name: "same block earlier unclaim is not posterior",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   8,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 7, BlockPos: 10, GlobalExitRoot: ger, GlobalIndex: globalIndex},
+				},
+				Unclaims: []claimsynctypes.Unclaim{
+					{BlockNumber: 7, LogIndex: 9, GlobalIndex: globalIndex},
+				},
+			},
+			mockFn: func(mockQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+			},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(6), result.ToBlock)
+				require.Empty(t, result.Claims)
+			},
+		},
+		{
+			name: "same block same index is not posterior",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   8,
+				Claims: []claimsynctypes.Claim{
+					{BlockNum: 7, BlockPos: 10, GlobalExitRoot: ger, GlobalIndex: globalIndex},
+				},
+				Unclaims: []claimsynctypes.Unclaim{
+					{BlockNumber: 7, LogIndex: 10, GlobalIndex: globalIndex},
+				},
+			},
+			mockFn: func(mockQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+			},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(6), result.ToBlock)
+				require.Empty(t, result.Claims)
+			},
+		},
+		{
 			name: "invalid claim at start block returns error",
 			buildParams: &types.CertificateBuildParams{
 				FromBlock: 5,
@@ -419,6 +506,26 @@ func Test_claimHasPosteriorUnclaim(t *testing.T) {
 
 		require.True(t, ok)
 		require.Equal(t, []bool{false, true, true}, usedUnclaims)
+	})
+
+	t.Run("uses same block ordering via intra block index", func(t *testing.T) {
+		t.Parallel()
+
+		usedUnclaims := []bool{false, false, false}
+		unclaims := []claimsynctypes.Unclaim{
+			{BlockNumber: 6, LogIndex: 1, GlobalIndex: globalIndex},
+			{BlockNumber: 6, LogIndex: 2, GlobalIndex: globalIndex},
+			{BlockNumber: 7, LogIndex: 0, GlobalIndex: globalIndex},
+		}
+
+		ok := claimHasPosteriorUnclaim(
+			claimsynctypes.Claim{BlockNum: 6, BlockPos: 1, GlobalIndex: globalIndex},
+			unclaims,
+			usedUnclaims,
+		)
+
+		require.True(t, ok)
+		require.Equal(t, []bool{false, true, false}, usedUnclaims)
 	})
 
 	t.Run("ignores nil or already used unclaims", func(t *testing.T) {
@@ -642,7 +749,7 @@ func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_TrimsProvableRange(t *test
 
 	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
-		Return(nil, treetypes.Proof{}, errors.New("not provable")).Once()
+		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 	mockQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
 
 	f := &baseFlow{
@@ -662,6 +769,37 @@ func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_TrimsProvableRange(t *test
 
 	require.NoError(t, err)
 	require.Equal(t, uint64(8), result.ToBlock)
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsHardForLookupErrorsOnL1GER(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	gerProvable := common.HexToHash("0x1")
+
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
+		Return(nil, treetypes.Proof{}, errors.New("syncer unavailable")).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 9, GlobalExitRoot: gerProvable},
+		},
+	}
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
+
+	require.ErrorContains(t, err, "proof lookup failed for GER")
+	require.Nil(t, result)
 }
 
 func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_UsesGERCache(t *testing.T) {
@@ -694,4 +832,60 @@ func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_UsesGERCache(t *testing.T)
 
 	require.NoError(t, err)
 	require.Same(t, buildParams, result)
+}
+
+func Test_baseFlow_AdjustBlockRange_DisableSizeLimit(t *testing.T) {
+	t.Parallel()
+
+	f := &baseFlow{
+		cfg: BaseFlowConfig{MaxCertSize: 1},
+		log: log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:       1,
+		ToBlock:         3,
+		CertificateType: types.CertificateTypePP,
+		Bridges:         []bridgesync.Bridge{{BlockNum: 1}, {BlockNum: 2}, {BlockNum: 3}},
+	}
+
+	result, err := f.AdjustBlockRange(context.Background(), buildParams, types.BlockRangeAdjustmentOptions{
+		DisableSizeLimit: true,
+	})
+
+	require.NoError(t, err)
+	require.Same(t, buildParams, result)
+}
+
+func Test_baseFlow_AdjustBlockRange_RevalidatesMissingGERClaimsAfterRangeTrim(t *testing.T) {
+	t.Parallel()
+
+	ger := common.HexToHash("0x77")
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(context.Background(), ger, common.Hash{}).
+		Return(nil, treetypes.Proof{}, errors.New("missing")).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock: 5,
+		ToBlock:   10,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 6, GlobalExitRoot: ger, GlobalIndex: big.NewInt(1)},
+		},
+		Unclaims: []claimsynctypes.Unclaim{
+			{BlockNumber: 9, GlobalIndex: big.NewInt(1)},
+		},
+	}
+
+	result, err := f.AdjustBlockRange(context.Background(), buildParams, types.BlockRangeAdjustmentOptions{
+		MaxL2BlockNumber: 8,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), result.ToBlock)
+	require.Empty(t, result.Claims)
+	require.Empty(t, result.Unclaims)
 }

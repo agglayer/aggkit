@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
@@ -58,9 +59,11 @@ func (f *baseFlow) AdjustBlockRange(
 		return nil, err
 	}
 
-	current, err = f.limitCertSize(current)
-	if err != nil {
-		return nil, err
+	if !options.DisableSizeLimit {
+		current, err = f.limitCertSize(current)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	current, err = f.adjustInvalidClaimsAreNotUnclaimed(current, cache)
@@ -169,6 +172,7 @@ func (f *baseFlow) adjustClaimsNotProvableAgainstRoot(
 			ctx, claim.GlobalExitRoot, buildParams.L1InfoTreeRootFromWhichToProve,
 		)
 		if err == nil {
+			cache.existsOnL1[claim.GlobalExitRoot] = true
 			continue
 		}
 
@@ -180,6 +184,11 @@ func (f *baseFlow) adjustClaimsNotProvableAgainstRoot(
 		if !existsOnL1 {
 			f.log.Warnf("GER %s used on claim %+v does not exist on L1", claim.GlobalExitRoot.Hex(), claim)
 			continue
+		}
+
+		if !errors.Is(err, query.ErrGERNotProvableAgainstRoot) {
+			return nil, fmt.Errorf("proof lookup failed for GER %s against root %s: %w",
+				claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
 		}
 
 		f.log.Warnf("found a GER %s on block %d that cannot be proved against L1 info root %s; "+
@@ -221,35 +230,32 @@ func (f *baseFlow) adjustInvalidClaimsAreNotUnclaimed(
 	buildParams *types.CertificateBuildParams,
 	cache *gerValidationCache,
 ) (*types.CertificateBuildParams, error) {
-	usedUnclaims := make([]bool, len(buildParams.Unclaims))
+	current := buildParams
 
-	for _, claim := range buildParams.Claims {
-		existsOnL1, err := f.getGERExistsOnL1(cache, claim.GlobalExitRoot)
+	for {
+		invalidClaim, found, err := f.findFirstMissingGERClaimWithoutFinalUnclaim(current, cache)
 		if err != nil {
-			return nil, fmt.Errorf("error checking if GER %s exists on L1: %w", claim.GlobalExitRoot.String(), err)
+			return nil, err
+		}
+		if !found {
+			return current, nil
 		}
 
-		if existsOnL1 {
-			continue
-		}
-
-		if claimHasPosteriorUnclaim(claim, buildParams.Unclaims, usedUnclaims) {
-			continue
-		}
-
-		if claim.BlockNum <= buildParams.FromBlock {
+		if invalidClaim.BlockNum <= current.FromBlock {
 			return nil, fmt.Errorf("cannot create certificate: invalid claim at block %d "+
 				"(start block %d) has no matching posterior unclaim in the final block range",
-				claim.BlockNum, buildParams.FromBlock)
+				invalidClaim.BlockNum, current.FromBlock)
 		}
 
 		f.log.Warnf("found a claim (%+v) that uses a GER (%s) that doesn't exist on L1 and "+
 			"has no matching posterior unclaim for the final block range (from %d to %d). Trimming down block range to block %d",
-			claim, claim.GlobalExitRoot.String(), buildParams.FromBlock, buildParams.ToBlock, claim.BlockNum-1)
-		return trimCertificateToBlock(buildParams, claim.BlockNum-1)
-	}
+			invalidClaim, invalidClaim.GlobalExitRoot.String(), current.FromBlock, current.ToBlock, invalidClaim.BlockNum-1)
 
-	return buildParams, nil
+		current, err = trimCertificateToBlock(current, invalidClaim.BlockNum-1)
+		if err != nil {
+			return nil, err
+		}
+	}
 }
 
 func (f *baseFlow) getGERExistsOnL1(cache *gerValidationCache, ger common.Hash) (bool, error) {
@@ -264,6 +270,37 @@ func (f *baseFlow) getGERExistsOnL1(cache *gerValidationCache, ger common.Hash) 
 
 	cache.existsOnL1[ger] = exists
 	return exists, nil
+}
+
+func (f *baseFlow) findFirstMissingGERClaimWithoutFinalUnclaim(
+	buildParams *types.CertificateBuildParams,
+	cache *gerValidationCache,
+) (claimsynctypes.Claim, bool, error) {
+	missingClaims := make([]claimsynctypes.Claim, 0, len(buildParams.Claims))
+	for _, claim := range buildParams.Claims {
+		existsOnL1, err := f.getGERExistsOnL1(cache, claim.GlobalExitRoot)
+		if err != nil {
+			return claimsynctypes.Claim{}, false,
+				fmt.Errorf("error checking if GER %s exists on L1: %w", claim.GlobalExitRoot.String(), err)
+		}
+		if !existsOnL1 {
+			missingClaims = append(missingClaims, claim)
+		}
+	}
+
+	if len(missingClaims) == 0 {
+		return claimsynctypes.Claim{}, false, nil
+	}
+
+	usedUnclaims := make([]bool, len(buildParams.Unclaims))
+	for _, claim := range missingClaims {
+		if claimHasPosteriorUnclaim(claim, buildParams.Unclaims, usedUnclaims) {
+			continue
+		}
+		return claim, true, nil
+	}
+
+	return claimsynctypes.Claim{}, false, nil
 }
 
 func claimHasPosteriorUnclaim(
@@ -284,7 +321,7 @@ func claimHasPosteriorUnclaim(
 			continue
 		}
 
-		if unclaim.BlockNumber <= claim.BlockNum {
+		if compareClaimToUnclaimOrder(claim, unclaim) >= 0 {
 			continue
 		}
 
@@ -293,6 +330,27 @@ func claimHasPosteriorUnclaim(
 	}
 
 	return false
+}
+
+func compareClaimToUnclaimOrder(claim claimsynctypes.Claim, unclaim claimsynctypes.Unclaim) int {
+	// Event ordering is block number first, then the intra-block position.
+	// Equal positions are treated as simultaneous, so the unclaim is not considered posterior.
+	return compareEventOrder(claim.BlockNum, claim.BlockPos, unclaim.BlockNumber, unclaim.LogIndex)
+}
+
+func compareEventOrder(leftBlock, leftIndex, rightBlock, rightIndex uint64) int {
+	switch {
+	case leftBlock < rightBlock:
+		return -1
+	case leftBlock > rightBlock:
+		return 1
+	case leftIndex < rightIndex:
+		return -1
+	case leftIndex > rightIndex:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func trimCertificateToBlock(

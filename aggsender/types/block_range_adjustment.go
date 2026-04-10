@@ -7,4 +7,5 @@ type BlockRangeAdjustmentOptions struct {
 	AllowResizeRetryCert          bool
 	RequireOneBridgeInCertificate bool
 	ValidateRootToProve           bool
+	DisableSizeLimit              bool
 }

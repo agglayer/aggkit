@@ -9,6 +9,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
@@ -398,7 +399,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger1, common.HexToHash("0x123")).
 					Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
 				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger2, common.HexToHash("0x123")).
-					Return(nil, treetypes.Proof{}, errors.New("not provable")).Once()
+					Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
 			},
 			expectedParams: &types.CertificateBuildParams{

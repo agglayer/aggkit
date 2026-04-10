@@ -302,12 +302,26 @@ func (a *AggchainProverBuilderFlow) verifyBuildParamsAndGenerateProof(
 			aggchainProof.EndBlock, err)
 	}
 
-	buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range after prover result: %w", err)
+	if err := a.checkBlockRangeAdjustmentAfterProof(ctx, buildParams); err != nil {
+		return nil, err
 	}
 
 	return buildParams, nil
+}
+
+func (a *AggchainProverBuilderFlow) checkBlockRangeAdjustmentAfterProof(
+	ctx context.Context, buildParams *types.CertificateBuildParams) error {
+	adjustedBuildParams, err := a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error checking block range adjustment after prover result: %w", err)
+	}
+
+	if adjustedBuildParams.FromBlock != buildParams.FromBlock || adjustedBuildParams.ToBlock != buildParams.ToBlock {
+		return fmt.Errorf("aggchainProverFlow - block range adjustment required after prover result: [%d,%d] -> [%d,%d]",
+			buildParams.FromBlock, buildParams.ToBlock, adjustedBuildParams.FromBlock, adjustedBuildParams.ToBlock)
+	}
+
+	return nil
 }
 
 // BuildCertificate builds a certificate based on the buildParams
@@ -371,6 +385,7 @@ func (a *AggchainProverBuilderFlow) adjustmentOptions(validateRootToProve bool) 
 		AllowResizeRetryCert:          false,
 		RequireOneBridgeInCertificate: false,
 		ValidateRootToProve:           validateRootToProve,
+		DisableSizeLimit:              validateRootToProve,
 	}
 }
 

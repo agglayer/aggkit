@@ -343,6 +343,47 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},
+		{
+			name: "error when prover result would require a further range adjustment",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
+				rer := common.HexToHash("0x1")
+				mer := common.HexToHash("0x2")
+				ger := l1infotreesync.CalculateGER(mer, rer)
+				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).
+					Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
+					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10, Index: 10}, nil, nil)
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), true, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
+					[]bridgesync.Bridge{{BlockNum: 6}, {BlockNum: 10}},
+					[]claimsynctypes.Claim{{
+						BlockNum:        7,
+						GlobalIndex:     big.NewInt(1),
+						GlobalExitRoot:  ger,
+						MainnetExitRoot: mer,
+						RollupExitRoot:  rer,
+					}}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(6), uint64(10)).Return(
+					[]claimsynctypes.Unclaim{{
+						BlockNumber: 9,
+						GlobalIndex: big.NewInt(1),
+					}}, nil)
+				mockL1InfoDataQuery.EXPECT().GetProofForGER(ctx, ger, finalizedL1Root).
+					Return(nil, treetypes.Proof{}, errors.New("not found")).Twice()
+				mockL1InfoDataQuery.EXPECT().DoesGERExistsOnL1(ger).Return(false, nil).Twice()
+				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
+					Return(&types.AggchainProof{
+						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+						LastProvenBlock: 6,
+						EndBlock:        8,
+					}, nil)
+			},
+			expectedError: "aggchainProverFlow - block range adjustment required after prover result: [6,8] -> [6,6]",
+		},
 	}
 
 	for _, tca := range testCases {
@@ -856,6 +897,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 					AllowResizeRetryCert:          false,
 					RequireOneBridgeInCertificate: false,
 					ValidateRootToProve:           true,
+					DisableSizeLimit:              true,
 				}).Return(expectedParams, nil).Once()
 				mockBaseFlow.EXPECT().VerifyBuildParams(ctx, expectedParams).Return(nil).Once()
 			},

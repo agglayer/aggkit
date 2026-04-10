@@ -150,5 +150,6 @@ func (p *PPBuilderFlow) adjustmentOptions(validateRootToProve bool) types.BlockR
 		AllowResizeRetryCert:          true,
 		RequireOneBridgeInCertificate: p.forceOneBridgeExit,
 		ValidateRootToProve:           validateRootToProve,
+		DisableSizeLimit:              validateRootToProve,
 	}
 }
