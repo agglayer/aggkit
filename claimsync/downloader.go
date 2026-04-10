@@ -183,7 +183,9 @@ func resolveBridgeDeployment(
 // buildOutdatedContractWarningHandler returns a handler that warns once when the bridge contract
 // emits the old DetailedClaimEvent variant (without the leafType field, v12.1.6–v12.2.0).
 // The event is dropped — callers should upgrade the contract to >= v12.2.1.
-func buildOutdatedContractWarningHandler(bridgeAddr common.Address, logger aggkitcommon.Logger) func(*sync.EVMBlock, types.Log) error {
+func buildOutdatedContractWarningHandler(
+	bridgeAddr common.Address, logger aggkitcommon.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	var once goSync.Once
 	return func(b *sync.EVMBlock, l types.Log) error {
 		once.Do(func() {

@@ -240,7 +240,7 @@ func newAggsender(
 			cfg.ValidatorClient,
 		),
 		certStatusChecker: statuschecker.NewCertStatusChecker(
-			logger, storage, aggLayerClient, certQuerier, l2ClaimSyncer, initialBlockClaimSyncerSetter, l2OriginNetwork),
+			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 		l1Client:                      l1Client,
 		l1InfoTreeSyncer:              l1InfoTreeSyncer,
 		l2ClaimSyncer:                 l2ClaimSyncer,

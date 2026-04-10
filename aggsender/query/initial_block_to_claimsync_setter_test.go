@@ -7,6 +7,7 @@ import (
 	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	claimsynctypesmocks "github.com/agglayer/aggkit/claimsync/types/mocks"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
@@ -39,16 +40,41 @@ func TestSetClaimSyncerNextRequiredBlock_NilClaimSyncer(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSetClaimSyncerNextRequiredBlock_AlreadyHasProcessedBlocks(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	setter, _, _ := newTestSetter(t)
+
+	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), true, nil)
+
+	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
+	require.NoError(t, err)
+}
+
+func TestSetClaimSyncerNextRequiredBlock_GetLastProcessedBlockError(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	setter, _, _ := newTestSetter(t)
+
+	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, errors.New("storage error"))
+
+	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
+	require.ErrorContains(t, err, "storage error")
+}
+
 func TestSetClaimSyncerNextRequiredBlock_Success(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	setter, certQuerier, agglayerClient := newTestSetter(t)
 
 	certHeader := &agglayertypes.CertificateHeader{}
-	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetLastSettledCertificateToBlock(ctx, certHeader).Return(uint64(42), nil)
-
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
+	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
+	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).
+		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlock: 42, LastImportedBridgeExitBlock: 42})
 	claimSyncer.EXPECT().SetNextRequiredBlock(ctx, uint64(42)).Return(nil)
 
 	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
@@ -60,10 +86,10 @@ func TestSetClaimSyncerNextRequiredBlock_GetLatestSettledCertHeaderError(t *test
 	ctx := t.Context()
 	setter, _, agglayerClient := newTestSetter(t)
 
+	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).
 		Return(nil, errors.New("agglayer unavailable"))
-
-	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 
 	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
 	require.ErrorIs(t, err, aggkitcommon.ErrExecutionFails)
@@ -76,11 +102,11 @@ func TestSetClaimSyncerNextRequiredBlock_GetLastSettledCertToBlockError(t *testi
 	setter, certQuerier, agglayerClient := newTestSetter(t)
 
 	certHeader := &agglayertypes.CertificateHeader{}
-	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetLastSettledCertificateToBlock(ctx, certHeader).
-		Return(uint64(0), errors.New("db error"))
-
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
+	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
+	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).
+		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlockErr: errors.New("db error")})
 
 	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
 	require.ErrorIs(t, err, aggkitcommon.ErrExecutionFails)
@@ -93,10 +119,11 @@ func TestSetClaimSyncerNextRequiredBlock_SetNextRequiredBlockError(t *testing.T)
 	setter, certQuerier, agglayerClient := newTestSetter(t)
 
 	certHeader := &agglayertypes.CertificateHeader{}
-	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetLastSettledCertificateToBlock(ctx, certHeader).Return(uint64(10), nil)
-
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
+	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
+	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).
+		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlock: 10, LastImportedBridgeExitBlock: 10})
 	claimSyncer.EXPECT().SetNextRequiredBlock(ctx, uint64(10)).Return(errors.New("syncer error"))
 
 	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())

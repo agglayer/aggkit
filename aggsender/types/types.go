@@ -434,6 +434,8 @@ func (s SettledBlocks) EarliestBlock() (uint64, error) {
 	}
 
 	result := min(s.LastBridgeExitBlock, s.LastImportedBridgeExitBlock)
+	// LastSettledL2BlockNum == 0 means "not found" (PP networks or no FEP data yet),
+	// so only include it in the minimum when a real block number was resolved.
 	if s.LastSettledL2BlockNum != 0 {
 		result = min(result, s.LastSettledL2BlockNum)
 	}

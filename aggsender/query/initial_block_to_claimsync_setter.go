@@ -48,7 +48,8 @@ func (n *SetInitialBlockToClaimSyncer) SetClaimSyncerNextRequiredBlock(
 		return fmt.Errorf("error getting last processed block from claim syncer: %w", err)
 	}
 	if found {
-		n.logger.Infof("claim syncer already has processed blocks (latest=%d), skipping setClaimSyncerNextRequiredBlock", claimSyncerLatestProcessedBlock)
+		n.logger.Infof("claim syncer already has processed blocks (latest=%d), skipping setClaimSyncerNextRequiredBlock",
+			claimSyncerLatestProcessedBlock)
 		return nil
 	}
 	if retryHandler == nil {
@@ -110,21 +111,23 @@ func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockBasedOnLatestSett
 
 	// If the problem is that can't find the block for latest claim, use RPC for it
 	if blocks.LastImportedBridgeExitBlockErr != nil {
-		blockNumber, found, err := l2ClaimSyncer.GetLatestBlockNumByGlobalIndexFromRPC(ctx, blocks.SettledImportedBridgeExit.GlobalIndex, nil)
+		globalIdx := blocks.SettledImportedBridgeExit.GlobalIndex
+		blockNumber, found, err := l2ClaimSyncer.GetLatestBlockNumByGlobalIndexFromRPC(ctx, globalIdx, nil)
 		if err != nil {
-			return 0, fmt.Errorf("error getting block number by global index from RPC: %w", err)
+			return 0, fmt.Errorf("no claim found for global index %s via RPC fallback (original error: %w)",
+				globalIdx.String(), blocks.LastImportedBridgeExitBlockErr)
 		}
 		if !found {
-			return 0, fmt.Errorf("no claim found for global index %s", blocks.SettledImportedBridgeExit.GlobalIndex.String())
+			return 0, fmt.Errorf("no claim found for global index %s via RPC fallback", globalIdx.String())
 		}
 		blocks.LastImportedBridgeExitBlock = blockNumber
 		blocks.LastImportedBridgeExitBlockErr = nil
-		n.logger.Infof("obtained last imported bridge exit block number %d for global index %s from RPC", blockNumber, blocks.SettledImportedBridgeExit.GlobalIndex.String())
+		n.logger.Infof("obtained last imported bridge exit block number %d for global index %s from RPC",
+			blockNumber, globalIdx.String())
 	}
 	startingClaimBlockNumber, err := blocks.EarliestBlock()
 	if err != nil {
 		return 0, fmt.Errorf("error getting earliest block: %w", err)
 	}
-
 	return startingClaimBlockNumber, nil
 }

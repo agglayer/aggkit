@@ -161,8 +161,7 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil}, // start claim syncer (no local cert)
-				{InitialStatusActionNone, "", nil},               // for pending cert
+				{InitialStatusActionNone, "", nil}, // for pending cert
 			},
 		},
 		{
@@ -171,9 +170,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 0, agglayertypes.InError},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil},                                         // start claim syncer (no local cert)
-				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.InError}},   // for pending cert
-				{InitialStatusActionNone, "", nil},                                                        // for settled cert
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.InError}}, // for pending cert
+				{InitialStatusActionNone, "", nil}, // for settled cert
 			},
 		},
 		{
@@ -182,9 +180,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 1, agglayertypes.InError},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil}, // start claim syncer (no local cert)
-				{InitialStatusActionNone, "", nil},               // for pending cert
-				{InitialStatusActionNone, "", nil},               // for settled cert
+				{InitialStatusActionNone, "", nil}, // for pending cert
+				{InitialStatusActionNone, "", nil}, // for settled cert
 			},
 		},
 		{
@@ -193,9 +190,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 0, agglayertypes.Proven},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil},                                          // start claim syncer (no local cert)
-				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.Proven}},     // for pending cert
-				{InitialStatusActionNone, "", nil},                                                         // for settled cert
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.Proven}}, // for pending cert
+				{InitialStatusActionNone, "", nil}, // for settled cert
 			},
 		},
 		{
@@ -211,7 +207,6 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Proven},
 			agglayerPending: nil,
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil}, // start claim syncer (no local cert)
 				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Proven}},
 			},
 		},
@@ -221,7 +216,6 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Proven},
 			agglayerPending: &certTestData{hash2, 2, agglayertypes.InError},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil}, // start claim syncer (no local cert)
 				{InitialStatusActionInsertNewCert, "", &certTestData{hash2, 2, agglayertypes.InError}},
 				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Proven}},
 			},
@@ -232,7 +226,6 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash2, 2, agglayertypes.Pending},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionStartL2ClaimSyncer, "", nil}, // start claim syncer (no local cert)
 				{InitialStatusActionInsertNewCert, "", &certTestData{hash2, 2, agglayertypes.Pending}},
 				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Settled}},
 			},
