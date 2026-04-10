@@ -2,7 +2,7 @@
 
 source $(dirname $0)/local_config_helper
 export KURTOSIS_ENCLAVE=op
-export AGGKIT_CONFIG_ARTIFACT_NAME=aggkit-config-artifact
+export AGGKIT_CONFIG_ARTIFACT_NAME=${AGGKIT_CONFIG_ARTIFACT_NAME:=aggkit-config-001}
 ###############################################################################
 function export_values_of_aggkit_config() {
     local AGGKIT_CONFIG_FILE="$1"

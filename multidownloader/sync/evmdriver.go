@@ -51,8 +51,22 @@ func NewEVMDriver(
 		compatibilityChecker: compatibilityChecker,
 	}
 }
-
-func (d *EVMDriver) Sync(ctx context.Context) {
+func (d *EVMDriver) checkFirstBlockNumberParams(firstBlockNumber *uint64) error {
+	if firstBlockNumber == nil {
+		return fmt.Errorf("multidownloader doesnt support firstBlockNumber==nil")
+	}
+	if *firstBlockNumber != d.syncerConfig.FromBlock {
+		return fmt.Errorf("multidownloader doesnt support firstBlockNumber different than FromBlock, got %d, expected %d",
+			*firstBlockNumber, d.syncerConfig.FromBlock)
+	}
+	return nil
+}
+func (d *EVMDriver) Sync(ctx context.Context, firstBlockNumber *uint64) {
+	// firstBlockNumber is unused and not support in the current implementation
+	// it just check that is equal to syncerConfig.InitialBlockNum
+	if err := d.checkFirstBlockNumberParams(firstBlockNumber); err != nil {
+		d.logger.Fatalf("error in firstBlockNumber parameter: %v", err)
+	}
 	attempts := 0
 	for {
 		if ctx.Err() != nil {
@@ -71,7 +85,7 @@ func (d *EVMDriver) Sync(ctx context.Context) {
 func (d *EVMDriver) syncStep(ctx context.Context) error {
 	if d.compatibilityChecker != nil {
 		if err := d.compatibilityChecker.Check(ctx, nil); err != nil {
-			err := fmt.Errorf("EVMDriver: error checking compatibility data between downloader (runtime)"+
+			err := fmt.Errorf("Multidownloader_EVMDriver: error checking compatibility data between downloader (runtime)"+
 				" and processor (db): %w", err)
 			return err
 		}
@@ -80,9 +94,9 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 
 	lastBlockHeader, err := d.processor.GetLastProcessedBlockHeader(ctx)
 	if err != nil {
-		return fmt.Errorf("EVMDriver: error getting last processed block from processor: %w", err)
+		return fmt.Errorf("Multidownloader_EVMDriver: error getting last processed block from processor: %w", err)
 	}
-	d.logger.Infof("EVMDriver: starting sync from last processed block: %s", lastBlockHeader.Brief())
+	d.logger.Debugf("Multidownloader_EVMDriver: starting sync from last processed block: %s", lastBlockHeader.Brief())
 	blocks, err := d.downloader.DownloadNextBlocks(ctx,
 		lastBlockHeader,
 		d.syncBlockChunkSize,
@@ -92,23 +106,23 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 		switch {
 		case mdrtypes.IsReorgedError(err):
 			if reorgErr := d.handleReorg(ctx, mdrtypes.CastReorgedError(err)); reorgErr != nil {
-				return fmt.Errorf("EVMDriver: error handling reorg: %w", reorgErr)
+				return fmt.Errorf("Multidownloader_EVMDriver: error handling reorg: %w", reorgErr)
 			}
 			// Reorg processed
 			return nil
 		case errors.Is(err, ErrLogsNotAvailable):
-			d.logger.Debug("EVMDriver: no logs available yet, waiting to retry")
+			d.logger.Debug("Multidownloader_EVMDriver: no logs available yet, waiting to retry")
 			return nil
 		default:
-			return fmt.Errorf("EVMDriver: error downloading blocks: %w", err)
+			return fmt.Errorf("Multidownloader_EVMDriver: error downloading blocks: %w", err)
 		}
 	}
 	if err = d.processBlocks(ctx, blocks); err != nil {
-		return fmt.Errorf("EVMDriver: error processing blocks: %w", err)
+		return fmt.Errorf("Multidownloader_EVMDriver: error processing blocks: %w", err)
 	}
 	if blocks != nil {
 		LastProcessedBlock := blocks.Data.LastBlock()
-		d.logger.Infof("EVMDriver: processed %d blocks, percent %.2f%% complete. LastBlock: %s",
+		d.logger.Debugf("Multidownloader_EVMDriver: processed %d blocks, percent %.2f%% complete. LastBlock: %s",
 			len(blocks.Data), blocks.CompletionPercentage, LastProcessedBlock.Brief())
 	}
 	return nil

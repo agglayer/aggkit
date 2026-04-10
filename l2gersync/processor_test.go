@@ -193,7 +193,7 @@ func TestReorg(t *testing.T) {
 	err = processor.Reorg(context.TODO(), 2)
 	require.NoError(t, err)
 
-	blockNum, err := processor.GetLastProcessedBlock(context.TODO())
+	blockNum, _, err := processor.GetLastProcessedBlock(context.TODO())
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), blockNum)
 

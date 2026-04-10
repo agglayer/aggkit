@@ -91,7 +91,9 @@ func (d *downloaderSovereign) RuntimeData(ctx context.Context) (sync.RuntimeData
 	}, nil
 }
 
-func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
+func (d *downloaderSovereign) Download(
+	ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock, _ *uint64, _ bool,
+) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -146,8 +148,8 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
-			log.Errorf("failed to fetch l1 info tree for global exit root %s: %v",
-				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), err)
+			log.Errorf("failed to fetch l1 info tree for global exit root %s (block: %d): %v",
+				common.Hash(insertGEREvent.NewGlobalExitRoot).Hex(), b.Num, err)
 			ctx := context.Background()
 			isUpToDate, upToDateErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
 			if upToDateErr != nil {

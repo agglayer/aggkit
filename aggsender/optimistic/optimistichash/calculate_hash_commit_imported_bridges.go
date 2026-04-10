@@ -4,7 +4,7 @@ import (
 	"math/big"
 
 	"github.com/agglayer/aggkit/aggsender/converters"
-	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -17,7 +17,7 @@ import (
 // CalculateCommitImportedBrdigeExitsHashFromClaims(...)
 
 // CalculateCommitImportedBrdigeExitsHashFromClaims calculate hash from certBuildParams ([]bridgesync.Claim)
-func CalculateCommitImportedBrdigeExitsHashFromClaims(claims []bridgesync.Claim) common.Hash {
+func CalculateCommitImportedBrdigeExitsHashFromClaims(claims []claimsynctypes.Claim) common.Hash {
 	data := newCommitImportedBrigesData(claims)
 	return data.hash()
 }
@@ -31,7 +31,7 @@ type optimisticCommitImportedBrigeData struct {
 	bridgeExitHash common.Hash
 }
 
-func newCommitImportedBrigesData(claims []bridgesync.Claim) *optimisticCommitImportedBrigesData {
+func newCommitImportedBrigesData(claims []claimsynctypes.Claim) *optimisticCommitImportedBrigesData {
 	res := optimisticCommitImportedBrigesData{}
 	res.bridges = make([]optimisticCommitImportedBrigeData, len(claims))
 	for i, claim := range claims {
@@ -50,7 +50,7 @@ func (o *optimisticCommitImportedBrigesData) hash() common.Hash {
 	return crypto.Keccak256Hash(combined)
 }
 
-func (o *optimisticCommitImportedBrigeData) setBridgeExitHash(claim *bridgesync.Claim) {
+func (o *optimisticCommitImportedBrigeData) setBridgeExitHash(claim *claimsynctypes.Claim) {
 	be := converters.ConvertBridgeExitFromClaim(*claim)
 	o.bridgeExitHash = be.Hash()
 }

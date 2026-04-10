@@ -211,12 +211,13 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 	if err := json.Unmarshal(data, &summary); err != nil {
 		return nil, fmt.Errorf("parse summary.json: %w", err)
 	}
-
-	// Ensure containers are down and data dir is clean, then start fresh
-	if err := ensureDockerComposeRunning(ctx, envDir); err != nil {
-		return nil, fmt.Errorf("start docker compose: %w", err)
+	isDockerRunning := os.Getenv("E2E_DOCKER_IS_RUNNING") == "1"
+	if !isDockerRunning {
+		// Ensure containers are down and data dir is clean, then start fresh
+		if err := ensureDockerComposeRunning(ctx, envDir); err != nil {
+			return nil, fmt.Errorf("start docker compose: %w", err)
+		}
 	}
-
 	// Wait for services to be ready
 	if err := waitForServices(ctx, &summary); err != nil {
 		_ = stopDockerCompose(context.Background(), envDir)

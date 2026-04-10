@@ -11,8 +11,6 @@ const (
 	AGGORACLE = "aggoracle"
 	// BRIDGE name to identify the bridge component (have RPC)
 	BRIDGE = "bridge"
-	// PROVER name to identify the prover component
-	PROVER = "prover"
 	// AGGSENDER name to identify the aggsender component
 	AGGSENDER = "aggsender"
 	// L1INFOTREESYNC name to identify the l1infotreesync component
@@ -27,6 +25,8 @@ const (
 	AGGCHAINPROOFGEN = "aggchain-proof-gen"
 	// AGGSENDERVALIDATOR runs aggsender certificate validator
 	AGGSENDERVALIDATOR = "aggsender-validator"
+	// L2CLAIMSYNC name to identify the l2 claim sync component
+	L2CLAIMSYNC = "l2claimsync"
 )
 
 // ValidateComponents validates that all provided components are known/supported.
@@ -34,7 +34,6 @@ func ValidateComponents(components []string) error {
 	validComponents := map[string]struct{}{
 		AGGORACLE:          {},
 		BRIDGE:             {},
-		PROVER:             {},
 		AGGSENDER:          {},
 		L1INFOTREESYNC:     {},
 		L2BRIDGESYNC:       {},
@@ -42,6 +41,7 @@ func ValidateComponents(components []string) error {
 		L2GERSYNC:          {},
 		AGGCHAINPROOFGEN:   {},
 		AGGSENDERVALIDATOR: {},
+		L2CLAIMSYNC:        {},
 	}
 
 	// build a sorted list of valid component names for error messages

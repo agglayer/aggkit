@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -23,13 +24,13 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		claim         bridgesync.Claim
+		claim         claimsynctypes.Claim
 		expectedError bool
 		expectedExit  *agglayertypes.ImportedBridgeExit
 	}{
 		{
 			name: "Asset claim",
-			claim: bridgesync.Claim{
+			claim: claimsynctypes.Claim{
 				IsMessage:          false,
 				OriginNetwork:      1,
 				OriginAddress:      common.HexToAddress("0x123"),
@@ -61,7 +62,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 		},
 		{
 			name: "Message claim",
-			claim: bridgesync.Claim{
+			claim: claimsynctypes.Claim{
 				IsMessage:          true,
 				OriginNetwork:      1,
 				OriginAddress:      common.HexToAddress("0x123"),
@@ -118,14 +119,14 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		claims        []bridgesync.Claim
+		claims        []claimsynctypes.Claim
 		mockFn        func(*mocks.L1InfoTreeDataQuerier)
 		expectedError bool
 		expectedExits []*agglayertypes.ImportedBridgeExit
 	}{
 		{
 			name: "Single claim",
-			claims: []bridgesync.Claim{
+			claims: []claimsynctypes.Claim{
 				{
 					IsMessage:           false,
 					OriginNetwork:       1,
@@ -199,7 +200,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 		},
 		{
 			name: "Multiple claims",
-			claims: []bridgesync.Claim{
+			claims: []claimsynctypes.Claim{
 				{
 					IsMessage:           false,
 					OriginNetwork:       1,
@@ -326,13 +327,13 @@ func TestGetImportedBridgeExits(t *testing.T) {
 		},
 		{
 			name:          "No claims",
-			claims:        []bridgesync.Claim{},
+			claims:        []claimsynctypes.Claim{},
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{},
 		},
 		{
 			name: "error getting proof for GER",
-			claims: []bridgesync.Claim{
+			claims: []claimsynctypes.Claim{
 				{
 					IsMessage:           false,
 					OriginNetwork:       11,
@@ -385,7 +386,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 func TestConvertToImportedBridgeExitsWithoutClaimData_NoClaims(t *testing.T) {
 	t.Parallel()
 
-	exits, err := ConvertToImportedBridgeExitsWithoutClaimData([]bridgesync.Claim{})
+	exits, err := ConvertToImportedBridgeExitsWithoutClaimData([]claimsynctypes.Claim{})
 	require.NoError(t, err)
 	require.Equal(t, []*agglayertypes.ImportedBridgeExit{}, exits)
 }
@@ -393,7 +394,7 @@ func TestConvertToImportedBridgeExitsWithoutClaimData_NoClaims(t *testing.T) {
 func TestConvertToImportedBridgeExitsWithoutClaimData_MultipleClaims(t *testing.T) {
 	t.Parallel()
 
-	claims := []bridgesync.Claim{
+	claims := []claimsynctypes.Claim{
 		{
 			IsMessage:          false,
 			OriginNetwork:      1,
