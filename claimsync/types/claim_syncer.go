@@ -16,6 +16,7 @@ type ClaimSyncer interface {
 	// set the next required block to the next one from the previous settled certificate
 	// If the syncer have no block yet is going to use this as starting point
 	// If the syncer have any block check that the `blockNumber`is higher than the first synced block
+	// blockNumber==0 means that the syncer should start syncing from the InitialBlockNum in the config
 	SetNextRequiredBlock(ctx context.Context, blockNumber uint64) error
 
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error)

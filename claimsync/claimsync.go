@@ -178,6 +178,11 @@ func (c *ClaimSync) OriginNetwork() uint32 {
 }
 
 func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64) error {
+	if blockNumber < c.cfg.InitialBlockNum {
+		c.logger.Infof("SetNextRequiredBlock: requested block %d is below InitialBlockNum %d, capping to %d",
+			blockNumber, c.cfg.InitialBlockNum, c.cfg.InitialBlockNum)
+		blockNumber = c.cfg.InitialBlockNum
+	}
 	lastBlock, found, err := c.processor.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return fmt.Errorf("claimsync: failed to get last processed block: %w", err)

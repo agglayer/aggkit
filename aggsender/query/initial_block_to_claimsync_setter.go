@@ -87,6 +87,9 @@ func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlock(ctx context.Cont
 	if err != nil {
 		return 0, fmt.Errorf("error getting latest settled certificate header from agglayer: %w", err)
 	}
+	if certHeader == nil {
+		toBlock := n.claimSyncerStartingBlockFromScratch(ctx)
+	}
 	// Even if certHeader is nil it returns the first block number
 	toBlock, err := n.claimSyncerStartingBlockBasedOnLatestSettledCert(ctx, l2ClaimSyncer, certHeader)
 	if err != nil {
@@ -94,7 +97,14 @@ func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlock(ctx context.Cont
 	}
 	return toBlock, nil
 }
-
+func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockFromScratch(ctx context.Context) (uint64, error) {
+	blocks := n.certQuerier.GetBlockNumbersFromCertHeader(ctx, nil)
+	if blocks.LastSettledL2BlockNumErr != nil {
+		return 0, fmt.Errorf("claimSyncerStartingBlockFromScratch: error getting last settled L2 block number from cert querier: %w", blocks.LastSettledL2BlockNumErr)
+	}
+	// It can be 0 (not found)
+	return blocks.LastSettledL2BlockNum, nil
+}
 func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockBasedOnLatestSettledCert(
 	ctx context.Context,
 	l2ClaimSyncer claimsynctypes.ClaimSyncer,
