@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -24,22 +25,26 @@ func NewVerifierFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSycer claimsynctypes.ClaimSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	initialLER common.Hash,
 ) (types.AggsenderVerifierFlow, *CommonFlowComponents, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, l2ClaimSycer, rollupDataQuerier, committeeQuerier, 0, false,
+			cfg.MaxCertSize, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
 			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			nil, // certQuerier not used in validator mode
+			initialLER,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -61,9 +66,9 @@ func NewVerifierFlow(
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, committeeQuerier,
+			l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, l2ClaimSycer, rollupDataQuerier, committeeQuerier,
 			0, cfg.FEPConfig.RequireNoBlockGap,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
+			cfg.MaxCertSize,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
@@ -71,6 +76,8 @@ func NewVerifierFlow(
 			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			nil, // certQuerier not used in validator mode
+			initialLER,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)

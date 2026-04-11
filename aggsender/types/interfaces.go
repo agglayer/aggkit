@@ -10,7 +10,8 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/sync"
@@ -70,7 +71,7 @@ type AggsenderFlowBaser interface {
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
 		newFromBlock, newToBlock uint64) error
-	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
+	ConvertClaimToImportedBridgeExit(claim claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)
@@ -99,11 +100,9 @@ type L2BridgeSyncer interface {
 	GetBlockByLER(ctx context.Context, ler common.Hash) (uint64, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
-	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
-	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
-	GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]bridgesync.Claim, error)
 	SubscribeToSync(subscriberID string) <-chan sync.Block
 	SubscribeToNewBridge(subscriberID string) <-chan uint64
 }
@@ -113,13 +112,13 @@ type BridgeQuerier interface {
 	GetBridgesAndClaims(
 		ctx context.Context,
 		fromBlock, toBlock uint64,
-	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
+	) ([]bridgesync.Bridge, []claimsynctypes.Claim, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
-	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 	GetUnsetClaimsForBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
+		fromBlock, toBlock uint64) ([]claimsynctypes.Unclaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
@@ -133,7 +132,7 @@ type ChainGERReader interface {
 // AgglayerBridgeL2Reader is an interface defining functions that an AgglayerBridgeL2Reader should implement
 type AgglayerBridgeL2Reader interface {
 	GetUnsetClaimsForBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
+		fromBlock, toBlock uint64) ([]claimsynctypes.Unclaim, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -212,7 +211,7 @@ type RollupDataQuerier interface {
 
 // LERQuerier is an interface defining functions that a Local Exit Root querier should implement
 type LERQuerier interface {
-	GetLastLocalExitRoot() (common.Hash, error)
+	GetInitialLocalExitRoot() (common.Hash, error)
 }
 
 // MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
@@ -405,4 +404,12 @@ type CertificateSendTrigger interface {
 	ForceTriggerEvent()
 	// OnIdle Aggsender is waiting for a trigger to generate a new certificate
 	OnIdle()
+}
+
+// InitialBlockClaimSyncerSetter is an interface that defines the method to set the initial block for the claim syncer
+type InitialBlockClaimSyncerSetter interface {
+	SetClaimSyncerNextRequiredBlock(
+		ctx context.Context,
+		l2ClaimSyncer claimsynctypes.ClaimSyncer,
+		retryHandler commontypes.RetryHandler) error
 }

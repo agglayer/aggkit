@@ -11,7 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitdb "github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -75,7 +75,8 @@ type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	lerQuerier            types.LERQuerier
+	initialLER            common.Hash
+	certQuerier           types.CertificateQuerier
 	cfg                   BaseFlowConfig
 	log                   types.Logger
 	// TimeNowFunc is a function that returns the current time as a uint32 timestamp.
@@ -88,7 +89,8 @@ func NewBaseFlow(
 	l2BridgeQuerier types.BridgeQuerier,
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
-	lerQuerier types.LERQuerier,
+	initialLER common.Hash,
+	certQuerier types.CertificateQuerier,
 	cfg BaseFlowConfig,
 ) *baseFlow {
 	return &baseFlow{
@@ -96,7 +98,8 @@ func NewBaseFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
-		lerQuerier:            lerQuerier,
+		initialLER:            initialLER,
+		certQuerier:           certQuerier,
 		cfg:                   cfg,
 		timeNowFunc:           TimeNowUTC,
 	}
@@ -110,12 +113,35 @@ func (f *baseFlow) StartL2Block() uint64 {
 // NextCertificateBlockRange returns the block range and retryCount for the next certificate
 func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 	lastSentCertificate *types.CertificateHeader) (aggkitcommon.BlockRange, int, error) {
-	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
+	lastL2BlockSynced, found, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return aggkitcommon.BlockRangeZero, 0, fmt.Errorf("error getting last processed block from l2: %w", err)
 	}
+	if !found {
+		return aggkitcommon.BlockRangeZero, 0, fmt.Errorf("no processed block yet found from l2")
+	}
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
+
+	// For settled certs, re-derive the boundary from on-chain/bridgesync data using the same
+	// logic as the local validator. This ensures the aggsender and validator always agree on
+	// fromBlock even when the stored ToBlock is stale (e.g. set to 0 by the debug endpoint).
+	if lastSentCertificate != nil && lastSentCertificate.Status.IsSettled() && f.certQuerier != nil {
+		agglayerCert := converters.ConvertAggsenderCertHeaderToAgglayer(
+			lastSentCertificate, f.l2BridgeQuerier.OriginNetwork())
+		derivedToBlock, err := f.certQuerier.GetLastSettledCertificateToBlock(ctx, agglayerCert)
+		if err != nil {
+			return aggkitcommon.BlockRangeZero, 0,
+				fmt.Errorf("error deriving toBlock for settled cert %s: %w", lastSentCertificate.ID(), err)
+		}
+		if derivedToBlock != previousToBlock {
+			f.log.Warnf("toBlock inconsistency for settled cert %s: agglayer-derived=%d, db-stored=%d. "+
+				"Using agglayer-derived value.",
+				lastSentCertificate.ID(), derivedToBlock, previousToBlock)
+		}
+		previousToBlock = derivedToBlock
+	}
+
 	if previousToBlock >= lastL2BlockSynced {
 		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
@@ -338,7 +364,9 @@ func (f *baseFlow) getNewLocalExitRoot(
 }
 
 // ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+func (f *baseFlow) ConvertClaimToImportedBridgeExit(
+	claim claimsynctypes.Claim,
+) (*agglayertypes.ImportedBridgeExit, error) {
 	return converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
 }
 
@@ -350,8 +378,8 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context,
-	claims []bridgesync.Claim,
-	unclaims []bridgesynctypes.Unclaim,
+	claims []claimsynctypes.Claim,
+	unclaims []claimsynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	// Build unclaim counts by GlobalIndex
@@ -364,7 +392,7 @@ func (f *baseFlow) getImportedBridgeExits(
 		}
 	}
 
-	filteredClaims := make([]bridgesync.Claim, 0)
+	filteredClaims := make([]claimsynctypes.Claim, 0)
 	for _, c := range claims {
 		if c.GlobalIndex != nil {
 			key := c.GlobalIndex.String()
@@ -391,8 +419,7 @@ func (f *baseFlow) getImportedBridgeExits(
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		ler, err := f.lerQuerier.GetLastLocalExitRoot()
-		return uint64(0), ler, err
+		return uint64(0), f.initialLER, nil
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
 		return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s is not closed (status: %s)",
@@ -409,8 +436,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			ler, err := f.lerQuerier.GetLastLocalExitRoot()
-			return uint64(0), ler, err
+			return uint64(0), f.initialLER, nil
 		}
 		// We get previous certificate that must be settled
 		f.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
@@ -434,7 +460,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 }
 
 // verifyClaimGERs verifies the correctnes GERs of the claims
-func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
+func (f *baseFlow) verifyClaimGERs(claims []claimsynctypes.Claim) error {
 	for _, claim := range claims {
 		ger := l1infotreesync.CalculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
 		if ger != claim.GlobalExitRoot {

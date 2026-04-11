@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	context "context"
+
 	types "github.com/agglayer/aggkit/aggsender/types"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -131,6 +133,53 @@ func (_c *AggsenderStorer_GetLastSentCertificate_Call) Return(_a0 *types.Certifi
 }
 
 func (_c *AggsenderStorer_GetLastSentCertificate_Call) RunAndReturn(run func() (*types.Certificate, error)) *AggsenderStorer_GetLastSentCertificate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SaveLastSentCertificate provides a mock function with given fields: ctx, certificate
+func (_m *AggsenderStorer) SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error {
+	ret := _m.Called(ctx, certificate)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveLastSentCertificate")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.Certificate) error); ok {
+		r0 = rf(ctx, certificate)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// AggsenderStorer_SaveLastSentCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveLastSentCertificate'
+type AggsenderStorer_SaveLastSentCertificate_Call struct {
+	*mock.Call
+}
+
+// SaveLastSentCertificate is a helper method to define mock.On call
+//   - ctx context.Context
+//   - certificate types.Certificate
+func (_e *AggsenderStorer_Expecter) SaveLastSentCertificate(ctx interface{}, certificate interface{}) *AggsenderStorer_SaveLastSentCertificate_Call {
+	return &AggsenderStorer_SaveLastSentCertificate_Call{Call: _e.mock.On("SaveLastSentCertificate", ctx, certificate)}
+}
+
+func (_c *AggsenderStorer_SaveLastSentCertificate_Call) Run(run func(ctx context.Context, certificate types.Certificate)) *AggsenderStorer_SaveLastSentCertificate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.Certificate))
+	})
+	return _c
+}
+
+func (_c *AggsenderStorer_SaveLastSentCertificate_Call) Return(_a0 error) *AggsenderStorer_SaveLastSentCertificate_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *AggsenderStorer_SaveLastSentCertificate_Call) RunAndReturn(run func(context.Context, types.Certificate) error) *AggsenderStorer_SaveLastSentCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

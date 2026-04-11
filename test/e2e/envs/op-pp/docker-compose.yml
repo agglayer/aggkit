@@ -177,6 +177,7 @@ services:
     image: aggkit:local
     container_name: cdk-20260216-212314-aggkit-001
     hostname: aggkit-001
+    user: "${UID:-0}:${GID:-0}"
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
       - "run"
@@ -187,6 +188,7 @@ services:
       - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
       - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+      - ./aggkit-001-data:/tmp  # persist DB so host-side tools can access aggsender.sqlite
     ports:
       - "11576:5576"    # RPC
       - "11577:5577"    # REST API
@@ -202,6 +204,51 @@ services:
     restart: unless-stopped
     environment:
       - RUST_BACKTRACE=1
+
+  # aggkit-001:
+  #   image: aggkit:local-debug
+  #   container_name: cdk-20260216-212314-aggkit-001
+  #   hostname: aggkit-001
+  #   entrypoint:
+  #     - "/usr/local/bin/dlv"
+  #     - "exec"
+  #     - "/usr/local/bin/aggkit"
+  #     - "--headless"
+  #     - "--listen=:40000"
+  #     - "--api-version=2"
+  #     - "--accept-multiclient"
+  #     - "--log"
+  #     - "--"
+  #   command:
+  #     - "run"
+  #     - "--cfg=/etc/aggkit/config.toml"
+  #     - "--components=aggsender,aggoracle,bridge"
+  #   volumes:
+  #     - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
+  #     - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
+  #     - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
+  #     - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+  #     - ./aggkit-001-data:/tmp  # persist DB so host-side tools can access aggsender.sqlite
+  #   ports:
+  #     - "11576:5576"    # RPC
+  #     - "11577:5577"    # REST API
+  #     - "40000:40000"   # dlv remote debug
+  #   cap_add:
+  #     - SYS_PTRACE
+  #   security_opt:
+  #     - seccomp:unconfined
+  #   depends_on:
+  #     geth:
+  #       condition: service_healthy
+  #     op-geth-001:
+  #       condition: service_healthy
+  #     op-node-001:
+  #       condition: service_healthy
+  #     agglayer:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   environment:
+  #     - RUST_BACKTRACE=1
 
 volumes:
   l2-shared-001:

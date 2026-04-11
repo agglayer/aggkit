@@ -1,0 +1,32 @@
+# Version control
+.git/
+.gitignore
+
+# Sensitive / secret files
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Editor and OS artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Build artifacts (not needed — built inside the container)
+/out/
+
+# Test fixtures and E2E env (may contain keys/configs)
+test/e2e/envs/
+
+# Temporary E2E test data (aggkit bind-mount data, may be owned by container UID)
+tmp/
+
+# Local developer configs
+*.local

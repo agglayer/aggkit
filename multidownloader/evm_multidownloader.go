@@ -382,19 +382,19 @@ func (dh *EVMMultidownloader) StartStep(ctx context.Context) error {
 		}
 		safePendingBlockRange, unsafePendingBlockRange := pendingBlockRange.SplitByBlockNumber(finalizedBlockNumber)
 		if !safePendingBlockRange.IsEmpty() {
-			dh.log.Infof("🛡️ StartStep: Safe sync for pending range %s", safePendingBlockRange.String())
+			dh.log.Debugf("🛡️ StartStep: Safe sync for pending range %s", safePendingBlockRange.String())
 			_, err = dh.StepSafe(ctx)
 			return err
 		}
 		if !unsafePendingBlockRange.IsEmpty() {
-			dh.log.Infof("😈 StartStep: Unsafe sync for pending range %s", unsafePendingBlockRange.String())
+			dh.log.Debugf("😈 StartStep: Unsafe sync for pending range %s", unsafePendingBlockRange.String())
 			_, err = dh.StepUnsafe(ctx)
 			return err
 		}
 	} else {
 		dh.log.Debugf("StartStep: no pending blocks to sync")
 	}
-	dh.log.Infof("⏳StartStep: waiting new block...")
+	dh.log.Debugf("⏳StartStep: waiting new block...")
 	if err = dh.WaitForNewLatestBlocks(ctx); err != nil {
 		return err
 	}
@@ -413,8 +413,10 @@ func (dh *EVMMultidownloader) WaitForNewLatestBlocks(ctx context.Context) error 
 		lastBlockHeader = &aggkittypes.BlockHeader{
 			Number: latestSyncedBlockNumber,
 		}
+		// Is not in DB, so must be finalized
+		finalized = true
 	}
-	dh.log.Infof("waiting new block (%s>%d)...", lastSyncedBlockTag.String(), latestSyncedBlockNumber)
+	dh.log.Debugf("waiting new block (%s>%d)...", lastSyncedBlockTag.String(), latestSyncedBlockNumber)
 	_, err = dh.waitForNewBlocks(ctx, lastSyncedBlockTag, lastBlockHeader, finalized)
 	return err
 }
@@ -668,7 +670,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	dh.state = newState
 	finished := dh.state.IsSyncFinished()
 	totalBlocksPendingToSync := dh.state.TotalBlocksPendingToSync()
-	dh.log.Infof("Unsafe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
+	dh.log.Debugf("Unsafe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
 		dh.statistics.ElapsedSyncing().String(),
 		pendingBlockRange.String(),
 		len(logs),
@@ -738,7 +740,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	dh.state = newState
 	finished := dh.state.IsSyncFinished()
 	totalBlocksPendingToSync := dh.state.TotalBlocksPendingToSync()
-	dh.log.Infof("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
+	dh.log.Debugf("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
 		dh.statistics.ElapsedSyncing().String(),
 		logQueryData.BlockRange.String(),
 		len(logs),
@@ -1027,7 +1029,7 @@ func (dh *EVMMultidownloader) moveUnsafeToSafeIfPossible(ctx context.Context) er
 	if err != nil {
 		return fmt.Errorf("moveUnsafeToSafeIfPossible: cannot update is_final for block bases: %w", err)
 	}
-	dh.log.Infof("moveUnsafeToSafeIfPossible: finalizedBlockNumber=%d, "+
+	dh.log.Debugf("moveUnsafeToSafeIfPossible: finalizedBlockNumber=%d, "+
 		"block moved to safe zone: %s (len=%d)", finalizedBlockNumber, blocks.BlockRange().String(), blocks.Len())
 	committed = true
 	if err := tx.Commit(); err != nil {

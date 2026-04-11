@@ -7,7 +7,7 @@ import (
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	"github.com/agglayer/go_signer/signer"
@@ -107,7 +107,7 @@ func validateSignerAgainstContract(
 func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	aggchainReq types.AggchainProofRequest,
 	newLocalExitRoot common.Hash,
-	claims []bridgesync.Claim,
+	claims []claimsynctypes.Claim,
 ) ([]byte, string, error) {
 	o.logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d",
 		aggchainReq.L1InfoTreeLeaf.BlockNumber)

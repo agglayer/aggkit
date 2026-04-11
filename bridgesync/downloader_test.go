@@ -9,13 +9,10 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -24,6 +21,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	claimAssetEtrogMethodID   = common.Hex2Bytes("ccaa2d11")
+	claimMessageEtrogMethodID = common.Hex2Bytes("f5efcd79")
 )
 
 // mainnet:
@@ -325,322 +327,6 @@ func TestBuildAppender(t *testing.T) {
 			},
 		},
 		{
-			name:           "claimEventSignaturePreEtrog appender",
-			eventSignature: claimEventSignaturePreEtrog,
-			deploymentKind: NonSovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				bridgeV1Abi, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
-				require.NoError(t, err)
-
-				event, err := bridgeV1Abi.EventByID(claimEventSignaturePreEtrog)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				index := uint32(5)
-				originNetwork := uint32(6)
-				originAddress := common.HexToAddress("0x20")
-				destinationAddress := common.HexToAddress("0x30")
-				amount := big.NewInt(10)
-				data, err := event.Inputs.Pack(
-					index, originNetwork,
-					originAddress, destinationAddress, amount)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{claimEventSignaturePreEtrog},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "claimEventSignature appender",
-			eventSignature: claimEventSignature,
-			deploymentKind: NonSovereignChain,
-			logsCount:      1,
-			buildQuerierMockFunc: func() *BridgeQuerierMock {
-				querierMock := NewBridgeQuerierMock(t)
-				querierMock.EXPECT().
-					GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
-					Return(0, db.ErrNotFound).
-					Once()
-
-				return querierMock
-			},
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(claimEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				globalIndex := big.NewInt(5)
-				originNetwork := uint32(6)
-				originAddress := common.HexToAddress("0x20")
-				destinationAddress := common.HexToAddress("0x30")
-				amount := big.NewInt(10)
-				data, err := event.Inputs.Pack(
-					globalIndex, originNetwork,
-					originAddress, destinationAddress, amount)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{claimEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "claimEventSignature appender skipping due to boundary block",
-			eventSignature: claimEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      0,
-			buildQuerierMockFunc: func() *BridgeQuerierMock {
-				querierMock := NewBridgeQuerierMock(t)
-				querierMock.EXPECT().
-					GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
-					Return(10, nil).
-					Once()
-
-				return querierMock
-			},
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(claimEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				globalIndex := big.NewInt(5)
-				originNetwork := uint32(6)
-				originAddress := common.HexToAddress("0x20")
-				destinationAddress := common.HexToAddress("0x30")
-				amount := big.NewInt(10)
-				data, err := event.Inputs.Pack(
-					globalIndex, originNetwork,
-					originAddress, destinationAddress, amount)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					BlockNumber: 12,
-					Topics:      []common.Hash{claimEventSignature},
-					Data:        data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "detailedClaimEventSignature appender",
-			eventSignature: detailedClaimEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(detailedClaimEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				// indexed args
-				globalIndex := common.BigToHash(big.NewInt(5))
-				destinationAddress := common.HexToHash(common.HexToAddress("0x30").Hex())
-
-				// non-indexed args
-				lerProof := [treetypes.DefaultHeight]common.Hash{}
-				rerProof := [treetypes.DefaultHeight]common.Hash{}
-				mainnetExitRoot := common.HexToHash("5ca1e")
-				rollupExitRoot := common.HexToHash("5ca1e1")
-				leafType := bridgetypes.LeafTypeAsset
-				originNet := uint32(6)
-				originAddress := common.HexToAddress("0x20")
-				destinationNet := uint32(7)
-				amount := big.NewInt(10)
-				metadata := []byte{}
-				data, err := event.Inputs.NonIndexed().Pack(lerProof, rerProof, mainnetExitRoot, rollupExitRoot,
-					leafType, originNet, originAddress, destinationNet, amount, metadata)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				return types.Log{
-					Topics: []common.Hash{
-						detailedClaimEventSignature,
-						globalIndex,
-						destinationAddress,
-					},
-					Data: data,
-				}, nil
-			},
-		},
-		{
-			name:           "tokenMappingEventSignature appender",
-			eventSignature: tokenMappingEventSignature,
-			deploymentKind: NonSovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(tokenMappingEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				originNetwork := uint32(10)
-				originTokenAddress := common.HexToAddress("0x20")
-				wrappedTokenAddress := common.HexToAddress("0x30")
-				metadata := []byte{0x40}
-				data, err := event.Inputs.Pack(
-					originNetwork, originTokenAddress,
-					wrappedTokenAddress, metadata)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{tokenMappingEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "setSovereignTokenAddress appender",
-			eventSignature: setSovereignTokenEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(setSovereignTokenEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				originNetwork := uint32(15)
-				originTokenAddress := common.HexToAddress("0x25")
-				sovereignTokenAddress := common.HexToAddress("0x35")
-				isNotMintable := true
-				data, err := event.Inputs.Pack(
-					originNetwork, originTokenAddress,
-					sovereignTokenAddress, isNotMintable)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{setSovereignTokenEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "legacyTokenMigration appender",
-			eventSignature: migrateLegacyTokenEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(migrateLegacyTokenEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				senderAddr := common.HexToAddress("0x5")
-				legacyTokenAddr := common.HexToAddress("0x10")
-				updatedTokenAddr := common.HexToAddress("0x20")
-				amount := big.NewInt(150)
-				data, err := event.Inputs.Pack(
-					senderAddr, legacyTokenAddr,
-					updatedTokenAddr, amount)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{migrateLegacyTokenEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "removeLegacySovereignTokenAddress appender",
-			eventSignature: removeLegacySovereignTokenEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(removeLegacySovereignTokenEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				sovereignTokenAddr := common.HexToAddress("0x5")
-				data, err := event.Inputs.Pack(sovereignTokenAddr)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{removeLegacySovereignTokenEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "unsetClaimEventSignature appender",
-			eventSignature: unsetClaimEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(unsetClaimEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				unsetGlobalIndex := [32]byte{}
-				copy(unsetGlobalIndex[:], big.NewInt(12345).Bytes())
-				newUnsetGlobalIndexHashChain := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
-
-				data, err := event.Inputs.Pack(unsetGlobalIndex, newUnsetGlobalIndexHashChain)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{unsetClaimEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
-			name:           "setClaimEventSignature appender",
-			eventSignature: setClaimEventSignature,
-			deploymentKind: SovereignChain,
-			logsCount:      1,
-			logBuilder: func() (types.Log, error) {
-				event, err := bridgeL2Abi.EventByID(setClaimEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				globalIndexBytes := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
-				data, err := event.Inputs.Pack(globalIndexBytes)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{setClaimEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
-		{
 			name:           "backwardLETSignature appender",
 			eventSignature: backwardLETEventSignature,
 			deploymentKind: SovereignChain,
@@ -710,11 +396,7 @@ func TestBuildAppender(t *testing.T) {
 
 			logger := logger.WithFields("module", "test")
 			bridgeDeployment.kind = tt.deploymentKind
-			var querierMock *BridgeQuerierMock
-			if tt.buildQuerierMockFunc != nil {
-				querierMock = tt.buildQuerierMockFunc()
-			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, true, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, bridgeAddr, false, bridgeDeployment, logger)
 			if tt.expectedErr == "" {
 				require.NoError(t, err)
 				require.NotNil(t, appenderMap)
@@ -886,101 +568,6 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 	require.Contains(t, err.Error(), "not found")
 }
 
-func TestTryDecodeClaimCalldata(t *testing.T) {
-	c := &Claim{}
-	logger := logger.WithFields("module", "test")
-
-	// Short input should return false, error
-	found, err := c.tryDecodeClaimCalldata([]byte{0x01, 0x02, 0x03}, logger)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "input too short: 3 bytes")
-	require.False(t, found)
-
-	// Unknown method ID should return false, nil (not error anymore)
-	input := make([]byte, methodIDLength)
-	copy(input, []byte{0xaa, 0xbb, 0xcc, 0xdd})
-	found, err = c.tryDecodeClaimCalldata(input, logger)
-	require.NoError(t, err) // Should not return error anymore
-	require.False(t, found)
-
-	// Test getProxiedTokensManager method ID (38b8fbbb)
-	getProxiedTokensManagerID := []byte{0x38, 0xb8, 0xfb, 0xbb}
-	found, err = c.tryDecodeClaimCalldata(getProxiedTokensManagerID, logger)
-	require.NoError(t, err) // Should not return error
-	require.False(t, found) // Should return false (not a claim method)
-
-	// Valid method ID (simulate claimAssetEtrogMethodID)
-	copy(input, claimAssetEtrogMethodID)
-	// The rest of the input is not valid ABI, so it will error on unpack
-	found, err = c.tryDecodeClaimCalldata(input, logger)
-	require.Error(t, err)
-	require.False(t, found)
-}
-
-func TestSetClaimCalldataFromRoot(t *testing.T) {
-	bridgeAddr := common.HexToAddress("0x10")
-	logger := logger.WithFields("module", "test")
-
-	// Case 1: Root call successful, valid internal call
-	rootCall := &Call{
-		To:  common.HexToAddress("0x01"),
-		Err: nil,
-		Calls: []Call{
-			{
-				To:    bridgeAddr,
-				From:  common.HexToAddress("0x20"),
-				Err:   nil,
-				Input: append(claimAssetEtrogMethodID, []byte{0x00, 0x01, 0x02, 0x03}...), // not valid ABI, but triggers methodID match
-			},
-		},
-	}
-
-	claim := &Claim{}
-	err := claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "length insufficient")
-
-	// Case 2: Root call reverted
-	rootCall = &Call{
-		To:  bridgeAddr,
-		Err: strPtr("reverted"),
-	}
-
-	claim = &Claim{}
-	err = claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not found")
-
-	// Case 3: All internal calls reverted
-	rootCall = &Call{
-		To:  common.HexToAddress("0x01"),
-		Err: nil,
-		Calls: []Call{
-			{
-				To:  bridgeAddr,
-				Err: strPtr("reverted"),
-			},
-		},
-	}
-
-	claim = &Claim{}
-	err = claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not found")
-
-	// Case 4: No matching call
-	rootCall = &Call{
-		To:    common.HexToAddress("0x01"),
-		Err:   nil,
-		Calls: []Call{},
-	}
-
-	claim = &Claim{}
-	err = claim.setClaimCalldataFromRoot(rootCall, bridgeAddr, logger)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not found")
-}
-
 func TestTxnSenderField(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
@@ -988,12 +575,6 @@ func TestTxnSenderField(t *testing.T) {
 
 	agglayerBridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
 	require.NoError(t, err)
-
-	querierMock := NewBridgeQuerierMock(t)
-	querierMock.EXPECT().
-		GetBoundaryBlockForClaimType(mock.Anything, mock.Anything).
-		Return(0, db.ErrNotFound).
-		Maybe()
 
 	tests := []struct {
 		name              string
@@ -1048,48 +629,6 @@ func TestTxnSenderField(t *testing.T) {
 				return l, nil
 			},
 		},
-		{
-			name:           "claimEventSignature with TxnSender",
-			eventSignature: claimEventSignature,
-			callFrame: Call{
-				To:   common.HexToAddress("0x01"),
-				From: expectedTxnSender,
-				Err:  nil,
-				Calls: []Call{
-					{
-						To:    bridgeAddr,
-						From:  common.HexToAddress("0x20"),
-						Err:   nil,
-						Input: BridgeAssetMethodID,
-					},
-				},
-			},
-			expectedTxnSender: expectedTxnSender,
-			logBuilder: func() (types.Log, error) {
-				event, err := agglayerBridgeABI.EventByID(claimEventSignature)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				globalIndex := big.NewInt(5)
-				originNetwork := uint32(6)
-				originAddress := common.HexToAddress("0x20")
-				destinationAddress := common.HexToAddress("0x30")
-				amount := big.NewInt(10)
-				data, err := event.Inputs.Pack(
-					globalIndex, originNetwork,
-					originAddress, destinationAddress, amount)
-				if err != nil {
-					return types.Log{}, err
-				}
-
-				l := types.Log{
-					Topics: []common.Hash{claimEventSignature},
-					Data:   data,
-				}
-				return l, nil
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -1136,7 +675,7 @@ func TestTxnSenderField(t *testing.T) {
 				kind:           NonSovereignChain,
 				agglayerBridge: agglayerBridge,
 			}
-			appenderMap, err := buildAppender(t.Context(), ethClient, querierMock, bridgeAddr, false, true, bridgeDeployment, logger)
+			appenderMap, err := buildAppender(t.Context(), ethClient, bridgeAddr, false, bridgeDeployment, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

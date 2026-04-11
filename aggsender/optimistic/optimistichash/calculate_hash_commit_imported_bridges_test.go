@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/converters"
-	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +35,7 @@ func TestSignatureOptimisticData_CommitImportedBrige(t *testing.T) {
 }
 
 func TestNewCommitImportedBrigesData(t *testing.T) {
-	claims := []bridgesync.Claim{
+	claims := []claimsynctypes.Claim{
 		{
 			GlobalIndex:        big.NewInt(12345),
 			IsMessage:          false,
@@ -70,7 +70,7 @@ func TestNewCommitImportedBrigesData(t *testing.T) {
 }
 
 func TestSetBridgeExitHash(t *testing.T) {
-	claim := &bridgesync.Claim{
+	claim := &claimsynctypes.Claim{
 		GlobalIndex:        big.NewInt(12345),
 		IsMessage:          false,
 		OriginNetwork:      1,

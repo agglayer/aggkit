@@ -35,3 +35,30 @@ args:
         batcher_params:
           max_channel_duration: 999999  # ✅ Delays batching ~11 days
 ```
+
+## Debug
+
+In order to debug (VS Code):
+
+1. Run `make build-docker-debug` (from the root of the repo)
+2. Uncomment the commented `aggkit-001` of the `docker-compose.yml` and comment the uncommented one
+3. Run the E2E test
+4. You will need to start the debugger every single time that the aggkit docker starts. It doesn't run otherwise. Add the following content to your `.vscode/launch.json`:
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to aggkit in Docker (dlv)",
+            "type": "go",
+            "request": "attach",
+            "mode": "remote",
+            "host": "127.0.0.1",
+            "port": 40000,
+            "apiVersion": 2,
+            "showLog": true
+        }
+    ]
+}
+```

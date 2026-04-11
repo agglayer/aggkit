@@ -6,7 +6,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -54,8 +54,8 @@ type CertificateBuildParams struct {
 	FromBlock                      uint64
 	ToBlock                        uint64
 	Bridges                        []bridgesync.Bridge
-	Claims                         []bridgesync.Claim
-	Unclaims                       []bridgesynctypes.Unclaim
+	Claims                         []claimsynctypes.Claim
+	Unclaims                       []claimsynctypes.Unclaim
 	CreatedAt                      uint32
 	RetryCount                     int
 	LastSentCertificate            *CertificateHeader
@@ -96,9 +96,9 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		ToBlock:   toBlock,
 		Bridges: make([]bridgesync.Bridge, 0,
 			aggkitcommon.EstimateSliceCapacity(len(c.Bridges), span, fullSpan)),
-		Claims: make([]bridgesync.Claim, 0,
+		Claims: make([]claimsynctypes.Claim, 0,
 			aggkitcommon.EstimateSliceCapacity(len(c.Claims), span, fullSpan)),
-		Unclaims: make([]bridgesynctypes.Unclaim, 0,
+		Unclaims: make([]claimsynctypes.Unclaim, 0,
 			aggkitcommon.EstimateSliceCapacity(len(c.Unclaims), span, fullSpan)),
 		CreatedAt:                      c.CreatedAt,
 		RetryCount:                     c.RetryCount,

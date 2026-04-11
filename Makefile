@@ -97,6 +97,10 @@ build-docker-ci: ## Builds a docker image with the aggkit binary for CI (include
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
 	docker build --no-cache=true -t aggkit:local -f ./Dockerfile .
 
+.PHONY: build-docker-debug
+build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no optimizations)
+	docker build -t aggkit:local-debug -f ./Dockerfile.debug .
+
 .PHONY: test-unit
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...

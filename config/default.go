@@ -42,7 +42,7 @@ PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
 # Default database query timeout
-defaultDBQueryTimeout = "60s"
+defaultDBQueryTimeout = "5m"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
@@ -83,6 +83,11 @@ BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 		HashFromJSON = true
+
+[L2NetworkConfig]
+# InitialLER: optional override for the initial Local Exit Root (0x000...000 is a valid value).
+# If not set, the value is queried from the RollupManager contract on L1.
+# InitialLER =
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
@@ -147,8 +152,8 @@ MaxRequestsPerIPAndSecond = 10
 [REST]
 Host = "0.0.0.0"
 Port = 5577
-ReadTimeout = "2s"
-WriteTimeout = "2s"
+ReadTimeout = "5m"
+WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
@@ -163,6 +168,22 @@ WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
+EmbeddedClaimSync = "auto"
+
+[ClaimL1Sync]
+DBPath = "{{PathRWData}}/claiml1sync.sqlite"
+DBQueryTimeout = "{{BridgeL1Sync.DBQueryTimeout}}"
+
+BlockFinality = "{{BridgeL1Sync.BlockFinality}}"
+InitialBlockNum = {{BridgeL1Sync.InitialBlockNum}}
+AutoStart = "auto"
+
+BridgeAddr = "{{BridgeL1Sync.BridgeAddr}}"
+SyncBlockChunkSize = {{BridgeL1Sync.SyncBlockChunkSize}}
+RetryAfterErrorPeriod = "{{BridgeL1Sync.RetryAfterErrorPeriod}}"
+MaxRetryAttemptsAfterError = {{BridgeL1Sync.MaxRetryAttemptsAfterError}}
+WaitForNewBlocksPeriod = "{{BridgeL1Sync.WaitForNewBlocksPeriod}}"
+RequireStorageContentCompatibility = {{BridgeL1Sync.RequireStorageContentCompatibility}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -176,6 +197,22 @@ WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
+EmbeddedClaimSync = "auto"
+
+[ClaimL2Sync]
+DBPath = "{{PathRWData}}/claiml2sync.sqlite"
+DBQueryTimeout = "{{BridgeL2Sync.DBQueryTimeout}}"
+
+BlockFinality = "{{BridgeL2Sync.BlockFinality}}"
+InitialBlockNum = {{BridgeL2Sync.InitialBlockNum}}
+AutoStart = "auto"
+
+BridgeAddr = "{{BridgeL2Sync.BridgeAddr}}"
+SyncBlockChunkSize = {{BridgeL2Sync.SyncBlockChunkSize}}
+RetryAfterErrorPeriod = "{{BridgeL2Sync.RetryAfterErrorPeriod}}"
+MaxRetryAttemptsAfterError = {{BridgeL2Sync.MaxRetryAttemptsAfterError}}
+WaitForNewBlocksPeriod = "{{BridgeL2Sync.WaitForNewBlocksPeriod}}"
+RequireStorageContentCompatibility = {{BridgeL2Sync.RequireStorageContentCompatibility}}
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"

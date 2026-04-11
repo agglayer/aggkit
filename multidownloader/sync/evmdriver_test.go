@@ -63,6 +63,45 @@ func newEVMDriverTestData(t *testing.T, compatibilityCheckExpectations bool) *ev
 	}
 }
 
+func TestEVMDriver_CheckFirstBlockNumberParams(t *testing.T) {
+	fromBlock := uint64(100)
+	syncerConfig := aggkittypes.SyncerConfig{FromBlock: fromBlock}
+
+	tests := []struct {
+		name             string
+		firstBlockNumber *uint64
+		expectErr        bool
+	}{
+		{
+			name:             "nil firstBlockNumber returns error",
+			firstBlockNumber: nil,
+			expectErr:        true,
+		},
+		{
+			name:             "firstBlockNumber different from FromBlock returns error",
+			firstBlockNumber: func() *uint64 { v := uint64(99); return &v }(),
+			expectErr:        true,
+		},
+		{
+			name:             "firstBlockNumber equal to FromBlock returns nil",
+			firstBlockNumber: &fromBlock,
+			expectErr:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			driver := &EVMDriver{syncerConfig: syncerConfig}
+			err := driver.checkFirstBlockNumberParams(tt.firstBlockNumber)
+			if tt.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestNewEVMDriver_SyncStep(t *testing.T) {
 	t.Run("fail compatibility check", func(t *testing.T) {
 		testData := newEVMDriverTestData(t, false)

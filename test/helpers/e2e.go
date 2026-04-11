@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -198,6 +199,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 
+	syncFromL1Bridges := cfg.L1RPCClient != nil
 	bridgeSyncCfg := bridgesync.Config{
 		DBPath:                             dbPathBridgeSyncL1,
 		BridgeAddr:                         bridgeL1Addr,
@@ -210,7 +212,8 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork, true)
+	bridgeSyncCfg.SyncFromInBridges.Resolved = &syncFromL1Bridges
+	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -341,7 +344,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, false)
+	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, bridgesynctypes.EmptyLER)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)

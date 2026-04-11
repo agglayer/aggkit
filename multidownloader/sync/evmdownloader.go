@@ -88,18 +88,20 @@ func (d *EVMDownloader) DownloadNextBlocks(ctx context.Context,
 			return true, nil
 		})
 	if errors.Is(err, aggkitcommon.ErrTimeoutReached) {
-		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: logs not available for query: %s after waiting %s: %w",
+		return nil, fmt.Errorf("Multidownloader_EVMDownloader.DownloadNextBlocks: "+
+			"logs not available for query: %s after waiting %s: %w",
 			maxLogQuery.String(), d.waitPeriodToCatchUpMaximumLogRange.String(), ErrLogsNotAvailable)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !conditionMet {
-		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: logs not available for query: %s. Err: %w",
+		return nil, fmt.Errorf("Multidownloader_EVMDownloader.DownloadNextBlocks: "+
+			"logs not available for query: %s. Err: %w",
 			maxLogQuery.String(), ErrLogsNotAvailable)
 	}
 	if result == nil {
-		return nil, fmt.Errorf("EVMDownloader.DownloadNextBlocks: executeLogQuery "+
+		return nil, fmt.Errorf("Multidownloader_EVMDownloader.DownloadNextBlocks: executeLogQuery "+
 			"return result=nil. Range: %s", maxLogQuery.BlockRange.String())
 	}
 	// Before returning we check again that lastBlockHeader is not reorged
@@ -145,9 +147,10 @@ func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 	err = d.addLastBlockIfNotIncluded(ctx, result,
 		logQueryResponse.ResponseRange, logQueryResponse.UnsafeRange)
 	if err != nil {
-		return nil, fmt.Errorf("EVMDownloader.executeLogQuery: adding last block: %w", err)
+		return nil, fmt.Errorf("Multidownloader_EVMDownloader.executeLogQuery: adding last block: %w", err)
 	}
-	d.logger.Infof("EVMDownloader.executeLogQuery(block:%s): len(logs)= %d", logQuery.BlockRange.String(), totalLogs)
+	d.logger.Debugf("Multidownloader_EVMDownloader.executeLogQuery(block:%s): "+
+		"len(logs)= %d", logQuery.BlockRange.String(), totalLogs)
 	return result, nil
 }
 
@@ -155,7 +158,7 @@ func (d *EVMDownloader) getFullBlockRange(ctx context.Context,
 	syncerConfig aggkittypes.SyncerConfig) (*aggkitcommon.BlockRange, error) {
 	blockTo, err := d.multidownloader.HeaderByNumber(ctx, &syncerConfig.ToBlock)
 	if err != nil || blockTo == nil {
-		return nil, fmt.Errorf("EVMDownloader.getFullBlockRange: error getting 'to' block header: %w", err)
+		return nil, fmt.Errorf("Multidownloader_EVMDownloader.getFullBlockRange: error getting 'to' block header: %w", err)
 	}
 	br := aggkitcommon.NewBlockRange(syncerConfig.FromBlock, blockTo.Number)
 	return &br, nil
@@ -166,7 +169,8 @@ func (d *EVMDownloader) calculatePercentCompletation(ctx context.Context,
 	syncerConfig aggkittypes.SyncerConfig, lastRange aggkitcommon.BlockRange) (float64, error) {
 	fullRange, err := d.getFullBlockRange(ctx, syncerConfig)
 	if err != nil {
-		return 0, fmt.Errorf("EVMDownloader.calculatePercentCompletation: error getting full block range: %w", err)
+		return 0, fmt.Errorf("Multidownloader_EVMDownloader.calculatePercentCompletation: "+
+			"error getting full block range: %w", err)
 	}
 	totalBlocks := fullRange.CountBlocks()
 	pendingRange := aggkitcommon.NewBlockRange(lastRange.ToBlock+1, fullRange.ToBlock)
@@ -192,7 +196,8 @@ func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 
 	hdr, _, err := d.multidownloader.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(lastBlockNumber))
 	if err != nil {
-		d.logger.Errorf("EVMDownloader: error getting block header for block number %d: %v", lastBlockNumber, err)
+		d.logger.Errorf("Multidownloader_EVMDownloader: error getting block header for block number %d: %v",
+			lastBlockNumber, err)
 		return nil
 	}
 	isFinalizedBlock := !unsafeRange.ContainsBlockNumber(lastBlockNumber)
@@ -200,7 +205,8 @@ func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 		// Check that we are not in the unsafe zone. Because in that case we can't fake the Hash and it's an error
 		// because the block must in in storage
 		if !isFinalizedBlock {
-			err := fmt.Errorf("EVMDownloader: cannot get block header for block number %d in unsafe zone", lastBlockNumber)
+			err := fmt.Errorf("Multidownloader_EVMDownloader: "+
+				"cannot get block header for block number %d in unsafe zone", lastBlockNumber)
 			d.logger.Error(err)
 			return err
 		}
@@ -224,7 +230,8 @@ func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 	if hdr.ParentHash != nil {
 		emptyBlock.ParentHash = *hdr.ParentHash
 	}
-	d.logger.Debugf("EVMDownloader.addLastBlockIfNotIncluded: to response %s adding empty block number %d / %s",
+	d.logger.Debugf("Multidownloader_EVMDownloader.addLastBlockIfNotIncluded: "+
+		"to response %s adding empty block number %d / %s",
 		responseRange.String(),
 		lastBlockNumber, hdr.Hash.Hex())
 	result.Data = append(result.Data, emptyBlock)

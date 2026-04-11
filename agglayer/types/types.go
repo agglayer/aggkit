@@ -713,7 +713,13 @@ func (b *BridgeExit) UnmarshalJSON(data []byte) error {
 	b.DestinationAddress = aux.DestinationAddress
 	var ok bool
 	if !strings.Contains(aux.Amount, nilStr) {
-		b.Amount, ok = new(big.Int).SetString(aux.Amount, base10)
+		base := base10
+		amountStr := aux.Amount
+		if strings.HasPrefix(amountStr, "0x") || strings.HasPrefix(amountStr, "0X") {
+			base = 16
+			amountStr = amountStr[2:]
+		}
+		b.Amount, ok = new(big.Int).SetString(amountStr, base)
 		if !ok {
 			return fmt.Errorf("failed to convert amount to big.Int: %s", aux.Amount)
 		}

@@ -30,6 +30,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/metrics"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -105,6 +106,8 @@ type BridgeService struct {
 	injectedGERs                L2GERSyncer
 	bridgeL1                    Bridger
 	bridgeL2                    Bridger
+	claimL1                     Claimer
+	claimL2                     Claimer
 
 	router *gin.Engine
 }
@@ -116,7 +119,9 @@ func New(
 	l1InfoTree L1InfoTreeSyncer,
 	injectedGERs L2GERSyncer,
 	bridgeL1 Bridger,
+	claimL1 Claimer,
 	bridgeL2 Bridger,
+	claimL2 Claimer,
 ) *BridgeService {
 	cfg.Logger.Infof("starting bridge service (network id=%d, address=%s)", cfg.NetworkID, cfg.Address)
 
@@ -148,6 +153,8 @@ func New(
 		injectedGERs:                injectedGERs,
 		bridgeL1:                    bridgeL1,
 		bridgeL2:                    bridgeL2,
+		claimL1:                     claimL1,
+		claimL2:                     claimL2,
 		router:                      router,
 	}
 
@@ -482,7 +489,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		networkID, pageNumber, pageSize, networkIDs, includeAllFieldsFlag, globalIndex)
 
 	var (
-		claims []*bridgesync.Claim
+		claims []*claimsynctypes.Claim
 		count  int
 	)
 
@@ -495,7 +502,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 
-		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, globalIndex)
+		claims, count, err = b.claimL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L1 network: %v", err)
 			statusCode = http.StatusInternalServerError
@@ -511,7 +518,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 
-		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, globalIndex)
+		claims, count, err = b.claimL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, globalIndex)
 		if err != nil {
 			b.logger.Warnf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
 			statusCode = http.StatusInternalServerError
@@ -579,12 +586,12 @@ func (b *BridgeService) GetUnsetClaimsHandler(c *gin.Context) {
 		b.networkID, pageNumber, pageSize, globalIndex)
 
 	var (
-		unsetClaims []*bridgesync.UnsetClaim
+		unsetClaims []*claimsynctypes.UnsetClaim
 		count       int
 		err         error
 	)
 
-	unsetClaims, count, err = b.bridgeL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
+	unsetClaims, count, err = b.claimL2.GetUnsetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
 	if err != nil {
 		b.logger.Warnf("failed to get unset claims for L2 network (ID=%d): %v", b.networkID, err)
 		statusCode = http.StatusInternalServerError
@@ -653,12 +660,12 @@ func (b *BridgeService) GetSetClaimsHandler(c *gin.Context) {
 		b.networkID, pageNumber, pageSize, globalIndex)
 
 	var (
-		setClaims []*bridgesync.SetClaim
+		setClaims []*claimsynctypes.SetClaim
 		count     int
 		err       error
 	)
 
-	setClaims, count, err = b.bridgeL2.GetSetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
+	setClaims, count, err = b.claimL2.GetSetClaimsPaged(ctx, pageNumber, pageSize, globalIndex)
 	if err != nil {
 		b.logger.Warnf("failed to get set claims for L2 network (ID=%d): %v", b.networkID, err)
 		statusCode = http.StatusInternalServerError
@@ -1322,7 +1329,7 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	networkInfo.IsSynced = networkInfo.ContractDepositCount == networkInfo.SynchronizedDepositCount
 
 	if !networkInfo.IsSynced {
-		lastProcessedBlock, err := bridge.GetLastProcessedBlock(ctx)
+		lastProcessedBlock, _, err := bridge.GetLastProcessedBlock(ctx)
 		if err != nil {
 			b.logger.Warnf("failed to get last processed block for %s: %s", networkName, err)
 		} else {
@@ -1645,15 +1652,15 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	}
 	ger := common.HexToHash(gerStr)
 
-	var claims []*bridgesync.Claim
+	var claims []*claimsynctypes.Claim
 	switch networkID {
 	case mainnetNetworkID:
-		if b.bridgeL1 == nil {
+		if b.claimL1 == nil {
 			statusCode = http.StatusServiceUnavailable
-			c.JSON(statusCode, gin.H{"error": "L1 bridge syncer is not available"})
+			c.JSON(statusCode, gin.H{"error": "L1 claim syncer is not available"})
 			return
 		}
-		claims, err = b.bridgeL1.GetClaimsByGER(ctx, ger)
+		claims, err = b.claimL1.GetClaimsByGER(ctx, ger)
 		if err != nil {
 			b.logger.Errorf("failed to get claims by GER %s for L1 network: %v", gerStr, err)
 			statusCode = http.StatusInternalServerError
@@ -1661,12 +1668,12 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 			return
 		}
 	case b.networkID:
-		if b.bridgeL2 == nil {
+		if b.claimL2 == nil {
 			statusCode = http.StatusServiceUnavailable
-			c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+			c.JSON(statusCode, gin.H{"error": "L2 claim syncer is not available"})
 			return
 		}
-		claims, err = b.bridgeL2.GetClaimsByGER(ctx, ger)
+		claims, err = b.claimL2.GetClaimsByGER(ctx, ger)
 		if err != nil {
 			b.logger.Errorf("failed to get claims by GER %s for L2 network (ID=%d): %v", gerStr, networkID, err)
 			statusCode = http.StatusInternalServerError

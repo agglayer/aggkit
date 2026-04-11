@@ -2,15 +2,12 @@ package types
 
 import (
 	"fmt"
-	"math/big"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
-type Unclaim struct {
-	GlobalIndex *big.Int `json:"global_index"`
-	BlockNumber uint64   `json:"block_number"`
-	LogIndex    uint64   `json:"log_index"`
-}
+var EmptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 
 const (
 	LeafTypeAsset LeafType = iota

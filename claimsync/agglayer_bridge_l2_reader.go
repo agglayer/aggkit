@@ -1,4 +1,4 @@
-package bridgesync
+package claimsync
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
-	"github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -70,7 +70,7 @@ func NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
 //   - []types.Unclaim: A slice of Unclaim objects containing global index, block number, and block index
 //   - error: Any error that occurred during the event filtering or iteration
 func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
+	fromBlock, toBlock uint64) ([]claimsynctypes.Unclaim, error) {
 	if fromBlock > toBlock {
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
@@ -83,7 +83,7 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 }
 
 func (r *AgglayerBridgeL2Reader) fetchUnsetClaimsWithFallbackChunking(ctx context.Context,
-	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
+	fromBlock, toBlock uint64) ([]claimsynctypes.Unclaim, error) {
 	unclaims, err := r.fetchUnsetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
@@ -99,21 +99,21 @@ func (r *AgglayerBridgeL2Reader) fetchUnsetClaimsWithFallbackChunking(ctx contex
 }
 
 func (r *AgglayerBridgeL2Reader) getUnsetClaimsInChunks(ctx context.Context,
-	fromBlock, toBlock, maxRange uint64) ([]types.Unclaim, error) {
+	fromBlock, toBlock, maxRange uint64) ([]claimsynctypes.Unclaim, error) {
 	log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
 	return aggkitcommon.ChunkedRangeQuery(
 		ctx, fromBlock, toBlock, maxRange,
 		r.fetchUnsetClaimsWithFallbackChunking,
-		func(all, chunk []types.Unclaim) []types.Unclaim {
+		func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 			return append(all, chunk...)
 		},
-		make([]types.Unclaim, 0),
+		make([]claimsynctypes.Unclaim, 0),
 	)
 }
 
 // fetchUnsetClaims performs the actual event filtering for a given block range
 func (r *AgglayerBridgeL2Reader) fetchUnsetClaims(ctx context.Context,
-	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
+	fromBlock, toBlock uint64) ([]claimsynctypes.Unclaim, error) {
 	unclaimIterator, err := r.agglayerBridgeL2.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Context: ctx, Start: fromBlock, End: &toBlock})
 	if err != nil {
@@ -126,12 +126,12 @@ func (r *AgglayerBridgeL2Reader) fetchUnsetClaims(ctx context.Context,
 		}
 	}()
 
-	unclaims := make([]types.Unclaim, 0)
+	unclaims := make([]claimsynctypes.Unclaim, 0)
 	for unclaimIterator.Next() {
 		globalIndex := unclaimIterator.Event.UnsetGlobalIndex
 		log.Infof("unset claim: %s at block %d, index %d", new(big.Int).SetBytes(globalIndex[:]),
 			unclaimIterator.Event.Raw.BlockNumber, unclaimIterator.Event.Raw.Index)
-		unclaims = append(unclaims, types.Unclaim{
+		unclaims = append(unclaims, claimsynctypes.Unclaim{
 			GlobalIndex: new(big.Int).SetBytes(globalIndex[:]),
 			BlockNumber: unclaimIterator.Event.Raw.BlockNumber,
 			LogIndex:    uint64(unclaimIterator.Event.Raw.Index),

@@ -78,12 +78,12 @@ func TestRetainPolicy_NCerts(t *testing.T) {
 				}
 			}
 			// Check the expected number of certs in the main table
-			certs, err := storage.getCerts(nil, tableCertificate, "", nil)
+			certs, err := storage.getCerts(nil, tableCertificate, "", "", nil)
 			require.NoError(t, err)
 			certKeys := certsToCertificateKey(certs)
 			require.Equal(t, tc.expectedCentificateInfo, certKeys)
 			// Check the expected number of certs in the history table
-			certs, err = storage.getCerts(nil, tableCertificateHistory, "", nil)
+			certs, err = storage.getCerts(nil, tableCertificateHistory, "", "", nil)
 			require.NoError(t, err)
 			certKeys = certsToCertificateKey(certs)
 			require.Equal(t, tc.expectedCentificateInfoHistory, certKeys)

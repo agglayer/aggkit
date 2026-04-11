@@ -425,4 +425,5 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     rm -f aggsender_find_imported_bridge combined.json rollup_params.json
     popd >/dev/null
     log_info "E2E tests executed."
+    log_info "to repeat use: $0 $TEST_TYPE $KURTOSIS_REPO_PATH $E2E_REPO_PATH"
 fi

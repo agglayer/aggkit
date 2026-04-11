@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -25,13 +26,13 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		claims        []bridgesync.Claim
+		claims        []claimsynctypes.Claim
 		expectedExits []*agglayertypes.ImportedBridgeExitWithBlockNumber
 		expectedError string
 	}{
 		{
 			name: "success",
-			claims: []bridgesync.Claim{
+			claims: []claimsynctypes.Claim{
 				{
 					IsMessage:          false,
 					OriginNetwork:      1,
@@ -273,7 +274,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 		{
 			name:            "error getting injected GERs",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"), ToBlock: 200, Claims: []bridgesync.Claim{{}}},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"), ToBlock: 200, Claims: []claimsynctypes.Claim{{}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
 				gerQuerier *mocks.GERQuerier,
@@ -289,7 +290,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 		{
 			name:            "error getting aggchain proof",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []claimsynctypes.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
 				gerQuerier *mocks.GERQuerier,
@@ -308,7 +309,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 		{
 			name:            "success",
 			lastProvenBlock: 100,
-			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
+			buildParams:     &types.CertificateBuildParams{L1InfoTreeLeafCount: 2, L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"), ToBlock: 200, Claims: []claimsynctypes.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
 				gerQuerier *mocks.GERQuerier,
@@ -375,18 +376,18 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 
 	testCases := []struct {
 		name             string
-		unclaims         []bridgetypes.Unclaim
+		unclaims         []claimsynctypes.Unclaim
 		expectedUnclaims []*agglayertypes.Unclaim
 		expectedError    string
 	}{
 		{
 			name:             "empty map",
-			unclaims:         []bridgetypes.Unclaim{},
+			unclaims:         []claimsynctypes.Unclaim{},
 			expectedUnclaims: []*agglayertypes.Unclaim{},
 		},
 		{
 			name: "single unclaim with mainnet flag true",
-			unclaims: []bridgetypes.Unclaim{
+			unclaims: []claimsynctypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 5),
 					BlockNumber: 100,
@@ -407,7 +408,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "single unclaim with mainnet flag false and rollup index",
-			unclaims: []bridgetypes.Unclaim{
+			unclaims: []claimsynctypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 3, 7),
 					BlockNumber: 200,
@@ -428,7 +429,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "multiple unclaims with different configurations",
-			unclaims: []bridgetypes.Unclaim{
+			unclaims: []claimsynctypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
 					BlockNumber: 100,
@@ -477,7 +478,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "unclaim with zero global index",
-			unclaims: []bridgetypes.Unclaim{
+			unclaims: []claimsynctypes.Unclaim{
 				{
 					GlobalIndex: big.NewInt(0),
 					BlockNumber: 100,
@@ -498,7 +499,7 @@ func TestConvertUnclaimsToAgglayerUnclaims(t *testing.T) {
 		},
 		{
 			name: "unclaim with large values",
-			unclaims: []bridgetypes.Unclaim{
+			unclaims: []claimsynctypes.Unclaim{
 				{
 					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 4294967295, 4294967295), // max uint32 values
 					BlockNumber: 999999,
