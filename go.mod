@@ -38,7 +38,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valyala/fasttemplate v1.2.2
 	go.uber.org/zap v1.27.1
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
