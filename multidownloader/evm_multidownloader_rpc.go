@@ -1,8 +1,11 @@
 package multidownloader
 
 import (
+	"context"
+
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type EVMMultidownloaderRPC struct {
@@ -22,12 +25,59 @@ func NewEVMMultidownloaderRPC(
 
 // Status returns the status of the L1InfoTreeSync component
 // curl -X POST http://localhost:5576/ "Content-Type: application/json" \
-// -d '{"method":"l1infotreesync_status", "params":[], "id":1}'
+// -d '{"method":"multidownloader-l1_status", "params":[], "id":1}'
 func (b *EVMMultidownloaderRPC) Status() (interface{}, rpc.Error) {
+	if !b.downloader.IsInitialized() {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.Status: multidownloader not initialized")
+	}
+	finalizedBlockNumber, err := b.downloader.GetFinalizedBlockNumber(context.Background())
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.Status: getting finalized block number: %v", err)
+	}
+	latestBlockNumber, err := b.downloader.GetLatestBlockNumber(context.Background())
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.Status: getting latest block number: %v", err)
+	}
+	b.downloader.mutex.Lock()
+	defer b.downloader.mutex.Unlock()
+	completationPercentage := b.downloader.state.CompletionPercentage()
+	minPercent := 100.0
+	for _, percent := range completationPercentage {
+		if percent < minPercent {
+			minPercent = percent
+		}
+	}
 	info := struct {
-		Status string `json:"status"`
+		Status                       string                     `json:"status"`
+		State                        string                     `json:"state,omitempty"`
+		Pending                      string                     `json:"pending,omitempty"`
+		FinalizedBlockNumber         uint64                     `json:"finalizedBlockNumber,omitempty"`
+		LatestBlockNumber            uint64                     `json:"latestBlockNumber,omitempty"`
+		CompletionPercentage         float64                    `json:"completionPercentage,omitempty"`
+		CompletionPercentageDetailed map[common.Address]float64 `json:"completionPercentageDetailed,omitempty"`
 	}{
-		Status: "running",
+		Status:                       "running",
+		State:                        b.downloader.state.String(),
+		FinalizedBlockNumber:         finalizedBlockNumber,
+		LatestBlockNumber:            latestBlockNumber,
+		CompletionPercentage:         minPercent,
+		CompletionPercentageDetailed: completationPercentage,
 	}
 	return info, nil
+}
+
+func (b *EVMMultidownloaderRPC) Reorg(mismatchingBlockNumber uint64) (interface{}, rpc.Error) {
+	if b.downloader.debug == nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			"EVMMultidownloaderRPC.ForceReorg: debug is not enabled")
+	}
+	b.downloader.debug.ForceReorg(mismatchingBlockNumber)
+	return struct {
+		Message string `json:"message"`
+	}{
+		Message: "Reorg forced successfully",
+	}, nil
 }

@@ -99,8 +99,9 @@ type BridgeResponse struct {
 	// Position of the bridge event within the block
 	BlockPos uint64 `json:"block_pos" example:"1"`
 
-	// Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA
-	FromAddress Address `json:"from_address" example:"0xabc1234567890abcdef1234567890abcdef1234"`
+	// Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA.
+	// May be null if bridge was synced with SyncFromInBridges=false
+	FromAddress *Address `json:"from_address,omitempty" example:"0xabc1234567890abcdef1234567890abcdef1234"`
 
 	// Hash of the transaction that included the bridge event
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
@@ -205,6 +206,29 @@ type ClaimResponse struct {
 
 	// Metadata associated with the claim
 	Metadata string `json:"metadata" example:"0xdeadbeef"`
+
+	// IsMessage indicates whether this is a message claim (leaf type 1) rather than an asset claim (leaf type 0)
+	IsMessage bool `json:"is_message" example:"false"`
+}
+
+// ClaimsByGERResult contains the claims matching a given global exit root and their count
+// @Description Response containing claim events matching a specific global exit root
+type ClaimsByGERResult struct {
+	// List of claims matching the global exit root
+	Claims []*ClaimResponse `json:"claims"`
+
+	// Total number of matching claims
+	Count int `json:"count" example:"3"`
+}
+
+// BridgesByContentResult contains the bridges matching given content fields and their count
+// @Description Response containing bridge events matching specific content fields
+type BridgesByContentResult struct {
+	// List of bridges matching the content query
+	Bridges []*BridgeResponse `json:"bridges"`
+
+	// Total number of matching bridges
+	Count int `json:"count" example:"2"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings

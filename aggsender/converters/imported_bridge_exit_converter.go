@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -19,7 +20,7 @@ import (
 // into its mainnet flag, rollup index, and leaf index components. Returns the constructed
 // ImportedBridgeExit or an error if the global index cannot be decoded.
 func ConvertToImportedBridgeExitWithoutClaimData(
-	claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+	claim claimsynctypes.Claim) (*agglayertypes.ImportedBridgeExit, error) {
 	bridgeExit := ConvertBridgeExitFromClaim(claim)
 
 	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
@@ -49,7 +50,7 @@ func ConvertToImportedBridgeExitWithoutClaimData(
 //
 // Returns:
 //   - *agglayertypes.BridgeExit: The constructed bridge exit object with core claim data.
-func ConvertBridgeExitFromClaim(claim bridgesync.Claim) *agglayertypes.BridgeExit {
+func ConvertBridgeExitFromClaim(claim claimsynctypes.Claim) *agglayertypes.BridgeExit {
 	leafType := bridgetypes.LeafTypeAsset
 	if claim.IsMessage {
 		leafType = bridgetypes.LeafTypeMessage
@@ -85,7 +86,7 @@ func ConvertBridgeExitFromClaim(claim bridgesync.Claim) *agglayertypes.BridgeExi
 //   - error: An error if any step in the conversion or proof retrieval fails.
 func ConvertToImportedBridgeExit(
 	ctx context.Context,
-	claim bridgesync.Claim,
+	claim claimsynctypes.Claim,
 	rootFromWhichToProve common.Hash,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier) (*agglayertypes.ImportedBridgeExit, error) {
 	ibe, err := ConvertToImportedBridgeExitWithoutClaimData(claim)
@@ -171,7 +172,7 @@ func ConvertToImportedBridgeExit(
 //   - An error if any claim fails to convert.
 func ConvertToImportedBridgeExits(
 	ctx context.Context,
-	claims []bridgesync.Claim,
+	claims []claimsynctypes.Claim,
 	rootFromWhichToProve common.Hash,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
@@ -202,13 +203,13 @@ func ConvertToImportedBridgeExits(
 // use the debug endpoint to retrieve the claim data.
 //
 // Parameters:
-//   - claims: A slice of bridgesync.Claim objects to be converted
+//   - claims: A slice of claimsynctypes.Claim objects to be converted
 //
 // Returns:
 //   - A slice of *agglayertypes.ImportedBridgeExit objects on success
 //   - An error if any claim conversion fails
 func ConvertToImportedBridgeExitsWithoutClaimData(
-	claims []bridgesync.Claim,
+	claims []claimsynctypes.Claim,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	if len(claims) == 0 {
 		// no claims to convert

@@ -210,7 +210,7 @@ func NewSimulatedBackend(t *testing.T,
 	t.Helper()
 
 	// Define default balance
-	balance, ok := new(big.Int).SetString(defaultBalance, 10) //nolint:mnd
+	balance, ok := new(big.Int).SetString(defaultBalance, 10)
 	require.Truef(t, ok, "failed to set balance")
 
 	// Create user account

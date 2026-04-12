@@ -19,7 +19,7 @@ type AdaptEthClientToMultidownloader struct {
 	ethClient aggkittypes.BaseEthereumClienter
 }
 
-var _ (aggkittypes.MultiDownloader) = (*AdaptEthClientToMultidownloader)(nil)
+var _ (aggkittypes.MultiDownloaderLegacy) = (*AdaptEthClientToMultidownloader)(nil)
 
 func NewAdapterEthClientToMultidownloader(ethClient aggkittypes.BaseEthereumClienter) *AdaptEthClientToMultidownloader {
 	return &AdaptEthClientToMultidownloader{

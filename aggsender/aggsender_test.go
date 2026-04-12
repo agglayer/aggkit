@@ -25,6 +25,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
@@ -95,7 +96,7 @@ func TestAggSenderStart(t *testing.T) {
 	sendTrigger.EXPECT().Status().Return("test status").Once()
 	sendTrigger.EXPECT().OnIdle().Maybe()
 	bridgeL2SyncerMock.EXPECT().OriginNetwork().Return(uint32(2))
-	bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), nil)
+	bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), true, nil)
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil).Twice()
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil).Twice()
 	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
@@ -118,11 +119,13 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		mockL1InfoTreeSyncer, // l1 info tree syncer
 		bridgeL2SyncerMock,
+		nil, // claim syncer
 		nil, // l1 client
 		nil, // l2 client
 		rollupQuerierMock,
 		committeQuerierMock,
 		sendTrigger,
+		bridgetypes.EmptyLER,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
@@ -232,7 +235,6 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL1Querier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
 	mockSendTrigger := mocks.NewCertificateSendTrigger(t)
-	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
 	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
 	mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
@@ -250,7 +252,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		localValidator:         mockLocalValidator,
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
-				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
+				mockL1Querier, bridgetypes.EmptyLER, nil, flows.NewBaseFlowConfigDefault()),
 			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
 	}
 
@@ -262,7 +264,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		Status:           agglayertypes.Settled,
 	}, nil).Once()
 	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
-	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
+	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), true, nil)
 	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
 		{
 			BlockNum:           30,
@@ -276,8 +278,8 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 			Metadata:           []byte("metadata"),
 			DepositCount:       1,
 		},
-	}, []bridgesync.Claim{}, nil).Once()
-	mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, uint64(11), uint64(50)).Return([]bridgetypes.Unclaim{}, nil).Once()
+	}, []claimsynctypes.Claim{}, nil).Once()
+	mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, uint64(11), uint64(50)).Return([]claimsynctypes.Unclaim{}, nil).Once()
 	mockL1Querier.EXPECT().GetTargetL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(common.Hash{}, nil).Once()
 	mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1)).Once()
@@ -555,10 +557,12 @@ func TestNewAggSender(t *testing.T) {
 		mockAgglayerClient,
 		mockL1InfoTreeSyncer, // l1 info tree syncer
 		mockBridgeSyncer,
+		nil, // claim syncer
 		nil, // l1 client
 		nil, // l2 client
 		mockRollupQuerier,
 		mockCommitteeQuerier,
+		bridgetypes.EmptyLER,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
@@ -574,6 +578,9 @@ func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow|testDataFlagMockStatusChecker)
 	testData.sut.cfg.RequireStorageContentCompatibility = false
 	testData.certStatusCheckerMock.EXPECT().CheckInitialStatus(mock.Anything, mock.Anything, testData.sut.status).Once()
+	mockInitialBlockSetter := mocks.NewInitialBlockClaimSyncerSetter(t)
+	mockInitialBlockSetter.EXPECT().SetClaimSyncerNextRequiredBlock(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+	testData.sut.initialBlockClaimSyncerSetter = mockInitialBlockSetter
 	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
 
 	require.Panics(t, func() {
@@ -807,14 +814,14 @@ func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridg
 	return res
 }
 
-func NewClaimData(t *testing.T, num int, blockNum []uint64) []bridgesync.Claim {
+func NewClaimData(t *testing.T, num int, blockNum []uint64) []claimsynctypes.Claim {
 	t.Helper()
 	if num == 0 {
 		num = len(blockNum)
 	}
-	res := make([]bridgesync.Claim, 0)
+	res := make([]claimsynctypes.Claim, 0)
 	for i := 0; i < num; i++ {
-		res = append(res, bridgesync.Claim{
+		res = append(res, claimsynctypes.Claim{
 			BlockNum: blockNum[i%len(blockNum)],
 			BlockPos: 0,
 		})
@@ -827,7 +834,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	l2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	agglayerClientMock := agglayermocks.NewAgglayerClientMock(t)
 	l1InfoTreeQuerierMock := mocks.NewL1InfoTreeDataQuerier(t)
-	lerQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
 	var storage db.AggSenderStorage
@@ -862,7 +868,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
-				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
+				l1InfoTreeQuerierMock, bridgetypes.EmptyLER, nil, flows.NewBaseFlowConfigDefault()),
 			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
 	var flowMock *mocks.AggsenderBuilderFlow

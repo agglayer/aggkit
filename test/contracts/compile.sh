@@ -18,6 +18,15 @@ docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/cl
 mv -f ClaimMockTest.abi abi/claimmocktest.abi
 mv -f ClaimMockTest.bin bin/claimmocktest.bin
 
+docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/logemitter/LogEmitter.sol -o /contracts --abi --bin --overwrite --optimize --via-ir
+mv -f LogEmitter.abi abi/logemitter.abi
+mv -f LogEmitter.bin bin/logemitter.bin
+
+docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/mintableerc20/MintableERC20.sol -o /contracts --abi --bin --overwrite --optimize
+mv -f MintableERC20.abi abi/mintableerc20.abi
+mv -f MintableERC20.bin bin/mintableerc20.bin
+
+
 rm -f IClaimMock.abi
 rm -f IClaimMock.bin
 rm -f IClaimMockCaller.abi

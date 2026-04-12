@@ -15,11 +15,11 @@ type testBindData struct {
 	a int
 }
 
-func (t testBindData) IsCompatible(storage testBindData) error {
+func (t testBindData) IsCompatible(storage testBindData) (*testBindData, error) {
 	if t.a != storage.a {
-		return fmt.Errorf("a mismatch: %d != %d", t.a, storage.a)
+		return nil, fmt.Errorf("a mismatch: %d != %d", t.a, storage.a)
 	}
-	return nil
+	return nil, nil
 }
 func (t testBindData) String() string {
 	return fmt.Sprintf("a: %d", t.a)

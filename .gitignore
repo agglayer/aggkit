@@ -1,5 +1,4 @@
 **/.DS_Store
-.vscode
 .env
 /dist/
 cmd/__debug_bin
@@ -7,7 +6,6 @@ cmd/__debug_bin
 target/
 book/
 tmp
-.vscode
 coverage.out
 coverage.html
 .idea
@@ -16,3 +14,5 @@ build/*
 data
 *.sqlite-shm
 *.sqlite-wal
+**aggkit-001-data**
+.vscode

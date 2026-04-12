@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	bridgesync "github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	common "github.com/ethereum/go-ethereum/common"
 
 	context "context"
@@ -27,7 +27,7 @@ func (_m *OptimisticSignatureCalculator) EXPECT() *OptimisticSignatureCalculator
 }
 
 // Sign provides a mock function with given fields: ctx, aggchainReq, newLocalExitRoot, claims
-func (_m *OptimisticSignatureCalculator) Sign(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, claims []bridgesync.Claim) (common.Hash, error) {
+func (_m *OptimisticSignatureCalculator) Sign(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, claims []claimsynctypes.Claim) (common.Hash, error) {
 	ret := _m.Called(ctx, aggchainReq, newLocalExitRoot, claims)
 
 	if len(ret) == 0 {
@@ -36,10 +36,10 @@ func (_m *OptimisticSignatureCalculator) Sign(ctx context.Context, aggchainReq t
 
 	var r0 common.Hash
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) (common.Hash, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, []claimsynctypes.Claim) (common.Hash, error)); ok {
 		return rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) common.Hash); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, []claimsynctypes.Claim) common.Hash); ok {
 		r0 = rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	} else {
 		if ret.Get(0) != nil {
@@ -47,7 +47,7 @@ func (_m *OptimisticSignatureCalculator) Sign(ctx context.Context, aggchainReq t
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, types.AggchainProofRequest, common.Hash, []claimsynctypes.Claim) error); ok {
 		r1 = rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	} else {
 		r1 = ret.Error(1)
@@ -65,14 +65,14 @@ type OptimisticSignatureCalculator_Sign_Call struct {
 //   - ctx context.Context
 //   - aggchainReq types.AggchainProofRequest
 //   - newLocalExitRoot common.Hash
-//   - claims []bridgesync.Claim
+//   - claims []claimsynctypes.Claim
 func (_e *OptimisticSignatureCalculator_Expecter) Sign(ctx interface{}, aggchainReq interface{}, newLocalExitRoot interface{}, claims interface{}) *OptimisticSignatureCalculator_Sign_Call {
 	return &OptimisticSignatureCalculator_Sign_Call{Call: _e.mock.On("Sign", ctx, aggchainReq, newLocalExitRoot, claims)}
 }
 
-func (_c *OptimisticSignatureCalculator_Sign_Call) Run(run func(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, claims []bridgesync.Claim)) *OptimisticSignatureCalculator_Sign_Call {
+func (_c *OptimisticSignatureCalculator_Sign_Call) Run(run func(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, claims []claimsynctypes.Claim)) *OptimisticSignatureCalculator_Sign_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.AggchainProofRequest), args[2].(common.Hash), args[3].([]bridgesync.Claim))
+		run(args[0].(context.Context), args[1].(types.AggchainProofRequest), args[2].(common.Hash), args[3].([]claimsynctypes.Claim))
 	})
 	return _c
 }
@@ -82,7 +82,7 @@ func (_c *OptimisticSignatureCalculator_Sign_Call) Return(_a0 common.Hash, _a1 e
 	return _c
 }
 
-func (_c *OptimisticSignatureCalculator_Sign_Call) RunAndReturn(run func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) (common.Hash, error)) *OptimisticSignatureCalculator_Sign_Call {
+func (_c *OptimisticSignatureCalculator_Sign_Call) RunAndReturn(run func(context.Context, types.AggchainProofRequest, common.Hash, []claimsynctypes.Claim) (common.Hash, error)) *OptimisticSignatureCalculator_Sign_Call {
 	_c.Call.Return(run)
 	return _c
 }

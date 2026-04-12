@@ -75,9 +75,13 @@ func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.Certificate
 
 // ForceTriggerEvent forces the preconf trigger to emit a synchronization event.
 func (r *preconfTrigger) ForceTriggerEvent() {
-	blockNumber, err := r.l2BridgeSync.GetLastProcessedBlock(context.Background())
+	blockNumber, found, err := r.l2BridgeSync.GetLastProcessedBlock(context.Background())
 	if err != nil {
 		r.log.Errorf("ForceTriggerEvent: Failed to get last processed block: %v", err)
+		return
+	}
+	if !found {
+		r.log.Errorf("ForceTriggerEvent: No processed block found, cannot emit trigger event")
 		return
 	}
 	if r.ch == nil {

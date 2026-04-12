@@ -27,11 +27,12 @@ const (
 
 // BackfillTxnSender handles the backfilling of txn_sender field for bridge records
 type BackfillTxnSender struct {
-	db         *sql.DB
-	log        *log.Logger
-	client     types.EthClienter
-	bridgeAddr common.Address
-	dbTimeout  time.Duration
+	db                *sql.DB
+	log               *log.Logger
+	client            types.EthClienter
+	bridgeAddr        common.Address
+	dbTimeout         time.Duration
+	syncFromInBridges bool
 }
 
 // NewBackfillTxnSender creates a new instance of BackfillTxnSender
@@ -39,6 +40,7 @@ func NewBackfillTxnSender(
 	dbPath string,
 	client types.EthClienter,
 	bridgeAddr common.Address,
+	syncFromInBridges bool,
 	logger *log.Logger,
 ) (*BackfillTxnSender, error) {
 	database, err := db.NewSQLiteDB(dbPath)
@@ -47,11 +49,12 @@ func NewBackfillTxnSender(
 	}
 
 	return &BackfillTxnSender{
-		db:         database,
-		log:        logger,
-		client:     client,
-		bridgeAddr: bridgeAddr,
-		dbTimeout:  dbTimeout,
+		db:                database,
+		log:               logger,
+		client:            client,
+		bridgeAddr:        bridgeAddr,
+		dbTimeout:         dbTimeout,
+		syncFromInBridges: syncFromInBridges,
 	}, nil
 }
 
@@ -72,7 +75,7 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 //
 //nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
-	b.log.Infof("Starting backfill for %s table", tableName)
+	b.log.Infof("Starting backfill for %s table, syncFromInBridges: %v", tableName, b.syncFromInBridges)
 
 	// Get total count of records that need backfilling
 	totalCount, err := b.getRecordsNeedingBackfillCount(ctx, tableName)
@@ -124,9 +127,9 @@ type RecordToBackfill struct {
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address,address"`
+	OriginAddress      common.Address `meddler:"origin_address"`
 	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address,address"`
+	DestinationAddress common.Address `meddler:"destination_address"`
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
@@ -138,7 +141,8 @@ type RecordUpdate struct {
 	BlockNum  uint64
 	BlockPos  uint64
 	TxnSender common.Address
-	FromAddr  common.Address
+	FromAddr  *common.Address // nil means not available (e.g. syncFromInBridges=false for asset events)
+	ToAddr    common.Address
 }
 
 func (r *RecordUpdate) String() string {
@@ -157,15 +161,27 @@ type TxnSenderResult struct {
 	Error  error
 }
 
+// missingFieldsCondition returns the SQL condition for records that still need backfilling.
+// When syncFromInBridges is false, from_address will intentionally remain NULL for asset events
+// sent through a router contract, so we only require txn_sender to be filled.
+// When syncFromInBridges is true, both txn_sender and from_address must be present.
+func (b *BackfillTxnSender) missingFieldsCondition() string {
+	if b.syncFromInBridges {
+		return "txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL"
+	}
+	return "txn_sender = '' OR txn_sender IS NULL"
+}
+
 // getRecordsNeedingBackfillCount returns the count of records that need txn_sender backfilling
 func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, tableName string) (int, error) {
+	missingFieldsCond := b.missingFieldsCondition()
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM %s
-		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		WHERE (%s)
 		AND (source IS NULL OR (source != $1 AND source != $2))
-	`, tableName)
+	`, tableName, missingFieldsCond)
 
 	var count int
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
@@ -186,14 +202,15 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	tableName string,
 	limit int,
 ) ([]RecordToBackfill, error) {
+	missingFieldsCond := b.missingFieldsCondition()
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
-		WHERE (txn_sender = '' OR txn_sender IS NULL OR from_address = '' OR from_address IS NULL)
+		WHERE (%s)
 		AND (source IS NULL OR (source != $1 AND source != $2))
 		LIMIT $3
-	`, tableName)
+	`, tableName, missingFieldsCond)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
@@ -309,7 +326,7 @@ func (b *BackfillTxnSender) worker(
 			Amount:             job.Record.Amount,
 		}
 		// Extract txn_sender from transaction hash
-		txnSender, fromAddr, err := b.extractData(ctx, job.Record.TxHash, logEvent)
+		txnSender, fromAddr, toAddr, err := b.extractData(ctx, job.Record.TxHash, logEvent)
 
 		result := TxnSenderResult{
 			Update: RecordUpdate{
@@ -317,6 +334,7 @@ func (b *BackfillTxnSender) worker(
 				BlockPos:  job.Record.BlockPos,
 				TxnSender: txnSender,
 				FromAddr:  fromAddr,
+				ToAddr:    toAddr,
 			},
 			Error: err,
 		}
@@ -331,18 +349,20 @@ func (b *BackfillTxnSender) worker(
 	}
 }
 
-// extractData extracts the transaction txn_sender and from_address
+// extractData extracts the transaction txn_sender, from_address and to_address
 func (b *BackfillTxnSender) extractData(ctx context.Context,
 	txHash common.Hash,
-	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address, fromAddr common.Address, err error) {
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address,
+	fromAddr *common.Address, toAddr common.Address, err error) {
 	// Check if context is cancelled before making network call
 	select {
 	case <-ctx.Done():
-		return common.Address{}, common.Address{}, ctx.Err()
+		return common.Address{}, nil, common.Address{}, ctx.Err()
 	default:
 	}
-	txnSender, fromAddr, _, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash, logEvent, b.log)
-	return txnSender, fromAddr, err
+	txnSender, fromAddr, toAddr, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
+		logEvent, b.log, b.syncFromInBridges)
+	return txnSender, fromAddr, toAddr, err
 }
 
 // bulkUpdate performs a bulk update of multiple records
@@ -373,23 +393,42 @@ func (b *BackfillTxnSender) bulkUpdate(
 		}
 	}()
 
-	stmt, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
+	stmtWithFrom, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
 		UPDATE %s
 		SET
 			txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
-			from_address = COALESCE(NULLIF(from_address, ''), ?)
+			from_address = COALESCE(NULLIF(from_address, ''), ?),
+			to_address = COALESCE(NULLIF(to_address, ''), ?)
 		WHERE block_num = ? AND block_pos = ?;
 	`, tableName))
 	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
+		return fmt.Errorf("failed to prepare statement (with from_address): %w", err)
 	}
-	defer stmt.Close()
+	defer stmtWithFrom.Close()
+
+	stmtWithoutFrom, err := tx.PrepareContext(dbCtx, fmt.Sprintf(`
+		UPDATE %s
+		SET txn_sender = COALESCE(NULLIF(txn_sender, ''), ?),
+		    to_address = COALESCE(NULLIF(to_address, ''), ?)
+		WHERE block_num = ? AND block_pos = ?;
+	`, tableName))
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement (without from_address): %w", err)
+	}
+	defer stmtWithoutFrom.Close()
 
 	for _, update := range updates {
-		_, err := stmt.ExecContext(dbCtx, update.TxnSender.Hex(), update.FromAddr.Hex(), update.BlockNum, update.BlockPos)
-		if err != nil {
+		var execErr error
+		if update.FromAddr != nil {
+			_, execErr = stmtWithFrom.ExecContext(dbCtx,
+				update.TxnSender.Hex(), update.FromAddr.Hex(), update.ToAddr.Hex(), update.BlockNum, update.BlockPos)
+		} else {
+			_, execErr = stmtWithoutFrom.ExecContext(dbCtx,
+				update.TxnSender.Hex(), update.ToAddr.Hex(), update.BlockNum, update.BlockPos)
+		}
+		if execErr != nil {
 			return fmt.Errorf("failed to execute update for block %d pos %d: %w",
-				update.BlockNum, update.BlockPos, err)
+				update.BlockNum, update.BlockPos, execErr)
 		}
 	}
 

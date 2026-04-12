@@ -2,8 +2,10 @@ package bridgesync
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -18,12 +20,36 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 // testAddress is a constant test address used throughout the tests
 const testAddress = "0x1111111111111111111111111111111111111111"
+
+// newTestBridge creates a Bridge with default test values using the given block position and tx hash.
+// Both TxnSender and FromAddress are set to testAddress (non-empty hex strings via AddressMeddler).
+// Use a SQL UPDATE to set txn_sender = ” (empty string) or txn_sender = NULL after inserting
+// if the record needs to trigger backfill.
+func newTestBridge(blockNum, blockPos uint64, txHash string) *Bridge {
+	return &Bridge{
+		BlockNum:           blockNum,
+		BlockPos:           blockPos,
+		LeafType:           1,
+		OriginNetwork:      1,
+		OriginAddress:      common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		DestinationNetwork: 2,
+		DestinationAddress: common.HexToAddress("0x0987654321098765432109876543210987654321"),
+		Amount:             big.NewInt(1e18),
+		Metadata:           []byte{},
+		DepositCount:       1,
+		TxHash:             common.HexToHash(txHash),
+		BlockTimestamp:     1234567890,
+		FromAddress:        func() *common.Address { a := common.HexToAddress(testAddress); return &a }(),
+		TxnSender:          common.HexToAddress(testAddress),
+	}
+}
 
 func TestBackfillTxnSender(t *testing.T) {
 	// Create temporary database
@@ -50,40 +76,13 @@ func TestBackfillTxnSender(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	_, err = tx.Exec(`
-		INSERT INTO bridge (
-			block_num, block_pos, leaf_type,
-			origin_network, origin_address,
-			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, txn_sender
-		) VALUES (
-			1, 0, 1, 
-			1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', ''
-		)
-	`)
-	require.NoError(t, err)
-
-	// Insert test claim record
-	_, err = tx.Exec(`
-		INSERT INTO claim (
-			block_num, block_pos, global_index, origin_network, origin_address,
-			destination_address, amount, proof_local_exit_root, proof_rollup_exit_root,
-			mainnet_exit_root, rollup_exit_root, global_exit_root, destination_network,
-			metadata, is_message, block_timestamp, tx_hash
-		) VALUES (
-			1, 1, '1', 1, '0x1234567890123456789012345678901234567890',
-			'0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', '', '', '', '', 2,
-			'', false, 1234567890,
-			'0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
-		)
-	`)
-	require.NoError(t, err)
+	require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+		"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 	err = tx.Commit()
+	require.NoError(t, err)
+
+	_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
 	require.NoError(t, err)
 
 	// Create mock client
@@ -91,7 +90,7 @@ func TestBackfillTxnSender(t *testing.T) {
 
 	// Create backfill instance
 	logger := log.WithFields("module", "test")
-	backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+	backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 	require.NoError(t, err)
 	defer backfiller.Close()
 
@@ -121,7 +120,7 @@ func TestNewBackfillTxnSender(t *testing.T) {
 		logger := log.WithFields("module", "test")
 		bridgeAddr := common.HexToAddress("0x1234")
 
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, bridgeAddr, logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, bridgeAddr, true, logger)
 		require.NoError(t, err)
 		require.NotNil(t, backfiller)
 		require.Equal(t, bridgeAddr, backfiller.bridgeAddr)
@@ -139,7 +138,7 @@ func TestNewBackfillTxnSender(t *testing.T) {
 		logger := log.WithFields("module", "test")
 		bridgeAddr := common.HexToAddress("0x1234")
 
-		backfiller, err := NewBackfillTxnSender(invalidPath, mockClient, bridgeAddr, logger)
+		backfiller, err := NewBackfillTxnSender(invalidPath, mockClient, bridgeAddr, true, logger)
 		require.NoError(t, err) // sql.Open doesn't validate paths
 		require.NotNil(t, backfiller)
 
@@ -176,31 +175,24 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', ''
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		err = tx.Commit()
+		require.NoError(t, err)
+
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
 		require.NoError(t, err)
 
 		// Create mock client
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
+		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			// Simulate the transaction structure that would be returned
 			tx, ok := args.Get(0).(*Transaction)
@@ -224,7 +216,7 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -249,7 +241,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -279,30 +271,23 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', ''
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
+		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			tx, ok := args.Get(0).(*Transaction)
 			if !ok {
@@ -326,7 +311,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -349,7 +334,7 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -385,26 +370,18 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', ''
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -435,71 +412,36 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 		require.NoError(t, err)
 
 		// Insert bridge with empty txn_sender and NULL source (should be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender, source
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', '', NULL
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		// Insert bridge with empty txn_sender and backward_let source (should NOT be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender, source
-			) VALUES (
-				2, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 2, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-				1234567890, '', '', 'backward_let'
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(2, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
 
 		// Insert bridge with empty txn_sender and forward_let source (should NOT be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender, source
-			) VALUES (
-				3, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 3, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892',
-				1234567890, '', '', 'forward_let'
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(3, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892")))
 
-		// Insert bridge with empty txn_sender and no source field (should be counted)
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				4, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 4, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567893',
-				1234567890, '', ''
-			)
-		`)
-		require.NoError(t, err)
+		// Insert bridge with empty txn_sender and no source (should be counted)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(4, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567893")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_pos = 0")
+		require.NoError(t, err)
+		_, err = database.Exec("UPDATE bridge SET from_address = '', source = 'backward_let' WHERE block_num = 2 AND block_pos = 0")
+		require.NoError(t, err)
+		_, err = database.Exec("UPDATE bridge SET from_address = '', source = 'forward_let' WHERE block_num = 3 AND block_pos = 0")
+		require.NoError(t, err)
+		_, err = database.Exec("UPDATE bridge SET from_address = '' WHERE block_num = 4 AND block_pos = 0")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -529,7 +471,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -566,26 +508,18 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', ''
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -607,7 +541,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -631,7 +565,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -646,6 +580,20 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 	})
 }
 
+func mockClientCallGetTransactionByHash(t *testing.T,
+	mockClient *mocks.EthClienter,
+	expectedTxHash common.Hash, fromAddress string, toAddress string) {
+	t.Helper()
+	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*Transaction)
+		require.True(t, ok)
+		arg.FromRaw = fromAddress
+		arg.To = toAddress
+		arg.Hash = expectedTxHash.Hex()
+		arg.Input = common.Bytes2Hex(BridgeAssetMethodID)
+	}).Return(nil).Maybe()
+}
+
 func TestBackfillTxnSender_processBatch(t *testing.T) {
 	t.Run("successful processing", func(t *testing.T) {
 		tempDir := t.TempDir()
@@ -657,10 +605,14 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -689,11 +641,14 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 		ctx := context.Background()
 		records := []RecordToBackfill{
 			{
@@ -716,16 +671,20 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -761,12 +720,16 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		expectedSender := common.HexToAddress(testAddress)
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -776,7 +739,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 			}).Return(nil).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, _, err := backfiller.extractData(t.Context(), txHash,
+		sender, _, _, err := backfiller.extractData(t.Context(), txHash,
 			&agglayerbridge.AgglayerbridgeBridgeEvent{
 				LeafType: bridgeLeafTypeAsset,
 			})
@@ -794,14 +757,17 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-		sender, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
+		sender, _, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
 			LeafType: bridgeLeafTypeAsset,
 		})
 		require.Error(t, err)
@@ -832,26 +798,18 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES (
-				1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-				2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-				'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-				1234567890, '0x1111111111111111111111111111111111111111', ''
-			)
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -888,29 +846,20 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES
-			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', ''),
-			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', '')
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 1,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -941,7 +890,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -960,7 +909,7 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -980,6 +929,61 @@ func TestBackfillTxnSender_bulkUpdateTxnSender(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to bulk update txn_sender")
 	})
+
+	t.Run("syncFromInBridges=false: updates txn_sender and to_address but not from_address", func(t *testing.T) {
+		tempDir := t.TempDir()
+		dbPath := filepath.Join(tempDir, "test.db")
+
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		defer database.Close()
+
+		ctx := t.Context()
+		tx, err := db.NewTx(ctx, database)
+		require.NoError(t, err)
+
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
+		require.NoError(t, err)
+
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, tx.Commit())
+
+		// Clear txn_sender, from_address and to_address to simulate unbackfilled record
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '', from_address = '', to_address = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		mockClient := mocks.NewEthClienter(t)
+		logger := log.WithFields("module", "test")
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), false, logger)
+		require.NoError(t, err)
+		defer backfiller.Close()
+
+		toAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
+		updates := []RecordUpdate{
+			{
+				BlockNum:  1,
+				BlockPos:  0,
+				TxnSender: common.HexToAddress(testAddress),
+				FromAddr:  nil, // syncFromInBridges=false: no from_address available
+				ToAddr:    toAddr,
+			},
+		}
+
+		err = backfiller.bulkUpdate(ctx, "bridge", updates)
+		require.NoError(t, err)
+
+		var txnSender, fromAddress, toAddress string
+		row := database.QueryRowContext(ctx, "SELECT txn_sender, from_address, to_address FROM bridge WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, row.Scan(&txnSender, &fromAddress, &toAddress))
+
+		require.Equal(t, testAddress, txnSender)
+		require.Empty(t, fromAddress, "from_address must remain empty (not updated)")
+		require.Equal(t, toAddr.Hex(), toAddress)
+	})
 }
 
 func TestBackfillTxnSender_Close(t *testing.T) {
@@ -993,7 +997,7 @@ func TestBackfillTxnSender_Close(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 
 		err = backfiller.Close()
@@ -1024,37 +1028,29 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES
-			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', ''),
-			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', ''),
-			(1, 2, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892',
-			1234567890, '0x1111111111111111111111111111111111111111', '')
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 1,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 2,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567892")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1112,35 +1108,29 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES
-			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', ''),
-			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '')
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 1,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
 		// Mock mixed results: first call succeeds, second fails
 
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1150,7 +1140,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			}).Return(nil).Once()
 
 		// Mock the second call to fail
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
 
 		records := []RecordToBackfill{
 			{
@@ -1201,34 +1191,28 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES
-			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', ''),
-			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '')
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 1,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
 		// Mock all calls to fail
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("network error")).Maybe()
 
 		records := []RecordToBackfill{
@@ -1280,36 +1264,30 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
 		require.NoError(t, err)
 
-		_, err = tx.Exec(`
-			INSERT INTO bridge (
-				block_num, block_pos, leaf_type, origin_network, origin_address,
-				destination_network, destination_address, amount, metadata, deposit_count,
-				tx_hash, block_timestamp, from_address, txn_sender
-			) VALUES
-			(1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-			1234567890, '0x1111111111111111111111111111111111111111', ''),
-			(1, 1, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891',
-			1234567890, '0x1111111111111111111111111111111111111111', '')
-		`)
-		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+		require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 1,
+			"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567891")))
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		// Create a context that will be cancelled
 		cancelCtx, cancel := context.WithCancel(ctx)
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				time.Sleep(10 * time.Millisecond)
 				arg, ok := result.(*Call)
@@ -1355,7 +1333,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -1393,19 +1371,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 
 		// Insert records into database
 		for i := 0; i < largeBatchSize; i++ {
-			_, err = tx.Exec(fmt.Sprintf(`
-				INSERT INTO bridge (
-					block_num, block_pos, leaf_type, origin_network, origin_address,
-					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, txn_sender
-				) VALUES (
-					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
-					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-					'', 1, '0x%064x',
-					1234567890, '0x1111111111111111111111111111111111111111', ''
-				)
-			`, i, i))
-			require.NoError(t, err)
+			require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, uint64(i),
+				fmt.Sprintf("0x%064x", i))))
 
 			records[i] = RecordToBackfill{
 				BlockNum: 1,
@@ -1417,13 +1384,19 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = ''")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
-
-		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+		// txReceipt To is not bridgeAddr, so must call debugTrace
+		mockClientCallGetTransactionByHash(t, mockClient,
+			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+			testAddress, "0x0000000000000000000000000000000000000000000")
+		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1479,31 +1452,24 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 
 			// Insert multiple records
 			for i := 0; i < tc.recordCount; i++ {
-				_, err = tx.Exec(fmt.Sprintf(`
-					INSERT INTO bridge (
-						block_num, block_pos, leaf_type, origin_network, origin_address,
-						destination_network, destination_address, amount, metadata, deposit_count,
-						tx_hash, block_timestamp, from_address, txn_sender
-					) VALUES (
-						1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
-						2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-						'', 1, '0x%064x',
-						1234567890, '0x1111111111111111111111111111111111111111', ''
-					)
-				`, i, i))
-				require.NoError(t, err)
+				require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, uint64(i),
+					fmt.Sprintf("0x%064x", i))))
 			}
 
 			err = tx.Commit()
 			require.NoError(t, err)
 
+			_, err = database.Exec("UPDATE bridge SET txn_sender = ''")
+			require.NoError(t, err)
+
 			mockClient := mocks.NewEthClienter(t)
 			logger := log.WithFields("module", "test")
-			backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+			backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 			require.NoError(t, err)
 			defer backfiller.Close()
 
 			// Mock successful extractions for all records
+			// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
 			mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 				tx, ok := args.Get(0).(*Transaction)
 				if !ok {
@@ -1561,33 +1527,24 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		// Insert records that will be processed in multiple batches
 		totalRecords := 250 // This will create 3 batches with default batch size of 100
 		for i := 0; i < totalRecords; i++ {
-			_, err = tx.Exec(fmt.Sprintf(`
-				INSERT INTO bridge (
-					block_num, block_pos, leaf_type, origin_network, origin_address,
-					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, txn_sender
-				) VALUES (
-					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
-					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-					'', 1, '0x%064x',
-					1234567890, '0x1111111111111111111111111111111111111111', ''
-				)
-			`, i, i))
-			require.NoError(t, err)
+			require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, uint64(i),
+				fmt.Sprintf("0x%064x", i))))
 		}
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = ''")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
 		// Mock successful extractions for all records
-		// Note: The mock setup is complex, so we'll test with all successful calls
-		// and verify the batch processing works correctly
+		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			tx, ok := args.Get(0).(*Transaction)
 			if !ok {
@@ -1637,27 +1594,19 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		// Insert records for multiple batches
 		totalRecords := 250
 		for i := 0; i < totalRecords; i++ {
-			_, err = tx.Exec(fmt.Sprintf(`
-				INSERT INTO bridge (
-					block_num, block_pos, leaf_type, origin_network, origin_address,
-					destination_network, destination_address, amount, metadata, deposit_count,
-					tx_hash, block_timestamp, from_address, txn_sender
-				) VALUES (
-					1, %d, 1, 1, '0x1234567890123456789012345678901234567890',
-					2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-					'', 1, '0x%064x',
-					1234567890, '0x1111111111111111111111111111111111111111', ''
-				)
-			`, i, i))
-			require.NoError(t, err)
+			require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, uint64(i),
+				fmt.Sprintf("0x%064x", i))))
 		}
 
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		_, err = database.Exec("UPDATE bridge SET txn_sender = ''")
+		require.NoError(t, err)
+
 		mockClient := mocks.NewEthClienter(t)
 		logger := log.WithFields("module", "test")
-		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), logger)
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
 		require.NoError(t, err)
 		defer backfiller.Close()
 
@@ -1665,6 +1614,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 
 		// Mock calls with some delay
+		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
 		var callCount int64
 		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			count := atomic.AddInt64(&callCount, 1)
@@ -1692,6 +1642,192 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		require.NoError(t, err)
 		require.Greater(t, processedCount, 0)
 		require.Less(t, processedCount, totalRecords)
+	})
+}
+
+func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
+	filledAddr := common.HexToAddress("0xAAAABBBBCCCCDDDDEEEEFFFFAAAABBBBCCCCDDDD")
+
+	// setup creates a fresh migrated DB and a BackfillTxnSender.
+	setup := func(t *testing.T) (*BackfillTxnSender, *sql.DB, context.Context) {
+		t.Helper()
+		tempDir := t.TempDir()
+		dbPath := filepath.Join(tempDir, "test.db")
+		require.NoError(t, migrations.RunMigrations(dbPath))
+		database, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+		t.Cleanup(func() { database.Close() })
+		mockClient := mocks.NewEthClienter(t)
+		logger := log.WithFields("module", "test")
+		backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true, logger)
+		require.NoError(t, err)
+		t.Cleanup(func() { backfiller.Close() })
+		return backfiller, database, context.Background()
+	}
+
+	insertBlock := func(t *testing.T, sqlDB *sql.DB, num uint64) {
+		t.Helper()
+		_, err := sqlDB.Exec("INSERT INTO block (num) VALUES (?)", num)
+		require.NoError(t, err)
+	}
+
+	// newBridge creates a Bridge with both txn_sender and from_address set to filledAddr,
+	// so it does NOT need backfill by default. Tests can UPDATE fields afterward.
+	newBridge := func(blockNum, blockPos uint64) *Bridge {
+		return &Bridge{
+			BlockNum:           blockNum,
+			BlockPos:           blockPos,
+			TxHash:             common.HexToHash(fmt.Sprintf("0x%064x", blockNum*1000+blockPos)),
+			BlockTimestamp:     1234567890,
+			LeafType:           1,
+			OriginNetwork:      1,
+			OriginAddress:      common.HexToAddress("0x1234567890123456789012345678901234567890"),
+			DestinationNetwork: 2,
+			DestinationAddress: common.HexToAddress("0x0987654321098765432109876543210987654321"),
+			Amount:             big.NewInt(1e18),
+			DepositCount:       uint32(blockNum*10 + blockPos),
+			FromAddress:        &filledAddr,
+			TxnSender:          filledAddr,
+		}
+	}
+
+	// insertBridge uses meddler.Insert to match the format used by the processor in production.
+	insertBridge := func(t *testing.T, sqlDB *sql.DB, bridge *Bridge) {
+		t.Helper()
+		dbtx, err := sqlDB.Begin()
+		require.NoError(t, err)
+		require.NoError(t, meddler.Insert(dbtx, bridgeTableName, bridge))
+		require.NoError(t, dbtx.Commit())
+	}
+
+	t.Run("empty database returns no records", func(t *testing.T) {
+		backfiller, _, ctx := setup(t)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Empty(t, records)
+	})
+
+	t.Run("null txn_sender triggers retrieval", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Equal(t, uint64(1), records[0].BlockNum)
+		require.Nil(t, records[0].TxnSender)
+	})
+
+	t.Run("empty txn_sender triggers retrieval", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+	})
+
+	t.Run("null from_address triggers retrieval", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET from_address = NULL WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Nil(t, records[0].FromAddress)
+	})
+
+	t.Run("empty from_address triggers retrieval", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET from_address = '' WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+	})
+
+	t.Run("record with both fields populated is excluded", func(t *testing.T) {
+		// meddler.Insert stores non-zero address-codec fields as non-empty hex strings,
+		// so a freshly inserted bridge with filledAddr for both fields is excluded.
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(1, 0))
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Empty(t, records)
+	})
+
+	t.Run("limit is respected", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		for i := uint64(1); i <= 3; i++ {
+			insertBlock(t, sqlDB, i)
+			insertBridge(t, sqlDB, newBridge(i, 0))
+		}
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL")
+		require.NoError(t, err)
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 2)
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+	})
+
+	t.Run("context cancelled returns error", func(t *testing.T) {
+		backfiller, sqlDB, _ := setup(t)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL WHERE block_num = 1 AND block_pos = 0")
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err = backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.Error(t, err)
+	})
+
+	t.Run("mixed records - only those needing backfill returned", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		for i := uint64(1); i <= 3; i++ {
+			insertBlock(t, sqlDB, i)
+			insertBridge(t, sqlDB, newBridge(i, 0))
+		}
+		// Block 1: needs backfill (empty txn_sender)
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1")
+		require.NoError(t, err)
+		// Block 2: needs backfill (NULL from_address)
+		_, err = sqlDB.Exec("UPDATE bridge SET from_address = NULL WHERE block_num = 2")
+		require.NoError(t, err)
+		// Block 3: both fields populated → excluded
+
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+
+		blockNums := []uint64{records[0].BlockNum, records[1].BlockNum}
+		require.ElementsMatch(t, []uint64{1, 2}, blockNums)
+	})
+
+	t.Run("database error returns error", func(t *testing.T) {
+		backfiller, _, _ := setup(t)
+		backfiller.db.Close()
+
+		ctx := context.Background()
+		_, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to query records needing backfill")
 	})
 }
 
@@ -1726,22 +1862,15 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	_, err = tx.Exec(`
-		INSERT INTO bridge (
-			block_num, block_pos, leaf_type, origin_network, origin_address,
-			destination_network, destination_address, amount, metadata, deposit_count,
-			tx_hash, block_timestamp, from_address, txn_sender
-		) VALUES (
-			1, 0, 1, 1, '0x1234567890123456789012345678901234567890',
-			2, '0x0987654321098765432109876543210987654321', '1000000000000000000',
-			'', 1, '0x0000000000000000000000000000000000000000000000000000000000000000',
-			1234567890, '0x1111111111111111111111111111111111111111', ''
-		)
-	`)
-	require.NoError(t, err)
+	require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+		"0x0000000000000000000000000000000000000000000000000000000000000000")))
 
 	err = tx.Commit()
 	require.NoError(t, err)
+
+	_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+	require.NoError(t, err)
+
 	logger := log.WithFields("module", "test")
 	// Create real client
 	client, err := etherman.DialWithRetry(t.Context(), logger, &ethermanconfig.RPCClientConfig{
@@ -1751,7 +1880,7 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 
 	// Create backfill instance
 
-	backfiller, err := NewBackfillTxnSender(dbPath, client, common.HexToAddress("0x1234"), logger)
+	backfiller, err := NewBackfillTxnSender(dbPath, client, common.HexToAddress("0x1234"), true, logger)
 	require.NoError(t, err)
 	defer backfiller.Close()
 

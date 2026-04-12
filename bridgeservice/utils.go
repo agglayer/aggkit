@@ -8,6 +8,7 @@ import (
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/gin-gonic/gin"
 )
@@ -127,10 +128,17 @@ func NewBridgeResponse(bridge *bridgesync.Bridge, networkID uint32,
 		globalIndex = bridgesync.GenerateGlobalIndexForNetworkID(networkID, bridge.DepositCount)
 	}
 
+	// Convert FromAddress to pointer if not nil
+	var fromAddr *bridgetypes.Address
+	if bridge.FromAddress != nil {
+		addr := bridgetypes.Address(bridge.FromAddress.Hex())
+		fromAddr = &addr
+	}
+
 	return &bridgetypes.BridgeResponse{
 		BlockNum:           bridge.BlockNum,
 		BlockPos:           bridge.BlockPos,
-		FromAddress:        bridgetypes.Address(bridge.FromAddress.Hex()),
+		FromAddress:        fromAddr,
 		TxHash:             bridgetypes.Hash(bridge.TxHash.Hex()),
 		GlobalIndex:        globalIndex,
 		BlockTimestamp:     bridge.BlockTimestamp,
@@ -155,7 +163,7 @@ func isPreEtrogBridge(bridge *bridgesync.Bridge, l1EtrogUpdateBlock uint64) bool
 }
 
 // NewClaimResponse creates ClaimResponse instance out of the provided Claim
-func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes.ClaimResponse {
+func NewClaimResponse(claim *claimsynctypes.Claim, populateProofs bool) *bridgetypes.ClaimResponse {
 	response := &bridgetypes.ClaimResponse{
 		GlobalIndex:        bridgetypes.BigIntString(claim.GlobalIndex.String()),
 		DestinationNetwork: claim.DestinationNetwork,
@@ -170,6 +178,7 @@ func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes
 		RollupExitRoot:     bridgetypes.Hash(claim.RollupExitRoot.Hex()),
 		GlobalExitRoot:     bridgetypes.Hash(claim.GlobalExitRoot.Hex()),
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(claim.Metadata)),
+		IsMessage:          claim.IsMessage,
 	}
 
 	// Only populate proof fields if requested

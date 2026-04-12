@@ -57,6 +57,9 @@ func (bnm *BlockNotifierManager) GetBlockNotifier(ctx context.Context,
 }
 func (bnm *BlockNotifierManager) GetCurrentBlockNumber(ctx context.Context,
 	blockFinality aggkittypes.BlockNumberFinality) (uint64, error) {
+	if blockFinality.IsConstant() {
+		return blockFinality.Specific, nil
+	}
 	bn, err := bnm.GetBlockNotifier(ctx, blockFinality)
 	if err != nil {
 		return 0, err

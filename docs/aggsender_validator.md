@@ -168,6 +168,10 @@ The system supports two validation modes:
 
 The validator is configured using a `.toml` file. Check the default values in this [file](https://github.com/agglayer/aggkit/blob/develop/config/default.go).
 
+| Name                          | Type    | Description                                                                                                                              |
+|-------------------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------|
+| UnsetClaimsMaxLogBlockRange   | uint64  | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error) |
+
 ### Running the Validator
 
 #### As a Standalone Component

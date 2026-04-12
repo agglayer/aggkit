@@ -30,6 +30,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
+	claimsyncstorage "github.com/agglayer/aggkit/claimsync/storage"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
@@ -48,6 +51,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
+)
+
+const (
+	MainnetID = uint32(0)
 )
 
 func start(cliCtx *cli.Context) error {
@@ -83,6 +90,7 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
+	log.Debugf("Components to run: %v", components)
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
@@ -99,7 +107,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 	var rpcServices []jRPC.Service
-	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(l1Client, cfg.L1Multidownloader)
+	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(components, l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}
@@ -107,7 +115,7 @@ func start(cliCtx *cli.Context) error {
 		rpcServices = append(rpcServices, l1mdServices...)
 	}
 
-	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, l1Client)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, components, cfg.L1NetworkConfig, l1Client)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
@@ -119,14 +127,44 @@ func start(cliCtx *cli.Context) error {
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1, l1Client, l1MultiDownloader)
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1,
+		l1Client, l1MultiDownloader)
 	if l1InfoTreeSync != nil {
 		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
 	}
+
+	if isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL1Sync.DBPath, cfg.ClaimL1Sync.DBPath, claimsynctypes.L1ClaimSyncer)
+	}
+
+	l1ClaimSync := runClaimSyncL1IfNeeded(ctx, components, cfg.ClaimL1Sync, reorgDetectorL1, l1Client, MainnetID)
+	if l1ClaimSync != nil {
+		rpcServices = append(rpcServices, l1ClaimSync.GetRPCServices()...)
+	}
+
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
-		l1Client, 0, &backfillWg)
+		l1Client, MainnetID, &backfillWg)
+	initialLER, err := GetInitialLER(cfg.L2NetworkConfig.InitialLER,
+		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
+	if err != nil {
+		return fmt.Errorf("failed to get initial local exit root: %w", err)
+	}
+	log.Infof("Initial Local Exit Root (LER): %s", initialLER.Hex())
+
+	if isNeeded([]string{
+		aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR, aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE, aggkitcommon.L2CLAIMSYNC, aggkitcommon.L2BRIDGESYNC}, components) {
+		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL2Sync.DBPath, cfg.ClaimL2Sync.DBPath, claimsynctypes.L2ClaimSyncer)
+	}
+
+	l2ClaimSync := runClaimSyncL2IfNeeded(
+		ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
+	if l2ClaimSync != nil {
+		rpcServices = append(rpcServices, l2ClaimSync.GetRPCServices()...)
+	}
+
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID, &backfillWg)
+		l2Client, rollupDataQuerier.RollupID, *initialLER, &backfillWg)
 	l2GERSync := runL2GERSyncIfNeeded(
 		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
 	)
@@ -154,9 +192,29 @@ func start(cliCtx *cli.Context) error {
 			l2GERSync,
 			l1BridgeSync,
 			l2BridgeSync,
+			l1ClaimSync,
+			l2ClaimSync,
 		)
 		go b.Start(ctx)
 		log.Info("Bridge service started")
+	}
+	if l1MultiDownloader != nil {
+		log.Info("starting L1 MultiDownloader...")
+		err = l1MultiDownloader.Initialize(ctx)
+		if err != nil {
+			//nolint:gocritic
+			log.Fatalf("failed to initialize L1 MultiDownloader: %v", err)
+		}
+		go func() {
+			err := l1MultiDownloader.Start(ctx)
+			if err != nil {
+				log.Fatalf("l1MultiDownloader stopped: %v", err)
+			}
+		}()
+	}
+	if l1InfoTreeSync != nil {
+		log.Info("starting L1 Info Tree Syncer...")
+		go l1InfoTreeSync.Start(ctx)
 	}
 
 	for _, component := range components {
@@ -171,13 +229,14 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l2ClaimSync,
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
+				*initialLER,
 			)
 			if err != nil {
-				//nolint:gocritic
-				log.Fatal(err)
+				log.Fatalf("failed to create AggSender: %v", err)
 			}
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
@@ -190,6 +249,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l2ClaimSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -202,10 +262,12 @@ func start(cliCtx *cli.Context) error {
 				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l2ClaimSync,
 				l1Client,
 				l2Client,
 				rollupDataQuerier,
 				committeeQuerier,
+				*initialLER,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -231,15 +293,6 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Profiling.ProfilingEnabled {
 		go pprof.StartProfilingHTTPServer(ctx, cfg.Profiling)
 	}
-	if l1MultiDownloader != nil {
-		log.Info("starting L1 MultiDownloader...")
-		go func() {
-			err := l1MultiDownloader.Start(ctx)
-			if err != nil {
-				log.Error("l1MultiDownloader stopped: %w", err)
-			}
-		}()
-	}
 
 	waitSignal([]context.CancelFunc{cancel}, &backfillWg)
 
@@ -253,6 +306,7 @@ func createAggchainProofGen(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
+	l2ClaimSync claimsynctypes.ClaimSyncer,
 ) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
 
@@ -263,6 +317,7 @@ func createAggchainProofGen(
 		l1Client,
 		l2Client,
 		l2Syncer,
+		l2ClaimSync,
 		l1InfoTreeSync,
 	)
 	if err != nil {
@@ -275,11 +330,13 @@ func createAggchainProofGen(
 func createAggSenderValidator(ctx context.Context,
 	cfg validator.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync,
+	l2BridgeSyncer *bridgesync.BridgeSync,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
+	initialLER common.Hash,
 ) (*aggsender.AggsenderValidator, error) {
 	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
@@ -312,9 +369,11 @@ func createAggSenderValidator(ctx context.Context,
 	}
 
 	certQuerier := query.NewCertificateQuerier(
-		l2Syncer,
+		l2BridgeSyncer,
+		l2ClaimSyncer,
 		aggchainFEPQuerier,
 		agglayerClient,
+		initialLER,
 	)
 
 	flow, flowParams, err := flows.NewVerifierFlow(
@@ -324,22 +383,34 @@ func createAggSenderValidator(ctx context.Context,
 		l1Client,
 		l2Client,
 		l1InfoTreeSync,
-		l2Syncer,
+		l2BridgeSyncer,
+		l2ClaimSyncer,
 		rollupDataQuerier,
 		committeeQuerier,
+		initialLER,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create verifier flow: %w", err)
 	}
+	l2OriginNetwork := l2BridgeSyncer.OriginNetwork()
+
+	nextBlockQuerier := query.NewSetInitialBlockToClaimSyncer(
+		certQuerier,
+		agglayerClient,
+		l2OriginNetwork,
+		logger)
 
 	return aggsender.NewAggsenderValidator(
-		ctx, logger, cfg, flow,
+		ctx, logger, cfg,
+		l2ClaimSyncer,
+		flow,
 		flowParams.L1InfoTreeDataQuerier,
 		agglayerClient,
 		certQuerier,
 		aggchainFEPQuerier,
-		flowParams.LERQuerier,
+		flowParams.InitialLER,
 		flowParams.Signer,
+		nextBlockQuerier,
 	)
 }
 
@@ -349,9 +420,12 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
 	l2Syncer aggsendertypes.L2BridgeSyncer,
+	claimSyncer claimsynctypes.ClaimSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier aggsendertypes.RollupDataQuerier,
-	committeeQuerier aggsendertypes.MultisigQuerier) (*aggsender.AggSender, error) {
+	committeeQuerier aggsendertypes.MultisigQuerier,
+	initialLER common.Hash,
+) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.Validate(); err != nil {
@@ -364,7 +438,7 @@ func createAggSender(
 	}
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
+		l1InfoTreeSync, l2Syncer, claimSyncer, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier, initialLER)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
@@ -510,32 +584,48 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	return false
 }
 
+func l1InfoTreeMustRun(components []string) bool {
+	return isNeeded([]string{
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components)
+}
+
 func runL1InfoTreeSyncerIfNeeded(
 	ctx context.Context,
 	components []string,
 	cfg config.Config,
 	reorgDetectorL1 aggkitsync.ReorgDetector,
-	_ aggkittypes.BaseEthereumClienter,
-	l1MultiDownloader aggkittypes.MultiDownloader,
+	l1EthClient aggkittypes.BaseEthereumClienter,
+	l1MultiDownloader *multidownloader.EVMMultidownloader,
 ) *l1infotreesync.L1InfoTreeSync {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components) {
+	if !l1InfoTreeMustRun(components) {
 		return nil
 	}
-	l1InfoTreeSync, err := l1infotreesync.New(
-		ctx,
-		cfg.L1InfoTreeSync,
-		l1MultiDownloader,
-		reorgDetectorL1,
-		l1infotreesync.FlagNone,
-	)
+	var l1InfoTreeSync *l1infotreesync.L1InfoTreeSync
+	var err error
+	if l1MultiDownloader != nil {
+		log.Info("L1 Info Tree Syncer using MultiDownloader based implementation")
+		l1InfoTreeSync, err = l1infotreesync.NewMultidownloadBased(
+			ctx,
+			cfg.L1InfoTreeSync,
+			l1MultiDownloader,
+			l1infotreesync.FlagNone,
+		)
+	} else {
+		log.Info("L1 Info Tree Syncer using legacy sync implementation")
+		l1Client := aggkitsync.NewAdapterEthClientToMultidownloader(l1EthClient)
+		l1InfoTreeSync, err = l1infotreesync.NewLegacy(
+			ctx,
+			cfg.L1InfoTreeSync,
+			l1Client,
+			reorgDetectorL1,
+			l1infotreesync.FlagNone,
+		)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
-	go l1InfoTreeSync.Start(ctx)
-
 	return l1InfoTreeSync
 }
 
@@ -565,7 +655,8 @@ func runL2ClientIfNeeded(ctx context.Context,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.L2BRIDGESYNC,
-		aggkitcommon.L2GERSYNC}, components) {
+		aggkitcommon.L2GERSYNC,
+		aggkitcommon.L2CLAIMSYNC}, components) {
 		return nil
 	}
 	logger := log.WithFields("module", "l2client")
@@ -607,16 +698,22 @@ func runReorgDetectorL1IfNeeded(
 }
 
 func runL1MultiDownloaderIfNeeded(
+	components []string,
 	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
-) (aggkittypes.MultiDownloader, []jRPC.Service, error) {
+) (*multidownloader.EVMMultidownloader, []jRPC.Service, error) {
 	// The requirements are the same as L1Client
 	if l1Client == nil {
 		return nil, nil, nil
 	}
 	// If it's disable It creates a direct eth client
 	if !cfg.Enabled {
-		return aggkitsync.NewAdapterEthClientToMultidownloader(l1Client), nil, nil
+		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
+		return nil, nil, nil
+	}
+	if !l1InfoTreeMustRun(components) {
+		log.Infof("L1 MultiDownloader not going to run because components: %v", components)
+		return nil, nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 
@@ -626,8 +723,9 @@ func runL1MultiDownloaderIfNeeded(
 		"l1",
 		l1Client, // ethClient
 		l1Client, // rpcClient
-		nil,      // storage
-		nil,      // blockNotifierManager
+		nil,      // storage (created inside the multidownloader if nil)
+		nil,      // blockNotifierManager (created inside the multidownloader if nil)
+		nil,      // reorgProcessor (created inside the multidownloader if nil)
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create L1 MultiDownloader: %w", err)
@@ -649,7 +747,8 @@ func runReorgDetectorL2IfNeeded(
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.L2BRIDGESYNC,
-		aggkitcommon.L2GERSYNC}, components) {
+		aggkitcommon.L2GERSYNC,
+		aggkitcommon.L2CLAIMSYNC}, components) {
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
@@ -694,6 +793,31 @@ func runL2GERSyncIfNeeded(
 	return l2GERSync
 }
 
+func resolveL1BridgeConfig(cfg *bridgesync.Config, components []string, logprefix string) {
+	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
+
+	cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
+
+	for _, line := range cfg.ResolvedString() {
+		log.Info(logprefix+"BridgeConfig Resolved: ", line)
+	}
+}
+
+func GetInitialLER(
+	initialLEROverride *common.Hash,
+	rollupCreationBlockL1 uint64,
+	rollupDataQuerier *ethermanquierier.RollupDataQuerier) (*common.Hash, error) {
+	if initialLEROverride != nil {
+		return initialLEROverride, nil
+	}
+	if rollupDataQuerier == nil {
+		return nil, nil
+	}
+	lerQuery := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
+	ler, err := lerQuery.GetInitialLocalExitRoot()
+	return &ler, err
+}
+
 func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
@@ -711,6 +835,8 @@ func runBridgeSyncL1IfNeeded(
 		log.Fatalf("invalid BridgeL1Sync config: %v", err)
 	}
 
+	resolveL1BridgeConfig(&cfg, components, "L1")
+
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
 		cfg,
@@ -725,16 +851,49 @@ func runBridgeSyncL1IfNeeded(
 	// Run txn_sender backfilling in a separate goroutine
 	wg.Add(1)
 	go func() {
-		if err := runTxnSenderBackfill(ctx, cfg, l1Client, wg); err != nil {
-			log.Errorf("txn_sender backfilling failed: %v", err)
+		logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L1BridgeSyncer.String())
+		if err := runTxnSenderBackfill(ctx, cfg, l1Client, components, bridgesync.L1BridgeSyncer, logger, wg); err != nil {
+			logger.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
-		log.Infof("txn_sender backfilling completed for L1 bridge sync")
 	}()
 
 	go bridgeSyncL1.Start(ctx)
 
 	return bridgeSyncL1
+}
+
+func runClaimSyncL1IfNeeded(
+	ctx context.Context,
+	components []string,
+	cfg claimsync.ConfigStandalone,
+	reorgDetectorL1 bridgesync.ReorgDetector,
+	l1Client aggkittypes.EthClienter,
+	rollupID uint32,
+) *claimsync.ClaimSync {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+		return nil
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid BridgeL1Sync config: %v", err)
+	}
+
+	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components))
+
+	res, err := claimsync.NewStandaloneClaimSync(
+		ctx,
+		cfg,
+		reorgDetectorL1,
+		l1Client,
+		claimsynctypes.L1ClaimSyncer,
+		rollupID,
+	)
+	if err != nil {
+		log.Fatalf("error creating ClaimSyncL1: %s", err)
+	}
+	log.Infof("Starting ClaimSyncL1 (autoStart=%t)", *cfg.AutoStart.Resolved)
+	go res.Start(ctx)
+	return res
 }
 
 func runBridgeSyncL2IfNeeded(
@@ -744,6 +903,7 @@ func runBridgeSyncL2IfNeeded(
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
+	initialLER common.Hash,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
 	fullClaimsNeeded := isNeeded([]string{
@@ -760,6 +920,9 @@ func runBridgeSyncL2IfNeeded(
 		return nil
 	}
 
+	// Resolve SyncFromInBridges mode based on components
+	resolveL1BridgeConfig(&cfg, components, "L2")
+
 	bridgeSyncL2, err := bridgesync.NewL2(
 		ctx,
 		cfg,
@@ -767,6 +930,7 @@ func runBridgeSyncL2IfNeeded(
 		l2Client,
 		rollupID,
 		fullClaimsNeeded,
+		initialLER,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
@@ -775,15 +939,87 @@ func runBridgeSyncL2IfNeeded(
 	// Run txn_sender backfilling in a separate goroutine
 	wg.Add(1)
 	go func() {
-		if err := runTxnSenderBackfill(ctx, cfg, l2Client, wg); err != nil {
-			log.Errorf("txn_sender backfilling failed: %v", err)
+		logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L2BridgeSyncer.String())
+		if err := runTxnSenderBackfill(ctx, cfg, l2Client, components, bridgesync.L2BridgeSyncer, logger, wg); err != nil {
+			logger.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
 	}()
-
+	log.Infof("Starting BridgeSyncL2 with SyncFromInBridges: %t",
+		*cfg.SyncFromInBridges.Resolved)
 	go bridgeSyncL2.Start(ctx)
-
 	return bridgeSyncL2
+}
+
+func runClaimSyncL2IfNeeded(
+	ctx context.Context,
+	components []string,
+	cfg claimsync.ConfigStandalone,
+	reorgDetectorL2 *reorgdetector.ReorgDetector,
+	l2Client aggkittypes.EthClienter,
+	originNetwork uint32,
+) *claimsync.ClaimSync {
+	if !isNeeded([]string{
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.L2CLAIMSYNC}, components) {
+		return nil
+	}
+
+	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components))
+
+	res, err := claimsync.NewStandaloneClaimSync(
+		ctx,
+		cfg,
+		reorgDetectorL2,
+		l2Client,
+		claimsynctypes.L2ClaimSyncer,
+		originNetwork,
+	)
+	if err != nil {
+		log.Fatalf("error creating ClaimSyncL2: %s", err)
+	}
+
+	log.Infof("Starting ClaimSyncL2 (autoStart=%t)", *cfg.AutoStart.Resolved)
+	go res.Start(ctx)
+	return res
+}
+
+// runImportFromBridgeSyncerIfNeeded migrates claim data from an existing bridgesync
+// database into the claimsync database before the syncer starts. It is a no-op when
+// bridgeDBPath is empty or the bridge DB contains no claim data.
+func runImportFromBridgeSyncerIfNeeded(
+	ctx context.Context,
+	bridgeDBPath string,
+	claimDBPath string,
+	syncerID claimsynctypes.ClaimSyncerID,
+) {
+	if bridgeDBPath == "" {
+		return
+	}
+	logger := log.WithFields("module", "ImportFromBridgeSyncer", "syncerID", syncerID.String())
+	status, err := claimsyncstorage.InspectBridgeSyncer(ctx, bridgeDBPath, claimDBPath)
+	if err != nil {
+		logger.Fatalf("failed to inspect bridge DB: %v", err)
+	}
+	if err := status.Validate(); err != nil {
+		logger.Fatalf("bridge DB migration blocked: %v", err)
+	}
+	if !status.ShouldMigrate() {
+		logger.Infof("no migration needed. %s", status.String())
+		return
+	}
+	logger.Infof("migration from bridgesyncer to claimsyncer needed, starting migration process. %s", status.String())
+	if err := claimsyncstorage.ImportDataFromBridgesyncer(ctx, logger, bridgeDBPath, claimDBPath); err != nil {
+		logger.Fatalf("failed to import claim data from bridge DB: %v", err)
+	}
+	if err := claimsyncstorage.ImportKeyValueFromBridgesyncer(
+		ctx, bridgeDBPath, claimDBPath, syncerID.String()); err != nil {
+		logger.Fatalf("failed to import key_value from bridge DB: %v", err)
+	}
+	logger.Infof("migration from bridgesyncer to claimsyncer completed successfully")
 }
 
 func runAggsenderMultisigCommitteeIfNeeded(
@@ -812,6 +1048,8 @@ func createBridgeService(
 	injectedGERs bridgeservice.L2GERSyncer,
 	bridgeL1 bridgeservice.Bridger,
 	bridgeL2 bridgeservice.Bridger,
+	claimL1 bridgeservice.Claimer,
+	claimL2 bridgeservice.Claimer,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
@@ -829,7 +1067,9 @@ func createBridgeService(
 		l1InfoTree,
 		injectedGERs,
 		bridgeL1,
+		claimL1,
 		bridgeL2,
+		claimL2,
 	)
 }
 
@@ -874,10 +1114,25 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
 // the provided L1 network configuration and uses default implementations for creating Ethereum
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
-func createRollupDataQuerier(ctx context.Context,
+func createRollupDataQuerier(
+	ctx context.Context,
+	components []string,
 	cfg ethermanconfig.L1NetworkConfig,
 	l1Client aggkittypes.BaseEthereumClienter,
 ) (*ethermanquierier.RollupDataQuerier, error) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.L1BRIDGESYNC,
+		aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.L2GERSYNC,
+	}, components) {
+		return nil, nil
+	}
 	return ethermanquierier.NewRollupDataQuerier(ctx, cfg, l1Client,
 		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (ethermanquierier.RollupManagerContract, error) {
@@ -890,25 +1145,36 @@ func runTxnSenderBackfill(
 	ctx context.Context,
 	cfg bridgesync.Config,
 	client aggkittypes.EthClienter,
+	components []string,
+	syncerID bridgesync.BridgeSyncerID,
+	logger *log.Logger,
 	wg *sync.WaitGroup,
 ) error {
 	// Only run backfilling if we have a database path configured
 	if cfg.DBPath == "" {
-		log.Debug("No database path configured, skipping txn_sender backfilling")
+		logger.Debug("No database path configured, skipping txn_sender backfilling")
 		return nil
 	}
 
 	// Defer WaitGroup Done to ensure cleanup on exit
 	defer wg.Done()
 
-	log.Info("Starting txn_sender backfilling process")
+	logger.Infof("Starting txn_sender backfilling process for %s", syncerID.String())
+
+	// Resolve SyncFromInBridges mode based on components
+	hasBridgeComponent := isNeeded([]string{aggkitcommon.BRIDGE}, components)
+	syncFromInBridges := cfg.SyncFromInBridges.Resolve(hasBridgeComponent)
+	logger.Infof("SyncFromInBridges syncer: %s,  mode: %s, resolved to: %t (BRIDGE component active: %t)",
+		syncerID.String(),
+		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
 
 	// Create backfill instance
 	backfiller, err := bridgesync.NewBackfillTxnSender(
 		cfg.DBPath,
 		client,
 		cfg.BridgeAddr,
-		log.WithFields("module", "tx-sender-backfill"),
+		syncFromInBridges,
+		logger,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create backfill instance: %w", err)
@@ -920,16 +1186,16 @@ func runTxnSenderBackfill(
 	if err := backfiller.BackfillAll(ctx); err != nil {
 		// Check if the error is due to context cancellation
 		if ctx.Err() != nil {
-			log.Infof("txn_sender backfilling cancelled: %v", ctx.Err())
+			logger.Infof("txn_sender backfilling cancelled: %v", ctx.Err())
 			return nil // Don't treat cancellation as an error
 		}
-		log.Errorf("txn_sender backfilling failed: %v", err)
+		logger.Errorf("txn_sender backfilling failed: %v", err)
 		// Don't fail the entire process, just log the error and continue
 		return err
 	}
 
 	duration := time.Since(start)
-	log.Infof("txn_sender backfilling completed in %v", duration)
+	logger.Infof("txn_sender backfilling for %s completed in %v", syncerID.String(), duration)
 
 	return nil
 }

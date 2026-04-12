@@ -50,11 +50,11 @@ func (r RuntimeData) String() string {
 	return fmt.Sprintf("NetworkID: %d", r.NetworkID)
 }
 
-func (r RuntimeData) IsCompatible(storage RuntimeData) error {
+func (r RuntimeData) IsCompatible(storage RuntimeData) (*RuntimeData, error) {
 	if r.NetworkID != storage.NetworkID {
-		return fmt.Errorf("network ID mismatch: %d != %d", r.NetworkID, storage.NetworkID)
+		return nil, fmt.Errorf("network ID mismatch: %d != %d", r.NetworkID, storage.NetworkID)
 	}
-	return nil
+	return nil, nil
 }
 
 type AggSenderStorageMaintainer interface {
@@ -138,39 +138,36 @@ func NewAggSenderSQLStorage(logger aggkitcommon.Logger, cfg AggSenderSQLStorageC
 		retainPolicy:     &cfg.RetainCertificatesPolicy}, nil
 }
 
-// GetCertificateHeadersByStatus returns a list of certificate headers by their status
+// GetCertificateHeadersByStatus returns a list of certificate headers by their status.
+// If statuses is nil or empty, all certificates are returned.
 func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
 	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error) {
-	condition := ""
-
+	whereClause := ""
 	args := make([]any, len(statuses))
 
 	if len(statuses) > 0 {
 		placeholders := make([]string, len(statuses))
-		// Build the WHERE clause for status filtering
 		for i := range statuses {
 			placeholders[i] = fmt.Sprintf("$%d", i+1)
 			args[i] = statuses[i]
 		}
-
-		// Build the WHERE clause with the joined placeholders
-		condition += "status IN (" + strings.Join(placeholders, ", ") + ")"
+		whereClause = "status IN (" + strings.Join(placeholders, ", ") + ")"
 	}
 
-	// Add ordering by creation date (oldest first)
-	condition += " ORDER BY height ASC"
-
-	return a.getCerts(nil, tableCertificate, condition, args)
+	return a.getCerts(nil, tableCertificate, whereClause, "ORDER BY height ASC", args)
 }
 
 func (a *AggSenderSQLStorage) getCerts(tx dbtypes.Querier, table tableName,
-	condition string, args []any) ([]*types.CertificateHeader, error) {
+	whereClause string, suffix string, args []any) ([]*types.CertificateHeader, error) {
 	if tx == nil {
 		tx = a.db
 	}
 	query := fmt.Sprintf("SELECT * FROM %s", table)
-	if condition != "" {
-		query += " WHERE " + condition
+	if whereClause != "" {
+		query += " WHERE " + whereClause
+	}
+	if suffix != "" {
+		query += " " + suffix
 	}
 	var certificates []*types.CertificateHeader
 	if err := meddler.QueryAll(tx, &certificates, query, args...); err != nil {

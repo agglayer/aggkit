@@ -71,13 +71,17 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.MinConnectTimeout, cfg.AggSender.AgglayerClient.GRPC.MinConnectTimeout)
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.Retry.MaxAttempts, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts)
 	require.Equal(t, cfg.AggSender.RollupManagerAddr, cfg.Validator.LerQuerier.RollupManagerAddr)
+	require.Equal(t, uint64(0), cfg.AggSender.UnsetClaimsMaxLogBlockRange)
+	require.Equal(t, cfg.AggSender.UnsetClaimsMaxLogBlockRange, cfg.Validator.UnsetClaimsMaxLogBlockRange)
 	require.Equal(t, aggsendertypes.AutoMode, cfg.AggSender.Mode)
 	require.Equal(t, aggsendertypes.AutoMode, cfg.Validator.Mode)
 	require.Equal(t, cfg.AggSender.StorageRetainCertificatesPolicy.String(), "retain all certificates, keep history: true")
 	require.Equal(t, multidownloader.NewConfigDefault("l1", ""), cfg.L1Multidownloader)
 	cfgL2Multidownloader := multidownloader.NewConfigDefault("l2", "")
 	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
+	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
+	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
@@ -120,6 +124,57 @@ func newCliContextConfigFlag(t *testing.T, values ...string) *cli.Context {
 		require.NoError(t, err)
 	}
 	return cli.NewContext(nil, flagSet, nil)
+}
+
+func TestL2NetworkConfigInitialLER(t *testing.T) {
+	specificHash := "0xaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd"
+	zeroHash := "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+	tests := []struct {
+		name          string
+		toml          string
+		expectNil     bool
+		expectedValue string
+	}{
+		{
+			name: "InitialLER set to a specific hash",
+			toml: `
+[L2NetworkConfig]
+InitialLER = "` + specificHash + `"
+`,
+			expectNil:     false,
+			expectedValue: specificHash,
+		},
+		{
+			name: "InitialLER set to zero hash is valid and not nil",
+			toml: `
+[L2NetworkConfig]
+InitialLER = "` + zeroHash + `"
+`,
+			expectNil:     false,
+			expectedValue: zeroHash,
+		},
+		{
+			name:      "InitialLER not set returns nil",
+			toml:      ``,
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadFileFromString(tt.toml, ConfigType)
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+
+			if tt.expectNil {
+				require.Nil(t, cfg.L2NetworkConfig.InitialLER)
+			} else {
+				require.NotNil(t, cfg.L2NetworkConfig.InitialLER)
+				require.Equal(t, tt.expectedValue, cfg.L2NetworkConfig.InitialLER.Hex())
+			}
+		})
+	}
 }
 
 func TestLoadConfigWithDeprecatedFields(t *testing.T) {

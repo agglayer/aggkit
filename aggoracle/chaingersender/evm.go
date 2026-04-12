@@ -2,6 +2,7 @@ package chaingersender
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -228,11 +229,16 @@ func (c *EVMChainGERSender) submitTransaction(
 
 	// Add the transaction to the transaction manager
 	id, err := c.ethTxMan.Add(ctx, targetAddr, common.Big0, txInput, c.gasOffset, nil)
-	if err != nil {
+	if err == nil {
+		c.logger.Infof("%s GER transaction submitted with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
+	} else if !errors.Is(err, ethtxmanager.ErrAlreadyExists) {
 		return fmt.Errorf("failed to add %s GER transaction: %w", action, err)
 	}
+	if err != nil {
+		c.logger.Infof("%s GER transaction already exists in monitoring DB with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
+	}
 
-	c.logger.Infof("%s GER transaction submitted with ID: %s", action, id.Hex())
+	c.logger.Debugf("monitoring every %s", c.waitPeriodMonitorTx)
 
 	// Monitor the transaction status
 	for {

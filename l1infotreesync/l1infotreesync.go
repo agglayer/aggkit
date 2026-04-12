@@ -7,9 +7,12 @@ import (
 	"math/big"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/multidownloader"
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -35,11 +38,23 @@ var (
 	ErrNotFound = errors.New("l1infotreesync: not found")
 )
 
+type DriverInterface interface {
+	Sync(ctx context.Context, firstBlockNumber *uint64)
+	GetCompletionPercentage() *float64
+}
+
+type DownloaderInterface interface {
+	Finality() aggkittypes.BlockNumberFinality
+}
+
 type L1InfoTreeSync struct {
 	processor  *processor
-	driver     *sync.EVMDriver
-	downloader *sync.EVMDownloader
+	driver     DriverInterface
+	downloader DownloaderInterface
+	cfg        Config
 }
+
+type RuntimeData = mdrsync.RuntimeData
 
 func NewReadOnly(
 	ctx context.Context,
@@ -56,10 +71,86 @@ func NewReadOnly(
 }
 
 // New creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
-func New(
+func NewMultidownloadBased(
 	ctx context.Context,
 	cfg Config,
-	l1Client aggkittypes.MultiDownloader,
+	l1Multidownloader *multidownloader.EVMMultidownloader,
+	flags CreationFlags,
+) (*L1InfoTreeSync, error) {
+	processor, err := newProcessor(cfg.DBPath)
+	if err != nil {
+		return nil, err
+	}
+	rh := &sync.RetryHandler{
+		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
+		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
+	}
+
+	appender, err := buildAppender(l1Multidownloader.EthClient(), cfg.GlobalExitRootAddr, cfg.RollupManagerAddr, flags)
+	if err != nil {
+		return nil, err
+	}
+	addressesToQuery := []common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr}
+	syncerConfig := aggkittypes.SyncerConfig{
+		SyncerID:          "l1infotreesync",
+		ContractAddresses: addressesToQuery,
+		FromBlock:         cfg.InitialBlock,
+		ToBlock:           cfg.BlockFinality,
+	}
+	err = l1Multidownloader.RegisterSyncer(syncerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register l1infotreesync in multidownloader: %w", err)
+	}
+	logger := log.WithFields("syncer", syncerID)
+	// TODO: move the durations to config file (mdrsync.NewEVMDownloader)
+	logger.Infof("Creating L1InfoTreeSync with WaitForNewBlocksPeriod: %s, RetryAfterErrorPeriod: %s",
+		cfg.WaitForNewBlocksPeriod.String(),
+		cfg.RetryAfterErrorPeriod.String(),
+	)
+	downloader := mdrsync.NewEVMDownloader(
+		l1Multidownloader,
+		logger,
+		rh,
+		appender,
+		cfg.RetryAfterErrorPeriod.Duration,
+		cfg.WaitForNewBlocksPeriod.Duration,
+	)
+
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		cfg.RequireStorageContentCompatibility,
+		func(ctx context.Context) (RuntimeData, error) {
+			chainID, err := downloader.ChainID(ctx)
+			if err != nil {
+				return RuntimeData{}, err
+			}
+			return RuntimeData{
+				ChainID:   chainID,
+				Addresses: addressesToQuery,
+			}, nil
+		},
+		compatibility.NewKeyValueToCompatibilityStorage[RuntimeData](
+			db.NewKeyValueStorage(processor.getDB()),
+			aggkitcommon.L1INFOTREESYNC,
+		))
+
+	driver := mdrsync.NewEVMDriver(logger, processor, downloader, syncerConfig,
+		cfg.SyncBlockChunkSize, rh, compatibilityChecker)
+	if err != nil {
+		return nil, err
+	}
+	return &L1InfoTreeSync{
+		processor:  processor,
+		driver:     driver,
+		downloader: downloader,
+		cfg:        cfg,
+	}, nil
+}
+
+// NewLegacy creates a L1 Info tree syncer that syncs the L1 info tree and the rollup exit tree
+func NewLegacy(
+	ctx context.Context,
+	cfg Config,
+	l1Client aggkittypes.MultiDownloaderLegacy,
 	reorgDetector sync.ReorgDetector,
 	flags CreationFlags,
 ) (*L1InfoTreeSync, error) {
@@ -67,27 +158,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	// TODO: get the initialBlock from L1 to simplify config
-	lastProcessedBlock, err := processor.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, err
-	}
 
-	parentBlockNumber := cfg.InitialBlock - 1
-	if cfg.InitialBlock > 0 && lastProcessedBlock < parentBlockNumber {
-		block, err := l1Client.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(parentBlockNumber))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get initial block %d: %w", parentBlockNumber, err)
-		}
-
-		err = processor.ProcessBlock(ctx, sync.Block{
-			Num:  parentBlockNumber,
-			Hash: block.Hash,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
 	rh := &sync.RetryHandler{
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
@@ -100,10 +171,10 @@ func New(
 	addressesToQuery := []common.Address{cfg.GlobalExitRootAddr, cfg.RollupManagerAddr}
 	err = l1Client.RegisterSyncer(
 		aggkittypes.SyncerConfig{
-			SyncerID:      "l1infotreesync",
-			ContractsAddr: addressesToQuery,
-			FromBlock:     cfg.InitialBlock,
-			ToBlock:       cfg.BlockFinality,
+			SyncerID:          "l1infotreesync",
+			ContractAddresses: addressesToQuery,
+			FromBlock:         cfg.InitialBlock,
+			ToBlock:           cfg.BlockFinality,
 		},
 	)
 	if err != nil {
@@ -132,7 +203,10 @@ func New(
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		downloader.RuntimeData,
-		processor)
+		compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(processor.getDB()),
+			aggkitcommon.L1INFOTREESYNC,
+		))
 
 	driver, err := sync.NewEVMDriver(reorgDetector, processor, downloader, syncerID,
 		downloadBufferSize, rh, compatibilityChecker)
@@ -144,12 +218,17 @@ func New(
 		processor:  processor,
 		driver:     driver,
 		downloader: downloader,
+		cfg:        cfg,
 	}, nil
 }
 
 // Finality returns the block finality of the downloader
 func (d *L1InfoTreeSync) Finality() aggkittypes.BlockNumberFinality {
 	return d.downloader.Finality()
+}
+
+func (d *L1InfoTreeSync) GetCompletionPercentage() *float64 {
+	return d.driver.GetCompletionPercentage()
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes
@@ -166,7 +245,7 @@ func (a *L1InfoTreeSync) GetRPCServices() []jRPC.Service {
 // Start starts the synchronization process
 func (s *L1InfoTreeSync) Start(ctx context.Context) {
 	s.processor.log.Info("starting l1infotreesync")
-	s.driver.Sync(ctx)
+	s.driver.Sync(ctx, &s.cfg.InitialBlock)
 }
 
 // GetRollupExitTreeMerkleProof creates a merkle proof for the rollup exit tree
@@ -266,7 +345,8 @@ func (s *L1InfoTreeSync) GetLastProcessedBlock(ctx context.Context) (uint64, err
 	if s.processor.isHalted() {
 		return 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetLastProcessedBlock(ctx)
+	num, _, err := s.processor.GetLastProcessedBlock(ctx)
+	return num, err
 }
 
 func (s *L1InfoTreeSync) GetLocalExitRoot(
@@ -378,7 +458,7 @@ func (s *L1InfoTreeSync) IsUpToDate(ctx context.Context, l1Client aggkittypes.Ba
 		return false, sync.ErrInconsistentState
 	}
 
-	lastProcessedBlock, err := s.processor.GetLastProcessedBlock(ctx)
+	lastProcessedBlock, _, err := s.processor.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get last processed block: %w", err)
 	}

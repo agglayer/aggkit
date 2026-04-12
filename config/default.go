@@ -42,7 +42,7 @@ PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
 # Default database query timeout
-defaultDBQueryTimeout = "60s"
+defaultDBQueryTimeout = "5m"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
@@ -83,6 +83,11 @@ BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 		HashFromJSON = true
+
+[L2NetworkConfig]
+# InitialLER: optional override for the initial Local Exit Root (0x000...000 is a valid value).
+# If not set, the value is queried from the RollupManager contract on L1.
+# InitialLER =
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
@@ -147,8 +152,8 @@ MaxRequestsPerIPAndSecond = 10
 [REST]
 Host = "0.0.0.0"
 Port = 5577
-ReadTimeout = "2s"
-WriteTimeout = "2s"
+ReadTimeout = "5m"
+WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
@@ -162,6 +167,23 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
+SyncFromInBridges = "auto"
+EmbeddedClaimSync = "auto"
+
+[ClaimL1Sync]
+DBPath = "{{PathRWData}}/claiml1sync.sqlite"
+DBQueryTimeout = "{{BridgeL1Sync.DBQueryTimeout}}"
+
+BlockFinality = "{{BridgeL1Sync.BlockFinality}}"
+InitialBlockNum = {{BridgeL1Sync.InitialBlockNum}}
+AutoStart = "auto"
+
+BridgeAddr = "{{BridgeL1Sync.BridgeAddr}}"
+SyncBlockChunkSize = {{BridgeL1Sync.SyncBlockChunkSize}}
+RetryAfterErrorPeriod = "{{BridgeL1Sync.RetryAfterErrorPeriod}}"
+MaxRetryAttemptsAfterError = {{BridgeL1Sync.MaxRetryAttemptsAfterError}}
+WaitForNewBlocksPeriod = "{{BridgeL1Sync.WaitForNewBlocksPeriod}}"
+RequireStorageContentCompatibility = {{BridgeL1Sync.RequireStorageContentCompatibility}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -174,6 +196,23 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
+SyncFromInBridges = "auto"
+EmbeddedClaimSync = "auto"
+
+[ClaimL2Sync]
+DBPath = "{{PathRWData}}/claiml2sync.sqlite"
+DBQueryTimeout = "{{BridgeL2Sync.DBQueryTimeout}}"
+
+BlockFinality = "{{BridgeL2Sync.BlockFinality}}"
+InitialBlockNum = {{BridgeL2Sync.InitialBlockNum}}
+AutoStart = "auto"
+
+BridgeAddr = "{{BridgeL2Sync.BridgeAddr}}"
+SyncBlockChunkSize = {{BridgeL2Sync.SyncBlockChunkSize}}
+RetryAfterErrorPeriod = "{{BridgeL2Sync.RetryAfterErrorPeriod}}"
+MaxRetryAttemptsAfterError = {{BridgeL2Sync.MaxRetryAttemptsAfterError}}
+WaitForNewBlocksPeriod = "{{BridgeL2Sync.WaitForNewBlocksPeriod}}"
+RequireStorageContentCompatibility = {{BridgeL2Sync.RequireStorageContentCompatibility}}
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
@@ -214,13 +253,15 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+# Max block range per eth_getLogs call for unset-claims queries. 0 disables proactive chunking.
+UnsetClaimsMaxLogBlockRange = 0
 BlockFinalityForL1InfoTree = "FinalizedBlock"
 TriggerCertMode = "Auto"
 [AggSender.TriggerEpochBased]
 	# Percentage of epoch completion to trigger certificate sending
 	EpochNotificationPercentage = 50
 [AggSender.TriggerASAP]
-	DelayBeetweenCertificates = "1s"
+	DelayBetweenCertificates = "1s"
 	MinimumNewCertificateInterval = "5m"
 	OnNewL2Bridge = false
 
@@ -304,6 +345,8 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
+# Max block range per eth_getLogs call for unset-claims queries. 0 disables proactive chunking.
+UnsetClaimsMaxLogBlockRange = {{AggSender.UnsetClaimsMaxLogBlockRange}}
 GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 [Validator.ServerConfig]
@@ -337,18 +380,22 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 
 [L1Multidownloader]
-	Enabled = false
+	Enabled = true
+	DeveloperMode = false
 	StoragePath = "{{PathRWData}}/l1_multidownloader.sqlite"
 	BlockChunkSize = 10000
 	MaxParallelBlockHeaderRetrieval = 30
 	BlockFinality = "FinalizedBlock"
 	WaitPeriodToCheckCatchUp = "10s"
+	PeriodToCheckReorgs = "5s"
 
 [L2Multidownloader]
 	Enabled = false
+	DeveloperMode = false
 	StoragePath = "{{PathRWData}}/l2_multidownloader.sqlite"
 	BlockChunkSize = 10000
 	MaxParallelBlockHeaderRetrieval = 30
 	BlockFinality = "LatestBlock"
 	WaitPeriodToCheckCatchUp = "10s"
+	PeriodToCheckReorgs = "5s"
 `

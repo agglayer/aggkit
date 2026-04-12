@@ -31,6 +31,30 @@ var (
 	}
 )
 
+// bridgeSyncAdapter wraps BridgeSync to satisfy helpers.Processorer interface.
+type bridgeSyncAdapter struct {
+	*bridgesync.BridgeSync
+}
+
+func (a *bridgeSyncAdapter) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+	block, _, err := a.BridgeSync.GetLastProcessedBlock(ctx)
+	return block, err
+}
+
+func mockClientCallGetTransactionByHash(t *testing.T,
+	mockClient *mocks.RPCClienter,
+	expectedTxHash common.Hash, fromAddress string, toAddress string) {
+	t.Helper()
+	mockClient.EXPECT().Call(mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*bridgesync.Transaction)
+		require.True(t, ok)
+		arg.FromRaw = fromAddress
+		arg.To = toAddress
+		arg.Hash = expectedTxHash.Hex()
+		arg.Input = common.Bytes2Hex(bridgesync.BridgeAssetMethodID)
+	}).Return(nil).Maybe()
+}
+
 func TestBridgeEventE2E(t *testing.T) {
 	const (
 		blockTime    = time.Millisecond * 10
@@ -38,14 +62,23 @@ func TestBridgeEventE2E(t *testing.T) {
 	)
 
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
+	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 
-	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
+	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, &helpers.EnvironmentConfig{
+		L1RPCClient:      rpcClient,
+		L2GERManagerType: helpers.LegacyL2GERContract,
+	})
 	ctx := t.Context()
 	// Send bridge txs
 	bridgesSent := 0
@@ -110,12 +143,12 @@ func TestBridgeEventE2E(t *testing.T) {
 	time.Sleep(time.Second * 2) // sleeping since the processor could be up to date, but have pending reorgs
 
 	lb := getFinalizedBlockNumber(t, ctx, l1Setup.SimBackend.Client())
-	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb, etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil, nil))
+	helpers.RequireProcessorUpdated(t, &bridgeSyncAdapter{l1Setup.BridgeSync}, lb, etherman.NewDefaultEthClient(l1Setup.SimBackend.Client(), nil, nil))
 
 	// Get bridges
 	lastBlock, err := l1Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
-	lastProcessedBlock, err := l1Setup.BridgeSync.GetLastProcessedBlock(ctx)
+	lastProcessedBlock, _, err := l1Setup.BridgeSync.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	actualBridges, err := l1Setup.BridgeSync.GetBridges(ctx, 0, lastProcessedBlock)
 	require.NoError(t, err)
@@ -176,12 +209,17 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
+	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Input = bridgesync.BridgeAssetMethodID
-		}).Return(nil)
+		}).Return(nil).Maybe()
 	ethClient := etherman.NewDefaultEthClient(client.Client(), rpcClient, ethClientConfig)
 
 	// Create the bridge syncer with reorg detector
@@ -221,7 +259,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Logf("  Block number after first bridge: %d", blockNum1)
 
 	// Wait for syncer to process
-	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+	helpers.WaitForSyncerToCatchUp(ctx, t, &bridgeSyncAdapter{syncer}, client)
 
 	// Step 4: Record the block hash to fork from later (fork from the current block to ensure reorg detection)
 	t.Log("Step 4: Recording block hash for fork point")
@@ -258,10 +296,10 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Logf("  Block number after second bridge: %d", blockNum2)
 	t.Logf("  Created bridge tx: %s", tx2.Hash().Hex())
 
-	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+	helpers.WaitForSyncerToCatchUp(ctx, t, &bridgeSyncAdapter{syncer}, client)
 
 	// Check bridge count in L1 DB
-	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+	lastProcessed, _, err := syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	bridgesBeforeFork, err := syncer.GetBridges(ctx, 0, lastProcessed)
 	require.NoError(t, err)
@@ -306,11 +344,11 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Hash of the forked block: %s", forkedBlockHash.Hash().Hex())
 	t.Logf("After fork Current block number: %d", currBlockNum)
-	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+	helpers.WaitForSyncerToCatchUp(ctx, t, &bridgeSyncAdapter{syncer}, client)
 
 	// Step 9: Check bridge count after fork
 	t.Log("Step 9: Checking bridge count after fork")
-	lastProcessedAfterFork, err := syncer.GetLastProcessedBlock(ctx)
+	lastProcessedAfterFork, _, err := syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	bridgesAfterFork, err := syncer.GetBridges(ctx, 0, lastProcessedAfterFork)
 	require.NoError(t, err)
@@ -342,6 +380,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 
 	// Create bridge syncer with reorg detector
 	const originNetwork = uint32(1)
+	syncFromBridges := true
 	bridgeSyncCfg := bridgesync.Config{
 		DBPath:                             dbPathSyncer,
 		BridgeAddr:                         bridgeAddr,
@@ -354,8 +393,14 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
+	bridgeSyncCfg.SyncFromInBridges.Resolved = &syncFromBridges
 	rpcClient := mocks.NewRPCClienter(t)
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
+	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
@@ -399,7 +444,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	helpers.CommitBlocks(t, client, 1, blockTime)
 	t.Logf("Created tx: %s", tx.Hash().Hex())
 
-	helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+	helpers.WaitForSyncerToCatchUp(ctx, t, &bridgeSyncAdapter{syncer}, client)
 
 	// commit 3 blocks
 	helpers.CommitBlocks(t, client, 3, blockTime)
@@ -466,6 +511,11 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 		DBQueryTimeout:                     cfgtypes.NewDuration(5 * time.Second),
 	}
 	rpcClient := mocks.NewRPCClienter(t)
+	// txReceipt To is not bridgeAddr, so must call debugTrace
+	mockClientCallGetTransactionByHash(t, rpcClient,
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+
 	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
@@ -544,7 +594,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	helpers.CommitBlocks(t, client, 2, blockTime)
 
 	// Check bridge count in L1 DB
-	lastProcessed, err := syncer.GetLastProcessedBlock(ctx)
+	lastProcessed, _, err := syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	bridgesBeforeFork, err := syncer.GetBridges(ctx, 0, lastProcessed)
 	require.NoError(t, err)
@@ -584,7 +634,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 
 	// Step 9: Check bridge count after fork
 	t.Log("Step 9: Checking bridge count after fork")
-	lastProcessedAfterFork, err := syncer.GetLastProcessedBlock(ctx)
+	lastProcessedAfterFork, _, err := syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	bridgesAfterFork, err := syncer.GetBridges(ctx, 0, lastProcessedAfterFork)
 	require.NoError(t, err)
@@ -634,7 +684,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	require.Equal(t, 2, reorgCount)
 
 	// Check bridge count in L1 DB
-	lastProcessed, err = syncer.GetLastProcessedBlock(ctx)
+	lastProcessed, _, err = syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	bridgesAfterFourthBridge, err := syncer.GetBridges(ctx, 0, lastProcessed)
 	require.NoError(t, err)
@@ -658,7 +708,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	helpers.CommitBlocks(t, client, 2, blockTime)
 
 	// Check bridge count in L1 DB
-	lastProcessed, err = syncer.GetLastProcessedBlock(ctx)
+	lastProcessed, _, err = syncer.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
 	bridgesAfterFifthBridge, err := syncer.GetBridges(ctx, 0, lastProcessed)
 	require.NoError(t, err)

@@ -82,5 +82,10 @@ func (s *KeyValueToCompatibilityStorage[T]) SetCompatibilityData(ctx context.Con
 	if err != nil {
 		return fmt.Errorf("compatibilityCheck: fails to marshal runtime data. Err: %w", err)
 	}
-	return s.KVStorage.InsertValue(tx, s.OwnerName, compatibilityContentKey, string(dataStr))
+	_, err = s.KVStorage.GetValue(tx, s.OwnerName, compatibilityContentKey)
+	if err != nil && errors.Is(err, db.ErrNotFound) {
+		return s.KVStorage.InsertValue(tx, s.OwnerName, compatibilityContentKey, string(dataStr))
+	} else {
+		return s.KVStorage.UpdateValue(tx, s.OwnerName, compatibilityContentKey, string(dataStr))
+	}
 }

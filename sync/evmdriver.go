@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -13,7 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
+var (
+	ErrInconsistentState    = errors.New("state is inconsistent, try again later once the state is consolidated")
+	ErrNoLastProcessedBlock = errors.New("no block has been processed yet")
+	ErrAlreadyBootstrapped  = errors.New("SyncNextBlock: already bootstrapped, a processed block already exists")
+)
 
 var _ fmt.Stringer = (*Block)(nil)
 
@@ -29,7 +34,11 @@ func (b Block) String() string {
 }
 
 type Downloader interface {
-	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)
+	// Download downloads blocks starting from fromBlock, sending them to downloadedCh.
+	// If lastBlockNum is not nil, it stops after processing that block.
+	// If includeEmptyFirstBlock is true, fromBlock is always sent even if it has no events.
+	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock,
+		lastBlockNum *uint64, includeEmptyFirstBlock bool)
 	// RuntimeData returns the runtime data from this downloader
 	// this is used to check that DB is compatible with the runtime data
 	RuntimeData(ctx context.Context) (RuntimeData, error)
@@ -63,23 +72,23 @@ func (r RuntimeData) String() string {
 	return res
 }
 
-func (r RuntimeData) IsCompatible(other RuntimeData) error {
+func (r RuntimeData) IsCompatible(other RuntimeData) (*RuntimeData, error) {
 	if r.ChainID != other.ChainID {
-		return fmt.Errorf("chain ID mismatch: %d != %d", r.ChainID, other.ChainID)
+		return nil, fmt.Errorf("chain ID mismatch: %d != %d", r.ChainID, other.ChainID)
 	}
 	if len(r.Addresses) != len(other.Addresses) {
-		return fmt.Errorf("addresses len mismatch: %d != %d", len(r.Addresses), len(other.Addresses))
+		return nil, fmt.Errorf("addresses len mismatch: %d != %d", len(r.Addresses), len(other.Addresses))
 	}
 	for i, addr := range r.Addresses {
 		if addr != other.Addresses[i] {
-			return fmt.Errorf("addresses[%d] mismatch: %s != %s", i, addr.String(), other.Addresses[i].String())
+			return nil, fmt.Errorf("addresses[%d] mismatch: %s != %s", i, addr.String(), other.Addresses[i].String())
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 type processorInterface interface {
-	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
 }
@@ -125,12 +134,48 @@ func (d *EVMDriver) SubscribeToNewBlocks(subscriberName string) <-chan Block {
 	return d.blockSubscriber.Subscribe(subscriberName)
 }
 
-func (d *EVMDriver) Sync(ctx context.Context) {
+// Legacy syncer doesn't support completion percentage, so we return nil here.
+func (d *EVMDriver) GetCompletionPercentage() *float64 {
+	return nil
+}
+
+// SyncNextBlock downloads and processes the given blockNum as a bootstrap step.
+// It requires that no block has been processed yet (GetLastProcessedBlock returns found=false).
+// Returns ErrAlreadyBootstrapped if a processed block already exists — callers may safely ignore this.
+func (d *EVMDriver) SyncNextBlock(ctx context.Context, blockNum uint64) error {
+	_, found, err := d.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("SyncNextBlock: getting last processed block: %w", err)
+	}
+	if found {
+		return ErrAlreadyBootstrapped
+	}
+
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	downloadCh := make(chan EVMBlock, 1)
+	go d.downloader.Download(cancelCtx, blockNum, downloadCh, &blockNum, true)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case b, ok := <-downloadCh:
+		if !ok {
+			return fmt.Errorf("SyncNextBlock: download channel closed unexpectedly")
+		}
+		cancel() // stop the downloader after receiving the first block
+		return d.handleNewBlock(ctx, b)
+	}
+}
+
+func (d *EVMDriver) Sync(ctx context.Context, firstBlockNumber *uint64) {
 reset:
 	var (
 		lastProcessedBlock uint64
 		attempts           int
 		err                error
+		found              bool
 	)
 	for {
 		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
@@ -141,27 +186,47 @@ reset:
 		}
 		break
 	}
-
+	var nextBlock uint64
 	for {
-		lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
+		// Now we let to have no processed block and wait until appears
+		lastProcessedBlock, found, err = d.processor.GetLastProcessedBlock(ctx)
+		if err == nil && found {
+			nextBlock = lastProcessedBlock + 1
+			break
+		}
 		if err != nil {
 			attempts++
 			d.log.Error("error getting last processed block: ", err)
 			d.rh.Handle(ctx, "Sync", attempts)
 			continue
 		}
+		if !found {
+			if firstBlockNumber != nil {
+				d.log.Infof("no processed blocks found, starting from configured initial block number %d", *firstBlockNumber)
+				nextBlock = *firstBlockNumber // we will start syncing from the initial block number
+				break
+			}
+			d.log.Infof("no processed blocks found, waiting %s", d.rh.RetryAfterErrorPeriod)
+			select {
+			case <-ctx.Done():
+				d.log.Info("context done while waiting for processed blocks, exiting sync")
+				return
+			case <-time.After(d.rh.RetryAfterErrorPeriod):
+				continue
+			}
+		}
 		break
 	}
-
 	// setup context to cancel downloader and/or block processor
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)
+	d.log.Infof("Starting sync... lastProcessedBlock %d NextBlock: %d",
+		lastProcessedBlock, nextBlock)
 	// start downloading
 	downloadCh := make(chan EVMBlock, d.downloadBufferSize)
 	go func() {
-		d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
+		d.downloader.Download(cancellableCtx, nextBlock, downloadCh, nil, false)
 		log.Warnf("downloader.Download exited, cancelling context")
 		cancel()
 	}()

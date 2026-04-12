@@ -70,6 +70,8 @@ func (s *Server) Start(ctx context.Context) {
 		s.stop()
 	}()
 
+	// TODO: Set starting block for claimsyncer
+
 	if err := s.grpcServer.Serve(s.listener); err != nil {
 		log.Errorf("failed to start gRPC server: %v", err)
 	}

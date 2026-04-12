@@ -3,6 +3,7 @@ package bridgesync
 import (
 	"testing"
 
+	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 )
@@ -21,6 +22,38 @@ func TestConfig_Validate(t *testing.T) {
 			expectedError: "",
 		},
 		{
+			name: "valid config with SyncFromInBridges true",
+			config: Config{
+				BlockFinality:     aggkittypes.SafeBlock,
+				SyncFromInBridges: types.TrueMode,
+			},
+			expectedError: "",
+		},
+		{
+			name: "valid config with SyncFromInBridges false",
+			config: Config{
+				BlockFinality:     aggkittypes.SafeBlock,
+				SyncFromInBridges: types.FalseMode,
+			},
+			expectedError: "",
+		},
+		{
+			name: "valid config with SyncFromInBridges auto",
+			config: Config{
+				BlockFinality:     aggkittypes.SafeBlock,
+				SyncFromInBridges: types.AutoMode,
+			},
+			expectedError: "",
+		},
+		{
+			name: "valid config with empty SyncFromInBridges",
+			config: Config{
+				BlockFinality:     aggkittypes.SafeBlock,
+				SyncFromInBridges: types.TrueFalseAutoMode{},
+			},
+			expectedError: "",
+		},
+		{
 			name: "invalid config with invalid BlockFinality",
 			config: Config{
 				BlockFinality: aggkittypes.BlockNumberFinality{
@@ -29,6 +62,22 @@ func TestConfig_Validate(t *testing.T) {
 				},
 			},
 			expectedError: "invalid BlockFinality configuration:",
+		},
+		{
+			name: "invalid config with invalid SyncFromInBridges",
+			config: Config{
+				BlockFinality:     aggkittypes.SafeBlock,
+				SyncFromInBridges: types.TrueFalseAutoMode{Mode: "invalid_value"},
+			},
+			expectedError: "invalid SyncFromInBridges value:",
+		},
+		{
+			name: "invalid config with numeric SyncFromInBridges",
+			config: Config{
+				BlockFinality:     aggkittypes.SafeBlock,
+				SyncFromInBridges: types.TrueFalseAutoMode{Mode: "123"},
+			},
+			expectedError: "invalid SyncFromInBridges value:",
 		},
 	}
 

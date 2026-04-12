@@ -12,7 +12,8 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -37,22 +38,28 @@ func NewBuilderFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	certQuerier types.CertificateQuerier,
+	initialLER ethCommon.Hash,
 ) (types.AggsenderBuilderFlow, error) {
 	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, l2ClaimSyncer,
 			rollupDataQuerier, committeeQuerier,
 			0, false,
-			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
+			cfg.MaxCertSize,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true, // fullClaims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			certQuerier,
+			initialLER,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -92,16 +99,19 @@ func NewBuilderFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer,
+			ctx, logger, storage, l1Client, l2Client, l1InfoTreeSyncer, l2Syncer, l2ClaimSyncer,
 			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
-			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
+			cfg.MaxCertSize,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
+			cfg.UnsetClaimsMaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
+			certQuerier,
+			initialLER,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -143,7 +153,7 @@ func NewBuilderFlow(
 type CommonFlowComponents struct {
 	L2BridgeQuerier       types.BridgeQuerier
 	L1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	LERQuerier            types.LERQuerier
+	InitialLER            ethCommon.Hash
 	BaseFlow              types.AggsenderFlowBaser
 	Signer                signertypes.Signer
 }
@@ -156,19 +166,22 @@ func CreateCommonFlowComponents(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	startL2Block uint64,
 	requireNoFEPBlockGap bool,
 	maxCertSize uint,
-	rollupCreationBlockL1 uint64,
 	delayBetweenRetries time.Duration,
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
+	unsetClaimsMaxLogBlockRange uint64,
 	globalExitRootL1Addr ethCommon.Address,
 	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality,
+	certQuerier types.CertificateQuerier,
+	initialLER ethCommon.Hash,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
@@ -181,21 +194,26 @@ func CreateCommonFlowComponents(
 		return nil, err
 	}
 
-	agglayerBridgeL2Reader, err := bridgesync.NewAgglayerBridgeL2Reader(agglayerBridgeL2Addr, l2Client)
+	agglayerBridgeL2Reader, err := claimsync.NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
+		agglayerBridgeL2Addr,
+		l2Client,
+		unsetClaimsMaxLogBlockRange,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
 
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, delayBetweenRetries, agglayerBridgeL2Reader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(
+		logger, l2Syncer, l2ClaimSyncer, delayBetweenRetries, agglayerBridgeL2Reader)
 	l1InfoTreeQuerier, err := query.NewL1InfoTreeDataQuerier(l1Client, globalExitRootL1Addr, l1InfoTreeSyncer,
 		blockFinalityForL1InfoTree)
 	if err != nil {
 		return nil, fmt.Errorf("error creating L1 Info tree data querier: %w", err)
 	}
-	lerQuerier := query.NewLERDataQuerier(rollupCreationBlockL1, rollupDataQuerier)
 
 	baseFlow := NewBaseFlow(
-		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
+		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, initialLER,
+		certQuerier,
 		NewBaseFlowConfig(
 			maxCertSize,
 			startL2Block,
@@ -207,7 +225,7 @@ func CreateCommonFlowComponents(
 	return &CommonFlowComponents{
 		L2BridgeQuerier:       l2BridgeQuerier,
 		L1InfoTreeDataQuerier: l1InfoTreeQuerier,
-		LERQuerier:            lerQuerier,
+		InitialLER:            initialLER,
 		BaseFlow:              baseFlow,
 		Signer:                signer,
 	}, nil

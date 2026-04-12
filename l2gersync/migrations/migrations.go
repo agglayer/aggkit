@@ -19,24 +19,44 @@ var mig003 string
 //go:embed l2gersync0004.sql
 var mig004 string
 
+//go:embed l2gersync0005.sql
+var mig005 string
+
+var migrationsL2gersync []types.Migration = []types.Migration{
+	{
+		ID:  "l2gersync0001",
+		SQL: mig001,
+	},
+	{
+		ID:  "l2gersync0002",
+		SQL: mig002,
+	},
+	{
+		ID:  "l2gersync0003",
+		SQL: mig003,
+	},
+	{
+		ID:  "l2gersync0004",
+		SQL: mig004,
+	},
+	{
+		ID:  "l2gersync0005",
+		SQL: mig005,
+	},
+}
+
 func RunMigrations(dbPath string) error {
-	migrations := []types.Migration{
-		{
-			ID:  "l2gersync0001",
-			SQL: mig001,
-		},
-		{
-			ID:  "l2gersync0002",
-			SQL: mig002,
-		},
-		{
-			ID:  "l2gersync0003",
-			SQL: mig003,
-		},
-		{
-			ID:  "l2gersync0004",
-			SQL: mig004,
-		},
-	}
-	return db.RunMigrations(dbPath, migrations)
+	return RunMigrationsWithList(dbPath, migrationsL2gersync)
+}
+
+func RunMigrationsWithList(dbPath string, migrations []types.Migration) error {
+	originMigrations := make([]types.Migration, len(migrations))
+	copy(originMigrations, migrations)
+	return db.RunMigrations(dbPath, originMigrations)
+}
+
+func RunMigrationsDown(dbPath string, migrations []types.Migration, maxMigrations int) error {
+	originMigrations := make([]types.Migration, len(migrations))
+	copy(originMigrations, migrations)
+	return db.RunMigrationsDown(dbPath, originMigrations, nil, maxMigrations)
 }

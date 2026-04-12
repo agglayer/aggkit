@@ -785,3 +785,266 @@ func TestDoRequest_Errors(t *testing.T) {
 		require.Contains(t, err.Error(), "503")
 	})
 }
+
+func TestGetClaimsByGER(t *testing.T) {
+	validGER := "0xaabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344"
+
+	t.Run("successful request returns claims", func(t *testing.T) {
+		expectedResp := &types.ClaimsByGERResult{
+			Claims: []*types.ClaimResponse{
+				{GlobalIndex: "1"},
+			},
+			Count: 1,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/claims-by-ger", r.URL.Path)
+			require.Equal(t, validGER, r.URL.Query().Get("global_exit_root"))
+			require.Equal(t, "1", r.URL.Query().Get("network_id"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimsByGER(context.Background(), 1, validGER)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, 1, resp.Count)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("internal error"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimsByGER(context.Background(), 1, validGER)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+	})
+}
+
+func TestGetBridgeByDepositCount(t *testing.T) {
+	t.Run("successful request returns bridge", func(t *testing.T) {
+		expectedResp := &types.BridgeResponse{
+			DepositCount:  5,
+			OriginNetwork: 0,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/bridge-by-deposit-count", r.URL.Path)
+			require.Equal(t, "5", r.URL.Query().Get("deposit_count"))
+			require.Equal(t, "1", r.URL.Query().Get("network_id"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 5)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint32(5), resp.DepositCount)
+	})
+
+	t.Run("returns ErrNotFound on 404", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("not found"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 999)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("error"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 5)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.NotErrorIs(t, err, ErrNotFound)
+	})
+}
+
+func TestGetBridgesByContent(t *testing.T) {
+	originAddr := "0x1111111111111111111111111111111111111111"
+	destAddr := "0x2222222222222222222222222222222222222222"
+	amount := big.NewInt(1000)
+
+	t.Run("successful request without metadata", func(t *testing.T) {
+		expectedResp := &types.BridgesByContentResult{
+			Bridges: []*types.BridgeResponse{{DepositCount: 10}},
+			Count:   1,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/bridges-by-content", r.URL.Path)
+			require.Equal(t, "1", r.URL.Query().Get("network_id"))
+			require.Equal(t, "0", r.URL.Query().Get("leaf_type"))
+			require.Equal(t, originAddr, r.URL.Query().Get("origin_address"))
+			require.Equal(t, "1000", r.URL.Query().Get("amount"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgesByContent(context.Background(), GetBridgesByContentParams{
+			NetworkID:          1,
+			LeafType:           0,
+			OriginAddress:      originAddr,
+			DestinationNetwork: 2,
+			DestinationAddress: destAddr,
+			Amount:             amount,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, 1, resp.Count)
+	})
+
+	t.Run("successful request with metadata", func(t *testing.T) {
+		metadata := []byte("testdata")
+		expectedResp := &types.BridgesByContentResult{
+			Bridges: []*types.BridgeResponse{},
+			Count:   0,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Contains(t, r.URL.Query().Get("metadata"), "0x")
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgesByContent(context.Background(), GetBridgesByContentParams{
+			NetworkID:          1,
+			LeafType:           0,
+			OriginAddress:      originAddr,
+			DestinationNetwork: 2,
+			DestinationAddress: destAddr,
+			Amount:             amount,
+			Metadata:           metadata,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("handles nil amount as zero", func(t *testing.T) {
+		expectedResp := &types.BridgesByContentResult{Count: 0}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "0", r.URL.Query().Get("amount"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgesByContent(context.Background(), GetBridgesByContentParams{
+			NetworkID:          1,
+			OriginAddress:      originAddr,
+			DestinationAddress: destAddr,
+			Amount:             nil,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("bad request"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgesByContent(context.Background(), GetBridgesByContentParams{
+			NetworkID:          1,
+			OriginAddress:      originAddr,
+			DestinationAddress: destAddr,
+			Amount:             amount,
+		})
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+	})
+}
+
+func TestDoRequestAllowNotFound(t *testing.T) {
+	t.Run("returns ErrNotFound for 404 status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("not found"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		// Use GetBridgeByDepositCount which calls doRequestAllowNotFound
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 0)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+
+	t.Run("returns error for other non-200 status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("server error"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 0)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.NotErrorIs(t, err, ErrNotFound)
+		require.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("decodes JSON response on success", func(t *testing.T) {
+		expectedResp := &types.BridgeResponse{DepositCount: 42}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 42)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint32(42), resp.DepositCount)
+	})
+}

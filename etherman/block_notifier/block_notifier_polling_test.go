@@ -21,7 +21,7 @@ import (
 )
 
 func TestExploratoryBlockNotifierPolling(t *testing.T) {
-	t.Skip()
+	t.Skip("is an exploratory test that requires an external RPC")
 	urlRPCL1 := os.Getenv("L1URL")
 	fmt.Println("URL=", urlRPCL1)
 	cfg := &ethermanconfig.RPCClientConfig{
@@ -117,7 +117,8 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 			},
 			mockLoggerFn: func() aggkitcommon.Logger {
 				mockLogger := commonmocks.NewLogger(t)
-				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", aggkittypes.LatestBlock.String(), uint64(100), uint64(105)).Once()
+				mockLogger.EXPECT().Infof("Missed block(s) [finality:%s]: %d -> %d", aggkittypes.LatestBlock.String(), uint64(100), uint64(105)).Once()
+				mockLogger.EXPECT().Infof(mock.Anything, mock.Anything).Maybe()
 				return mockLogger
 			},
 			headerByNumberError:       false,

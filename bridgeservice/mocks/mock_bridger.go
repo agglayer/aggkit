@@ -29,6 +29,129 @@ func (_m *Bridger) EXPECT() *Bridger_Expecter {
 	return &Bridger_Expecter{mock: &_m.Mock}
 }
 
+// GetBridgeByDepositCount provides a mock function with given fields: ctx, depositCount
+func (_m *Bridger) GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*bridgesync.Bridge, error) {
+	ret := _m.Called(ctx, depositCount)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBridgeByDepositCount")
+	}
+
+	var r0 *bridgesync.Bridge
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (*bridgesync.Bridge, error)); ok {
+		return rf(ctx, depositCount)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) *bridgesync.Bridge); ok {
+		r0 = rf(ctx, depositCount)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*bridgesync.Bridge)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, depositCount)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridger_GetBridgeByDepositCount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBridgeByDepositCount'
+type Bridger_GetBridgeByDepositCount_Call struct {
+	*mock.Call
+}
+
+// GetBridgeByDepositCount is a helper method to define mock.On call
+//   - ctx context.Context
+//   - depositCount uint32
+func (_e *Bridger_Expecter) GetBridgeByDepositCount(ctx interface{}, depositCount interface{}) *Bridger_GetBridgeByDepositCount_Call {
+	return &Bridger_GetBridgeByDepositCount_Call{Call: _e.mock.On("GetBridgeByDepositCount", ctx, depositCount)}
+}
+
+func (_c *Bridger_GetBridgeByDepositCount_Call) Run(run func(ctx context.Context, depositCount uint32)) *Bridger_GetBridgeByDepositCount_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetBridgeByDepositCount_Call) Return(_a0 *bridgesync.Bridge, _a1 error) *Bridger_GetBridgeByDepositCount_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridger_GetBridgeByDepositCount_Call) RunAndReturn(run func(context.Context, uint32) (*bridgesync.Bridge, error)) *Bridger_GetBridgeByDepositCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetBridgesByContent provides a mock function with given fields: ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata
+func (_m *Bridger) GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address, destinationNetwork uint32, destinationAddress common.Address, amount *big.Int, metadata []byte) ([]*bridgesync.Bridge, error) {
+	ret := _m.Called(ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBridgesByContent")
+	}
+
+	var r0 []*bridgesync.Bridge
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint8, common.Address, uint32, common.Address, *big.Int, []byte) ([]*bridgesync.Bridge, error)); ok {
+		return rf(ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint8, common.Address, uint32, common.Address, *big.Int, []byte) []*bridgesync.Bridge); ok {
+		r0 = rf(ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*bridgesync.Bridge)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint8, common.Address, uint32, common.Address, *big.Int, []byte) error); ok {
+		r1 = rf(ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridger_GetBridgesByContent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBridgesByContent'
+type Bridger_GetBridgesByContent_Call struct {
+	*mock.Call
+}
+
+// GetBridgesByContent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - leafType uint8
+//   - originAddress common.Address
+//   - destinationNetwork uint32
+//   - destinationAddress common.Address
+//   - amount *big.Int
+//   - metadata []byte
+func (_e *Bridger_Expecter) GetBridgesByContent(ctx interface{}, leafType interface{}, originAddress interface{}, destinationNetwork interface{}, destinationAddress interface{}, amount interface{}, metadata interface{}) *Bridger_GetBridgesByContent_Call {
+	return &Bridger_GetBridgesByContent_Call{Call: _e.mock.On("GetBridgesByContent", ctx, leafType, originAddress, destinationNetwork, destinationAddress, amount, metadata)}
+}
+
+func (_c *Bridger_GetBridgesByContent_Call) Run(run func(ctx context.Context, leafType uint8, originAddress common.Address, destinationNetwork uint32, destinationAddress common.Address, amount *big.Int, metadata []byte)) *Bridger_GetBridgesByContent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint8), args[2].(common.Address), args[3].(uint32), args[4].(common.Address), args[5].(*big.Int), args[6].([]byte))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetBridgesByContent_Call) Return(_a0 []*bridgesync.Bridge, _a1 error) *Bridger_GetBridgesByContent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridger_GetBridgesByContent_Call) RunAndReturn(run func(context.Context, uint8, common.Address, uint32, common.Address, *big.Int, []byte) ([]*bridgesync.Bridge, error)) *Bridger_GetBridgesByContent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetBridgesPaged provides a mock function with given fields: ctx, pageNumber, pageSize, depositCount, networkIDs, fromAddress
 func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.Bridge, int, error) {
 	ret := _m.Called(ctx, pageNumber, pageSize, depositCount, networkIDs, fromAddress)
@@ -99,75 +222,6 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 	return _c
 }
 
-// GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, networkIDs, globalIndex
-func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, globalIndex *big.Int) ([]*bridgesync.Claim, int, error) {
-	ret := _m.Called(ctx, page, pageSize, networkIDs, globalIndex)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetClaimsPaged")
-	}
-
-	var r0 []*bridgesync.Claim
-	var r1 int
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, *big.Int) ([]*bridgesync.Claim, int, error)); ok {
-		return rf(ctx, page, pageSize, networkIDs, globalIndex)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32, *big.Int) []*bridgesync.Claim); ok {
-		r0 = rf(ctx, page, pageSize, networkIDs, globalIndex)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*bridgesync.Claim)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32, *big.Int) int); ok {
-		r1 = rf(ctx, page, pageSize, networkIDs, globalIndex)
-	} else {
-		r1 = ret.Get(1).(int)
-	}
-
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32, *big.Int) error); ok {
-		r2 = rf(ctx, page, pageSize, networkIDs, globalIndex)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
-}
-
-// Bridger_GetClaimsPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClaimsPaged'
-type Bridger_GetClaimsPaged_Call struct {
-	*mock.Call
-}
-
-// GetClaimsPaged is a helper method to define mock.On call
-//   - ctx context.Context
-//   - page uint32
-//   - pageSize uint32
-//   - networkIDs []uint32
-//   - globalIndex *big.Int
-func (_e *Bridger_Expecter) GetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, networkIDs interface{}, globalIndex interface{}) *Bridger_GetClaimsPaged_Call {
-	return &Bridger_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, page, pageSize, networkIDs, globalIndex)}
-}
-
-func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, globalIndex *big.Int)) *Bridger_GetClaimsPaged_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].([]uint32), args[4].(*big.Int))
-	})
-	return _c
-}
-
-func (_c *Bridger_GetClaimsPaged_Call) Return(_a0 []*bridgesync.Claim, _a1 int, _a2 error) *Bridger_GetClaimsPaged_Call {
-	_c.Call.Return(_a0, _a1, _a2)
-	return _c
-}
-
-func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, []uint32, *big.Int) ([]*bridgesync.Claim, int, error)) *Bridger_GetClaimsPaged_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetContractDepositCount provides a mock function with given fields: ctx
 func (_m *Bridger) GetContractDepositCount(ctx context.Context) (uint32, error) {
 	ret := _m.Called(ctx)
@@ -225,7 +279,7 @@ func (_c *Bridger_GetContractDepositCount_Call) RunAndReturn(run func(context.Co
 }
 
 // GetLastProcessedBlock provides a mock function with given fields: ctx
-func (_m *Bridger) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+func (_m *Bridger) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
@@ -233,8 +287,9 @@ func (_m *Bridger) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	}
 
 	var r0 uint64
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, bool, error)); ok {
 		return rf(ctx)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
@@ -243,13 +298,19 @@ func (_m *Bridger) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 		r0 = ret.Get(0).(uint64)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context) bool); ok {
 		r1 = rf(ctx)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(bool)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = rf(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // Bridger_GetLastProcessedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastProcessedBlock'
@@ -270,12 +331,12 @@ func (_c *Bridger_GetLastProcessedBlock_Call) Run(run func(ctx context.Context))
 	return _c
 }
 
-func (_c *Bridger_GetLastProcessedBlock_Call) Return(_a0 uint64, _a1 error) *Bridger_GetLastProcessedBlock_Call {
-	_c.Call.Return(_a0, _a1)
+func (_c *Bridger_GetLastProcessedBlock_Call) Return(_a0 uint64, _a1 bool, _a2 error) *Bridger_GetLastProcessedBlock_Call {
+	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *Bridger_GetLastProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, error)) *Bridger_GetLastProcessedBlock_Call {
+func (_c *Bridger_GetLastProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, bool, error)) *Bridger_GetLastProcessedBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -638,74 +699,6 @@ func (_c *Bridger_GetRootByLER_Call) RunAndReturn(run func(context.Context, comm
 	return _c
 }
 
-// GetSetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, globalIndex
-func (_m *Bridger) GetSetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, globalIndex *big.Int) ([]*bridgesync.SetClaim, int, error) {
-	ret := _m.Called(ctx, page, pageSize, globalIndex)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetSetClaimsPaged")
-	}
-
-	var r0 []*bridgesync.SetClaim
-	var r1 int
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *big.Int) ([]*bridgesync.SetClaim, int, error)); ok {
-		return rf(ctx, page, pageSize, globalIndex)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *big.Int) []*bridgesync.SetClaim); ok {
-		r0 = rf(ctx, page, pageSize, globalIndex)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*bridgesync.SetClaim)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, *big.Int) int); ok {
-		r1 = rf(ctx, page, pageSize, globalIndex)
-	} else {
-		r1 = ret.Get(1).(int)
-	}
-
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, *big.Int) error); ok {
-		r2 = rf(ctx, page, pageSize, globalIndex)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
-}
-
-// Bridger_GetSetClaimsPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSetClaimsPaged'
-type Bridger_GetSetClaimsPaged_Call struct {
-	*mock.Call
-}
-
-// GetSetClaimsPaged is a helper method to define mock.On call
-//   - ctx context.Context
-//   - page uint32
-//   - pageSize uint32
-//   - globalIndex *big.Int
-func (_e *Bridger_Expecter) GetSetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, globalIndex interface{}) *Bridger_GetSetClaimsPaged_Call {
-	return &Bridger_GetSetClaimsPaged_Call{Call: _e.mock.On("GetSetClaimsPaged", ctx, page, pageSize, globalIndex)}
-}
-
-func (_c *Bridger_GetSetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, globalIndex *big.Int)) *Bridger_GetSetClaimsPaged_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].(*big.Int))
-	})
-	return _c
-}
-
-func (_c *Bridger_GetSetClaimsPaged_Call) Return(_a0 []*bridgesync.SetClaim, _a1 int, _a2 error) *Bridger_GetSetClaimsPaged_Call {
-	_c.Call.Return(_a0, _a1, _a2)
-	return _c
-}
-
-func (_c *Bridger_GetSetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, *big.Int) ([]*bridgesync.SetClaim, int, error)) *Bridger_GetSetClaimsPaged_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetTokenMappings provides a mock function with given fields: ctx, pageNumber, pageSize, originTokenAddress
 func (_m *Bridger) GetTokenMappings(ctx context.Context, pageNumber uint32, pageSize uint32, originTokenAddress string) ([]*bridgesync.TokenMapping, int, error) {
 	ret := _m.Called(ctx, pageNumber, pageSize, originTokenAddress)
@@ -770,74 +763,6 @@ func (_c *Bridger_GetTokenMappings_Call) Return(_a0 []*bridgesync.TokenMapping, 
 }
 
 func (_c *Bridger_GetTokenMappings_Call) RunAndReturn(run func(context.Context, uint32, uint32, string) ([]*bridgesync.TokenMapping, int, error)) *Bridger_GetTokenMappings_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetUnsetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, globalIndex
-func (_m *Bridger) GetUnsetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, globalIndex *big.Int) ([]*bridgesync.UnsetClaim, int, error) {
-	ret := _m.Called(ctx, page, pageSize, globalIndex)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetUnsetClaimsPaged")
-	}
-
-	var r0 []*bridgesync.UnsetClaim
-	var r1 int
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *big.Int) ([]*bridgesync.UnsetClaim, int, error)); ok {
-		return rf(ctx, page, pageSize, globalIndex)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *big.Int) []*bridgesync.UnsetClaim); ok {
-		r0 = rf(ctx, page, pageSize, globalIndex)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*bridgesync.UnsetClaim)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, *big.Int) int); ok {
-		r1 = rf(ctx, page, pageSize, globalIndex)
-	} else {
-		r1 = ret.Get(1).(int)
-	}
-
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, *big.Int) error); ok {
-		r2 = rf(ctx, page, pageSize, globalIndex)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
-}
-
-// Bridger_GetUnsetClaimsPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsPaged'
-type Bridger_GetUnsetClaimsPaged_Call struct {
-	*mock.Call
-}
-
-// GetUnsetClaimsPaged is a helper method to define mock.On call
-//   - ctx context.Context
-//   - page uint32
-//   - pageSize uint32
-//   - globalIndex *big.Int
-func (_e *Bridger_Expecter) GetUnsetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}, globalIndex interface{}) *Bridger_GetUnsetClaimsPaged_Call {
-	return &Bridger_GetUnsetClaimsPaged_Call{Call: _e.mock.On("GetUnsetClaimsPaged", ctx, page, pageSize, globalIndex)}
-}
-
-func (_c *Bridger_GetUnsetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, globalIndex *big.Int)) *Bridger_GetUnsetClaimsPaged_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].(*big.Int))
-	})
-	return _c
-}
-
-func (_c *Bridger_GetUnsetClaimsPaged_Call) Return(_a0 []*bridgesync.UnsetClaim, _a1 int, _a2 error) *Bridger_GetUnsetClaimsPaged_Call {
-	_c.Call.Return(_a0, _a1, _a2)
-	return _c
-}
-
-func (_c *Bridger_GetUnsetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, *big.Int) ([]*bridgesync.UnsetClaim, int, error)) *Bridger_GetUnsetClaimsPaged_Call {
 	_c.Call.Return(run)
 	return _c
 }

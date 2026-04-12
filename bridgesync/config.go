@@ -33,6 +33,15 @@ type Config struct {
 	// DBQueryTimeout is the timeout for database operations (queries, transactions)
 	// This is separate from HTTP timeouts to allow database operations more time when needed
 	DBQueryTimeout types.Duration `mapstructure:"DBQueryTimeout"`
+	// SyncFromInBridges controls whether to extract FromAddress for bridge Asset events.
+	// Possible values:
+	//   - "true": always extracts FromAddress using debug_traceTransaction (requires archive node)
+	//   - "false": never extracts FromAddress (no archive node needed)
+	//   - "auto": automatically decides based on whether BRIDGE component is active
+	// Note: TxnSender and ToAddress are always extracted via standard eth_getTransactionByHash.
+	// Default: "auto"
+	// SyncFromInBridges.Resolved is set programmatically after resolution; not read from config.
+	SyncFromInBridges types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
 }
 
 // Validate checks if the configuration is valid
@@ -40,5 +49,24 @@ func (c Config) Validate() error {
 	if err := c.BlockFinality.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinality configuration: %w", err)
 	}
+	// Validate SyncFromInBridges (empty is allowed — means not configured)
+	if c.SyncFromInBridges.Mode != "" {
+		var m types.TrueFalseAutoMode
+		if err := m.UnmarshalText([]byte(c.SyncFromInBridges.Mode)); err != nil {
+			return fmt.Errorf("invalid SyncFromInBridges value: %w", err)
+		}
+	}
 	return nil
+}
+
+// ResolvedString returns a string representation of the resolved configuration
+// to log it
+func (c *Config) ResolvedString() []string {
+	var result []string
+	if c.SyncFromInBridges.Resolved != nil {
+		result = append(result, fmt.Sprintf("SyncFromInBridges:%s -> %t", c.SyncFromInBridges, *c.SyncFromInBridges.Resolved))
+	} else {
+		result = append(result, fmt.Sprintf("SyncFromInBridges: %s -> ???", c.SyncFromInBridges))
+	}
+	return result
 }

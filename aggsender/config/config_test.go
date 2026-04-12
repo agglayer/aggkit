@@ -166,3 +166,137 @@ func TestConfigString(t *testing.T) {
 	require.Contains(t, result, "RequireNoFEPBlockGap: false")
 	require.Contains(t, result, "RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: delays")
 }
+
+func TestNewTriggerASAPConfigDefault(t *testing.T) {
+	t.Parallel()
+
+	config := NewTriggerASAPConfigDefault()
+
+	require.NotNil(t, config)
+	require.Equal(t, time.Second, config.DelayBetweenCertificates.Duration)
+	require.Equal(t, time.Hour, config.MinimumNewCertificateInterval.Duration)
+	require.False(t, config.OnNewL2Bridge)
+}
+
+func TestTriggerASAPConfigString(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		config   TriggerASAPConfig
+		expected string
+	}{
+		{
+			name: "Default configuration",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(1 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(1 * time.Hour),
+				OnNewL2Bridge:                 false,
+			},
+			expected: "DelayBetweenCertificates: 1s, MinimumNewCertificateInterval: 1h0m0s, OnNewL2Bridge: false",
+		},
+		{
+			name: "Custom configuration with OnNewL2Bridge enabled",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(5 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(30 * time.Minute),
+				OnNewL2Bridge:                 true,
+			},
+			expected: "DelayBetweenCertificates: 5s, MinimumNewCertificateInterval: 30m0s, OnNewL2Bridge: true",
+		},
+		{
+			name: "Zero values",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(0),
+				MinimumNewCertificateInterval: types.NewDuration(1 * time.Millisecond),
+				OnNewL2Bridge:                 false,
+			},
+			expected: "DelayBetweenCertificates: 0s, MinimumNewCertificateInterval: 1ms, OnNewL2Bridge: false",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := tc.config.String()
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestTriggerASAPConfigValidate(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		config      TriggerASAPConfig
+		expectedErr string
+	}{
+		{
+			name: "Valid configuration",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(1 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(1 * time.Hour),
+				OnNewL2Bridge:                 true,
+			},
+		},
+		{
+			name: "Valid with zero DelayBetweenCertificates",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(0),
+				MinimumNewCertificateInterval: types.NewDuration(1 * time.Hour),
+				OnNewL2Bridge:                 false,
+			},
+		},
+		{
+			name: "Invalid negative DelayBetweenCertificates",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(-1 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(1 * time.Hour),
+				OnNewL2Bridge:                 false,
+			},
+			expectedErr: "DelayBetweenCertificates cannot be negative",
+		},
+		{
+			name: "Invalid zero MinimumNewCertificateInterval",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(1 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(0),
+				OnNewL2Bridge:                 false,
+			},
+			expectedErr: "MinimumNewCertificateInterval must be >= 0",
+		},
+		{
+			name: "Invalid negative MinimumNewCertificateInterval",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(1 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(-1 * time.Hour),
+				OnNewL2Bridge:                 false,
+			},
+			expectedErr: "MinimumNewCertificateInterval must be >= 0",
+		},
+		{
+			name: "Both fields with invalid values",
+			config: TriggerASAPConfig{
+				DelayBetweenCertificates:      types.NewDuration(-5 * time.Second),
+				MinimumNewCertificateInterval: types.NewDuration(-10 * time.Minute),
+				OnNewL2Bridge:                 true,
+			},
+			expectedErr: "DelayBetweenCertificates cannot be negative",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tc.config.Validate()
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

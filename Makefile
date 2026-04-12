@@ -77,8 +77,13 @@ build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
-build-tools: ## Builds the tools
+build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger ## Builds the tools
+
+$(GOBIN)/aggsender_find_imported_bridge: ## Build aggsender_find_imported_bridge tool
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
+
+$(GOBIN)/remove_ger: ## Build remove_ger tool
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
@@ -92,9 +97,17 @@ build-docker-ci: ## Builds a docker image with the aggkit binary for CI (include
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
 	docker build --no-cache=true -t aggkit:local -f ./Dockerfile .
 
+.PHONY: build-docker-debug
+build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no optimizations)
+	docker build -t aggkit:local-debug -f ./Dockerfile.debug .
+
 .PHONY: test-unit
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
+
+.PHONY: test-e2e
+test-e2e: ## Runs the e2e tests
+	go test -v -timeout 30m ./test/e2e/...
 
 .PHONY: lint
 lint: ## Runs the linter
@@ -116,6 +129,10 @@ vulncheck: ## Runs the vulnerability checker tool
 	}
 	@echo "Running govulncheck on all packages..."
 	@go list ./... | xargs -n1 govulncheck
+
+.PHONY: generate-mocks
+generate-mocks: ## Generates the mocks using mockery
+	@cd test && $(MAKE) generate-mocks
 
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted

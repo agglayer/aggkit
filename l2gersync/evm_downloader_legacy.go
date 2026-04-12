@@ -90,7 +90,9 @@ func (d *downloaderLegacy) RuntimeData(ctx context.Context) (sync.RuntimeData, e
 	}, nil
 }
 
-func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
+func (d *downloaderLegacy) Download(
+	ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock, _ *uint64, _ bool,
+) {
 	var (
 		attempts            int
 		nextL1InfoTreeIndex uint32
@@ -197,8 +199,9 @@ func (d *downloaderLegacy) getGERsFromIndex(
 		}
 
 		// For the legacy downloader, we cannot determine the block position,
-		// because we are querying the global exit root map
-		gers = append(gers, newLegacyGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum))
+		// because we are querying the global exit root map we don't have a real block position,
+		// to avoid conflicts we set it to the same as L1InfoTreeIndex
+		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum, uint64(i)))
 	}
 
 	return gers, nil

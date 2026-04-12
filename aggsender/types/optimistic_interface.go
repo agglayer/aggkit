@@ -3,7 +3,7 @@ package types
 import (
 	"context"
 
-	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -17,6 +17,6 @@ type OptimisticSigner interface {
 	Sign(ctx context.Context,
 		aggchainReq AggchainProofRequest,
 		newLocalExitRoot common.Hash,
-		claims []bridgesync.Claim,
+		claims []claimsynctypes.Claim,
 	) ([]byte, string, error)
 }

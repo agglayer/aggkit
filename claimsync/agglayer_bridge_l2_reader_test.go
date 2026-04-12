@@ -1,15 +1,16 @@
-package bridgesync
+package claimsync
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
@@ -62,6 +63,43 @@ func TestNewAgglayerBridgeL2Reader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_ProactiveChunkingByConfig(t *testing.T) {
+	ctx := context.Background()
+	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	t.Run("configured max proactively chunks range", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(bridgeAddr, mockClient, 1000)
+		require.NoError(t, err)
+
+		var ranges [][2]uint64
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Run(func(args mock.Arguments) {
+			q, ok := args.Get(1).(ethereum.FilterQuery)
+			require.True(t, ok)
+			require.NotNil(t, q.FromBlock)
+			require.NotNil(t, q.ToBlock)
+			ranges = append(ranges, [2]uint64{q.FromBlock.Uint64(), q.ToBlock.Uint64()})
+		}).Times(3)
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+		require.Equal(t, [][2]uint64{{0, 999}, {1000, 1999}, {2000, 2500}}, ranges)
+	})
+
+	t.Run("zero configured max keeps current non-proactive behavior", func(t *testing.T) {
+		mockClient := mocksethclient.NewBaseEthereumClienter(t)
+		reader, err := NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(bridgeAddr, mockClient, 0)
+		require.NoError(t, err)
+
+		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.NotNil(t, unclaims)
+	})
 }
 
 func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithMockedClient(t *testing.T) {
@@ -394,10 +432,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(
 			ctx, 0, 2999, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, unclaims)
@@ -417,10 +455,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(
 			ctx, 0, 2500, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, unclaims)
@@ -437,10 +475,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 500, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.NoError(t, err)
 		require.NotNil(t, unclaims)
@@ -460,10 +498,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 2000, 1000,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.ErrorContains(t, err, "rpc error")
 		require.Empty(t, unclaims)
@@ -479,10 +517,10 @@ func TestGetUnsetClaimsInChunks(t *testing.T) {
 		// Should return error immediately without making any calls
 		unclaims, err := aggkitcommon.ChunkedRangeQuery(ctx, 0, 1000, 0,
 			reader.fetchUnsetClaims,
-			func(all, chunk []types.Unclaim) []types.Unclaim {
+			func(all, chunk []claimsynctypes.Unclaim) []claimsynctypes.Unclaim {
 				return append(all, chunk...)
 			},
-			[]types.Unclaim{},
+			[]claimsynctypes.Unclaim{},
 		)
 		require.ErrorContains(t, err, "maxRange must be greater than 0")
 		require.Empty(t, unclaims)

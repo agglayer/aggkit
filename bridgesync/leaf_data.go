@@ -39,7 +39,8 @@ func (l LeafData) ToBridge(
 	blockNum, blockPos, blockTimestamp uint64,
 	depositCount uint32,
 	txnHash common.Hash,
-	txnSender, fromAddr common.Address) Bridge {
+	txnSender common.Address,
+	fromAddr *common.Address) Bridge {
 	return Bridge{
 		BlockNum:           blockNum,
 		BlockPos:           blockPos,

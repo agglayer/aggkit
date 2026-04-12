@@ -135,7 +135,7 @@ func sprintStackTrace(st []tracerr.Frame) string {
 		st = st[:len(st)-1]
 	}
 	for _, f := range st {
-		builder.WriteString(fmt.Sprintf("\n%s:%d %s()", f.Path, f.Line, f.Func))
+		fmt.Fprintf(&builder, "\n%s:%d %s()", f.Path, f.Line, f.Func)
 	}
 	builder.WriteString("\n")
 	return builder.String()

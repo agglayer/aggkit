@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   review:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -59,5 +60,4 @@ jobs:
 
             Use the MCP inline comment tool for specific code issues.
             Use gh pr comment to post an overall summary.
-          claude_args: |
-            --model claude-sonnet-4-5-20250929
+

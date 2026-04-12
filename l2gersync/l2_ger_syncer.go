@@ -41,6 +41,7 @@ type L1InfoTreeQuerier interface {
 type L2GERSync struct {
 	driver    *sync.EVMDriver
 	processor *processor
+	cfg       Config
 }
 
 // New initializes and returns a new instance of L2GERSync
@@ -109,6 +110,7 @@ func New(
 	return &L2GERSync{
 		driver:    driver,
 		processor: processor,
+		cfg:       cfg,
 	}, nil
 }
 
@@ -143,8 +145,8 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 
 // Start initiates the synchronization process.
 func (s *L2GERSync) Start(ctx context.Context) {
-	s.processor.log.Info("starting l2gersync")
-	s.driver.Sync(ctx)
+	s.processor.log.Infof("starting l2gersync at block %d", s.cfg.InitialBlockNum)
+	s.driver.Sync(ctx, &s.cfg.InitialBlockNum)
 }
 
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index
@@ -164,7 +166,8 @@ func (s *L2GERSync) GetInjectedGERsForRange(ctx context.Context,
 
 // GetLastProcessedBlock returns the last processed block number
 func (s *L2GERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	return s.processor.GetLastProcessedBlock(ctx)
+	num, _, err := s.processor.GetLastProcessedBlock(ctx)
+	return num, err
 }
 
 // GetRemoveGEREvents retrieves remove GER events from the database with optional filters

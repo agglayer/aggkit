@@ -21,6 +21,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/trigger"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -37,17 +38,19 @@ type RateLimiter interface {
 type AggSender struct {
 	log aggkitcommon.Logger
 
-	storage                      db.AggSenderStorage
-	aggLayerClient               agglayer.AgglayerClientInterface
-	compatibilityStoragedChecker compatibility.CompatibilityChecker
-	certStatusChecker            types.CertificateStatusChecker
-	certQuerier                  types.CertificateQuerier
-	rollupDataQuerier            types.RollupDataQuerier
-	validatorPoller              types.ValidatorPoller
-	localValidator               types.CertificateValidateAndSigner
+	storage                       db.AggSenderStorage
+	aggLayerClient                agglayer.AgglayerClientInterface
+	compatibilityStoragedChecker  compatibility.CompatibilityChecker
+	certStatusChecker             types.CertificateStatusChecker
+	certQuerier                   types.CertificateQuerier
+	rollupDataQuerier             types.RollupDataQuerier
+	initialBlockClaimSyncerSetter types.InitialBlockClaimSyncerSetter
+	validatorPoller               types.ValidatorPoller
+	localValidator                types.CertificateValidateAndSigner
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
+	l2ClaimSyncer    claimsynctypes.ClaimSyncer
 
 	certificateSendTrigger types.CertificateSendTrigger
 
@@ -67,10 +70,12 @@ func New(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
+	initialLER common.Hash,
 ) (*AggSender, error) {
 	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
@@ -101,11 +106,13 @@ func New(
 		aggLayerClient,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		l2ClaimSyncer,
 		l1Client,
 		l2Client,
 		rollupDataQuerier,
 		committeeQuerier,
 		certificateSendTrigger,
+		initialLER,
 	)
 }
 
@@ -117,11 +124,13 @@ func newAggsender(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 	certificateSendTrigger types.CertificateSendTrigger,
+	initialLER common.Hash,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                   cfg.StoragePath,
@@ -133,6 +142,27 @@ func newAggsender(
 		return nil, err
 	}
 
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
+		cfg.SovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		l2ClaimSyncer,
+		aggchainFEPCaller,
+		aggLayerClient,
+		initialLER,
+	)
+	l2OriginNetwork := l2Syncer.OriginNetwork()
+	initialBlockClaimSyncerSetter := query.NewSetInitialBlockToClaimSyncer(
+		certQuerier,
+		aggLayerClient,
+		l2OriginNetwork,
+		logger,
+	)
+
 	flowManager, err := flows.NewBuilderFlow(
 		ctx,
 		cfg,
@@ -142,8 +172,11 @@ func newAggsender(
 		l2Client,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		l2ClaimSyncer,
 		rollupDataQuerier,
 		committeeQuerier,
+		certQuerier,
+		initialLER,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
@@ -151,26 +184,12 @@ func newAggsender(
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
-	l2OriginNetwork := l2Syncer.OriginNetwork()
-
 	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		func(ctx context.Context) (db.RuntimeData, error) {
 			return db.RuntimeData{NetworkID: l2OriginNetwork}, nil
 		},
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
-	)
-
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
-		cfg.SovereignRollupAddr, l1Client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
-	}
-
-	certQuerier := query.NewCertificateQuerier(
-		l2Syncer,
-		aggchainFEPCaller,
-		aggLayerClient,
 	)
 
 	verifierFlow, err := flows.NewLocalVerifier(
@@ -197,7 +216,7 @@ func newAggsender(
 			verifierFlow,
 			l1InfoTreeQuerier,
 			certQuerier,
-			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+			initialLER,
 		),
 	)
 
@@ -222,9 +241,11 @@ func newAggsender(
 		),
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
-		l1Client:               l1Client,
-		l1InfoTreeSyncer:       l1InfoTreeSyncer,
-		certificateSendTrigger: certificateSendTrigger,
+		l1Client:                      l1Client,
+		l1InfoTreeSyncer:              l1InfoTreeSyncer,
+		l2ClaimSyncer:                 l2ClaimSyncer,
+		certificateSendTrigger:        certificateSendTrigger,
+		initialBlockClaimSyncerSetter: initialBlockClaimSyncerSetter,
 	}, nil
 }
 
@@ -263,9 +284,16 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
-
+	a.status.SetStatus(types.StatusCheckingDBCompatibility, a.log)
 	a.checkDBCompatibility(ctx)
+	a.status.SetStatus(types.StatusCheckingInitialStage, a.log)
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
+	a.status.SetStatus(types.StartingClaimSyncerStage, a.log)
+	err := a.initialBlockClaimSyncerSetter.SetClaimSyncerNextRequiredBlock(ctx, a.l2ClaimSyncer, nil)
+	if err != nil {
+		a.log.Panicf("error setting next required block for claim syncer: %v", err)
+	}
+	a.status.SetStatus(types.StatusFlowCheckingInitialStage, a.log)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
@@ -314,7 +342,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 		a.certificateSendTrigger.OnIdle()
 	}
 
-	a.status.Status = types.StatusCertificateStage
+	a.status.SetStatus(types.StatusCertificateStage, a.log)
 	iteration := 0
 	for {
 		select {

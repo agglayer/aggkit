@@ -60,8 +60,8 @@ func TestSync(t *testing.T) {
 		green bool
 	}
 	reorg1Completed := reorgSemaphore{}
-	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, _ uint64, downloadedCh chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, downloadedCh chan EVMBlock, _ *uint64, _ bool) {
 			log.Info("entering mock loop")
 			for {
 				select {
@@ -84,7 +84,7 @@ func TestSync(t *testing.T) {
 		})
 
 	// Mocking this actions, the driver should "store" all the blocks from the downloader
-	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), true, nil)
 	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock1.Num, expectedBlock1.Hash).Return(nil)
 	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock1.Num, Events: expectedBlock1.Events, Hash: expectedBlock1.Hash}).
 		Return(nil)
@@ -93,7 +93,7 @@ func TestSync(t *testing.T) {
 	pm.EXPECT().
 		ProcessBlock(mock.Anything, Block{Num: expectedBlock2.Num, Events: expectedBlock2.Events, Hash: expectedBlock2.Hash}).
 		Return(nil)
-	go driver.Sync(ctx)
+	go driver.Sync(ctx, nil)
 	time.Sleep(time.Millisecond * 200) // time to download expectedBlock1
 
 	// Trigger reorg 1
@@ -155,8 +155,8 @@ func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 	cancelObserved := make(chan struct{})
 
 	// infinite loop that keeps feeding the same block
-	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(ctx context.Context, _ uint64, ch chan EVMBlock) {
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
 			for {
 				ch <- expectedBlock
 				select {
@@ -169,7 +169,7 @@ func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 			}
 		})
 
-	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), true, nil)
 
 	// AddBlockToTrack always returns nil
 	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).
@@ -188,7 +188,7 @@ func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 			}
 		})
 
-	go driver.Sync(ctx)
+	go driver.Sync(ctx, nil)
 
 	time.Sleep(300 * time.Millisecond) // Let it retry a few times
 
@@ -392,12 +392,12 @@ func TestCheckCompatibility(t *testing.T) {
 	driver.compatibilityChecker = compatibilityCheckerMock
 	t.Run("pass compatibility check", func(t *testing.T) {
 		compatibilityCheckerMock.EXPECT().Check(context.Background(), nil).Return(nil)
-		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), errUnittest)
+		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), false, errUnittest)
 		LogFatalf = func(format string, args ...any) {
 			panic("should not call log.Fatalf")
 		}
 		require.Panics(t, func() {
-			driver.Sync(context.Background())
+			driver.Sync(context.Background(), nil)
 		}, "should stop because GetLastProcessedBlock failed")
 	})
 	t.Run("fails compatibility check ", func(t *testing.T) {
@@ -406,7 +406,7 @@ func TestCheckCompatibility(t *testing.T) {
 			panic("should not call log.Fatalf")
 		}
 		require.Panics(t, func() {
-			driver.Sync(context.Background())
+			driver.Sync(context.Background(), nil)
 		}, "should stop because GetLastProcessedBlock failed")
 	})
 }
@@ -431,7 +431,707 @@ func TestEVMDriver_Sync(t *testing.T) {
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
-			d.Sync(context.Background())
+			d.Sync(context.Background(), nil)
 		})
+	}
+}
+
+func TestEVMDriver_GetCompletionPercentage(t *testing.T) {
+	sut := &EVMDriver{}
+	require.Nil(t, sut.GetCompletionPercentage(), "expected GetCompletionPercentage to return nil for legacy syncer")
+}
+
+func TestRuntimeData_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     RuntimeData
+		expected string
+	}{
+		{
+			name: "empty addresses",
+			data: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{},
+			},
+			expected: "ChainID: 1, Addresses: ",
+		},
+		{
+			name: "single address",
+			data: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			expected: "ChainID: 1, Addresses: 0x0000000000000000000000000000000000000123, ",
+		},
+		{
+			name: "two addresses",
+			data: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+					common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+				},
+			},
+			expected: "ChainID: 1, Addresses: 0x1234567890AbcdEF1234567890aBcdef12345678, 0xABcdEFABcdEFabcdEfAbCdefabcdeFABcDEFabCD, ",
+		},
+		{
+			name: "multiple addresses",
+			data: RuntimeData{
+				ChainID: 42,
+				Addresses: []common.Address{
+					common.HexToAddress("0x123"),
+					common.HexToAddress("0x456"),
+					common.HexToAddress("0x789"),
+				},
+			},
+			expected: "ChainID: 42, Addresses: 0x0000000000000000000000000000000000000123, 0x0000000000000000000000000000000000000456, 0x0000000000000000000000000000000000000789, ",
+		},
+		{
+			name: "zero chain ID",
+			data: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0xabc")},
+			},
+			expected: "ChainID: 0, Addresses: 0x0000000000000000000000000000000000000aBc, ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.data.String()
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestRuntimeData_IsCompatible_Success(t *testing.T) {
+	tests := []struct {
+		name  string
+		data1 RuntimeData
+		data2 RuntimeData
+	}{
+		{
+			name: "identical data with single address",
+			data1: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			data2: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+		},
+		{
+			name: "identical data with two addresses",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+					common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+					common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+				},
+			},
+		},
+		{
+			name: "identical data with multiple addresses",
+			data1: RuntimeData{
+				ChainID: 42,
+				Addresses: []common.Address{
+					common.HexToAddress("0x123"),
+					common.HexToAddress("0x456"),
+					common.HexToAddress("0x789"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 42,
+				Addresses: []common.Address{
+					common.HexToAddress("0x123"),
+					common.HexToAddress("0x456"),
+					common.HexToAddress("0x789"),
+				},
+			},
+		},
+		{
+			name: "both have empty addresses",
+			data1: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{},
+			},
+			data2: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{},
+			},
+		},
+		{
+			name: "zero chain ID with matching data",
+			data1: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x789")},
+			},
+			data2: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x789")},
+			},
+		},
+		{
+			name: "zero chain ID with matching data",
+			data1: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x789")},
+			},
+			data2: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x789")},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.data1.IsCompatible(tt.data2)
+			require.NoError(t, err)
+			require.Nil(t, result)
+		})
+	}
+}
+
+func TestRuntimeData_IsCompatible_ChainIDMismatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		data1    RuntimeData
+		data2    RuntimeData
+		chainID1 uint64
+		chainID2 uint64
+	}{
+		{
+			name: "different chain IDs with same address",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 2,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				},
+			},
+			chainID1: 1,
+			chainID2: 2,
+		},
+		{
+			name: "chain ID 0 vs 1",
+			data1: RuntimeData{
+				ChainID:   0,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			data2: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			chainID1: 0,
+			chainID2: 1,
+		},
+		{
+			name: "large chain ID difference",
+			data1: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			data2: RuntimeData{
+				ChainID:   999999,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			chainID1: 1,
+			chainID2: 999999,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.data1.IsCompatible(tt.data2)
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Contains(t, err.Error(), "chain ID mismatch")
+		})
+	}
+}
+
+func TestRuntimeData_IsCompatible_AddressesLenMismatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		data1 RuntimeData
+		data2 RuntimeData
+	}{
+		{
+			name: "data1 has more addresses",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+					common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				},
+			},
+		},
+		{
+			name: "data2 has more addresses",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+					common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+				},
+			},
+		},
+		{
+			name: "data1 empty, data2 has addresses",
+			data1: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{},
+			},
+			data2: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+		},
+		{
+			name: "data1 has addresses, data2 empty",
+			data1: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+			},
+			data2: RuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{},
+			},
+		},
+		{
+			name: "large difference in address count",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x111"),
+					common.HexToAddress("0x222"),
+					common.HexToAddress("0x333"),
+					common.HexToAddress("0x444"),
+					common.HexToAddress("0x555"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x111"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.data1.IsCompatible(tt.data2)
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Contains(t, err.Error(), "addresses len mismatch")
+		})
+	}
+}
+
+func TestRuntimeData_IsCompatible_AddressMismatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		data1 RuntimeData
+		data2 RuntimeData
+		index int
+	}{
+		{
+			name: "single address mismatch",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+				},
+			},
+			index: 0,
+		},
+		{
+			name: "first address differs",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x123"),
+					common.HexToAddress("0x456"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x789"),
+					common.HexToAddress("0x456"),
+				},
+			},
+			index: 0,
+		},
+		{
+			name: "second address differs",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x123"),
+					common.HexToAddress("0x456"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x123"),
+					common.HexToAddress("0x789"),
+				},
+			},
+			index: 1,
+		},
+		{
+			name: "middle address differs in longer list",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x111"),
+					common.HexToAddress("0x222"),
+					common.HexToAddress("0x333"),
+					common.HexToAddress("0x444"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x111"),
+					common.HexToAddress("0x222"),
+					common.HexToAddress("0x999"),
+					common.HexToAddress("0x444"),
+				},
+			},
+			index: 2,
+		},
+		{
+			name: "last address differs",
+			data1: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x111"),
+					common.HexToAddress("0x222"),
+					common.HexToAddress("0x333"),
+				},
+			},
+			data2: RuntimeData{
+				ChainID: 1,
+				Addresses: []common.Address{
+					common.HexToAddress("0x111"),
+					common.HexToAddress("0x222"),
+					common.HexToAddress("0x999"),
+				},
+			},
+			index: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.data1.IsCompatible(tt.data2)
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Contains(t, err.Error(), "addresses")
+			require.Contains(t, err.Error(), "mismatch")
+		})
+	}
+}
+
+func TestRuntimeData_IsCompatible_ErrorPrecedence(t *testing.T) {
+	t.Run("chain ID mismatch takes precedence over address differences", func(t *testing.T) {
+		data1 := RuntimeData{
+			ChainID:   1,
+			Addresses: []common.Address{common.HexToAddress("0x123")},
+		}
+		data2 := RuntimeData{
+			ChainID:   2,
+			Addresses: []common.Address{common.HexToAddress("0x456")},
+		}
+
+		result, err := data1.IsCompatible(data2)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), "chain ID mismatch")
+	})
+
+	t.Run("length mismatch checked before address comparison", func(t *testing.T) {
+		data1 := RuntimeData{
+			ChainID:   1,
+			Addresses: []common.Address{common.HexToAddress("0x123")},
+		}
+		data2 := RuntimeData{
+			ChainID: 1,
+			Addresses: []common.Address{
+				common.HexToAddress("0x456"),
+				common.HexToAddress("0x789"),
+			},
+		}
+
+		result, err := data1.IsCompatible(data2)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), "addresses len mismatch")
+	})
+}
+
+func TestRuntimeData_IsCompatible_NilAddresses(t *testing.T) {
+	t.Run("both nil addresses", func(t *testing.T) {
+		data1 := RuntimeData{
+			ChainID:   1,
+			Addresses: nil,
+		}
+		data2 := RuntimeData{
+			ChainID:   1,
+			Addresses: nil,
+		}
+
+		result, err := data1.IsCompatible(data2)
+		require.NoError(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("one nil, one empty", func(t *testing.T) {
+		data1 := RuntimeData{
+			ChainID:   1,
+			Addresses: nil,
+		}
+		data2 := RuntimeData{
+			ChainID:   1,
+			Addresses: []common.Address{},
+		}
+
+		result, err := data1.IsCompatible(data2)
+		require.NoError(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("nil vs non-empty", func(t *testing.T) {
+		data1 := RuntimeData{
+			ChainID:   1,
+			Addresses: nil,
+		}
+		data2 := RuntimeData{
+			ChainID:   1,
+			Addresses: []common.Address{common.HexToAddress("0x123")},
+		}
+
+		result, err := data1.IsCompatible(data2)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), "addresses len mismatch")
+	})
+}
+
+// makeDriver is a helper that creates an EVMDriver with fresh mocks for each test.
+func makeDriver(t *testing.T) (*EVMDriver, *ReorgDetectorMock, *ProcessorMock, *DownloaderMock) {
+	t.Helper()
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	if err != nil {
+		t.Fatalf("could not construct EVMDriver: %v", err)
+	}
+	return driver, rdm, pm, dm
+}
+
+// --- SyncNextBlock ---
+
+func TestSyncNextBlock_AlreadyBootstrapped(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, _ := makeDriver(t)
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(5), true, nil)
+
+	err := driver.SyncNextBlock(t.Context(), 1)
+	require.ErrorIs(t, err, ErrAlreadyBootstrapped)
+}
+
+func TestSyncNextBlock_GetLastProcessedBlockError(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, _ := makeDriver(t)
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, errUnittest)
+
+	err := driver.SyncNextBlock(t.Context(), 1)
+	require.ErrorContains(t, err, "SyncNextBlock: getting last processed block")
+	require.ErrorIs(t, err, errUnittest)
+}
+
+func TestSyncNextBlock_DownloadChannelClosedUnexpectedly(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, dm := makeDriver(t)
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
+			close(ch)
+		})
+
+	err := driver.SyncNextBlock(t.Context(), 5)
+	require.ErrorContains(t, err, "download channel closed unexpectedly")
+}
+
+func TestSyncNextBlock_ContextCancelledBeforeBlock(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, dm := makeDriver(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+	// The goroutine may or may not start before the select returns ctx.Done()
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock, _ *uint64, _ bool) {
+			<-downloadCtx.Done()
+		}).Maybe()
+	cancel()
+
+	err := driver.SyncNextBlock(ctx, 5)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestSyncNextBlock_HappyPath(t *testing.T) {
+	t.Parallel()
+	driver, rdm, pm, dm := makeDriver(t)
+	ctx := t.Context()
+	expectedBlock := EVMBlock{
+		EVMBlockHeader: EVMBlockHeader{Num: 5, Hash: common.HexToHash("0x5")},
+	}
+
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
+			ch <- expectedBlock
+			<-downloadCtx.Done() // wait for cancel() triggered inside SyncNextBlock
+		})
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).Return(nil)
+	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).Return(nil)
+
+	err := driver.SyncNextBlock(ctx, 5)
+	require.NoError(t, err)
+}
+
+// --- Sync with firstBlockNumber ---
+
+func TestSync_WithFirstBlockNumber_StartsFromGivenBlock(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	compatMock.EXPECT().Check(mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{
+		ReorgedBlock:   make(chan uint64),
+		ReorgProcessed: make(chan bool),
+	}, nil)
+
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	require.NoError(t, err)
+
+	firstBlockNum := uint64(42)
+	// no processed blocks exist yet
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+
+	downloadStartedFrom := make(chan uint64, 1)
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, fromBlock uint64, ch chan EVMBlock, _ *uint64, _ bool) {
+			downloadStartedFrom <- fromBlock
+			<-downloadCtx.Done()
+			close(ch)
+		})
+
+	go driver.Sync(ctx, &firstBlockNum)
+
+	select {
+	case from := <-downloadStartedFrom:
+		require.Equal(t, firstBlockNum, from, "Download should start from firstBlockNumber when no processed blocks exist")
+		cancel()
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for Download to be called with firstBlockNumber")
+	}
+}
+
+// --- Sync waits when no processed blocks and no firstBlockNumber ---
+
+func TestSync_WaitsWhenNoProcessedBlockAndNoFirstBlock(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	compatMock.EXPECT().Check(mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{
+		ReorgedBlock:   make(chan uint64),
+		ReorgProcessed: make(chan bool),
+	}, nil)
+
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	require.NoError(t, err)
+
+	// GetLastProcessedBlock returns not-found on every call
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil).Maybe()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		driver.Sync(ctx, nil)
+	}()
+
+	time.Sleep(50 * time.Millisecond) // let it loop a few times with RetryAfterErrorPeriod
+	cancel()
+
+	select {
+	case <-done:
+		// good: Sync exited cleanly after context cancellation
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Sync did not exit after context cancellation")
 	}
 }

@@ -41,4 +41,8 @@ func TestBlockNotifierManager_GetCurrentBlockNumber(t *testing.T) {
 	currentBlockNumber, err := sut.GetCurrentBlockNumber(t.Context(), aggkittypes.LatestBlock)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1234), currentBlockNumber)
+
+	bn, err := sut.GetCurrentBlockNumber(t.Context(), *aggkittypes.NewBlockNumber(123))
+	require.NoError(t, err)
+	require.Equal(t, uint64(123), bn)
 }

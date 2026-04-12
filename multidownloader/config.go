@@ -34,12 +34,18 @@ type Config struct {
 	BlockFinality aggkittypes.BlockNumberFinality
 	// WaitPeriodToCheckCatchUp is the duration to wait before checking again if logs are not yet available
 	WaitPeriodToCheckCatchUp types.Duration
+	// PeriodToCheckReorgs is the duration to wait before checking for reorgs
+	// If is 0 reorgs are checked only when a new block appears
+	PeriodToCheckReorgs types.Duration
+	// DeveloperMode enables developer mode features like forcing reorgs
+	DeveloperMode bool
 }
 
 const (
 	defaultBlockChunkSize                  = 10000
 	defaultMaxParallelBlockHeaderRetrieval = 30
 	defaultWaitPeriodToCheckCatchUp        = time.Second * 10
+	defaultPeriodToCheckReorgs             = time.Second * 5
 )
 
 func NewConfigDefault(name string, basePathDB string) Config {
@@ -48,12 +54,14 @@ func NewConfigDefault(name string, basePathDB string) Config {
 	}
 	dbPath := path.Join(basePathDB, fmt.Sprintf("%s_multidownloader.sqlite", name))
 	return Config{
-		Enabled:                         false,
+		Enabled:                         true,
 		StoragePath:                     dbPath,
 		BlockChunkSize:                  defaultBlockChunkSize,
 		MaxParallelBlockHeaderRetrieval: defaultMaxParallelBlockHeaderRetrieval,
 		BlockFinality:                   aggkittypes.FinalizedBlock,
 		WaitPeriodToCheckCatchUp:        types.NewDuration(defaultWaitPeriodToCheckCatchUp),
+		PeriodToCheckReorgs:             types.NewDuration(defaultPeriodToCheckReorgs),
+		DeveloperMode:                   false,
 	}
 }
 
@@ -75,10 +83,12 @@ func (cfg *Config) Validate() error {
 
 func (cfg *Config) String() string {
 	return fmt.Sprintf("MultidownloaderConfig{Enabled:%t, BlockChunkSize:%d, "+
-		"MaxParallelBlockHeaderRetrieval:%d, BlockFinality:%s, WaitPeriodToCheckCatchUp:%s}",
+		"MaxParallelBlockHeaderRetrieval:%d, BlockFinality:%s, WaitPeriodToCheckCatchUp:%s, "+
+		"PeriodToCheckReorgs:%s}",
 		cfg.Enabled,
 		cfg.BlockChunkSize,
 		cfg.MaxParallelBlockHeaderRetrieval,
 		cfg.BlockFinality.String(),
-		cfg.WaitPeriodToCheckCatchUp.String())
+		cfg.WaitPeriodToCheckCatchUp.String(),
+		cfg.PeriodToCheckReorgs.String())
 }

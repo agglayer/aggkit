@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -132,7 +133,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1EthClient := etherman.NewDefaultEthClient(l1Client.Client(), nil, nil)
 	rdL1, err := reorgdetector.New(l1EthClient, reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
-		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
@@ -159,7 +160,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
 
-	var multidownloaderClient aggkittypes.MultiDownloader
+	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	if useMultidownloaderForTest {
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),
@@ -167,14 +168,15 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			"testMD",
 			l1EthClient,
 			nil, // RPC client is not simulated
-			nil,
-			nil,
+			nil, // Storage will be created internally
+			nil, // blockNotifierManager will be created internally
+			nil, // reorgProcessor will be created internally
 		)
 		require.NoError(t, err)
 	} else {
 		multidownloaderClient = aggkitsync.NewAdapterEthClientToMultidownloader(l1EthClient)
 	}
-	l1InfoTreeSync, err := l1infotreesync.New(
+	l1InfoTreeSync, err := l1infotreesync.NewLegacy(
 		ctx,
 		l1InfoTreeSyncCfg,
 		multidownloaderClient,
@@ -197,6 +199,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 
+	syncFromL1Bridges := cfg.L1RPCClient != nil
 	bridgeSyncCfg := bridgesync.Config{
 		DBPath:                             dbPathBridgeSyncL1,
 		BridgeAddr:                         bridgeL1Addr,
@@ -209,6 +212,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
+	bridgeSyncCfg.SyncFromInBridges.Resolved = &syncFromL1Bridges
 	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork)
 	require.NoError(t, err)
 
@@ -308,7 +312,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
 	rdL2, err := reorgdetector.New(etherman.NewDefaultEthClient(l2Client.Client(), nil, nil), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
-		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	},
 		reorgdetector.L2,
@@ -340,7 +344,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		RequireStorageContentCompatibility: true,
 		DBQueryTimeout:                     cfgtypes.NewDuration(defaultDBQueryTimeout),
 	}
-	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false)
+	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, bridgesynctypes.EmptyLER)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)
@@ -395,7 +399,7 @@ func NewSimulatedL1(t *testing.T) (
 	require.NoError(t, err)
 
 	// DeployBridge function sends two transactions (bridge and proxy contract deployment)
-	calculatedGERAddr := crypto.CreateAddress(setup.DeployerAuth.From, nonce+2) //nolint:mnd
+	calculatedGERAddr := crypto.CreateAddress(setup.DeployerAuth.From, nonce+2)
 
 	err = setup.DeployBridge(client, calculatedGERAddr, 0)
 	require.NoError(t, err)
@@ -643,7 +647,6 @@ func WaitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer Processore
 		lastBlockNum, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)
 		RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
-		//nolint:mnd
 		time.Sleep(time.Millisecond * 500)
 		lastBlockNum2, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)

@@ -36,20 +36,11 @@ const (
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
 
-	// claimTableName is the name of the table that stores claim events
-	claimTableName = "claim"
-
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
-
-	// unsetClaimTableName is the name of the table that stores unset claim events
-	unsetClaimTableName = "unset_claim"
-
-	// setClaimTableName is the name of the table that stores set claim events
-	setClaimTableName = "set_claim"
 
 	// backwardLETTableName is the name of the table that stores backward local exit tree events
 	backwardLETTableName = "backward_let"
@@ -65,53 +56,34 @@ const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
 
-	// claimColumnsSQL is the list of all claim columns
-	claimColumnsSQL = `block_num,
-		block_pos,
-		tx_hash,
-		global_index,
-		origin_network,
-		origin_address,
-		destination_address,
-		amount,
-		proof_local_exit_root,
-		proof_rollup_exit_root,
-		mainnet_exit_root,
-		rollup_exit_root,
-		global_exit_root,
-		destination_network,
-		metadata,
-		is_message,
-		block_timestamp,
-		type`
+	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
+	// deposit_count is a unique monotonic counter per bridge event in the contract, so no
+	// additional origin_network filter is needed (it would incorrectly exclude L2-native tokens).
+	bridgeByDepositCountSQL = "SELECT * FROM " + bridgeTableName +
+		" WHERE deposit_count = $1 LIMIT 1"
 
-	// compactedClaimsSelectSQL is the SELECT clause for compacted claims
-	// It combines metadata from the oldest claim with proofs and exit roots from the newest claim
-	compactedClaimsSelectSQL = `
-		o.block_num,
-		o.block_pos,
-		o.tx_hash,
-		o.global_index,
-		o.origin_network,
-		o.origin_address,
-		o.destination_address,
-		o.amount,
-		n.proof_local_exit_root,
-		n.proof_rollup_exit_root,
-		n.mainnet_exit_root,
-		n.rollup_exit_root,
-		n.global_exit_root,
-		o.destination_network,
-		o.metadata,
-		o.is_message,
-		o.block_timestamp,
-		o.type`
+	// archiveByDepositCountSQL is the query used by GetBridgeByDepositCount for bridge_archive.
+	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 LIMIT 1`
+
+	// bridgesByContentWhereNoMeta is the WHERE clause for GetBridgesByContent without metadata.
+	bridgesByContentWhereNoMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
+		" AND destination_network = $3 AND destination_address = $4 AND amount = $5" +
+		" AND (metadata IS NULL OR metadata = x'')"
+
+	// bridgesByContentWhereWithMeta is the WHERE clause for GetBridgesByContent with metadata.
+	bridgesByContentWhereWithMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
+		" AND destination_network = $3 AND destination_address = $4 AND amount = $5" +
+		" AND metadata = $6"
+
+	// Precomputed full SELECT queries for GetBridgesByContent (bridge and bridge_archive tables,
+	// with and without metadata filter). Using compile-time constants avoids dynamic SQL construction.
+	bridgeByContentNoMetaSQL    = "SELECT * FROM " + bridgeTableName + " WHERE " + bridgesByContentWhereNoMeta
+	bridgeByContentWithMetaSQL  = "SELECT * FROM " + bridgeTableName + " WHERE " + bridgesByContentWhereWithMeta
+	archiveByContentNoMetaSQL   = "SELECT * FROM bridge_archive WHERE " + bridgesByContentWhereNoMeta
+	archiveByContentWithMetaSQL = "SELECT * FROM bridge_archive WHERE " + bridgesByContentWhereWithMeta
 )
 
 var (
-	// errFailToConvertClaims indicates that the conversion from []*Claim to []Claim failed.
-	errFailToConvertClaims = errors.New("failed to convert from []*Claim to []Claim")
-
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
@@ -136,22 +108,22 @@ const (
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
-	BlockNum           uint64         `meddler:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos"`
-	FromAddress        common.Address `meddler:"from_address,address"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp"`
-	LeafType           uint8          `meddler:"leaf_type"`
-	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address"`
-	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address"`
-	Amount             *big.Int       `meddler:"amount,bigint"`
-	Metadata           []byte         `meddler:"metadata"`
-	DepositCount       uint32         `meddler:"deposit_count"`
-	TxnSender          common.Address `meddler:"txn_sender,address"`
-	Source             BridgeSource   `meddler:"source"`
-	ToAddress          common.Address `meddler:"to_address,address"`
+	BlockNum           uint64          `meddler:"block_num"`
+	BlockPos           uint64          `meddler:"block_pos"`
+	FromAddress        *common.Address `meddler:"from_address,address"`
+	TxHash             common.Hash     `meddler:"tx_hash,hash"`
+	BlockTimestamp     uint64          `meddler:"block_timestamp"`
+	LeafType           uint8           `meddler:"leaf_type"`
+	OriginNetwork      uint32          `meddler:"origin_network"`
+	OriginAddress      common.Address  `meddler:"origin_address"`
+	DestinationNetwork uint32          `meddler:"destination_network"`
+	DestinationAddress common.Address  `meddler:"destination_address"`
+	Amount             *big.Int        `meddler:"amount,bigint"`
+	Metadata           []byte          `meddler:"metadata"`
+	DepositCount       uint32          `meddler:"deposit_count"`
+	TxnSender          common.Address  `meddler:"txn_sender,address"`
+	Source             BridgeSource    `meddler:"source"`
+	ToAddress          common.Address  `meddler:"to_address,address"`
 }
 
 func (b *Bridge) String() string {
@@ -159,11 +131,15 @@ func (b *Bridge) String() string {
 	if b.Amount != nil {
 		amountStr = b.Amount.String()
 	}
+	fromAddrStr := nilStr
+	if b.FromAddress != nil {
+		fromAddrStr = b.FromAddress.String()
+	}
 	return fmt.Sprintf("Bridge{BlockNum: %d, BlockPos: %d, FromAddress: %s, TxHash: %s, "+
 		"BlockTimestamp: %d, LeafType: %d, OriginNetwork: %d, OriginAddress: %s, "+
 		"DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %x, "+
 		"DepositCount: %d, TxnSender: %s, Source: %s, ToAddress: %s}",
-		b.BlockNum, b.BlockPos, b.FromAddress.String(), b.TxHash.String(),
+		b.BlockNum, b.BlockPos, fromAddrStr, b.TxHash.String(),
 		b.BlockTimestamp, b.LeafType, b.OriginNetwork, b.OriginAddress.String(),
 		b.DestinationNetwork, b.DestinationAddress.String(), amountStr, b.Metadata,
 		b.DepositCount, b.TxnSender.String(), b.Source, b.ToAddress.String())
@@ -196,179 +172,6 @@ func (b *Bridge) Hash() common.Hash {
 		b.Amount.FillBytes(buf[:]),
 		metaHash,
 	)
-}
-
-type ClaimType string
-
-const (
-	ClaimEvent         ClaimType = "ClaimEvent"
-	DetailedClaimEvent ClaimType = "DetailedClaimEvent"
-)
-
-// Claim representation of a claim event
-type Claim struct {
-	BlockNum            uint64         `meddler:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash"`
-	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
-	OriginNetwork       uint32         `meddler:"origin_network"`
-	OriginAddress       common.Address `meddler:"origin_address"`
-	DestinationAddress  common.Address `meddler:"destination_address"`
-	Amount              *big.Int       `meddler:"amount,bigint"`
-	ProofLocalExitRoot  types.Proof    `meddler:"proof_local_exit_root,merkleproof"`
-	ProofRollupExitRoot types.Proof    `meddler:"proof_rollup_exit_root,merkleproof"`
-	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"`
-	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"`
-	GlobalExitRoot      common.Hash    `meddler:"global_exit_root,hash"`
-	DestinationNetwork  uint32         `meddler:"destination_network"`
-	Metadata            []byte         `meddler:"metadata"`
-	IsMessage           bool           `meddler:"is_message"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	Type                ClaimType      `meddler:"type"`
-}
-
-func (c *Claim) String() string {
-	globalIndexStr := nilStr
-	if c.GlobalIndex != nil {
-		globalIndexStr = c.GlobalIndex.String()
-	}
-
-	amountStr := nilStr
-	if c.Amount != nil {
-		amountStr = c.Amount.String()
-	}
-
-	return fmt.Sprintf("Claim{BlockNum: %d, BlockPos: %d, TxHash: %s, GlobalIndex: %s, "+
-		"OriginNetwork: %d, OriginAddress: %s, DestinationAddress: %s, Amount: %s, "+
-		"ProofLocalExitRoot: %v, ProofRollupExitRoot: %v, MainnetExitRoot: %s, "+
-		"RollupExitRoot: %s, GlobalExitRoot: %s, DestinationNetwork: %d, Metadata: %x, "+
-		"IsMessage: %t, BlockTimestamp: %d, Type: %s}",
-		c.BlockNum, c.BlockPos, c.TxHash.String(), globalIndexStr,
-		c.OriginNetwork, c.OriginAddress.String(), c.DestinationAddress.String(), amountStr,
-		c.ProofLocalExitRoot.String(), c.ProofRollupExitRoot.String(), c.MainnetExitRoot.String(),
-		c.RollupExitRoot.String(), c.GlobalExitRoot.String(), c.DestinationNetwork, c.Metadata,
-		c.IsMessage, c.BlockTimestamp, c.Type)
-}
-
-// decodeEtrogCalldata decodes claim calldata for Etrog fork
-func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
-	// Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
-	// for the relevant parts
-	// claimAsset/claimMessage(
-	// 	0: smtProofLocalExitRoot,
-	// 	1: smtProofRollupExitRoot,
-	// 	2: globalIndex,
-	// 	3: mainnetExitRoot,
-	// 	4: rollupExitRoot,
-	// 	5: originNetwork,
-	// 	6: originTokenAddress/originAddress,
-	// 	7: destinationNetwork,
-	// 	8: destinationAddress,
-	// 	9: amount,
-	// 	10: metadata,
-	// )
-
-	actualGlobalIndex, ok := data[2].(*big.Int)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected *big.Int got '%T'", data[2])
-	}
-	if actualGlobalIndex.Cmp(c.GlobalIndex) != 0 {
-		// not the claim we're looking for
-		return false, nil
-	}
-
-	rawLERProof, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for rawLERProof, expected [32][32]byte got '%T'", data[0])
-	}
-
-	rawRERProof, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for rawRERProof, expected [32][32]byte got '%T'", data[1])
-	}
-
-	c.ProofLocalExitRoot = types.NewProof(rawLERProof)
-	c.ProofRollupExitRoot = types.NewProof(rawRERProof)
-
-	c.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[3])
-	}
-
-	c.RollupExitRoot, ok = data[4].([common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[4])
-	}
-
-	c.DestinationNetwork, ok = data[7].(uint32)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'DestinationNetwork'. Expected 'uint32', got '%T'", data[7])
-	}
-
-	c.Metadata, ok = data[10].([]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'claim Metadata'. Expected '[]byte', got '%T'", data[10])
-	}
-
-	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
-
-	return true, nil
-}
-
-// decodePreEtrogCalldata decodes the claim calldata for pre-Etrog forks
-func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
-	// claimMessage/claimAsset(
-	// 	0: bytes32[32] smtProof,
-	// 	1: uint32 index,
-	// 	2: bytes32 mainnetExitRoot,
-	// 	3: bytes32 rollupExitRoot,
-	// 	4: uint32 originNetwork,
-	// 	5: address originTokenAddress,
-	// 	6: uint32 destinationNetwork,
-	// 	7: address destinationAddress,
-	// 	8: uint256 amount,
-	// 	9: bytes metadata
-	// )
-	actualGlobalIndex, ok := data[1].(uint32)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected uint32 got '%T'", data[1])
-	}
-
-	if new(big.Int).SetUint64(uint64(actualGlobalIndex)).Cmp(c.GlobalIndex) != 0 {
-		// not the claim we're looking for
-		return false, nil
-	}
-
-	rawLERProof, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
-	}
-
-	c.ProofLocalExitRoot = types.NewProof(rawLERProof)
-
-	c.MainnetExitRoot, ok = data[2].([common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[2])
-	}
-
-	c.RollupExitRoot, ok = data[3].([common.HashLength]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[3])
-	}
-
-	c.DestinationNetwork, ok = data[6].(uint32)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'DestinationNetwork'. Expected 'uint32', got '%T'", data[6])
-	}
-
-	c.Metadata, ok = data[9].([]byte)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for 'Metadata'. Expected '[]byte', got '%T'", data[9])
-	}
-
-	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
-
-	return true, nil
 }
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
@@ -436,50 +239,6 @@ func (r *RemoveLegacyToken) String() string {
 		r.LegacyTokenAddress.String())
 }
 
-// UnsetClaim representation of an UpdatedUnsetGlobalIndexHashChain event,
-// that is emitted by the bridge contract when a claim is unset.
-type UnsetClaim struct {
-	BlockNum                  uint64      `meddler:"block_num"`
-	BlockPos                  uint64      `meddler:"block_pos"`
-	TxHash                    common.Hash `meddler:"tx_hash,hash"`
-	GlobalIndex               *big.Int    `meddler:"global_index,bigint"`
-	UnsetGlobalIndexHashChain common.Hash `meddler:"unset_global_index_hash_chain,hash"`
-	CreatedAt                 uint64      `meddler:"created_at"`
-}
-
-func (u *UnsetClaim) String() string {
-	globalIndexStr := nilStr
-	if u.GlobalIndex != nil {
-		globalIndexStr = u.GlobalIndex.String()
-	}
-
-	return fmt.Sprintf("UnsetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
-		"GlobalIndex: %s, UnsetGlobalIndexHashChain: %s, CreatedAt: %d}",
-		u.BlockNum, u.BlockPos, u.TxHash.String(),
-		globalIndexStr, u.UnsetGlobalIndexHashChain.String(), u.CreatedAt)
-}
-
-// SetClaim representation of a SetClaim event,
-// that is emitted by the L2 bridge contract when a claim is set.
-type SetClaim struct {
-	BlockNum    uint64      `meddler:"block_num"`
-	BlockPos    uint64      `meddler:"block_pos"`
-	TxHash      common.Hash `meddler:"tx_hash,hash"`
-	GlobalIndex *big.Int    `meddler:"global_index,bigint"`
-	CreatedAt   uint64      `meddler:"created_at"`
-}
-
-func (s *SetClaim) String() string {
-	globalIndexStr := nilStr
-	if s.GlobalIndex != nil {
-		globalIndexStr = s.GlobalIndex.String()
-	}
-	return fmt.Sprintf("SetClaim{BlockNum: %d, BlockPos: %d, TxHash: %s, "+
-		"GlobalIndex: %s, CreatedAt: %d}",
-		s.BlockNum, s.BlockPos, s.TxHash.String(),
-		globalIndexStr, s.CreatedAt)
-}
-
 // BackwardLET representation of a BackwardLET event,
 // that is emitted by the L2 bridge contract when a LET is rolled back.
 type BackwardLET struct {
@@ -544,24 +303,23 @@ func (f *ForwardLET) String() string {
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Bridge               *Bridge
-	Claim                *Claim
+	Bridge *Bridge
+
 	TokenMapping         *TokenMapping
 	LegacyTokenMigration *LegacyTokenMigration
 	RemoveLegacyToken    *RemoveLegacyToken
-	UnsetClaim           *UnsetClaim
-	SetClaim             *SetClaim
 	BackwardLET          *BackwardLET
 	ForwardLET           *ForwardLET
+	// Claim                *Claim
+	// UnsetClaim           *UnsetClaim
+	// SetClaim             *SetClaim
+
 }
 
 func (e Event) String() string {
 	parts := []string{}
 	if e.Bridge != nil {
 		parts = append(parts, e.Bridge.String())
-	}
-	if e.Claim != nil {
-		parts = append(parts, e.Claim.String())
 	}
 	if e.TokenMapping != nil {
 		parts = append(parts, e.TokenMapping.String())
@@ -572,19 +330,13 @@ func (e Event) String() string {
 	if e.RemoveLegacyToken != nil {
 		parts = append(parts, e.RemoveLegacyToken.String())
 	}
-	if e.UnsetClaim != nil {
-		parts = append(parts, e.UnsetClaim.String())
-	}
-	if e.SetClaim != nil {
-		parts = append(parts, e.SetClaim.String())
-	}
 	if e.BackwardLET != nil {
 		parts = append(parts, e.BackwardLET.String())
 	}
 	if e.ForwardLET != nil {
 		parts = append(parts, e.ForwardLET.String())
 	}
-	return "Event{" + strings.Join(parts, ", ") + "}"
+	return "bridgesync.Event{" + strings.Join(parts, ", ") + "}"
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -595,6 +347,9 @@ type BridgeSyncRuntimeData struct {
 	Addresses []common.Address
 	// DBVersion tracks the database schema version for compatibility validation
 	DBVersion *int
+	// SyncFromInBridges tracks if FromAddress extraction was enabled for this database
+	// By default is true
+	SyncFromInBridges *bool
 }
 
 func (b BridgeSyncRuntimeData) String() string {
@@ -603,32 +358,65 @@ func (b BridgeSyncRuntimeData) String() string {
 		res += addr.String() + ", "
 	}
 	if b.DBVersion != nil {
-		res += fmt.Sprintf("DBVersion: %d", *b.DBVersion)
+		res += fmt.Sprintf("DBVersion: %d, ", *b.DBVersion)
+	}
+	if b.SyncFromInBridges != nil {
+		res += fmt.Sprintf("SyncFromInBridges: %t", *b.SyncFromInBridges)
 	}
 	return res
 }
 
-func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
+func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*BridgeSyncRuntimeData, error) {
+	// First check the basic runtimedata compatibility using the existing logic in sync.RuntimeData
 	tmp := sync.RuntimeData{
 		ChainID:   b.ChainID,
 		Addresses: b.Addresses,
 	}
-	if err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
-		return err
+	if _, err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
+		return nil, err
 	}
+
+	// Check database schema version compatibility, this is to introduce
+	// changes beyond migration mechanism.
+	// You can control that the data in DB is invalid and need to be deleted
+	// or, in the future, you can create a way to update it.
 	if storage.DBVersion == nil || *storage.DBVersion != *b.DBVersion {
-		return fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
+		return nil, fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
 			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
 			b.DBVersion, storage.DBVersion)
 	}
-	return nil
-}
+	if b.SyncFromInBridges == nil {
+		return nil, errors.New("invalid runtime data: missing SyncFromInBridges field (internal error)")
+	}
 
-type BridgeQuerier interface {
-	GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error)
-}
+	if storage.SyncFromInBridges == nil {
+		// If storage doesn't have this field, the database was created before this field existed,
+		// so we assume 'true' by default (historical behavior).
+		if b.SyncFromInBridges != nil && !*b.SyncFromInBridges {
+			log.Warnf("Database created without SyncFromInBridges field, assuming true. " +
+				"Current config has SyncFromInBridges set to false, new bridges will not have FromAddress.",
+			)
+		}
+		// we update storage with current value
+		return &b, nil
+	}
+	// Validate SyncFromInBridges compatibility
 
-var _ BridgeQuerier = (*processor)(nil)
+	// false → true: FORBIDDEN (missing FromAddress cannot be recovered)
+	if !*storage.SyncFromInBridges && *b.SyncFromInBridges {
+		log.Warnf("SyncFromInBridges changed from false to true. " +
+			"The missing FromAddress are going to be filled by a background " +
+			"process, but it might take a while")
+	}
+	// true → false: ALLOWED (log warning about inconsistent data)
+	if *storage.SyncFromInBridges && !*b.SyncFromInBridges {
+		log.Warnf("SyncFromInBridges changed from true to false. " +
+			"Existing bridges have FromAddress, new bridges will not.",
+		)
+	}
+
+	return nil, nil
+}
 
 type processor struct {
 	syncerID         string
@@ -640,15 +428,11 @@ type processor struct {
 	haltedReason     string
 	dbQueryTimeout   time.Duration
 	bridgeSubscriber aggkitcommon.PubSub[uint64]
+	initialLER       common.Hash
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
-func newProcessor(
-	dbPath string,
-	syncerID string,
-	logger *log.Logger,
-	dbQueryTimeout time.Duration,
-) (*processor, error) {
+func newSqliteDB(dbPath string) (*sql.DB, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
@@ -657,7 +441,15 @@ func newProcessor(
 	if err != nil {
 		return nil, err
 	}
+	return database, nil
+}
 
+func newProcessor(
+	database *sql.DB,
+	syncerID string,
+	logger *log.Logger,
+	dbQueryTimeout time.Duration,
+) (*processor, error) {
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
@@ -707,172 +499,14 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	// SQL query with compaction logic implementing three cases:
-	// Case 1: If unset_claim exists for a global_index, return all claims in range uncompacted
-	// Case 2: If no unset_claim exists and globally oldest is in range, return compacted claim
-	// Case 3: If globally oldest is outside range and no unset_claim exists, return nothing
-	query := fmt.Sprintf(`
-	WITH all_claims_ranked AS (
-		SELECT
-			*,
-			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
-			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
-		FROM claim
-	),
-	claims_in_range AS (
-		SELECT *
-		FROM all_claims_ranked
-		WHERE block_num >= $1 AND block_num <= $2
-	),
-	claims_with_unset AS (
-		-- Case 1: Return all claims in range if unset_claim exists (no compaction)
-		SELECT
-			c.%s
-		FROM claims_in_range c
-		WHERE EXISTS (
-			SELECT 1 FROM unset_claim uc
-			WHERE uc.global_index = c.global_index
-		)
-	),
-	compactable_claims AS (
-		-- Case 2 & 3: Handle claims without unset_claim
-		SELECT
-		%s
-		FROM claims_in_range o
-		JOIN claims_in_range n ON o.global_index = n.global_index AND n.rn_newest_global = 1
-		WHERE o.rn_oldest_global = 1  -- Globally oldest claim must be in range
-		AND NOT EXISTS (
-			SELECT 1 FROM unset_claim uc
-			WHERE uc.global_index = o.global_index
-		)
-	)
-	SELECT * FROM claims_with_unset
-	UNION ALL
-	SELECT * FROM compactable_claims
-	ORDER BY block_num ASC, block_pos ASC;
-`, claimColumnsSQL, compactedClaimsSelectSQL)
-
-	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, query)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
-			return []Claim{}, nil
-		}
-		p.log.Errorf("GetClaims: queryBlockRange failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
-		return nil, err
-	}
-
-	defer func() {
-		if cerr := rows.Close(); cerr != nil {
-			p.log.Errorf("error closing rows: %v", cerr)
-		}
-	}()
-
-	claimPtrs := []*Claim{}
-	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
-		p.log.Errorf("GetClaims: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
-		return nil, err
-	}
-	claimsIface := db.SlicePtrsToSlice(claimPtrs)
-	claims, ok := claimsIface.([]Claim)
-	if !ok {
-		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
-		return nil, errFailToConvertClaims
-	}
-	return claims, nil
-}
-
-func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
-	if globalIndex == nil {
-		return nil, fmt.Errorf("global index parameter cannot be nil")
-	}
-
-	// SQL query with compaction logic implementing three cases:
-	// Case 1: If unset_claim exists for the global_index, return all claims uncompacted
-	// Case 2: If no unset_claim exists, return compacted claim (oldest metadata + newest proofs)
-	// Case 3: Same as case 2 (all claims for this global_index are considered "in range")
-	query := fmt.Sprintf(`
-	WITH all_claims_for_index AS (
-		SELECT
-			*,
-			ROW_NUMBER() OVER (ORDER BY block_num ASC, block_pos ASC) AS rn_oldest,
-			ROW_NUMBER() OVER (ORDER BY block_num DESC, block_pos DESC) AS rn_newest
-		FROM claim
-		WHERE global_index = $1
-	),
-	claims_with_unset AS (
-		-- Case 1: Return all claims if unset_claim exists (no compaction)
-		SELECT
-			c.%s
-		FROM all_claims_for_index c
-		WHERE EXISTS (
-			SELECT 1 FROM unset_claim uc
-			WHERE uc.global_index = $1
-		)
-	),
-	compactable_claims AS (
-		-- Case 2: Handle claims without unset_claim (compact)
-		SELECT
-		%s
-		FROM all_claims_for_index o
-		JOIN all_claims_for_index n ON n.rn_newest = 1
-		WHERE o.rn_oldest = 1
-		AND NOT EXISTS (
-			SELECT 1 FROM unset_claim uc
-			WHERE uc.global_index = $1
-		)
-	)
-	SELECT * FROM claims_with_unset
-	UNION ALL
-	SELECT * FROM compactable_claims
-	ORDER BY block_num ASC, block_pos ASC;
-`, claimColumnsSQL, compactedClaimsSelectSQL)
-
-	// Create a context with database timeout
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	rows, err := p.db.QueryContext(dbCtx, query, globalIndex.String())
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			p.log.Debugf("no claims were found for global index: %s", globalIndex.String())
-			return []Claim{}, nil
-		}
-		p.log.Errorf("GetClaimsByGlobalIndex: query failed for global index %s: %v", globalIndex.String(), err)
-		return nil, fmt.Errorf("failed to query claims by global index: %s: %w", globalIndex.String(), err)
-	}
-
-	defer func() {
-		if cerr := rows.Close(); cerr != nil {
-			p.log.Errorf("error closing rows: %v", cerr)
-		}
-	}()
-
-	claimPtrs := []*Claim{}
-	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
-		p.log.Errorf("GetClaimsByGlobalIndex: meddler.ScanAll failed for global index %s: %v", globalIndex.String(), err)
-		return nil, fmt.Errorf("failed to scan claims for global index: %s: %w", globalIndex.String(), err)
-	}
-
-	claimsIface := db.SlicePtrsToSlice(claimPtrs)
-	claims, ok := claimsIface.([]Claim)
-	if !ok {
-		p.log.Errorf("GetClaimsByGlobalIndex: failed to convert from []*Claim to []Claim for global index: %s",
-			globalIndex.String())
-		return nil, errFailToConvertClaims
-	}
-
-	return claims, nil
-}
-
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
-	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
+	whereClause, whereArgs := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
-	bridgesCount, err := p.GetTotalNumberOfRecords(ctx, bridgeTableName, whereClause)
+
+	bridgesCount, err := p.GetTotalNumberOfRecordsWithParams(ctx, bridgeTableName, whereClause, whereArgs)
 	if err != nil {
 		return []*Bridge{}, 0, err
 	}
@@ -886,14 +520,16 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
+	rows, err := p.queryPagedWithParams(ctx, p.db, offset, pageSize, bridgeTableName,
+		orderByClause, whereClause, whereArgs)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
 				pageNumber, pageSize, whereClause)
 			return nil, bridgesCount, nil
 		}
-		p.log.Errorf("GetBridgesPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetBridgesPaged: queryPagedWithParams failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -905,7 +541,8 @@ func (p *processor) GetBridgesPaged(
 
 	bridges := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
-		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -914,280 +551,42 @@ func (p *processor) GetBridgesPaged(
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
 // based on the provided depositCount, networkIDs, fromAddress and globalIndex
-func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32, fromAddress string) string {
+// Returns the WHERE clause with placeholders and the corresponding arguments for parameterized queries
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32,
+	fromAddress string) (string, []interface{}) {
 	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
+	args := make([]interface{}, 0, clauseCapacity)
+	paramIndex := 1
+
 	if depositCount != nil {
-		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
+		clauses = append(clauses, fmt.Sprintf("deposit_count = $%d", paramIndex))
+		args = append(args, *depositCount)
+		paramIndex++
 	}
 
 	if len(networkIDs) > 0 {
-		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
+		placeholders := make([]string, len(networkIDs))
+		for i, id := range networkIDs {
+			placeholders[i] = fmt.Sprintf("$%d", paramIndex)
+			args = append(args, id)
+			paramIndex++
+		}
+		clauses = append(clauses, fmt.Sprintf("destination_network IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
 	if fromAddress != "" && common.IsHexAddress(fromAddress) {
-		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+		// Only match non-NULL from_address values with the specified address
+		// NULL values will not match this filter (intentional - explicit filtering)
+		// Use UPPER for case-insensitive comparison (addresses stored in checksum format)
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) = UPPER($%d)", paramIndex))
+		args = append(args, fromAddress)
 	}
 
 	if len(clauses) > 0 {
-		return " WHERE " + strings.Join(clauses, " AND ")
+		return " WHERE " + strings.Join(clauses, " AND "), args
 	}
-	return ""
-}
-
-func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32,
-	networkIDs []uint32, globalIndex *big.Int,
-) ([]*Claim, int, error) {
-	whereClause := p.buildClaimsFilterClause(networkIDs, globalIndex)
-	claimsCount, err := p.getCompactedClaimsCount(ctx, whereClause)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if claimsCount == 0 {
-		return []*Claim{}, 0, nil
-	}
-
-	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, "claims")
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Create a context with database timeout
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	// Pagination query with compaction logic implementing three cases:
-	// Case 1: If unset_claim exists for a global_index, return all claims on page uncompacted
-	// Case 2: If no unset_claim exists and globally oldest is on page, return compacted claim
-	// Case 3: If globally oldest is outside page and no unset_claim exists, exclude from results
-	//
-	// This query:
-	// - Gets claims for the requested page (DESC order: newest first)
-	// - Ranks all claims globally by global_index to find oldest and newest
-	// - For claims with unset_claim: returns all instances on the page uncompacted
-	// - For claims without unset_claim: only returns compacted version if newest is on page
-	//nolint:gosec
-	query := fmt.Sprintf(`
-		WITH page_claims AS (
-			SELECT *
-			FROM claim
-			%s
-			ORDER BY block_num DESC, block_pos DESC
-			LIMIT $1 OFFSET $2
-		),
-		all_claims_ranked AS (
-			SELECT
-				*,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
-				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
-			FROM claim
-			%s
-		),
-		claims_with_unset_on_page AS (
-			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
-			SELECT
-				pc.%s
-			FROM page_claims pc
-			WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = pc.global_index
-			)
-		),
-		newest_on_page AS (
-			SELECT DISTINCT pc.global_index
-			FROM page_claims pc
-			JOIN all_claims_ranked acr ON pc.global_index = acr.global_index AND acr.rn_newest_global = 1
-			WHERE pc.block_num = acr.block_num AND pc.block_pos = acr.block_pos
-			AND NOT EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = pc.global_index
-			)
-		),
-		compactable_claims AS (
-			-- Case 2 & 3: Handle claims without unset_claim
-			SELECT
-			%s
-			FROM all_claims_ranked o
-			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
-			WHERE o.rn_oldest_global = 1  -- Globally oldest claim
-			AND o.global_index IN (SELECT global_index FROM newest_on_page)
-		)
-		SELECT * FROM claims_with_unset_on_page
-		UNION ALL
-		SELECT * FROM compactable_claims
-		ORDER BY block_num DESC, block_pos DESC;
-	`, whereClause, whereClause, claimColumnsSQL, compactedClaimsSelectSQL)
-
-	rows, err := p.db.QueryContext(dbCtx, query, pageSize, offset)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
-				pageNumber, pageSize)
-			return nil, claimsCount, nil
-		}
-		p.log.Errorf("GetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
-		return nil, 0, err
-	}
-	defer func() {
-		if cerr := rows.Close(); cerr != nil {
-			p.log.Errorf("error closing rows: %v", cerr)
-		}
-	}()
-
-	claims := []*Claim{}
-	if err = meddler.ScanAll(rows, &claims); err != nil {
-		p.log.Errorf("GetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
-		return nil, 0, err
-	}
-
-	return claims, claimsCount, nil
-}
-
-// GetBoundaryBlockForClaimType returns the max (latest) block number for a given claim type
-func (p *processor) GetBoundaryBlockForClaimType(ctx context.Context, claimType ClaimType) (uint64, error) {
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	query := `SELECT MAX(block_num) FROM claim WHERE type = $1;`
-	var blockNumber *uint64
-	if err := p.db.QueryRowContext(dbCtx, query, claimType).Scan(&blockNumber); err != nil {
-		return 0, err
-	}
-
-	if blockNumber == nil {
-		p.log.Debugf("no boundary block found for claim type %s", claimType)
-		return 0, db.ErrNotFound
-	}
-
-	return *blockNumber, nil
-}
-
-// GetUnsetClaimsPaged returns a paginated list of unset claims
-//
-//nolint:dupl
-func (p *processor) GetUnsetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32,
-	globalIndex *big.Int,
-) ([]*UnsetClaim, int, error) {
-	whereClause := buildGlobalIndexFilterClause(globalIndex)
-	unclaimsCount, err := p.GetTotalNumberOfRecords(ctx, unsetClaimTableName, whereClause)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if unclaimsCount == 0 {
-		return []*UnsetClaim{}, 0, nil
-	}
-
-	offset, err := p.calculateOffset(pageNumber, pageSize, unclaimsCount, unsetClaimTableName)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, unsetClaimTableName, orderByBlockDesc, whereClause)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			p.log.Debugf("no unset claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
-				pageNumber, pageSize)
-			return nil, unclaimsCount, nil
-		}
-		p.log.Errorf("GetUnsetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
-		return nil, 0, err
-	}
-	defer func() {
-		if cerr := rows.Close(); cerr != nil {
-			p.log.Errorf("error closing rows: %v", cerr)
-		}
-	}()
-
-	unsetClaims := []*UnsetClaim{}
-	if err = meddler.ScanAll(rows, &unsetClaims); err != nil {
-		p.log.Errorf("GetUnsetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
-			pageNumber, pageSize, err)
-		return nil, 0, err
-	}
-
-	return unsetClaims, unclaimsCount, nil
-}
-
-// buildGlobalIndexFilterClause builds a WHERE clause for filtering by global_index
-func buildGlobalIndexFilterClause(globalIndex *big.Int) string {
-	if globalIndex != nil {
-		return " WHERE " + fmt.Sprintf("global_index = '%s'", globalIndex.String())
-	}
-
-	return ""
-}
-
-// GetSetClaimsPaged returns a paginated list of set claims
-//
-//nolint:dupl
-func (p *processor) GetSetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32,
-	globalIndex *big.Int,
-) ([]*SetClaim, int, error) {
-	whereClause := buildGlobalIndexFilterClause(globalIndex)
-	setClaimsCount, err := p.GetTotalNumberOfRecords(ctx, setClaimTableName, whereClause)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if setClaimsCount == 0 {
-		return []*SetClaim{}, 0, nil
-	}
-
-	offset, err := p.calculateOffset(pageNumber, pageSize, setClaimsCount, setClaimTableName)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, setClaimTableName, orderByBlockDesc, whereClause)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			p.log.Debugf("no set claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
-				pageNumber, pageSize)
-			return nil, setClaimsCount, nil
-		}
-		p.log.Errorf("GetSetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
-		return nil, 0, err
-	}
-	defer func() {
-		if cerr := rows.Close(); cerr != nil {
-			p.log.Errorf("error closing rows: %v", cerr)
-		}
-	}()
-
-	setClaims := []*SetClaim{}
-	if err = meddler.ScanAll(rows, &setClaims); err != nil {
-		p.log.Errorf("GetSetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
-			pageNumber, pageSize, err)
-		return nil, 0, err
-	}
-
-	return setClaims, setClaimsCount, nil
-}
-
-// buildClaimsFilterClause builds the WHERE clause for the claims table
-// based on the provided networkIDs and globalIndex
-func (p *processor) buildClaimsFilterClause(networkIDs []uint32, globalIndex *big.Int) string {
-	const clauseCapacity = 2
-	clauses := make([]string, 0, clauseCapacity)
-	if len(networkIDs) > 0 {
-		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
-	}
-
-	if globalIndex != nil {
-		clauses = append(clauses,
-			fmt.Sprintf("global_index = '%s'", globalIndex.String()),
-		)
-	}
-
-	if len(clauses) > 0 {
-		return " WHERE " + strings.Join(clauses, " AND ")
-	}
-	return ""
+	return "", nil
 }
 
 // buildTokenMappingsFilterClause builds the WHERE clause for the token_mapping table
@@ -1285,13 +684,50 @@ func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 	return rows, nil
 }
 
+// queryPagedWithParams returns a paged result from the given table with parameterized WHERE clause
+// to prevent SQL injection attacks
+func (p *processor) queryPagedWithParams(ctx context.Context, tx dbtypes.Querier,
+	offset, pageSize uint32,
+	table, orderByClause, whereClause string,
+	whereArgs []interface{},
+) (*sql.Rows, error) {
+	// Create a context with database timeout
+	dbCtx, _ := p.withDatabaseTimeout(ctx)
+
+	// Build the query with placeholders for pagination
+	// whereArgs already contains placeholders starting from $1
+	// We need to adjust LIMIT and OFFSET to use the next available placeholders
+	nextParam := len(whereArgs) + 1
+	query := fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		%s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d;
+	`, table, whereClause, orderByClause, nextParam, nextParam+1)
+
+	// Combine WHERE args with pagination args
+	args := make([]interface{}, 0, len(whereArgs)+2) //nolint:mnd
+	args = append(args, whereArgs...)
+	args = append(args, pageSize, offset)
+
+	rows, err := tx.QueryContext(dbCtx, query, args...)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
 // that don't have events
-func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	return p.getLastProcessedBlockWithTx(ctx, p.db)
 }
 
-func (p *processor) getLastProcessedBlockWithTx(ctx context.Context, tx dbtypes.Querier) (uint64, error) {
+func (p *processor) getLastProcessedBlockWithTx(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error) {
 	var lastProcessedBlockNum uint64
 
 	// Create a context with database timeout
@@ -1301,9 +737,9 @@ func (p *processor) getLastProcessedBlockWithTx(ctx context.Context, tx dbtypes.
 	row := tx.QueryRowContext(dbCtx, "SELECT num FROM block ORDER BY num DESC LIMIT 1;")
 	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return 0, false, nil
 	}
-	return lastProcessedBlockNum, err
+	return lastProcessedBlockNum, err == nil, err
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
@@ -1402,7 +838,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 	restoreQuery := `
 		SELECT *
 		FROM bridge_archive
-		WHERE deposit_count > $1 AND deposit_count <= $2
+		WHERE deposit_count >= $1 AND deposit_count <= $2
 		ORDER BY deposit_count ASC
 	`
 
@@ -1446,7 +882,7 @@ func (p *processor) restoreBackwardLETBridges(tx dbtypes.Txer, backwardLETs []*B
 		// cleanup bridge_archive
 		if _, err := tx.Exec(`
 			DELETE FROM bridge_archive
-			WHERE deposit_count > $1 AND deposit_count <= $2
+			WHERE deposit_count >= $1 AND deposit_count <= $2
 		`, next, prev); err != nil {
 			return err
 		}
@@ -1516,8 +952,9 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
-			p.log.Errorf("failed to convert event to Event type in block %d", block.Num)
-			return errors.New("failed to convert sync.Block.Event to Event")
+			err = fmt.Errorf("ProcessBlock: failed to convert event %T to Event type in block %d", e, block.Num)
+			p.log.Errorf(err.Error())
+			return err
 		}
 
 		if event.Bridge != nil {
@@ -1533,7 +970,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
 				if errors.Is(err, tree.ErrInvalidIndex) {
-					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
+					p.halt(fmt.Sprintf("error adding leaf %d in block %d to the exit tree: %v",
+						event.Bridge.DepositCount, block.Num, err))
 				}
 				return sync.ErrInconsistentState
 			}
@@ -1543,13 +981,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 			// Mark that this block has at least one bridge
 			hasAnyBridge = true
-		}
-
-		if event.Claim != nil {
-			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
-				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
-				return err
-			}
 		}
 
 		if event.TokenMapping != nil {
@@ -1574,56 +1005,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			}
 		}
 
-		if event.UnsetClaim != nil {
-			if err = meddler.Insert(tx, unsetClaimTableName, event.UnsetClaim); err != nil {
-				p.log.Errorf("failed to insert unset claim event at block %d: %v", block.Num, err)
-				return err
-			}
-		}
-
-		if event.SetClaim != nil {
-			if err = meddler.Insert(tx, setClaimTableName, event.SetClaim); err != nil {
-				p.log.Errorf("failed to insert set claim event at block %d: %v", block.Num, err)
-				return err
-			}
-		}
-
 		if event.BackwardLET != nil {
-			// we sanity check that the previous root matches the latest one in the exit tree
-			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.PreviousRoot); err != nil {
-				p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
-				return err
-			}
-
-			newDepositCount, leafIndex, err := normalizeDepositCount(event.BackwardLET.NewDepositCount)
-			if err != nil {
-				return err
-			}
-
-			// 1. archive and remove all the bridges whose
-			// deposit_count is greater than the one captured by the BackwardLET event
-			err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
-			if err != nil {
-				return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
-					newDepositCount, err)
-			}
-
-			// 2. remove all leafs from the exit tree with indices greater than leafIndex in the exit tree
-			if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex); err != nil {
-				p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
-					leafIndex, newDepositCount)
-				return err
-			}
-
-			// 4. sanity check that the new root matches the latest one in the exit tree
-			if err := p.sanityCheckLatestLER(tx, event.BackwardLET.NewRoot); err != nil {
-				p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
-				return err
-			}
-
-			// 5. insert the backward let event to designated table
-			if err = meddler.Insert(tx, backwardLETTableName, event.BackwardLET); err != nil {
-				p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", block.Num, err)
+			if err := p.insertBackwardLET(ctx, tx, block.Num, event.BackwardLET); err != nil {
 				return err
 			}
 		}
@@ -1638,7 +1021,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			blockPos = &newBlockPos
 		}
 	}
-
 	if err := tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
 		return err
@@ -1686,10 +1068,12 @@ func normalizeDepositCount(depositCount *big.Int) (uint64, uint32, error) {
 	return u64, u32, nil
 }
 
-// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than the provided one
+// archiveAndDeleteBridgesAbove archives and removes all the bridges whose depositCount is greater than or equal to
+// the provided one. After a BackwardLET to DC=N, leaves 0..N-1 remain valid; any bridge at deposit_count>=N
+// is no longer present in the exit tree and must be archived and removed.
 func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes.Txer, depositCount uint64) error {
 	// 1. Load candidates
-	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count > $1`, bridgeTableName)
+	query := fmt.Sprintf(`SELECT * FROM %s WHERE deposit_count >= $1`, bridgeTableName)
 	var bridges []*Bridge
 	if err := meddler.QueryAll(tx, &bridges, query, depositCount); err != nil {
 		return err
@@ -1702,9 +1086,20 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	deletedDepositCounts := make([]uint32, 0, len(bridges))
 	// 2. Archive
 	for _, b := range bridges {
-		b.Source = BridgeSourceBackwardLET
-		if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
-			return err
+		// Skip if already archived (can happen when a ForwardLET re-inserts a bridge that
+		// was previously archived by an earlier BackwardLET, and then a new BackwardLET
+		// targets the same deposit_count again).
+		var count int
+		if err := tx.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM bridge_archive WHERE deposit_count = ?", b.DepositCount,
+		).Scan(&count); err != nil {
+			return fmt.Errorf("failed to check bridge_archive for deposit_count %d: %w", b.DepositCount, err)
+		}
+		if count == 0 {
+			b.Source = BridgeSourceBackwardLET
+			if err := meddler.Insert(tx, "bridge_archive", b); err != nil {
+				return err
+			}
 		}
 		deletedDepositCounts = append(deletedDepositCounts, b.DepositCount)
 	}
@@ -1712,7 +1107,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	// 3. Delete originals
 	deleteQuery := fmt.Sprintf(`
 		DELETE FROM %s
-		WHERE deposit_count > $1`,
+		WHERE deposit_count >= $1`,
 		bridgeTableName)
 
 	_, err := tx.ExecContext(ctx, deleteQuery, depositCount)
@@ -1721,7 +1116,7 @@ func (p *processor) archiveAndDeleteBridgesAbove(ctx context.Context, tx dbtypes
 	}
 
 	if len(deletedDepositCounts) > 0 {
-		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count > %d: %v",
+		p.log.Debugf("BackwardLET archived + removed %d bridges with deposit_count >= %d: %v",
 			len(deletedDepositCounts), depositCount, deletedDepositCounts,
 		)
 	}
@@ -1743,10 +1138,74 @@ func (p *processor) sanityCheckLatestLER(tx dbtypes.Txer, ler common.Hash) error
 		lastRootHash = root.Hash
 	}
 
+	if ler == p.initialLER {
+		// if the provided LER matches the initial LER, the DB should be empty (ZeroHash)
+		if lastRootHash != aggkitcommon.ZeroHash {
+			return fmt.Errorf("local exit root mismatch: expected %s, got %s. Note that %s is used to represent the initial LER",
+				aggkitcommon.ZeroHash.String(), lastRootHash.String(), p.initialLER.String())
+		}
+		return nil
+	}
+
 	if lastRootHash != ler {
 		return fmt.Errorf("local exit root mismatch: expected %s, got %s",
 			ler.String(), lastRootHash.String())
 	}
+	return nil
+}
+
+// insertBackwardLET processes a BackwardLET event and updates the database accordingly
+func (p *processor) insertBackwardLET(ctx context.Context, tx dbtypes.Txer, blockNum uint64, event *BackwardLET) error {
+	// we sanity check that the previous root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.PreviousRoot); err != nil {
+		p.log.Errorf("failed to sanity check LER before processing BackwardLET: %v", err)
+		return err
+	}
+
+	newDepositCount, leafIndex, err := normalizeDepositCount(event.NewDepositCount)
+	if err != nil {
+		return err
+	}
+
+	// 1. archive and remove all bridges at deposit_count >= newDepositCount.
+	// After BackwardLET to NewDepositCount=N, leaves 0..N-1 remain valid;
+	// any bridge at DC=N or above is no longer in the exit tree.
+	err = p.archiveAndDeleteBridgesAbove(ctx, tx, newDepositCount)
+	if err != nil {
+		return fmt.Errorf("failed to delete bridges above deposit count %d: %w",
+			newDepositCount, err)
+	}
+
+	// 2. Remove leaves from the exit tree so that exactly newDepositCount leaves remain.
+	// BackwardToIndex(N) keeps positions 0..N (N+1 leaves). To keep exactly newDepositCount
+	// leaves (positions 0..newDepositCount-1), we call BackwardToIndex(newDepositCount-1).
+	// Special case: for newDepositCount==0 the tree must be fully cleared, so use Reorg(0)
+	// which deletes all root entries (block_num >= 0 = all rows).
+	if leafIndex == 0 {
+		if err := p.exitTree.Reorg(tx, 0); err != nil {
+			p.log.Errorf("failed to clear exit tree for BackwardLET to DC=0: %v", err)
+			return err
+		}
+	} else {
+		if err := p.exitTree.BackwardToIndex(ctx, tx, leafIndex-1); err != nil {
+			p.log.Errorf("failed to backward local exit tree to leaf index %d (deposit count: %d)",
+				leafIndex, newDepositCount)
+			return err
+		}
+	}
+
+	// 4. sanity check that the new root matches the latest one in the exit tree
+	if err := p.sanityCheckLatestLER(tx, event.NewRoot); err != nil {
+		p.log.Errorf("failed to sanity check LER after processing BackwardLET: %v", err)
+		return err
+	}
+
+	// 5. insert the backward let event to designated table
+	if err = meddler.Insert(tx, backwardLETTableName, event); err != nil {
+		p.log.Errorf("failed to insert backward local exit tree event at block %d: %v", blockNum, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -1764,7 +1223,13 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		return 0, fmt.Errorf("failed to decode new leaves in forward LET: %w", err)
 	}
 
-	newDepositCount := uint32(event.PreviousDepositCount.Uint64()) + 1
+	// PreviousDepositCount is the number of leaves already in the tree before this ForwardLET,
+	// which equals the deposit_count (leaf index) to assign to the first new leaf.
+	// When PreviousRoot matches the initial LER, the tree is empty, so the first leaf index is 0 (Go zero value).
+	var newDepositCount uint32
+	if event.PreviousRoot != p.initialLER {
+		newDepositCount = uint32(event.PreviousDepositCount.Uint64())
+	}
 	newBlockPos := event.BlockPos
 	if blockPos != nil {
 		newBlockPos = *blockPos
@@ -1798,23 +1263,31 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 		}
 
 		var (
-			txnHash             = event.TxnHash
-			txnSender, fromAddr common.Address
+			txnHash     = event.TxnHash
+			txnSender   common.Address
+			fromAddrPtr *common.Address
 		)
 
-		// let's see if we have exactly one archived bridge that matches the forward LET leaf
+		// let's see if we have exactly one archived bridge that matches the forward LET leaf.
 		// usually we should have exactly one match since to recover the LET on L2,
 		// we must have a backwards LET done which archives the bridges,
-		// and then a forward LET that re-adds them to the exit tree after fixing it
-		// however, in case of multiple matches, we cannot be sure which one to use,
-		// so we will just log and leave the txnSender and fromAddr fields empty
-		if len(archivedBridges) == 1 {
+		// and then a forward LET that re-adds them to the exit tree after fixing it.
+		// however, this is not always the case (e.g. when a ForwardLET is issued without
+		// a preceding BackwardLET). When no match is found, or when there are multiple matches
+		// (in which case we cannot determine which one to use), we leave the txnSender and
+		// fromAddr fields empty.
+		switch len(archivedBridges) {
+		case 1:
 			archivedBridge := archivedBridges[0]
 			txnHash = archivedBridge.TxHash
 			txnSender = archivedBridge.TxnSender
-			fromAddr = archivedBridge.FromAddress
-		} else if len(archivedBridges) > 1 {
-			p.log.Debugf("multiple archived bridges found that match forward LET leaf %s;"+
+			// It copies the fromAddr pointer, which could be nil
+			fromAddrPtr = archivedBridge.FromAddress
+		case 0:
+			p.log.Warnf("no archived bridge found that matches forward LET leaf %s; "+
+				"txnSender and fromAddr fields will be left empty", leaf.String())
+		default:
+			p.log.Warnf("multiple archived bridges found that match forward LET leaf %s; "+
 				"cannot set txnSender and fromAddr fields to the bridge", leaf.String())
 		}
 
@@ -1826,7 +1299,7 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 			newDepositCount,
 			txnHash,
 			txnSender,
-			fromAddr,
+			fromAddrPtr,
 		)
 
 		// insert the new bridge leaf into the local exit tree
@@ -1876,6 +1349,31 @@ func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, wher
 	err := p.db.QueryRowContext(dbCtx, fmt.Sprintf(
 		`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause,
 	)).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// GetTotalNumberOfRecordsWithParams returns the total number of records with parameterized WHERE clause
+// Note: whereClause must be constructed internally using parameterized placeholders ($1, $2, etc.)
+// and should never contain user input directly concatenated into the string.
+func (p *processor) GetTotalNumberOfRecordsWithParams(ctx context.Context, tableName,
+	whereClause string, args []interface{}) (int, error) {
+	if !tableNameRegex.MatchString(tableName) {
+		return 0, fmt.Errorf("invalid table name '%s' provided", tableName)
+	}
+
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	count := 0
+	// Safe: tableName is validated by regex, whereClause contains only SQL placeholders ($1, $2, etc.)
+	// constructed internally, and actual values are passed via args parameter
+	query := "SELECT COUNT(*) AS count FROM " + tableName + whereClause + ";"
+	err := p.db.QueryRowContext(dbCtx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
@@ -1943,53 +1441,106 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	return tokenMappings, nil
 }
 
-// getCompactedClaimsCount returns the count of claims with compaction logic applied.
-// - If unset_claim exists for a global_index, count all claims with that global_index
-// - If no unset_claim exists, count only one per global_index (compacted)
-// The count represents the total across all pages, matching what would be returned
-// if all pages were queried.
-func (p *processor) getCompactedClaimsCount(ctx context.Context, whereClause string) (int, error) {
-	// Create a context with database timeout
+// GetBridgeByDepositCount returns the bridge with the given deposit count from the bridge table,
+// falling back to bridge_archive if not found. Returns db.ErrNotFound if absent in both tables.
+func (p *processor) GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*Bridge, error) {
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	// Count query with compaction logic matching GetClaimsPaged:
-	// 1. Count all claims with unset_claim (no compaction, all returned)
-	// 2. Count distinct global_index for claims without unset_claim (compacted, one per global_index)
-	//nolint:gosec
-	query := fmt.Sprintf(`
-		WITH filtered_claims AS (
-			SELECT * FROM claim %s
-		)
-		SELECT
-			(SELECT COUNT(*) FROM filtered_claims
-			 WHERE EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = filtered_claims.global_index
-			 )) +
-			(SELECT COUNT(DISTINCT global_index) FROM filtered_claims
-			 WHERE NOT EXISTS (
-				SELECT 1 FROM unset_claim uc
-				WHERE uc.global_index = filtered_claims.global_index
-			 )) AS total_count;
-	`, whereClause)
-
-	count := 0
-	err := p.db.QueryRowContext(dbCtx, query).Scan(&count)
-	if err != nil {
-		return 0, err
+	for _, tq := range []struct{ name, query string }{
+		{bridgeTableName, bridgeByDepositCountSQL},
+		{"bridge_archive", archiveByDepositCountSQL},
+	} {
+		rows, err := p.db.QueryContext(dbCtx, tq.query, depositCount)
+		if err != nil {
+			if strings.Contains(err.Error(), "no such table") {
+				continue
+			}
+			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): %w", tq.name, err)
+		}
+		bridges := []*Bridge{}
+		scanErr := meddler.ScanAll(rows, &bridges)
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+		if scanErr != nil {
+			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): scan: %w", tq.name, scanErr)
+		}
+		if len(bridges) > 0 {
+			return bridges[0], nil
+		}
 	}
-
-	return count, nil
+	return nil, db.ErrNotFound
 }
 
-// buildNetworkIDsFilter builds SQL filter for the given network IDs
-func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
-	placeholders := make([]string, len(networkIDs))
-	for i, id := range networkIDs {
-		placeholders[i] = fmt.Sprintf("%d", id)
+// GetBridgesByContent returns all bridges (from both bridge and bridge_archive) that match
+// the given content fields (leaf_type, origin/destination addresses/networks, amount, metadata).
+// Errors from bridge_archive are silently ignored to match the original runbook behavior.
+func (p *processor) GetBridgesByContent(
+	ctx context.Context,
+	leafType uint8,
+	originAddress common.Address,
+	destinationNetwork uint32,
+	destinationAddress common.Address,
+	amount *big.Int,
+	metadata []byte,
+) ([]*Bridge, error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	amountStr := "0"
+	if amount != nil {
+		amountStr = amount.String()
 	}
-	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
+
+	// Addresses are stored as raw 20-byte BLOBs by meddler (common.Address is [20]byte,
+	// so meddler stores it as binary). Use addr[:] to pass raw bytes for correct BLOB comparison.
+	queryArgs := []any{leafType, originAddress[:], destinationNetwork, destinationAddress[:], amountStr}
+
+	// Choose pre-built constant queries based on whether metadata is present.
+	// Using compile-time constants avoids dynamic SQL construction.
+	type tableQuery struct{ name, bridge, archive string }
+	var tq tableQuery
+	if len(metadata) == 0 {
+		tq = tableQuery{"no-meta", bridgeByContentNoMetaSQL, archiveByContentNoMetaSQL}
+	} else {
+		tq = tableQuery{"with-meta", bridgeByContentWithMetaSQL, archiveByContentWithMetaSQL}
+		queryArgs = append(queryArgs, metadata)
+	}
+
+	p.log.Infof("[GetBridgesByContent] leaf_type=%d origin_addr=%s dest_net=%d"+
+		" dest_addr=%s amount=%s metadata_len=%d variant=%s",
+		leafType, originAddress.Hex(), destinationNetwork, destinationAddress.Hex(), amountStr, len(metadata), tq.name)
+
+	var result []*Bridge
+	for _, pair := range []struct{ name, query string }{
+		{bridgeTableName, tq.bridge},
+		{"bridge_archive", tq.archive},
+	} {
+		rows, err := p.db.QueryContext(dbCtx, pair.query, queryArgs...)
+		p.log.Infof("[GetBridgesByContent] table=%s", pair.name)
+		if err != nil {
+			if strings.Contains(err.Error(), "no such table") {
+				continue
+			}
+			return nil, fmt.Errorf("GetBridgesByContent (%s): %w", pair.name, err)
+		}
+		var bridges []*Bridge
+		scanErr := meddler.ScanAll(rows, &bridges)
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+		if scanErr != nil {
+			return nil, fmt.Errorf("GetBridgesByContent (%s): scan: %w", pair.name, scanErr)
+		}
+		p.log.Infof("[GetBridgesByContent] table=%s found=%d", pair.name, len(bridges))
+		for i, b := range bridges {
+			p.log.Infof("[GetBridgesByContent]   bridge[%d]: deposit_count=%d origin_addr=%s dest_addr=%s amount=%s metadata=%x",
+				i, b.DepositCount, b.OriginAddress.Hex(), b.DestinationAddress.Hex(), b.Amount.String(), b.Metadata)
+		}
+		result = append(result, bridges...)
+	}
+	return result, nil
 }
 
 // GenerateGlobalIndexForNetworkID builds the "global index" used to identify bridges and claims.
