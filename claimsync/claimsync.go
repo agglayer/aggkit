@@ -80,7 +80,7 @@ func NewClaimSync(
 		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
 	}
 
-	appender, err := buildAppender(ctx, ethClient, proc, cfg.BridgeAddr, deployment, logger)
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}

@@ -3,7 +3,6 @@ package claimsync
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -94,9 +93,7 @@ type bridgeDeployment struct {
 
 // buildAppender creates the LogAppenderMap for claim events from the bridge contract.
 func buildAppender(
-	ctx context.Context,
 	ethClient aggkittypes.EthClienter,
-	querier ClaimQuerier,
 	bridgeAddr common.Address,
 	deployment *bridgeDeployment,
 	log aggkitcommon.Logger,
@@ -112,7 +109,7 @@ func buildAppender(
 		legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
 
 	appender[claimEventSignature] = buildClaimEventHandler(
-		ctx, deployment.agglayerBridge, ethClient, querier, bridgeAddr, syncFullClaims, log)
+		deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log)
 
 	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
@@ -202,36 +199,13 @@ func buildOutdatedContractWarningHandler(
 
 // buildClaimEventHandler creates a handler for the ClaimEvent log.
 func buildClaimEventHandler(
-	ctx context.Context,
 	contract *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter,
-	querier ClaimQuerier,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	log aggkitcommon.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
-		// Skip if DetailedClaimEvent indexing has already started at this block
-		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(ctx, nil, DetailedClaimEvent)
-		if err != nil && !errors.Is(err, db.ErrNotFound) {
-			return fmt.Errorf("claimsync: failed checking DetailedClaimEvent boundary: %w", err)
-		}
-		if err == nil && l.BlockNumber >= boundaryBlock {
-			log.Debugf("claimsync: skipping ClaimEvent at block %d; DetailedClaimEvent started at %d",
-				l.BlockNumber, boundaryBlock)
-			return nil
-		}
-
-		// Skip if a DetailedClaimEvent for the same tx is already in the block's events
-		for _, raw := range b.Events {
-			if e, ok := raw.(Event); ok && e.Claim != nil &&
-				e.Claim.Type == DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
-				log.Debugf("claimsync: skipping ClaimEvent at block %d tx %s; DetailedClaimEvent already present",
-					l.BlockNumber, l.TxHash.Hex())
-				return nil
-			}
-		}
-
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("claimsync: error parsing ClaimEvent log: %w", err)
