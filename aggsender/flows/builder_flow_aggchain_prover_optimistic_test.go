@@ -9,7 +9,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
-	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -106,7 +105,6 @@ type AggchainProverFlowTestData struct {
 	mockStorage               *mocks.AggSenderStorage
 	mockL2BridgeQuerier       *mocks.BridgeQuerier
 	mockL1InfoTreeQuerier     *mocks.L1InfoTreeDataQuerier
-	mockL1Client              *aggkittypesmocks.BaseEthereumClienter
 	mockOptimisticModeQuerier *mocks.OptimisticModeQuerier
 	mockSigner                *mocks.Signer
 	mockFlowBase              *mocks.AggsenderFlowBaser
@@ -123,7 +121,6 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 		mockStorage:               mocks.NewAggSenderStorage(t),
 		mockL2BridgeQuerier:       mocks.NewBridgeQuerier(t),
 		mockL1InfoTreeQuerier:     mocks.NewL1InfoTreeDataQuerier(t),
-		mockL1Client:              aggkittypesmocks.NewBaseEthereumClienter(t),
 		mockOptimisticModeQuerier: mocks.NewOptimisticModeQuerier(t),
 		mockSigner:                mocks.NewSigner(t),
 		mockAggchainProofQuerier:  mocks.NewAggchainProofQuerier(t),
@@ -141,7 +138,6 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 		res.mockStorage,
 		res.mockL1InfoTreeQuerier,
 		res.mockL2BridgeQuerier,
-		res.mockL1Client,
 		res.mockSigner,
 		res.mockOptimisticModeQuerier,
 		res.mockAggchainProofQuerier,

@@ -99,7 +99,6 @@ func NewVerifierFlow(
 			nil, // storage is not used in validator
 			commonFlowComponents.L1InfoTreeDataQuerier,
 			commonFlowComponents.L2BridgeQuerier,
-			l1Client,
 			commonFlowComponents.Signer,
 			nil, // we don't query optimistic mode in validator
 			nil, // we don't query the prover in validator mode
