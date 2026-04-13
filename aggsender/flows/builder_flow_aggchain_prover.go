@@ -29,7 +29,6 @@ type AggchainProverBuilderFlow struct {
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	aggchainProofQuerier  types.AggchainProofQuerier
-	config                AggchainProverFlowConfig
 	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
 
@@ -78,7 +77,6 @@ func NewAggchainProverBuilderFlow(
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	l1Client aggkittypes.BaseEthereumClienter,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	aggchainProofQuerier types.AggchainProofQuerier,
@@ -94,7 +92,6 @@ func NewAggchainProverBuilderFlow(
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		l2BridgeQuerier:       l2BridgeQuerier,
-		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		aggchainProofQuerier:  aggchainProofQuerier,
