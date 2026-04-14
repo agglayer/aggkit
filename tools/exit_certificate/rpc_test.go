@@ -25,7 +25,7 @@ func TestBatchRPC_Success(t *testing.T) {
 			{JSONRPC: "2.0", ID: 2, Result: json.RawMessage(`"0xc8"`)},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(responses)
+		require.NoError(t, json.NewEncoder(w).Encode(responses))
 	}))
 	defer server.Close()
 
@@ -54,7 +54,7 @@ func TestBatchRPC_RPCError(t *testing.T) {
 			{JSONRPC: "2.0", ID: 1, Error: &jsonRPCError{Code: -32000, Message: "not found"}},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(responses)
+		require.NoError(t, json.NewEncoder(w).Encode(responses))
 	}))
 	defer server.Close()
 
@@ -74,7 +74,7 @@ func TestBatchRPC_HTTPError(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal server error"))
+		_, _ = w.Write([]byte("internal server error"))
 	}))
 	defer server.Close()
 
@@ -117,7 +117,7 @@ func TestSingleRPC_Success(t *testing.T) {
 			Result:  json.RawMessage(`"0x100"`),
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -140,7 +140,7 @@ func TestSingleRPC_RPCError(t *testing.T) {
 			Error:   &jsonRPCError{Code: -32600, Message: "invalid request"},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -168,7 +168,7 @@ func TestBatchRPC_SingleResponse(t *testing.T) {
 			Result:  json.RawMessage(`"0x42"`),
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 

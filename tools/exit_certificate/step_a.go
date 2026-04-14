@@ -27,10 +27,7 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 		return &StepAResult{}, nil
 	}
 
-	addresses, err := traceTransactions(ctx, cfg.L2RPCURL, txHashes, cfg.Options.ConcurrencyLimit)
-	if err != nil {
-		return nil, fmt.Errorf("trace transactions: %w", err)
-	}
+	addresses := traceTransactions(ctx, cfg.L2RPCURL, txHashes, cfg.Options.ConcurrencyLimit)
 
 	log.Infof("STEP A complete: %d unique addresses", len(addresses))
 	return &StepAResult{Addresses: addresses}, nil
@@ -123,7 +120,10 @@ func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 }
 
 // traceTransactions traces all transactions via a worker pool.
-func traceTransactions(ctx context.Context, rpcURL string, txHashes []common.Hash, concurrency int) ([]common.Address, error) {
+func traceTransactions(
+	ctx context.Context, rpcURL string,
+	txHashes []common.Hash, concurrency int,
+) []common.Address {
 	totalTx := len(txHashes)
 	log.Infof("Phase 3: Tracing %d transactions (concurrency=%d)...", totalTx, concurrency)
 
@@ -156,7 +156,7 @@ func traceTransactions(ctx context.Context, rpcURL string, txHashes []common.Has
 	sort.Slice(addresses, func(i, j int) bool {
 		return strings.ToLower(addresses[i].Hex()) < strings.ToLower(addresses[j].Hex())
 	})
-	return addresses, nil
+	return addresses
 }
 
 // traceOneTransaction traces a single transaction with prestateTracer (diffMode)

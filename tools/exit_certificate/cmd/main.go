@@ -12,7 +12,7 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "exit-certificate"
-	app.Usage = "Generate exit certificates for zkEVM chain migration — scans L2 state, computes balances, and builds a certificate that bridges all value back to L1"
+	app.Usage = "Generate exit certificates for zkEVM chain migration"
 	app.Version = aggkit.Version
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
