@@ -158,7 +158,10 @@ func fetchAllTokenBalances(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			balances, err := fetchTokenBalances(ctx, rpcURL, tok.WrappedTokenAddress, eoaAddresses, blockTag, batchSize, concurrency)
+			balances, err := fetchTokenBalances(
+				ctx, rpcURL, tok.WrappedTokenAddress,
+				eoaAddresses, blockTag, batchSize, concurrency,
+			)
 			if err != nil {
 				log.Warnf("Failed to fetch balances for token %s: %v", tok.WrappedTokenAddress.Hex(), err)
 				return
@@ -268,7 +271,7 @@ func buildAccumulated(
 	tokenBalances map[common.Address]map[common.Address]*big.Int,
 	tokenLookup map[common.Address]WrappedToken,
 ) []AccumulatedBalance {
-	var result []AccumulatedBalance
+	result := make([]AccumulatedBalance, 0, len(tokenBalances)+1)
 
 	totalETH := new(big.Int)
 	for _, bal := range ethBalances {

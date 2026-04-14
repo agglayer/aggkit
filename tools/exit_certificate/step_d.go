@@ -22,11 +22,16 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 	destNetwork := cfg.DestinationNetwork
 	exitAddr := cfg.ExitAddress
 
-	var bridgeExits []*agglayertypes.BridgeExit
+	bridgeExits := make([]*agglayertypes.BridgeExit, 0,
+		len(stepB.EOABalances)+len(stepC.SCLockedValues))
 
 	// Part 1: EOA balance exits
-	log.Infof("Processing %d EOA balance entries...", len(stepB.EOABalances))
-	for _, eoa := range stepB.EOABalances {
+	totalEOAs := len(stepB.EOABalances)
+	log.Infof("Processing %d EOA balance entries...", totalEOAs)
+	for i, eoa := range stepB.EOABalances {
+		if totalEOAs > 0 && (i+1)%(max(totalEOAs/logGranularity, 1)) == 0 {
+			log.Infof("  EOA progress: %d/%d", i+1, totalEOAs)
+		}
 		if amount := parseDecimalBigInt(eoa.ETHBalance); amount.Sign() > 0 {
 			bridgeExits = append(bridgeExits, makeBridgeExit(0, common.Address{}, destNetwork, eoa.Address, amount))
 		}
