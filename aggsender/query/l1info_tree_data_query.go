@@ -155,7 +155,7 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 	}
 
 	if err := tree.VerifyProof(l1Info.Hash, gerToL1Proof, l1Info.L1InfoTreeIndex, rootFromWhichToProve); err != nil {
-		return nil, treetypes.Proof{}, fmt.Errorf("%w: %v", ErrGERNotProvableAgainstRoot, err)
+		return nil, treetypes.Proof{}, fmt.Errorf("%w: %w", ErrGERNotProvableAgainstRoot, err)
 	}
 
 	return l1Info, gerToL1Proof, nil

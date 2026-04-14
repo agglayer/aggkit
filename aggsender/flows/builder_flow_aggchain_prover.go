@@ -414,7 +414,8 @@ func (a *AggchainProverBuilderFlow) canReuseRetryProof(
 
 	expectedLastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
 	if proof.LastProvenBlock != expectedLastProvenBlock {
-		a.log.Warnf("aggchainProverFlow - rejecting cached retry proof reuse because LastProvenBlock mismatch. expected=%d got=%d",
+		a.log.Warnf(
+			"aggchainProverFlow - rejecting cached retry proof reuse because LastProvenBlock mismatch. expected=%d got=%d",
 			expectedLastProvenBlock, proof.LastProvenBlock)
 		return false
 	}
