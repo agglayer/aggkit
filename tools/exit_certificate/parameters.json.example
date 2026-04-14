@@ -1,0 +1,18 @@
+{
+    "l2RpcUrl": "https://your-l2-rpc.example.com",
+    "l1RpcUrl": "https://your-l1-rpc.example.com",
+    "l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+    "l1BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+    "l2NetworkId": 1,
+    "targetBlock": "latest",
+    "exitAddress": "0x0000000000000000000000000000000000000001",
+    "destinationNetwork": 0,
+    "options": {
+        "blockRange": 10000,
+        "concurrencyLimit": 200,
+        "rpcBatchSize": 200,
+        "rpcDelayMs": 10,
+        "outputDir": "./output",
+        "l1StartBlock": 0
+    }
+}
