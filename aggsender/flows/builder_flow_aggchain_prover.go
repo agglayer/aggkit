@@ -324,6 +324,8 @@ func (a *AggchainProverBuilderFlow) checkBlockRangeAdjustmentAfterProof(
 	}
 
 	if adjustedBuildParams.FromBlock != buildParams.FromBlock || adjustedBuildParams.ToBlock != buildParams.ToBlock {
+		a.log.Warnf("aggchainProverFlow - unexpected block range adjustment required after prover result: [%d,%d] -> [%d,%d]",
+			buildParams.FromBlock, buildParams.ToBlock, adjustedBuildParams.FromBlock, adjustedBuildParams.ToBlock)
 		return fmt.Errorf("aggchainProverFlow - block range adjustment required after prover result: [%d,%d] -> [%d,%d]",
 			buildParams.FromBlock, buildParams.ToBlock, adjustedBuildParams.FromBlock, adjustedBuildParams.ToBlock)
 	}
