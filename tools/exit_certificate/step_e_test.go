@@ -16,7 +16,7 @@ func TestDecodeBridgeEvent_Valid(t *testing.T) {
 	// Layout: leafType(32) | originNetwork(32) | originAddress(32) | destNetwork(32) |
 	//         destAddress(32) | amount(32) | metadataOffset(32) | depositCount(32) |
 	//         metadataLength(32) | metadata...
-	data := make([]byte, 9*32) //nolint:mnd
+	data := make([]byte, 9*32)
 
 	// leafType = 0
 	data[31] = 0

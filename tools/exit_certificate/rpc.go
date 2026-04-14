@@ -14,8 +14,12 @@ import (
 )
 
 const (
-	defaultRetries = 3
-	maxBackoffMs   = 10000
+	defaultRetries     = 3
+	maxBackoffMs       = 10000
+	baseBackoffMs      = 1000
+	backoffExponent    = 2
+	idleConnTimeoutSec = 90
+	httpTimeoutSec     = 120
 )
 
 // httpClient uses unlimited per-host connections, matching Node.js behavior.
@@ -25,9 +29,9 @@ var httpClient = &http.Client{
 		MaxIdleConns:        0,
 		MaxIdleConnsPerHost: 0,
 		MaxConnsPerHost:     0,
-		IdleConnTimeout:     90 * time.Second,
+		IdleConnTimeout:     idleConnTimeoutSec * time.Second,
 	},
-	Timeout: 120 * time.Second,
+	Timeout: httpTimeoutSec * time.Second,
 }
 
 type jsonRPCRequest struct {
@@ -166,7 +170,10 @@ func doRPCWithRetry(ctx context.Context, url string, body []byte, retries int) (
 }
 
 func sleepWithBackoff(attempt int) {
-	ms := math.Min(float64(1000*int(math.Pow(2, float64(attempt)))), float64(maxBackoffMs))
+	ms := math.Min(
+		float64(baseBackoffMs*int(math.Pow(backoffExponent, float64(attempt)))),
+		float64(maxBackoffMs),
+	)
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
 
@@ -178,7 +185,10 @@ type indexedBatchResult struct {
 
 // concurrentBatchRPC splits calls into batchSize chunks and processes them
 // through a worker pool. Workers immediately pick up the next batch when done.
-func concurrentBatchRPC(ctx context.Context, url string, allCalls []RPCCall, batchSize, concurrency int) ([]json.RawMessage, error) {
+func concurrentBatchRPC(
+	ctx context.Context, url string, allCalls []RPCCall,
+	batchSize, concurrency int,
+) ([]json.RawMessage, error) {
 	if len(allCalls) == 0 {
 		return nil, nil
 	}

@@ -12,12 +12,22 @@ import (
 
 func TestParseBlockNumber_Decimal(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, uint64(12345), parseBlockNumber("12345"))
+	n, err := parseBlockNumber("12345")
+	require.NoError(t, err)
+	require.Equal(t, uint64(12345), n)
 }
 
 func TestParseBlockNumber_Hex(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, uint64(255), parseBlockNumber("0xff"))
+	n, err := parseBlockNumber("0xff")
+	require.NoError(t, err)
+	require.Equal(t, uint64(255), n)
+}
+
+func TestParseBlockNumber_Invalid(t *testing.T) {
+	t.Parallel()
+	_, err := parseBlockNumber("abc")
+	require.Error(t, err)
 }
 
 func TestSaveAndLoadJSON(t *testing.T) {
@@ -72,8 +82,8 @@ func TestCertificateJSON_ToAgglayerCertificate(t *testing.T) {
 	})
 
 	certJSON := &certificateJSON{
-		NetworkID:       1,
-		BridgeExits:     bridgeExitsJSON,
+		NetworkID:   1,
+		BridgeExits: bridgeExitsJSON,
 	}
 
 	cert := certJSON.toAgglayerCertificate()

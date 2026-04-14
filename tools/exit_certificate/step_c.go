@@ -37,7 +37,7 @@ func RunStepCWithEntries(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResul
 		eoaByToken[key] = parseDecimalBigInt(entry.TotalBalance)
 	}
 
-	var scLockedValues []SCLockedValue
+	scLockedValues := make([]SCLockedValue, 0, len(lbtByToken))
 	nonZeroCount := 0
 
 	for tokenKey, lbt := range lbtByToken {
@@ -80,6 +80,11 @@ func RunStepCWithEntries(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResul
 	return &StepCResult{SCLockedValues: scLockedValues}, nil
 }
 
+// indexByAddress indexes LBT entries by lowercased hex address.
+// The native token entry (WrappedTokenAddress == zero address) is intentionally
+// included: it maps to "0x0000...0000" and is treated the same as wrapped tokens
+// for SC-locked value computation. Step D handles the native token distinction
+// when building BridgeExit entries.
 func indexByAddress(entries []LBTEntry) map[string]LBTEntry {
 	m := make(map[string]LBTEntry, len(entries))
 	for _, e := range entries {

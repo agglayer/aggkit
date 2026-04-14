@@ -15,6 +15,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const (
+	dirPermissions  = 0o755
+	filePermissions = 0o600
+)
+
 // Run is the CLI entry point.
 func Run(c *cli.Context) error {
 	ctx := context.Background()
@@ -50,7 +55,11 @@ func resolveBlockA(ctx context.Context, cfg *Config) error {
 		log.Infof("Resolved targetBlock=\"latest\" → %d", cfg.ResolvedTargetBlock)
 		return nil
 	}
-	cfg.ResolvedTargetBlock = parseBlockNumber(cfg.TargetBlock)
+	blockNum, err := parseBlockNumber(cfg.TargetBlock)
+	if err != nil {
+		return fmt.Errorf("invalid targetBlock %q: %w", cfg.TargetBlock, err)
+	}
+	cfg.ResolvedTargetBlock = blockNum
 	return nil
 }
 
@@ -67,15 +76,15 @@ func resolveLatestBlock(ctx context.Context, rpcURL string) (uint64, error) {
 }
 
 // parseBlockNumber parses a block number string (decimal or 0x-hex).
-func parseBlockNumber(s string) uint64 {
+func parseBlockNumber(s string) (uint64, error) {
 	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-		return hexToUint64(s)
+		return hexToUint64(s), nil
 	}
 	var n uint64
 	if _, err := fmt.Sscanf(s, "%d", &n); err == nil {
-		return n
+		return n, nil
 	}
-	return 0
+	return 0, fmt.Errorf("not a valid block number (expected decimal or 0x-hex)")
 }
 
 // --- Full pipeline ---
@@ -83,7 +92,7 @@ func parseBlockNumber(s string) uint64 {
 // runAll executes: 0 → A → B → C → D → E.
 func runAll(ctx context.Context, cfg *Config) error {
 	dir := cfg.Options.OutputDir
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, dirPermissions); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}
 
@@ -191,7 +200,7 @@ func logPipelineConfig(cfg *Config) {
 
 func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 	dir := cfg.Options.OutputDir
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, dirPermissions); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}
 
@@ -329,7 +338,7 @@ func saveJSON(dir, filename string, data any) {
 		log.Errorf("Failed to marshal %s: %v", filename, err)
 		return
 	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
+	if err := os.WriteFile(path, content, filePermissions); err != nil {
 		log.Errorf("Failed to write %s: %v", path, err)
 		return
 	}
