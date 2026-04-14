@@ -36,10 +36,16 @@ type Config struct {
 	ResolvedTargetBlock uint64 `json:"-"`
 }
 
+const (
+	defaultBlockRange       = 5000
+	defaultConcurrencyLimit = 20
+	defaultRPCBatchSize     = 200
+)
+
 var defaultOptions = Options{
-	BlockRange:       5000,
-	ConcurrencyLimit: 20,
-	RPCBatchSize:     200,
+	BlockRange:       defaultBlockRange,
+	ConcurrencyLimit: defaultConcurrencyLimit,
+	RPCBatchSize:     defaultRPCBatchSize,
 	RPCDelayMs:       0,
 	OutputDir:        "output",
 	L1StartBlock:     0,

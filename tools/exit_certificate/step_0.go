@@ -17,7 +17,7 @@ var (
 )
 
 const (
-	totalSupplySelector    = "0x18160ddd" // totalSupply()
+	totalSupplySelector     = "0x18160ddd" // totalSupply()
 	gasTokenAddressSelector = "0x3c351e10" // gasTokenAddress()
 	gasTokenNetworkSelector = "0x3e197043" // gasTokenNetwork()
 	wethTokenSelector       = "0xa25927e2" // WETHToken()
@@ -39,15 +39,15 @@ func RunStep0(ctx context.Context, cfg *Config) ([]LBTEntry, error) {
 	log.Infof("Block number:   %d", cfg.ResolvedTargetBlock)
 
 	// 1. Scan for NewWrappedToken events
-	events, err := fetchNewWrappedTokenEvents(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("fetch NewWrappedToken events: %w", err)
-	}
+	events := fetchNewWrappedTokenEvents(ctx, cfg)
 	log.Infof("Found %d NewWrappedToken events", len(events))
 
 	// 2. Fetch totalSupply for each token concurrently
 	log.Infof("Fetching totalSupply for %d tokens...", len(events))
-	entries, err := fetchTotalSupplies(ctx, rpcURL, events, blockTag, cfg.Options.ConcurrencyLimit)
+	entries, err := fetchTotalSupplies(
+		ctx, rpcURL, events, blockTag,
+		cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("fetch total supplies: %w", err)
 	}
@@ -80,7 +80,7 @@ type wrappedTokenEvent struct {
 }
 
 // fetchNewWrappedTokenEvents scans for NewWrappedToken events via a worker pool.
-func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config) ([]wrappedTokenEvent, error) {
+func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config) []wrappedTokenEvent {
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
 	toBlock := cfg.ResolvedTargetBlock
@@ -111,7 +111,7 @@ func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config) ([]wrappedToke
 		log.Warnf("Some NewWrappedToken queries failed: %v", err)
 	}
 
-	return allEvents, nil
+	return allEvents
 }
 
 // fetchWrappedTokenEventsInRange fetches NewWrappedToken logs in a single block range.
@@ -159,8 +159,13 @@ func decodeNewWrappedTokenEvent(dataHex string) (wrappedTokenEvent, error) {
 		return wrappedTokenEvent{}, fmt.Errorf("data too short: %d bytes", len(data))
 	}
 
+	originNetwork, err := safeUint32(new(big.Int).SetBytes(data[0:32]))
+	if err != nil {
+		return wrappedTokenEvent{}, fmt.Errorf("originNetwork: %w", err)
+	}
+
 	return wrappedTokenEvent{
-		OriginNetwork:      uint32(new(big.Int).SetBytes(data[0:32]).Uint64()),
+		OriginNetwork:      originNetwork,
 		OriginTokenAddress: common.BytesToAddress(data[32:64]),
 		WrappedTokenAddr:   common.BytesToAddress(data[64:96]),
 	}, nil
@@ -169,7 +174,8 @@ func decodeNewWrappedTokenEvent(dataHex string) (wrappedTokenEvent, error) {
 // fetchTotalSupplies queries totalSupply() for each token via concurrentBatchRPC.
 func fetchTotalSupplies(
 	ctx context.Context, rpcURL string,
-	events []wrappedTokenEvent, blockTag string, concurrency int,
+	events []wrappedTokenEvent, blockTag string,
+	rpcBatchSize, concurrency int,
 ) ([]LBTEntry, error) {
 	if len(events) == 0 {
 		return nil, nil
@@ -186,7 +192,7 @@ func fetchTotalSupplies(
 		}
 	}
 
-	batchSize := max(len(calls)/concurrency, 1)
+	batchSize := min(max(len(calls)/concurrency, 1), rpcBatchSize)
 	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency)
 	if err != nil {
 		return nil, err
@@ -209,7 +215,10 @@ func fetchTotalSupplies(
 }
 
 // computeNativeBalance computes: balance(bridge, block 0) - balance(bridge, targetBlock).
-func computeNativeBalance(ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string) (*LBTEntry, error) {
+func computeNativeBalance(
+	ctx context.Context, rpcURL string,
+	bridgeAddr common.Address, blockTag string,
+) (*LBTEntry, error) {
 	calls := []RPCCall{
 		{Method: "eth_getBalance", Params: []any{bridgeAddr.Hex(), "0x0"}},
 		{Method: "eth_getBalance", Params: []any{bridgeAddr.Hex(), blockTag}},
@@ -249,10 +258,18 @@ func computeNativeBalance(ctx context.Context, rpcURL string, bridgeAddr common.
 }
 
 // fetchGasTokenInfo calls gasTokenNetwork() and gasTokenAddress() on the bridge.
-func fetchGasTokenInfo(ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string) (uint32, common.Address, error) {
+func fetchGasTokenInfo(
+	ctx context.Context, rpcURL string,
+	bridgeAddr common.Address, blockTag string,
+) (uint32, common.Address, error) {
+	bridgeHex := bridgeAddr.Hex()
 	calls := []RPCCall{
-		{Method: "eth_call", Params: []any{map[string]string{"to": bridgeAddr.Hex(), "data": gasTokenNetworkSelector}, blockTag}},
-		{Method: "eth_call", Params: []any{map[string]string{"to": bridgeAddr.Hex(), "data": gasTokenAddressSelector}, blockTag}},
+		{Method: "eth_call", Params: []any{
+			map[string]string{"to": bridgeHex, "data": gasTokenNetworkSelector}, blockTag,
+		}},
+		{Method: "eth_call", Params: []any{
+			map[string]string{"to": bridgeHex, "data": gasTokenAddressSelector}, blockTag,
+		}},
 	}
 
 	results, err := batchRPC(ctx, rpcURL, calls, defaultRetries)
@@ -277,7 +294,10 @@ func fetchGasTokenInfo(ctx context.Context, rpcURL string, bridgeAddr common.Add
 }
 
 // fetchWETHBalance calls WETHToken() and fetches its totalSupply if non-zero.
-func fetchWETHBalance(ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string) (*LBTEntry, error) {
+func fetchWETHBalance(
+	ctx context.Context, rpcURL string,
+	bridgeAddr common.Address, blockTag string,
+) (*LBTEntry, error) {
 	result, err := singleRPC(ctx, rpcURL, "eth_call", []any{
 		map[string]string{"to": bridgeAddr.Hex(), "data": wethTokenSelector},
 		blockTag,

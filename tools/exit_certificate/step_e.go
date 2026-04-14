@@ -23,15 +23,26 @@ type L2ClaimEvent struct {
 	Amount             *big.Int       `json:"amount"`
 }
 
+const (
+	// globalIndexMainnetBit is the bit position of the mainnet flag in the globalIndex.
+	globalIndexMainnetBit = 64
+	// globalIndexLeafMask extracts the 32-bit leaf index from a globalIndex.
+	globalIndexLeafMask = 0xFFFFFFFF
+)
+
 // mainnetFlag is the bit set in globalIndex for L1 (mainnet) deposits.
 // GlobalIndex: | 191 bits (zero) | 1 bit mainnetFlag | 32 bits rollupIndex | 32 bits leafIndex |
-var mainnetFlag = new(big.Int).Lsh(big.NewInt(1), 64) //nolint:mnd
+var mainnetFlag = new(big.Int).Lsh(big.NewInt(1), globalIndexMainnetBit)
 
 // bridgeEventTopic is keccak256("BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)").
 var bridgeEventTopic = common.HexToHash("0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39f97571d4d7")
 
 // RunStepE finds unclaimed L1→L2 bridge deposits and adds them to the exit certificate.
-func RunStepE(ctx context.Context, cfg *Config, l2ClaimEvents []L2ClaimEvent, certificate *agglayertypes.Certificate) (*StepEResult, error) {
+func RunStepE(
+	ctx context.Context, cfg *Config,
+	l2ClaimEvents []L2ClaimEvent,
+	certificate *agglayertypes.Certificate,
+) (*StepEResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP E — Unclaimed L1→L2 bridge deposits")
 	log.Info("═══════════════════════════════════════════")
@@ -49,10 +60,7 @@ func RunStepE(ctx context.Context, cfg *Config, l2ClaimEvents []L2ClaimEvent, ce
 	log.Infof("L1 latest block: %d, scanning from %d", l1LatestBlock, cfg.Options.L1StartBlock)
 
 	// Fetch L1 BridgeEvent events targeting our L2
-	l1Deposits, err := fetchL1BridgeEvents(ctx, cfg, l1LatestBlock)
-	if err != nil {
-		return nil, fmt.Errorf("fetch L1 bridge events: %w", err)
-	}
+	l1Deposits := fetchL1BridgeEvents(ctx, cfg, l1LatestBlock)
 	log.Infof("L1→L2 deposits found: %d", len(l1Deposits))
 
 	// Build claimed set from L2 ClaimEvents
@@ -69,7 +77,7 @@ func RunStepE(ctx context.Context, cfg *Config, l2ClaimEvents []L2ClaimEvent, ce
 	log.Infof("Unclaimed L1→L2 deposits: %d", len(unclaimed))
 
 	// Convert to BridgeExits
-	var newExits []*agglayertypes.BridgeExit
+	newExits := make([]*agglayertypes.BridgeExit, 0, len(unclaimed))
 	for _, dep := range unclaimed {
 		if dep.Amount == nil || dep.Amount.Sign() == 0 {
 			continue
@@ -111,7 +119,7 @@ func RunStepE(ctx context.Context, cfg *Config, l2ClaimEvents []L2ClaimEvent, ce
 }
 
 func buildClaimedSet(claims []L2ClaimEvent) map[uint32]struct{} {
-	leafIndexMask := new(big.Int).SetUint64(0xFFFFFFFF) //nolint:mnd
+	leafIndexMask := new(big.Int).SetUint64(globalIndexLeafMask)
 	claimed := make(map[uint32]struct{})
 	for _, c := range claims {
 		if c.GlobalIndex == nil {
@@ -126,13 +134,13 @@ func buildClaimedSet(claims []L2ClaimEvent) map[uint32]struct{} {
 }
 
 // fetchL1BridgeEvents scans L1 for BridgeEvents using a worker pool.
-func fetchL1BridgeEvents(ctx context.Context, cfg *Config, l1LatestBlock uint64) ([]L1Deposit, error) {
+func fetchL1BridgeEvents(ctx context.Context, cfg *Config, l1LatestBlock uint64) []L1Deposit {
 	fromBlock := cfg.Options.L1StartBlock
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
 
 	if l1LatestBlock < fromBlock {
-		return nil, nil
+		return nil
 	}
 
 	type blockRangeJob struct{ from, to uint64 }
@@ -162,7 +170,7 @@ func fetchL1BridgeEvents(ctx context.Context, cfg *Config, l1LatestBlock uint64)
 	}
 
 	log.Infof("L1 BridgeEvent: %d events found", len(allDeposits))
-	return allDeposits, nil
+	return allDeposits
 }
 
 // fetchBridgeEventsInRange fetches BridgeEvent logs in a single block range.
@@ -205,35 +213,65 @@ func fetchBridgeEventsInRange(
 }
 
 // decodeBridgeEvent decodes ABI-encoded BridgeEvent data.
-// Layout: leafType | originNetwork | originAddress | destNetwork | destAddress | amount | metadataOffset | depositCount | metadata...
-func decodeBridgeEvent(dataHex, blockNumberHex, txHashHex string) (L1Deposit, error) {
+// Layout: leafType | originNetwork | originAddress | destNetwork |
+//
+//	destAddress | amount | metadataOffset | depositCount | metadata...
+func decodeBridgeEvent(
+	dataHex, blockNumberHex, txHashHex string,
+) (L1Deposit, error) {
 	data := common.FromHex(dataHex)
-	const minDataLen = 256
+	const (
+		minDataLen  = 256
+		abiWordSize = 32
+	)
 	if len(data) < minDataLen {
 		return L1Deposit{}, fmt.Errorf("data too short: %d bytes", len(data))
 	}
 
-	// Dynamic metadata: offset at [192:224], then length + bytes
 	metadataOffset := new(big.Int).SetBytes(data[192:224]).Uint64()
 	var metadata []byte
-	if metadataOffset+32 <= uint64(len(data)) {
-		metadataLen := new(big.Int).SetBytes(data[metadataOffset : metadataOffset+32]).Uint64()
-		metadataStart := metadataOffset + 32
+	if metadataOffset+abiWordSize <= uint64(len(data)) {
+		metadataLen := new(big.Int).SetBytes(
+			data[metadataOffset : metadataOffset+abiWordSize],
+		).Uint64()
+		if metadataLen > maxMetadataSize {
+			return L1Deposit{}, fmt.Errorf(
+				"metadata too large: %d bytes (max %d)", metadataLen, maxMetadataSize,
+			)
+		}
+		metadataStart := metadataOffset + abiWordSize
 		if metadataStart+metadataLen <= uint64(len(data)) {
 			metadata = make([]byte, metadataLen)
 			copy(metadata, data[metadataStart:metadataStart+metadataLen])
 		}
 	}
 
+	leafType, err := safeUint8(new(big.Int).SetBytes(data[0:32]))
+	if err != nil {
+		return L1Deposit{}, fmt.Errorf("leafType: %w", err)
+	}
+	originNetwork, err := safeUint32(new(big.Int).SetBytes(data[32:64]))
+	if err != nil {
+		return L1Deposit{}, fmt.Errorf("originNetwork: %w", err)
+	}
+	destNetwork, err := safeUint32(new(big.Int).SetBytes(data[96:128]))
+	if err != nil {
+		return L1Deposit{}, fmt.Errorf("destNetwork: %w", err)
+	}
+	depositCount, err := safeUint32(new(big.Int).SetBytes(data[224:256]))
+	if err != nil {
+		return L1Deposit{}, fmt.Errorf("depositCount: %w", err)
+	}
+
 	return L1Deposit{
-		LeafType:           uint8(new(big.Int).SetBytes(data[0:32]).Uint64()),
-		OriginNetwork:      uint32(new(big.Int).SetBytes(data[32:64]).Uint64()),
+		LeafType:           leafType,
+		OriginNetwork:      originNetwork,
 		OriginAddress:      common.BytesToAddress(data[64:96]),
-		DestinationNetwork: uint32(new(big.Int).SetBytes(data[96:128]).Uint64()),
+		DestinationNetwork: destNetwork,
 		DestinationAddress: common.BytesToAddress(data[128:160]),
 		Amount:             new(big.Int).SetBytes(data[160:192]),
 		Metadata:           metadata,
-		DepositCount:       uint32(new(big.Int).SetBytes(data[224:256]).Uint64()),
+		DepositCount:       depositCount,
 		BlockNumber:        hexToUint64(blockNumberHex),
 		TxHash:             common.HexToHash(txHashHex),
 	}, nil

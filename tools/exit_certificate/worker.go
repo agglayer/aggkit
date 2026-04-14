@@ -6,7 +6,12 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
-const workerPoolChannelCap = 10000
+const (
+	workerPoolChannelCap    = 10000
+	resultChannelMultiplier = 2
+	logGranularity          = 20
+	percentMultiplier       = 100
+)
 
 // runWorkerPool fans out work across `concurrency` goroutines.
 // It feeds `jobs` into a channel, workers call `fn` for each job, and results
@@ -38,7 +43,7 @@ func runWorkerPool[J any, R any](
 		close(jobCh)
 	}()
 
-	resultCh := make(chan result, concurrency*2)
+	resultCh := make(chan result, concurrency*resultChannelMultiplier)
 	var wg sync.WaitGroup
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
@@ -56,7 +61,7 @@ func runWorkerPool[J any, R any](
 	}()
 
 	total := len(jobs)
-	logInterval := total / 20
+	logInterval := total / logGranularity
 	if logInterval < 1 {
 		logInterval = 1
 	}
@@ -75,7 +80,7 @@ func runWorkerPool[J any, R any](
 		collect(r.val)
 
 		if processed%logInterval == 0 || processed == total {
-			pct := float64(processed) / float64(total) * 100
+			pct := float64(processed) / float64(total) * percentMultiplier
 			log.Infof("  %s: %d/%d [%.0f%%]", label, processed, total, pct)
 		}
 	}
