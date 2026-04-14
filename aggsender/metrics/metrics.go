@@ -12,7 +12,6 @@ const (
 	aggsenderValidatorLabel     = "aggsender_validator"
 	numberOfCertificatesSent    = "number_of_certificates_sent"
 	numberOfCertificatesInError = "number_of_certificates_in_error"
-	numberOfSendingRetries      = "number_of_sending_retries"
 	numberOfCertificatesSettled = "number_of_certificates_settled"
 	certificateBuildTime        = "certificate_build_time"
 	proverTime                  = "prover_time"
@@ -36,11 +35,6 @@ func Register() {
 			Namespace: namespace,
 			Name:      numberOfCertificatesInError,
 			Help:      "Number of certificates in error",
-		},
-		{
-			Namespace: namespace,
-			Name:      numberOfSendingRetries,
-			Help:      "Number of sending retries",
 		},
 		{
 			Namespace: namespace,
@@ -120,11 +114,6 @@ func CertificateSent() {
 // InError increments the counter for the number of certificates in error
 func InError() {
 	prometheus.CounterInc(numberOfCertificatesInError)
-}
-
-// SendingRetry increments the counter for the number of sending retries
-func SendingRetry() {
-	prometheus.CounterInc(numberOfSendingRetries)
 }
 
 // Settled increments the counter for the number of certificates settled

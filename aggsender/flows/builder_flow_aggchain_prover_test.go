@@ -596,7 +596,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
 				mockL2BridgeQuerier,
-				nil,
 				mockSigner,
 				mockOptimistic,
 				mockAggchainProofQuerier,
@@ -719,7 +718,6 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // mockStorage
 				nil, // mockL1InfoTreeDataQuerier
 				nil, // mockL2BridgeQuerier
-				nil, // mockOptimistic
 				nil, // mockSigner
 				nil, // optimisticModeQuerier
 				nil, // aggchainProofQuerier
@@ -835,7 +833,6 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				nil, // mockStorage
 				nil, // mockL1InfoTreeDataQuerier
 				mockL2BridgeQuerier,
-				nil, // mockOptimistic
 				mockSigner,
 				nil, // optimisticModeQuerier
 				nil, // aggchainProofQuerier
