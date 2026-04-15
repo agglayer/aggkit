@@ -9,6 +9,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const defaultScanChunkSize = uint64(5000)
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "remove-ger"
@@ -52,7 +54,7 @@ func main() {
 				&cli.Uint64Flag{
 					Name:  "chunk-size",
 					Usage: "Maximum L2 block range per eth_getLogs query",
-					Value: 5000,
+					Value: defaultScanChunkSize,
 				},
 			},
 			Action: remove_ger.RunScanInvalidClaims,

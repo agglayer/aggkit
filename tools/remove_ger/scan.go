@@ -24,12 +24,18 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const defaultScanChunkSize uint64 = 5000
+const (
+	defaultScanChunkSize = uint64(5000)
+	methodSelectorSize   = 4
+	etrogClaimArgsLen    = 11
+	preEtrogClaimArgsLen = 10
+)
 
 var (
 	scanClaimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	scanDetailedClaimEventSignature = crypto.Keccak256Hash([]byte(
-		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint8,uint32,address,uint32,address,uint256,bytes)",
+		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint8,uint32,address," +
+			"uint32,address,uint256,bytes)",
 	))
 )
 
@@ -381,7 +387,7 @@ func isClaimStillActive(ctx context.Context, l2Bridge l2ClaimStateLookup, global
 }
 
 func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash, error) {
-	if len(txData) < 4 {
+	if len(txData) < methodSelectorSize {
 		return common.Hash{}, fmt.Errorf("tx input too short")
 	}
 
@@ -392,7 +398,7 @@ func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash,
 
 	claim := &claimsynctypes.Claim{GlobalIndex: globalIndex}
 	switch len(unpacked) {
-	case 11:
+	case etrogClaimArgsLen:
 		found, err := claim.DecodeEtrogCalldata(unpacked)
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("decode %s calldata: %w", method.Name, err)
@@ -401,7 +407,7 @@ func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash,
 			return common.Hash{}, fmt.Errorf("decoded %s calldata did not match global index %s",
 				method.Name, globalIndex.String())
 		}
-	case 10:
+	case preEtrogClaimArgsLen:
 		found, err := claim.DecodePreEtrogCalldata(unpacked)
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("decode %s calldata: %w", method.Name, err)
