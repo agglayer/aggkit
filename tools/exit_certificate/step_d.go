@@ -56,10 +56,6 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 
 		originNetwork := entry.OriginNetwork
 		originAddr := entry.OriginTokenAddress
-		if entry.WrappedTokenAddress == (common.Address{}) {
-			originNetwork = 0
-			originAddr = common.Address{}
-		}
 
 		bridgeExits = append(bridgeExits, makeBridgeExit(originNetwork, originAddr, destNetwork, exitAddr, amount))
 	}

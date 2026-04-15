@@ -14,20 +14,21 @@ import (
 )
 
 const (
-	defaultRetries     = 3
-	maxBackoffMs       = 10000
-	baseBackoffMs      = 1000
-	backoffExponent    = 2
-	idleConnTimeoutSec = 90
-	httpTimeoutSec     = 120
+	defaultRetries      = 3
+	maxBackoffMs        = 10000
+	baseBackoffMs       = 1000
+	backoffExponent     = 2
+	idleConnTimeoutSec  = 90
+	httpTimeoutSec      = 120
+	maxIdleConnsPerHost = 100
 )
 
-// httpClient uses unlimited per-host connections, matching Node.js behavior.
-// Go's default transport has MaxIdleConnsPerHost=2 which throttles parallelism.
+// httpClient keeps a large per-host idle connection pool to avoid throttling
+// parallel RPC traffic on Go's default MaxIdleConnsPerHost=2.
 var httpClient = &http.Client{
 	Transport: &http.Transport{
 		MaxIdleConns:        0,
-		MaxIdleConnsPerHost: 0,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
 		MaxConnsPerHost:     0,
 		IdleConnTimeout:     idleConnTimeoutSec * time.Second,
 	},

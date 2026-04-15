@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,11 +81,11 @@ func parseBlockNumber(s string) (uint64, error) {
 	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
 		return hexToUint64(s), nil
 	}
-	var n uint64
-	if _, err := fmt.Sscanf(s, "%d", &n); err == nil {
-		return n, nil
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("not a valid block number (expected decimal or 0x-hex): %w", err)
 	}
-	return 0, fmt.Errorf("not a valid block number (expected decimal or 0x-hex)")
+	return n, nil
 }
 
 // --- Full pipeline ---
@@ -151,6 +152,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		if err != nil {
 			return fmt.Errorf("step E: %w", err)
 		}
+		saveJSON(dir, "step-e-l2-claim-events.json", stepEResult.L2ClaimEvents)
 		saveJSON(dir, "step-e-unclaimed-bridges.json", stepEResult.UnclaimedBridges)
 		finalCertificate = stepEResult.FinalCertificate
 	} else {
@@ -275,10 +277,16 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
 			return fmt.Errorf("load step D output: %w", err)
 		}
-		result, err := RunStepE(ctx, cfg, nil, cert.toAgglayerCertificate())
+		// Load L2 claim events from a previous run if available; otherwise RunStepE will fetch them.
+		var l2ClaimEvents []L2ClaimEvent
+		if err := loadJSON(dir, "step-e-l2-claim-events.json", &l2ClaimEvents); err != nil {
+			l2ClaimEvents = nil
+		}
+		result, err := RunStepE(ctx, cfg, l2ClaimEvents, cert.toAgglayerCertificate())
 		if err != nil {
 			return err
 		}
+		saveJSON(dir, "step-e-l2-claim-events.json", result.L2ClaimEvents)
 		saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
 		saveJSON(dir, "exit-certificate-final.json", result.FinalCertificate)
 
