@@ -59,6 +59,44 @@ func TestDecodeBridgeEvent_DataTooShort(t *testing.T) {
 	require.Contains(t, err.Error(), "data too short")
 }
 
+func TestDecodeClaimEvent_Valid(t *testing.T) {
+	t.Parallel()
+
+	// ClaimEvent(uint256 globalIndex, uint32 originNetwork, address originAddress,
+	//            address destinationAddress, uint256 amount)
+	data := make([]byte, 5*32)
+
+	// globalIndex = (1 << 64) | 42  (mainnet deposit, leaf index 42)
+	gi := new(big.Int).Or(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(42))
+	gi.FillBytes(data[0:32])
+	// originNetwork = 0
+	data[63] = 0
+	// originAddress = 0xAAAA...
+	copy(data[64+12:96], common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").Bytes())
+	// destinationAddress = 0xBBBB...
+	copy(data[96+12:128], common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").Bytes())
+	// amount = 5000
+	new(big.Int).SetInt64(5000).FillBytes(data[128:160])
+
+	dataHex := "0x" + common.Bytes2Hex(data)
+	claim, err := decodeClaimEvent(dataHex)
+	require.NoError(t, err)
+
+	require.Equal(t, gi.String(), claim.GlobalIndex.String())
+	require.Equal(t, uint32(0), claim.OriginNetwork)
+	require.Equal(t, common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), claim.OriginAddress)
+	require.Equal(t, common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"), claim.DestinationAddress)
+	require.Equal(t, big.NewInt(5000), claim.Amount)
+}
+
+func TestDecodeClaimEvent_DataTooShort(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeClaimEvent("0x0000")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "claim data too short")
+}
+
 func TestMainnetFlagConstant(t *testing.T) {
 	t.Parallel()
 
