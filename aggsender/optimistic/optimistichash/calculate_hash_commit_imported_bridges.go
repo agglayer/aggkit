@@ -42,7 +42,7 @@ func newCommitImportedBrigesData(claims []claimsynctypes.Claim) *optimisticCommi
 	return &res
 }
 func (o *optimisticCommitImportedBrigesData) hash() common.Hash {
-	var combined []byte
+	combined := make([]byte, 0, len(o.bridges)*(common.HashLength+common.HashLength))
 	for _, bridge := range o.bridges {
 		combined = append(combined, aggkitcommon.BigIntToLittleEndianBytes(bridge.globalIndex)...)
 		combined = append(combined, bridge.bridgeExitHash.Bytes()...)
