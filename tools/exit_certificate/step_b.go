@@ -17,6 +17,9 @@ const (
 
 	// tokenConcurrency limits how many tokens are scanned in parallel (Step B Phase 3).
 	tokenConcurrency = 4
+
+	// abiWordSize is the size of an ABI-encoded word in bytes.
+	abiWordSize = 32
 )
 
 // RunStepB classifies addresses as EOA vs contract, then collects ETH and wrapped
@@ -214,7 +217,7 @@ func fetchTokenBalances(
 
 // encodeBalanceOf ABI-encodes a balanceOf(address) call.
 func encodeBalanceOf(addr common.Address) string {
-	return balanceOfSelector + common.Bytes2Hex(common.LeftPadBytes(addr.Bytes(), 32))
+	return balanceOfSelector + common.Bytes2Hex(common.LeftPadBytes(addr.Bytes(), abiWordSize))
 }
 
 // unmarshalHexBigInt extracts a *big.Int from a JSON-encoded hex string RPC result.
