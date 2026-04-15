@@ -52,7 +52,7 @@ func main() {
 				&cli.Uint64Flag{
 					Name:  "chunk-size",
 					Usage: "Maximum L2 block range per eth_getLogs query",
-					Value: remove_ger.DefaultScanChunkSize,
+					Value: 5000,
 				},
 			},
 			Action: remove_ger.RunScanInvalidClaims,

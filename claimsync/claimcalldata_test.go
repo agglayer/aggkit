@@ -26,7 +26,7 @@ type testCase struct {
 }
 
 func TestClaimCalldata(t *testing.T) {
-	testCases := make([]testCase, 0, 46)
+	testCases := []testCase{}
 
 	ctx, cancelFn := context.WithCancel(context.Background())
 	// Setup Docker L1

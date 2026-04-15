@@ -143,10 +143,10 @@ func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.H
 	// contract's initial _branch storage state before any leaves are inserted.
 	var frontier [32]common.Hash
 
-	for i, node := range leafHashes[:int(targetIndex)] {
-		position := uint32(i)
+	for i := uint32(0); i < targetIndex; i++ {
+		node := leafHashes[i]
 		for h := range 32 {
-			if (position>>h)&1 == 0 {
+			if (i>>h)&1 == 0 {
 				// Left child: cache node at this height, propagate up with zero sibling.
 				frontier[h] = node
 				node = crypto.Keccak256Hash(node.Bytes(), zeros[h].Bytes())

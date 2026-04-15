@@ -11,7 +11,6 @@ import (
 const (
 	RollupExitTreePrefix = "rollup_exit_"
 	L1InfoTreePrefix     = "l1_info_"
-	baseMigrationCount   = 4
 )
 
 //go:embed l1infotreesync0001.sql
@@ -27,25 +26,24 @@ var mig003 string
 var mig004 string
 
 func RunMigrations(dbPath string) error {
-	migrations := make([]types.Migration, 0, baseMigrationCount+len(treeMigrations.Migrations)*2)
-	migrations = append(migrations,
-		types.Migration{
+	migrations := []types.Migration{
+		{
 			ID:  "l1infotreesync0001",
 			SQL: mig001,
 		},
-		types.Migration{
+		{
 			ID:  "l1infotreesync0002",
 			SQL: mig002,
 		},
-		types.Migration{
+		{
 			ID:  "l1infotreesync0003",
 			SQL: mig003,
 		},
-		types.Migration{
+		{
 			ID:  "l1infotreesync0004",
 			SQL: mig004,
 		},
-	)
+	}
 	for _, tm := range treeMigrations.Migrations {
 		migrations = append(migrations, types.Migration{
 			ID:     tm.ID,

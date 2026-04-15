@@ -768,7 +768,7 @@ func (m *MerkleProof) UnmarshalJSON(data []byte) error {
 
 // Hash returns the hash of the Merkle proof struct
 func (m *MerkleProof) Hash() common.Hash {
-	proofsAsSingleSlice := make([]byte, 0, len(m.Proof)*common.HashLength)
+	proofsAsSingleSlice := make([]byte, 0)
 
 	for _, proof := range m.Proof {
 		proofsAsSingleSlice = append(proofsAsSingleSlice, proof.Bytes()...)

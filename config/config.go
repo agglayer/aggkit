@@ -371,12 +371,10 @@ func SaveConfigToFile(cfg *Config, saveConfigPath string) error {
 }
 
 func SaveDataToFile(fullPath, reason string, data []byte) error {
-	cleanedPath := filepath.Clean(fullPath)
-	log.Infof("Writing %s to: %s", reason, cleanedPath)
-	//nolint:gosec // path comes from local CLI/config inputs for explicit file output.
-	err := os.WriteFile(cleanedPath, data, DefaultCreationFilePermissions)
+	log.Infof("Writing %s to: %s", reason, fullPath)
+	err := os.WriteFile(fullPath, data, DefaultCreationFilePermissions)
 	if err != nil {
-		err = fmt.Errorf("error writing %s to file %s. Err: %w", reason, cleanedPath, err)
+		err = fmt.Errorf("error writing %s to file %s. Err: %w", reason, fullPath, err)
 		log.Error(err)
 		return err
 	}

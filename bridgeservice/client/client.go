@@ -134,7 +134,7 @@ func (c *Client) GetBridges(ctx context.Context, params GetBridgesParams) (*type
 		query.Set("from_address", *params.FromAddress)
 	}
 	if len(params.NetworkIDs) > 0 {
-		ids := make([]string, 0, len(params.NetworkIDs))
+		var ids []string
 		for _, id := range params.NetworkIDs {
 			ids = append(ids, strconv.FormatUint(uint64(id), 10))
 		}
@@ -160,7 +160,7 @@ func (c *Client) GetClaims(ctx context.Context, params GetClaimsParams) (*types.
 		query.Set("page_size", strconv.FormatUint(uint64(*params.PageSize), 10))
 	}
 	if len(params.NetworkIDs) > 0 {
-		ids := make([]string, 0, len(params.NetworkIDs))
+		var ids []string
 		for _, id := range params.NetworkIDs {
 			ids = append(ids, strconv.FormatUint(uint64(id), 10))
 		}
@@ -431,7 +431,6 @@ func (c *Client) doRequest(ctx context.Context, path string, result interface{})
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	//nolint:gosec // reqURL is built from the configured bridge service base URL and client-generated paths.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
@@ -469,7 +468,6 @@ func (c *Client) doRequestAllowNotFound(ctx context.Context, path string, result
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	//nolint:gosec // reqURL is built from the configured bridge service base URL and client-generated paths.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)

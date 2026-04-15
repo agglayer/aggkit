@@ -170,12 +170,12 @@ func stepBackwardLET(
 	}
 
 	var frontierBytes [32][32]byte
-	for i := 0; i < len(frontierBytes); i++ {
-		frontierBytes[i] = [32]byte(frontier[i])
+	for i, h := range frontier {
+		frontierBytes[i] = [32]byte(h)
 	}
 	var proofBytes [32][32]byte
-	for i := 0; i < len(proofBytes); i++ {
-		proofBytes[i] = [32]byte(proof[i])
+	for i, h := range proof {
+		proofBytes[i] = [32]byte(h)
 	}
 
 	tx, err := env.L2Bridge.BackwardLET(

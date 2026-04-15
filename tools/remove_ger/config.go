@@ -15,8 +15,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const defaultConfigTemplateFileCount = 3
-
 // Config holds the subset of aggkit configuration fields needed by the remove-GER tool,
 // plus tool-specific settings in the RemoveGER section.
 type Config struct {
@@ -60,7 +58,7 @@ type RemoveGERConfig struct {
 // are resolved correctly.
 func LoadConfig(c *cli.Context) (*Config, error) {
 	// Build FileData list for template rendering.
-	userFiles := make([]aggkitConfig.FileData, 0, len(c.StringSlice("cfg")))
+	userFiles := make([]aggkitConfig.FileData, 0)
 	for _, cfgFile := range c.StringSlice("cfg") {
 		content, err := os.ReadFile(cfgFile)
 		if err != nil {
@@ -70,12 +68,11 @@ func LoadConfig(c *cli.Context) (*Config, error) {
 	}
 
 	// Prepend defaults so template variables ({{L1Config.URL}}, {{L2URL}}, etc.) resolve.
-	allFiles := make([]aggkitConfig.FileData, 0, defaultConfigTemplateFileCount+len(userFiles))
-	allFiles = append(allFiles,
-		aggkitConfig.FileData{Name: "default_mandatory_vars", Content: aggkitConfig.DefaultMandatoryVars},
-		aggkitConfig.FileData{Name: "default_vars", Content: aggkitConfig.DefaultVars},
-		aggkitConfig.FileData{Name: "default_values", Content: aggkitConfig.DefaultValues},
-	)
+	allFiles := []aggkitConfig.FileData{
+		{Name: "default_mandatory_vars", Content: aggkitConfig.DefaultMandatoryVars},
+		{Name: "default_vars", Content: aggkitConfig.DefaultVars},
+		{Name: "default_values", Content: aggkitConfig.DefaultValues},
+	}
 	allFiles = append(allFiles, userFiles...)
 
 	rendered, err := aggkitConfig.NewConfigRender(allFiles, aggkitConfig.EnvVarPrefix).Render()

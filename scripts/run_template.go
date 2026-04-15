@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
@@ -32,8 +31,7 @@ func replaceDotsInTemplateVariables(template string) string {
 }
 
 func readFile(filename string) (string, error) {
-	cleanedFilename := filepath.Clean(filename)
-	content, err := os.ReadFile(cleanedFilename) //nolint:gosec // filename is a local template path passed on the CLI.
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return "", err
 	}
