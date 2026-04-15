@@ -81,7 +81,7 @@ func (n *SetInitialBlockToClaimSyncer) SetClaimSyncerNextRequiredBlock(
 
 // claimSyncerStartingBlock returns the starting block number for the claim syncer.
 // It queries the latest settled certificate from agglayer to determine from which block claims must be synced.
-// If certHeader is nil (no settled certificate yet), GetBlockNumbersFromCertHeader handles it
+// If certHeader is nil (no settled certificate yet), GetSettledBlocksFromCertHeader handles it
 // by skipping the per-cert queries and returning only the FEP start block.
 func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlock(ctx context.Context,
 	l2ClaimSyncer claimsynctypes.ClaimSyncer) (uint64, error) {
@@ -101,7 +101,7 @@ func (n *SetInitialBlockToClaimSyncer) claimSyncerStartingBlockBasedOnLatestSett
 	l2ClaimSyncer claimsynctypes.ClaimSyncer,
 	agglayerLastSettledCert *agglayertypes.CertificateHeader,
 ) (uint64, error) {
-	blocks := n.certQuerier.GetBlockNumbersFromCertHeader(ctx, agglayerLastSettledCert)
+	blocks := n.certQuerier.GetSettledBlocksFromCertHeader(ctx, agglayerLastSettledCert)
 
 	// If the problem is that can't find the block for latest claim, use RPC as fallback
 	if blocks.LastImportedBridgeExitBlockErr != nil && blocks.SettledImportedBridgeExit != nil {

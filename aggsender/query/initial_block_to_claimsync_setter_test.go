@@ -75,7 +75,7 @@ func TestSetClaimSyncerNextRequiredBlock_Success(t *testing.T) {
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, certHeader).
 		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlock: 42, LastImportedBridgeExitBlock: 42})
 	claimSyncer.EXPECT().SetNextRequiredBlock(ctx, uint64(42)).Return(nil)
 
@@ -107,7 +107,7 @@ func TestSetClaimSyncerNextRequiredBlock_GetLastSettledCertToBlockError(t *testi
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, certHeader).
 		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlockErr: errors.New("db error")})
 
 	err := setter.SetClaimSyncerNextRequiredBlock(ctx, claimSyncer, noRetryHandler())
@@ -124,7 +124,7 @@ func TestSetClaimSyncerNextRequiredBlock_SetNextRequiredBlockError(t *testing.T)
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, certHeader).
 		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlock: 10, LastImportedBridgeExitBlock: 10})
 	claimSyncer.EXPECT().SetNextRequiredBlock(ctx, uint64(10)).Return(errors.New("syncer error"))
 
@@ -141,9 +141,9 @@ func TestSetClaimSyncerNextRequiredBlock_NilCertFromAgglayer(t *testing.T) {
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(nil, nil)
-	// nil cert means no settled certificate yet; GetBlockNumbersFromCertHeader is still called
+	// nil cert means no settled certificate yet; GetSettledBlocksFromCertHeader is still called
 	// with nil and returns only the FEP start block (bridge/import queries are skipped).
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, (*agglayertypes.CertificateHeader)(nil)).
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, (*agglayertypes.CertificateHeader)(nil)).
 		Return(aggsendertypes.SettledBlocks{LastBridgeExitBlock: 10, LastImportedBridgeExitBlock: 10})
 	claimSyncer.EXPECT().SetNextRequiredBlock(ctx, uint64(10)).Return(nil)
 
@@ -162,7 +162,7 @@ func TestSetClaimSyncerNextRequiredBlock_RPCFallback_Success(t *testing.T) {
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).Return(aggsendertypes.SettledBlocks{
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, certHeader).Return(aggsendertypes.SettledBlocks{
 		LastBridgeExitBlock:            100,
 		LastImportedBridgeExitBlockErr: errors.New("claim not in db"),
 		SettledImportedBridgeExit:      settledIBE,
@@ -187,7 +187,7 @@ func TestSetClaimSyncerNextRequiredBlock_RPCFallback_NotFound(t *testing.T) {
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).Return(aggsendertypes.SettledBlocks{
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, certHeader).Return(aggsendertypes.SettledBlocks{
 		LastBridgeExitBlock:            100,
 		LastImportedBridgeExitBlockErr: errors.New("claim not in db"),
 		SettledImportedBridgeExit:      settledIBE,
@@ -211,7 +211,7 @@ func TestSetClaimSyncerNextRequiredBlock_RPCFallback_Error(t *testing.T) {
 	claimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
 	claimSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), false, nil)
 	agglayerClient.EXPECT().GetLatestSettledCertificateHeader(ctx, uint32(1)).Return(certHeader, nil)
-	certQuerier.EXPECT().GetBlockNumbersFromCertHeader(ctx, certHeader).Return(aggsendertypes.SettledBlocks{
+	certQuerier.EXPECT().GetSettledBlocksFromCertHeader(ctx, certHeader).Return(aggsendertypes.SettledBlocks{
 		LastBridgeExitBlock:            100,
 		LastImportedBridgeExitBlockErr: errors.New("claim not in db"),
 		SettledImportedBridgeExit:      settledIBE,

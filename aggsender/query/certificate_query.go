@@ -41,11 +41,11 @@ func NewCertificateQuerier(
 	}
 }
 
-// GetBlockNumbersFromCertHeader queries each of the three block number sources independently
+// GetSettledBlocksFromCertHeader queries each of the three block number sources independently
 // using the provided certificate header.
 // A failure in one source is recorded in the corresponding error field without
 // stopping the other queries.
-func (c *certificateQuerier) GetBlockNumbersFromCertHeader(ctx context.Context,
+func (c *certificateQuerier) GetSettledBlocksFromCertHeader(ctx context.Context,
 	cert *agglayertypes.CertificateHeader) types.SettledBlocks {
 	var result types.SettledBlocks
 
@@ -114,7 +114,7 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 		return 0, fmt.Errorf("certificate %s is not settled", cert.String())
 	}
 
-	blocks := c.GetBlockNumbersFromCertHeader(ctx, cert)
+	blocks := c.GetSettledBlocksFromCertHeader(ctx, cert)
 
 	return blocks.LatestBlock()
 }

@@ -30,26 +30,7 @@
 
 ## GitHub
 
-- To create a new PR use the following template:
-```
-## 🔄 Changes Summary
-[Provide a concise summary of the changes in this PR here.]
-## ⚠️ Breaking Changes
-[List any breaking changes introduced by this PR here, or state "None".]
-## 📋 Config Updates
-[List any configuration changes made in this PR here with examples and default values, or state "None".]
-## ✅ Testing
-  - 🤖 **Automatic**:
-    - `make test-unit`
-  - 🖱️ **Manual**:
-## 🐞 Issues
-  - Closes #N/A
-
-## 🔗 Related PRs
-  None
-  
-## 📝 Notes
-```
+- To create a new PR use the template defined in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)
 
 ## Types to use
 

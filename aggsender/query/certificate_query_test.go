@@ -750,7 +750,7 @@ func TestGetBlockNumFromGlobalIndex(t *testing.T) {
 	}
 }
 
-func TestGetBlockNumbersFromCertHeader(t *testing.T) {
+func TestGetSettledBlocksFromCertHeader(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -878,7 +878,7 @@ func TestGetBlockNumbersFromCertHeader(t *testing.T) {
 				bridgesynctypes.EmptyLER,
 			)
 
-			result := certQuerier.GetBlockNumbersFromCertHeader(ctx, tc.cert)
+			result := certQuerier.GetSettledBlocksFromCertHeader(ctx, tc.cert)
 			tc.checkFn(t, result)
 
 			mockAgglayerClient.AssertExpectations(t)
