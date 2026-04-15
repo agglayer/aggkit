@@ -956,3 +956,103 @@ func TestDownload_LastBlockNum_MultipleBlocksInRange(t *testing.T) {
 	require.Empty(t, received[1].Events)
 	require.True(t, received[1].IsFinalizedBlock)
 }
+
+// --- SetLogsHook ---
+
+func TestEVMDownloaderImplementation_SetLogsHook_NoPreviousHook(t *testing.T) {
+	t.Parallel()
+	sut := EVMDownloaderImplementation{log: log.WithFields("test", "SetLogsHook")}
+
+	hook := LogsHookFunc(func(_ context.Context, _, _ uint64, logs []types.Log) []types.Log { return logs })
+	prev := sut.SetLogsHook(hook)
+
+	require.Nil(t, prev, "no previous hook should be returned when none was set")
+	require.NotNil(t, sut.logsHook)
+}
+
+func TestEVMDownloaderImplementation_SetLogsHook_ReplacesPreviousHook(t *testing.T) {
+	t.Parallel()
+	sut := EVMDownloaderImplementation{log: log.WithFields("test", "SetLogsHook")}
+
+	firstHook := LogsHookFunc(func(_ context.Context, _, _ uint64, logs []types.Log) []types.Log { return logs })
+	secondHook := LogsHookFunc(func(_ context.Context, _, _ uint64, _ []types.Log) []types.Log { return nil })
+
+	sut.SetLogsHook(firstHook)
+	prev := sut.SetLogsHook(secondHook)
+
+	require.NotNil(t, prev, "previous hook should be returned")
+	// Verify prev is the first hook by calling it and checking it returns logs unchanged.
+	sentinel := []types.Log{{BlockNumber: 99}}
+	require.Equal(t, sentinel, prev(context.Background(), 0, 0, sentinel))
+	// Current hook is second (returns nil).
+	require.Nil(t, sut.logsHook(context.Background(), 0, 0, sentinel))
+}
+
+func TestEVMDownloaderImplementation_SetLogsHook_ClearsHook(t *testing.T) {
+	t.Parallel()
+	sut := EVMDownloaderImplementation{log: log.WithFields("test", "SetLogsHook")}
+
+	hook := LogsHookFunc(func(_ context.Context, _, _ uint64, logs []types.Log) []types.Log { return logs })
+	sut.SetLogsHook(hook)
+	prev := sut.SetLogsHook(nil)
+
+	require.NotNil(t, prev, "previous hook should be returned when clearing")
+	require.Nil(t, sut.logsHook)
+}
+
+func TestEVMDownloader_SetLogsHook_DelegatesToImplementation(t *testing.T) {
+	t.Parallel()
+	downloader, _ := NewTestDownloader(t, time.Millisecond)
+	// NewTestDownloader sets EVMDownloaderInterface to a real *EVMDownloaderImplementation.
+	impl, ok := downloader.EVMDownloaderInterface.(*EVMDownloaderImplementation)
+	require.True(t, ok)
+
+	hook := LogsHookFunc(func(_ context.Context, _, _ uint64, logs []types.Log) []types.Log { return logs })
+	prev := downloader.SetLogsHook(hook)
+
+	require.Nil(t, prev, "no previous hook")
+	require.NotNil(t, impl.logsHook, "hook should be set on the underlying implementation")
+}
+
+func TestEVMDownloader_SetLogsHook_ReturnsNilForNonImplementation(t *testing.T) {
+	t.Parallel()
+	// Replace the underlying implementation with a mock (not *EVMDownloaderImplementation).
+	downloader, iface := newMockDownloader(t)
+	_ = iface // mock is not *EVMDownloaderImplementation
+
+	hook := LogsHookFunc(func(_ context.Context, _, _ uint64, logs []types.Log) []types.Log { return logs })
+	prev := downloader.SetLogsHook(hook)
+
+	require.Nil(t, prev, "should return nil when underlying impl is not *EVMDownloaderImplementation")
+}
+
+func TestEVMDownloaderImplementation_SetLogsHook_HookInvokedInGetEventsByBlockRange(t *testing.T) {
+	t.Parallel()
+	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
+	sut := EVMDownloaderImplementation{
+		ethClient:        mockEthClient,
+		addressesToQuery: []common.Address{contractAddr},
+		log:              log.WithFields("test", "SetLogsHook"),
+		rh: &RetryHandler{
+			RetryAfterErrorPeriod:      time.Millisecond,
+			MaxRetryAttemptsAfterError: 5,
+		},
+	}
+
+	rawLog := types.Log{BlockNumber: 10, Topics: []common.Hash{eventSignature}, Address: contractAddr}
+	// FilterLogs returns one log; the hook filters it out.
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]types.Log{rawLog}, nil).Once()
+
+	var hookCalledFrom, hookCalledTo uint64
+	sut.SetLogsHook(func(_ context.Context, from, to uint64, logs []types.Log) []types.Log {
+		hookCalledFrom = from
+		hookCalledTo = to
+		return nil // drop all logs
+	})
+
+	blocks := sut.GetEventsByBlockRange(context.Background(), 1, 20)
+
+	require.Empty(t, blocks, "hook dropped all logs so no blocks should be emitted")
+	require.Equal(t, uint64(1), hookCalledFrom)
+	require.Equal(t, uint64(20), hookCalledTo)
+}

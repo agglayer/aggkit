@@ -40,6 +40,10 @@ type EVMDownloaderInterface interface {
 
 type LogAppenderMap map[common.Hash]func(b *EVMBlock, l types.Log) error
 
+// LogsHookFunc is a function that can modify the list of logs fetched before they are processed.
+// It receives the block range and the original logs, and returns the (possibly modified) list.
+type LogsHookFunc func(ctx context.Context, fromBlock, toBlock uint64, logs []types.Log) []types.Log
+
 // GetTopics returns the EVM event topics that are being queried
 func (m LogAppenderMap) GetTopics() []common.Hash {
 	topics := make([]common.Hash, 0, len(m))
@@ -127,6 +131,15 @@ func (d *EVMDownloader) setStopDownloaderOnIterationN(iteration int) {
 func (d *EVMDownloader) SetStopOnFinalizedBlockReachedFlag() {
 	d.log.Info("setting stop on finalized block reached flag")
 	d.stopOnFinalizedBlockReached = true
+}
+
+// SetLogsHook sets an optional hook on the underlying EVMDownloaderImplementation.
+// It returns the previous hook, if any. Returns nil if the underlying implementation does not support it.
+func (d *EVMDownloader) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
+	if impl, ok := d.EVMDownloaderInterface.(*EVMDownloaderImplementation); ok {
+		return impl.SetLogsHook(hook)
+	}
+	return nil
 }
 
 // RuntimeData returns the runtime data: chainID + addresses to query
@@ -325,6 +338,15 @@ type EVMDownloaderImplementation struct {
 	finalizedBlockType     *aggkittypes.BlockNumberFinality
 	reorgDetector          ReorgDetector
 	reorgDetectorID        string
+	logsHook               LogsHookFunc
+}
+
+// SetLogsHook sets an optional hook that is called after fetching logs and can modify them before processing.
+// It returns the previous hook, if any.
+func (d *EVMDownloaderImplementation) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
+	prev := d.logsHook
+	d.logsHook = hook
+	return prev
 }
 
 // NewEVMDownloaderImplementation creates a new EVMDownloaderImplementation
@@ -448,6 +470,14 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 		return nil
 	default:
 		logs := d.GetLogs(ctx, fromBlock, toBlock)
+		if d.logsHook != nil {
+			originalCount := len(logs)
+			logs = d.logsHook(ctx, fromBlock, toBlock, logs)
+			if len(logs) != originalCount {
+				d.log.Debugf("logsHook modified logs count from %d to %d for block range [%d, %d]",
+					originalCount, len(logs), fromBlock, toBlock)
+			}
+		}
 		blocks := make(EVMBlocks, 0, len(logs))
 		var latestBlock *EVMBlock
 		for _, l := range logs {

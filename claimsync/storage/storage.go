@@ -311,25 +311,6 @@ func (s *claimStorage) GetLastProcessedBlock(ctx context.Context, tx dbtypes.Que
 	return num, err == nil, err
 }
 
-// GetBoundaryBlockForClaimType returns the max block_num for claims of the given type.
-// Returns db.ErrNotFound if no claims of that type exist.
-func (s *claimStorage) GetBoundaryBlockForClaimType(
-	ctx context.Context, tx dbtypes.Querier, claimType claimsynctypes.ClaimType,
-) (uint64, error) {
-	dbCtx, cancel := s.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	var blockNum *uint64
-	if err := s.getQuerier(tx).QueryRowContext(dbCtx, `SELECT MAX(block_num) FROM claim WHERE type = $1`, claimType).
-		Scan(&blockNum); err != nil {
-		return 0, err
-	}
-	if blockNum == nil {
-		return 0, db.ErrNotFound
-	}
-	return *blockNum, nil
-}
-
 // GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root,
 // ordered by block_num/block_pos ascending. If the claim table does not exist (e.g. L1
 // processor), returns nil, nil gracefully.
