@@ -73,62 +73,6 @@ func (c *CertificateBuildParams) String() string {
 		c.CertificateType, c.FromBlock, c.ToBlock, c.NumberOfBridges(), c.NumberOfClaims(), c.NumberOfUnclaims(), c.CreatedAt)
 }
 
-// Range create a new CertificateBuildParams with the given range
-func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateBuildParams, error) {
-	if c.FromBlock == fromBlock && c.ToBlock == toBlock {
-		return c, nil
-	}
-	if c.FromBlock > fromBlock || c.ToBlock < toBlock {
-		return nil, fmt.Errorf("invalid range. FromBlock %d and ToBlock %d are not within "+
-			"the certificate range FromBlock %d and ToBlock %d",
-			fromBlock, toBlock, c.FromBlock, c.ToBlock)
-	}
-
-	if fromBlock > toBlock {
-		return nil, fmt.Errorf("invalid range. FromBlock %d is greater than toBlock %d", fromBlock, toBlock)
-	}
-
-	span := toBlock - fromBlock + 1
-	fullSpan := c.ToBlock - c.FromBlock + 1
-
-	newCert := &CertificateBuildParams{
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		Bridges: make([]bridgesync.Bridge, 0,
-			aggkitcommon.EstimateSliceCapacity(len(c.Bridges), span, fullSpan)),
-		Claims: make([]claimsynctypes.Claim, 0,
-			aggkitcommon.EstimateSliceCapacity(len(c.Claims), span, fullSpan)),
-		Unclaims: make([]claimsynctypes.Unclaim, 0,
-			aggkitcommon.EstimateSliceCapacity(len(c.Unclaims), span, fullSpan)),
-		CreatedAt:                      c.CreatedAt,
-		RetryCount:                     c.RetryCount,
-		LastSentCertificate:            c.LastSentCertificate,
-		AggchainProof:                  c.AggchainProof,
-		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
-		L1InfoTreeLeafCount:            c.L1InfoTreeLeafCount,
-		CertificateType:                c.CertificateType,
-	}
-
-	for _, bridge := range c.Bridges {
-		if bridge.BlockNum >= fromBlock && bridge.BlockNum <= toBlock {
-			newCert.Bridges = append(newCert.Bridges, bridge)
-		}
-	}
-
-	for _, claim := range c.Claims {
-		if claim.BlockNum >= fromBlock && claim.BlockNum <= toBlock {
-			newCert.Claims = append(newCert.Claims, claim)
-		}
-	}
-
-	for _, unclaim := range c.Unclaims {
-		if unclaim.BlockNumber >= fromBlock && unclaim.BlockNumber <= toBlock {
-			newCert.Unclaims = append(newCert.Unclaims, unclaim)
-		}
-	}
-	return newCert, nil
-}
-
 // NumberOfBridges returns the number of bridges in the certificate
 func (c *CertificateBuildParams) NumberOfBridges() int {
 	if c == nil {
@@ -206,34 +150,31 @@ func (c *CertificateBuildParams) MaxDepositCount() uint32 {
 	return c.Bridges[len(c.Bridges)-1].DepositCount
 }
 
-// AdjustToBlock adjusts the certificate build parameters to a new target block.
-// If newToBlock is higher than the current ToBlock, it returns an error.
-// If newToBlock is lower than the current ToBlock, it creates new parameters
-// with an adjusted range that includes only bridges, claims and unclaims within the new range.
-// If newToBlock equals the current ToBlock, it returns the original parameters unchanged.
-//
-// Parameters:
-//   - newToBlock: the new target block number to adjust to
-//
-// Returns:
-//   - *CertificateBuildParams: adjusted parameters or original if no adjustment needed
-//   - error: if newToBlock is higher than current ToBlock or if range adjustment fails
-func (c *CertificateBuildParams) AdjustToBlock(newToBlock uint64) (*CertificateBuildParams, error) {
-	if c.ToBlock < newToBlock {
-		return nil, fmt.Errorf("cannot adjust toBlock to a higher value. current toBlock: %d, new toBlock: %d",
-			c.ToBlock, newToBlock)
+// GetClaimsFilteringUnclaims returns a list of claims that contains all the claims of the CertificateBuildParams
+// except the ones that have been unclaimed
+func (c *CertificateBuildParams) GetClaimsFilteringUnclaims() []claimsynctypes.Claim {
+	filteredClaims := make([]claimsynctypes.Claim, 0, len(c.Claims))
+	if len(c.Unclaims) == 0 {
+		// 99.9% of the times c.Unclaims is going to be empty
+		filteredClaims = append(filteredClaims, c.Claims...)
+		return filteredClaims
 	}
 
-	if c.ToBlock > newToBlock {
-		// if the toBlock was adjusted, we need to adjust the bridges and claims
-		// to only include the ones in the new range that aggchain prover returned
-		adjustedParams, err := c.Range(c.FromBlock, newToBlock)
-		if err != nil {
-			return nil, fmt.Errorf("error adjusting the range of the certificate: %w", err)
+	usedUnclaims := make([]bool, len(c.Unclaims))
+	for _, claim := range c.Claims {
+		isUnclaimed := false
+		for i, unclaim := range c.Unclaims {
+			if claim.GlobalIndex != nil && unclaim.GlobalIndex != nil &&
+				claim.GlobalIndex.Cmp(unclaim.GlobalIndex) == 0 && !usedUnclaims[i] {
+				isUnclaimed = true
+				usedUnclaims[i] = true
+				break
+			}
 		}
-
-		return adjustedParams, nil
+		if !isUnclaimed {
+			filteredClaims = append(filteredClaims, claim)
+		}
 	}
 
-	return c, nil
+	return filteredClaims
 }

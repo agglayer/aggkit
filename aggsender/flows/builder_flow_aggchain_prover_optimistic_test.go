@@ -130,6 +130,10 @@ func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *Aggcha
 
 	// Simulate the access to baseFlow variables
 	res.mockFlowBase.EXPECT().StartL2Block().Return(cfgBase.StartL2Block).Maybe()
+	res.mockFlowBase.EXPECT().AdjustBlockRange(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, params *types.CertificateBuildParams, _ types.BlockRangeAdjustmentOptions) (*types.CertificateBuildParams, error) {
+			return params, nil
+		}).Maybe()
 
 	res.sut = NewAggchainProverBuilderFlow(
 		log.WithFields("flowManager", "AggchainProverFlowTestData"),

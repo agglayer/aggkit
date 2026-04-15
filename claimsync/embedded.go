@@ -77,13 +77,11 @@ func NewClaimStorage(
 // NewEmbedded creates a ClaimEventsProcessor for embedding inside bridgesync.
 // It provides claimsync's claim event handlers (for appender merging) and processes
 // claim events using bridgesync's own transaction — no separate DB or EVMDriver is created.
-// The querier is typically bridgesync's processor (satisfies ClaimQuerier).
 func NewEmbedded(
 	ctx context.Context,
 	storage claimsynctypes.ClaimStorager,
 	bridgeAddr common.Address,
 	ethClient aggkittypes.EthClienter,
-	querier ClaimQuerier,
 	syncerID claimsynctypes.ClaimSyncerID,
 	dbQueryTimeout time.Duration,
 	logger aggkitcommon.Logger,
@@ -94,7 +92,7 @@ func NewEmbedded(
 		return nil, fmt.Errorf("claimsync embedded: failed to detect chain type: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, storage, bridgeAddr, deployment, logger)
+	appender, err := buildAppender(ethClient, bridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to build appender: %w", err)
 	}

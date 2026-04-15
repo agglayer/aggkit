@@ -526,15 +526,27 @@ func (e *Env) Stop(ctx context.Context) error {
 
 const aggkitServiceName = "aggkit-001"
 
+func dockerComposeUserEnv(ctx context.Context) (string, string) {
+	cmd := exec.CommandContext(ctx, "docker", "info", "--format", "{{json .SecurityOptions}}")
+	out, err := cmd.Output()
+	if err == nil && strings.Contains(string(out), "rootless") {
+		return "0", "0"
+	}
+
+	return fmt.Sprintf("%d", os.Getuid()), fmt.Sprintf("%d", os.Getgid())
+}
+
 // newDockerComposeCmd creates a docker compose command with the correct working directory.
-// It injects UID and GID into the command environment so that docker-compose.yml can use
-// ${UID} and ${GID} to run containers as the current host user.
+// It injects UID and GID into the command environment so docker-compose.yml can choose a
+// host-compatible user for bind-mounted writes. Under rootless Docker we use container
+// root, which maps back to the host user; otherwise we use the current host UID/GID.
 func newDockerComposeCmd(ctx context.Context, envDir string, args ...string) *exec.Cmd {
+	uid, gid := dockerComposeUserEnv(ctx)
 	cmd := exec.CommandContext(ctx, "docker", append([]string{"compose"}, args...)...)
 	cmd.Dir = envDir
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("UID=%d", os.Getuid()),
-		fmt.Sprintf("GID=%d", os.Getgid()),
+		fmt.Sprintf("UID=%s", uid),
+		fmt.Sprintf("GID=%s", gid),
 	)
 	return cmd
 }
@@ -597,14 +609,18 @@ func (e *Env) DockerComposeLogs(ctx context.Context, args ...string) ([]byte, er
 	return out, nil
 }
 
-// cleanAggkitDataDir removes the aggkit data directory and recreates it with correct
-// permissions for a fresh test run.
+// cleanAggkitDataDir removes the aggkit data directory and recreates it with /tmp-like
+// permissions so bind-mounts remain writable even under rootless Docker, where the
+// mount may appear as root:root inside the container.
 func cleanAggkitDataDir(_ context.Context, dataDir string) error {
 	if err := os.RemoveAll(dataDir); err != nil {
 		return fmt.Errorf("remove dir: %w", err)
 	}
-	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+	if err := os.MkdirAll(dataDir, 0o1777); err != nil {
 		return fmt.Errorf("create dir: %w", err)
+	}
+	if err := os.Chmod(dataDir, 0o1777); err != nil {
+		return fmt.Errorf("chmod dir: %w", err)
 	}
 	return nil
 }

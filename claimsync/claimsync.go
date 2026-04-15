@@ -7,6 +7,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -14,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -76,7 +80,7 @@ func NewClaimSync(
 		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
 	}
 
-	appender, err := buildAppender(ctx, ethClient, proc, cfg.BridgeAddr, deployment, logger)
+	appender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}
@@ -102,6 +106,7 @@ func NewClaimSync(
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDownloader: %w", err)
 	}
+	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
@@ -173,6 +178,11 @@ func (c *ClaimSync) OriginNetwork() uint32 {
 }
 
 func (c *ClaimSync) SetNextRequiredBlock(ctx context.Context, blockNumber uint64) error {
+	if blockNumber < c.cfg.InitialBlockNum {
+		c.logger.Infof("SetNextRequiredBlock: requested block %d is below InitialBlockNum %d, capping to %d",
+			blockNumber, c.cfg.InitialBlockNum, c.cfg.InitialBlockNum)
+		blockNumber = c.cfg.InitialBlockNum
+	}
 	lastBlock, found, err := c.processor.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return fmt.Errorf("claimsync: failed to get last processed block: %w", err)
@@ -214,6 +224,132 @@ func (c *ClaimSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 
 func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
 	return c.reader.GetClaimsByGlobalIndex(ctx, nil, globalIndex)
+}
+
+// GetLatestBlockNumByGlobalIndexFromRPC scans claim event logs on-chain backwards from toBlock to 0
+// and returns the block number of the most recent log whose GlobalIndex matches.
+// If toBlock is nil, the finality from the configuration (cfg.BlockFinality) is used.
+// The scan is split into chunks if the RPC reports a max-range limit; the chunk size is taken
+// from the error message the first time a full-range call fails.
+// The bool return value is false when no matching log is found (no error in that case).
+func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
+	ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality) (uint64, bool, error) {
+	if toBlock == nil {
+		toBlock = &c.cfg.BlockFinality
+	}
+	toBlockNum, err := toBlock.BlockNumber(ctx, c.ethClient)
+	if err != nil {
+		return 0, false, fmt.Errorf("claimsync: failed to resolve toBlock: %w", err)
+	}
+
+	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(c.cfg.BridgeAddr, c.ethClient)
+	if err != nil {
+		return 0, false, fmt.Errorf("claimsync: failed to create AgglayerBridge binding: %w", err)
+	}
+	agglayerBridgeL2Contract, err := agglayerbridgel2.NewAgglayerbridgel2(c.cfg.BridgeAddr, c.ethClient)
+	if err != nil {
+		return 0, false, fmt.Errorf("claimsync: failed to create AgglayerBridgeL2 binding: %w", err)
+	}
+	legacyBridgeContract, err := polygonzkevmbridge.NewPolygonzkevmbridge(c.cfg.BridgeAddr, c.ethClient)
+	if err != nil {
+		return 0, false, fmt.Errorf("claimsync: failed to create PolygonZkEVMBridge binding: %w", err)
+	}
+
+	// scanRange fetches logs for [from, to] and returns the block number of the matching log,
+	// or 0/false when no match is found in that range.
+	scanRange := func(from, to uint64) (uint64, bool, error) {
+		query := ethereum.FilterQuery{
+			FromBlock: new(big.Int).SetUint64(from),
+			ToBlock:   new(big.Int).SetUint64(to),
+			Addresses: []common.Address{c.cfg.BridgeAddr},
+			Topics: [][]common.Hash{{
+				claimEventSignaturePreEtrog,
+				claimEventSignature,
+				detailedClaimEventSignature,
+			}},
+		}
+		logs, err := c.ethClient.FilterLogs(ctx, query)
+		if err != nil {
+			return 0, false, err
+		}
+		// logs are returned in ascending block order; iterate in reverse to return the most recent match
+		for i := len(logs) - 1; i >= 0; i-- {
+			l := logs[i]
+			if len(l.Topics) == 0 {
+				continue
+			}
+			switch l.Topics[0] {
+			case claimEventSignaturePreEtrog:
+				event, err := legacyBridgeContract.ParseClaimEvent(l)
+				if err != nil {
+					c.logger.Warnf("claimsync: failed to parse pre-Etrog ClaimEvent at block %d: %v", l.BlockNumber, err)
+					continue
+				}
+				if new(big.Int).SetUint64(uint64(event.Index)).Cmp(globalIndex) == 0 {
+					return l.BlockNumber, true, nil
+				}
+			case claimEventSignature:
+				event, err := agglayerBridgeContract.ParseClaimEvent(l)
+				if err != nil {
+					c.logger.Warnf("claimsync: failed to parse ClaimEvent at block %d: %v", l.BlockNumber, err)
+					continue
+				}
+				if event.GlobalIndex.Cmp(globalIndex) == 0 {
+					return l.BlockNumber, true, nil
+				}
+			case detailedClaimEventSignature:
+				event, err := agglayerBridgeL2Contract.ParseDetailedClaimEvent(l)
+				if err != nil {
+					c.logger.Warnf("claimsync: failed to parse DetailedClaimEvent at block %d: %v", l.BlockNumber, err)
+					continue
+				}
+				if event.GlobalIndex.Cmp(globalIndex) == 0 {
+					return l.BlockNumber, true, nil
+				}
+			}
+		}
+		return 0, false, nil
+	}
+
+	// Probe the full range to either get the result directly or discover the RPC chunk limit.
+	blockNum, found, err := scanRange(0, toBlockNum)
+	if err == nil {
+		return blockNum, found, nil
+	}
+
+	chunkSize, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+	if !isMaxRangeErr {
+		return 0, false, fmt.Errorf("claimsync: FilterLogs error for globalIndex %s [0, %d]: %w",
+			globalIndex.String(), toBlockNum, err)
+	}
+
+	// Scan backwards in chunks of chunkSize, returning on the first match found.
+	current := toBlockNum
+	for {
+		chunkFrom := uint64(0)
+		if current >= chunkSize {
+			chunkFrom = current - chunkSize + 1
+		}
+
+		c.logger.Debugf("claimsync: scanning RPC logs for globalIndex %s in chunk [%d, %d]",
+			globalIndex.String(), chunkFrom, current)
+
+		blockNum, found, err := scanRange(chunkFrom, current)
+		if err != nil {
+			return 0, false, fmt.Errorf("claimsync: FilterLogs error for globalIndex %s [%d, %d]: %w",
+				globalIndex.String(), chunkFrom, current, err)
+		}
+		if found {
+			return blockNum, true, nil
+		}
+
+		if chunkFrom == 0 {
+			break
+		}
+		current = chunkFrom - 1
+	}
+
+	return 0, false, nil
 }
 
 func (c *ClaimSync) GetClaimsPaged(ctx context.Context, page, pageSize uint32,

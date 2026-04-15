@@ -3,8 +3,11 @@
 package mocks
 
 import (
-	context "context"
 	big "math/big"
+
+	aggkittypes "github.com/agglayer/aggkit/types"
+
+	context "context"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -202,6 +205,71 @@ func (_c *ClaimSyncer_GetLastProcessedBlock_Call) Return(_a0 uint64, _a1 bool, _
 }
 
 func (_c *ClaimSyncer_GetLastProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, bool, error)) *ClaimSyncer_GetLastProcessedBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLatestBlockNumByGlobalIndexFromRPC provides a mock function with given fields: ctx, globalIndex, toBlock
+func (_m *ClaimSyncer) GetLatestBlockNumByGlobalIndexFromRPC(ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality) (uint64, bool, error) {
+	ret := _m.Called(ctx, globalIndex, toBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLatestBlockNumByGlobalIndexFromRPC")
+	}
+
+	var r0 uint64
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int, *aggkittypes.BlockNumberFinality) (uint64, bool, error)); ok {
+		return rf(ctx, globalIndex, toBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int, *aggkittypes.BlockNumberFinality) uint64); ok {
+		r0 = rf(ctx, globalIndex, toBlock)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *big.Int, *aggkittypes.BlockNumberFinality) bool); ok {
+		r1 = rf(ctx, globalIndex, toBlock)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, *big.Int, *aggkittypes.BlockNumberFinality) error); ok {
+		r2 = rf(ctx, globalIndex, toBlock)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestBlockNumByGlobalIndexFromRPC'
+type ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call struct {
+	*mock.Call
+}
+
+// GetLatestBlockNumByGlobalIndexFromRPC is a helper method to define mock.On call
+//   - ctx context.Context
+//   - globalIndex *big.Int
+//   - toBlock *aggkittypes.BlockNumberFinality
+func (_e *ClaimSyncer_Expecter) GetLatestBlockNumByGlobalIndexFromRPC(ctx interface{}, globalIndex interface{}, toBlock interface{}) *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call {
+	return &ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call{Call: _e.mock.On("GetLatestBlockNumByGlobalIndexFromRPC", ctx, globalIndex, toBlock)}
+}
+
+func (_c *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call) Run(run func(ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality)) *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*big.Int), args[2].(*aggkittypes.BlockNumberFinality))
+	})
+	return _c
+}
+
+func (_c *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call) Return(_a0 uint64, _a1 bool, _a2 error) *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call) RunAndReturn(run func(context.Context, *big.Int, *aggkittypes.BlockNumberFinality) (uint64, bool, error)) *ClaimSyncer_GetLatestBlockNumByGlobalIndexFromRPC_Call {
 	_c.Call.Return(run)
 	return _c
 }
