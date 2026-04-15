@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 
 	"github.com/agglayer/aggkit/log"
@@ -215,7 +214,7 @@ func fetchTokenBalances(
 
 // encodeBalanceOf ABI-encodes a balanceOf(address) call.
 func encodeBalanceOf(addr common.Address) string {
-	return balanceOfSelector + strings.TrimPrefix(fmt.Sprintf("%064s", strings.TrimPrefix(addr.Hex(), "0x")), "")
+	return balanceOfSelector + common.Bytes2Hex(common.LeftPadBytes(addr.Bytes(), 32))
 }
 
 // unmarshalHexBigInt extracts a *big.Int from a JSON-encoded hex string RPC result.
