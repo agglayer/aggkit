@@ -296,7 +296,7 @@ func fetchClaimEventsInRange(
 		return nil, fmt.Errorf("unmarshal logs: %w", err)
 	}
 
-	var claims []L2ClaimEvent
+	claims := make([]L2ClaimEvent, 0, len(logs))
 	for _, lg := range logs {
 		claim, err := decodeClaimEvent(lg.Data)
 		if err != nil {
