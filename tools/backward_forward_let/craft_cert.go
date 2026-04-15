@@ -2,7 +2,6 @@ package backward_forward_let
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -19,8 +19,9 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/go_signer/signer"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfave/cli/v2"
@@ -28,6 +29,12 @@ import (
 )
 
 const defaultL1InfoTreeLeafCount uint32 = 1
+
+const (
+	craftCertFetchMaxAttempts    = 6
+	craftCertFetchInitialBackoff = 500 * time.Millisecond
+	craftCertFetchMaxBackoff     = 5 * time.Second
+)
 
 type certStoreReader interface {
 	GetCertificateByHeight(height uint64) (*aggsendertypes.Certificate, error)
@@ -77,12 +84,12 @@ func RunCraftCert(c *cli.Context) error {
 		}
 	}
 
-	signerKey, err := loadCraftCertSignerKey(c.String("signer-key-path"), c.String("signer-key-password"))
+	certSigner, err := loadCraftCertSigner(c.Context, env, cfg, c)
 	if err != nil {
 		return err
 	}
 
-	cert, err := craftMaliciousCertificate(c.Context, env, certStore, signerKey, opts)
+	cert, err := craftMaliciousCertificate(c.Context, env, certStore, certSigner, opts)
 	if err != nil {
 		return err
 	}
@@ -135,19 +142,49 @@ func craftCertOptionsFromCLI(c *cli.Context) (*craftCertOptions, error) {
 	}, nil
 }
 
-func loadCraftCertSignerKey(path, password string) (*ecdsa.PrivateKey, error) {
-	if path == "" {
-		return nil, fmt.Errorf("--signer-key-path is required")
-	}
-	contents, err := os.ReadFile(filepath.Clean(path))
+func loadCraftCertSigner(
+	ctx context.Context,
+	env *Env,
+	cfg *Config,
+	c *cli.Context,
+) (signertypes.Signer, error) {
+	signerCfg, err := resolveCraftCertSignerConfig(cfg, c)
 	if err != nil {
-		return nil, fmt.Errorf("read signer key %s: %w", path, err)
+		return nil, err
 	}
-	key, err := keystore.DecryptKey(contents, password)
+
+	l2ChainID, err := env.chainIDFn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt signer key %s: %w", path, err)
+		return nil, fmt.Errorf("get L2 chain ID for craft-cert signer: %w", err)
 	}
-	return key.PrivateKey, nil
+
+	signingKey, err := signer.NewSigner(ctx, l2ChainID.Uint64(), signerCfg, "craft-cert", log.GetDefaultLogger())
+	if err != nil {
+		return nil, fmt.Errorf("load craft-cert signer: %w", err)
+	}
+
+	if err := signingKey.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("initialize craft-cert signer: %w", err)
+	}
+
+	return signingKey, nil
+}
+
+func resolveCraftCertSignerConfig(cfg *Config, c *cli.Context) (signertypes.SignerConfig, error) {
+	if c.String("signer-key-path") != "" {
+		return signer.NewLocalSignerConfig(c.String("signer-key-path"), c.String("signer-key-password")), nil
+	}
+
+	if cfg == nil {
+		return signertypes.SignerConfig{}, fmt.Errorf("craft-cert signer config is required")
+	}
+
+	if cfg.AggSender.AggsenderPrivateKey.Method == "" {
+		return signertypes.SignerConfig{}, fmt.Errorf(
+			"craft-cert signer is not configured; set AggSender.AggsenderPrivateKey in config or pass --signer-key-path")
+	}
+
+	return cfg.AggSender.AggsenderPrivateKey, nil
 }
 
 func openCraftCertStorage(dbPath string) (certStoreReader, error) {
@@ -168,11 +205,14 @@ func craftMaliciousCertificate(
 	ctx context.Context,
 	env *Env,
 	certStore certStoreReader,
-	signerKey *ecdsa.PrivateKey,
+	certSigner signertypes.HashSigner,
 	opts *craftCertOptions,
 ) (*agglayertypes.Certificate, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("craft certificate options are required")
+	}
+	if certSigner == nil {
+		return nil, fmt.Errorf("craft certificate signer is required")
 	}
 
 	fakeBridgeExits := make([]*agglayertypes.BridgeExit, 0, opts.numFakeExits)
@@ -213,7 +253,7 @@ func craftMaliciousCertificate(
 	if err != nil {
 		return nil, fmt.Errorf("hash crafted certificate to sign: %w", err)
 	}
-	sig, err := crypto.Sign(hashToSign.Bytes(), signerKey)
+	sig, err := certSigner.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, fmt.Errorf("sign crafted certificate: %w", err)
 	}
@@ -335,18 +375,79 @@ func getStoredBridgeExitsForHeight(
 		if cert.SignedCertificate == nil {
 			return nil, fmt.Errorf("certificate at height %d has no signed certificate payload", height)
 		}
-		var agglayerCert agglayertypes.Certificate
-		if err := json.Unmarshal([]byte(*cert.SignedCertificate), &agglayerCert); err != nil {
-			return nil, fmt.Errorf("unmarshal signed certificate at height %d: %w", height, err)
-		}
-		return agglayerCert.BridgeExits, nil
+		return parseBridgeExitsFromSignedCertificate(height, *cert.SignedCertificate)
 	}
 
-	exits, err := env.AggsenderRPC.GetCertificateBridgeExits(&height)
-	if err != nil {
-		return nil, err
+	var lastErr error
+	backoff := craftCertFetchInitialBackoff
+	for attempt := 1; attempt <= craftCertFetchMaxAttempts; attempt++ {
+		cert, headerErr := env.AggsenderRPC.GetCertificateHeaderPerHeight(&height)
+		if headerErr == nil && cert != nil && cert.SignedCertificate != nil {
+			exits, parseErr := parseBridgeExitsFromSignedCertificate(height, *cert.SignedCertificate)
+			if parseErr == nil {
+				return exits, nil
+			}
+			lastErr = parseErr
+		} else if headerErr != nil {
+			lastErr = headerErr
+			if isRetryableCraftCertFetchError(headerErr) {
+				if attempt == craftCertFetchMaxAttempts {
+					break
+				}
+				time.Sleep(backoff)
+				if backoff < craftCertFetchMaxBackoff {
+					backoff *= 2
+					if backoff > craftCertFetchMaxBackoff {
+						backoff = craftCertFetchMaxBackoff
+					}
+				}
+				continue
+			}
+		}
+
+		exits, err := env.AggsenderRPC.GetCertificateBridgeExits(&height)
+		if err == nil {
+			return exits, nil
+		}
+		lastErr = err
+
+		if !isRetryableCraftCertFetchError(err) && !isRetryableCraftCertFetchError(lastErr) {
+			return nil, lastErr
+		}
+
+		if attempt == craftCertFetchMaxAttempts {
+			break
+		}
+		time.Sleep(backoff)
+		if backoff < craftCertFetchMaxBackoff {
+			backoff *= 2
+			if backoff > craftCertFetchMaxBackoff {
+				backoff = craftCertFetchMaxBackoff
+			}
+		}
 	}
-	return exits, nil
+
+	return nil, lastErr
+}
+
+func parseBridgeExitsFromSignedCertificate(height uint64, signedCert string) ([]*agglayertypes.BridgeExit, error) {
+	var agglayerCert agglayertypes.Certificate
+	if err := json.Unmarshal([]byte(signedCert), &agglayerCert); err != nil {
+		return nil, fmt.Errorf("unmarshal signed certificate at height %d: %w", height, err)
+	}
+	return agglayerCert.BridgeExits, nil
+}
+
+func isRetryableCraftCertFetchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "found: 429") ||
+		strings.Contains(msg, "too many requests") ||
+		strings.Contains(msg, "connect: connection refused") ||
+		strings.Contains(msg, "no route to host") ||
+		strings.Contains(msg, "timeout")
 }
 
 func makeFakeBridgeExit(opts *craftCertOptions, exitIndex int) *agglayertypes.BridgeExit {

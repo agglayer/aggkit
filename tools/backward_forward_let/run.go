@@ -174,7 +174,7 @@ func Run(c *cli.Context) error {
 
 	PrintDiagnosis(os.Stdout, diagnosis)
 
-	if diagnosis.Case == NoDivergence {
+	if diagnosis.IsCompleteNoDivergence() {
 		fmt.Println("Nothing to do: L1 settled state and L2 on-chain state are in sync.")
 		return nil
 	}

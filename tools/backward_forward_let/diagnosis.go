@@ -285,7 +285,7 @@ func collectExtraL2Bridges(
 		br, err := env.BridgeService.GetBridgeByDepositCount(ctx, env.L2NetworkID, dc)
 		if err != nil {
 			if isNotFound(err) {
-				continue
+				return nil, fmt.Errorf("get L2 bridge at DC=%d: not indexed yet", dc)
 			}
 			return nil, fmt.Errorf("get L2 bridge at DC=%d: %w", dc, err)
 		}
@@ -358,13 +358,13 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 		fmt.Fprintln(w)
 	}
 
-	if result.Case == NoDivergence {
-		fmt.Fprintln(w, "Case: NoDivergence — L1 settled state and L2 on-chain state are in sync.")
+	if result.AggsenderAPIFailed {
+		printMissingCertReport(w, result)
 		return
 	}
 
-	if result.AggsenderAPIFailed {
-		printMissingCertReport(w, result)
+	if result.IsCompleteNoDivergence() {
+		fmt.Fprintln(w, "Case: NoDivergence — L1 settled state and L2 on-chain state are in sync.")
 		return
 	}
 

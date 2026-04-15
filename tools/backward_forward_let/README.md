@@ -190,6 +190,20 @@ Example:
 ```bash
 backward-forward-let craft-cert \
   --cfg aggkit-config.toml \
+  --staging-only \
+  --num-fake-exits 1 \
+  --out /tmp/malicious-cert.json
+```
+
+By default `craft-cert` reuses `AggSender.AggsenderPrivateKey` from the config, so the
+same shared signer config used by aggsender can be used here as well, including GCP KMS
+and other `go_signer` backends.
+
+To override the config for a one-off local keystore drill, pass the legacy CLI flags:
+
+```bash
+backward-forward-let craft-cert \
+  --cfg aggkit-config.toml \
   --signer-key-path /path/to/sequencer.keystore \
   --signer-key-password 'secret' \
   --staging-only \
@@ -214,8 +228,9 @@ backward-forward-let craft-cert \
 Flags:
 
 - `--cfg`, `-c`: config file with normal tool connectivity settings
-- `--signer-key-path`: keystore used to sign the crafted certificate
-- `--signer-key-password`: password for the signer keystore
+- `AggSender.AggsenderPrivateKey`: default signer config reused by `craft-cert`
+- `--signer-key-path`: optional local-keystore override for the signer config
+- `--signer-key-password`: password for the local-keystore override
 - `--out`: write crafted JSON to a file instead of stdout
 - `--db-path`: optional aggsender SQLite DB path when aggsender RPC is unavailable
 - `--num-fake-exits`: number of fake exits to include
@@ -246,6 +261,7 @@ To simulate divergence on a staging network:
    Use `--no-db` if you specifically want to test the fallback path where aggsender cannot
    provide certificate bridge exits and operators must use the AggLayer admin/debug endpoint.
 4. Restart aggkit/aggsender and wait for the certificate to settle.
+   On staging this settlement can take up to one hour.
 5. Optionally create extra real L2 bridges if you want a Case 2 or Case 4 drill.
 6. Run `backward-forward-let --cfg ...` to diagnose and recover.
 

@@ -39,13 +39,12 @@ func main() {
 			Usage: "Build a signed malicious certificate JSON for staging drills",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:     "signer-key-path",
-					Usage:    "Path to the keystore file used to sign the crafted certificate",
-					Required: true,
+					Name:  "signer-key-path",
+					Usage: "Path to the keystore file used to sign the crafted certificate (overrides AggSender.AggsenderPrivateKey)",
 				},
 				&cli.StringFlag{
 					Name:  "signer-key-password",
-					Usage: "Password for the keystore file used to sign the crafted certificate",
+					Usage: "Password for the keystore file used to sign the crafted certificate (used with --signer-key-path)",
 				},
 				&cli.StringFlag{
 					Name:  "out",

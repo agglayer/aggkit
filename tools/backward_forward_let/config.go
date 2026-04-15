@@ -26,8 +26,17 @@ type Config struct {
 	// AgglayerClient is the AggLayer gRPC client configuration.
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 
+	// AggSender contains the subset of aggsender config reused by craft-cert signer resolution.
+	AggSender CraftCertAggsenderConfig `mapstructure:"AggSender"`
+
 	// BackwardForwardLET contains tool-specific settings.
 	BackwardForwardLET BackwardForwardLETConfig `mapstructure:"BackwardForwardLET"`
+}
+
+// CraftCertAggsenderConfig contains the aggsender signer settings reused by craft-cert.
+type CraftCertAggsenderConfig struct {
+	// AggsenderPrivateKey is the shared signer config used to sign certificates.
+	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 }
 
 // BackwardForwardLETConfig contains configuration specific to the backward/forward LET tool.

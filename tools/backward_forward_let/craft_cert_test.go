@@ -2,8 +2,10 @@ package backward_forward_let
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
+	"flag"
 	"math/big"
 	"testing"
 
@@ -12,9 +14,12 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/go_signer/signer"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
+	"github.com/urfave/cli/v2"
 )
 
 type stubAgglayerClient struct {
@@ -127,7 +132,7 @@ func TestCraftMaliciousCertificate_NoSettledCerts(t *testing.T) {
 		amount:            big.NewInt(0),
 	}
 
-	cert, err := craftMaliciousCertificate(context.Background(), env, nil, signerKey, opts)
+	cert, err := craftMaliciousCertificate(context.Background(), env, nil, &stubHashSigner{key: signerKey}, opts)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), cert.Height)
 	require.Equal(t, common.Hash(bridge.root), cert.PrevLocalExitRoot)
@@ -204,7 +209,7 @@ func TestCraftMaliciousCertificate_SettledCertsFromAggsenderRPC(t *testing.T) {
 		amount:            big.NewInt(0),
 	}
 
-	cert, err := craftMaliciousCertificate(context.Background(), env, nil, signerKey, opts)
+	cert, err := craftMaliciousCertificate(context.Background(), env, nil, &stubHashSigner{key: signerKey}, opts)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), cert.Height)
 	require.Equal(t, settledLER, cert.PrevLocalExitRoot)
@@ -246,12 +251,80 @@ func TestGetStoredBridgeExitsForHeight_FromDB(t *testing.T) {
 	require.Len(t, exits, 1)
 }
 
+func TestGetStoredBridgeExitsForHeight_FromAggsenderHeaderFallback(t *testing.T) {
+	t.Parallel()
+
+	payload := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			makeFakeBridgeExit(&craftCertOptions{
+				nonce:           []byte("rpc-header"),
+				originNetwork:   0,
+				originTokenAddr: common.Address{},
+				destNetwork:     0,
+				amount:          big.NewInt(0),
+			}, 0),
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rpc := &stubCraftAggsenderRPC{
+		stubAggsenderRPC: &stubAggsenderRPC{
+			failHeights: map[uint64]bool{0: true},
+		},
+		certByHeight: map[uint64]*aggsendertypes.Certificate{
+			0: {SignedCertificate: ptrString(string(raw))},
+		},
+	}
+
+	exits, err := getStoredBridgeExitsForHeight(&Env{AggsenderRPC: rpc}, nil, 0)
+	require.NoError(t, err)
+	require.Len(t, exits, 1)
+}
+
+func TestGetStoredBridgeExitsForHeight_Retries429OnHeaderPath(t *testing.T) {
+	t.Parallel()
+
+	payload := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			makeFakeBridgeExit(&craftCertOptions{
+				nonce:           []byte("rpc-retry"),
+				originNetwork:   0,
+				originTokenAddr: common.Address{},
+				destNetwork:     0,
+				amount:          big.NewInt(0),
+			}, 0),
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rpc := &stubCraftAggsenderRPC{
+		stubAggsenderRPC: &stubAggsenderRPC{
+			failHeights: map[uint64]bool{0: true},
+		},
+		certByHeight: map[uint64]*aggsendertypes.Certificate{
+			0: {SignedCertificate: ptrString(string(raw))},
+		},
+		headerErrsRemaining: map[uint64]int{0: 2},
+	}
+
+	exits, err := getStoredBridgeExitsForHeight(&Env{AggsenderRPC: rpc}, nil, 0)
+	require.NoError(t, err)
+	require.Len(t, exits, 1)
+}
+
 type stubCraftAggsenderRPC struct {
 	*stubAggsenderRPC
-	certByHeight map[uint64]*aggsendertypes.Certificate
+	certByHeight        map[uint64]*aggsendertypes.Certificate
+	headerErrsRemaining map[uint64]int
 }
 
 func (s *stubCraftAggsenderRPC) GetCertificateHeaderPerHeight(height *uint64) (*aggsendertypes.Certificate, error) {
+	if s.headerErrsRemaining != nil && s.headerErrsRemaining[*height] > 0 {
+		s.headerErrsRemaining[*height]--
+		return nil, errors.New("invalid status code, expected: 200, found: 429")
+	}
 	return s.certByHeight[*height], nil
 }
 
@@ -269,3 +342,66 @@ func (s *stubCraftCertStore) GetCertificateHeaderByHeight(height uint64) (*aggse
 }
 
 func ptrString(v string) *string { return &v }
+
+type stubHashSigner struct {
+	key *ecdsa.PrivateKey
+}
+
+func (s *stubHashSigner) SignHash(_ context.Context, hash common.Hash) ([]byte, error) {
+	return crypto.Sign(hash.Bytes(), s.key)
+}
+
+func TestResolveCraftCertSignerConfig_FromCLI(t *testing.T) {
+	t.Parallel()
+
+	app := cli.NewApp()
+	set := flagSetForCraftCert(t,
+		"--signer-key-path", "/tmp/sequencer.keystore",
+		"--signer-key-password", "secret",
+	)
+	ctx := cli.NewContext(app, set, nil)
+
+	cfg, err := resolveCraftCertSignerConfig(&Config{}, ctx)
+	require.NoError(t, err)
+	require.Equal(t, signer.NewLocalSignerConfig("/tmp/sequencer.keystore", "secret"), cfg)
+}
+
+func TestResolveCraftCertSignerConfig_FromAggsenderConfig(t *testing.T) {
+	t.Parallel()
+
+	app := cli.NewApp()
+	ctx := cli.NewContext(app, flagSetForCraftCert(t), nil)
+	expected := signertypes.SignerConfig{
+		Method: signertypes.MethodGCPKMS,
+		Config: map[string]any{"KeyName": "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"},
+	}
+
+	cfg, err := resolveCraftCertSignerConfig(&Config{
+		AggSender: CraftCertAggsenderConfig{
+			AggsenderPrivateKey: expected,
+		},
+	}, ctx)
+	require.NoError(t, err)
+	require.Equal(t, expected, cfg)
+}
+
+func TestResolveCraftCertSignerConfig_Missing(t *testing.T) {
+	t.Parallel()
+
+	app := cli.NewApp()
+	ctx := cli.NewContext(app, flagSetForCraftCert(t), nil)
+
+	_, err := resolveCraftCertSignerConfig(&Config{}, ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "AggSender.AggsenderPrivateKey")
+}
+
+func flagSetForCraftCert(t *testing.T, args ...string) *flag.FlagSet {
+	t.Helper()
+
+	set := flag.NewFlagSet("craft-cert", flag.ContinueOnError)
+	set.String("signer-key-path", "", "")
+	set.String("signer-key-password", "", "")
+	require.NoError(t, set.Parse(args))
+	return set
+}

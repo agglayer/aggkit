@@ -16,3 +16,5 @@ data
 *.sqlite-wal
 **aggkit-001-data**
 .vscode
+debug
+bin

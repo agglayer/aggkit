@@ -241,6 +241,15 @@ func TestPrintDiagnosis_NoDivergence(t *testing.T) {
 	require.Contains(t, buf.String(), "NoDivergence")
 }
 
+func TestDiagnosisResult_IsCompleteNoDivergence(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, (&DiagnosisResult{Case: NoDivergence}).IsCompleteNoDivergence())
+	require.False(t, (&DiagnosisResult{Case: NoDivergence, AggsenderAPIFailed: true}).IsCompleteNoDivergence())
+	require.False(t, (&DiagnosisResult{Case: Case1}).IsCompleteNoDivergence())
+	require.False(t, (*DiagnosisResult)(nil).IsCompleteNoDivergence())
+}
+
 // TestPrintDiagnosis_AggsenderAPIFailed verifies the actionable missing-cert output
 // when all cert IDs are resolved (no UNKNOWN entries).
 func TestPrintDiagnosis_AggsenderAPIFailed(t *testing.T) {
@@ -271,6 +280,30 @@ func TestPrintDiagnosis_AggsenderAPIFailed(t *testing.T) {
 	// No UNKNOWN note when all cert IDs are resolved.
 	require.NotContains(t, output, "UNKNOWN")
 	require.NotContains(t, output, "certificate_per_network_cf")
+}
+
+func TestPrintDiagnosis_AggsenderAPIFailed_PartialResultDoesNotPrintNoDivergence(t *testing.T) {
+	t.Parallel()
+
+	result := &DiagnosisResult{
+		Case:                  NoDivergence,
+		AggsenderAPIFailed:    true,
+		L1SettledLER:          common.HexToHash("0x1111"),
+		L1SettledDepositCount: 4,
+		L2CurrentLER:          common.HexToHash("0x2222"),
+		L2CurrentDepositCount: 3,
+		MissingCerts: []MissingCertInfo{
+			{Height: 1150, CertID: common.HexToHash("0x3333"), CertIDResolved: true},
+		},
+	}
+
+	var buf bytes.Buffer
+	PrintDiagnosis(&buf, result)
+	output := buf.String()
+
+	require.Contains(t, output, "Aggsender RPC returned no bridge exit data")
+	require.NotContains(t, output, "Case: NoDivergence")
+	require.NotContains(t, output, "Nothing to do")
 }
 
 // TestPrintDiagnosis_AggsenderAPIFailed_WithUnknownCertID verifies that the extra
@@ -755,7 +788,7 @@ func TestCollectExtraL2Bridges_HappyPath(t *testing.T) {
 	require.Len(t, extra, 2)
 }
 
-// TestCollectExtraL2Bridges_NotFound verifies that NotFound entries are skipped.
+// TestCollectExtraL2Bridges_NotFound verifies that missing bridge-service entries fail fast.
 func TestCollectExtraL2Bridges_NotFound(t *testing.T) {
 	t.Parallel()
 
@@ -766,15 +799,16 @@ func TestCollectExtraL2Bridges_NotFound(t *testing.T) {
 		BridgeService: &stubBridgeService{
 			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
 				3: br3,
-				// DC 4 is absent → returns ErrNotFound → skipped
+				// DC 4 is absent → returns ErrNotFound → fail fast
 			},
 		},
 		L2NetworkID: 1,
 	}
 
-	extra, err := collectExtraL2Bridges(context.Background(), env, 3, 5)
-	require.NoError(t, err)
-	require.Len(t, extra, 1)
+	_, err := collectExtraL2Bridges(context.Background(), env, 3, 5)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "DC=4")
+	require.Contains(t, err.Error(), "not indexed yet")
 }
 
 // TestCollectExtraL2Bridges_ServiceError verifies a non-NotFound error is propagated.
