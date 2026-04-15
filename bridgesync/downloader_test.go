@@ -285,13 +285,12 @@ func TestBuildAppender(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                 string
-		eventSignature       common.Hash
-		deploymentKind       BridgeDeployment
-		logsCount            int
-		buildQuerierMockFunc func() *BridgeQuerierMock
-		logBuilder           func() (types.Log, error)
-		expectedErr          string
+		name           string
+		eventSignature common.Hash
+		deploymentKind BridgeDeployment
+		logsCount      int
+		logBuilder     func() (types.Log, error)
+		expectedErr    string
 	}{
 		{
 			name:           "bridgeEventSignature appender",
