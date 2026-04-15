@@ -34,8 +34,8 @@ type Proof [DefaultHeight]common.Hash
 // NewProof creates a proof from an array of hashes
 func NewProof(proofRaw [DefaultHeight][common.HashLength]byte) Proof {
 	var proof Proof
-	for i, currentLeaf := range proofRaw {
-		proof[i] = currentLeaf
+	for i := 0; i < len(proof); i++ {
+		proof[i] = common.Hash(proofRaw[i])
 	}
 	return proof
 }

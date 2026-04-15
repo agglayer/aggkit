@@ -6,5 +6,5 @@ type KeystoreFileConfig struct {
 	Path string `mapstructure:"Path"`
 
 	// Password is the password to decrypt the key store file
-	Password string `mapstructure:"Password"`
+	Password string `mapstructure:"Password"` //nolint:gosec // this config field intentionally stores a keystore password.
 }

@@ -24,12 +24,20 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const defaultScanChunkSize uint64 = 5000
+const (
+	// DefaultScanChunkSize is the default block range per eth_getLogs request.
+	DefaultScanChunkSize uint64 = 5000
+
+	claimMethodSelectorLength = 4
+	etrogClaimInputArity      = 11
+	preEtrogClaimInputArity   = 10
+)
 
 var (
 	scanClaimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	scanDetailedClaimEventSignature = crypto.Keccak256Hash([]byte(
-		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint8,uint32,address,uint32,address,uint256,bytes)",
+		"DetailedClaimEvent(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint8,uint32,address," +
+			"uint32,address,uint256,bytes)",
 	))
 )
 
@@ -80,7 +88,7 @@ func RunScanInvalidClaims(c *cli.Context) error {
 
 	chunkSize := c.Uint64("chunk-size")
 	if chunkSize == 0 {
-		chunkSize = defaultScanChunkSize
+		chunkSize = DefaultScanChunkSize
 	}
 
 	dialCtx, dialCancel := context.WithTimeout(c.Context, dialTimeout)
@@ -160,7 +168,7 @@ func ScanInvalidClaims(
 	params ScanInvalidClaimsParams,
 ) ([]invalidGERUsage, int, uint64, error) {
 	if params.ChunkSize == 0 {
-		params.ChunkSize = defaultScanChunkSize
+		params.ChunkSize = DefaultScanChunkSize
 	}
 
 	toBlock := params.ToBlock
@@ -381,7 +389,7 @@ func isClaimStillActive(ctx context.Context, l2Bridge l2ClaimStateLookup, global
 }
 
 func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash, error) {
-	if len(txData) < 4 {
+	if len(txData) < claimMethodSelectorLength {
 		return common.Hash{}, fmt.Errorf("tx input too short")
 	}
 
@@ -392,7 +400,7 @@ func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash,
 
 	claim := &claimsynctypes.Claim{GlobalIndex: globalIndex}
 	switch len(unpacked) {
-	case 11:
+	case etrogClaimInputArity:
 		found, err := claim.DecodeEtrogCalldata(unpacked)
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("decode %s calldata: %w", method.Name, err)
@@ -401,7 +409,7 @@ func decodeClaimGERFromTxData(txData []byte, globalIndex *big.Int) (common.Hash,
 			return common.Hash{}, fmt.Errorf("decoded %s calldata did not match global index %s",
 				method.Name, globalIndex.String())
 		}
-	case 10:
+	case preEtrogClaimInputArity:
 		found, err := claim.DecodePreEtrogCalldata(unpacked)
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("decode %s calldata: %w", method.Name, err)

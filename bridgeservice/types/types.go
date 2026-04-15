@@ -56,11 +56,8 @@ type Proof [tree.DefaultHeight]Hash
 // @Description Converts a Merkle proof to a ProofResponse
 func ConvertToProofResponse(proof tree.Proof) Proof {
 	var p Proof
-	for i, h := range proof {
-		if i >= len(p) {
-			break
-		}
-		p[i] = Hash(h.Hex())
+	for i := 0; i < len(p) && i < len(proof); i++ {
+		p[i] = Hash(proof[i].Hex())
 	}
 	return p
 }

@@ -522,12 +522,12 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1types.I
 
 // convertToProtoSiblings converts a slice of hashes to a slice of proto fixed bytes 32
 func convertToProtoSiblings(siblings treetypes.Proof) []*v1types.FixedBytes32 {
-	protoSiblings := make([]*v1types.FixedBytes32, len(siblings))
+	protoSiblings := make([]*v1types.FixedBytes32, 0, len(siblings))
 
-	for i, sibling := range siblings {
-		protoSiblings[i] = &v1types.FixedBytes32{
+	for _, sibling := range siblings {
+		protoSiblings = append(protoSiblings, &v1types.FixedBytes32{
 			Value: sibling.Bytes(),
-		}
+		})
 	}
 
 	return protoSiblings

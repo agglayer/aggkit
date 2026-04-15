@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -316,7 +317,8 @@ func composeVarKeyForTemplate(key string) string {
 }
 
 func readFileToString(filename string) (string, error) {
-	content, err := os.ReadFile(filename)
+	cleanedFilename := filepath.Clean(filename)
+	content, err := os.ReadFile(cleanedFilename) //nolint:gosec // filename is a local config path selected by the caller.
 	if err != nil {
 		return "", err
 	}
