@@ -117,6 +117,9 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, claimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x789")).Return(nil, errors.New("exit root not found"))
+				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedErr: "failed to resolve the bridge exit block number for NewLocalExitRoot",
 		},
@@ -128,6 +131,8 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, claimSyncer *claimsynctypesmocks.ClaimSyncer) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, errors.New("agglayer error"))
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedErr: "failed to get latest settled imported bridge exit from agglayer",
 		},
@@ -146,6 +151,8 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				}
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(networkStatus, nil)
 				claimSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex).Return(nil, errors.New("claim not found"))
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
+				aggchainQuerier.EXPECT().StartL2Block().Return(uint64(0))
 			},
 			expectedErr: "failed to get claim(s) by global index",
 		},
@@ -738,6 +745,145 @@ func TestGetBlockNumFromGlobalIndex(t *testing.T) {
 				require.Equal(t, tc.expectedBlockNum, blockNum)
 			}
 
+			mockClaimSyncer.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetSettledBlocksFromCertHeader(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	certHash := common.HexToHash("0x123")
+	settledIBE := &agglayertypes.SettledImportedBridgeExit{
+		GlobalIndex:    bridgesync.GenerateGlobalIndex(true, 0, 1),
+		BridgeExitHash: common.HexToHash("0xe3e297278c7df4ae4f235be10155ac62c53b08e2a14ed09b7dd6b688952ee883"),
+	}
+
+	testCases := []struct {
+		name    string
+		cert    *agglayertypes.CertificateHeader
+		mockFn  func(*mocks.AggchainFEPRollupQuerier, *agglayermocks.AgglayerClientMock, *mocks.L2BridgeSyncer, *claimsynctypesmocks.ClaimSyncer)
+		checkFn func(*testing.T, types.SettledBlocks)
+	}{
+		{
+			name: "nil cert — only FEP block queried",
+			cert: nil,
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, _ *agglayermocks.AgglayerClientMock, _ *mocks.L2BridgeSyncer, _ *claimsynctypesmocks.ClaimSyncer) {
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(42), nil)
+			},
+			checkFn: func(t *testing.T, b types.SettledBlocks) {
+				t.Helper()
+				require.Equal(t, uint64(0), b.LastBridgeExitBlock)
+				require.NoError(t, b.LastBridgeExitBlockErr)
+				require.Equal(t, uint64(0), b.LastImportedBridgeExitBlock)
+				require.NoError(t, b.LastImportedBridgeExitBlockErr)
+				require.Equal(t, uint64(42), b.LastSettledL2BlockNum)
+				require.NoError(t, b.LastSettledL2BlockNumErr)
+			},
+		},
+		{
+			name: "all sources succeed",
+			cert: &agglayertypes.CertificateHeader{NewLocalExitRoot: certHash},
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, claimSyncer *claimsynctypesmocks.ClaimSyncer) {
+				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, certHash).Return(&treetypes.Root{BlockNum: 100}, nil)
+				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{
+					SettledImportedBridgeExit: settledIBE,
+				}, nil)
+				claimSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, settledIBE.GlobalIndex).Return([]claimsynctypes.Claim{
+					{BlockNum: 150, GlobalIndex: settledIBE.GlobalIndex},
+				}, nil)
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(200), nil)
+			},
+			checkFn: func(t *testing.T, b types.SettledBlocks) {
+				t.Helper()
+				require.Equal(t, uint64(100), b.LastBridgeExitBlock)
+				require.NoError(t, b.LastBridgeExitBlockErr)
+				require.Equal(t, uint64(150), b.LastImportedBridgeExitBlock)
+				require.NoError(t, b.LastImportedBridgeExitBlockErr)
+				require.Equal(t, uint64(200), b.LastSettledL2BlockNum)
+				require.NoError(t, b.LastSettledL2BlockNumErr)
+				require.Equal(t, settledIBE, b.SettledImportedBridgeExit)
+			},
+		},
+		{
+			name: "bridge exit error — other sources still filled",
+			cert: &agglayertypes.CertificateHeader{NewLocalExitRoot: certHash},
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, _ *claimsynctypesmocks.ClaimSyncer) {
+				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, certHash).Return(nil, errors.New("exit root not found"))
+				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(200), nil)
+			},
+			checkFn: func(t *testing.T, b types.SettledBlocks) {
+				t.Helper()
+				require.ErrorContains(t, b.LastBridgeExitBlockErr, "exit root not found")
+				require.Equal(t, uint64(0), b.LastImportedBridgeExitBlock)
+				require.NoError(t, b.LastImportedBridgeExitBlockErr)
+				require.Equal(t, uint64(200), b.LastSettledL2BlockNum)
+				require.NoError(t, b.LastSettledL2BlockNumErr)
+			},
+		},
+		{
+			name: "agglayer network info error — other sources still filled",
+			cert: &agglayertypes.CertificateHeader{NewLocalExitRoot: bridgesynctypes.EmptyLER},
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, _ *mocks.L2BridgeSyncer, _ *claimsynctypesmocks.ClaimSyncer) {
+				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, errors.New("network error"))
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(50), nil)
+			},
+			checkFn: func(t *testing.T, b types.SettledBlocks) {
+				t.Helper()
+				require.NoError(t, b.LastBridgeExitBlockErr)
+				require.ErrorContains(t, b.LastImportedBridgeExitBlockErr, "network error")
+				require.Equal(t, uint64(50), b.LastSettledL2BlockNum)
+				require.NoError(t, b.LastSettledL2BlockNumErr)
+			},
+		},
+		{
+			name: "FEP L2 block error — other sources still filled",
+			cert: &agglayertypes.CertificateHeader{NewLocalExitRoot: certHash},
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer, _ *claimsynctypesmocks.ClaimSyncer) {
+				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, certHash).Return(&treetypes.Root{BlockNum: 100}, nil)
+				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(agglayertypes.NetworkInfo{}, nil)
+				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), errors.New("fep error"))
+			},
+			checkFn: func(t *testing.T, b types.SettledBlocks) {
+				t.Helper()
+				require.Equal(t, uint64(100), b.LastBridgeExitBlock)
+				require.NoError(t, b.LastBridgeExitBlockErr)
+				require.NoError(t, b.LastImportedBridgeExitBlockErr)
+				require.ErrorContains(t, b.LastSettledL2BlockNumErr, "fep error")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
+			mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
+			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
+			mockClaimSyncer := claimsynctypesmocks.NewClaimSyncer(t)
+
+			if tc.mockFn != nil {
+				tc.mockFn(mockAggchainFEPQuerier, mockAgglayerClient, mockL2BridgeSyncer, mockClaimSyncer)
+			}
+
+			certQuerier := NewCertificateQuerier(
+				mockL2BridgeSyncer,
+				mockClaimSyncer,
+				mockAggchainFEPQuerier,
+				mockAgglayerClient,
+				bridgesynctypes.EmptyLER,
+			)
+
+			result := certQuerier.GetSettledBlocksFromCertHeader(ctx, tc.cert)
+			tc.checkFn(t, result)
+
+			mockAgglayerClient.AssertExpectations(t)
+			mockL2BridgeSyncer.AssertExpectations(t)
+			mockAggchainFEPQuerier.AssertExpectations(t)
 			mockClaimSyncer.AssertExpectations(t)
 		})
 	}

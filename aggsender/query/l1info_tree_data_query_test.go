@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -286,6 +287,25 @@ func Test_GetProofForGER(t *testing.T) {
 		{
 			name: "success",
 			ger:  common.HexToHash("0x1"),
+			root: tree.CalculateRoot(common.HexToHash("0x3"), treetypes.Proof{}, 0),
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 0,
+						Hash:            common.HexToHash("0x3"),
+					}, nil,
+				)
+				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), tree.CalculateRoot(common.HexToHash("0x3"), treetypes.Proof{}, 0)).Return(treetypes.Proof{}, nil)
+			},
+			expectedLeaf: &l1infotreesync.L1InfoTreeLeaf{
+				L1InfoTreeIndex: 0,
+				Hash:            common.HexToHash("0x3"),
+			},
+			expectedProof: treetypes.Proof{},
+		},
+		{
+			name: "ger exists but is not provable against selected root",
+			ger:  common.HexToHash("0x1"),
 			root: common.HexToHash("0x2"),
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
@@ -296,11 +316,7 @@ func Test_GetProofForGER(t *testing.T) {
 				)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x2")).Return(treetypes.Proof{}, nil)
 			},
-			expectedLeaf: &l1infotreesync.L1InfoTreeLeaf{
-				L1InfoTreeIndex: 0,
-				Hash:            common.HexToHash("0x3"),
-			},
-			expectedProof: treetypes.Proof{},
+			expectedError: ErrGERNotProvableAgainstRoot.Error(),
 		},
 	}
 

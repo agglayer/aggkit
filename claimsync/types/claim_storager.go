@@ -34,8 +34,6 @@ type ClaimStorager interface {
 	// - a boolean indicating whether a block was found (false if there are no blocks)
 	// - error if the operation failed, or nil if successful
 	GetLastProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error)
-	// GetBoundaryBlockForClaimType returns the max block_num for claims of the given type
-	GetBoundaryBlockForClaimType(ctx context.Context, tx dbtypes.Querier, claimType ClaimType) (uint64, error)
 	// DeleteBlocksFrom deletes all blocks with num >= firstBlock (cascade-deletes claims etc.)
 	DeleteBlocksFrom(ctx context.Context, tx dbtypes.Querier, firstBlock uint64) (int64, error)
 	// GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root

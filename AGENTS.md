@@ -26,3 +26,12 @@
 - Each component has: config, types, mocks subdirectories
 - Tests use testify; files named `*_test.go`. Use `require` (not `assert`) when creating unit tests
 - Database migrations in `migrations/` subdirectories
+
+
+## GitHub
+
+- To create a new PR use the template defined in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)
+
+## Types to use
+
+- To set a block reference (as a tag or block number) use the type `BlockNumberFinality` (in the types folder). Use `NewBlockNumberFinality` for block tags or `NewBlockNumber` for block numbers.

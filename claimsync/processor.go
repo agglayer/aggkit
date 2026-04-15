@@ -112,13 +112,6 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, er
 	return p.storage.GetLastProcessedBlock(ctx, nil)
 }
 
-// GetBoundaryBlockForClaimType returns the max block_num for claims of the given type.
-func (p *processor) GetBoundaryBlockForClaimType(
-	ctx context.Context, tx dbtypes.Querier, claimType ClaimType,
-) (uint64, error) {
-	return p.storage.GetBoundaryBlockForClaimType(ctx, tx, claimType)
-}
-
 func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, p.dbQueryTimeout)
 }

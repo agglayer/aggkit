@@ -286,13 +286,16 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.status.Start(time.Now().UTC())
 	a.status.SetStatus(types.StatusCheckingDBCompatibility, a.log)
 	a.checkDBCompatibility(ctx)
-	a.status.SetStatus(types.StatusCheckingInitialStage, a.log)
-	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
+
 	a.status.SetStatus(types.StartingClaimSyncerStage, a.log)
 	err := a.initialBlockClaimSyncerSetter.SetClaimSyncerNextRequiredBlock(ctx, a.l2ClaimSyncer, nil)
 	if err != nil {
 		a.log.Panicf("error setting next required block for claim syncer: %v", err)
 	}
+
+	a.status.SetStatus(types.StatusCheckingInitialStage, a.log)
+	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
+
 	a.status.SetStatus(types.StatusFlowCheckingInitialStage, a.log)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
