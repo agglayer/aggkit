@@ -8,6 +8,7 @@ import (
 	"flag"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/agglayer/types"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -223,6 +224,169 @@ func TestCraftMaliciousCertificate_SettledCertsFromAggsenderRPC(t *testing.T) {
 	require.Equal(t, expectedLER, cert.NewLocalExitRoot)
 }
 
+func TestLoadExistingLeafHashes_ReconstructsMissingPrefixFromBridgeService(t *testing.T) {
+	t.Parallel()
+
+	exit2 := makeFakeBridgeExit(&craftCertOptions{
+		nonce:           []byte("existing-2"),
+		originNetwork:   0,
+		originTokenAddr: common.Address{},
+		destNetwork:     0,
+		amount:          big.NewInt(0),
+	}, 0)
+	exit3 := makeFakeBridgeExit(&craftCertOptions{
+		nonce:           []byte("existing-3"),
+		originNetwork:   0,
+		originTokenAddr: common.Address{},
+		destNetwork:     0,
+		amount:          big.NewInt(0),
+	}, 0)
+
+	bridge0 := &bridgeservicetypes.BridgeResponse{
+		LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
+		OriginNetwork:      0,
+		OriginAddress:      bridgeservicetypes.Address("0x0000000000000000000000000000000000000000"),
+		DestinationNetwork: 0,
+		DestinationAddress: bridgeservicetypes.Address("0x1111111111111111111111111111111111111111"),
+		Amount:             bridgeservicetypes.BigIntString("1"),
+	}
+	bridge1 := &bridgeservicetypes.BridgeResponse{
+		LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
+		OriginNetwork:      0,
+		OriginAddress:      bridgeservicetypes.Address("0x0000000000000000000000000000000000000000"),
+		DestinationNetwork: 0,
+		DestinationAddress: bridgeservicetypes.Address("0x2222222222222222222222222222222222222222"),
+		Amount:             bridgeservicetypes.BigIntString("2"),
+	}
+
+	env := &Env{
+		L2NetworkID: 1,
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				0: bridge0,
+				1: bridge1,
+			},
+		},
+		AggsenderRPC: &stubAggsenderRPC{
+			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
+				2: {exit2},
+				3: {exit3},
+			},
+			failHeights: map[uint64]bool{
+				0: true,
+				1: true,
+			},
+		},
+	}
+
+	hashes, err := loadExistingLeafHashes(context.Background(), env, nil, 4, common.Hash{}, 4)
+	require.NoError(t, err)
+	require.Equal(t, []common.Hash{
+		BridgeResponseLeafHash(bridge0),
+		BridgeResponseLeafHash(bridge1),
+		BridgeExitLeafHash(exit2),
+		BridgeExitLeafHash(exit3),
+	}, hashes)
+}
+
+func TestLoadExistingLeafHashes_AllHistoricalHeightsMissingFallsBackToBridgeService(t *testing.T) {
+	t.Parallel()
+
+	bridge0 := &bridgeservicetypes.BridgeResponse{
+		LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
+		OriginNetwork:      0,
+		OriginAddress:      bridgeservicetypes.Address("0x0000000000000000000000000000000000000000"),
+		DestinationNetwork: 0,
+		DestinationAddress: bridgeservicetypes.Address("0x3333333333333333333333333333333333333333"),
+		Amount:             bridgeservicetypes.BigIntString("3"),
+	}
+	bridge1 := &bridgeservicetypes.BridgeResponse{
+		LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
+		OriginNetwork:      0,
+		OriginAddress:      bridgeservicetypes.Address("0x0000000000000000000000000000000000000000"),
+		DestinationNetwork: 0,
+		DestinationAddress: bridgeservicetypes.Address("0x4444444444444444444444444444444444444444"),
+		Amount:             bridgeservicetypes.BigIntString("4"),
+	}
+
+	env := &Env{
+		L2NetworkID: 1,
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				0: bridge0,
+				1: bridge1,
+			},
+		},
+		AggsenderRPC: &stubAggsenderRPC{
+			failHeights: map[uint64]bool{
+				0: true,
+				1: true,
+			},
+		},
+	}
+
+	hashes, err := loadExistingLeafHashes(context.Background(), env, nil, 2, common.Hash{}, 2)
+	require.NoError(t, err)
+	require.Equal(t, []common.Hash{
+		BridgeResponseLeafHash(bridge0),
+		BridgeResponseLeafHash(bridge1),
+	}, hashes)
+}
+
+func TestLoadExistingLeafHashes_UsesBridgeServiceWhenCurrentBridgeMatchesSettled(t *testing.T) {
+	t.Parallel()
+
+	bridge0 := &bridgeservicetypes.BridgeResponse{
+		LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
+		OriginNetwork:      0,
+		OriginAddress:      bridgeservicetypes.Address("0x0000000000000000000000000000000000000000"),
+		DestinationNetwork: 0,
+		DestinationAddress: bridgeservicetypes.Address("0x5555555555555555555555555555555555555555"),
+		Amount:             bridgeservicetypes.BigIntString("5"),
+	}
+	bridge1 := &bridgeservicetypes.BridgeResponse{
+		LeafType:           bridgetypes.LeafTypeAsset.Uint8(),
+		OriginNetwork:      0,
+		OriginAddress:      bridgeservicetypes.Address("0x0000000000000000000000000000000000000000"),
+		DestinationNetwork: 0,
+		DestinationAddress: bridgeservicetypes.Address("0x6666666666666666666666666666666666666666"),
+		Amount:             bridgeservicetypes.BigIntString("6"),
+	}
+
+	settledLER, err := ComputeLERForNewLeaves(
+		[]common.Hash{BridgeResponseLeafHash(bridge0)},
+		[]common.Hash{BridgeResponseLeafHash(bridge1)},
+	)
+	require.NoError(t, err)
+
+	env := &Env{
+		L2NetworkID: 1,
+		L2Bridge: &stubL2Bridge{
+			depositCount: big.NewInt(2),
+			root:         [32]byte(settledLER),
+		},
+		BridgeService: &stubBridgeService{
+			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
+				0: bridge0,
+				1: bridge1,
+			},
+		},
+		AggsenderRPC: &stubAggsenderRPC{
+			failHeights: map[uint64]bool{
+				0: true,
+				1: true,
+			},
+		},
+	}
+
+	hashes, err := loadExistingLeafHashes(context.Background(), env, nil, 2, settledLER, 2)
+	require.NoError(t, err)
+	require.Equal(t, []common.Hash{
+		BridgeResponseLeafHash(bridge0),
+		BridgeResponseLeafHash(bridge1),
+	}, hashes)
+}
+
 func TestGetStoredBridgeExitsForHeight_FromDB(t *testing.T) {
 	t.Parallel()
 
@@ -249,6 +413,28 @@ func TestGetStoredBridgeExitsForHeight_FromDB(t *testing.T) {
 	exits, err := getStoredBridgeExitsForHeight(&Env{}, store, 0)
 	require.NoError(t, err)
 	require.Len(t, exits, 1)
+}
+
+func TestGetStoredBridgeExitsForHeight_FromOverride(t *testing.T) {
+	t.Parallel()
+
+	overrideExit := makeFakeBridgeExit(&craftCertOptions{
+		nonce:           []byte("override"),
+		originNetwork:   0,
+		originTokenAddr: common.Address{},
+		destNetwork:     0,
+		amount:          big.NewInt(0),
+	}, 0)
+
+	exits, err := getStoredBridgeExitsForHeight(&Env{
+		BridgeExitsOverride: &BridgeExitsOverride{
+			parsed: map[uint64][]*agglayertypes.BridgeExit{
+				7: {overrideExit},
+			},
+		},
+	}, nil, 7)
+	require.NoError(t, err)
+	require.Equal(t, []*agglayertypes.BridgeExit{overrideExit}, exits)
 }
 
 func TestGetStoredBridgeExitsForHeight_FromAggsenderHeaderFallback(t *testing.T) {
@@ -312,6 +498,28 @@ func TestGetStoredBridgeExitsForHeight_Retries429OnHeaderPath(t *testing.T) {
 	exits, err := getStoredBridgeExitsForHeight(&Env{AggsenderRPC: rpc}, nil, 0)
 	require.NoError(t, err)
 	require.Len(t, exits, 1)
+}
+
+func TestCallCraftCertRPCWithTimeout_ReturnsResult(t *testing.T) {
+	t.Parallel()
+
+	value, err := callCraftCertRPCWithTimeout(func() (int, error) {
+		return 7, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 7, value)
+}
+
+func TestCallCraftCertRPCWithTimeout_TimesOut(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	_, err := callCraftCertRPCWithTimeout(func() (int, error) {
+		time.Sleep(craftCertRPCRequestTimeout + 200*time.Millisecond)
+		return 0, nil
+	})
+	require.ErrorContains(t, err, "aggsender RPC request timed out")
+	require.Less(t, time.Since(start), craftCertRPCRequestTimeout+time.Second)
 }
 
 type stubCraftAggsenderRPC struct {

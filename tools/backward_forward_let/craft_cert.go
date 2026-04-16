@@ -34,6 +34,7 @@ const (
 	craftCertFetchMaxAttempts    = 6
 	craftCertFetchInitialBackoff = 500 * time.Millisecond
 	craftCertFetchMaxBackoff     = 5 * time.Second
+	craftCertRPCRequestTimeout   = 5 * time.Second
 )
 
 type certStoreReader interface {
@@ -61,6 +62,9 @@ func RunCraftCert(c *cli.Context) error {
 	cfg, err := LoadConfig(c)
 	if err != nil {
 		return err
+	}
+	if f := c.String("cert-exits-file"); f != "" {
+		cfg.BackwardForwardLET.CertificateExitsFile = f
 	}
 
 	opts, err := craftCertOptionsFromCLI(c)
@@ -225,7 +229,7 @@ func craftMaliciousCertificate(
 		return nil, err
 	}
 
-	existingHashes, err := loadExistingLeafHashes(ctx, env, certStore, certHeight, existingLeafCount)
+	existingHashes, err := loadExistingLeafHashes(ctx, env, certStore, certHeight, prevLER, existingLeafCount)
 	if err != nil {
 		return nil, err
 	}
@@ -324,24 +328,75 @@ func loadExistingLeafHashes(
 	env *Env,
 	certStore certStoreReader,
 	certHeight uint64,
+	settledLER common.Hash,
 	existingLeafCount uint32,
 ) ([]common.Hash, error) {
 	if certHeight == 0 {
 		return loadLeafHashesFromBridgeService(ctx, env, existingLeafCount)
 	}
 
+	bridgeMatchesSettled, err := currentBridgeMatchesSettled(ctx, env, settledLER, existingLeafCount)
+	if err != nil {
+		return nil, err
+	}
+	if bridgeMatchesSettled {
+		return loadLeafHashesFromBridgeService(ctx, env, existingLeafCount)
+	}
+
 	settledHeight := certHeight - 1
 	hashes := make([]common.Hash, 0, existingLeafCount)
+	prefixMissing := true
 	for h := uint64(0); h <= settledHeight; h++ {
 		exits, err := getStoredBridgeExitsForHeight(env, certStore, h)
 		if err != nil {
-			return nil, fmt.Errorf("load certificate bridge exits at height %d: %w", h, err)
+			if !prefixMissing {
+				return nil, fmt.Errorf("load certificate bridge exits at height %d after later heights already loaded: %w", h, err)
+			}
+			continue
 		}
+		prefixMissing = false
 		for _, be := range exits {
 			hashes = append(hashes, BridgeExitLeafHash(be))
 		}
 	}
+
+	if uint32(len(hashes)) > existingLeafCount {
+		return nil, fmt.Errorf("loaded %d historical leaf hashes, exceeds expected settled leaf count %d", len(hashes), existingLeafCount)
+	}
+
+	missingPrefixLeafCount := existingLeafCount - uint32(len(hashes))
+	if missingPrefixLeafCount > 0 {
+		prefixHashes, err := loadLeafHashesFromBridgeService(ctx, env, missingPrefixLeafCount)
+		if err != nil {
+			return nil, fmt.Errorf("reconstruct missing certificate prefix from bridge service: %w", err)
+		}
+		hashes = append(prefixHashes, hashes...)
+	}
+
+	if uint32(len(hashes)) != existingLeafCount {
+		return nil, fmt.Errorf("reconstructed %d total leaf hashes, expected %d", len(hashes), existingLeafCount)
+	}
+
 	return hashes, nil
+}
+
+func currentBridgeMatchesSettled(ctx context.Context, env *Env, settledLER common.Hash, existingLeafCount uint32) (bool, error) {
+	if env == nil || env.L2Bridge == nil {
+		return false, nil
+	}
+
+	callOpts := &bind.CallOpts{Context: ctx}
+	root, err := env.L2Bridge.GetRoot(callOpts)
+	if err != nil {
+		return false, fmt.Errorf("get L2 root for settled-state comparison: %w", err)
+	}
+
+	dcBig, err := env.L2Bridge.DepositCount(callOpts)
+	if err != nil {
+		return false, fmt.Errorf("get L2 deposit count for settled-state comparison: %w", err)
+	}
+
+	return common.Hash(root) == settledLER && uint32(dcBig.Uint64()) == existingLeafCount, nil
 }
 
 func loadLeafHashesFromBridgeService(ctx context.Context, env *Env, existingLeafCount uint32) ([]common.Hash, error) {
@@ -361,6 +416,12 @@ func getStoredBridgeExitsForHeight(
 	certStore certStoreReader,
 	height uint64,
 ) ([]*agglayertypes.BridgeExit, error) {
+	if env != nil && env.BridgeExitsOverride != nil {
+		if exits, ok := env.BridgeExitsOverride.GetExits(height); ok {
+			return exits, nil
+		}
+	}
+
 	if certStore != nil {
 		cert, err := certStore.GetCertificateByHeight(height)
 		if err != nil {
@@ -381,7 +442,11 @@ func getStoredBridgeExitsForHeight(
 	var lastErr error
 	backoff := craftCertFetchInitialBackoff
 	for attempt := 1; attempt <= craftCertFetchMaxAttempts; attempt++ {
-		cert, headerErr := env.AggsenderRPC.GetCertificateHeaderPerHeight(&height)
+		cert, headerErr := callCraftCertRPCWithTimeout(
+			func() (*aggsendertypes.Certificate, error) {
+				return env.AggsenderRPC.GetCertificateHeaderPerHeight(&height)
+			},
+		)
 		if headerErr == nil && cert != nil && cert.SignedCertificate != nil {
 			exits, parseErr := parseBridgeExitsFromSignedCertificate(height, *cert.SignedCertificate)
 			if parseErr == nil {
@@ -405,7 +470,11 @@ func getStoredBridgeExitsForHeight(
 			}
 		}
 
-		exits, err := env.AggsenderRPC.GetCertificateBridgeExits(&height)
+		exits, err := callCraftCertRPCWithTimeout(
+			func() ([]*agglayertypes.BridgeExit, error) {
+				return env.AggsenderRPC.GetCertificateBridgeExits(&height)
+			},
+		)
 		if err == nil {
 			return exits, nil
 		}
@@ -428,6 +497,27 @@ func getStoredBridgeExitsForHeight(
 	}
 
 	return nil, lastErr
+}
+
+func callCraftCertRPCWithTimeout[T any](fn func() (T, error)) (T, error) {
+	type result struct {
+		value T
+		err   error
+	}
+
+	resultCh := make(chan result, 1)
+	go func() {
+		value, err := fn()
+		resultCh <- result{value: value, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result.value, result.err
+	case <-time.After(craftCertRPCRequestTimeout):
+		var zero T
+		return zero, fmt.Errorf("aggsender RPC request timed out after %s", craftCertRPCRequestTimeout)
+	}
 }
 
 func parseBridgeExitsFromSignedCertificate(height uint64, signedCert string) ([]*agglayertypes.BridgeExit, error) {
