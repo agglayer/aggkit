@@ -225,6 +225,19 @@ backward-forward-let craft-cert \
   --out /tmp/malicious-cert.json
 ```
 
+If aggsender is intentionally stopped and neither aggsender RPC nor the local DB can
+provide all historical bridge exits, reuse the same fallback override file used by the
+main diagnosis command:
+
+```bash
+backward-forward-let --cfg aggkit-config.toml \
+  --cert-exits-file certificate_exits_override.json \
+  craft-cert \
+  --staging-only \
+  --num-fake-exits 1 \
+  --out /tmp/malicious-cert.json
+```
+
 Flags:
 
 - `--cfg`, `-c`: config file with normal tool connectivity settings
@@ -245,7 +258,8 @@ Flags:
 Behavior:
 
 - reads the current settled state from AggLayer,
-- reconstructs the existing leaf sequence from aggsender RPC or aggsender DB,
+- reconstructs the existing leaf sequence from aggsender RPC, aggsender DB, fallback
+  override data, and bridge service as needed,
 - builds one or more fake `BridgeExit`s,
 - computes the resulting `NewLocalExitRoot`,
 - signs the crafted certificate,
@@ -255,15 +269,28 @@ Behavior:
 
 To simulate divergence on a staging network:
 
-1. Stop aggkit/aggsender so no genuine certificate races with the drill.
-2. Craft a malicious certificate with `craft-cert`.
-3. Submit it with `send-cert`.
+1. Stop aggkit/aggsender before crafting or sending any malicious certificate.
+   This prevents a genuine pending certificate from taking the next height while the drill
+   is being prepared.
+2. Confirm there is no unrelated non-error pending certificate already occupying the next
+   height. If there is, wait for it to settle before continuing.
+   Re-check this immediately before each `send-cert`, because staging can advance while
+   you are waiting on settlement or bridge indexing.
+3. Craft a malicious certificate with `craft-cert`.
+4. Submit it with `send-cert`.
    Use `--no-db` if you specifically want to test the fallback path where aggsender cannot
    provide certificate bridge exits and operators must use the AggLayer admin/debug endpoint.
-4. Restart aggkit/aggsender and wait for the certificate to settle.
+5. Keep aggkit/aggsender stopped until every malicious certificate needed for the current
+   drill has been submitted to AggLayer.
+6. Restart aggkit/aggsender and wait for the certificate to settle.
    On staging this settlement can take up to one hour.
-5. Optionally create extra real L2 bridges if you want a Case 2 or Case 4 drill.
-6. Run `backward-forward-let --cfg ...` to diagnose and recover.
+7. Optionally create extra real L2 bridges if you want a Case 2 or Case 4 drill.
+   Wait for bridge service to index them before expecting diagnosis or recovery to use
+   them.
+8. Run `backward-forward-let --cfg ...` to diagnose and recover.
+9. After recovery, rerun the main command until it reports `NoDivergence`.
+   For Case 2 and Case 4, this may require restarting aggsender and waiting for the
+   honest follow-up certificate to settle after replayed genuine L2 bridges.
 
 Typical case mapping:
 
@@ -271,6 +298,12 @@ Typical case mapping:
 - Case 2: one malicious cert, then extra real L2 bridges
 - Case 3: two malicious certs, no extra L2 bridges
 - Case 4: two malicious certs, then extra real L2 bridges
+
+Intermediate expectations:
+
+- After only the first malicious cert in a Case 3 drill has settled, the network still
+  looks like Case 1.
+- Final Case 3 classification only appears after the second malicious cert settles.
 
 ## Safety notes
 

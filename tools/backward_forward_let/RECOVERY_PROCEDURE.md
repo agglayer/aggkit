@@ -14,6 +14,10 @@ from the agglayer node.
   `test/e2e/envs/op-pp/config/agglayer/config.toml`).
 - The agglayer admin JSON-RPC API must be reachable (default port 4446).
   The URL is exposed as `agglayer.services.admin_api.external` in `summary.json`.
+- In some staging environments the admin API is protected by IAP or another identity
+  layer rather than being directly reachable on `localhost:4446`. In that case, obtain
+  the required bearer token first and pass it with the request headers when calling
+  `admin_getCertificate`.
 - `curl` and `jq` must be installed on the operator's machine (`jq` is optional but
   makes the JSON manipulation much more convenient).
 
@@ -79,6 +83,17 @@ The response is a JSON-RPC result where `result` is a two-element array
 ```
 
 You need `result[0].bridge_exits` from each response.
+
+If the admin API requires a bearer token, include it explicitly:
+
+```bash
+JWT="..."
+curl -s -X POST "$AGGLAYER_ADMIN" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"admin_getCertificate\",\"params\":[\"$CERT_ID\"],\"id\":1}" \
+  | jq '.'
+```
 
 ---
 
@@ -191,6 +206,15 @@ The tool will:
 2. Complete the divergence walk using the combined data.
 3. Print the full diagnosis (case classification, divergent leaves, extra L2 bridges).
 4. Prompt for confirmation, then execute the recovery plan.
+
+Operational notes:
+
+- When aggsender is intentionally stopped for a fallback drill, the missing-height report
+  may span the full settled history rather than only the newest malicious certificate.
+  This is expected.
+- You can build the override file incrementally as more certificates settle. Reuse the
+  same file on later diagnosis reruns, and also pass it to `craft-cert` if a later
+  malicious certificate must be built while aggsender is still unavailable.
 
 ---
 

@@ -60,6 +60,17 @@ Role expectations:
 The tool handles emergency-mode activation and deactivation itself. There is no separate
 manual pause/unpause step in the normal flow.
 
+For staged malicious-certificate drills used to create divergence intentionally:
+
+- stop aggkit/aggsender before crafting or sending malicious certificates so normal
+  certificate production does not race the drill,
+- confirm there is no unrelated non-error pending certificate already occupying the next
+  height before sending the malicious cert,
+- if the drill includes genuine L2 bridge creation, wait for bridge-service indexing before
+  expecting diagnosis or recovery to reason about those bridges,
+- restart aggkit/aggsender only after all malicious certificates for that drill have been
+  submitted.
+
 ## Standard procedure
 
 Run the tool:
@@ -85,6 +96,15 @@ What happens next:
 4. It asks for confirmation unless `--yes` is set.
 5. It executes the required on-chain steps and verifies the resulting deposit count and LER.
 
+Operational notes from staging:
+
+- A just-created genuine L2 bridge is not usable by the tool until bridge service has
+  indexed it. If diagnosis says a deposit is not indexed yet, wait for bridge-service
+  catch-up instead of improvising a manual recovery.
+- In staged Case 3 drills, the state after only the first malicious certificate settles is
+  still effectively Case 1. Final Case 3 classification only appears after the second
+  malicious certificate also settles.
+
 Recovery behavior by case:
 
 - Case 1 and Case 3: `ForwardLET` only.
@@ -98,12 +118,20 @@ Recovery behavior by case:
   AggLayer state and emergency mode is turned off before exit.
 - If the tool reports missing certificate bridge exits, stop and use the fallback flow
   below.
+- For staged Case 2 or Case 4 drills, if recovery replays genuine L2 bridges while
+  aggsender is still stopped, the first post-recovery rerun may still show divergence.
+  In that situation, restart aggsender, wait for the honest follow-up certificate(s) to
+  settle, then rerun until the tool reports `NoDivergence`.
 
 ## Fallback when aggsender bridge exits are unavailable
 
 If aggsender RPC cannot supply bridge exits for one or more settled certificate heights,
 the tool prints an actionable report listing the missing heights and any certificate IDs
 it could resolve automatically.
+
+When aggsender is intentionally stopped for a fallback drill, this missing range may span
+the full settled history from height `0` through the latest settled certificate. That is
+expected; build an override file for the heights the tool needs and rerun with that data.
 
 Re-run the tool with an override file once you have the missing bridge exits:
 
@@ -114,6 +142,9 @@ backward-forward-let --cfg aggkit-config.toml \
 
 The override file is only a fallback for missing certificate exits. Diagnosis and
 recovery still stay tool-driven.
+
+The same override file can also be supplied to `backward-forward-let craft-cert` when a
+later malicious certificate must be crafted while aggsender is still unavailable.
 
 For the detailed fallback procedure, including AggLayer admin/debug endpoint
 prerequisites and override-file handling examples, see
