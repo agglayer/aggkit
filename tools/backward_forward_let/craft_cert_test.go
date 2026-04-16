@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer/types"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -24,7 +23,7 @@ import (
 )
 
 type stubAgglayerClient struct {
-	info types.NetworkInfo
+	info agglayertypes.NetworkInfo
 	err  error
 }
 
@@ -36,7 +35,7 @@ func (s *stubAgglayerClient) GetCertificateHeader(context.Context, common.Hash) 
 	return nil, errors.New("not implemented")
 }
 
-func (s *stubAgglayerClient) GetNetworkInfo(context.Context, uint32) (types.NetworkInfo, error) {
+func (s *stubAgglayerClient) GetNetworkInfo(context.Context, uint32) (agglayertypes.NetworkInfo, error) {
 	return s.info, s.err
 }
 
@@ -161,7 +160,7 @@ func TestCraftMaliciousCertificate_SettledCertsFromAggsenderRPC(t *testing.T) {
 	settledHeight := uint64(1)
 	settledLER := common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	settledLeafCount := uint64(2)
-	info := types.NetworkInfo{
+	info := agglayertypes.NetworkInfo{
 		SettledHeight:       &settledHeight,
 		SettledLER:          &settledLER,
 		SettledLETLeafCount: &settledLeafCount,

@@ -17,6 +17,8 @@ const (
 	InitialStatusActionUpdateCurrentCert
 	InitialStatusActionInsertNewCert
 	InitialStatusActionDeleteLocalCert
+
+	conflictingStatusResultsCapacity = 2
 )
 
 var (
@@ -159,11 +161,7 @@ func (i *initialStatus) process() ([]*initialStatusResult, error) {
 		results = append(results, pendingCertActions...)
 	}
 
-	settledCertActions, err := i.processLastSettledCert()
-	if err != nil {
-		return nil, fmt.Errorf("recovery: failed processing settled certificate: %w", err)
-	}
-
+	settledCertActions := i.processLastSettledCert()
 	if settledCertActions != nil {
 		results = append(results, settledCertActions...)
 	}
@@ -222,9 +220,14 @@ func (i *initialStatus) processLastLocalCert() ([]*initialStatusResult, error) {
 		return []*initialStatusResult{
 			newInitialStatusDeleteResult(
 				localLastCert.Height,
-				fmt.Sprintf("agglayer has no certificate for local height %d, deleting stale local certificate", localLastCert.Height),
-			).withWarning(fmt.Sprintf("local latest certificate %s is not present in agglayer; agglayer is the source of truth",
-				localLastCert.ID())),
+				fmt.Sprintf(
+					"agglayer has no certificate for local height %d, deleting stale local certificate",
+					localLastCert.Height,
+				),
+			).withWarning(fmt.Sprintf(
+				"local latest certificate %s is not present in agglayer; agglayer is the source of truth",
+				localLastCert.ID(),
+			)),
 		}, nil
 	}
 	// CASE 3.1: the certificate on the agglayer has less height than the one stored in the local storage.
@@ -235,8 +238,10 @@ func (i *initialStatus) processLastLocalCert() ([]*initialStatusResult, error) {
 				localLastCert.Height,
 				fmt.Sprintf("agglayer latest certificate is height %d, deleting stale local height %d",
 					aggLayerLastCert.Height, localLastCert.Height),
-			).withWarning(fmt.Sprintf("local latest certificate %s is ahead of agglayer certificate %s; agglayer is the source of truth",
-				localLastCert.ID(), aggLayerLastCert.ID())),
+			).withWarning(fmt.Sprintf(
+				"local latest certificate %s is ahead of agglayer certificate %s; agglayer is the source of truth",
+				localLastCert.ID(), aggLayerLastCert.ID(),
+			)),
 		}, nil
 	}
 	// CASE 3.2: aggsender stopped between sending to agglayer and storing to the local storage
@@ -252,9 +257,11 @@ func (i *initialStatus) processLastLocalCert() ([]*initialStatusResult, error) {
 	// CASE 4: AggSender and AggLayer are not on the same page.
 	// AggLayer is authoritative, so reconcile local state to the AggLayer view.
 	if localLastCert.CertificateID != aggLayerLastCert.CertificateID {
-		results := make([]*initialStatusResult, 0, 2)
-		warning := fmt.Sprintf("local latest certificate %s does not match agglayer certificate %s at height %d; agglayer is the source of truth",
-			localLastCert.ID(), aggLayerLastCert.ID(), aggLayerLastCert.Height)
+		results := make([]*initialStatusResult, 0, conflictingStatusResultsCapacity)
+		warning := fmt.Sprintf(
+			"local latest certificate %s does not match agglayer certificate %s at height %d; agglayer is the source of truth",
+			localLastCert.ID(), aggLayerLastCert.ID(), aggLayerLastCert.Height,
+		)
 		if localLastCert.Height == aggLayerLastCert.Height {
 			results = append(results, newInitialStatusDeleteResult(
 				localLastCert.Height,
@@ -321,10 +328,10 @@ func (i *initialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader
 }
 
 // processLastSettledCert checks the last settled certificate from agglayer vs local storage
-func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error) {
+func (i *initialStatus) processLastSettledCert() []*initialStatusResult {
 	if i.AgglayerLastPendingCert == nil {
 		// if pending cert is nil, this will be processed in the processLastLocal function
-		return nil, nil
+		return nil
 	}
 
 	if i.AgglayerLastSettledCert == nil {
@@ -336,9 +343,11 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 					i.LocalLastSettledCert.Height,
 					fmt.Sprintf("agglayer has no settled certificate, deleting stale local settled certificate at height %d",
 						i.LocalLastSettledCert.Height),
-				).withWarning(fmt.Sprintf("local settled certificate %s is not present in agglayer; agglayer is the source of truth",
-					i.LocalLastSettledCert.ID())),
-			}, nil
+				).withWarning(fmt.Sprintf(
+					"local settled certificate %s is not present in agglayer; agglayer is the source of truth",
+					i.LocalLastSettledCert.ID(),
+				)),
+			}
 		}
 
 		// CASE 2: Both local and agglayer have no settled certificate
@@ -346,7 +355,7 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 			InitialStatusActionNone,
 			"agglayer and local storage have no settled certificate",
 			i.AgglayerLastSettledCert,
-		)}, nil
+		)}
 	}
 
 	if i.LocalLastSettledCert == nil {
@@ -355,7 +364,7 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 			InitialStatusActionInsertNewCert,
 			"no local settled certificate,inserting agglayer settled certificate into local storage",
 			i.AgglayerLastSettledCert,
-		)}, nil
+		)}
 	}
 
 	// CASE 4: We have a settled certificate in local storage
@@ -366,9 +375,11 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 				i.LocalLastSettledCert.Height,
 				fmt.Sprintf("agglayer settled height is %d, deleting stale local settled certificate at height %d",
 					i.AgglayerLastSettledCert.Height, i.LocalLastSettledCert.Height),
-			).withWarning(fmt.Sprintf("local settled certificate %s is ahead of agglayer settled certificate %s; agglayer is the source of truth",
-				i.LocalLastSettledCert.ID(), i.AgglayerLastSettledCert.ID())),
-		}, nil
+			).withWarning(fmt.Sprintf(
+				"local settled certificate %s is ahead of agglayer settled certificate %s; agglayer is the source of truth",
+				i.LocalLastSettledCert.ID(), i.AgglayerLastSettledCert.ID(),
+			)),
+		}
 	}
 
 	// CASE 5: We have a settled certificate in local storage with same height
@@ -377,8 +388,11 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 		// the height is the same but the certificate ID is different
 		// than the one in the agglayer for the same height. Replace it with the agglayer value.
 		if i.LocalLastSettledCert.CertificateID != i.AgglayerLastSettledCert.CertificateID {
-			warning := fmt.Sprintf("local settled certificate %s does not match agglayer settled certificate %s at height %d; agglayer is the source of truth",
-				i.LocalLastSettledCert.ID(), i.AgglayerLastSettledCert.ID(), i.AgglayerLastSettledCert.Height)
+			warning := fmt.Sprintf(
+				"local settled certificate %s does not match agglayer settled certificate %s at height %d; "+
+					"agglayer is the source of truth",
+				i.LocalLastSettledCert.ID(), i.AgglayerLastSettledCert.ID(), i.AgglayerLastSettledCert.Height,
+			)
 			return []*initialStatusResult{
 				newInitialStatusDeleteResult(
 					i.LocalLastSettledCert.Height,
@@ -390,7 +404,7 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 					"updating local storage with agglayer settled certificate after deleting conflicting local entry",
 					i.AgglayerLastSettledCert,
 				).withWarning(warning),
-			}, nil
+			}
 		}
 
 		// CASE 5.2: the local settled certificate matches the agglayer settled certificate
@@ -398,7 +412,7 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 			InitialStatusActionNone,
 			"last settled certificate already in local storage with same height and ID",
 			i.AgglayerLastSettledCert,
-		)}, nil
+		)}
 	}
 
 	// CASE 6: We have a settled certificate in local storage that is lower than the one in the agglayer
@@ -407,5 +421,5 @@ func (i *initialStatus) processLastSettledCert() ([]*initialStatusResult, error)
 		InitialStatusActionInsertNewCert,
 		"updating local storage with agglayer settled certificate",
 		i.AgglayerLastSettledCert,
-	)}, nil
+	)}
 }

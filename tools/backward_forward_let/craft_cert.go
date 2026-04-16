@@ -35,6 +35,7 @@ const (
 	craftCertFetchInitialBackoff = 500 * time.Millisecond
 	craftCertFetchMaxBackoff     = 5 * time.Second
 	craftCertRPCRequestTimeout   = 5 * time.Second
+	craftCertFileMode            = 0o600
 )
 
 type certStoreReader interface {
@@ -110,7 +111,7 @@ func RunCraftCert(c *cli.Context) error {
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Clean(outPath), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Clean(outPath), data, craftCertFileMode); err != nil {
 		return fmt.Errorf("write crafted certificate to %s: %w", outPath, err)
 	}
 	fmt.Printf("Crafted certificate written to %s\n", outPath)
@@ -361,7 +362,10 @@ func loadExistingLeafHashes(
 	}
 
 	if uint32(len(hashes)) > existingLeafCount {
-		return nil, fmt.Errorf("loaded %d historical leaf hashes, exceeds expected settled leaf count %d", len(hashes), existingLeafCount)
+		return nil, fmt.Errorf(
+			"loaded %d historical leaf hashes, exceeds expected settled leaf count %d",
+			len(hashes), existingLeafCount,
+		)
 	}
 
 	missingPrefixLeafCount := existingLeafCount - uint32(len(hashes))
@@ -380,7 +384,12 @@ func loadExistingLeafHashes(
 	return hashes, nil
 }
 
-func currentBridgeMatchesSettled(ctx context.Context, env *Env, settledLER common.Hash, existingLeafCount uint32) (bool, error) {
+func currentBridgeMatchesSettled(
+	ctx context.Context,
+	env *Env,
+	settledLER common.Hash,
+	existingLeafCount uint32,
+) (bool, error) {
 	if env == nil || env.L2Bridge == nil {
 		return false, nil
 	}
@@ -452,7 +461,6 @@ func getStoredBridgeExitsForHeight(
 			if parseErr == nil {
 				return exits, nil
 			}
-			lastErr = parseErr
 		} else if headerErr != nil {
 			lastErr = headerErr
 			if isRetryableCraftCertFetchError(headerErr) {
