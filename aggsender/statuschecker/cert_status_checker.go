@@ -246,6 +246,9 @@ func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context
 
 func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 	action *initialStatusResult, localCert *types.CertificateHeader, logFn types.EmitLogFunc) error {
+	if action.warning != "" {
+		c.log.Warnf("recovery: %s", action.warning)
+	}
 	logFn("recovery: action: %s", action.String())
 	switch action.action {
 	case InitialStatusActionNone:
@@ -276,6 +279,10 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 
 		if _, err := c.updateLocalStorageWithSettledAggLayerCert(ctx, action.cert); err != nil {
 			return fmt.Errorf("recovery: error new local storage with agglayer certificate: %w", err)
+		}
+	case InitialStatusActionDeleteLocalCert:
+		if err := c.storage.DeleteCertificate(nil, action.height, db.MaybeDelete); err != nil {
+			return fmt.Errorf("recovery: error deleting stale local certificate at height %d: %w", action.height, err)
 		}
 	default:
 		c.log.Warnf("recovery: error unknown action: %s", action.String())
