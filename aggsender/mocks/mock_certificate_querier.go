@@ -118,6 +118,53 @@ func (_c *CertificateQuerier_CalculateCertificateTypeFromToBlock_Call) RunAndRet
 	return _c
 }
 
+// GetSettledBlocksFromCertHeader provides a mock function with given fields: ctx, cert
+func (_m *CertificateQuerier) GetSettledBlocksFromCertHeader(ctx context.Context, cert *types.CertificateHeader) aggsendertypes.SettledBlocks {
+	ret := _m.Called(ctx, cert)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSettledBlocksFromCertHeader")
+	}
+
+	var r0 aggsendertypes.SettledBlocks
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader) aggsendertypes.SettledBlocks); ok {
+		r0 = rf(ctx, cert)
+	} else {
+		r0 = ret.Get(0).(aggsendertypes.SettledBlocks)
+	}
+
+	return r0
+}
+
+// CertificateQuerier_GetSettledBlocksFromCertHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSettledBlocksFromCertHeader'
+type CertificateQuerier_GetSettledBlocksFromCertHeader_Call struct {
+	*mock.Call
+}
+
+// GetSettledBlocksFromCertHeader is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cert *types.CertificateHeader
+func (_e *CertificateQuerier_Expecter) GetSettledBlocksFromCertHeader(ctx interface{}, cert interface{}) *CertificateQuerier_GetSettledBlocksFromCertHeader_Call {
+	return &CertificateQuerier_GetSettledBlocksFromCertHeader_Call{Call: _e.mock.On("GetSettledBlocksFromCertHeader", ctx, cert)}
+}
+
+func (_c *CertificateQuerier_GetSettledBlocksFromCertHeader_Call) Run(run func(ctx context.Context, cert *types.CertificateHeader)) *CertificateQuerier_GetSettledBlocksFromCertHeader_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*types.CertificateHeader))
+	})
+	return _c
+}
+
+func (_c *CertificateQuerier_GetSettledBlocksFromCertHeader_Call) Return(_a0 aggsendertypes.SettledBlocks) *CertificateQuerier_GetSettledBlocksFromCertHeader_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateQuerier_GetSettledBlocksFromCertHeader_Call) RunAndReturn(run func(context.Context, *types.CertificateHeader) aggsendertypes.SettledBlocks) *CertificateQuerier_GetSettledBlocksFromCertHeader_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLastSettledCertificateToBlock provides a mock function with given fields: ctx, cert
 func (_m *CertificateQuerier) GetLastSettledCertificateToBlock(ctx context.Context, cert *types.CertificateHeader) (uint64, error) {
 	ret := _m.Called(ctx, cert)

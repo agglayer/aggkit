@@ -11,8 +11,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonzkevmbridge"
-	claimtypemocks "github.com/agglayer/aggkit/claimsync/types/mocks"
-	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -307,11 +305,7 @@ func TestBuildAppender(t *testing.T) {
 		agglayerBridge:   agglayerBridge,
 		agglayerBridgeL2: agglayerBridgeL2,
 	}
-	querier := claimtypemocks.NewClaimQuerier(t)
-	querier.EXPECT().GetBoundaryBlockForClaimType(mock.Anything, mock.Anything, mock.Anything).
-		Return(uint64(0), db.ErrNotFound).Maybe()
-
-	appenderMap, err := buildAppender(t.Context(), ethClient, querier, bridgeAddr, deployment, lg)
+	appenderMap, err := buildAppender(ethClient, bridgeAddr, deployment, lg)
 	require.NoError(t, err)
 	require.NotNil(t, appenderMap)
 
@@ -535,64 +529,6 @@ func buildClaimEventLog(t *testing.T, globalIndex *big.Int, txHash common.Hash, 
 		TxHash:      txHash,
 		BlockNumber: blockNum,
 	}
-}
-
-func TestBuildClaimEventHandler_BoundarySkip(t *testing.T) {
-	bridgeAddr := common.HexToAddress("0x10")
-	lg := logger.WithFields("module", "test")
-	txHash := common.HexToHash("0xABCD")
-	blockNum := uint64(5)
-
-	ethClient := mocks.NewEthClienter(t)
-	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
-	require.NoError(t, err)
-
-	querier := claimtypemocks.NewClaimQuerier(t)
-	// Boundary is at block 5 — log is also at block 5, so it should be skipped
-	querier.EXPECT().GetBoundaryBlockForClaimType(mock.Anything, mock.Anything, DetailedClaimEvent).
-		Return(blockNum, nil)
-
-	handler := buildClaimEventHandler(t.Context(), agglayerBridgeContract, ethClient, querier, bridgeAddr, true, lg)
-
-	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
-	log := buildClaimEventLog(t, big.NewInt(100), txHash, blockNum)
-
-	err = handler(block, log)
-	require.NoError(t, err)
-	require.Empty(t, block.Events, "ClaimEvent should be skipped when at or after DetailedClaimEvent boundary")
-}
-
-func TestBuildClaimEventHandler_SameTxDetailedSkip(t *testing.T) {
-	bridgeAddr := common.HexToAddress("0x10")
-	lg := logger.WithFields("module", "test")
-	txHash := common.HexToHash("0xABCD")
-	blockNum := uint64(3)
-
-	ethClient := mocks.NewEthClienter(t)
-	agglayerBridgeContract, err := agglayerbridge.NewAgglayerbridge(bridgeAddr, ethClient)
-	require.NoError(t, err)
-
-	querier := claimtypemocks.NewClaimQuerier(t)
-	querier.EXPECT().GetBoundaryBlockForClaimType(mock.Anything, mock.Anything, DetailedClaimEvent).
-		Return(uint64(0), db.ErrNotFound)
-
-	handler := buildClaimEventHandler(t.Context(), agglayerBridgeContract, ethClient, querier, bridgeAddr, true, lg)
-
-	// Block already has a DetailedClaimEvent for the same tx
-	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
-	block.Events = append(block.Events, Event{Claim: &Claim{
-		Type:   DetailedClaimEvent,
-		TxHash: txHash,
-	}})
-
-	log := buildClaimEventLog(t, big.NewInt(100), txHash, blockNum)
-
-	err = handler(block, log)
-	require.NoError(t, err)
-	require.Len(t, block.Events, 1, "ClaimEvent should be skipped; DetailedClaimEvent for same tx already present")
-	event, ok := block.Events[0].(Event)
-	require.True(t, ok)
-	require.Equal(t, DetailedClaimEvent, event.Claim.Type)
 }
 
 // --- buildDetailedClaimEventHandler: removes ClaimEvent for same tx ---

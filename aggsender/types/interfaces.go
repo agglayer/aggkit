@@ -58,6 +58,11 @@ type AggsenderVerifierFlow interface {
 }
 
 type AggsenderFlowBaser interface {
+	AdjustBlockRange(
+		ctx context.Context,
+		buildParams *CertificateBuildParams,
+		options BlockRangeAdjustmentOptions,
+	) (*CertificateBuildParams, error)
 	GetCertificateBuildParamsInternal(
 		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
@@ -77,7 +82,6 @@ type AggsenderFlowBaser interface {
 		certType CertificateType) (*CertificatePreBuildParams, error)
 	GenerateBuildParams(ctx context.Context,
 		preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
-	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
@@ -214,14 +218,6 @@ type LERQuerier interface {
 	GetInitialLocalExitRoot() (common.Hash, error)
 }
 
-// MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
-type MaxL2BlockNumberLimiterInterface interface {
-	// AdaptCertificate is a custom handler that adjusts the certificate build parameters
-	//  and return it through a new buildParams
-	AdaptCertificate(
-		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
-}
-
 type VerifyIncomingRequest struct {
 	Certificate         *agglayertypes.Certificate
 	PreviousCertificate *agglayertypes.CertificateHeader
@@ -336,6 +332,9 @@ type CertificateQuerier interface {
 	GetLastSettledCertificateToBlock(
 		ctx context.Context,
 		cert *agglayertypes.CertificateHeader) (uint64, error)
+	GetSettledBlocksFromCertHeader(
+		ctx context.Context,
+		cert *agglayertypes.CertificateHeader) SettledBlocks
 	GetNewCertificateToBlock(
 		ctx context.Context,
 		cert *agglayertypes.Certificate) (uint64, error)

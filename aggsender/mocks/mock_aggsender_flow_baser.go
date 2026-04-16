@@ -28,6 +28,66 @@ func (_m *AggsenderFlowBaser) EXPECT() *AggsenderFlowBaser_Expecter {
 	return &AggsenderFlowBaser_Expecter{mock: &_m.Mock}
 }
 
+// AdjustBlockRange provides a mock function with given fields: ctx, buildParams, options
+func (_m *AggsenderFlowBaser) AdjustBlockRange(ctx context.Context, buildParams *types.CertificateBuildParams, options types.BlockRangeAdjustmentOptions) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, buildParams, options)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AdjustBlockRange")
+	}
+
+	var r0 *types.CertificateBuildParams
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams, types.BlockRangeAdjustmentOptions) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, buildParams, options)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams, types.BlockRangeAdjustmentOptions) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, buildParams, options)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateBuildParams)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *types.CertificateBuildParams, types.BlockRangeAdjustmentOptions) error); ok {
+		r1 = rf(ctx, buildParams, options)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlowBaser_AdjustBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AdjustBlockRange'
+type AggsenderFlowBaser_AdjustBlockRange_Call struct {
+	*mock.Call
+}
+
+// AdjustBlockRange is a helper method to define mock.On call
+//   - ctx context.Context
+//   - buildParams *types.CertificateBuildParams
+//   - options types.BlockRangeAdjustmentOptions
+func (_e *AggsenderFlowBaser_Expecter) AdjustBlockRange(ctx interface{}, buildParams interface{}, options interface{}) *AggsenderFlowBaser_AdjustBlockRange_Call {
+	return &AggsenderFlowBaser_AdjustBlockRange_Call{Call: _e.mock.On("AdjustBlockRange", ctx, buildParams, options)}
+}
+
+func (_c *AggsenderFlowBaser_AdjustBlockRange_Call) Run(run func(ctx context.Context, buildParams *types.CertificateBuildParams, options types.BlockRangeAdjustmentOptions)) *AggsenderFlowBaser_AdjustBlockRange_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*types.CertificateBuildParams), args[2].(types.BlockRangeAdjustmentOptions))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_AdjustBlockRange_Call) Return(_a0 *types.CertificateBuildParams, _a1 error) *AggsenderFlowBaser_AdjustBlockRange_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_AdjustBlockRange_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams, types.BlockRangeAdjustmentOptions) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_AdjustBlockRange_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // BuildCertificate provides a mock function with given fields: ctx, certParams, lastSentCertificate, allowEmptyCert
 func (_m *AggsenderFlowBaser) BuildCertificate(ctx context.Context, certParams *types.CertificateBuildParams, lastSentCertificate *types.CertificateHeader, allowEmptyCert bool) (*agglayertypes.Certificate, error) {
 	ret := _m.Called(ctx, certParams, lastSentCertificate, allowEmptyCert)
@@ -379,64 +439,6 @@ func (_c *AggsenderFlowBaser_GetNewLocalExitRoot_Call) Return(_a0 common.Hash, _
 }
 
 func (_c *AggsenderFlowBaser_GetNewLocalExitRoot_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams) (common.Hash, error)) *AggsenderFlowBaser_GetNewLocalExitRoot_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// LimitCertSize provides a mock function with given fields: certParams
-func (_m *AggsenderFlowBaser) LimitCertSize(certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	ret := _m.Called(certParams)
-
-	if len(ret) == 0 {
-		panic("no return value specified for LimitCertSize")
-	}
-
-	var r0 *types.CertificateBuildParams
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*types.CertificateBuildParams) (*types.CertificateBuildParams, error)); ok {
-		return rf(certParams)
-	}
-	if rf, ok := ret.Get(0).(func(*types.CertificateBuildParams) *types.CertificateBuildParams); ok {
-		r0 = rf(certParams)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.CertificateBuildParams)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(*types.CertificateBuildParams) error); ok {
-		r1 = rf(certParams)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggsenderFlowBaser_LimitCertSize_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LimitCertSize'
-type AggsenderFlowBaser_LimitCertSize_Call struct {
-	*mock.Call
-}
-
-// LimitCertSize is a helper method to define mock.On call
-//   - certParams *types.CertificateBuildParams
-func (_e *AggsenderFlowBaser_Expecter) LimitCertSize(certParams interface{}) *AggsenderFlowBaser_LimitCertSize_Call {
-	return &AggsenderFlowBaser_LimitCertSize_Call{Call: _e.mock.On("LimitCertSize", certParams)}
-}
-
-func (_c *AggsenderFlowBaser_LimitCertSize_Call) Run(run func(certParams *types.CertificateBuildParams)) *AggsenderFlowBaser_LimitCertSize_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*types.CertificateBuildParams))
-	})
-	return _c
-}
-
-func (_c *AggsenderFlowBaser_LimitCertSize_Call) Return(_a0 *types.CertificateBuildParams, _a1 error) *AggsenderFlowBaser_LimitCertSize_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggsenderFlowBaser_LimitCertSize_Call) RunAndReturn(run func(*types.CertificateBuildParams) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_LimitCertSize_Call {
 	_c.Call.Return(run)
 	return _c
 }

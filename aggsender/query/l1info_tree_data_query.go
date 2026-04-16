@@ -2,12 +2,14 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -15,6 +17,8 @@ import (
 )
 
 var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
+
+var ErrGERNotProvableAgainstRoot = errors.New("ger is not provable against the selected root")
 
 // L1InfoTreeDataQuerier is a struct that holds the logic to query the L1 Info tree data
 type L1InfoTreeDataQuerier struct {
@@ -148,6 +152,10 @@ func (l *L1InfoTreeDataQuerier) GetProofForGER(
 	)
 	if err != nil {
 		return nil, treetypes.Proof{}, fmt.Errorf("error getting L1 Info tree merkle proof for GER: %w", err)
+	}
+
+	if err := tree.VerifyProof(l1Info.Hash, gerToL1Proof, l1Info.L1InfoTreeIndex, rootFromWhichToProve); err != nil {
+		return nil, treetypes.Proof{}, fmt.Errorf("%w: %w", ErrGERNotProvableAgainstRoot, err)
 	}
 
 	return l1Info, gerToL1Proof, nil

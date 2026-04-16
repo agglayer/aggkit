@@ -382,3 +382,84 @@ func (c CertificateSendTriggerMode) Validate() error {
 		return fmt.Errorf("invalid CertificateSendTriggerMode: %s", string(c))
 	}
 }
+
+// SettledBlocks holds the block numbers from each of the three settlement sources,
+// along with an individual error for each source so callers can inspect partial failures.
+type SettledBlocks struct {
+	LastBridgeExitBlock            uint64
+	LastBridgeExitBlockErr         error
+	LastImportedBridgeExitBlock    uint64
+	LastImportedBridgeExitBlockErr error
+	LastSettledL2BlockNum          uint64
+	LastSettledL2BlockNumErr       error
+	SettledImportedBridgeExit      *agglayertypes.SettledImportedBridgeExit
+}
+
+// String returns a human-readable representation of SettledBlocks.
+// For each source, only the error is shown when present (the block number is meaningless on error).
+func (s SettledBlocks) String() string {
+	blockOrErr := func(block uint64, err error) string {
+		if err != nil {
+			return fmt.Sprintf("err(%s)", err.Error())
+		}
+		return fmt.Sprintf("%d", block)
+	}
+	ibeStr := "nil"
+	if s.SettledImportedBridgeExit != nil {
+		ibeStr = fmt.Sprintf("{GlobalIndex: %s, BridgeExitHash: %s}",
+			s.SettledImportedBridgeExit.GlobalIndex.String(),
+			s.SettledImportedBridgeExit.BridgeExitHash.String())
+	}
+	return fmt.Sprintf(
+		"SettledBlocks{LastBridgeExitBlock: %s, LastImportedBridgeExitBlock: %s, "+
+			"LastSettledL2BlockNum: %s, SettledImportedBridgeExit: %s}",
+		blockOrErr(s.LastBridgeExitBlock, s.LastBridgeExitBlockErr),
+		blockOrErr(s.LastImportedBridgeExitBlock, s.LastImportedBridgeExitBlockErr),
+		blockOrErr(s.LastSettledL2BlockNum, s.LastSettledL2BlockNumErr),
+		ibeStr,
+	)
+}
+
+// EarliestBlock returns the smallest block number among the settled sources.
+//   - LastImportedBridgeExitBlock is excluded when SettledImportedBridgeExit is nil,
+//     because in that case the field is 0 with no error (no IBE was settled), and
+//     including it would incorrectly pull the minimum down to 0.
+//   - LastSettledL2BlockNum is excluded when it is 0 (PP networks or no FEP data yet).
+func (s SettledBlocks) EarliestBlock() (uint64, error) {
+	if s.LastBridgeExitBlockErr != nil {
+		return 0, s.LastBridgeExitBlockErr
+	}
+	if s.LastImportedBridgeExitBlockErr != nil {
+		return 0, s.LastImportedBridgeExitBlockErr
+	}
+	if s.LastSettledL2BlockNumErr != nil {
+		return 0, s.LastSettledL2BlockNumErr
+	}
+
+	result := s.LastBridgeExitBlock
+	// Only include the imported-bridge-exit block when there was an actual settled IBE;
+	// otherwise the field is 0 (no IBE present) and would incorrectly dominate the minimum.
+	if s.SettledImportedBridgeExit != nil {
+		result = min(result, s.LastImportedBridgeExitBlock)
+	}
+	// LastSettledL2BlockNum == 0 means "not found" (PP networks or no FEP data yet),
+	// so only include it in the minimum when a real block number was resolved.
+	if s.LastSettledL2BlockNum != 0 {
+		result = min(result, s.LastSettledL2BlockNum)
+	}
+	return result, nil
+}
+
+func (s SettledBlocks) LatestBlock() (uint64, error) {
+	if s.LastBridgeExitBlockErr != nil {
+		return 0, s.LastBridgeExitBlockErr
+	}
+	if s.LastImportedBridgeExitBlockErr != nil {
+		return 0, s.LastImportedBridgeExitBlockErr
+	}
+	if s.LastSettledL2BlockNumErr != nil {
+		return 0, s.LastSettledL2BlockNumErr
+	}
+
+	return max(s.LastBridgeExitBlock, s.LastImportedBridgeExitBlock, s.LastSettledL2BlockNum), nil
+}
