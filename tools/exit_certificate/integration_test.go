@@ -111,51 +111,25 @@ func TestStepD_WithProductionLikeData(t *testing.T) {
 	require.Equal(t, scAmount, exit3.Amount)
 }
 
-// TestStepE_WithProductionLikeData tests Step E with simulated L1 deposits and L2 claims.
+// TestStepE_WithProductionLikeData tests Step E filtering with a simulated claimed set.
 func TestStepE_WithProductionLikeData(t *testing.T) {
 	t.Parallel()
 
-	// Simulate a certificate with 2 bridge exits
 	cert := createTestCertificate(t, 1, 2)
 
 	// Simulate 3 L1 deposits targeting L2, with deposit counts 0, 1, 2
-	// Simulate 2 L2 claims for deposit counts 0 and 1
-	mainnetFlag := new(big.Int).Lsh(big.NewInt(1), 64)
-	l2ClaimEvents := []L2ClaimEvent{
-		{GlobalIndex: new(big.Int).Or(new(big.Int).Set(mainnetFlag), big.NewInt(0))},
-		{GlobalIndex: new(big.Int).Or(new(big.Int).Set(mainnetFlag), big.NewInt(1))},
+	deposits := []L1Deposit{
+		{DepositCount: 0, Amount: big.NewInt(1000)},
+		{DepositCount: 1, Amount: big.NewInt(2000)},
+		{DepositCount: 2, Amount: big.NewInt(5000), DestinationAddress: common.HexToAddress("0x1234")},
 	}
 
-	// Build claimed set
-	leafIndexMask := new(big.Int).SetUint64(0xFFFFFFFF)
-	claimedSet := make(map[uint32]struct{})
-	for _, claim := range l2ClaimEvents {
-		gi := claim.GlobalIndex
-		if new(big.Int).And(gi, mainnetFlag).Sign() > 0 {
-			leafIndex := uint32(new(big.Int).And(gi, leafIndexMask).Uint64())
-			claimedSet[leafIndex] = struct{}{}
-		}
-	}
+	// Simulate isClaimed results: deposits 0 and 1 are claimed
+	claimedSet := map[uint32]struct{}{0: {}, 1: {}}
+	unclaimed := filterUnclaimedDeposits(deposits, claimedSet)
+	require.Len(t, unclaimed, 1)
+	require.Equal(t, uint32(2), unclaimed[0].DepositCount)
 
-	require.Len(t, claimedSet, 2)
-	require.Contains(t, claimedSet, uint32(0))
-	require.Contains(t, claimedSet, uint32(1))
-
-	// Deposit count 2 would be unclaimed
-	unclaimedDeposit := L1Deposit{
-		LeafType:           0,
-		OriginNetwork:      0,
-		OriginAddress:      common.Address{},
-		DestinationNetwork: 1,
-		DestinationAddress: common.HexToAddress("0x1234"),
-		Amount:             big.NewInt(5000),
-		DepositCount:       2,
-	}
-
-	_, claimed := claimedSet[unclaimedDeposit.DepositCount]
-	require.False(t, claimed)
-
-	// Verify certificate merge
 	require.Len(t, cert.BridgeExits, 2)
 }
 

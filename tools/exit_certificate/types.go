@@ -94,7 +94,6 @@ type L1Deposit struct {
 
 // StepEResult holds the output of Step E.
 type StepEResult struct {
-	L2ClaimEvents    []L2ClaimEvent             `json:"l2ClaimEvents"`
 	UnclaimedBridges []L1Deposit                `json:"unclaimedBridges"`
 	FinalCertificate *agglayertypes.Certificate `json:"finalCertificate"`
 }

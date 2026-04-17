@@ -9,8 +9,6 @@ import (
 	"math"
 	"net/http"
 	"time"
-
-	"github.com/agglayer/aggkit/log"
 )
 
 const (
@@ -117,56 +115,58 @@ func singleRPC(ctx context.Context, url, method string, params []any, retries in
 	return responses[0].Result, nil
 }
 
-// doRPCWithRetry handles the HTTP POST + retry loop.
-func doRPCWithRetry(ctx context.Context, url string, body []byte, retries int) ([]jsonRPCResponse, error) {
-	for attempt := 1; attempt <= retries; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
-			return nil, fmt.Errorf("create HTTP request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
+func doRPCAttempt(ctx context.Context, url string, body []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			if attempt == retries {
-				return nil, fmt.Errorf("RPC failed after %d attempts: %w", retries, err)
-			}
-			sleepWithBackoff(attempt)
-			continue
-		}
-
-		respBody, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			if attempt == retries {
-				return nil, fmt.Errorf("read response body: %w", err)
-			}
-			sleepWithBackoff(attempt)
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			if attempt == retries {
-				return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-			}
-			log.Warnf("RPC attempt %d got HTTP %d, retrying...", attempt, resp.StatusCode)
-			sleepWithBackoff(attempt)
-			continue
-		}
-
-		var responses []jsonRPCResponse
-		if err := json.Unmarshal(respBody, &responses); err != nil {
-			var single jsonRPCResponse
-			if err2 := json.Unmarshal(respBody, &single); err2 == nil {
-				responses = []jsonRPCResponse{single}
-			} else {
-				return nil, fmt.Errorf("parse RPC response: %w", err)
-			}
-		}
-
-		return responses, nil
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
 	}
 
+	respBody, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
+func parseRPCResponse(data []byte) ([]jsonRPCResponse, error) {
+	var responses []jsonRPCResponse
+	if err := json.Unmarshal(data, &responses); err != nil {
+		var single jsonRPCResponse
+		if err2 := json.Unmarshal(data, &single); err2 == nil {
+			return []jsonRPCResponse{single}, nil
+		}
+		return nil, fmt.Errorf("parse RPC response: %w", err)
+	}
+	return responses, nil
+}
+
+// doRPCWithRetry handles the HTTP POST + retry loop.
+func doRPCWithRetry(ctx context.Context, url string, body []byte, retries int) ([]jsonRPCResponse, error) {
+	var lastErr error
+	for attempt := 1; attempt <= retries; attempt++ {
+		respBody, err := doRPCAttempt(ctx, url, body)
+		if err != nil {
+			lastErr = err
+			if attempt < retries {
+				sleepWithBackoff(attempt)
+				continue
+			}
+			return nil, fmt.Errorf("RPC failed after %d attempts: %w", retries, lastErr)
+		}
+		return parseRPCResponse(respBody)
+	}
 	return nil, fmt.Errorf("RPC failed after %d attempts", retries)
 }
 
