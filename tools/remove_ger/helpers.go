@@ -42,6 +42,16 @@ func waitForReceipt(
 	return bind.WaitMined(ctx, client, tx)
 }
 
+func (e *Env) waitReceipt(ctx context.Context, tx *gethTypes.Transaction) (*gethTypes.Receipt, error) {
+	if e != nil && e.waitReceiptFn != nil {
+		return e.waitReceiptFn(ctx, tx)
+	}
+	if e == nil || e.L2 == nil {
+		return nil, fmt.Errorf("L2 client is nil")
+	}
+	return waitForReceipt(ctx, e.L2, tx)
+}
+
 const pollTickInterval = 2 * time.Second
 
 // pollBridgeService runs check periodically until it returns (true, nil) or the context/timeout expires.

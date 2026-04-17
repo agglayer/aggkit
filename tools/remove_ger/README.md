@@ -8,6 +8,8 @@ Diagnose and recover from invalid Global Exit Root (GER) injection on L2.
 
 **When to use it:** Use after you have detected an invalid GER—for example via aggsender or l2gersync error logs. For how to detect invalid GERs and manual recovery context, see the [Remove GER runbook](../../docs/remove_ger_runbook.md). This tool automates the procedures described there.
 
+If you do not yet know which GER was used by the bad claims, use `scan-invalid-claims` first to discover invalid GERs directly from L2 claim logs.
+
 ## Building
 
 From the repository root:
@@ -26,6 +28,7 @@ The tool uses the **same** config file(s) as the main aggkit binary: standard `a
 | Field | Type | Description |
 | ----- | ---- | ------------ |
 | **BridgeServiceURL** | string | Bridge service REST API base URL (**required**). Used for querying claims and bridges. The tool runs a health check at startup and will fail if the service is unreachable. |
+| **L2NetworkID** | uint32 | L2 network ID served by the bridge service (**required** for diagnose/recover). Used when querying claims and bridges for the target L2. Set this to the same network ID that the bridge service uses for your L2. |
 | **SovereignAdminKey** | section | Signing key with sovereign admin privileges (activate/deactivate emergency state, remove GER, unset/set claims, force-emit claim events). Supports local keystore, AWS KMS, and GCP KMS. See sub-fields below. |
 
 **SovereignAdminKey** sub-fields (depends on `Method`):
@@ -43,12 +46,13 @@ Append the following to your existing `aggkit-config.toml` (adjust paths and URL
 ```toml
 [RemoveGER]
 BridgeServiceURL = "http://localhost:8080"
+L2NetworkID = 12
 SovereignAdminKey = { Method = "local", Path = "/path/to/sovereign_admin_keystore.json", Password = "your-keystore-password" }
 ```
 
 ## Commands
 
-The tool has two modes: the default **diagnose & recover** command and the **generate** subcommand for testing.
+The tool has three modes: the default **diagnose & recover** command, the **scan-invalid-claims** subcommand for discovery, and the **generate** subcommand for testing.
 
 ### Diagnose & recover (default)
 
@@ -66,6 +70,11 @@ The tool has two modes: the default **diagnose & recover** command and the **gen
 
 You can pass multiple config files; later files override earlier ones (e.g. `--cfg base.toml --cfg overrides.toml`).
 
+The `[RemoveGER]` section for the default diagnose/recover command must include both:
+
+- `RemoveGER.BridgeServiceURL`
+- `RemoveGER.L2NetworkID`
+
 #### CLI flags
 
 | Flag | Short | Required | Description |
@@ -74,6 +83,36 @@ You can pass multiple config files; later files override earlier ones (e.g. `--c
 | `--ger` | — | Yes | Invalid GER hash to diagnose and remove (hex, 0x-prefixed, 32 bytes / 64 hex chars). |
 | `--yes` | — | No | Skip interactive confirmation and run recovery immediately. |
 | `--force` | — | No | Continue even if the GER exists on L1 (still diagnose and remove). |
+
+### scan-invalid-claims
+
+Scan L2 claim logs directly from the L2 RPC, starting at a given block, and check whether the GER used by each claim exists on L1. The command prints the list of GERs that were used in invalid claims.
+
+```bash
+./remove_ger scan-invalid-claims --cfg aggkit-config.toml --from-block 123456
+```
+
+The command scans claim logs from `BridgeL2Sync.BridgeAddr` on L2, validates each claim GER against `L2GERSync.GlobalExitRootL1Addr` on L1, and groups the invalid claims by GER.
+
+#### scan-invalid-claims flags
+
+| Flag | Required | Default | Description |
+| ---- | -------- | ------- | ----------- |
+| `--cfg` | Yes | — | Configuration file(s), same format as aggkit-config.toml. |
+| `--from-block` | Yes | — | Starting L2 block number to scan (inclusive). |
+| `--to-block` | No | latest | Ending L2 block number to scan (inclusive). |
+| `--chunk-size` | No | `5000` | Maximum L2 block range per `eth_getLogs` query. |
+
+#### Config requirements for scan-invalid-claims
+
+The scan command reads a subset of the aggkit config:
+
+- `L1NetworkConfig.RPC.URL` — L1 RPC endpoint.
+- `Common.L2RPC.URL` — L2 RPC endpoint.
+- `BridgeL2Sync.BridgeAddr` — L2 bridge contract address.
+- `L2GERSync.GlobalExitRootL1Addr` — L1 GER manager contract address.
+
+The `[RemoveGER]` section is **not** required for `scan-invalid-claims`.
 
 ### generate
 

@@ -74,6 +74,27 @@ WIP, TBD, code not ready
 
 This section provides instructions on how to identify claims that have been made using an invalid GER. Once you've detected an invalid GER using the methods described in the "Detection" section, you can use these queries to find all associated claims.
 
+#### Using the remove-ger scan command
+
+If you do not yet know which GERs were used by invalid claims, you can use the `remove_ger scan-invalid-claims` command to scan claim logs directly from L2 RPC and validate each claim GER against L1:
+
+```bash
+./remove_ger scan-invalid-claims --cfg aggkit-config.toml --from-block <START_BLOCK>
+```
+
+The command:
+
+- reads claim logs from the L2 bridge contract using the L2 RPC
+- computes or extracts the GER used by each claim
+- checks whether that GER exists in the L1 `globalExitRootMap`
+- prints the GERs that were used by invalid claims, together with claim counts and tx hashes
+
+Use this when:
+
+- you know the approximate block range where the invalid claims happened, but not the GER
+- bridge-service indexing is unavailable or you want to validate directly from chain RPC
+- you want a fast first pass before running SQL queries or manual classification
+
 #### Query claims by Global Exit Root (GER)
 
 Claims are stored in the `bridgesync` database (typically at the path configured in `L2BridgeSyncStoragePath`). Each claim record includes the `global_exit_root` field, which indicates which GER was used when the claim was executed.
