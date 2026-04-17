@@ -323,7 +323,8 @@ func (i *initialStatus) processLastSettledCert() (*initialStatusResult, error) {
 	// but its height is higher than the one in the agglayer
 	if i.LocalLastSettledCert.Height > i.AgglayerLastSettledCert.Height {
 		return nil, manualDBWipeRequiredErrorf(
-			"recovery: local settled certificate (%s) has higher height (%d) than agglayer settled certificate (%s) with height (%d)",
+			"recovery: local settled certificate (%s) has higher height (%d) "+
+				"than agglayer settled certificate (%s) with height (%d)",
 			i.LocalLastSettledCert.ID(),
 			i.LocalLastSettledCert.Height,
 			i.AgglayerLastSettledCert.ID(),
@@ -339,7 +340,8 @@ func (i *initialStatus) processLastSettledCert() (*initialStatusResult, error) {
 		// than the one in the agglayer for the same height
 		if i.LocalLastSettledCert.CertificateID != i.AgglayerLastSettledCert.CertificateID {
 			return nil, manualDBWipeRequiredErrorf(
-				"recovery: local settled certificate (%s) has same height (%d) but different certificate ID (%s) than agglayer settled certificate (%s)",
+				"recovery: local settled certificate (%s) has same height (%d) "+
+					"but different certificate ID (%s) than agglayer settled certificate (%s)",
 				i.LocalLastSettledCert.ID(),
 				i.LocalLastSettledCert.Height,
 				i.LocalLastSettledCert.CertificateID,
