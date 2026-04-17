@@ -457,16 +457,6 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 			expectedError: "Waiting for it to be settled",
 		},
 		{
-			name: "Action DeleteLocalCert - success",
-			action: &initialStatusResult{
-				action: InitialStatusActionDeleteLocalCert,
-				height: 7,
-			},
-			mockFn: func(mockStorage *mocks.AggSenderStorage, mockCertQuerier *mocks.CertificateQuerier) {
-				mockStorage.EXPECT().DeleteCertificate(nil, uint64(7), db.MaybeDelete).Return(nil)
-			},
-		},
-		{
 			name: "Unknown Action",
 			action: &initialStatusResult{
 				action: initialStatusAction(-1111111),

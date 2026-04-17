@@ -5,6 +5,11 @@ when the aggsender database is empty or has been wiped. In this situation the to
 fetch bridge exits from the aggsender RPC and instead needs the data extracted directly
 from the agglayer node.
 
+It also covers the post-drill startup failure where aggsender's local DB still points to
+an older or different certificate while AggLayer has already settled a further one. That
+startup check is intentionally strict: wipe the aggsender DB and restart aggsender rather
+than expecting it to auto-reconcile.
+
 ---
 
 ## Prerequisites
@@ -20,6 +25,9 @@ from the agglayer node.
   `admin_getCertificate`.
 - `curl` and `jq` must be installed on the operator's machine (`jq` is optional but
   makes the JSON manipulation much more convenient).
+
+If the immediate goal is to recover aggsender itself after a staged malicious-cert drill,
+stop here and wipe the aggsender DB first. The mismatch is not repaired in place.
 
 ---
 
@@ -232,6 +240,29 @@ When the tool reports `CertID: UNKNOWN` for a height, the agglayer admin must:
 
 Only the latest settled height is auto-resolvable via the public agglayer gRPC. All
 earlier heights require this manual lookup when the aggsender DB is absent.
+
+---
+
+## Aggsender startup mismatch after a drill
+
+Symptom:
+
+- aggsender restart loops with a startup consistency error saying the local certificate
+  differs from, or is behind, the latest AggLayer certificate.
+
+Meaning:
+
+- this is intentional behavior,
+- aggsender does not treat AggLayer as a source of truth for overwriting local DB state,
+- the local DB must be cleared manually before aggsender can rebuild and continue.
+
+Operator action:
+
+1. Stop aggsender.
+2. Wipe the aggsender DB used for local certificate tracking.
+3. Restart aggsender.
+4. Confirm it rebuilds state from the live network and resumes honest certificate
+   production.
 
 ---
 

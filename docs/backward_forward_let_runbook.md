@@ -71,6 +71,14 @@ For staged malicious-certificate drills used to create divergence intentionally:
 - restart aggkit/aggsender only after all malicious certificates for that drill have been
   submitted.
 
+Aggsender restart caveat:
+
+- aggsender intentionally refuses to auto-reconcile if its local DB still points to an
+  older or different certificate than the one already settled on AggLayer,
+- if startup logs that the local certificate state is inconsistent with a further
+  AggLayer certificate, the operator must wipe the aggsender DB and restart aggsender,
+- there is no supported automatic recovery path for that mismatch.
+
 ## Standard procedure
 
 Run the tool:
@@ -104,6 +112,10 @@ Operational notes from staging:
 - In staged Case 3 drills, the state after only the first malicious certificate settles is
   still effectively Case 1. Final Case 3 classification only appears after the second
   malicious certificate also settles.
+- After staged malicious-certificate drills, aggsender may fail its startup consistency
+  checks because its local DB still points to a pre-drill certificate while AggLayer is
+  already further ahead. In that case, wipe the aggsender DB and restart it before
+  expecting honest certificate production to resume.
 
 Recovery behavior by case:
 

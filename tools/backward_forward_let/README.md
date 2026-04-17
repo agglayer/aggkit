@@ -111,6 +111,13 @@ Recovery behavior by case:
 - Case 2 and Case 4: `BackwardLET`, then `ForwardLET`, and a second `ForwardLET` when
   extra real L2 bridges must be replayed
 
+Aggsender restart caveat after staged drills:
+
+- aggsender intentionally treats local certificate-state mismatches as fatal on startup,
+- if AggLayer is already on a further or different certificate than the aggsender DB,
+  aggsender will not auto-reconcile,
+- the required operator action is to wipe the aggsender DB and restart aggsender.
+
 ## Fallback when aggsender data is unavailable
 
 If the tool reports missing certificate exits, fetch them from the AggLayer admin/debug
@@ -126,7 +133,9 @@ That document covers:
 - reaching the AggLayer admin JSON-RPC API,
 - using `admin_getCertificate`,
 - building the override file,
-- handling heights whose cert ID is not auto-resolved.
+- handling heights whose cert ID is not auto-resolved,
+- wiping the aggsender DB when a post-drill restart fails because local cert state no
+  longer matches AggLayer.
 
 ## Commands
 
