@@ -22,45 +22,15 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 	destNetwork := cfg.DestinationNetwork
 	exitAddr := cfg.ExitAddress
 
-	bridgeExits := make([]*agglayertypes.BridgeExit, 0,
-		len(stepB.EOABalances)+len(stepC.SCLockedValues))
+	eoaExits := buildEOAExits(stepB, destNetwork)
+	log.Infof("EOA exits: %d", len(eoaExits))
 
-	// Part 1: EOA balance exits
-	totalEOAs := len(stepB.EOABalances)
-	log.Infof("Processing %d EOA balance entries...", totalEOAs)
-	for i, eoa := range stepB.EOABalances {
-		if totalEOAs > 0 && (i+1)%(max(totalEOAs/logGranularity, 1)) == 0 {
-			log.Infof("  EOA progress: %d/%d", i+1, totalEOAs)
-		}
-		if amount := parseDecimalBigInt(eoa.ETHBalance); amount.Sign() > 0 {
-			bridgeExits = append(bridgeExits, makeBridgeExit(0, common.Address{}, destNetwork, eoa.Address, amount))
-		}
-		for _, token := range eoa.Tokens {
-			if amount := parseDecimalBigInt(token.Balance); amount.Sign() > 0 {
-				bridgeExits = append(bridgeExits, makeBridgeExit(
-					token.OriginNetwork, token.OriginTokenAddress, destNetwork, eoa.Address, amount,
-				))
-			}
-		}
-	}
-	eoaExitCount := len(bridgeExits)
-	log.Infof("EOA exits: %d", eoaExitCount)
+	scExits := buildSCLockedExits(stepC, destNetwork, exitAddr)
+	log.Infof("SC-locked exits: %d", len(scExits))
 
-	// Part 2: SC-locked value exits
-	log.Infof("Processing SC-locked values → exit address: %s", exitAddr.Hex())
-	for _, entry := range stepC.SCLockedValues {
-		amount := parseDecimalBigInt(entry.SCLockedBalance)
-		if amount.Sign() <= 0 {
-			continue
-		}
-
-		originNetwork := entry.OriginNetwork
-		originAddr := entry.OriginTokenAddress
-
-		bridgeExits = append(bridgeExits, makeBridgeExit(originNetwork, originAddr, destNetwork, exitAddr, amount))
-	}
-	scExitCount := len(bridgeExits) - eoaExitCount
-	log.Infof("SC-locked exits: %d", scExitCount)
+	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(eoaExits)+len(scExits))
+	bridgeExits = append(bridgeExits, eoaExits...)
+	bridgeExits = append(bridgeExits, scExits...)
 
 	certificate := &agglayertypes.Certificate{
 		NetworkID:         cfg.L2NetworkID,
@@ -70,9 +40,55 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 	}
 
 	log.Infof("STEP D complete: certificate has %d bridge exits (%d EOA + %d SC-locked)",
-		len(bridgeExits), eoaExitCount, scExitCount)
+		len(bridgeExits), len(eoaExits), len(scExits))
 
 	return &StepDResult{Certificate: certificate}, nil
+}
+
+func buildEOAExits(stepB *StepBResult, destNetwork uint32) []*agglayertypes.BridgeExit {
+	totalEOAs := len(stepB.EOABalances)
+	log.Infof("Processing %d EOA balance entries...", totalEOAs)
+
+	logInterval := max(totalEOAs/logGranularity, 1)
+	var exits []*agglayertypes.BridgeExit
+	for i, eoa := range stepB.EOABalances {
+		if totalEOAs > 0 && (i+1)%logInterval == 0 {
+			log.Infof("  EOA progress: %d/%d", i+1, totalEOAs)
+		}
+		exits = append(exits, eoaToExits(eoa, destNetwork)...)
+	}
+	return exits
+}
+
+func eoaToExits(eoa EOABalance, destNetwork uint32) []*agglayertypes.BridgeExit {
+	var exits []*agglayertypes.BridgeExit
+	if amount := parseDecimalBigInt(eoa.ETHBalance); amount.Sign() > 0 {
+		exits = append(exits, makeBridgeExit(0, common.Address{}, destNetwork, eoa.Address, amount))
+	}
+	for _, token := range eoa.Tokens {
+		if amount := parseDecimalBigInt(token.Balance); amount.Sign() > 0 {
+			exits = append(exits, makeBridgeExit(
+				token.OriginNetwork, token.OriginTokenAddress, destNetwork, eoa.Address, amount,
+			))
+		}
+	}
+	return exits
+}
+
+func buildSCLockedExits(
+	stepC *StepCResult, destNetwork uint32, exitAddr common.Address,
+) []*agglayertypes.BridgeExit {
+	log.Infof("Processing SC-locked values → exit address: %s", exitAddr.Hex())
+
+	exits := make([]*agglayertypes.BridgeExit, 0, len(stepC.SCLockedValues))
+	for _, entry := range stepC.SCLockedValues {
+		amount := parseDecimalBigInt(entry.SCLockedBalance)
+		if amount.Sign() <= 0 {
+			continue
+		}
+		exits = append(exits, makeBridgeExit(entry.OriginNetwork, entry.OriginTokenAddress, destNetwork, exitAddr, amount))
+	}
+	return exits
 }
 
 // MakeBridgeExit creates a BridgeExit for an asset transfer. Exported for tests.

@@ -13,6 +13,11 @@ const (
 	percentMultiplier       = 100
 )
 
+type workerResult[R any] struct {
+	val R
+	err error
+}
+
 // runWorkerPool fans out work across `concurrency` goroutines.
 // It feeds `jobs` into a channel, workers call `fn` for each job, and results
 // are collected via `collect`. Progress is logged at ~5% intervals.
@@ -30,11 +35,15 @@ func runWorkerPool[J any, R any](
 		return nil
 	}
 
-	type result struct {
-		val R
-		err error
-	}
+	resultCh := startWorkers(jobs, concurrency, fn)
+	return collectResults(resultCh, len(jobs), collect, label)
+}
 
+func startWorkers[J any, R any](
+	jobs []J,
+	concurrency int,
+	fn func(J) (R, error),
+) <-chan workerResult[R] {
 	jobCh := make(chan J, min(len(jobs), workerPoolChannelCap))
 	go func() {
 		for _, j := range jobs {
@@ -43,7 +52,7 @@ func runWorkerPool[J any, R any](
 		close(jobCh)
 	}()
 
-	resultCh := make(chan result, concurrency*resultChannelMultiplier)
+	resultCh := make(chan workerResult[R], concurrency*resultChannelMultiplier)
 	var wg sync.WaitGroup
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
@@ -51,7 +60,7 @@ func runWorkerPool[J any, R any](
 			defer wg.Done()
 			for j := range jobCh {
 				val, err := fn(j)
-				resultCh <- result{val: val, err: err}
+				resultCh <- workerResult[R]{val: val, err: err}
 			}
 		}()
 	}
@@ -60,7 +69,15 @@ func runWorkerPool[J any, R any](
 		close(resultCh)
 	}()
 
-	total := len(jobs)
+	return resultCh
+}
+
+func collectResults[R any](
+	resultCh <-chan workerResult[R],
+	total int,
+	collect func(R),
+	label string,
+) error {
 	logInterval := total / logGranularity
 	if logInterval < 1 {
 		logInterval = 1

@@ -100,63 +100,29 @@ func runAll(ctx context.Context, cfg *Config) error {
 	startTime := time.Now()
 	logPipelineConfig(cfg)
 
-	// Step 0: generate or load LBT
 	lbtEntries, wrappedTokens, err := resolveOrGenerateLBT(ctx, cfg, dir)
 	if err != nil {
 		return fmt.Errorf("step 0 (LBT): %w", err)
 	}
 
-	// Step A
-	stepAResult, err := RunStepA(ctx, cfg)
+	stepAResult, err := runAllStepA(ctx, cfg, dir, wrappedTokens)
 	if err != nil {
-		return fmt.Errorf("step A: %w", err)
-	}
-	saveJSON(dir, "step-a-addresses.json", stepAResult.Addresses)
-	stepAResult.WrappedTokens = wrappedTokens
-	if len(wrappedTokens) > 0 {
-		log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
+		return err
 	}
 
-	// Step B
-	stepBResult, err := RunStepB(ctx, cfg, stepAResult)
+	stepBResult, err := runAllStepB(ctx, cfg, dir, stepAResult)
 	if err != nil {
-		return fmt.Errorf("step B: %w", err)
-	}
-	saveJSON(dir, "step-b-eoa-balances.json", stepBResult.EOABalances)
-	saveJSON(dir, "step-b-accumulated.json", stepBResult.Accumulated)
-	saveJSON(dir, "step-b-contract-addresses.json", stepBResult.ContractAddresses)
-
-	// Step C
-	stepCResult := &StepCResult{}
-	if len(lbtEntries) > 0 {
-		stepCResult, err = RunStepCWithEntries(lbtEntries, stepBResult)
-		if err != nil {
-			return fmt.Errorf("step C: %w", err)
-		}
-		saveJSON(dir, "step-c-sc-locked-values.json", stepCResult.SCLockedValues)
-	} else {
-		log.Warn("STEP C skipped: no LBT data available")
+		return err
 	}
 
-	// Step D
-	stepDResult, err := RunStepD(cfg, stepBResult, stepCResult)
+	stepCResult, err := runAllStepC(dir, lbtEntries, stepBResult)
 	if err != nil {
-		return fmt.Errorf("step D: %w", err)
+		return err
 	}
-	saveJSON(dir, "step-d-exit-certificate.json", stepDResult.Certificate)
 
-	// Step E
-	finalCertificate := stepDResult.Certificate
-	if cfg.L1RPCURL != "" {
-		stepEResult, err := RunStepE(ctx, cfg, nil, stepDResult.Certificate)
-		if err != nil {
-			return fmt.Errorf("step E: %w", err)
-		}
-		saveJSON(dir, "step-e-l2-claim-events.json", stepEResult.L2ClaimEvents)
-		saveJSON(dir, "step-e-unclaimed-bridges.json", stepEResult.UnclaimedBridges)
-		finalCertificate = stepEResult.FinalCertificate
-	} else {
-		log.Warn("STEP E skipped: no L1 RPC provided")
+	finalCertificate, err := runAllStepDE(ctx, cfg, dir, stepBResult, stepCResult)
+	if err != nil {
+		return err
 	}
 
 	saveJSON(dir, "exit-certificate-final.json", finalCertificate)
@@ -170,6 +136,65 @@ func runAll(ctx context.Context, cfg *Config) error {
 	log.Infof("Output directory:    %s", dir)
 
 	return nil
+}
+
+func runAllStepA(ctx context.Context, cfg *Config, dir string, wrappedTokens []WrappedToken) (*StepAResult, error) {
+	stepAResult, err := RunStepA(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("step A: %w", err)
+	}
+	saveJSON(dir, "step-a-addresses.json", stepAResult.Addresses)
+	stepAResult.WrappedTokens = wrappedTokens
+	if len(wrappedTokens) > 0 {
+		log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
+	}
+	return stepAResult, nil
+}
+
+func runAllStepB(ctx context.Context, cfg *Config, dir string, stepAResult *StepAResult) (*StepBResult, error) {
+	stepBResult, err := RunStepB(ctx, cfg, stepAResult)
+	if err != nil {
+		return nil, fmt.Errorf("step B: %w", err)
+	}
+	saveJSON(dir, "step-b-eoa-balances.json", stepBResult.EOABalances)
+	saveJSON(dir, "step-b-accumulated.json", stepBResult.Accumulated)
+	saveJSON(dir, "step-b-contract-addresses.json", stepBResult.ContractAddresses)
+	return stepBResult, nil
+}
+
+func runAllStepC(dir string, lbtEntries []LBTEntry, stepBResult *StepBResult) (*StepCResult, error) {
+	if len(lbtEntries) == 0 {
+		log.Warn("STEP C skipped: no LBT data available")
+		return &StepCResult{}, nil
+	}
+	stepCResult, err := RunStepCWithEntries(lbtEntries, stepBResult)
+	if err != nil {
+		return nil, fmt.Errorf("step C: %w", err)
+	}
+	saveJSON(dir, "step-c-sc-locked-values.json", stepCResult.SCLockedValues)
+	return stepCResult, nil
+}
+
+func runAllStepDE(
+	ctx context.Context, cfg *Config, dir string,
+	stepBResult *StepBResult, stepCResult *StepCResult,
+) (*agglayertypes.Certificate, error) {
+	stepDResult, err := RunStepD(cfg, stepBResult, stepCResult)
+	if err != nil {
+		return nil, fmt.Errorf("step D: %w", err)
+	}
+	saveJSON(dir, "step-d-exit-certificate.json", stepDResult.Certificate)
+
+	if cfg.L1RPCURL == "" {
+		log.Warn("STEP E skipped: no L1 RPC provided")
+		return stepDResult.Certificate, nil
+	}
+	stepEResult, err := RunStepE(ctx, cfg, stepDResult.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("step E: %w", err)
+	}
+	saveJSON(dir, "step-e-unclaimed-bridges.json", stepEResult.UnclaimedBridges)
+	return stepEResult.FinalCertificate, nil
 }
 
 func logPipelineConfig(cfg *Config) {
@@ -208,91 +233,108 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 
 	switch step {
 	case "0":
-		entries, err := RunStep0(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		saveJSON(dir, "step-0-lbt.json", entries)
-
+		return runSingle0(ctx, cfg, dir)
 	case "a":
-		result, err := RunStepA(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		saveJSON(dir, "step-a-addresses.json", result.Addresses)
-
+		return runSingleA(ctx, cfg, dir)
 	case "b":
-		var addresses []common.Address
-		if err := loadJSON(dir, "step-a-addresses.json", &addresses); err != nil {
-			return fmt.Errorf("load step A output: %w", err)
-		}
-		wrappedTokens, err := loadWrappedTokensFromLBT(cfg, dir)
-		if err != nil {
-			return err
-		}
-		log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
-
-		result, err := RunStepB(ctx, cfg, &StepAResult{
-			Addresses:     addresses,
-			WrappedTokens: wrappedTokens,
-		})
-		if err != nil {
-			return err
-		}
-		saveJSON(dir, "step-b-eoa-balances.json", result.EOABalances)
-		saveJSON(dir, "step-b-accumulated.json", result.Accumulated)
-		saveJSON(dir, "step-b-contract-addresses.json", result.ContractAddresses)
-
+		return runSingleB(ctx, cfg, dir)
 	case "c":
-		var accumulated []AccumulatedBalance
-		if err := loadJSON(dir, "step-b-accumulated.json", &accumulated); err != nil {
-			return fmt.Errorf("load step B output: %w", err)
-		}
-		result, err := RunStepC(cfg, &StepBResult{Accumulated: accumulated})
-		if err != nil {
-			return err
-		}
-		saveJSON(dir, "step-c-sc-locked-values.json", result.SCLockedValues)
-
+		return runSingleC(cfg, dir)
 	case "d":
-		var eoaBalances []EOABalance
-		if err := loadJSON(dir, "step-b-eoa-balances.json", &eoaBalances); err != nil {
-			return fmt.Errorf("load step B output: %w", err)
-		}
-		var scLockedValues []SCLockedValue
-		if err := loadJSON(dir, "step-c-sc-locked-values.json", &scLockedValues); err != nil {
-			return fmt.Errorf("load step C output: %w", err)
-		}
-		result, err := RunStepD(cfg, &StepBResult{EOABalances: eoaBalances}, &StepCResult{SCLockedValues: scLockedValues})
-		if err != nil {
-			return err
-		}
-		saveJSON(dir, "step-d-exit-certificate.json", result.Certificate)
-
+		return runSingleD(cfg, dir)
 	case "e":
-		if cfg.L1RPCURL == "" {
-			return fmt.Errorf("step E requires l1RpcUrl in parameters")
-		}
-		var cert certificateJSON
-		if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
-			return fmt.Errorf("load step D output: %w", err)
-		}
-		// Load L2 claim events from a previous run if available; otherwise RunStepE will fetch them.
-		var l2ClaimEvents []L2ClaimEvent
-		if err := loadJSON(dir, "step-e-l2-claim-events.json", &l2ClaimEvents); err != nil {
-			l2ClaimEvents = nil
-		}
-		result, err := RunStepE(ctx, cfg, l2ClaimEvents, cert.toAgglayerCertificate())
-		if err != nil {
-			return err
-		}
-		saveJSON(dir, "step-e-l2-claim-events.json", result.L2ClaimEvents)
-		saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
-		saveJSON(dir, "exit-certificate-final.json", result.FinalCertificate)
-
+		return runSingleE(ctx, cfg, dir)
 	default:
 		return fmt.Errorf("unknown step: %s (use 0, a, b, c, d, e, or all)", step)
 	}
+}
+
+func runSingle0(ctx context.Context, cfg *Config, dir string) error {
+	entries, err := RunStep0(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-0-lbt.json", entries)
+	return nil
+}
+
+func runSingleA(ctx context.Context, cfg *Config, dir string) error {
+	result, err := RunStepA(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-a-addresses.json", result.Addresses)
+	return nil
+}
+
+func runSingleB(ctx context.Context, cfg *Config, dir string) error {
+	var addresses []common.Address
+	if err := loadJSON(dir, "step-a-addresses.json", &addresses); err != nil {
+		return fmt.Errorf("load step A output: %w", err)
+	}
+	wrappedTokens, err := loadWrappedTokensFromLBT(cfg, dir)
+	if err != nil {
+		return err
+	}
+	log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
+
+	result, err := RunStepB(ctx, cfg, &StepAResult{
+		Addresses:     addresses,
+		WrappedTokens: wrappedTokens,
+	})
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-b-eoa-balances.json", result.EOABalances)
+	saveJSON(dir, "step-b-accumulated.json", result.Accumulated)
+	saveJSON(dir, "step-b-contract-addresses.json", result.ContractAddresses)
+	return nil
+}
+
+func runSingleC(cfg *Config, dir string) error {
+	var accumulated []AccumulatedBalance
+	if err := loadJSON(dir, "step-b-accumulated.json", &accumulated); err != nil {
+		return fmt.Errorf("load step B output: %w", err)
+	}
+	result, err := RunStepC(cfg, &StepBResult{Accumulated: accumulated})
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-c-sc-locked-values.json", result.SCLockedValues)
+	return nil
+}
+
+func runSingleD(cfg *Config, dir string) error {
+	var eoaBalances []EOABalance
+	if err := loadJSON(dir, "step-b-eoa-balances.json", &eoaBalances); err != nil {
+		return fmt.Errorf("load step B output: %w", err)
+	}
+	var scLockedValues []SCLockedValue
+	if err := loadJSON(dir, "step-c-sc-locked-values.json", &scLockedValues); err != nil {
+		return fmt.Errorf("load step C output: %w", err)
+	}
+	result, err := RunStepD(cfg, &StepBResult{EOABalances: eoaBalances}, &StepCResult{SCLockedValues: scLockedValues})
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-d-exit-certificate.json", result.Certificate)
+	return nil
+}
+
+func runSingleE(ctx context.Context, cfg *Config, dir string) error {
+	if cfg.L1RPCURL == "" {
+		return fmt.Errorf("step E requires l1RpcUrl in parameters")
+	}
+	var cert certificateJSON
+	if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
+		return fmt.Errorf("load step D output: %w", err)
+	}
+	result, err := RunStepE(ctx, cfg, cert.toAgglayerCertificate())
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
+	saveJSON(dir, "exit-certificate-final.json", result.FinalCertificate)
 	return nil
 }
 

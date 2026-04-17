@@ -37,6 +37,21 @@ func RunStepCWithEntries(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResul
 		eoaByToken[key] = parseDecimalBigInt(entry.TotalBalance)
 	}
 
+	scLockedValues, nonZeroCount := computeSCLocked(lbtByToken, eoaByToken)
+
+	for tokenKey, eoaTotal := range eoaByToken {
+		if _, exists := lbtByToken[tokenKey]; !exists && eoaTotal.Sign() > 0 {
+			log.Warnf("Token %s has EOA balance (%s) but is not in LBT — skipping", tokenKey, eoaTotal)
+		}
+	}
+
+	log.Infof("STEP C complete: %d tokens analyzed, %d have SC-locked value",
+		len(scLockedValues), nonZeroCount)
+
+	return &StepCResult{SCLockedValues: scLockedValues}, nil
+}
+
+func computeSCLocked(lbtByToken map[string]LBTEntry, eoaByToken map[string]*big.Int) ([]SCLockedValue, int) {
 	scLockedValues := make([]SCLockedValue, 0, len(lbtByToken))
 	nonZeroCount := 0
 
@@ -68,16 +83,7 @@ func RunStepCWithEntries(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResul
 		})
 	}
 
-	for tokenKey, eoaTotal := range eoaByToken {
-		if _, exists := lbtByToken[tokenKey]; !exists && eoaTotal.Sign() > 0 {
-			log.Warnf("Token %s has EOA balance (%s) but is not in LBT — skipping", tokenKey, eoaTotal)
-		}
-	}
-
-	log.Infof("STEP C complete: %d tokens analyzed, %d have SC-locked value",
-		len(scLockedValues), nonZeroCount)
-
-	return &StepCResult{SCLockedValues: scLockedValues}, nil
+	return scLockedValues, nonZeroCount
 }
 
 // indexByAddress indexes LBT entries by lowercased hex address.
