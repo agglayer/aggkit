@@ -36,17 +36,26 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 	return &StepAResult{Addresses: addresses}, nil
 }
 
-// collectTxHashes scans blocks 0..targetBlock in two phases:
-//  1. Fetch all block headers to identify non-empty blocks
-//  2. Fetch full blocks for non-empty ones to extract tx hashes
 func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
-	targetBlock := cfg.ResolvedTargetBlock
 	rpcURL := cfg.L2RPCURL
 	batchSize := cfg.Options.RPCBatchSize
 	concurrency := cfg.Options.ConcurrencyLimit
-	totalBlocks := targetBlock + 1
 
-	// Phase 1: scan block headers
+	nonEmptyBlocks, err := scanBlockHeaders(ctx, rpcURL, cfg.ResolvedTargetBlock, batchSize, concurrency)
+	if err != nil {
+		return nil, err
+	}
+	if len(nonEmptyBlocks) == 0 {
+		return nil, nil
+	}
+
+	return extractTxHashes(ctx, rpcURL, nonEmptyBlocks, batchSize, concurrency)
+}
+
+func scanBlockHeaders(
+	ctx context.Context, rpcURL string, targetBlock uint64, batchSize, concurrency int,
+) ([]uint64, error) {
+	totalBlocks := targetBlock + 1
 	log.Infof("Phase 1: Scanning %d blocks (concurrency=%d, batchSize=%d)...",
 		totalBlocks, concurrency, batchSize)
 
@@ -78,11 +87,12 @@ func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 	}
 
 	log.Infof("Phase 1 complete: %d non-empty blocks out of %d", len(nonEmptyBlocks), totalBlocks)
-	if len(nonEmptyBlocks) == 0 {
-		return nil, nil
-	}
+	return nonEmptyBlocks, nil
+}
 
-	// Phase 2: fetch full blocks for non-empty ones
+func extractTxHashes(
+	ctx context.Context, rpcURL string, nonEmptyBlocks []uint64, batchSize, concurrency int,
+) ([]common.Hash, error) {
 	log.Infof("Phase 2: Fetching transactions from %d non-empty blocks...", len(nonEmptyBlocks))
 
 	txCalls := make([]RPCCall, len(nonEmptyBlocks))
@@ -98,8 +108,14 @@ func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 		return nil, fmt.Errorf("phase 2 batch RPC: %w", err)
 	}
 
-	var txHashes []common.Hash
-	for _, result := range txResults {
+	txHashes := parseTxHashesFromResults(txResults)
+	log.Infof("Phase 2 complete: %d tx hashes", len(txHashes))
+	return txHashes, nil
+}
+
+func parseTxHashesFromResults(results []json.RawMessage) []common.Hash {
+	var hashes []common.Hash
+	for _, result := range results {
 		if result == nil {
 			continue
 		}
@@ -113,13 +129,11 @@ func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 		}
 		for _, tx := range block.Transactions {
 			if tx.Hash != "" {
-				txHashes = append(txHashes, common.HexToHash(tx.Hash))
+				hashes = append(hashes, common.HexToHash(tx.Hash))
 			}
 		}
 	}
-
-	log.Infof("Phase 2 complete: %d tx hashes", len(txHashes))
-	return txHashes, nil
+	return hashes
 }
 
 // traceTransactions traces all transactions via a worker pool.

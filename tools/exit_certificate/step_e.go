@@ -12,96 +12,170 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// L2ClaimEvent represents a ClaimEvent emitted on the L2 bridge contract.
-// Used to identify L1 deposits that have already been claimed on L2,
-// so Step E can exclude them from the exit certificate (avoiding double-counting
-// with the EOA/SC balances discovered in steps A–D).
-type L2ClaimEvent struct {
-	GlobalIndex        *big.Int       `json:"globalIndex"`
-	OriginNetwork      uint32         `json:"originNetwork"`
-	OriginAddress      common.Address `json:"originAddress"`
-	DestinationAddress common.Address `json:"destinationAddress"`
-	Amount             *big.Int       `json:"amount"`
-}
-
-const (
-	// globalIndexMainnetBit is the bit position of the mainnet flag in the globalIndex.
-	globalIndexMainnetBit = 64
-	// globalIndexLeafMask extracts the 32-bit leaf index from a globalIndex.
-	globalIndexLeafMask = 0xFFFFFFFF
+// bridgeEventTopic is keccak256("BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)").
+var bridgeEventTopic = common.HexToHash(
+	"0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39f97571d4d7",
 )
 
-// mainnetFlag is the bit set in globalIndex for L1 (mainnet) deposits.
-// GlobalIndex: | 191 bits (zero) | 1 bit mainnetFlag | 32 bits rollupIndex | 32 bits leafIndex |
-var mainnetFlag = new(big.Int).Lsh(big.NewInt(1), globalIndexMainnetBit)
+// isClaimedSelector is the 4-byte ABI selector for isClaimed(uint32,uint32).
+// keccak256("isClaimed(uint32,uint32)")[:4]
+const isClaimedSelector = "0xcc461632"
 
-// bridgeEventTopic is keccak256("BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)").
-var bridgeEventTopic = common.HexToHash("0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39f97571d4d7")
-
-// claimEventTopic is keccak256("ClaimEvent(uint256,uint32,address,address,uint256)").
-var claimEventTopic = common.HexToHash("0x25308c93ceeed162da955b3f7ce3e3f93606579e40fb92029faa9efe27545983")
+// sourceBridgeNetworkMainnet is the sourceBridgeNetwork value for L1 (mainnet) deposits.
+// isClaimed(leafIndex, sourceBridgeNetwork) uses 0 for mainnet.
+const sourceBridgeNetworkMainnet = 0
 
 // RunStepE finds unclaimed L1→L2 bridge deposits and adds them to the exit certificate.
-// If l2ClaimEvents is nil, it scans the L2 bridge for ClaimEvent logs to discover
-// which L1 deposits have already been claimed (avoiding double-counting).
+//
+// Approach:
+//  1. Scan L1 bridge for BridgeEvent where destinationNetwork == L2 networkId
+//  2. For each deposit, call isClaimed(depositCount, 0) on the L2 bridge contract
+//  3. Unclaimed deposits become BridgeExit entries in the certificate
 func RunStepE(
 	ctx context.Context, cfg *Config,
-	l2ClaimEvents []L2ClaimEvent,
 	certificate *agglayertypes.Certificate,
 ) (*StepEResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP E — Unclaimed L1→L2 bridge deposits")
 	log.Info("═══════════════════════════════════════════")
 
-	// Fetch L2 ClaimEvents if not provided
-	if l2ClaimEvents == nil {
-		log.Info("No L2 claim events provided — scanning L2 bridge for ClaimEvent logs...")
-		var err error
-		l2ClaimEvents, err = fetchL2ClaimEvents(ctx, cfg)
-		if err != nil {
-			return nil, fmt.Errorf("fetch L2 claim events: %w", err)
-		}
-	}
-
-	// Resolve L1 latest block
-	latestResult, err := singleRPC(ctx, cfg.L1RPCURL, "eth_blockNumber", nil, defaultRetries)
+	l1LatestBlock, err := resolveL1LatestBlock(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("get L1 latest block: %w", err)
+		return nil, err
 	}
-	var latestHex string
-	if err := json.Unmarshal(latestResult, &latestHex); err != nil {
-		return nil, fmt.Errorf("parse L1 latest block: %w", err)
-	}
-	l1LatestBlock := hexToUint64(latestHex)
-	log.Infof("L1 latest block: %d, scanning from %d", l1LatestBlock, cfg.Options.L1StartBlock)
 
-	// Fetch L1 BridgeEvent events targeting our L2
 	l1Deposits, err := fetchL1BridgeEvents(ctx, cfg, l1LatestBlock)
 	if err != nil {
 		return nil, err
 	}
 	log.Infof("L1→L2 deposits found: %d", len(l1Deposits))
 
-	// Build claimed set from L2 ClaimEvents
-	claimedCounts := buildClaimedSet(l2ClaimEvents)
-	log.Infof("L2 claims of L1 deposits: %d", len(claimedCounts))
+	claimedSet, err := checkClaimedBatch(ctx, cfg, l1Deposits)
+	if err != nil {
+		return nil, fmt.Errorf("check isClaimed: %w", err)
+	}
+	log.Infof("Already claimed on L2: %d", len(claimedSet))
 
-	// Find unclaimed deposits
+	unclaimed := filterUnclaimedDeposits(l1Deposits, claimedSet)
+	log.Infof("Unclaimed L1→L2 deposits: %d", len(unclaimed))
+
+	newExits := depositsToExits(unclaimed, cfg)
+	log.Infof("Adding %d unclaimed-deposit exits to certificate", len(newExits))
+
+	finalCertificate := mergeCertificate(certificate, newExits)
+	log.Infof("STEP E complete: final certificate has %d total bridge exits",
+		len(finalCertificate.BridgeExits))
+
+	return &StepEResult{
+		UnclaimedBridges: unclaimed,
+		FinalCertificate: finalCertificate,
+	}, nil
+}
+
+func resolveL1LatestBlock(ctx context.Context, cfg *Config) (uint64, error) {
+	latestResult, err := singleRPC(ctx, cfg.L1RPCURL, "eth_blockNumber", nil, defaultRetries)
+	if err != nil {
+		return 0, fmt.Errorf("get L1 latest block: %w", err)
+	}
+	var latestHex string
+	if err := json.Unmarshal(latestResult, &latestHex); err != nil {
+		return 0, fmt.Errorf("parse L1 latest block: %w", err)
+	}
+	block := hexToUint64(latestHex)
+	log.Infof("L1 latest block: %d, scanning from %d", block, cfg.Options.L1StartBlock)
+	return block, nil
+}
+
+// checkClaimedBatch calls isClaimed(depositCount, 0) on the L2 bridge for each deposit.
+//
+// isClaimed inputs:
+//   - leafIndex = depositCount from the BridgeEvent
+//   - sourceBridgeNetwork = 0 (mainnet), because the deposit originates from L1
+//
+// The contract internally computes:
+//
+//	globalIndex = leafIndex + sourceBridgeNetwork * 2^32
+//
+// With sourceBridgeNetwork=0 this simplifies to globalIndex = leafIndex.
+func checkClaimedBatch(
+	ctx context.Context, cfg *Config, deposits []L1Deposit,
+) (map[uint32]struct{}, error) {
+	if len(deposits) == 0 {
+		return nil, nil
+	}
+
+	calls := make([]RPCCall, len(deposits))
+	for i, dep := range deposits {
+		calls[i] = RPCCall{
+			Method: "eth_call",
+			Params: []any{
+				map[string]string{
+					"to":   cfg.L2BridgeAddress.Hex(),
+					"data": encodeIsClaimed(dep.DepositCount, sourceBridgeNetworkMainnet),
+				},
+				"latest",
+			},
+		}
+	}
+
+	results, err := concurrentBatchRPC(
+		ctx, cfg.L2RPCURL, calls, cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("batch isClaimed: %w", err)
+	}
+
+	return parseClaimedResults(results, deposits), nil
+}
+
+// encodeIsClaimed ABI-encodes isClaimed(uint32 leafIndex, uint32 sourceBridgeNetwork).
+func encodeIsClaimed(leafIndex, sourceBridgeNetwork uint32) string {
+	data := make([]byte, 4+64) //nolint:mnd
+	copy(data[0:4], common.FromHex(isClaimedSelector))
+	new(big.Int).SetUint64(uint64(leafIndex)).FillBytes(data[4:36])
+	new(big.Int).SetUint64(uint64(sourceBridgeNetwork)).FillBytes(data[36:68])
+	return "0x" + common.Bytes2Hex(data)
+}
+
+func parseClaimedResults(results []json.RawMessage, deposits []L1Deposit) map[uint32]struct{} {
+	claimed := make(map[uint32]struct{})
+	for i, result := range results {
+		if result == nil {
+			continue
+		}
+		var hex string
+		if json.Unmarshal(result, &hex) != nil {
+			continue
+		}
+		val := hexToBigInt(hex)
+		if val.Sign() > 0 {
+			claimed[deposits[i].DepositCount] = struct{}{}
+		}
+	}
+	return claimed
+}
+
+func filterUnclaimedDeposits(
+	l1Deposits []L1Deposit, claimedSet map[uint32]struct{},
+) []L1Deposit {
 	var unclaimed []L1Deposit
 	for _, dep := range l1Deposits {
-		if _, ok := claimedCounts[dep.DepositCount]; !ok {
+		if _, ok := claimedSet[dep.DepositCount]; !ok {
 			unclaimed = append(unclaimed, dep)
 		}
 	}
-	log.Infof("Unclaimed L1→L2 deposits: %d", len(unclaimed))
+	return unclaimed
+}
 
-	// Convert to BridgeExits
-	newExits := make([]*agglayertypes.BridgeExit, 0, len(unclaimed))
+func depositsToExits(
+	unclaimed []L1Deposit, cfg *Config,
+) []*agglayertypes.BridgeExit {
+	exits := make([]*agglayertypes.BridgeExit, 0, len(unclaimed))
 	for _, dep := range unclaimed {
 		if dep.Amount == nil || dep.Amount.Sign() == 0 {
 			continue
 		}
-		newExits = append(newExits, &agglayertypes.BridgeExit{
+		exits = append(exits, &agglayertypes.BridgeExit{
 			LeafType: bridgetypes.LeafType(dep.LeafType),
 			TokenInfo: &agglayertypes.TokenInfo{
 				OriginNetwork:      dep.OriginNetwork,
@@ -113,14 +187,18 @@ func RunStepE(
 			Metadata:           dep.Metadata,
 		})
 	}
-	log.Infof("Adding %d unclaimed-deposit exits to certificate", len(newExits))
+	return exits
+}
 
-	// Merge into existing certificate
-	allExits := make([]*agglayertypes.BridgeExit, 0, len(certificate.BridgeExits)+len(newExits))
+func mergeCertificate(
+	certificate *agglayertypes.Certificate, newExits []*agglayertypes.BridgeExit,
+) *agglayertypes.Certificate {
+	allExits := make([]*agglayertypes.BridgeExit, 0,
+		len(certificate.BridgeExits)+len(newExits))
 	allExits = append(allExits, certificate.BridgeExits...)
 	allExits = append(allExits, newExits...)
 
-	finalCertificate := &agglayertypes.Certificate{
+	return &agglayertypes.Certificate{
 		NetworkID:           certificate.NetworkID,
 		Height:              certificate.Height,
 		PrevLocalExitRoot:   certificate.PrevLocalExitRoot,
@@ -128,33 +206,12 @@ func RunStepE(
 		BridgeExits:         allExits,
 		ImportedBridgeExits: certificate.ImportedBridgeExits,
 	}
-
-	log.Infof("STEP E complete: final certificate has %d total bridge exits", len(allExits))
-
-	return &StepEResult{
-		L2ClaimEvents:    l2ClaimEvents,
-		UnclaimedBridges: unclaimed,
-		FinalCertificate: finalCertificate,
-	}, nil
-}
-
-func buildClaimedSet(claims []L2ClaimEvent) map[uint32]struct{} {
-	leafIndexMask := new(big.Int).SetUint64(globalIndexLeafMask)
-	claimed := make(map[uint32]struct{})
-	for _, c := range claims {
-		if c.GlobalIndex == nil {
-			continue
-		}
-		if new(big.Int).And(c.GlobalIndex, mainnetFlag).Sign() > 0 {
-			leafIndex := uint32(new(big.Int).And(c.GlobalIndex, leafIndexMask).Uint64())
-			claimed[leafIndex] = struct{}{}
-		}
-	}
-	return claimed
 }
 
 // fetchL1BridgeEvents scans L1 for BridgeEvents using a worker pool.
-func fetchL1BridgeEvents(ctx context.Context, cfg *Config, l1LatestBlock uint64) ([]L1Deposit, error) {
+func fetchL1BridgeEvents(
+	ctx context.Context, cfg *Config, l1LatestBlock uint64,
+) ([]L1Deposit, error) {
 	fromBlock := cfg.Options.L1StartBlock
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
@@ -178,7 +235,9 @@ func fetchL1BridgeEvents(ctx context.Context, cfg *Config, l1LatestBlock uint64)
 	err := runWorkerPool(
 		jobs, concurrency,
 		func(j blockRangeJob) ([]L1Deposit, error) {
-			return fetchBridgeEventsInRange(ctx, cfg.L1RPCURL, cfg.L1BridgeAddress, cfg.L2NetworkID, j.from, j.to)
+			return fetchBridgeEventsInRange(
+				ctx, cfg.L1RPCURL, cfg.L1BridgeAddress, cfg.L2NetworkID, j.from, j.to,
+			)
 		},
 		func(deposits []L1Deposit) {
 			allDeposits = append(allDeposits, deposits...)
@@ -232,105 +291,6 @@ func fetchBridgeEventsInRange(
 	return deposits, nil
 }
 
-// fetchL2ClaimEvents scans L2 for ClaimEvent logs using a worker pool.
-func fetchL2ClaimEvents(ctx context.Context, cfg *Config) ([]L2ClaimEvent, error) {
-	toBlock := cfg.ResolvedTargetBlock
-	blockRange := cfg.Options.BlockRange
-	concurrency := cfg.Options.ConcurrencyLimit
-
-	if toBlock == 0 {
-		return nil, nil
-	}
-
-	type blockRangeJob struct{ from, to uint64 }
-	var jobs []blockRangeJob
-	for start := uint64(0); start <= toBlock; start += uint64(blockRange) {
-		end := min(start+uint64(blockRange)-1, toBlock)
-		jobs = append(jobs, blockRangeJob{from: start, to: end})
-	}
-
-	log.Infof("Fetching L2 ClaimEvents: blocks 0→%d, %d ranges, concurrency=%d",
-		toBlock, len(jobs), concurrency)
-
-	var allClaims []L2ClaimEvent
-
-	err := runWorkerPool(
-		jobs, concurrency,
-		func(j blockRangeJob) ([]L2ClaimEvent, error) {
-			return fetchClaimEventsInRange(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, j.from, j.to)
-		},
-		func(claims []L2ClaimEvent) {
-			allClaims = append(allClaims, claims...)
-		},
-		"L2 ClaimEvent",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("L2 ClaimEvent scan: %w", err)
-	}
-
-	log.Infof("L2 ClaimEvent: %d events found", len(allClaims))
-	return allClaims, nil
-}
-
-// fetchClaimEventsInRange fetches ClaimEvent logs in a single block range.
-func fetchClaimEventsInRange(
-	ctx context.Context, rpcURL string, bridgeAddress common.Address,
-	fromBlock, toBlock uint64,
-) ([]L2ClaimEvent, error) {
-	result, err := singleRPC(ctx, rpcURL, "eth_getLogs", []any{
-		map[string]any{
-			"address":   bridgeAddress.Hex(),
-			"topics":    []string{claimEventTopic.Hex()},
-			"fromBlock": toBlockTag(fromBlock),
-			"toBlock":   toBlockTag(toBlock),
-		},
-	}, defaultRetries)
-	if err != nil {
-		return nil, err
-	}
-
-	var logs []struct {
-		Data string `json:"data"`
-	}
-	if err := json.Unmarshal(result, &logs); err != nil {
-		return nil, fmt.Errorf("unmarshal logs: %w", err)
-	}
-
-	claims := make([]L2ClaimEvent, 0, len(logs))
-	for _, lg := range logs {
-		claim, err := decodeClaimEvent(lg.Data)
-		if err != nil {
-			continue
-		}
-		claims = append(claims, claim)
-	}
-	return claims, nil
-}
-
-// decodeClaimEvent decodes ABI-encoded ClaimEvent data.
-// Layout: globalIndex(256) | originNetwork(32) | originAddress(address) | destinationAddress(address) | amount(256)
-func decodeClaimEvent(dataHex string) (L2ClaimEvent, error) {
-	data := common.FromHex(dataHex)
-	const minClaimDataLen = 160 // 5 * 32 bytes
-	if len(data) < minClaimDataLen {
-		return L2ClaimEvent{}, fmt.Errorf("claim data too short: %d bytes", len(data))
-	}
-
-	globalIndex := new(big.Int).SetBytes(data[0:32])
-	originNetwork, err := safeUint32(new(big.Int).SetBytes(data[32:64]))
-	if err != nil {
-		return L2ClaimEvent{}, fmt.Errorf("originNetwork: %w", err)
-	}
-
-	return L2ClaimEvent{
-		GlobalIndex:        globalIndex,
-		OriginNetwork:      originNetwork,
-		OriginAddress:      common.BytesToAddress(data[64:96]),
-		DestinationAddress: common.BytesToAddress(data[96:128]),
-		Amount:             new(big.Int).SetBytes(data[128:160]),
-	}, nil
-}
-
 // decodeBridgeEvent decodes ABI-encoded BridgeEvent data.
 // Layout: leafType | originNetwork | originAddress | destNetwork |
 //
@@ -339,32 +299,23 @@ func decodeBridgeEvent(
 	dataHex, blockNumberHex, txHashHex string,
 ) (L1Deposit, error) {
 	data := common.FromHex(dataHex)
-	const (
-		minDataLen  = 256
-		abiWordSize = 32
-	)
+	const minDataLen = 256
 	if len(data) < minDataLen {
 		return L1Deposit{}, fmt.Errorf("data too short: %d bytes", len(data))
 	}
 
 	metadataOffset := new(big.Int).SetBytes(data[192:224]).Uint64()
-	var metadata []byte
-	if metadataOffset+abiWordSize <= uint64(len(data)) {
-		metadataLen := new(big.Int).SetBytes(
-			data[metadataOffset : metadataOffset+abiWordSize],
-		).Uint64()
-		if metadataLen > maxMetadataSize {
-			return L1Deposit{}, fmt.Errorf(
-				"metadata too large: %d bytes (max %d)", metadataLen, maxMetadataSize,
-			)
-		}
-		metadataStart := metadataOffset + abiWordSize
-		if metadataStart+metadataLen <= uint64(len(data)) {
-			metadata = make([]byte, metadataLen)
-			copy(metadata, data[metadataStart:metadataStart+metadataLen])
-		}
+	metadata, err := extractMetadata(data, metadataOffset)
+	if err != nil {
+		return L1Deposit{}, err
 	}
 
+	return parseBridgeFields(data, metadata, blockNumberHex, txHashHex)
+}
+
+func parseBridgeFields(
+	data, metadata []byte, blockNumberHex, txHashHex string,
+) (L1Deposit, error) {
 	leafType, err := safeUint8(new(big.Int).SetBytes(data[0:32]))
 	if err != nil {
 		return L1Deposit{}, fmt.Errorf("leafType: %w", err)
@@ -394,4 +345,26 @@ func decodeBridgeEvent(
 		BlockNumber:        hexToUint64(blockNumberHex),
 		TxHash:             common.HexToHash(txHashHex),
 	}, nil
+}
+
+func extractMetadata(data []byte, metadataOffset uint64) ([]byte, error) {
+	const abiWordSize = 32
+	if metadataOffset+abiWordSize > uint64(len(data)) {
+		return nil, nil
+	}
+	metadataLen := new(big.Int).SetBytes(
+		data[metadataOffset : metadataOffset+abiWordSize],
+	).Uint64()
+	if metadataLen > maxMetadataSize {
+		return nil, fmt.Errorf(
+			"metadata too large: %d bytes (max %d)", metadataLen, maxMetadataSize,
+		)
+	}
+	metadataStart := metadataOffset + abiWordSize
+	if metadataStart+metadataLen > uint64(len(data)) {
+		return nil, nil
+	}
+	metadata := make([]byte, metadataLen)
+	copy(metadata, data[metadataStart:metadataStart+metadataLen])
+	return metadata, nil
 }

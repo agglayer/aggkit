@@ -242,29 +242,41 @@ func buildEOABalances(
 ) []EOABalance {
 	var result []EOABalance
 	for _, addr := range eoaAddrs {
-		entry := EOABalance{Address: addr, ETHBalance: "0"}
-
-		if bal, ok := ethBalances[addr]; ok {
-			entry.ETHBalance = bal.String()
-		}
-
-		for tokenAddr, holders := range tokenBalances {
-			if bal, ok := holders[addr]; ok && bal.Sign() > 0 {
-				info := tokenLookup[tokenAddr]
-				entry.Tokens = append(entry.Tokens, EOATokenBalance{
-					WrappedTokenAddress: tokenAddr,
-					OriginNetwork:       info.OriginNetwork,
-					OriginTokenAddress:  info.OriginTokenAddress,
-					Balance:             bal.String(),
-				})
-			}
-		}
-
-		if entry.ETHBalance != "0" || len(entry.Tokens) > 0 {
+		if entry, ok := buildSingleEOABalance(addr, ethBalances, tokenBalances, tokenLookup); ok {
 			result = append(result, entry)
 		}
 	}
 	return result
+}
+
+func buildSingleEOABalance(
+	addr common.Address,
+	ethBalances map[common.Address]*big.Int,
+	tokenBalances map[common.Address]map[common.Address]*big.Int,
+	tokenLookup map[common.Address]WrappedToken,
+) (EOABalance, bool) {
+	entry := EOABalance{Address: addr, ETHBalance: "0"}
+
+	if bal, ok := ethBalances[addr]; ok {
+		entry.ETHBalance = bal.String()
+	}
+
+	for tokenAddr, holders := range tokenBalances {
+		if bal, ok := holders[addr]; ok && bal.Sign() > 0 {
+			info := tokenLookup[tokenAddr]
+			entry.Tokens = append(entry.Tokens, EOATokenBalance{
+				WrappedTokenAddress: tokenAddr,
+				OriginNetwork:       info.OriginNetwork,
+				OriginTokenAddress:  info.OriginTokenAddress,
+				Balance:             bal.String(),
+			})
+		}
+	}
+
+	if entry.ETHBalance == "0" && len(entry.Tokens) == 0 {
+		return EOABalance{}, false
+	}
+	return entry, true
 }
 
 // buildAccumulated sums balances per token across all EOAs.
