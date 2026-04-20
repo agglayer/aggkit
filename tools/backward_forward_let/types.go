@@ -80,6 +80,12 @@ type DiagnosisResult struct {
 	FailedCertID common.Hash
 }
 
+// IsCompleteNoDivergence reports whether diagnosis completed successfully and
+// confirmed there is no divergence between settled L1 state and the L2 bridge.
+func (d *DiagnosisResult) IsCompleteNoDivergence() bool {
+	return d != nil && !d.AggsenderAPIFailed && d.Case == NoDivergence
+}
+
 // MissingCertInfo describes a certificate height for which bridge exits
 // could not be obtained from any available source.
 type MissingCertInfo struct {

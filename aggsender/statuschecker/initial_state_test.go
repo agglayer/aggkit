@@ -29,6 +29,7 @@ type testCaseData struct {
 	agglayerSettled  *certTestData
 	agglayerPending  *certTestData
 	resultError      bool
+	errorContains    string
 	resultActions    []*initialStateResultTest
 }
 
@@ -42,7 +43,7 @@ type testCaseData struct {
 //	4|ID1, h1 , Inerror  | nil 					| nil 							| AggSender incosistence
 //	5|ID1, h1 , Settled  | nil 					| nil 							| AggSender incosistence
 //  6|ID1, h1 , !=closed | nil 					| nil 							| incosistence
-
+//
 //	7|ID1, h3 , NA		| NA 					| ID2, h2   , !=InError 		| AggSender incosistence
 //	8|ID1, h3 , NA		| ID2, h2 ,NA			| NA  							| AggSender incosistence
 //	9|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , !=inError			| AggSender incosistence (2cert jump)
@@ -80,6 +81,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultError:     true,
+			errorContains:   "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
 			name:            "5|ID1, h1 , Settled  | nil 					| nil 							| AggSender incosistence",
@@ -87,6 +89,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultError:     true,
+			errorContains:   "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
 			name:            "6|ID1, h1 , !=closed | nil 					| nil 							| incosistence",
@@ -94,6 +97,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultError:     true,
+			errorContains:   "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
 			name:            "7|ID1, h3 , NA		| NA 					| ID2, h2   , !=InError 		| AggSender incosistence",
@@ -108,6 +112,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 			agglayerSettled: &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerPending: nil,
 			resultError:     true,
+			errorContains:   "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
 			name:            "9|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , !=inError			| AggSender incosistence (2cert jump)",
@@ -115,6 +120,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 			agglayerSettled: &certTestData{hash2, 3, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash2, 4, agglayertypes.Proven},
 			resultError:     true,
+			errorContains:   "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
 			name:            "10|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , inError			| AggSender incosistence (2cert jump)",
@@ -122,6 +128,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 			agglayerSettled: &certTestData{hash2, 3, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash2, 4, agglayertypes.InError},
 			resultError:     true,
+			errorContains:   "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 	}
 	runTestCases(t, tests)
@@ -130,7 +137,7 @@ func TestInitialStateInconsistence(t *testing.T) {
 // ID|LOCAL			    | AGGLAYER SETTLED		| AGGLAYER PENDING			    | ACTION
 //
 //		 |-------------------------------------------------------------------------------------------------
-//		 |ID , h  , st      | ID , h  , st		    | ID , h  , st   			    |
+//		 |ID , h  , st      | ID , h  | st		    | ID , h  | st   			    |
 //		 |-------------------------------------------------------------------------------------------------
 //		 1| nil 				| nil 					| nil 		   					| none
 //		 2| nil 				| nil 					| ID1, h0  , inError  			| store(PENDING) h0 so is next cert
@@ -140,13 +147,13 @@ func TestInitialStateInconsistence(t *testing.T) {
 //		 6| nil 				| ID1, h1 , NA	 		| nil 							| store(SETTLE)
 //		 7| nil 				| ID1, h1 , NA	 		| ID2, h2  , inError  			| store(PENDING)
 //		 8| nil 				| ID1, h1 , NA	 		| ID2, h2  , !=inError  		| store(PENDING) h2 is next to h1
-//		 9|ID1, h1 , NA		    | nil 					| ID1, h1  , inError  			| update(PENDING)
-//		10|ID2, h2 , NA			| ID1, h1 , N/A			| ID2, h2  , N/A		  		| update(PENDING)
-//	 11|ID2, h2 , NA		| ID1, h3 , N/A			| nil               			|  store(SETTLED)
-//	 12|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , !=inError           |  store(PENDING)
+//		 9|ID1, h1 , NA		| nil 					| ID1, h1  , inError  			| update(PENDING)
+//		10|ID2, h2 , NA		| ID1, h1 , N/A			| ID2, h2  , N/A		  		| update(PENDING)
+//	 11|ID2, h2 , NA		| ID1, h3 , N/A			| nil               			| store(SETTLED)
+//	 12|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , !=inError           | store(PENDING)
 //	 13|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , inError             | store(PENDING)
 //	 14| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID1, h2   | AgglayerPending: ID3, h1 | agglayer doesn't have settled cert
-//	 15| LocalCert: ID3, h1, pending    | LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)
+//	 15| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)
 //	 16| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h2   | AgglayerPending: ID3, h1 | settled cert ID mismatch
 //	 17| LocalCert: ID3, h1, pending	| LocalSettled: ID1, h2	| AgglayerSettled: ID2, h3   | AgglayerPending: ID3, h1 | store(PENDING) & store(SETTLED)
 func TestRegularCases(t *testing.T) {
@@ -161,7 +168,7 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionNone, "", nil}, // for pending cert
+				{InitialStatusActionNone, "", nil},
 			},
 		},
 		{
@@ -170,8 +177,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 0, agglayertypes.InError},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.InError}}, // for pending cert
-				{InitialStatusActionNone, "", nil}, // for settled cert
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.InError}},
+				{InitialStatusActionNone, "", nil},
 			},
 		},
 		{
@@ -180,8 +187,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 1, agglayertypes.InError},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionNone, "", nil}, // for pending cert
-				{InitialStatusActionNone, "", nil}, // for settled cert
+				{InitialStatusActionNone, "", nil},
+				{InitialStatusActionNone, "", nil},
 			},
 		},
 		{
@@ -190,8 +197,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 0, agglayertypes.Proven},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.Proven}}, // for pending cert
-				{InitialStatusActionNone, "", nil}, // for settled cert
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.Proven}},
+				{InitialStatusActionNone, "", nil},
 			},
 		},
 		{
@@ -231,17 +238,17 @@ func TestRegularCases(t *testing.T) {
 			},
 		},
 		{
-			name:            "09|ID1, h1 , NA		    | nil 					| ID1, h1  , inError  			| update(PENDING)",
+			name:            "09|ID1, h1 , NA		| nil 					| ID1, h1  , inError  			| update(PENDING)",
 			localCert:       &certTestData{hash1, 1, agglayertypes.Proven},
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 1, agglayertypes.InError},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 1, agglayertypes.InError}}, // for pending cert
-				{InitialStatusActionNone, "", nil}, // for settled cert
+				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 1, agglayertypes.InError}},
+				{InitialStatusActionNone, "", nil},
 			},
 		},
 		{
-			name:            "10|ID2, h2 , NA			| ID1, h1 , N/A			| ID2, h2  , N/A		  		| update(PENDING)&store(SETTLED)",
+			name:            "10|ID2, h2 , NA		| ID1, h1 , N/A			| ID2, h2  , N/A		  		| update(PENDING)&store(SETTLED)",
 			localCert:       &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash2, 2, agglayertypes.InError},
@@ -258,7 +265,7 @@ func TestRegularCases(t *testing.T) {
 			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.Proven}}},
 		},
 		{
-			name:            "12|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , !=inError           |  store(PENDING)&store(SETTLED)",
+			name:            "12|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , !=inError           | store(PENDING)&store(SETTLED)",
 			localCert:       &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerSettled: &certTestData{hash1, 2, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash1, 3, agglayertypes.Proven},
@@ -285,16 +292,17 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled:  &certTestData{hash2, 1, agglayertypes.Settled},
 			agglayerPending:  &certTestData{hash1, 3, agglayertypes.Pending},
 			resultError:      true,
+			errorContains:    "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
-			name:             "15| LocalCert: ID3, h1, pending | LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)",
+			name:             "15| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)",
 			localCert:        &certTestData{hash1, 3, agglayertypes.Pending},
 			localSettledCert: &certTestData{hash2, 2, agglayertypes.Settled},
 			agglayerSettled:  &certTestData{hash2, 2, agglayertypes.Settled},
 			agglayerPending:  &certTestData{hash1, 3, agglayertypes.Pending},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 3, agglayertypes.Pending}}, // for pending cert
-				{InitialStatusActionNone, "", nil}, // for settled cert
+				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 3, agglayertypes.Pending}},
+				{InitialStatusActionNone, "", nil},
 			},
 		},
 		{
@@ -304,6 +312,7 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled:  &certTestData{hash2, 2, agglayertypes.Settled},
 			agglayerPending:  &certTestData{hash1, 3, agglayertypes.Pending},
 			resultError:      true,
+			errorContains:    "Manual recovery required: wipe the aggsender DB and restart aggsender",
 		},
 		{
 			name:             "17| LocalCert: ID3, h1, pending	| LocalSettled: ID1, h2	| AgglayerSettled: ID2, h3   | AgglayerPending: ID3, h1 | store(PENDING) & store(SETTLED)",
@@ -312,8 +321,8 @@ func TestRegularCases(t *testing.T) {
 			agglayerSettled:  &certTestData{hash3, 2, agglayertypes.Settled},
 			agglayerPending:  &certTestData{hash1, 3, agglayertypes.Pending},
 			resultActions: []*initialStateResultTest{
-				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 3, agglayertypes.Pending}}, // for pending cert
-				{InitialStatusActionInsertNewCert, "", &certTestData{hash3, 2, agglayertypes.Settled}},     // for settled cert
+				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 3, agglayertypes.Pending}},
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash3, 2, agglayertypes.Settled}},
 			},
 		},
 	}
@@ -358,6 +367,9 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 			if tt.resultError {
 				require.Error(t, err)
 				require.Nil(t, actions)
+				if tt.errorContains != "" {
+					require.ErrorContains(t, err, tt.errorContains)
+				}
 			} else {
 				require.NoError(t, err)
 				if tt.resultActions != nil {

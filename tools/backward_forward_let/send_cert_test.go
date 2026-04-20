@@ -162,6 +162,20 @@ func TestSendCertificate_AgglayerError(t *testing.T) {
 	require.Nil(t, storage.saved)
 }
 
+func TestSendCertificate_NoDB(t *testing.T) {
+	t.Parallel()
+
+	expectedHash := common.HexToHash("0xbeef")
+	sender := &stubAgglayerSender{hash: expectedHash}
+
+	certJSON := minimalCertJSON(4)
+	var cert agglayertypes.Certificate
+	require.NoError(t, cert.UnmarshalJSON([]byte(certJSON)))
+
+	err := sendCertificate(context.Background(), cert, certJSON, sender, nil)
+	require.NoError(t, err)
+}
+
 func TestSendCertificate_DBError(t *testing.T) {
 	t.Parallel()
 
@@ -287,6 +301,7 @@ func newSendCertCLIContext(flags map[string]string) *cli.Context {
 	fs.String("cert-json", "", "")
 	fs.String("cert-file", "", "")
 	fs.String("db-path", "", "")
+	fs.Bool("no-db", false, "")
 	for name, val := range flags {
 		_ = fs.Set(name, val)
 	}
@@ -313,6 +328,7 @@ func TestRunSendCert_LoadConfigError(t *testing.T) {
 				&cli.StringFlag{Name: "cert-json"},
 				&cli.StringFlag{Name: "cert-file"},
 				&cli.StringFlag{Name: "db-path"},
+				&cli.BoolFlag{Name: "no-db"},
 			},
 		},
 	}

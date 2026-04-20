@@ -5,6 +5,11 @@ when the aggsender database is empty or has been wiped. In this situation the to
 fetch bridge exits from the aggsender RPC and instead needs the data extracted directly
 from the agglayer node.
 
+It also covers the post-drill startup failure where aggsender's local DB still points to
+an older or different certificate while AggLayer has already settled a further one. That
+startup check is intentionally strict: wipe the aggsender DB and restart aggsender rather
+than expecting it to auto-reconcile.
+
 ---
 
 ## Prerequisites
@@ -14,8 +19,15 @@ from the agglayer node.
   `test/e2e/envs/op-pp/config/agglayer/config.toml`).
 - The agglayer admin JSON-RPC API must be reachable (default port 4446).
   The URL is exposed as `agglayer.services.admin_api.external` in `summary.json`.
+- In some staging environments the admin API is protected by IAP or another identity
+  layer rather than being directly reachable on `localhost:4446`. In that case, obtain
+  the required bearer token first and pass it with the request headers when calling
+  `admin_getCertificate`.
 - `curl` and `jq` must be installed on the operator's machine (`jq` is optional but
   makes the JSON manipulation much more convenient).
+
+If the immediate goal is to recover aggsender itself after a staged malicious-cert drill,
+stop here and wipe the aggsender DB first. The mismatch is not repaired in place.
 
 ---
 
@@ -79,6 +91,17 @@ The response is a JSON-RPC result where `result` is a two-element array
 ```
 
 You need `result[0].bridge_exits` from each response.
+
+If the admin API requires a bearer token, include it explicitly:
+
+```bash
+JWT="..."
+curl -s -X POST "$AGGLAYER_ADMIN" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"admin_getCertificate\",\"params\":[\"$CERT_ID\"],\"id\":1}" \
+  | jq '.'
+```
 
 ---
 
@@ -192,6 +215,15 @@ The tool will:
 3. Print the full diagnosis (case classification, divergent leaves, extra L2 bridges).
 4. Prompt for confirmation, then execute the recovery plan.
 
+Operational notes:
+
+- When aggsender is intentionally stopped for a fallback drill, the missing-height report
+  may span the full settled history rather than only the newest malicious certificate.
+  This is expected.
+- You can build the override file incrementally as more certificates settle. Reuse the
+  same file on later diagnosis reruns, and also pass it to `craft-cert` if a later
+  malicious certificate must be built while aggsender is still unavailable.
+
 ---
 
 ## Heights with UNKNOWN cert IDs
@@ -208,6 +240,29 @@ When the tool reports `CertID: UNKNOWN` for a height, the agglayer admin must:
 
 Only the latest settled height is auto-resolvable via the public agglayer gRPC. All
 earlier heights require this manual lookup when the aggsender DB is absent.
+
+---
+
+## Aggsender startup mismatch after a drill
+
+Symptom:
+
+- aggsender restart loops with a startup consistency error saying the local certificate
+  differs from, or is behind, the latest AggLayer certificate.
+
+Meaning:
+
+- this is intentional behavior,
+- aggsender does not treat AggLayer as a source of truth for overwriting local DB state,
+- the local DB must be cleared manually before aggsender can rebuild and continue.
+
+Operator action:
+
+1. Stop aggsender.
+2. Wipe the aggsender DB used for local certificate tracking.
+3. Restart aggsender.
+4. Confirm it rebuilds state from the live network and resumes honest certificate
+   production.
 
 ---
 
