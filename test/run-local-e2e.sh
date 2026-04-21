@@ -127,14 +127,16 @@ name_temp_kurtosis_dir() {
 # Clone Kurtosis CDK repo to temporary directory
 clone_kurtosis_repo() {
     local expected_commit="$1"
+    local dir
+    dir=$(name_temp_kurtosis_dir "$expected_commit")
 
-    TEMP_KURTOSIS_DIR=$(name_temp_kurtosis_dir "$expected_commit" )
-    if [ -d "$TEMP_KURTOSIS_DIR" ]; then
-        log_info "Temporary directory for Kurtosis already exists: $TEMP_KURTOSIS_DIR"
+    if [ -d "$dir" ]; then
+        log_info "Temporary directory for Kurtosis already exists: $dir"
         log_info "Reusing existing directory..."
-        echo "$TEMP_KURTOSIS_DIR"
+        echo "$dir"
         return
     fi
+    TEMP_KURTOSIS_DIR="$dir"
     mkdir -p "$TEMP_KURTOSIS_DIR"
     log_info "Cloning Kurtosis CDK repo to temporary directory..."
     log_info "Temporary directory: $TEMP_KURTOSIS_DIR"
@@ -167,13 +169,16 @@ name_temp_e2e_dir() {
 
 # Clone E2E repo to temporary directory
 clone_e2e_repo() {
-    TEMP_E2E_DIR=$(name_temp_e2e_dir "$E2E_REPO_URL")
-    if [ -d "$TEMP_E2E_DIR" ]; then
-        log_info "Temporary directory for E2E already exists: $TEMP_E2E_DIR"
+    local dir
+    dir=$(name_temp_e2e_dir "$E2E_REPO_URL")
+
+    if [ -d "$dir" ]; then
+        log_info "Temporary directory for E2E already exists: $dir"
         log_info "Reusing existing directory..."
-        echo "$TEMP_E2E_DIR"
+        echo "$dir"
         return
     fi
+    TEMP_E2E_DIR="$dir"
     mkdir -p "$TEMP_E2E_DIR"
     log_info "Cloning E2E test repo to temporary directory..."
     log_info "Temporary directory: $TEMP_E2E_DIR"
