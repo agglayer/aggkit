@@ -119,11 +119,23 @@ get_expected_kurtosis_commit() {
     echo "$commit"
 }
 
+name_temp_kurtosis_dir() {
+    local _commit="$1"
+    echo "${TMPDIR:-/tmp}/kurtosis_${_commit}"
+}
+
 # Clone Kurtosis CDK repo to temporary directory
 clone_kurtosis_repo() {
     local expected_commit="$1"
 
-    TEMP_KURTOSIS_DIR=$(mktemp -d)
+    TEMP_KURTOSIS_DIR=$(name_temp_kurtosis_dir "$expected_commit" )
+    if [ -d "$TEMP_KURTOSIS_DIR" ]; then
+        log_info "Temporary directory for Kurtosis already exists: $TEMP_KURTOSIS_DIR"
+        log_info "Reusing existing directory..."
+        echo "$TEMP_KURTOSIS_DIR"
+        return
+    fi
+    mkdir -p "$TEMP_KURTOSIS_DIR"
     log_info "Cloning Kurtosis CDK repo to temporary directory..."
     log_info "Temporary directory: $TEMP_KURTOSIS_DIR"
 
@@ -144,9 +156,25 @@ clone_kurtosis_repo() {
     echo "$TEMP_KURTOSIS_DIR"
 }
 
+name_temp_e2e_dir() {
+    local _e2e_repo_url="$1"
+    local _commit="${_e2e_repo_url##*@}"
+    if [ "$_commit" = "$_e2e_repo_url" ]; then
+        _commit="main"
+    fi
+    echo "${TMPDIR:-/tmp}/e2e_${_commit}"
+}
+
 # Clone E2E repo to temporary directory
 clone_e2e_repo() {
-    TEMP_E2E_DIR=$(mktemp -d)
+    TEMP_E2E_DIR=$(name_temp_e2e_dir "$E2E_REPO_URL")
+    if [ -d "$TEMP_E2E_DIR" ]; then
+        log_info "Temporary directory for E2E already exists: $TEMP_E2E_DIR"
+        log_info "Reusing existing directory..."
+        echo "$TEMP_E2E_DIR"
+        return
+    fi
+    mkdir -p "$TEMP_E2E_DIR"
     log_info "Cloning E2E test repo to temporary directory..."
     log_info "Temporary directory: $TEMP_E2E_DIR"
 
@@ -186,10 +214,13 @@ esac
 if [ "$KURTOSIS_REPO_PATH" = "-" ]; then
     log_info "Skipping Kurtosis setup (kurtosis_repo_path is '-')"
 elif [ -z "$KURTOSIS_REPO_PATH" ]; then
-    # No path provided, ask user if they want to clone (or auto-clone if --force)
-    if [ "$FORCE_CLONE" = true ]; then
+    EXPECTED_COMMIT=$(get_expected_kurtosis_commit)
+    DEFAULT_KURTOSIS_DIR=$(name_temp_kurtosis_dir "$EXPECTED_COMMIT")
+    if [ -d "$DEFAULT_KURTOSIS_DIR" ]; then
+        log_info "Found existing Kurtosis CDK repo at default location: $DEFAULT_KURTOSIS_DIR"
+        KURTOSIS_REPO_PATH="$DEFAULT_KURTOSIS_DIR"
+    elif [ "$FORCE_CLONE" = true ]; then
         log_info "No Kurtosis CDK repository path provided. Auto-cloning (--force enabled)..."
-        EXPECTED_COMMIT=$(get_expected_kurtosis_commit)
         KURTOSIS_REPO_PATH=$(clone_kurtosis_repo "$EXPECTED_COMMIT")
     else
         echo ""
@@ -198,7 +229,6 @@ elif [ -z "$KURTOSIS_REPO_PATH" ]; then
         echo ""
 
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            EXPECTED_COMMIT=$(get_expected_kurtosis_commit)
             KURTOSIS_REPO_PATH=$(clone_kurtosis_repo "$EXPECTED_COMMIT")
         else
             log_info "Skipping Kurtosis setup"
@@ -344,8 +374,11 @@ fi
 if [ "$E2E_REPO_PATH" = "-" ]; then
     log_info "Skipping E2E tests (e2e_repo_path is '-')"
 elif [ -z "$E2E_REPO_PATH" ]; then
-    # No path provided, ask user if they want to clone (or auto-clone if --force)
-    if [ "$FORCE_CLONE" = true ]; then
+    DEFAULT_E2E_DIR=$(name_temp_e2e_dir "$E2E_REPO_URL")
+    if [ -d "$DEFAULT_E2E_DIR" ]; then
+        log_info "Found existing E2E repo at default location: $DEFAULT_E2E_DIR"
+        E2E_REPO_PATH="$DEFAULT_E2E_DIR"
+    elif [ "$FORCE_CLONE" = true ]; then
         log_info "No E2E test repository path provided. Auto-cloning (--force enabled)..."
         E2E_REPO_PATH=$(clone_e2e_repo)
     else

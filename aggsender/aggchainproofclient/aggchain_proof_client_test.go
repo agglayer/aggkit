@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/tree"
@@ -18,6 +20,61 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGenerateAggchainProof_Exploratory(t *testing.T) {
+	t.Skip("exploratory test")
+	defaultTime := configtypes.NewDuration(300 * time.Second)
+	client, err := NewAggchainProofClient(&aggkitgrpc.ClientConfig{
+		URL:            "localhost:32800",
+		RequestTimeout: defaultTime,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	ctx := context.Background()
+	l1_rpc_endpoint := "http://127.0.0.1:32769"
+	l1client, err := aggkitgrpc.NewEthereumClient(l1_rpc_endpoint, defaultTime)
+	require.NoError(t, err)
+	blockNumber, err := l1client.BlockNumber(ctx)
+	require.NoError(t, err)
+	t.Logf("Current L1 block number: %d", blockNumber)
+
+	block, err := l1client.BlockByNumber(ctx, blockNumber)
+	require.NoError(t, err)
+	blockHash := block.Hash()
+	t.Logf("Current L1 block hash: %s", blockHash.Hex())
+	globalIndex := &agglayer.GlobalIndex{
+		MainnetFlag: true,
+		RollupIndex: 1,
+		LeafIndex:   1,
+	}
+	req := &types.AggchainProofRequest{
+		LastProvenBlock:    241,
+		RequestedEndBlock:  6841,
+		L1InfoTreeRootHash: blockHash,
+		L1InfoTreeLeaf: l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:       block.NumberU64(),
+			PreviousBlockHash: blockHash,
+		},
+		ImportedBridgeExitsWithBlockNumber: []*agglayer.ImportedBridgeExitWithBlockNumber{
+			{
+				BlockNumber: 241,
+				ImportedBridgeExit: &agglayer.ImportedBridgeExit{
+					GlobalIndex: globalIndex,
+				},
+			},
+		},
+		Unclaims: []*agglayer.Unclaim{
+			{
+				BlockNumber: 6841,
+				GlobalIndex: globalIndex,
+			},
+		},
+	}
+
+	result, err := client.GenerateAggchainProof(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	t.Logf("Received Aggchain Proof: %+v", result)
+}
 func TestGenerateAggchainProof_Success(t *testing.T) {
 	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{
