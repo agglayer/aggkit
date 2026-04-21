@@ -12,9 +12,12 @@ import (
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	configtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/tree"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -31,15 +34,15 @@ func TestGenerateAggchainProof_Exploratory(t *testing.T) {
 	require.NotNil(t, client)
 	ctx := context.Background()
 	l1_rpc_endpoint := "http://127.0.0.1:32769"
-	l1client, err := aggkitgrpc.NewEthereumClient(l1_rpc_endpoint, defaultTime)
+	l1client, err := etherman.DialWithRetry(ctx, nil, &ethermanconfig.RPCClientConfig{URL: l1_rpc_endpoint})
 	require.NoError(t, err)
 	blockNumber, err := l1client.BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("Current L1 block number: %d", blockNumber)
 
-	block, err := l1client.BlockByNumber(ctx, blockNumber)
+	header, err := l1client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
 	require.NoError(t, err)
-	blockHash := block.Hash()
+	blockHash := header.Hash
 	t.Logf("Current L1 block hash: %s", blockHash.Hex())
 	globalIndex := &agglayer.GlobalIndex{
 		MainnetFlag: true,
@@ -51,7 +54,7 @@ func TestGenerateAggchainProof_Exploratory(t *testing.T) {
 		RequestedEndBlock:  6841,
 		L1InfoTreeRootHash: blockHash,
 		L1InfoTreeLeaf: l1infotreesync.L1InfoTreeLeaf{
-			BlockNumber:       block.NumberU64(),
+			BlockNumber:       header.Number,
 			PreviousBlockHash: blockHash,
 		},
 		ImportedBridgeExitsWithBlockNumber: []*agglayer.ImportedBridgeExitWithBlockNumber{
