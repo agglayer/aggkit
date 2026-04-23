@@ -1,9 +1,13 @@
-# Backward/Forward LET — Manual Recovery Procedure
+# Backward/Forward LET — Fallback Recovery Procedure
 
-This document describes the steps for recovering from a backward/forward LET divergence
-when the aggsender database is empty or has been wiped. In this situation the tool cannot
-fetch bridge exits from the aggsender RPC and instead needs the data extracted directly
-from the agglayer node.
+This document is the canonical fallback procedure for `backward-forward-let` when the
+aggsender database is empty, has been wiped, or otherwise cannot provide certificate
+bridge exits.
+
+In this situation the tool can still diagnose the settled AggLayer state, but it cannot
+complete the divergence walk from aggsender data alone. The operator must extract the
+missing certificate bridge exits from the AggLayer admin API, build an override file,
+and rerun the tool with `--cert-exits-file`.
 
 ---
 
@@ -43,11 +47,24 @@ Missing certificates (2 heights):
   `(network_id, height)` in the `certificate_per_network_cf` column family of the agglayer
   state DB and supply the cert ID manually before you can proceed.
 
+Important operator note:
+
+- After an aggsender DB wipe, the missing range may span the full settled history
+  (`0..latest settled height`), not just the newest malicious certificate. That is normal
+  for this fallback path.
+- A large missing range is not a signal that the operator should do hundreds or thousands
+  of manual one-by-one admin lookups.
+- For large ranges, use automation: either script the `admin_getCertificate` calls for all
+  known cert IDs, or ask the agglayer admin for a batch export of cert IDs and bridge exits.
+
 ---
 
 ## Step 2 — Fetch each certificate from the agglayer admin API
 
-For each cert ID printed by the tool, call `admin_getCertificate`:
+For small ranges, you can call `admin_getCertificate` manually per cert ID. For large
+ranges, script this step or ask the agglayer admin for a batch export instead.
+
+Per-certificate example:
 
 ```bash
 AGGLAYER_ADMIN="http://localhost:4446"
@@ -207,7 +224,15 @@ When the tool reports `CertID: UNKNOWN` for a height, the agglayer admin must:
    auto-resolved heights and re-runs the tool.
 
 Only the latest settled height is auto-resolvable via the public agglayer gRPC. All
-earlier heights require this manual lookup when the aggsender DB is absent.
+earlier heights require this lookup when the aggsender DB is absent.
+
+For large missing ranges, do not treat this as a one-by-one manual task. The expected
+workflow is to:
+
+1. obtain the missing cert IDs in bulk from the agglayer admin or from pre-collected
+   aggsender submission logs
+2. fetch `bridge_exits` in bulk with a script or admin-side export
+3. build a single override file and rerun the tool once
 
 ---
 

@@ -353,20 +353,23 @@ These map directly to the `LeafData` fields required by `forwardLET`.
 
 > **Prerequisite**: The aggsender must be the same instance that submitted the divergent certificate (its DB holds that certificate's data). If the aggsender was replaced or its database was lost, fall back to Option 2.
 
-#### Option 2: contact the AggLayer node admin (fallback)
+#### Option 2: AggLayer admin fallback
 
-If Option 1 is unavailable (aggsender DB lost, different aggsender instance, or the API is unreachable), contact the operator of the AggLayer node and request the full certificate body for the divergent certificate ID.
+If Option 1 is unavailable because the aggsender DB was wiped, the relevant certificate
+was submitted by a different aggsender instance, or the aggsender API cannot provide
+bridge exits, stop the normal runbook flow and switch to the dedicated fallback
+procedure in [`tools/backward_forward_let/RECOVERY_PROCEDURE.md`](../tools/backward_forward_let/RECOVERY_PROCEDURE.md).
 
-Provide them with the certificate ID obtained in Step 1:
+That document is the canonical operator guide for:
 
-```bash
-# Certificate ID from GetNetworkInfo (settled_certificate_id)
-echo "Certificate ID: $CERT_ID"
-echo "Network ID:     $NETWORK_ID"
-echo "Height:         <settled_height from GetNetworkInfo>"
-```
+- discovering the missing certificate heights and cert IDs from the tool output
+- calling `admin_getCertificate` on the AggLayer admin API
+- building the JSON override file
+- re-running the tool with `--cert-exits-file`
 
-The AggLayer node operator can retrieve the full certificate body — including all `bridge_exits` — from their internal storage and share the leaf data needed to construct the `forwardLET` call.
+It also explains an important operator expectation: after an aggsender DB wipe, the
+missing range may span the full settled history, and that should be handled with
+automation or admin batch export rather than manual per-height work.
 
 ### Summary: determining the recovery case
 
@@ -383,15 +386,36 @@ After collecting the data above:
 
 ### Using the tool
 
-A dedicated tool to automate the recovery process is **under development**. Once available, this tool will:
+Use `backward-forward-let` as the primary operator entry point.
 
-- Query the AggLayer node for the expected LER on L1
-- Compare it against the current LET state on L2
-- Determine the required sequence of `backwardLET` and `forwardLET` calls
-- Compute the necessary Merkle proofs, frontiers, and leaf data
-- Execute the smart contract calls in the correct order
+The tool already:
 
-Until the tool is available, recovery must be performed manually as described below.
+- queries the AggLayer node for the settled L1 state
+- compares it against the current LET state on L2
+- queries aggsender for settled certificate bridge exits
+- determines the recovery case
+- computes the required `backwardLET` and `forwardLET` inputs
+- executes the on-chain recovery flow
+
+Normal path:
+
+```bash
+backward-forward-let --cfg aggkit-config.toml
+```
+
+Fallback path when aggsender cannot provide bridge exits:
+
+```bash
+backward-forward-let --cfg aggkit-config.toml \
+  --cert-exits-file certificate_exits_override.json
+```
+
+Use the dedicated fallback document for the DB-wipe / missing-cert path:
+
+- [`tools/backward_forward_let/RECOVERY_PROCEDURE.md`](../tools/backward_forward_let/RECOVERY_PROCEDURE.md)
+
+The manual contract-call material below is retained as contract-level reference and for
+debugging, not as the primary operator workflow.
 
 ### Contract function signatures reference
 

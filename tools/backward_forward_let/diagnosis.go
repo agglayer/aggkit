@@ -460,6 +460,14 @@ func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
 	}
 	fmt.Fprintln(w)
 
+	if n > 1 {
+		fmt.Fprintln(w, "NOTE: After an aggsender DB wipe, this missing range may span the full settled history")
+		fmt.Fprintln(w, "  (for example heights 0..latest). This is expected for the fallback path.")
+		fmt.Fprintln(w, "  Do not fetch large ranges one-by-one manually; use a script or ask the agglayer admin")
+		fmt.Fprintln(w, "  for a batch export of cert IDs / bridge exits when many heights are missing.")
+		fmt.Fprintln(w)
+	}
+
 	if hasUnknown {
 		fmt.Fprintln(w, "NOTE: For heights with UNKNOWN cert IDs, ask the agglayer admin to look up")
 		fmt.Fprintln(w, "  (network_id, height) in the agglayer's certificate_per_network_cf column family,")
