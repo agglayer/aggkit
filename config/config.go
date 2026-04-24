@@ -78,6 +78,7 @@ const (
 	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
 	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
 	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
+	maxLogBlockRangeHint         = "UnsetClaimsMaxLogBlockRange moved to MaxLogBlockRange"
 )
 
 type DeprecatedFieldsError struct {
@@ -238,6 +239,14 @@ var (
 		{
 			FieldNamePattern: "AggSender.EpochNotificationPercentage",
 			Reason:           aggsenderEpochPercentageHint,
+		},
+		{
+			FieldNamePattern: "AggSender.UnsetClaimsMaxLogBlockRange",
+			Reason:           maxLogBlockRangeHint,
+		},
+		{
+			FieldNamePattern: "Validator.UnsetClaimsMaxLogBlockRange",
+			Reason:           maxLogBlockRangeHint,
 		},
 	}
 )

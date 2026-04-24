@@ -25,7 +25,7 @@ import (
 
 var (
 	// l2GERReaderFactory is a factory function to create L2 GER reader
-	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
+	l2GERReaderFactory = l2gersync.NewL2EVMGERReaderWithMaxLogBlockRange
 )
 
 // NewBuilderFlow creates a new AggsenderBuilderFlow based on the provided configuration.
@@ -55,7 +55,7 @@ func NewBuilderFlow(
 			true, // fullClaims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
-			cfg.UnsetClaimsMaxLogBlockRange,
+			cfg.MaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 			certQuerier,
@@ -107,7 +107,7 @@ func NewBuilderFlow(
 			true, // full claims required (with calldata)
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
-			cfg.UnsetClaimsMaxLogBlockRange,
+			cfg.MaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 			certQuerier,
@@ -117,7 +117,12 @@ func NewBuilderFlow(
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
 		}
 
-		l2GERReader, err := l2GERReaderFactory(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
+		l2GERReader, err := l2GERReaderFactory(
+			cfg.GlobalExitRootL2Addr,
+			l2Client,
+			l1InfoTreeSyncer,
+			cfg.MaxLogBlockRange,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
 		}
@@ -176,7 +181,7 @@ func CreateCommonFlowComponents(
 	fullClaimsRequired bool,
 	requireCommitteeMembershipCheck bool,
 	agglayerBridgeL2Addr ethCommon.Address,
-	unsetClaimsMaxLogBlockRange uint64,
+	maxLogBlockRange uint64,
 	globalExitRootL1Addr ethCommon.Address,
 	blockFinalityForL1InfoTree aggkittypes.BlockNumberFinality,
 	certQuerier types.CertificateQuerier,
@@ -196,7 +201,7 @@ func CreateCommonFlowComponents(
 	agglayerBridgeL2Reader, err := claimsync.NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
 		agglayerBridgeL2Addr,
 		l2Client,
-		unsetClaimsMaxLogBlockRange,
+		maxLogBlockRange,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)

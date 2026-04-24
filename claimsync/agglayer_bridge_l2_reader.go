@@ -17,8 +17,8 @@ import (
 // AgglayerBridgeL2Reader provides functionality to read and interact with the AggLayer Bridge L2 contract.
 // It encapsulates the contract instance and provides methods to query bridge-related data from the L2 chain.
 type AgglayerBridgeL2Reader struct {
-	agglayerBridgeL2            *agglayerbridgel2.Agglayerbridgel2
-	unsetClaimsMaxLogBlockRange uint64
+	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
+	maxLogBlockRange uint64
 }
 
 // NewAgglayerBridgeL2Reader creates a new instance of AgglayerBridgeL2Reader.
@@ -39,11 +39,11 @@ func NewAgglayerBridgeL2Reader(
 }
 
 // NewAgglayerBridgeL2ReaderWithMaxLogBlockRange creates a new instance of AgglayerBridgeL2Reader
-// with an optional proactive max block range for unset claims eth_getLogs queries.
+// with an optional proactive max block range for eth_getLogs queries.
 func NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
 	bridgeAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
-	unsetClaimsMaxLogBlockRange uint64,
+	maxLogBlockRange uint64,
 ) (*AgglayerBridgeL2Reader, error) {
 	agglayerBridgeL2Contract, err := agglayerbridgel2.NewAgglayerbridgel2(bridgeAddr, l2Client)
 	if err != nil {
@@ -51,8 +51,8 @@ func NewAgglayerBridgeL2ReaderWithMaxLogBlockRange(
 	}
 
 	return &AgglayerBridgeL2Reader{
-		agglayerBridgeL2:            agglayerBridgeL2Contract,
-		unsetClaimsMaxLogBlockRange: unsetClaimsMaxLogBlockRange,
+		agglayerBridgeL2: agglayerBridgeL2Contract,
+		maxLogBlockRange: maxLogBlockRange,
 	}, nil
 }
 
@@ -75,8 +75,8 @@ func (r *AgglayerBridgeL2Reader) GetUnsetClaimsForBlockRange(ctx context.Context
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 
-	if r.unsetClaimsMaxLogBlockRange > 0 && toBlock-fromBlock >= r.unsetClaimsMaxLogBlockRange {
-		return r.getUnsetClaimsInChunks(ctx, fromBlock, toBlock, r.unsetClaimsMaxLogBlockRange)
+	if r.maxLogBlockRange > 0 && toBlock-fromBlock >= r.maxLogBlockRange {
+		return r.getUnsetClaimsInChunks(ctx, fromBlock, toBlock, r.maxLogBlockRange)
 	}
 
 	return r.fetchUnsetClaimsWithFallbackChunking(ctx, fromBlock, toBlock)

@@ -146,6 +146,30 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 		mockL2Client.AssertExpectations(t)
 	})
 
+	t.Run("configured max log block range triggers proactive chunking", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2Client := mocksethclient.NewBaseEthereumClienter(t)
+		mockL2GERManager, err := agglayergerl2.NewAgglayergerl2(
+			common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), mockL2Client)
+		require.NoError(t, err)
+
+		gerReader := &L2EVMGERReader{
+			l2GERManager:     mockL2GERManager,
+			maxLogBlockRange: 1000,
+		}
+
+		// 3 chunks for inserted GERs, each chunk also queries removed GERs.
+		mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).
+			Return([]types.Log{}, nil).Times(6)
+
+		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.Empty(t, injectedGERs)
+
+		mockL2Client.AssertExpectations(t)
+	})
+
 	t.Run("non-parseable error returns original error", func(t *testing.T) {
 		t.Parallel()
 
@@ -208,6 +232,29 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		require.ErrorContains(t, err, "mock iterator error for removal")
 
 		mockL2GERManager.AssertExpectations(t)
+	})
+
+	t.Run("configured max log block range triggers proactive chunking", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2Client := mocksethclient.NewBaseEthereumClienter(t)
+		mockL2GERManager, err := agglayergerl2.NewAgglayergerl2(
+			common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"), mockL2Client)
+		require.NoError(t, err)
+
+		gerReader := &L2EVMGERReader{
+			l2GERManager:     mockL2GERManager,
+			maxLogBlockRange: 1000,
+		}
+
+		mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).
+			Return([]types.Log{}, nil).Times(3)
+
+		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 0, 2500)
+		require.NoError(t, err)
+		require.Empty(t, removedGERs)
+
+		mockL2Client.AssertExpectations(t)
 	})
 
 	t.Run("non-parseable error returns original error", func(t *testing.T) {
