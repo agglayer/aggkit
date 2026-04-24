@@ -74,6 +74,7 @@ func TestConfigString(t *testing.T) {
 		"RequireNoFEPBlockGap: false\n"+
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n"+
 		"StorageRetainCertificatesPolicy: retain all certificates, keep history: false\n"+
+		"MaxLogBlockRange: 0\n"+
 		"BlockFinalityForL1InfoTree: FinalizedBlock\n"+
 		"TriggerCertMode: Auto\nTriggerEpochBased: EpochNotificationPercentage: 50\n",
 		config.AgglayerClient.String())

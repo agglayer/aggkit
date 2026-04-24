@@ -40,7 +40,7 @@ func NewVerifierFlow(
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
-			cfg.UnsetClaimsMaxLogBlockRange,
+			cfg.MaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 			nil, // certQuerier not used in validator mode
@@ -73,7 +73,7 @@ func NewVerifierFlow(
 			true, // full claims are (eventually) needed in validator mode
 			cfg.RequireCommitteeMembershipCheck,
 			cfg.AgglayerBridgeL2Addr,
-			cfg.UnsetClaimsMaxLogBlockRange,
+			cfg.MaxLogBlockRange,
 			cfg.GlobalExitRootL1Addr,
 			cfg.BlockFinalityForL1InfoTree,
 			nil, // certQuerier not used in validator mode

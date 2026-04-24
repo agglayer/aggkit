@@ -105,6 +105,18 @@ func TestParseMaxRangeFromError(t *testing.T) {
 			expectedMaxBlock:   100000,
 			expectedIsMaxRange: true,
 		},
+		{
+			name:               "query exceeds max block range",
+			errorMsg:           "query exceeds max block range 100000",
+			expectedMaxBlock:   100000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "query exceeds max block range with comma-formatted number",
+			errorMsg:           "query exceeds max block range 100,000",
+			expectedMaxBlock:   100000,
+			expectedIsMaxRange: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -112,6 +124,7 @@ func TestParseMaxRangeFromError(t *testing.T) {
 			result, isMaxRangeErr := ParseMaxRangeFromError(tt.errorMsg)
 			if tt.expectedIsMaxRange {
 				require.True(t, isMaxRangeErr)
+				require.Equal(t, tt.expectedMaxBlock, result)
 			} else {
 				require.False(t, isMaxRangeErr)
 				require.Equal(t, tt.expectedMaxBlock, result)

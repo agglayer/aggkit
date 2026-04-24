@@ -17,8 +17,9 @@ import (
 
 // L2EVMGERReader is a component used to read GlobalExitRootManager L2 contract
 type L2EVMGERReader struct {
-	l2GERManager   types.L2GERManagerContract
-	l1InfoTreeSync L1InfoTreeQuerier
+	l2GERManager     types.L2GERManagerContract
+	l1InfoTreeSync   L1InfoTreeQuerier
+	maxLogBlockRange uint64
 }
 
 // NewL2EVMGERReader creates a new instance of L2 EVM global exit root reader
@@ -26,6 +27,17 @@ func NewL2EVMGERReader(
 	l2GERManagerAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync L1InfoTreeQuerier,
+) (*L2EVMGERReader, error) {
+	return NewL2EVMGERReaderWithMaxLogBlockRange(l2GERManagerAddr, l2Client, l1InfoTreeSync, 0)
+}
+
+// NewL2EVMGERReaderWithMaxLogBlockRange creates a new instance of L2 EVM global exit root reader
+// with a proactive max block range for eth_getLogs queries. A zero max range disables proactive chunking.
+func NewL2EVMGERReaderWithMaxLogBlockRange(
+	l2GERManagerAddr common.Address,
+	l2Client aggkittypes.BaseEthereumClienter,
+	l1InfoTreeSync L1InfoTreeQuerier,
+	maxLogBlockRange uint64,
 ) (*L2EVMGERReader, error) {
 	l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 		l2GERManagerAddr, l2Client)
@@ -38,8 +50,9 @@ func NewL2EVMGERReader(
 	}
 
 	return &L2EVMGERReader{
-		l2GERManager:   l2GERManager,
-		l1InfoTreeSync: l1InfoTreeSync,
+		l2GERManager:     l2GERManager,
+		l1InfoTreeSync:   l1InfoTreeSync,
+		maxLogBlockRange: maxLogBlockRange,
 	}, nil
 }
 
@@ -63,27 +76,36 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 
+	if e.maxLogBlockRange > 0 && toBlock-fromBlock >= e.maxLogBlockRange {
+		return e.getInjectedGERsInChunks(ctx, fromBlock, toBlock, e.maxLogBlockRange)
+	}
+
 	injectedGERs, err := e.fetchInjectedGERs(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
 		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
 		if isMaxRangeErr {
-			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
-				e.fetchInjectedGERs,
-				func(all map[common.Hash]GlobalExitRootInfo,
-					chunk map[common.Hash]GlobalExitRootInfo,
-				) map[common.Hash]GlobalExitRootInfo {
-					maps.Copy(all, chunk)
-					return all
-				},
-				make(map[common.Hash]GlobalExitRootInfo),
-			)
+			return e.getInjectedGERsInChunks(ctx, fromBlock, toBlock, maxRange)
 		}
 		return nil, err
 	}
 
 	return injectedGERs, nil
+}
+
+func (e *L2EVMGERReader) getInjectedGERsInChunks(ctx context.Context,
+	fromBlock, toBlock, maxRange uint64) (map[common.Hash]GlobalExitRootInfo, error) {
+	log.Debugf("block range too large, splitting injected GER query into chunks of max %d blocks", maxRange)
+	return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+		e.fetchInjectedGERs,
+		func(all map[common.Hash]GlobalExitRootInfo,
+			chunk map[common.Hash]GlobalExitRootInfo,
+		) map[common.Hash]GlobalExitRootInfo {
+			maps.Copy(all, chunk)
+			return all
+		},
+		make(map[common.Hash]GlobalExitRootInfo),
+	)
 }
 
 // fetchInjectedGERs performs the actual event filtering for injected GERs
@@ -162,24 +184,33 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 
+	if e.maxLogBlockRange > 0 && toBlock-fromBlock >= e.maxLogBlockRange {
+		return e.getRemovedGERsInChunks(ctx, fromBlock, toBlock, e.maxLogBlockRange)
+	}
+
 	removedGERs, err := e.fetchRemovedGERs(ctx, fromBlock, toBlock)
 	if err != nil {
 		// Check if error is due to block range being too large
 		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
 		if isMaxRangeErr {
-			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
-				e.fetchRemovedGERs,
-				func(all, chunk []*agglayertypes.RemovedGER) []*agglayertypes.RemovedGER {
-					return append(all, chunk...)
-				},
-				[]*agglayertypes.RemovedGER{},
-			)
+			return e.getRemovedGERsInChunks(ctx, fromBlock, toBlock, maxRange)
 		}
 		return nil, err
 	}
 
 	return removedGERs, nil
+}
+
+func (e *L2EVMGERReader) getRemovedGERsInChunks(ctx context.Context,
+	fromBlock, toBlock, maxRange uint64) ([]*agglayertypes.RemovedGER, error) {
+	log.Debugf("block range too large, splitting removed GER query into chunks of max %d blocks", maxRange)
+	return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+		e.fetchRemovedGERs,
+		func(all, chunk []*agglayertypes.RemovedGER) []*agglayertypes.RemovedGER {
+			return append(all, chunk...)
+		},
+		[]*agglayertypes.RemovedGER{},
+	)
 }
 
 // fetchRemovedGERs performs the actual event filtering for removed GERs
