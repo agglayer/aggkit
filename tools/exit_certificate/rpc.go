@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -152,22 +153,31 @@ func parseRPCResponse(data []byte) ([]jsonRPCResponse, error) {
 	return responses, nil
 }
 
+// maskRPCURL returns only scheme://host to avoid exposing API keys in path segments.
+func maskRPCURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return rawURL
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // doRPCWithRetry handles the HTTP POST + retry loop.
-func doRPCWithRetry(ctx context.Context, url string, body []byte, retries int) ([]jsonRPCResponse, error) {
+func doRPCWithRetry(ctx context.Context, rpcURL string, body []byte, retries int) ([]jsonRPCResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= retries; attempt++ {
-		respBody, err := doRPCAttempt(ctx, url, body)
+		respBody, err := doRPCAttempt(ctx, rpcURL, body)
 		if err != nil {
 			lastErr = err
 			if attempt < retries {
 				sleepWithBackoff(attempt)
 				continue
 			}
-			return nil, fmt.Errorf("RPC failed after %d attempts: %w", retries, lastErr)
+			return nil, fmt.Errorf("RPC failed after %d attempts on %s: %w", retries, maskRPCURL(rpcURL), lastErr)
 		}
 		return parseRPCResponse(respBody)
 	}
-	return nil, fmt.Errorf("RPC failed after %d attempts", retries)
+	return nil, fmt.Errorf("RPC failed after %d attempts on %s", retries, maskRPCURL(rpcURL))
 }
 
 func sleepWithBackoff(attempt int) {
