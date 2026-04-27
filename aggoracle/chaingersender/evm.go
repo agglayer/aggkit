@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	insertGERFuncName  = "insertGlobalExitRoot"
-	proposeGERFuncName = "proposeGlobalExitRoot"
+	insertGERFuncName      = "insertGlobalExitRoot"
+	proposeGERFuncName     = "proposeGlobalExitRoot"
+	updateExitRootFuncName = "updateExitRoot"
 )
 
 type EVMConfig struct {
@@ -31,14 +32,23 @@ type EVMConfig struct {
 	GasOffset              uint64              `mapstructure:"GasOffset"`
 	WaitPeriodMonitorTx    cfgtypes.Duration   `mapstructure:"WaitPeriodMonitorTx"`
 	EthTxManager           ethtxmanager.Config `mapstructure:"EthTxManager"`
+	// UseUpdateExitRoot switches GER submission from the combined-hash path
+	// (`insertGlobalExitRoot(bytes32)`) to the two-root path
+	// (`updateExitRoot(bytes32 rollup, bytes32 mainnet)`). On sovereign chains
+	// that can't reverse keccak(mainnet||rollup), the receiving service
+	// otherwise has to read live L1 state to decompose — which orphans any
+	// GER whose pair has already advanced. Forwarding both roots skips that
+	// race. The L2 GER manager contract accepts both calls.
+	UseUpdateExitRoot bool `mapstructure:"UseUpdateExitRoot"`
 }
 
 // GERMode represents the mode of GER submission
 type GERMode string
 
 const (
-	DirectInjectionMode    GERMode = "direct_injection"
-	AggOracleCommitteeMode GERMode = "aggoracle_committee"
+	DirectInjectionMode      GERMode = "direct_injection"
+	DirectUpdateExitRootMode GERMode = "direct_update_exit_root"
+	AggOracleCommitteeMode   GERMode = "aggoracle_committee"
 )
 
 type EVMChainGERSender struct {
@@ -71,10 +81,14 @@ func NewEVMChainGERSender(
 	ethTxMan types.EthTxManager,
 	enableAggOracleCommittee bool,
 ) (*EVMChainGERSender, error) {
-	// Determine mode based on configuration
+	// Determine mode based on configuration. Committee mode wins over the
+	// two-root flag because the committee uses a separate contract path.
 	mode := DirectInjectionMode
-	if enableAggOracleCommittee && cfg.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
+	switch {
+	case enableAggOracleCommittee && cfg.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress:
 		mode = AggOracleCommitteeMode
+	case cfg.UseUpdateExitRoot:
+		mode = DirectUpdateExitRootMode
 	}
 	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
 
@@ -107,7 +121,10 @@ func NewEVMChainGERSender(
 // initializeAndValidateMode initializes mode-specific components and validations
 func (c *EVMChainGERSender) initializeAndValidateMode() error {
 	switch c.mode {
-	case DirectInjectionMode:
+	case DirectInjectionMode, DirectUpdateExitRootMode:
+		// Same permission gate: the caller must be authorised as the GER
+		// updater on the L2 contract. The two direct modes differ only in
+		// which ABI method they invoke.
 		return validateGERSender(c.ethTxMan.From(), c.l2GERManager, c.l2GERManagerAddr)
 	case AggOracleCommitteeMode:
 		return c.initializeAndValidateAggOracleCommitteeMode()
@@ -184,6 +201,49 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 	return c.submitTransaction(ctx, &c.l2GERManagerAddr, c.l2GERManagerAbi, insertGERFuncName, ger, "inject")
 }
 
+// updateExitRootTwoRootSelector is the 4-byte function selector for
+// `updateExitRoot(bytes32 newRollupExitRoot, bytes32 newMainnetExitRoot)` —
+// keccak256("updateExitRoot(bytes32,bytes32)")[:4] = 0x736ca7f4.
+//
+// Constructed manually rather than via abi.Pack because the
+// cdk-contracts-tooling binding for `agglayergerl2` currently only exposes
+// the 1-arg `updateExitRoot(bytes32)` overload. The 2-arg form exists on
+// Miden's sovereign L2 GER manager (see
+// `miden-agglayer/src/ger.rs::updateExitRoot` and
+// agglayer-contracts GlobalExitRootManagerL2SovereignChain.sol) and is what
+// actually resolves the decomposition race — we pack the calldata by hand
+// instead of waiting for the Go binding to catch up.
+var updateExitRootTwoRootSelector = [4]byte{0x73, 0x6c, 0xa7, 0xf4}
+
+// hashLen is the length in bytes of an EVM bytes32/keccak256 word.
+const hashLen = 32
+
+// InjectExitRoots pushes the uncombined (rollup, mainnet) exit root pair via
+// updateExitRoot(bytes32 newRollupExitRoot, bytes32 newMainnetExitRoot) on the
+// L2 GER manager. Preferred on sovereign chains that can't reverse
+// keccak(mainnet||rollup) — forwarding both roots eliminates the decomposition
+// race (RD-862).
+func (c *EVMChainGERSender) InjectExitRoots(
+	ctx context.Context, ger, mainnetExitRoot, rollupExitRoot common.Hash,
+) error {
+	isGERInjected, err := c.IsGERInjected(ger)
+	if err != nil {
+		return fmt.Errorf("error checking if GER (%s) is already injected: %w", ger, err)
+	}
+	if isGERInjected {
+		c.logger.Debugf("GER (%s) is already injected", ger.Hex())
+		return nil
+	}
+
+	// 4-byte selector + 32-byte rollupExitRoot + 32-byte mainnetExitRoot.
+	// Arg order matches the Miden proxy's sol! definition (rollup first).
+	txInput := make([]byte, 0, len(updateExitRootTwoRootSelector)+2*hashLen)
+	txInput = append(txInput, updateExitRootTwoRootSelector[:]...)
+	txInput = append(txInput, rollupExitRoot.Bytes()...)
+	txInput = append(txInput, mainnetExitRoot.Bytes()...)
+	return c.submitPackedTransaction(ctx, &c.l2GERManagerAddr, txInput, ger, "update-exit-root")
+}
+
 // ProposeGER proposes the provided global exit root to the AggOracleCommittee contract
 func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
 	isGERInjected, err := c.IsGERInjected(ger)
@@ -218,14 +278,26 @@ func (c *EVMChainGERSender) submitTransaction(
 	ger common.Hash,
 	action string,
 ) error {
-	ticker := time.NewTicker(c.waitPeriodMonitorTx)
-	defer ticker.Stop()
-
 	// Pack the function call
 	txInput, err := abi.Pack(funcName, ger)
 	if err != nil {
 		return fmt.Errorf("failed to pack %s call: %w", funcName, err)
 	}
+	return c.submitPackedTransaction(ctx, targetAddr, txInput, ger, action)
+}
+
+// submitPackedTransaction submits already-packed calldata and monitors the tx.
+// Split out from submitTransaction so callers that need multi-argument packing
+// (e.g. updateExitRoot) can reuse the monitoring logic.
+func (c *EVMChainGERSender) submitPackedTransaction(
+	ctx context.Context,
+	targetAddr *common.Address,
+	txInput []byte,
+	ger common.Hash,
+	action string,
+) error {
+	ticker := time.NewTicker(c.waitPeriodMonitorTx)
+	defer ticker.Stop()
 
 	// Add the transaction to the transaction manager
 	id, err := c.ethTxMan.Add(ctx, targetAddr, common.Big0, txInput, c.gasOffset, nil)
@@ -278,6 +350,34 @@ func (c *EVMChainGERSender) submitTransaction(
 
 func (c *EVMChainGERSender) ProcessGER(ctx context.Context, ger common.Hash) error {
 	switch c.mode {
+	case DirectInjectionMode:
+		return c.InjectGER(ctx, ger)
+	case AggOracleCommitteeMode:
+		return c.ProposeGER(ctx, ger)
+	case DirectUpdateExitRootMode:
+		// Callers should route via ProcessGERWithRoots; this arm exists only
+		// as a defensive guard if an upstream forgets to check UsesTwoRootMode.
+		return fmt.Errorf("%s mode requires ProcessGERWithRoots; got ProcessGER", c.mode)
+	default:
+		return fmt.Errorf("unknown GER mode: %s", c.mode)
+	}
+}
+
+// UsesTwoRootMode reports whether this sender is configured to forward the
+// uncombined (mainnet, rollup) exit root pair rather than the combined GER.
+func (c *EVMChainGERSender) UsesTwoRootMode() bool {
+	return c.mode == DirectUpdateExitRootMode
+}
+
+// ProcessGERWithRoots dispatches a GER alongside its uncombined exit root
+// pair. Only meaningful for DirectUpdateExitRootMode — for legacy modes we
+// fall through to ProcessGER with just the combined hash.
+func (c *EVMChainGERSender) ProcessGERWithRoots(
+	ctx context.Context, ger, mainnetExitRoot, rollupExitRoot common.Hash,
+) error {
+	switch c.mode {
+	case DirectUpdateExitRootMode:
+		return c.InjectExitRoots(ctx, ger, mainnetExitRoot, rollupExitRoot)
 	case DirectInjectionMode:
 		return c.InjectGER(ctx, ger)
 	case AggOracleCommitteeMode:
