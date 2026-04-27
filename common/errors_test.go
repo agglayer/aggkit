@@ -105,6 +105,18 @@ func TestParseMaxRangeFromError(t *testing.T) {
 			expectedMaxBlock:   100000,
 			expectedIsMaxRange: true,
 		},
+		{
+			name:               "query exceeds max block range",
+			errorMsg:           "query exceeds max block range 100000",
+			expectedMaxBlock:   100000,
+			expectedIsMaxRange: true,
+		},
+		{
+			name:               "query exceeds max block range embedded in longer message",
+			errorMsg:           "claimsync: FilterLogs error: query exceeds max block range 100000",
+			expectedMaxBlock:   100000,
+			expectedIsMaxRange: true,
+		},
 	}
 
 	for _, tt := range tests {
