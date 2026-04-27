@@ -25,7 +25,10 @@ var (
 //   - "eth_getLogs is limited to a 10,000 range"
 func ParseMaxRangeFromError(errMsg string) (uint64, bool) {
 	var matches []string
-	for _, re := range []*regexp.Regexp{reMaxRange, reExceededBlockRange, reEthGetLogsLimited, reQueryExceedsMaxBlockRange} {
+	for _, re := range []*regexp.Regexp{reMaxRange,
+		reExceededBlockRange,
+		reEthGetLogsLimited,
+		reQueryExceedsMaxBlockRange} {
 		matches = re.FindStringSubmatch(errMsg)
 		if len(matches) >= maxRangeMatchGroups {
 			break
