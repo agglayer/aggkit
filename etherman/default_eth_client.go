@@ -25,8 +25,9 @@ type DefaultEthClient struct {
 
 	// If true, the block Hash is getted from JSON RPC
 	// if false, the block Hash is getted from go-ethereum RLP hashing of header
-	HashFromJSON bool
-	logger       aggkitcommon.Logger
+	HashFromJSON       bool
+	batchBlockHeaders  bool
+	logger             aggkitcommon.Logger
 }
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
@@ -74,12 +75,17 @@ func NewDefaultEthClientWithLogger(
 		logger.Warnf("rpcClient is nil, cannot use HashFromJSON=true, setting to false")
 		hashFromJSON = false
 	}
+	batchBlockHeaders := cfg.BatchBlockHeaderRetrieval
+	if rpcClient == nil && cfg.BatchBlockHeaderRetrieval {
+		batchBlockHeaders = false
+	}
 
 	return &DefaultEthClient{
-		EthereumClienter: client,
-		RPCClienter:      rpcClient,
-		HashFromJSON:     hashFromJSON,
-		logger:           logger,
+		EthereumClienter:  client,
+		RPCClienter:       rpcClient,
+		HashFromJSON:      hashFromJSON,
+		batchBlockHeaders: batchBlockHeaders,
+		logger:            logger,
 	}
 }
 
@@ -160,6 +166,16 @@ func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.
 		return nil, fmt.Errorf("rpcGetBlockByNumber:not found:  %s", blockArg)
 	}
 	return rawEthHeader.ToBlockHeader()
+}
+
+// RetrieveBlockHeaders retrieves block headers for the given block numbers.
+// Uses batch RPC when BatchBlockHeaderRetrieval is enabled and an rpcClient is available,
+// otherwise falls back to individual requests.
+func (c *DefaultEthClient) RetrieveBlockHeaders(ctx context.Context, blockNumbers []uint64, maxConcurrency int) (*aggkittypes.BlockHeadersResult, error) {
+	if c.batchBlockHeaders {
+		return RetrieveBlockHeadersBatch(ctx, c.logger, c.RPCClienter, blockNumbers, maxConcurrency)
+	}
+	return RetrieveBlockHeadersLegacy(ctx, c.logger, c, blockNumbers, maxConcurrency)
 }
 
 func (c *DefaultEthClient) Call(result any, method string, args ...any) error {

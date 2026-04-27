@@ -625,8 +625,10 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			Return(unsafeBlocks, nil).Once()
 
 		// Mock RPC block headers retrieval for reorg detection
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(196)).Return(header196, nil).Once()
+		rpcResult := aggkittypes.NewBlockHeadersResult()
+		rpcResult.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
+		rpcResult.AddHeader(196, aggkittypes.NewBlockHeaderFromEthHeader(header196))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResult, nil).Once()
 
 		// Mock update to finalized
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195, 196}).Return(nil).Once()
@@ -750,7 +752,9 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			ParentHash: common.HexToHash("0xDIFFERENT"),
 			Time:       9999999,
 		}
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(headerDifferent, nil).Once()
+		rpcResultReorg := aggkittypes.NewBlockHeadersResult()
+		rpcResultReorg.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(headerDifferent))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResultReorg, nil).Once()
 
 		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
@@ -790,7 +794,9 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			Return(unsafeBlocks, nil).Once()
 
 		// Mock RPC block headers (no reorg)
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+		rpcResult195 := aggkittypes.NewBlockHeadersResult()
+		rpcResult195.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResult195, nil).Once()
 
 		// Mock update error
 		expectedErr := fmt.Errorf("update error")
@@ -834,7 +840,9 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			Return(unsafeBlocks, nil).Once()
 
 		// Mock RPC block headers (no reorg)
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+		rpcResult195Commit := aggkittypes.NewBlockHeadersResult()
+		rpcResult195Commit.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResult195Commit, nil).Once()
 
 		// Mock update success
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(nil).Once()

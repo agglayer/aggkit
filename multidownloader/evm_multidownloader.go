@@ -14,7 +14,6 @@ import (
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/etherman"
 	ethermanblocknotifier "github.com/agglayer/aggkit/etherman/block_notifier"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
@@ -625,8 +624,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	}
 	blocks := pendingBlockRange.ListBlockNumbers()
 	// TODO: Check that the blocks are all inside unsafe range
-	blockHeadersResult, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
-		blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
+	blockHeadersResult, err := dh.ethClient.RetrieveBlockHeaders(ctx, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: failed to retrieve %s block headers: %w", pendingBlockRange.String(), err)
 	}
@@ -699,23 +697,25 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
 	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks", len(blocks))
-	blockHeadersResult, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
-		blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
-	if err != nil {
-		return false, fmt.Errorf("Safe/Step: failed to retrieve %d block headers: %w", len(blocks), err)
-	}
-	// Check for partial failures
-	if !blockHeadersResult.Success() {
-		for blockNum, blockErr := range blockHeadersResult.Errors {
-			dh.log.Errorf("Safe/Step: failed to retrieve block %d: %v", blockNum, blockErr)
+	var blockHeaders []*aggkittypes.BlockHeader
+	if len(blocks) > 0 {
+		blockHeadersResult, err := dh.ethClient.RetrieveBlockHeaders(ctx, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
+		if err != nil {
+			return false, fmt.Errorf("Safe/Step: failed to retrieve %d block headers: %w", len(blocks), err)
 		}
-		if !blockHeadersResult.PartialSuccess() {
-			return false, fmt.Errorf("Safe/Step: failed to retrieve any block headers")
+		// Check for partial failures
+		if !blockHeadersResult.Success() {
+			for blockNum, blockErr := range blockHeadersResult.Errors {
+				dh.log.Errorf("Safe/Step: failed to retrieve block %d: %v", blockNum, blockErr)
+			}
+			if !blockHeadersResult.PartialSuccess() {
+				return false, fmt.Errorf("Safe/Step: failed to retrieve any block headers")
+			}
+			dh.log.Warnf("Safe/Step: partial success retrieving block headers: %d/%d succeeded",
+				len(blockHeadersResult.Headers), len(blocks))
 		}
-		dh.log.Warnf("Safe/Step: partial success retrieving block headers: %d/%d succeeded",
-			len(blockHeadersResult.Headers), len(blocks))
+		blockHeaders = blockHeadersResult.GetOrderedHeaders(blocks)
 	}
-	blockHeaders := blockHeadersResult.GetOrderedHeaders(blocks)
 
 	// Calculate new state (not set in memory until commit is successful)
 	dh.mutex.Lock()
@@ -1048,8 +1048,7 @@ func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
 		return nil
 	}
 	blocksNumber := blocks.BlockNumbers()
-	currentBlockHeadersResult, err := etherman.RetrieveBlockHeaders(ctx, dh.log, dh.ethClient, dh.rpcClient,
-		blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
+	currentBlockHeadersResult, err := dh.ethClient.RetrieveBlockHeaders(ctx, blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return fmt.Errorf("detectReorgs: cannot retrieve block headers: %w", err)
 	}

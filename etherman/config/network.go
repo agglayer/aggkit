@@ -103,6 +103,9 @@ type RPCClientConfig struct {
 	// If true, the block Hash is getted from JSON RPC
 	// if false, the block Hash is getted from go-ethereum RLP hashing of header
 	HashFromJSON bool `mapstructure:"HashFromJSON"`
+	// BatchBlockHeaderRetrieval enables using JSON-RPC batch requests when fetching block headers.
+	// Disable this if the node does not support batch requests. Default: true.
+	BatchBlockHeaderRetrieval bool `mapstructure:"BatchBlockHeaderRetrieval"`
 	//
 	// Params specific per client
 	// ExtraParams contains any additional parameters that may be needed for the RPC client
@@ -112,8 +115,9 @@ type RPCClientConfig struct {
 // NewDefaultRPCClientConfig returns a new RPCClientConfig with default values
 func NewDefaultRPCClientConfig() *RPCClientConfig {
 	return &RPCClientConfig{
-		Mode:         RPCModeDefault,
-		HashFromJSON: false,
+		Mode:                      RPCModeDefault,
+		HashFromJSON:              false,
+		BatchBlockHeaderRetrieval: true,
 		ExtraParams:  make(map[string]any),
 		RetryPolicyGenericConfig: common.RetryPolicyGenericConfig{
 			Mode:              common.RetryConfigModeBackoff,
