@@ -26,7 +26,7 @@ var mig003 string
 var mig004 string
 
 func RunMigrations(dbPath string) error {
-	migrations := []types.Migration{ //nolint:prealloc
+	migrations := []types.Migration{
 		{
 			ID:  "l1infotreesync0001",
 			SQL: mig001,
