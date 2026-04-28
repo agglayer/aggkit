@@ -26,13 +26,24 @@ var mig003 string
 var mig004 string
 
 func RunMigrations(dbPath string) error {
-	migrations := make([]types.Migration, 0, 4+2*len(treeMigrations.Migrations)) //nolint:mnd
-	migrations = append(migrations,
-		types.Migration{ID: "l1infotreesync0001", SQL: mig001},
-		types.Migration{ID: "l1infotreesync0002", SQL: mig002},
-		types.Migration{ID: "l1infotreesync0003", SQL: mig003},
-		types.Migration{ID: "l1infotreesync0004", SQL: mig004},
-	)
+	migrations := []types.Migration{ //nolint:prealloc
+		{
+			ID:  "l1infotreesync0001",
+			SQL: mig001,
+		},
+		{
+			ID:  "l1infotreesync0002",
+			SQL: mig002,
+		},
+		{
+			ID:  "l1infotreesync0003",
+			SQL: mig003,
+		},
+		{
+			ID:  "l1infotreesync0004",
+			SQL: mig004,
+		},
+	}
 	for _, tm := range treeMigrations.Migrations {
 		migrations = append(migrations, types.Migration{
 			ID:     tm.ID,

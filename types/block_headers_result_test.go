@@ -120,6 +120,137 @@ func TestBlockHeadersResult_ComposeError(t *testing.T) {
 	})
 }
 
+func TestBlockHeadersResult_AreAllErrorsNotFound(t *testing.T) {
+	tests := []struct {
+		name     string
+		errors   map[uint64]error
+		expected bool
+	}{
+		{
+			name:     "no errors returns true",
+			errors:   map[uint64]error{},
+			expected: true,
+		},
+		{
+			name: "all errors are ErrNotFound sentinel",
+			errors: map[uint64]error{
+				100: ErrNotFound,
+				200: ErrNotFound,
+			},
+			expected: true,
+		},
+		{
+			name: "all errors have exact 'not found' message",
+			errors: map[uint64]error{
+				100: errors.New("not found"),
+				200: errors.New("not found"),
+			},
+			expected: true,
+		},
+		{
+			name: "mixed: some ErrNotFound some other",
+			errors: map[uint64]error{
+				100: ErrNotFound,
+				200: errors.New("connection timeout"),
+			},
+			expected: false,
+		},
+		{
+			name: "all errors are unrelated",
+			errors: map[uint64]error{
+				100: errors.New("timeout"),
+				200: errors.New("rpc error"),
+			},
+			expected: false,
+		},
+		{
+			name: "wrapped ErrNotFound counts as not found",
+			errors: map[uint64]error{
+				100: errors.New("batch element error: not found"),
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &BlockHeadersResult{
+				Headers: make(map[uint64]*BlockHeader),
+				Errors:  tt.errors,
+			}
+			assert.Equal(t, tt.expected, r.AreAllErrorsNotFound())
+		})
+	}
+}
+
+func TestBlockHeadersResult_ListBlocksNumberNotFound(t *testing.T) {
+	tests := []struct {
+		name     string
+		errors   map[uint64]error
+		expected []uint64
+	}{
+		{
+			name:     "no errors returns nil",
+			errors:   map[uint64]error{},
+			expected: nil,
+		},
+		{
+			name: "all ErrNotFound sentinels, sorted",
+			errors: map[uint64]error{
+				300: ErrNotFound,
+				100: ErrNotFound,
+				200: ErrNotFound,
+			},
+			expected: []uint64{100, 200, 300},
+		},
+		{
+			name: "exact 'not found' message, sorted",
+			errors: map[uint64]error{
+				300: errors.New("not found"),
+				100: errors.New("not found"),
+			},
+			expected: []uint64{100, 300},
+		},
+		{
+			name: "mixed: only not-found blocks returned",
+			errors: map[uint64]error{
+				100: ErrNotFound,
+				200: errors.New("connection timeout"),
+				300: ErrNotFound,
+				150: errors.New("other error"),
+				250: errors.New("not found"),
+			},
+			expected: []uint64{100, 250, 300},
+		},
+		{
+			name: "no not-found errors",
+			errors: map[uint64]error{
+				100: errors.New("timeout"),
+				200: errors.New("rpc error"),
+			},
+			expected: nil,
+		},
+		{
+			name: "substring 'not found' in message counts",
+			errors: map[uint64]error{
+				100: errors.New("block not found"),
+				200: errors.New("timeout"),
+			},
+			expected: []uint64{100},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &BlockHeadersResult{
+				Headers: make(map[uint64]*BlockHeader),
+				Errors:  tt.errors,
+			}
+			assert.Equal(t, tt.expected, r.ListBlocksNumberNotFound())
+		})
+	}
+}
+
 func findPos(s, substr string) int {
 	for i := range s {
 		if len(s[i:]) >= len(substr) && s[i:i+len(substr)] == substr {
