@@ -22,6 +22,7 @@ import (
 )
 
 func TestGetLastBlockNumByGlobalIndexFromRPC_Exploratory(t *testing.T) {
+	t.Skip("This test is exploratory. Set the L2URL environment variable to run it.")
 	l2URL := os.Getenv("L2URL")
 	if l2URL == "" {
 		t.Skip("L2URL environment variable not set")
