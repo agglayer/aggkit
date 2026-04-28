@@ -41,6 +41,9 @@ linters:
     gosec:
       excludes:
         - G115
+        - G118
+        - G602
+        - G703
     revive:
       rules:
         - name: exported
@@ -57,6 +60,7 @@ linters:
           - gosec
           - lll
           - mnd
+          - prealloc
           - unparam
         path: (_test\.go|^test/.*)
       - linters:

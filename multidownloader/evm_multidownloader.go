@@ -219,7 +219,7 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 		return fmt.Errorf("Start: multidownloader is already running")
 	}
 	// Create a cancelable context for this run
-	runCtx, cancel := context.WithCancel(ctx) //nolint:gosec
+	runCtx, cancel := context.WithCancel(ctx)
 	dh.cancel = cancel
 	dh.isRunning = true
 	dh.stopRequested = false

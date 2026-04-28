@@ -60,7 +60,7 @@ func ConvertToProofResponse(proof tree.Proof) Proof {
 		if i >= len(p) {
 			break
 		}
-		p[i] = Hash(h.Hex()) //nolint:gosec
+		p[i] = Hash(h.Hex())
 	}
 	return p
 }
