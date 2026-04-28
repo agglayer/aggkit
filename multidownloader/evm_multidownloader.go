@@ -219,7 +219,7 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 		return fmt.Errorf("Start: multidownloader is already running")
 	}
 	// Create a cancelable context for this run
-	runCtx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(ctx) //nolint:gosec
 	dh.cancel = cancel
 	dh.isRunning = true
 	dh.stopRequested = false
@@ -1048,7 +1048,8 @@ func (dh *EVMMultidownloader) detectReorgs(ctx context.Context,
 		return nil
 	}
 	blocksNumber := blocks.BlockNumbers()
-	currentBlockHeadersResult, err := dh.ethClient.RetrieveBlockHeaders(ctx, blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
+	currentBlockHeadersResult, err := dh.ethClient.RetrieveBlockHeaders(
+		ctx, blocksNumber, dh.cfg.MaxParallelBlockHeaderRetrieval)
 	if err != nil {
 		return fmt.Errorf("detectReorgs: cannot retrieve block headers: %w", err)
 	}

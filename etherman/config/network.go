@@ -118,7 +118,7 @@ func NewDefaultRPCClientConfig() *RPCClientConfig {
 		Mode:                      RPCModeDefault,
 		HashFromJSON:              false,
 		BatchBlockHeaderRetrieval: true,
-		ExtraParams:  make(map[string]any),
+		ExtraParams:               make(map[string]any),
 		RetryPolicyGenericConfig: common.RetryPolicyGenericConfig{
 			Mode:              common.RetryConfigModeBackoff,
 			MaxRetries:        5,                                          //nolint: mnd

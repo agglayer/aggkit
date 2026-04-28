@@ -85,13 +85,19 @@ func (r *BlockHeadersResult) ListBlocksNumberNotFound() []uint64 {
 	return notFoundBlocks
 }
 
-// ComposeError returns a single error summarizing the errors in the result, or nil if there are no errors
+// ComposeError returns a single error summarizing all errors in the result, or nil if there are no errors
 func (r *BlockHeadersResult) ComposeError() error {
 	if len(r.Errors) == 0 {
 		return nil
 	}
+	errBlockNumbers := make([]uint64, 0, len(r.Errors))
+	for bn := range r.Errors {
+		errBlockNumbers = append(errBlockNumbers, bn)
+	}
+	sort.Slice(errBlockNumbers, func(i, j int) bool {
+		return errBlockNumbers[i] < errBlockNumbers[j]
+	})
 	errResult := fmt.Errorf("RetrieveBlockHeaders errors")
-	errBlockNumbers := r.ListBlocksNumberNotFound()
 	for _, bn := range errBlockNumbers {
 		errResult = fmt.Errorf("%w\nBlock %d: %w", errResult, bn, r.Errors[bn])
 	}

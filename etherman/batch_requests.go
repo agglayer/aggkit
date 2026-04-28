@@ -3,7 +3,6 @@ package etherman
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -104,12 +103,12 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 		func(ctx context.Context, blocks []uint64) (*BlockHeadersResult, error) {
 			result := NewBlockHeadersResult()
 			for _, blockNumber := range blocks {
-				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
+				header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
 				if err != nil {
 					result.AddError(blockNumber, fmt.Errorf("cannot get block header: %w", err))
 					continue
 				}
-				result.AddHeader(blockNumber, aggkittypes.NewBlockHeaderFromEthHeader(header))
+				result.AddHeader(blockNumber, header)
 			}
 			return result, nil
 		}, blockNumbers, 1, maxConcurrency)

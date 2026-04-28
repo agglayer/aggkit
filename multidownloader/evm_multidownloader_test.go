@@ -628,7 +628,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		rpcResult := aggkittypes.NewBlockHeadersResult()
 		rpcResult.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
 		rpcResult.AddHeader(196, aggkittypes.NewBlockHeaderFromEthHeader(header196))
-		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResult, nil).Once()
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195, 196}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResult, nil).Once()
 
 		// Mock update to finalized
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195, 196}).Return(nil).Once()
@@ -754,7 +754,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		}
 		rpcResultReorg := aggkittypes.NewBlockHeadersResult()
 		rpcResultReorg.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(headerDifferent))
-		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResultReorg, nil).Once()
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResultReorg, nil).Once()
 
 		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
@@ -796,7 +796,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		// Mock RPC block headers (no reorg)
 		rpcResult195 := aggkittypes.NewBlockHeadersResult()
 		rpcResult195.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
-		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResult195, nil).Once()
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResult195, nil).Once()
 
 		// Mock update error
 		expectedErr := fmt.Errorf("update error")
@@ -842,7 +842,7 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		// Mock RPC block headers (no reorg)
 		rpcResult195Commit := aggkittypes.NewBlockHeadersResult()
 		rpcResult195Commit.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
-		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).Return(rpcResult195Commit, nil).Once()
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResult195Commit, nil).Once()
 
 		// Mock update success
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(nil).Once()
