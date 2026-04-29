@@ -83,6 +83,10 @@ func (t *TestClient) CustomHeaderByNumber(ctx context.Context, number *aggkittyp
 	return t.defaultEthClient.CustomHeaderByNumber(ctx, number)
 }
 
+func (t *TestClient) RetrieveBlockHeaders(ctx context.Context, blockNumbers []uint64, maxConcurrency int) (*aggkittypes.BlockHeadersResult, error) {
+	return t.defaultEthClient.RetrieveBlockHeaders(ctx, blockNumbers, maxConcurrency)
+}
+
 // SimulatedBackendSetup defines the setup for a simulated backend.
 type SimulatedBackendSetup struct {
 	UserAuth            *bind.TransactOpts
