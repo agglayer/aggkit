@@ -22,6 +22,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/dvnsyncer"
 	"github.com/agglayer/aggkit/dvnworker"
+	"github.com/agglayer/aggkit/dvnworker/correlator"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
@@ -284,7 +285,7 @@ func start(cliCtx *cli.Context) error {
 			if err != nil {
 				log.Fatalf("failed to create DVN syncer L2: %v", err)
 			}
-			dvnWorker, err := dvnworker.New(cfg.DVNWorker, log.WithFields("module", aggkitcommon.AGGLAYERDVNWORKER))
+			dvnWorker, err := dvnworker.New(cfg.DVNWorker, correlator.RouteConfig{}, log.WithFields("module", aggkitcommon.AGGLAYERDVNWORKER))
 			if err != nil {
 				log.Fatalf("failed to create DVN worker: %v", err)
 			}
