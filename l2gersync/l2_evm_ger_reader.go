@@ -80,7 +80,6 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 				make(map[common.Hash]GlobalExitRootInfo),
 			)
 		}
-		log.Errorf("failed to create InsertGlobalExitRoot event iterator: %v", err)
 		return nil, err
 	}
 
@@ -98,6 +97,7 @@ func (e *L2EVMGERReader) fetchInjectedGERs(ctx context.Context,
 			End:     &toBlock,
 		}, nil, nil)
 	if err != nil {
+		log.Errorf("failed to create InsertGlobalExitRoot event iterator: %v", err)
 		return nil, err
 	}
 
@@ -176,7 +176,6 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 				[]*agglayertypes.RemovedGER{},
 			)
 		}
-		log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
 		return nil, err
 	}
 
@@ -193,6 +192,7 @@ func (e *L2EVMGERReader) fetchRemovedGERs(ctx context.Context,
 			End:     &toBlock,
 		}, nil, nil)
 	if err != nil {
+		log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
 		return nil, err
 	}
 
