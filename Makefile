@@ -134,6 +134,27 @@ vulncheck: ## Runs the vulnerability checker tool
 generate-mocks: ## Generates the mocks using mockery
 	@cd test && $(MAKE) generate-mocks
 
+AGGLAYER_CONTRACTS_ROOT ?= $(GOBASE)/../agglayer-contracts
+DVN_BINDINGS_OUT := $(GOBASE)/dvnworker/bindings
+
+.PHONY: generate-dvn-bindings
+generate-dvn-bindings: ## Generate Go bindings for DVN contracts from agglayer-contracts Hardhat artifacts
+	@echo "Generating DVN contract bindings..."
+	@which abigen > /dev/null || (echo "Error: abigen not installed. Run: go install github.com/ethereum/go-ethereum/cmd/abigen@latest" && exit 1)
+	@cat $(AGGLAYER_CONTRACTS_ROOT)/artifacts/contracts/dvn/AggLayerDVNCoordinator.sol/AggLayerDVNCoordinator.json \
+		| python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d['abi']))" \
+		> /tmp/dvn_coordinator_abi.json
+	@cat $(AGGLAYER_CONTRACTS_ROOT)/artifacts/contracts/dvn/AggLayerDVN.sol/AggLayerDVN.json \
+		| python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d['abi']))" \
+		> /tmp/dvn_agglayerdvn_abi.json
+	@abigen --abi /tmp/dvn_coordinator_abi.json --pkg bindings \
+		--type AggLayerDVNCoordinator \
+		--out $(DVN_BINDINGS_OUT)/agglayerdvncoordinator.go
+	@abigen --abi /tmp/dvn_agglayerdvn_abi.json --pkg bindings \
+		--type AggLayerDVN \
+		--out $(DVN_BINDINGS_OUT)/agglayerdvn.go
+	@echo "DVN bindings generated in $(DVN_BINDINGS_OUT)/"
+
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted
 ## display with the commands and their usage information.
