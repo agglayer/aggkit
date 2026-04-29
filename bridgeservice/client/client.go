@@ -134,7 +134,7 @@ func (c *Client) GetBridges(ctx context.Context, params GetBridgesParams) (*type
 		query.Set("from_address", *params.FromAddress)
 	}
 	if len(params.NetworkIDs) > 0 {
-		var ids []string
+		ids := make([]string, 0, len(params.NetworkIDs))
 		for _, id := range params.NetworkIDs {
 			ids = append(ids, strconv.FormatUint(uint64(id), 10))
 		}
@@ -160,7 +160,7 @@ func (c *Client) GetClaims(ctx context.Context, params GetClaimsParams) (*types.
 		query.Set("page_size", strconv.FormatUint(uint64(*params.PageSize), 10))
 	}
 	if len(params.NetworkIDs) > 0 {
-		var ids []string
+		ids := make([]string, 0, len(params.NetworkIDs))
 		for _, id := range params.NetworkIDs {
 			ids = append(ids, strconv.FormatUint(uint64(id), 10))
 		}

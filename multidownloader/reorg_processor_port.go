@@ -6,7 +6,6 @@ import (
 	"time"
 
 	dbtypes "github.com/agglayer/aggkit/db/types"
-	"github.com/agglayer/aggkit/etherman"
 	mdtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
@@ -28,7 +27,7 @@ func (r *ReorgPort) GetBlockStorageAndRPC(ctx context.Context, tx dbtypes.Querie
 		return nil, fmt.Errorf("error getting block in storage: %w", err)
 	}
 	rpcBlock, err := r.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
-	if err != nil && !etherman.IsErrNotFound(err) {
+	if err != nil && !aggkittypes.IsErrNotFound(err) {
 		return nil, fmt.Errorf("error getting block in RPC: %w", err)
 	}
 	return &mdtypes.CompareBlockHeaders{
