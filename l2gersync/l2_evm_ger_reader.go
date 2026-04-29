@@ -180,11 +180,11 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 				[]*agglayertypes.RemovedGER{},
 			)
 			if err != nil {
-				log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
+				log.Errorf("failed to fetch removed GERs for block range [%d, %d]: %v", fromBlock, toBlock, err)
 			}
 			return result, err
 		}
-		log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
+		log.Errorf("failed to fetch removed GERs for block range [%d, %d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 
