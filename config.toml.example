@@ -154,3 +154,86 @@ EnableAggOracleCommittee = false
 # [Validator.ServerConfig]
 # 	Host = "0.0.0.0"
 # 	Port = 5578
+#
+# ==============================================================================
+# AggLayer DVN (Distributed Verifier Network) — LayerZero integration
+# Run with: aggkit run --components agglayer-dvn-worker
+# ==============================================================================
+#
+# [DVNSyncerL1]
+# ------------------------------------------------------------------------------
+# ChainID is the EVM chain ID of the L1 chain being indexed.
+# ------------------------------------------------------------------------------
+# ChainID = 1
+# ------------------------------------------------------------------------------
+# RPCUrl is the JSON-RPC endpoint for the L1 chain.
+# ------------------------------------------------------------------------------
+# RPCUrl = "https://eth-mainnet.example.com"
+# ------------------------------------------------------------------------------
+# EndpointV2Addr is the LayerZero EndpointV2 contract address on L1.
+# ------------------------------------------------------------------------------
+# EndpointV2Addr = "0x0000000000000000000000000000000000000000"
+# ------------------------------------------------------------------------------
+# AggLayerDVNAddr is the AggLayerDVN contract address on L1.
+# ------------------------------------------------------------------------------
+# AggLayerDVNAddr = "0x0000000000000000000000000000000000000000"
+# ------------------------------------------------------------------------------
+# SyncStartBlock is the block number from which to begin indexing.
+# ------------------------------------------------------------------------------
+# SyncStartBlock = 0
+# ------------------------------------------------------------------------------
+# ConfirmationDepth is the number of block confirmations required before
+# persisting an event.
+# ------------------------------------------------------------------------------
+# ConfirmationDepth = 12
+# ------------------------------------------------------------------------------
+# DBPath is the path to the SQLite database file for L1 syncer state.
+# ------------------------------------------------------------------------------
+# DBPath = "/tmp/dvnsyncer_l1.db"
+#
+# [DVNSyncerL2]
+# ChainID = 137
+# RPCUrl = "https://polygon-mainnet.example.com"
+# EndpointV2Addr = "0x0000000000000000000000000000000000000000"
+# AggLayerDVNAddr = "0x0000000000000000000000000000000000000000"
+# SyncStartBlock = 0
+# ConfirmationDepth = 12
+# DBPath = "/tmp/dvnsyncer_l2.db"
+#
+# [DVNWorker]
+# ------------------------------------------------------------------------------
+# SourceChain identifies the LZ source chain role ("l1" or "l2").
+# ------------------------------------------------------------------------------
+# SourceChain = "l1"
+# ------------------------------------------------------------------------------
+# DestinationChain identifies the LZ destination chain role ("l1" or "l2").
+# ------------------------------------------------------------------------------
+# DestinationChain = "l2"
+# ------------------------------------------------------------------------------
+# RPCUrl is the JSON-RPC endpoint for the destination chain.
+# ------------------------------------------------------------------------------
+# RPCUrl = "https://polygon-mainnet.example.com"
+# ------------------------------------------------------------------------------
+# CoordinatorAddr is the AggLayerDVNCoordinator contract address on the
+# destination chain.
+# ------------------------------------------------------------------------------
+# CoordinatorAddr = "0x0000000000000000000000000000000000000000"
+# ------------------------------------------------------------------------------
+# OFTReceiverAddr is the AggLayerOFTReceiver contract address on the
+# destination chain.
+# ------------------------------------------------------------------------------
+# OFTReceiverAddr = "0x0000000000000000000000000000000000000000"
+# ------------------------------------------------------------------------------
+# SigningKeyPath is the path to the ECDSA keystore file used to sign
+# destination-chain transactions.
+# ------------------------------------------------------------------------------
+# SigningKeyPath = "/app/keystore/dvnworker.keystore"
+# ------------------------------------------------------------------------------
+# SettlementPollInterval controls how often the waiter re-checks AggLayer
+# certificate settlement and GER injection (Go duration string).
+# ------------------------------------------------------------------------------
+# SettlementPollInterval = "5s"
+# ------------------------------------------------------------------------------
+# RetryBudget is the maximum number of claimAndVerify submission retries.
+# ------------------------------------------------------------------------------
+# RetryBudget = 3
