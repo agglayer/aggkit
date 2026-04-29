@@ -69,7 +69,7 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
 		if isMaxRangeErr {
 			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+			result, err := aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
 				e.fetchInjectedGERs,
 				func(all map[common.Hash]GlobalExitRootInfo,
 					chunk map[common.Hash]GlobalExitRootInfo,
@@ -79,7 +79,12 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 				},
 				make(map[common.Hash]GlobalExitRootInfo),
 			)
+			if err != nil {
+				log.Errorf("failed to fetch injected GERs: %v", err)
+			}
+			return result, err
 		}
+		log.Errorf("failed to fetch injected GERs: %v", err)
 		return nil, err
 	}
 
@@ -97,7 +102,6 @@ func (e *L2EVMGERReader) fetchInjectedGERs(ctx context.Context,
 			End:     &toBlock,
 		}, nil, nil)
 	if err != nil {
-		log.Errorf("failed to create InsertGlobalExitRoot event iterator: %v", err)
 		return nil, err
 	}
 
@@ -168,14 +172,19 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
 		if isMaxRangeErr {
 			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+			result, err := aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
 				e.fetchRemovedGERs,
 				func(all, chunk []*agglayertypes.RemovedGER) []*agglayertypes.RemovedGER {
 					return append(all, chunk...)
 				},
 				[]*agglayertypes.RemovedGER{},
 			)
+			if err != nil {
+				log.Errorf("failed to fetch removed GERs for block range [%d, %d]: %v", fromBlock, toBlock, err)
+			}
+			return result, err
 		}
+		log.Errorf("failed to fetch removed GERs for block range [%d, %d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 
@@ -192,7 +201,6 @@ func (e *L2EVMGERReader) fetchRemovedGERs(ctx context.Context,
 			End:     &toBlock,
 		}, nil, nil)
 	if err != nil {
-		log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
 		return nil, err
 	}
 
