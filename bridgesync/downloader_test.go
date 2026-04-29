@@ -891,10 +891,12 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 
 	// Case 1: Root call successful, valid internal call
 	rootCall := &Call{
-		To:  common.HexToAddress("0x01"),
-		Err: nil,
+		Type: CallTypeCall,
+		To:   common.HexToAddress("0x01"),
+		Err:  nil,
 		Calls: []Call{
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  common.HexToAddress("0x20"),
 				Err:   nil,
@@ -910,8 +912,9 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 
 	// Case 2: Root call reverted
 	rootCall = &Call{
-		To:  bridgeAddr,
-		Err: strPtr("reverted"),
+		Type: CallTypeCall,
+		To:   bridgeAddr,
+		Err:  strPtr("reverted"),
 	}
 
 	claim = &Claim{}
@@ -921,12 +924,14 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 
 	// Case 3: All internal calls reverted
 	rootCall = &Call{
-		To:  common.HexToAddress("0x01"),
-		Err: nil,
+		Type: CallTypeCall,
+		To:   common.HexToAddress("0x01"),
+		Err:  nil,
 		Calls: []Call{
 			{
-				To:  bridgeAddr,
-				Err: strPtr("reverted"),
+				Type: CallTypeCall,
+				To:   bridgeAddr,
+				Err:  strPtr("reverted"),
 			},
 		},
 	}
@@ -938,6 +943,7 @@ func TestSetClaimCalldataFromRoot(t *testing.T) {
 
 	// Case 4: No matching call
 	rootCall = &Call{
+		Type:  CallTypeCall,
 		To:    common.HexToAddress("0x01"),
 		Err:   nil,
 		Calls: []Call{},
@@ -1022,11 +1028,13 @@ func TestTxnSenderField(t *testing.T) {
 			name:           "claimEventSignature with TxnSender",
 			eventSignature: claimEventSignature,
 			callFrame: Call{
+				Type: CallTypeCall,
 				To:   common.HexToAddress("0x01"),
 				From: expectedTxnSender,
 				Err:  nil,
 				Calls: []Call{
 					{
+						Type:  CallTypeCall,
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x20"),
 						Err:   nil,
