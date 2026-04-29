@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 	goSync "sync"
 
@@ -63,6 +64,23 @@ const (
 
 	// methodIDLength is the length of the method ID in bytes
 	methodIDLength = 4
+)
+
+const (
+	// CallTypeCall is a callTracer CALL frame.
+	CallTypeCall = "CALL"
+	// CallTypeDelegateCall is a callTracer DELEGATECALL frame.
+	CallTypeDelegateCall = "DELEGATECALL"
+	// CallTypeStaticCall is a callTracer STATICCALL frame.
+	CallTypeStaticCall = "STATICCALL"
+	// CallTypeCallCode is a callTracer CALLCODE frame.
+	CallTypeCallCode = "CALLCODE"
+	// CallTypeCreate is a callTracer CREATE frame.
+	CallTypeCreate = "CREATE"
+	// CallTypeCreate2 is a callTracer CREATE2 frame.
+	CallTypeCreate2 = "CREATE2"
+	// CallTypeSelfDestruct is a callTracer SELFDESTRUCT frame.
+	CallTypeSelfDestruct = "SELFDESTRUCT"
 )
 
 // BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
@@ -411,6 +429,7 @@ func NewPreferDetailedClaimLogsHook(logger aggkitcommon.Logger) sync.LogsHookFun
 }
 
 type Call struct {
+	Type  string            `json:"type"`
 	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
 	Value *rpctypes.ArgBig  `json:"value"`
@@ -446,7 +465,7 @@ func findCall(rootCall Call,
 			continue
 		}
 
-		if currentCall.To == targetAddr {
+		if currentCall.To == targetAddr && currentCall.Type == CallTypeCall {
 			if callback != nil {
 				found, err := callback(currentCall)
 				if err != nil {
@@ -513,23 +532,53 @@ func extractCallData(
 // - bridge: Target contract address.
 // - logger: Logger instance for debug logging.
 //
-// Returns an error if calldata isn't found.
+// Returns an error if calldata isn't found or if distinct matching calldata candidates are found.
 func setClaimCalldataFromRoot(
 	c *Claim,
 	rootCall *Call,
 	bridge common.Address,
 	logger aggkitcommon.Logger,
 ) error {
+	candidates := make([]Claim, 0, 1)
 	_, err := findCall(*rootCall, bridge,
 		func(call Call) (bool, error) {
 			// Skip reverted calls
 			if call.Err != nil {
 				return false, nil
 			}
-			return tryDecodeClaimCalldata(c, call.Input, logger)
+			candidate := *c
+			found, err := tryDecodeClaimCalldata(&candidate, call.Input, logger)
+			if err != nil {
+				return false, err
+			}
+			if !found {
+				return false, nil
+			}
+			if !hasClaimCandidate(candidates, candidate) {
+				candidates = append(candidates, candidate)
+			}
+			return true, nil
 		}, logger)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if len(candidates) != 1 {
+		return fmt.Errorf("ambiguous claim calldata for globalIndex %s: found %d matching bridge calls",
+			c.GlobalIndex.String(), len(candidates))
+	}
+
+	*c = candidates[0]
+	return nil
+}
+
+func hasClaimCandidate(candidates []Claim, candidate Claim) bool {
+	for _, existing := range candidates {
+		if reflect.DeepEqual(existing, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 // tryDecodeClaimCalldata attempts to find and decode the claim calldata from the provided input bytes.

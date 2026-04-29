@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +30,7 @@ func TestFindCall(t *testing.T) {
 
 	// Simple direct call
 	root := Call{
+		Type: CallTypeCall,
 		To:   bridgeAddr,
 		From: fromAddr,
 		Err:  nil,
@@ -40,6 +42,7 @@ func TestFindCall(t *testing.T) {
 
 	// Reverted root call must be skipped — returns ErrNotFound
 	root = Call{
+		Type: CallTypeCall,
 		To:   bridgeAddr,
 		From: fromAddr,
 		Err:  strPtr("reverted"),
@@ -49,16 +52,19 @@ func TestFindCall(t *testing.T) {
 
 	// Nested calls: one valid, one reverted — only valid is returned
 	root = Call{
+		Type: CallTypeCall,
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
 		Calls: []Call{
 			{
+				Type: CallTypeCall,
 				To:   bridgeAddr,
 				From: fromAddr,
 				Err:  nil,
 			},
 			{
+				Type: CallTypeCall,
 				To:   bridgeAddr,
 				From: fromAddr,
 				Err:  strPtr("reverted"),
@@ -71,6 +77,34 @@ func TestFindCall(t *testing.T) {
 	require.Equal(t, bridgeAddr, founds[0].To)
 }
 
+func TestFindCallSkipsNonCallFrameTypes(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	fromAddr := common.HexToAddress("0x20")
+	lg := logger.WithFields("module", "test")
+
+	root := Call{
+		Type: CallTypeCall,
+		To:   common.HexToAddress("0x01"),
+		From: fromAddr,
+		Calls: []Call{
+			{Type: CallTypeDelegateCall, To: bridgeAddr, From: fromAddr},
+			{Type: CallTypeStaticCall, To: bridgeAddr, From: fromAddr},
+			{Type: CallTypeCallCode, To: bridgeAddr, From: fromAddr},
+			{To: bridgeAddr, From: fromAddr},
+		},
+	}
+
+	found, err := findCall(root, bridgeAddr, nil, lg)
+	require.ErrorContains(t, err, "not found")
+	require.Nil(t, found)
+
+	root.Calls = append(root.Calls, Call{Type: CallTypeCall, To: bridgeAddr, From: fromAddr})
+	found, err = findCall(root, bridgeAddr, nil, lg)
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	require.Equal(t, CallTypeCall, found[0].Type)
+}
+
 func TestFindCallWithMixedMethods(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	fromAddr := common.HexToAddress("0x20")
@@ -81,23 +115,27 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	//   2. claimAsset (recognized)
 	//   3. claimMessage (recognized)
 	rootCall := Call{
+		Type: CallTypeCall,
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
 		Calls: []Call{
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
 				Input: []byte{0x38, 0xb8, 0xfb, 0xbb}, // unrecognized
 			},
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
 				Input: claimAssetEtrogMethodID,
 			},
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
@@ -127,17 +165,20 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 	lg := logger.WithFields("module", "test")
 
 	rootCall := Call{
+		Type: CallTypeCall,
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
 		Calls: []Call{
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
 				Input: []byte{0x38, 0xb8, 0xfb, 0xbb},
 			},
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
@@ -249,6 +290,143 @@ func TestTryDecodeClaimCalldata(t *testing.T) {
 	}
 }
 
+func TestSetClaimCalldataFromRootFiltersDelegateCall(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0xb81d6e")
+	callerAddr := common.HexToAddress("0xca11e6")
+	lg := logger.WithFields("module", "test")
+
+	bridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+
+	globalIndex := big.NewInt(900)
+	originNetwork := uint32(69)
+	originAddress := common.HexToAddress("0xffaaffaa")
+	destinationAddress := common.HexToAddress("0x123456789")
+	amount := big.NewInt(3)
+
+	type variant struct {
+		proofLocal   [tree.DefaultHeight][common.HashLength]byte
+		proofRollup  [tree.DefaultHeight][common.HashLength]byte
+		proofLocalH  tree.Proof
+		proofRollupH tree.Proof
+		mer          common.Hash
+		rer          common.Hash
+		destNetwork  uint32
+		metadata     []byte
+	}
+
+	newVariant := func(proofLocalHex, proofRollupHex, merHex, rerHex string,
+		destNetwork uint32, metadata []byte) variant {
+		var v variant
+		v.proofLocal[5] = common.HexToHash(proofLocalHex)
+		v.proofLocalH[5] = common.HexToHash(proofLocalHex)
+		v.proofRollup[4] = common.HexToHash(proofRollupHex)
+		v.proofRollupH[4] = common.HexToHash(proofRollupHex)
+		v.mer = common.HexToHash(merHex)
+		v.rer = common.HexToHash(rerHex)
+		v.destNetwork = destNetwork
+		v.metadata = metadata
+		return v
+	}
+
+	claimFor := func(v variant) Claim {
+		return Claim{
+			GlobalIndex:         new(big.Int).Set(globalIndex),
+			OriginNetwork:       originNetwork,
+			OriginAddress:       originAddress,
+			DestinationAddress:  destinationAddress,
+			Amount:              new(big.Int).Set(amount),
+			MainnetExitRoot:     v.mer,
+			RollupExitRoot:      v.rer,
+			ProofLocalExitRoot:  v.proofLocalH,
+			ProofRollupExitRoot: v.proofRollupH,
+			DestinationNetwork:  v.destNetwork,
+			Metadata:            v.metadata,
+			GlobalExitRoot:      crypto.Keccak256Hash(v.mer.Bytes(), v.rer.Bytes()),
+		}
+	}
+
+	encode := func(v variant) []byte {
+		data, packErr := bridgeABI.Pack(
+			"claimAsset",
+			v.proofLocal,
+			v.proofRollup,
+			globalIndex,
+			v.mer,
+			v.rer,
+			originNetwork,
+			originAddress,
+			v.destNetwork,
+			destinationAddress,
+			amount,
+			v.metadata,
+		)
+		require.NoError(t, packErr)
+		return data
+	}
+
+	seed := func() Claim {
+		return Claim{
+			GlobalIndex:        new(big.Int).Set(globalIndex),
+			OriginNetwork:      originNetwork,
+			OriginAddress:      originAddress,
+			DestinationAddress: destinationAddress,
+			Amount:             new(big.Int).Set(amount),
+		}
+	}
+
+	legit := newVariant("0xbeef", "0xa1fa", "0x5ca1e", "0xdead", 0, []byte{})
+	malicious := newVariant("0xcafe", "0xbabe", "0xf00d", "0xb105", 42, []byte{0xde, 0xad, 0xbe, 0xef})
+	legitClaim := claimFor(legit)
+
+	legitFrame := Call{Type: CallTypeCall, To: bridgeAddr, Input: encode(legit)}
+	delegateFrame := Call{Type: CallTypeDelegateCall, To: bridgeAddr, Input: encode(malicious)}
+	maliciousCallFrame := Call{Type: CallTypeCall, To: bridgeAddr, Input: encode(malicious)}
+
+	t.Run("call wins regardless of sibling order", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			calls []Call
+		}{
+			{name: "delegate first", calls: []Call{delegateFrame, legitFrame}},
+			{name: "delegate last", calls: []Call{legitFrame, delegateFrame}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				actual := seed()
+				root := &Call{Type: CallTypeCall, To: callerAddr, Calls: tt.calls}
+				require.NoError(t, setClaimCalldataFromRoot(&actual, root, bridgeAddr, lg))
+				require.Equal(t, legitClaim, actual)
+			})
+		}
+	})
+
+	t.Run("delegate-only trace is ignored", func(t *testing.T) {
+		actual := seed()
+		root := &Call{Type: CallTypeCall, To: callerAddr, Calls: []Call{delegateFrame}}
+
+		require.ErrorContains(t, setClaimCalldataFromRoot(&actual, root, bridgeAddr, lg), "not found")
+		require.Equal(t, seed(), actual)
+	})
+
+	t.Run("duplicate identical calls are accepted", func(t *testing.T) {
+		actual := seed()
+		root := &Call{Type: CallTypeCall, To: callerAddr, Calls: []Call{legitFrame, legitFrame}}
+
+		require.NoError(t, setClaimCalldataFromRoot(&actual, root, bridgeAddr, lg))
+		require.Equal(t, legitClaim, actual)
+	})
+
+	t.Run("distinct matching calls are ambiguous", func(t *testing.T) {
+		actual := seed()
+		root := &Call{Type: CallTypeCall, To: callerAddr, Calls: []Call{legitFrame, maliciousCallFrame}}
+
+		require.ErrorContains(t, setClaimCalldataFromRoot(&actual, root, bridgeAddr, lg), "ambiguous claim calldata")
+		require.Equal(t, seed(), actual)
+	})
+}
+
 func TestBuildAppender(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
@@ -287,6 +465,7 @@ func TestBuildAppender(t *testing.T) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
 			*arg = Call{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  common.HexToAddress("0x01"),
 				Input: claimAssetInput,
@@ -643,7 +822,7 @@ func TestBuildClaimEventHandlerPreEtrog_OK(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
-			*arg = Call{To: bridgeAddr, From: common.HexToAddress("0x01"), Input: claimAssetInput}
+			*arg = Call{Type: CallTypeCall, To: bridgeAddr, From: common.HexToAddress("0x01"), Input: claimAssetInput}
 		}).
 		Return(nil)
 
