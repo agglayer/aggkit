@@ -3,9 +3,6 @@ package etherman
 import (
 	"context"
 	"fmt"
-	"maps"
-	"math/big"
-	"sort"
 	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -54,96 +51,12 @@ func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
 // https://www.alchemy.com/docs/reference/batch-requests
 const batchRequestLimitHTTP = 1000
 
-// BlockHeadersResult contiene los resultados de la recuperación de block headers,
-// separando los exitosos de los fallidos
-type BlockHeadersResult struct {
-	// Headers contiene los block headers recuperados exitosamente, mapeados por block number
-	Headers map[uint64]*aggkittypes.BlockHeader
+// BlockHeadersResult is an alias for aggkittypes.BlockHeadersResult for backward compatibility.
+type BlockHeadersResult = aggkittypes.BlockHeadersResult
 
-	// Errors contiene los errores de recuperación, mapeados por block number
-	Errors map[uint64]error
-}
-
-// NewBlockHeadersResult crea un nuevo BlockHeadersResult
+// NewBlockHeadersResult creates a new BlockHeadersResult.
 func NewBlockHeadersResult() *BlockHeadersResult {
-	return &BlockHeadersResult{
-		Headers: make(map[uint64]*aggkittypes.BlockHeader),
-		Errors:  make(map[uint64]error),
-	}
-}
-
-// Success retorna true si todos los bloques se recuperaron exitosamente
-func (r *BlockHeadersResult) Success() bool {
-	return len(r.Errors) == 0
-}
-
-// PartialSuccess retorna true si al menos un bloque se recuperó exitosamente
-func (r *BlockHeadersResult) PartialSuccess() bool {
-	return len(r.Headers) > 0
-}
-
-// GetOrderedHeaders retorna los headers en el orden de blockNumbers solicitados,
-// solo para los bloques que se recuperaron exitosamente
-func (r *BlockHeadersResult) GetOrderedHeaders(blockNumbers []uint64) []*aggkittypes.BlockHeader {
-	result := make([]*aggkittypes.BlockHeader, 0, len(r.Headers))
-	for _, bn := range blockNumbers {
-		if header, ok := r.Headers[bn]; ok {
-			result = append(result, header)
-		}
-	}
-	return result
-}
-
-// AddHeader añade un header exitoso al resultado
-func (r *BlockHeadersResult) AddHeader(blockNumber uint64, header *aggkittypes.BlockHeader) {
-	r.Headers[blockNumber] = header
-}
-
-// AddError añade un error para un block number específico
-func (r *BlockHeadersResult) AddError(blockNumber uint64, err error) {
-	r.Errors[blockNumber] = err
-}
-
-// Merge combina otro BlockHeadersResult en este
-func (r *BlockHeadersResult) Merge(other *BlockHeadersResult) {
-	maps.Copy(r.Headers, other.Headers)
-	maps.Copy(r.Errors, other.Errors)
-}
-
-func (r *BlockHeadersResult) AreAllErrorsNotFound() bool {
-	for _, err := range r.Errors {
-		if !IsErrNotFound(err) {
-			return false
-		}
-	}
-	return true
-}
-
-// ListBlocksNumberNotFound returns the list of not found block numbers in the result ordered by block number
-func (r *BlockHeadersResult) ListBlocksNumberNotFound() []uint64 {
-	var notFoundBlocks []uint64
-	for bn, err := range r.Errors {
-		if IsErrNotFound(err) {
-			notFoundBlocks = append(notFoundBlocks, bn)
-		}
-	}
-	sort.Slice(notFoundBlocks, func(i, j int) bool {
-		return notFoundBlocks[i] < notFoundBlocks[j]
-	})
-	return notFoundBlocks
-}
-
-// ComposeError returns a single error summarizing the errors in the result, or nil if there are no errors
-func (r *BlockHeadersResult) ComposeError() error {
-	if len(r.Errors) == 0 {
-		return nil
-	}
-	errResult := fmt.Errorf("RetrieveBlockHeaders errors")
-	errBlockNumbers := r.ListBlocksNumberNotFound()
-	for _, bn := range errBlockNumbers {
-		errResult = fmt.Errorf("%w\nBlock %d: %w", errResult, bn, r.Errors[bn])
-	}
-	return errResult
+	return aggkittypes.NewBlockHeadersResult()
 }
 
 // RetrieveBlockHeaders retrieves block headers for the given block numbers using batch requests
@@ -190,12 +103,12 @@ func RetrieveBlockHeadersLegacy(ctx context.Context,
 		func(ctx context.Context, blocks []uint64) (*BlockHeadersResult, error) {
 			result := NewBlockHeadersResult()
 			for _, blockNumber := range blocks {
-				header, err := ethClient.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
+				header, err := ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
 				if err != nil {
 					result.AddError(blockNumber, fmt.Errorf("cannot get block header: %w", err))
 					continue
 				}
-				result.AddHeader(blockNumber, aggkittypes.NewBlockHeaderFromEthHeader(header))
+				result.AddHeader(blockNumber, header)
 			}
 			return result, nil
 		}, blockNumbers, 1, maxConcurrency)

@@ -133,3 +133,44 @@ Example:
 ```
 
 When rate limiting is enabled, if the number of requests exceeds `NumRequests` within the specified `Interval`, the system will wait until the next interval before allowing more requests. This helps prevent overwhelming the system with too many requests in a short period.
+
+## RPCClientConfig
+
+`RPCClientConfig` configures the JSON-RPC client used to connect to Ethereum nodes. It is used in multiple places, notably `[L1NetworkConfig.RPC]` (L1 node) and `[Common.L2RPC]` (L2 node).
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `URL` | `string` | — | JSON-RPC endpoint URL |
+| `Mode` | `string` | `""` | Client mode: `""` or `"basic"` for standard nodes, `"op"` for Optimism nodes |
+| `HashFromJSON` | `bool` | `false` | When `true`, fetches block hashes via JSON-RPC (`eth_getBlockByNumber`). When `false`, computes them locally from the RLP-encoded header (go-ethereum default). Enable this for nodes where RLP hashing does not match the canonical block hash |
+| `BatchBlockHeaderRetrieval` | `bool` | `true` | When `true`, uses JSON-RPC batch requests to fetch block headers in bulk (faster). Disable if the node does not support batch calls |
+| `RetryMode` | `string` | `"backoff"` | Retry strategy: `"backoff"` for exponential backoff, `"delays"` for fixed delay list, `""` for no retries |
+| `MaxRetries` | `int` | `5` | Maximum number of retry attempts |
+| `InitialBackoff` | `duration` | `5s` | Initial wait time before the first retry (backoff mode) |
+| `MaxBackoff` | `duration` | `60s` | Maximum wait time between retries (backoff mode) |
+| `BackoffMultiplier` | `float64` | `2.0` | Multiplier applied to the backoff duration on each retry |
+| `Delays` | `[]duration` | `[]` | Explicit list of wait times for each retry attempt (delays mode) |
+
+Example:
+
+```toml
+[L1NetworkConfig.RPC]
+URL = "http://localhost:8545"
+Mode = "basic"
+HashFromJSON = false
+BatchBlockHeaderRetrieval = true
+RetryMode = "backoff"
+MaxRetries = 5
+InitialBackoff = "5s"
+MaxBackoff = "60s"
+BackoffMultiplier = 2.0
+
+[Common.L2RPC]
+URL = "http://localhost:8123"
+Mode = "basic"
+HashFromJSON = true
+BatchBlockHeaderRetrieval = true
+RetryMode = "delays"
+MaxRetries = 6
+Delays = ["1s", "2s", "5s", "10s", "30s", "60s"]
+```

@@ -2,15 +2,18 @@ package etherman
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
 	"testing"
 
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -228,5 +231,112 @@ func TestDefaultEthClient_CustomHeaderByNumber(t *testing.T) {
 
 	t.Run("SafeBlock with negative offset (HashFromJSON=false)", func(t *testing.T) {
 		testBlockWithOffsetHelperGeth(t, ctx, "SafeBlock/-3", big.NewInt(-4), 50, 47)
+	})
+}
+
+func TestDefaultEthClient_RetrieveBlockHeaders(t *testing.T) {
+	ctx := context.Background()
+	logger := log.WithFields("test", "test")
+	blockNumbers := []uint64{100, 200}
+	maxConcurrency := 2
+
+	t.Run("batch path delegates to RPCClienter", func(t *testing.T) {
+		mockEth := mocks.NewEthereumClienter(t)
+		mockRPC := mocks.NewRPCClienter(t)
+		cfg := &ethermanconfig.RPCClientConfig{BatchBlockHeaderRetrieval: true}
+		client := NewDefaultEthClientWithLogger(logger, mockEth, mockRPC, cfg)
+
+		mockRPC.EXPECT().BatchCallContext(mock.Anything, mock.Anything).
+			Run(func(_ context.Context, b []rpc.BatchElem) {
+				for idx := range b {
+					block, ok := b[idx].Result.(*blockRawEth)
+					require.True(t, ok)
+					block.Number = fmt.Sprintf("0x%x", blockNumbers[idx])
+					block.Hash = fmt.Sprintf("0x%064x", idx+1)
+					block.Timestamp = "0x1"
+				}
+			}).
+			Return(nil).Once()
+
+		result, err := client.RetrieveBlockHeaders(ctx, blockNumbers, maxConcurrency)
+		require.NoError(t, err)
+		require.True(t, result.Success())
+		require.Len(t, result.Headers, len(blockNumbers))
+	})
+
+	t.Run("batch path propagates RPC error", func(t *testing.T) {
+		mockEth := mocks.NewEthereumClienter(t)
+		mockRPC := mocks.NewRPCClienter(t)
+		cfg := &ethermanconfig.RPCClientConfig{BatchBlockHeaderRetrieval: true}
+		client := NewDefaultEthClientWithLogger(logger, mockEth, mockRPC, cfg)
+
+		mockRPC.EXPECT().BatchCallContext(mock.Anything, mock.Anything).
+			Return(errors.New("rpc unavailable")).Once()
+
+		_, err := client.RetrieveBlockHeaders(ctx, blockNumbers, maxConcurrency)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "rpc unavailable")
+	})
+
+	t.Run("legacy path with HashFromJSON=false uses HeaderByNumber", func(t *testing.T) {
+		mockEth := mocks.NewEthereumClienter(t)
+		mockRPC := mocks.NewRPCClienter(t)
+		cfg := &ethermanconfig.RPCClientConfig{BatchBlockHeaderRetrieval: false, HashFromJSON: false}
+		client := NewDefaultEthClientWithLogger(logger, mockEth, mockRPC, cfg)
+
+		for _, bn := range blockNumbers {
+			mockEth.EXPECT().
+				HeaderByNumber(mock.Anything, new(big.Int).SetUint64(bn)).
+				Return(&types.Header{Number: new(big.Int).SetUint64(bn)}, nil).Once()
+		}
+
+		result, err := client.RetrieveBlockHeaders(ctx, blockNumbers, maxConcurrency)
+		require.NoError(t, err)
+		require.True(t, result.Success())
+		require.Len(t, result.Headers, len(blockNumbers))
+	})
+
+	t.Run("legacy path with HashFromJSON=true uses CallContext", func(t *testing.T) {
+		mockEth := mocks.NewEthereumClienter(t)
+		mockRPC := mocks.NewRPCClienter(t)
+		cfg := &ethermanconfig.RPCClientConfig{BatchBlockHeaderRetrieval: false, HashFromJSON: true}
+		client := NewDefaultEthClientWithLogger(logger, mockEth, mockRPC, cfg)
+
+		for _, bn := range blockNumbers {
+			bnHex := fmt.Sprintf("0x%x", bn)
+			mockRPC.EXPECT().
+				CallContext(mock.Anything, mock.Anything, "eth_getBlockByNumber", bnHex, false).
+				Run(func(_ context.Context, result interface{}, _ string, args ...interface{}) {
+					raw, ok := result.(**blockRawEth)
+					require.True(t, ok)
+					*raw = &blockRawEth{
+						Number:    bnHex,
+						Hash:      fmt.Sprintf("0x%064x", bn),
+						Timestamp: "0x1",
+					}
+				}).
+				Return(nil).Once()
+		}
+
+		result, err := client.RetrieveBlockHeaders(ctx, blockNumbers, maxConcurrency)
+		require.NoError(t, err)
+		require.True(t, result.Success())
+		require.Len(t, result.Headers, len(blockNumbers))
+	})
+
+	t.Run("legacy path collects per-block errors without failing", func(t *testing.T) {
+		mockEth := mocks.NewEthereumClienter(t)
+		mockRPC := mocks.NewRPCClienter(t)
+		cfg := &ethermanconfig.RPCClientConfig{BatchBlockHeaderRetrieval: false, HashFromJSON: false}
+		client := NewDefaultEthClientWithLogger(logger, mockEth, mockRPC, cfg)
+
+		mockEth.EXPECT().
+			HeaderByNumber(mock.Anything, mock.Anything).
+			Return(nil, errors.New("not found")).Times(len(blockNumbers))
+
+		result, err := client.RetrieveBlockHeaders(ctx, blockNumbers, maxConcurrency)
+		require.NoError(t, err)
+		require.False(t, result.Success())
+		require.Len(t, result.Errors, len(blockNumbers))
 	})
 }
