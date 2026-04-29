@@ -16,6 +16,8 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/dvnsyncer"
+	"github.com/agglayer/aggkit/dvnworker"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
@@ -313,6 +315,13 @@ type Config struct {
 
 	// L2Multidownloader is the configuration of the multidownloader service for L2
 	L2Multidownloader multidownloader.Config
+
+	// DVNSyncerL1 is the configuration of the DVN syncer for L1 events
+	DVNSyncerL1 dvnsyncer.Config `mapstructure:"DVNSyncerL1"`
+	// DVNSyncerL2 is the configuration of the DVN syncer for L2 events
+	DVNSyncerL2 dvnsyncer.Config `mapstructure:"DVNSyncerL2"`
+	// DVNWorker is the configuration of the DVN worker
+	DVNWorker dvnworker.Config `mapstructure:"DVNWorker"`
 }
 
 // Load loads the configuration

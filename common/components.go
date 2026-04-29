@@ -27,6 +27,12 @@ const (
 	AGGSENDERVALIDATOR = "aggsender-validator"
 	// L2CLAIMSYNC name to identify the l2 claim sync component
 	L2CLAIMSYNC = "l2claimsync"
+	// AGGLAYERDVNSYNCL1 name to identify the agglayer DVN syncer for L1
+	AGGLAYERDVNSYNCL1 = "agglayer-dvn-syncer-l1"
+	// AGGLAYERDVNSYNCL2 name to identify the agglayer DVN syncer for L2
+	AGGLAYERDVNSYNCL2 = "agglayer-dvn-syncer-l2"
+	// AGGLAYERDVNWORKER name to identify the agglayer DVN worker
+	AGGLAYERDVNWORKER = "agglayer-dvn-worker"
 )
 
 // ValidateComponents validates that all provided components are known/supported.
@@ -42,6 +48,9 @@ func ValidateComponents(components []string) error {
 		AGGCHAINPROOFGEN:   {},
 		AGGSENDERVALIDATOR: {},
 		L2CLAIMSYNC:        {},
+		AGGLAYERDVNSYNCL1:  {},
+		AGGLAYERDVNSYNCL2:  {},
+		AGGLAYERDVNWORKER:  {},
 	}
 
 	// build a sorted list of valid component names for error messages

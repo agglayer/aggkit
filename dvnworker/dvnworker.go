@@ -1,0 +1,34 @@
+package dvnworker
+
+import (
+	"context"
+
+	"github.com/agglayer/aggkit/log"
+)
+
+// Service is the DVN worker service that correlates synced LayerZero events with
+// AggLayer settlements and submits verification transactions on the destination chain.
+type Service struct {
+	cfg    Config
+	logger *log.Logger
+}
+
+// New creates a new dvnworker Service with the given configuration.
+func New(cfg Config, logger *log.Logger) (*Service, error) {
+	return &Service{
+		cfg:    cfg,
+		logger: logger,
+	}, nil
+}
+
+// Start begins processing DVN jobs. It blocks until ctx is cancelled and returns ctx.Err().
+func (s *Service) Start(ctx context.Context) error {
+	s.logger.Info("dvnworker starting")
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// Close releases any resources held by the Service.
+func (s *Service) Close() error {
+	return nil
+}

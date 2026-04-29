@@ -20,6 +20,8 @@ import (
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggoracle"
+	"github.com/agglayer/aggkit/dvnsyncer"
+	"github.com/agglayer/aggkit/dvnworker"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
@@ -273,6 +275,34 @@ func start(cliCtx *cli.Context) error {
 				log.Fatal(err)
 			}
 			go aggsenderValidator.Start(ctx)
+		case aggkitcommon.AGGLAYERDVNWORKER:
+			dvnSyncL1, err := dvnsyncer.New(cfg.DVNSyncerL1, log.WithFields("module", aggkitcommon.AGGLAYERDVNSYNCL1))
+			if err != nil {
+				log.Fatalf("failed to create DVN syncer L1: %v", err)
+			}
+			dvnSyncL2, err := dvnsyncer.New(cfg.DVNSyncerL2, log.WithFields("module", aggkitcommon.AGGLAYERDVNSYNCL2))
+			if err != nil {
+				log.Fatalf("failed to create DVN syncer L2: %v", err)
+			}
+			dvnWorker, err := dvnworker.New(cfg.DVNWorker, log.WithFields("module", aggkitcommon.AGGLAYERDVNWORKER))
+			if err != nil {
+				log.Fatalf("failed to create DVN worker: %v", err)
+			}
+			go func() {
+				if err := dvnSyncL1.Start(ctx); err != nil {
+					log.Fatalf("DVN syncer L1 stopped: %v", err)
+				}
+			}()
+			go func() {
+				if err := dvnSyncL2.Start(ctx); err != nil {
+					log.Fatalf("DVN syncer L2 stopped: %v", err)
+				}
+			}()
+			go func() {
+				if err := dvnWorker.Start(ctx); err != nil {
+					log.Fatalf("DVN worker stopped: %v", err)
+				}
+			}()
 		}
 	}
 	if len(rpcServices) > 0 {
