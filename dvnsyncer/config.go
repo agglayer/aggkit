@@ -2,6 +2,8 @@ package dvnsyncer
 
 // Config holds the configuration for the DVN syncer service.
 type Config struct {
+	// ChainID is the EVM chain ID for the chain being synced.
+	ChainID uint64 `mapstructure:"ChainID"`
 	// RPCURL is the RPC endpoint for the chain to sync.
 	RPCURL string `mapstructure:"RPCUrl"`
 	// EndpointV2Addr is the LayerZero EndpointV2 contract address on this chain.
