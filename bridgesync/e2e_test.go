@@ -34,6 +34,7 @@ func TestBridgeEventE2E(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
+			arg.Type = bridgesync.CallTypeCall
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 
@@ -172,6 +173,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
+			arg.Type = bridgesync.CallTypeCall
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
@@ -351,6 +353,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
+			arg.Type = bridgesync.CallTypeCall
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
@@ -462,6 +465,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
+			arg.Type = bridgesync.CallTypeCall
 			arg.Input = bridgesync.BridgeAssetMethodID
 		}).Return(nil)
 	ethClient := aggkittypes.NewDefaultEthClient(client.Client(), rpcClient)
