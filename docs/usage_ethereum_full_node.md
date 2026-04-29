@@ -41,6 +41,37 @@ aggkit had three hard dependencies on archive-node capabilities:
 
 ---
 
+## Requirements: log availability from genesis
+
+aggkit relies on Ethereum event logs (`eth_getLogs`) to synchronize contract state from the
+beginning of the chain. **Logs (receipts) must be available from genesis**, not just for a recent
+window of blocks.
+
+Most full nodes store receipts by default, but clients that perform **receipt pruning** will
+drop this data and cause aggkit to fail when it tries to backfill historical events.
+
+### reth
+
+`reth` prunes receipts by default when running in full-node mode. Use the `--full` flag
+combined with `--prune.receipts.before=0` so that **no receipts are ever discarded**:
+
+```sh
+reth node --full --prune.receipts.before=0
+```
+
+Or equivalently, in your `reth.toml` config file (see the [pruning configuration reference](https://reth.rs/run/configuration#example-of-the-custom-pruning-configuration)):
+
+```toml
+[prune.segments]
+receipts = { before = 0 }
+```
+
+> **Note:** Even with receipt pruning disabled, `reth` in full-node mode still prunes
+> historical state (account/storage tries). That is acceptable — aggkit only needs logs,
+> not arbitrary `eth_call` against old state (except for the initial LER query covered below).
+
+---
+
 ## Component compatibility
 
 Not all components are compatible with a full node. The table below summarises which components
