@@ -261,7 +261,7 @@ func TestBuildAppender(t *testing.T) {
 		Run(func(result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
-			*arg = Call{To: bridgeAddr, Input: BridgeAssetMethodID}
+			*arg = Call{Type: CallTypeCall, To: bridgeAddr, Input: BridgeAssetMethodID}
 		}).
 		Return(nil).
 		Maybe()
@@ -670,6 +670,7 @@ func TestFindCall(t *testing.T) {
 
 	// Simple direct call
 	root := Call{
+		Type: CallTypeCall,
 		To:   bridgeAddr,
 		From: fromAddr,
 		Err:  nil,
@@ -681,6 +682,7 @@ func TestFindCall(t *testing.T) {
 
 	// Reverted call should be skipped
 	root = Call{
+		Type: CallTypeCall,
 		To:   bridgeAddr,
 		From: fromAddr,
 		Err:  strPtr("reverted"),
@@ -690,16 +692,19 @@ func TestFindCall(t *testing.T) {
 
 	// Nested call, only inner is not reverted
 	root = Call{
+		Type: CallTypeCall,
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
 		Calls: []Call{
 			{
+				Type: CallTypeCall,
 				To:   bridgeAddr,
 				From: fromAddr,
 				Err:  nil,
 			},
 			{
+				Type: CallTypeCall,
 				To:   bridgeAddr,
 				From: fromAddr,
 				Err:  strPtr("reverted"),
@@ -712,6 +717,34 @@ func TestFindCall(t *testing.T) {
 	require.Equal(t, bridgeAddr, founds[0].To)
 }
 
+func TestFindCallSkipsNonCallFrameTypes(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	fromAddr := common.HexToAddress("0x20")
+	logger := logger.WithFields("module", "test")
+
+	root := Call{
+		Type: CallTypeCall,
+		To:   common.HexToAddress("0x01"),
+		From: fromAddr,
+		Calls: []Call{
+			{Type: CallTypeDelegateCall, To: bridgeAddr, From: fromAddr},
+			{Type: CallTypeStaticCall, To: bridgeAddr, From: fromAddr},
+			{Type: CallTypeCallCode, To: bridgeAddr, From: fromAddr},
+			{To: bridgeAddr, From: fromAddr},
+		},
+	}
+
+	found, err := findCall(root, bridgeAddr, nil, logger)
+	require.ErrorContains(t, err, "not found")
+	require.Nil(t, found)
+
+	root.Calls = append(root.Calls, Call{Type: CallTypeCall, To: bridgeAddr, From: fromAddr})
+	found, err = findCall(root, bridgeAddr, nil, logger)
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	require.Equal(t, CallTypeCall, found[0].Type)
+}
+
 func TestFindCallWithMixedMethods(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	fromAddr := common.HexToAddress("0x20")
@@ -722,23 +755,27 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	// Second call: claimAsset (recognized)
 	// Third call: claimMessage (recognized)
 	rootCall := Call{
+		Type: CallTypeCall,
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
 		Calls: []Call{
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
 				Input: []byte{0x38, 0xb8, 0xfb, 0xbb}, // getProxiedTokensManager
 			},
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
 				Input: claimAssetEtrogMethodID, // claimAsset
 			},
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
@@ -774,17 +811,20 @@ func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
 
 	// Test case: Transaction with only unrecognized method calls
 	rootCall := Call{
+		Type: CallTypeCall,
 		To:   common.HexToAddress("0x01"),
 		From: fromAddr,
 		Err:  nil,
 		Calls: []Call{
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
 				Input: []byte{0x38, 0xb8, 0xfb, 0xbb}, // getProxiedTokensManager
 			},
 			{
+				Type:  CallTypeCall,
 				To:    bridgeAddr,
 				From:  fromAddr,
 				Err:   nil,
@@ -934,11 +974,13 @@ func TestTxnSenderField(t *testing.T) {
 			name:           "bridgeEventSignature with TxnSender",
 			eventSignature: bridgeEventSignature,
 			callFrame: Call{
+				Type: CallTypeCall,
 				To:   common.HexToAddress("0x01"),
 				From: expectedTxnSender,
 				Err:  nil,
 				Calls: []Call{
 					{
+						Type:  CallTypeCall,
 						To:    bridgeAddr,
 						From:  expectedTxnSender,
 						Err:   nil,
@@ -1140,13 +1182,16 @@ func TestExtractTxnAddresses(t *testing.T) {
 				Amount:             big.NewInt(100),
 			},
 			responseDebugTrace: &Call{
+				Type: CallTypeCall,
 				Calls: []Call{
 					{
+						Type:  CallTypeCall,
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x20"),
 						Input: BridgeMessageMethodID,
 					},
 					{
+						Type:  CallTypeCall,
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x25"),
 						Input: BridgeMessageMethodID,
@@ -1165,10 +1210,12 @@ func TestExtractTxnAddresses(t *testing.T) {
 				Amount:             big.NewInt(100),
 			},
 			responseDebugTrace: &Call{
+				Type: CallTypeCall,
 				From: common.HexToAddress("0x3333333333333333333333333333333333333333"),
 				To:   common.HexToAddress("0x4444444444444444444444444444444444444444"),
 				Calls: []Call{
 					{
+						Type:  CallTypeCall,
 						To:    bridgeAddr,
 						From:  common.HexToAddress("0x50"),
 						Input: append(BridgeAssetMethodID, make([]byte, 100)...),

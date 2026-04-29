@@ -543,6 +543,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
 
@@ -602,12 +603,14 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
 		mockClient.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
 
@@ -649,6 +652,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 				arg.From = expectedSender
 				arg.To = common.HexToAddress("0x1234")
@@ -909,6 +913,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 				arg.From = common.HexToAddress(testAddress)
 				arg.To = common.HexToAddress("0x1234")
@@ -986,6 +991,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 				arg.From = common.HexToAddress(testAddress)
 				arg.To = common.HexToAddress("0x1234")
@@ -1137,6 +1143,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
 
@@ -1242,6 +1249,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			Run(func(result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
+				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 				arg.From = common.HexToAddress(testAddress)
 				arg.To = common.HexToAddress("0x1234")
