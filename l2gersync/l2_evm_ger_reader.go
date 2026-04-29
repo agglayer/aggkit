@@ -80,11 +80,11 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 				make(map[common.Hash]GlobalExitRootInfo),
 			)
 			if err != nil {
-				log.Errorf("failed to create InsertGlobalExitRoot event iterator: %v", err)
+				log.Errorf("failed to fetch injected GERs: %v", err)
 			}
 			return result, err
 		}
-		log.Errorf("failed to create InsertGlobalExitRoot event iterator: %v", err)
+		log.Errorf("failed to fetch injected GERs: %v", err)
 		return nil, err
 	}
 
