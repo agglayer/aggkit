@@ -14,6 +14,28 @@ func main() {
 	app.Name = "exit-certificate"
 	app.Usage = "Generate exit certificates for zkEVM chain migration"
 	app.Version = aggkit.Version
+	app.Description = `Builds an exit certificate by running a multi-step pipeline against an L2 chain.
+
+Pipeline steps (run in order by default):
+
+  0  Generate the Locked Balance Table (LBT) by scanning the L2 bridge contract
+     for wrapped token mappings. Skipped when lbtFile is set in the config.
+
+  A  Collect all unique sender/receiver addresses from bridge events up to the
+     target block.
+
+  B  Scan EOA native-token balances and wrapped-token balances for every address
+     found in step A.
+
+  C  Scan smart-contract locked values using the LBT from step 0.
+
+  D  Aggregate step B and C results into a draft exit certificate.
+
+  E  Cross-check the draft certificate against L1 to filter out bridge exits that
+     have already been claimed. Skipped when l1RpcUrl is not set in the config.
+
+Use --step to run a single step (e.g. --step a). When running steps individually
+the output files from previous steps must already exist in the output directory.`
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
@@ -23,7 +45,7 @@ func main() {
 		},
 		&cli.StringFlag{
 			Name:  "step",
-			Usage: "Run a specific step: 0, a, b, c, d, e, or all (default: all)",
+			Usage: "Run a specific step: 0, a, b, c, d, e, or all",
 			Value: "all",
 		},
 	}

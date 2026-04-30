@@ -193,7 +193,7 @@ func fetchTotalSupplies(
 	}
 
 	batchSize := min(max(len(calls)/concurrency, 1), rpcBatchSize)
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency)
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "L2 RPC/totalSupply")
 	if err != nil {
 		return nil, err
 	}

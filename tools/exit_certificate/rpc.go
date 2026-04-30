@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/agglayer/aggkit/log"
 )
 
 const (
@@ -60,7 +62,8 @@ type RPCCall struct {
 }
 
 // batchRPC sends a batch of JSON-RPC calls in a single HTTP POST.
-// Returns ordered results; individual RPC errors become nil entries.
+// Returns ordered results; individual RPC errors are logged and become nil entries.
+// Returns an error if any individual response contained an RPC-level error.
 func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]json.RawMessage, error) {
 	if retries <= 0 {
 		retries = defaultRetries
@@ -80,15 +83,30 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 	if err != nil {
 		return nil, err
 	}
+	if len(responses) > 0 && responses[0].Error != nil {
+		return nil, fmt.Errorf("RPC error: %s", responses[0].Error.Message)
+	}
+	if len(responses) != len(calls) {
+		return nil, fmt.Errorf("RPC response count %d does not match request count %d", len(responses), len(calls))
+	}
 
 	results := make([]json.RawMessage, len(calls))
+	var firstRPCErr error
 	for _, r := range responses {
 		idx := r.ID - 1
-		if idx >= 0 && idx < len(results) && r.Error == nil {
-			results[idx] = r.Result
+		if idx < 0 || idx >= len(results) {
+			continue
 		}
+		if r.Error != nil {
+			log.Warnf("RPC error for request id=%d: [%d] %s", r.ID, r.Error.Code, r.Error.Message)
+			if firstRPCErr == nil {
+				firstRPCErr = fmt.Errorf("request id=%d: [%d] %s", r.ID, r.Error.Code, r.Error.Message)
+			}
+			continue
+		}
+		results[idx] = r.Result
 	}
-	return results, nil
+	return results, firstRPCErr
 }
 
 // singleRPC sends one JSON-RPC call. Uses the same HTTP transport as batchRPC
@@ -198,7 +216,7 @@ type indexedBatchResult struct {
 // through a worker pool. Workers immediately pick up the next batch when done.
 func concurrentBatchRPC(
 	ctx context.Context, url string, allCalls []RPCCall,
-	batchSize, concurrency int,
+	batchSize, concurrency int, label string,
 ) ([]json.RawMessage, error) {
 	if len(allCalls) == 0 {
 		return nil, nil
@@ -226,7 +244,7 @@ func concurrentBatchRPC(
 		func(ir indexedBatchResult) {
 			copy(allResults[ir.offset:ir.offset+len(ir.results)], ir.results)
 		},
-		"RPC",
+		label,
 	)
 	if err != nil {
 		return nil, err

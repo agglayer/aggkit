@@ -17,6 +17,7 @@ type Options struct {
 	RPCDelayMs       int    `json:"rpcDelayMs"`
 	OutputDir        string `json:"outputDir"`
 	L1StartBlock     uint64 `json:"l1StartBlock"`
+	L2StartBlock     uint64 `json:"l2StartBlock"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -49,6 +50,7 @@ var defaultOptions = Options{
 	RPCDelayMs:       0,
 	OutputDir:        "output",
 	L1StartBlock:     0,
+	L2StartBlock:     0,
 }
 
 // LoadConfig reads and validates the JSON config file.
@@ -131,6 +133,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.L1StartBlock > 0 {
 		opts.L1StartBlock = raw.L1StartBlock
 	}
+	if raw.L2StartBlock > 0 {
+		opts.L2StartBlock = raw.L2StartBlock
+	}
 	return opts
 }
 
@@ -155,6 +160,7 @@ type rawOpts struct {
 	RPCDelayMs       int    `json:"rpcDelayMs"`
 	OutputDir        string `json:"outputDir"`
 	L1StartBlock     uint64 `json:"l1StartBlock"`
+	L2StartBlock     uint64 `json:"l2StartBlock"`
 }
 
 // --- LBT file parsing ---

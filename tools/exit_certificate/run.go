@@ -221,6 +221,7 @@ func logPipelineConfig(cfg *Config) {
 	log.Infof("Concurrency:      %d", cfg.Options.ConcurrencyLimit)
 	log.Infof("Block Range:      %d", cfg.Options.BlockRange)
 	log.Infof("RPC Batch Size:   %d", cfg.Options.RPCBatchSize)
+	log.Infof("L2 Start Block:   %d", cfg.Options.L2StartBlock)
 }
 
 // --- Single step ---
