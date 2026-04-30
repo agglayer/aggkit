@@ -82,7 +82,7 @@ func classifyAddresses(
 		calls[i] = RPCCall{Method: "eth_getCode", Params: []any{addr.Hex(), blockTag}}
 	}
 
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency)
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "L2 RPC/getCode")
 	if err != nil {
 		return nil, nil, fmt.Errorf("batch getCode: %w", err)
 	}
@@ -124,7 +124,7 @@ func fetchETHBalances(
 		calls[i] = RPCCall{Method: "eth_getBalance", Params: []any{addr.Hex(), blockTag}}
 	}
 
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency)
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "L2 RPC/getBalance")
 	if err != nil {
 		return nil, fmt.Errorf("batch getBalance: %w", err)
 	}
@@ -200,7 +200,7 @@ func fetchTokenBalances(
 		}
 	}
 
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency)
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "L2 RPC/balanceOf")
 	if err != nil {
 		return nil, fmt.Errorf("batch balanceOf: %w", err)
 	}
