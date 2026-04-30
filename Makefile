@@ -85,12 +85,17 @@ build-aggkit: ## Builds aggkit binary
 .PHONY: build-tools
 build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate ## Builds the tools
 
+
+.PHONY: $(GOBIN)/aggsender_find_imported_bridge
 $(GOBIN)/aggsender_find_imported_bridge: ## Build aggsender_find_imported_bridge tool
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
+
+.PHONY: $(GOBIN)/remove_ger
 $(GOBIN)/remove_ger: ## Build remove_ger tool
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
 
+.PHONY: $(GOBIN)/exit_certificate
 $(GOBIN)/exit_certificate: ## Build exit_certificate tool
 	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate ./tools/exit_certificate/cmd
 

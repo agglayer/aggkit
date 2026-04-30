@@ -41,7 +41,7 @@ func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 	batchSize := cfg.Options.RPCBatchSize
 	concurrency := cfg.Options.ConcurrencyLimit
 
-	nonEmptyBlocks, err := scanBlockHeaders(ctx, rpcURL, cfg.ResolvedTargetBlock, batchSize, concurrency)
+	nonEmptyBlocks, err := scanBlockHeaders(ctx, rpcURL, cfg.Options.L2StartBlock, cfg.ResolvedTargetBlock, batchSize, concurrency)
 	if err != nil {
 		return nil, err
 	}
@@ -53,21 +53,21 @@ func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 }
 
 func scanBlockHeaders(
-	ctx context.Context, rpcURL string, targetBlock uint64, batchSize, concurrency int,
+	ctx context.Context, rpcURL string, startBlock, targetBlock uint64, batchSize, concurrency int,
 ) ([]uint64, error) {
-	totalBlocks := targetBlock + 1
-	log.Infof("Phase 1: Scanning %d blocks (concurrency=%d, batchSize=%d)...",
-		totalBlocks, concurrency, batchSize)
+	totalBlocks := targetBlock - startBlock + 1
+	log.Infof("Phase 1: Scanning %d blocks [ %d to %d ] to get blockHeaders (concurrency=%d, batchSize=%d)...",
+		totalBlocks, startBlock, targetBlock, concurrency, batchSize)
 
 	headerCalls := make([]RPCCall, totalBlocks)
-	for b := uint64(0); b <= targetBlock; b++ {
-		headerCalls[b] = RPCCall{
+	for b := startBlock; b <= targetBlock; b++ {
+		headerCalls[b-startBlock] = RPCCall{
 			Method: "eth_getBlockByNumber",
 			Params: []any{toBlockTag(b), false},
 		}
 	}
 
-	headerResults, err := concurrentBatchRPC(ctx, rpcURL, headerCalls, batchSize, concurrency)
+	headerResults, err := concurrentBatchRPC(ctx, rpcURL, headerCalls, batchSize, concurrency, "L2 RPC/blockHeaders")
 	if err != nil {
 		return nil, fmt.Errorf("phase 1 batch RPC: %w", err)
 	}
@@ -81,7 +81,12 @@ func scanBlockHeaders(
 			Number       string   `json:"number"`
 			Transactions []string `json:"transactions"`
 		}
-		if json.Unmarshal(result, &block) == nil && len(block.Transactions) > 0 {
+		err = json.Unmarshal(result, &block)
+		if err != nil {
+			log.Warnf("Failed to unmarshal block header: %v", err)
+			continue
+		}
+		if err == nil && len(block.Transactions) > 0 {
 			nonEmptyBlocks = append(nonEmptyBlocks, hexToUint64(block.Number))
 		}
 	}
@@ -103,7 +108,7 @@ func extractTxHashes(
 		}
 	}
 
-	txResults, err := concurrentBatchRPC(ctx, rpcURL, txCalls, batchSize, concurrency)
+	txResults, err := concurrentBatchRPC(ctx, rpcURL, txCalls, batchSize, concurrency, "L2 RPC/blocksWithTxs")
 	if err != nil {
 		return nil, fmt.Errorf("phase 2 batch RPC: %w", err)
 	}
