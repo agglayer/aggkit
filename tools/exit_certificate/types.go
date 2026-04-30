@@ -1,6 +1,7 @@
 package exit_certificate
 
 import (
+	"encoding/json"
 	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -96,4 +97,29 @@ type L1Deposit struct {
 type StepEResult struct {
 	UnclaimedBridges []L1Deposit                `json:"unclaimedBridges"`
 	FinalCertificate *agglayertypes.Certificate `json:"finalCertificate"`
+}
+
+// CertificateEntry is one bridge exit entry for a given token, used in mismatch reports.
+type CertificateEntry struct {
+	DestinationNetwork uint32 `json:"destinationNetwork"`
+	DestinationAddress string `json:"destinationAddress"`
+	Amount             string `json:"amount"`
+}
+
+// TokenBalanceCheck holds the comparison between the certificate total and the agglayer state for one token.
+type TokenBalanceCheck struct {
+	OriginNetwork      uint32             `json:"originNetwork"`
+	OriginTokenAddress string             `json:"originTokenAddress"`
+	CertificateAmount  string             `json:"certificateAmount"`
+	AgglayerAmount     string             `json:"agglayerAmount"`
+	Match              bool               `json:"match"`
+	CertificateEntries []CertificateEntry `json:"certificateEntries,omitempty"`
+}
+
+// StepFResult holds the output of Step F (agglayer token balance check).
+type StepFResult struct {
+	Skipped       bool               `json:"skipped,omitempty"`
+	AllMatch      bool               `json:"allMatch,omitempty"`
+	TokenBalances json.RawMessage    `json:"tokenBalances,omitempty"`
+	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
 }

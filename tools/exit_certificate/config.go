@@ -11,13 +11,14 @@ import (
 
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
-	BlockRange       int    `json:"blockRange"`
-	ConcurrencyLimit int    `json:"concurrencyLimit"`
-	RPCBatchSize     int    `json:"rpcBatchSize"`
-	RPCDelayMs       int    `json:"rpcDelayMs"`
-	OutputDir        string `json:"outputDir"`
-	L1StartBlock     uint64 `json:"l1StartBlock"`
-	L2StartBlock     uint64 `json:"l2StartBlock"`
+	BlockRange          int    `json:"blockRange"`
+	ConcurrencyLimit    int    `json:"concurrencyLimit"`
+	RPCBatchSize        int    `json:"rpcBatchSize"`
+	RPCDelayMs          int    `json:"rpcDelayMs"`
+	OutputDir           string `json:"outputDir"`
+	L1StartBlock        uint64 `json:"l1StartBlock"`
+	L2StartBlock        uint64 `json:"l2StartBlock"`
+	AgglayerAdminURL    string `json:"agglayerAdminURL"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -136,6 +137,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.L2StartBlock > 0 {
 		opts.L2StartBlock = raw.L2StartBlock
 	}
+	if raw.AgglayerAdminURL != "" {
+		opts.AgglayerAdminURL = raw.AgglayerAdminURL
+	}
 	return opts
 }
 
@@ -161,6 +165,7 @@ type rawOpts struct {
 	OutputDir        string `json:"outputDir"`
 	L1StartBlock     uint64 `json:"l1StartBlock"`
 	L2StartBlock     uint64 `json:"l2StartBlock"`
+	AgglayerAdminURL string `json:"agglayerAdminURL"`
 }
 
 // --- LBT file parsing ---

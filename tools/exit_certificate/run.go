@@ -120,12 +120,21 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	finalCertificate, err := runAllStepDE(ctx, cfg, dir, stepBResult, stepCResult)
+	stepDResult, err := runAllStepD(cfg, dir, stepBResult, stepCResult)
+	if err != nil {
+		return err
+	}
+
+	finalCertificate, err := runAllStepE(ctx, cfg, dir, stepDResult.Certificate)
 	if err != nil {
 		return err
 	}
 
 	saveJSON(dir, "exit-certificate-final.json", finalCertificate)
+
+	if err := runAllStepF(ctx, cfg, dir, stepDResult.Certificate); err != nil {
+		return err
+	}
 
 	log.Info("")
 	log.Info("╔═══════════════════════════════════════════╗")
@@ -175,21 +184,33 @@ func runAllStepC(dir string, lbtEntries []LBTEntry, stepBResult *StepBResult) (*
 	return stepCResult, nil
 }
 
-func runAllStepDE(
-	ctx context.Context, cfg *Config, dir string,
-	stepBResult *StepBResult, stepCResult *StepCResult,
-) (*agglayertypes.Certificate, error) {
+func runAllStepF(ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate) error {
+	result, err := RunStepF(ctx, cfg, certificate)
+	if err != nil {
+		return fmt.Errorf("step F: %w", err)
+	}
+	if !result.Skipped {
+		saveJSON(dir, "step-f-token-balances.json", result.TokenBalances)
+		saveJSON(dir, "step-f-checks.json", result.Checks)
+	}
+	return nil
+}
+
+func runAllStepD(cfg *Config, dir string, stepBResult *StepBResult, stepCResult *StepCResult) (*StepDResult, error) {
 	stepDResult, err := RunStepD(cfg, stepBResult, stepCResult)
 	if err != nil {
 		return nil, fmt.Errorf("step D: %w", err)
 	}
 	saveJSON(dir, "step-d-exit-certificate.json", stepDResult.Certificate)
+	return stepDResult, nil
+}
 
+func runAllStepE(ctx context.Context, cfg *Config, dir string, stepDCert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
 	if cfg.L1RPCURL == "" {
 		log.Warn("STEP E skipped: no L1 RPC provided")
-		return stepDResult.Certificate, nil
+		return stepDCert, nil
 	}
-	stepEResult, err := RunStepE(ctx, cfg, stepDResult.Certificate)
+	stepEResult, err := RunStepE(ctx, cfg, stepDCert)
 	if err != nil {
 		return nil, fmt.Errorf("step E: %w", err)
 	}
@@ -245,8 +266,10 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleD(cfg, dir)
 	case "e":
 		return runSingleE(ctx, cfg, dir)
+	case "f":
+		return runSingleF(ctx, cfg, dir)
 	default:
-		return fmt.Errorf("unknown step: %s (use 0, a, b, c, d, e, or all)", step)
+		return fmt.Errorf("unknown step: %s (use 0, a, b, c, d, e, f, or all)", step)
 	}
 }
 
@@ -336,6 +359,22 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 	}
 	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
 	saveJSON(dir, "exit-certificate-final.json", result.FinalCertificate)
+	return nil
+}
+
+func runSingleF(ctx context.Context, cfg *Config, dir string) error {
+	var cert certificateJSON
+	if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
+		return fmt.Errorf("load step D certificate: %w", err)
+	}
+	result, err := RunStepF(ctx, cfg, cert.toAgglayerCertificate())
+	if err != nil {
+		return err
+	}
+	if !result.Skipped {
+		saveJSON(dir, "step-f-token-balances.json", result.TokenBalances)
+		saveJSON(dir, "step-f-checks.json", result.Checks)
+	}
 	return nil
 }
 
