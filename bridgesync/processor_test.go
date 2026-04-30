@@ -490,7 +490,7 @@ var (
 				PreviousDepositCount: big.NewInt(3),
 				NewDepositCount:      big.NewInt(2),
 				PreviousRoot:         common.HexToHash("0x15cd4b94cacc2cf50d055e1adb5fbfe5cd95485e121a5c411d73e263f2a66685"),
-				NewRoot:              common.HexToHash("0xa03113d9ce128863f29479689c82d0b37ebc9432c569c3a57f22d6c008256c5b"),
+				NewRoot:              common.HexToHash("0x3edb955a657301c8007f91a0e8d2fcf7017f3dadd194aad8340018b5a5a580fa"),
 			}},
 		},
 	}
@@ -5328,15 +5328,15 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							PreviousDepositCount: big.NewInt(3),
 							NewDepositCount:      big.NewInt(2),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
+							NewRoot:              common.HexToHash("0x0cc5d7d6281795bc0a4d3dff706ef63097c4eb288a311aa2b3098e838f9d9248"),
 						}},
 					},
 				})
 
 				return blocks
 			},
-			targetDepositCount:    2,
-			archivedDepositCounts: []uint32{3},
+			targetDepositCount:    1,
+			archivedDepositCounts: []uint32{2, 3, 4, 5},
 		},
 		{
 			name: "backward let event with all the bridges, except the first one",
@@ -5350,7 +5350,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockNum:             uint64(len(blocks) + 1),
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(5),
-							NewDepositCount:      big.NewInt(0),
+							NewDepositCount:      big.NewInt(1),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
 							NewRoot:              common.HexToHash("0x283c52c3d10a22d01f95f5bcab5e823675c9855bd40b1e82f32b0437b3b6a446"),
 						}},
@@ -5376,7 +5376,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(4),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0x44e1bf8449ecec2b8b1d123fab00d33c9acb308e590605adf5f6e2de4d1c1133"),
+							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
 						}},
 					},
 				}
@@ -5384,13 +5384,13 @@ func TestProcessor_BackwardLET(t *testing.T) {
 
 				return blocks
 			},
-			targetDepositCount:    4,
-			archivedDepositCounts: []uint32{5},
+			targetDepositCount:    3,
+			archivedDepositCounts: []uint32{4, 5},
 		},
 		{
 			name: "backward let event in the middle of bridges",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(2, 3, 0, 0)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				backwardLETBlock := sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5401,18 +5401,18 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
+							NewRoot:              common.HexToHash("0x0cc5d7d6281795bc0a4d3dff706ef63097c4eb288a311aa2b3098e838f9d9248"),
 						}},
 					},
 				}
 				blocks = append(blocks, backwardLETBlock)
-				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 3)...)
+				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 2)...)
 
 				return blocks
 			},
-			targetDepositCount:    8,
+			targetDepositCount:    7,
 			skipBlocks:            []uint64{2, 3}, // all the bridges from these blocks were backwarded
-			archivedDepositCounts: []uint32{3, 4, 5},
+			archivedDepositCounts: []uint32{2, 3, 4, 5},
 		},
 		{
 			name: "overlapping backward let events",
@@ -5428,7 +5428,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(3),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
+							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
 						}},
 					},
 				})
@@ -5441,16 +5441,16 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							BlockPos:             0,
 							PreviousDepositCount: big.NewInt(4),
 							NewDepositCount:      big.NewInt(3),
-							PreviousRoot:         common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
-							NewRoot:              common.HexToHash("0x7533c9ef58edd0bea7959a20c33ed47e5548d35f4ff140c5c915740fe6800fb8"),
+							PreviousRoot:         common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
+							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
 						}},
 					},
 				})
 
 				return blocks
 			},
-			targetDepositCount:    3,
-			archivedDepositCounts: []uint32{4, 5},
+			targetDepositCount:    2,
+			archivedDepositCounts: []uint32{3, 4, 5},
 		},
 		{
 			name: "backward let on empty bridge table",
@@ -5523,7 +5523,7 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
+							NewRoot:              common.HexToHash("0x0cc5d7d6281795bc0a4d3dff706ef63097c4eb288a311aa2b3098e838f9d9248"),
 						}},
 					},
 				}
@@ -5533,12 +5533,12 @@ func TestProcessor_BackwardLET(t *testing.T) {
 			},
 			firstReorgedBlock:     uint64Ptr(3),
 			targetDepositCount:    3,
-			archivedDepositCounts: []uint32{3},
+			archivedDepositCounts: []uint32{2, 3, 4, 5},
 		},
 		{
 			name: "backward let event in the middle of bridges + reorg backward let",
 			setupBlocks: func() []sync.Block {
-				blocks := buildBlocksWithSequentialBridges(2, 3, 0, 0)
+				blocks := buildBlocksWithSequentialBridges(3, 2, 0, 0)
 				backwardLETBlock := sync.Block{
 					Num:  uint64(len(blocks) + 1),
 					Hash: common.HexToHash(fmt.Sprintf("0x%x", len(blocks)+1)),
@@ -5549,18 +5549,18 @@ func TestProcessor_BackwardLET(t *testing.T) {
 							PreviousDepositCount: big.NewInt(5),
 							NewDepositCount:      big.NewInt(2),
 							PreviousRoot:         common.HexToHash("0x9ba667158a062be548e5c1b2e8a9a2ad03b693e562535b0723880627c6664b02"),
-							NewRoot:              common.HexToHash("0xa9d31ebbb97c7cd7c7103bee8af7d0b4c83771939baba0b415b0f94c4c39fd84"),
+							NewRoot:              common.HexToHash("0x0cc5d7d6281795bc0a4d3dff706ef63097c4eb288a311aa2b3098e838f9d9248"),
 						}},
 					},
 				}
 				blocks = append(blocks, backwardLETBlock)
-				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 3)...)
+				blocks = append(blocks, buildBlocksWithSequentialBridges(3, 2, uint64(len(blocks)), 2)...)
 
 				return blocks
 			},
 			firstReorgedBlock:     uint64Ptr(3),
-			targetDepositCount:    5,
-			archivedDepositCounts: []uint32{3, 4, 5},
+			targetDepositCount:    3,
+			archivedDepositCounts: []uint32{2, 3, 4, 5},
 		},
 	}
 
@@ -5766,7 +5766,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             5,
 			BlockTimestamp:       1234567890,
 			TxnHash:              common.HexToHash("0xabc123"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewLeaves:            encodedLeaves,
@@ -5871,7 +5871,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             10,
 			BlockTimestamp:       1234567900,
 			TxnHash:              common.HexToHash("0xdef456"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + uint32(len(leaves)))),
 			NewLeaves:            encodedLeaves,
@@ -5970,7 +5970,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             20,
 			BlockTimestamp:       1234567950,
 			TxnHash:              common.HexToHash("0xforward789"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewLeaves:            encodedLeaves,
@@ -6079,7 +6079,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             30,
 			BlockTimestamp:       1234567999,
 			TxnHash:              common.HexToHash("0xforward999"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewLeaves:            encodedLeaves,
@@ -6140,7 +6140,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             5,
 			BlockTimestamp:       1234567890,
 			TxnHash:              common.HexToHash("0xabc123"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         common.HexToHash("0xWRONG"), // Wrong root
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewRoot:              common.HexToHash("0x999"),
@@ -6197,7 +6197,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             5,
 			BlockTimestamp:       1234567890,
 			TxnHash:              common.HexToHash("0xabc123"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewRoot:              common.HexToHash("0xWRONG"), // Wrong new root
@@ -6230,7 +6230,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             5,
 			BlockTimestamp:       1234567890,
 			TxnHash:              common.HexToHash("0xabc123"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewRoot:              common.Hash{},
@@ -6285,7 +6285,7 @@ func TestHandleForwardLETEvent(t *testing.T) {
 			BlockPos:             5,
 			BlockTimestamp:       1234567890,
 			TxnHash:              common.HexToHash("0xabc123"),
-			PreviousDepositCount: big.NewInt(int64(initialDepositCount)),
+			PreviousDepositCount: big.NewInt(int64(initialDepositCount + 1)),
 			PreviousRoot:         initialRoot,
 			NewDepositCount:      big.NewInt(int64(initialDepositCount + 1)),
 			NewLeaves:            encodedLeaves,
