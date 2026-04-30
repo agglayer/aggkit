@@ -120,6 +120,7 @@ func checkClaimedBatch(
 
 	results, err := concurrentBatchRPC(
 		ctx, cfg.L2RPCURL, calls, cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit,
+		"L2 RPC/isClaimed",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("batch isClaimed: %w", err)
