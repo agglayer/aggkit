@@ -11,14 +11,18 @@ import (
 
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
-	BlockRange          int    `json:"blockRange"`
-	ConcurrencyLimit    int    `json:"concurrencyLimit"`
-	RPCBatchSize        int    `json:"rpcBatchSize"`
-	RPCDelayMs          int    `json:"rpcDelayMs"`
-	OutputDir           string `json:"outputDir"`
-	L1StartBlock        uint64 `json:"l1StartBlock"`
-	L2StartBlock        uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL    string `json:"agglayerAdminURL"`
+	BlockRange             int    `json:"blockRange"`
+	ConcurrencyLimit       int    `json:"concurrencyLimit"`
+	RPCBatchSize           int    `json:"rpcBatchSize"`
+	RPCDelayMs             int    `json:"rpcDelayMs"`
+	OutputDir              string `json:"outputDir"`
+	L1StartBlock           uint64 `json:"l1StartBlock"`
+	L2StartBlock           uint64 `json:"l2StartBlock"`
+	AgglayerAdminURL     string `json:"agglayerAdminURL"`
+	// AbortOnGenesisBalance aborts the run if any EOA or contract has a non-zero ETH balance
+	// at block 0, which indicates a genesis preload that would inflate the exit certificate totals.
+	// Defaults to true; set to false only for Kurtosis or test environments.
+	AbortOnGenesisBalance bool `json:"abortOnGenesisBalance"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -45,13 +49,14 @@ const (
 )
 
 var defaultOptions = Options{
-	BlockRange:       defaultBlockRange,
-	ConcurrencyLimit: defaultConcurrencyLimit,
-	RPCBatchSize:     defaultRPCBatchSize,
-	RPCDelayMs:       0,
-	OutputDir:        "output",
-	L1StartBlock:     0,
-	L2StartBlock:     0,
+	BlockRange:            defaultBlockRange,
+	ConcurrencyLimit:      defaultConcurrencyLimit,
+	RPCBatchSize:          defaultRPCBatchSize,
+	RPCDelayMs:            0,
+	OutputDir:             "output",
+	L1StartBlock:          0,
+	L2StartBlock:          0,
+	AbortOnGenesisBalance: true,
 }
 
 // LoadConfig reads and validates the JSON config file.
@@ -140,6 +145,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
 	}
+	if raw.AbortOnGenesisBalance != nil {
+		opts.AbortOnGenesisBalance = *raw.AbortOnGenesisBalance
+	}
 	return opts
 }
 
@@ -158,14 +166,15 @@ type rawConfig struct {
 }
 
 type rawOpts struct {
-	BlockRange       int    `json:"blockRange"`
-	ConcurrencyLimit int    `json:"concurrencyLimit"`
-	RPCBatchSize     int    `json:"rpcBatchSize"`
-	RPCDelayMs       int    `json:"rpcDelayMs"`
-	OutputDir        string `json:"outputDir"`
-	L1StartBlock     uint64 `json:"l1StartBlock"`
-	L2StartBlock     uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL string `json:"agglayerAdminURL"`
+	BlockRange             int    `json:"blockRange"`
+	ConcurrencyLimit       int    `json:"concurrencyLimit"`
+	RPCBatchSize           int    `json:"rpcBatchSize"`
+	RPCDelayMs             int    `json:"rpcDelayMs"`
+	OutputDir              string `json:"outputDir"`
+	L1StartBlock           uint64 `json:"l1StartBlock"`
+	L2StartBlock           uint64 `json:"l2StartBlock"`
+	AgglayerAdminURL       string `json:"agglayerAdminURL"`
+	AbortOnGenesisBalance  *bool  `json:"abortOnGenesisBalance"`
 }
 
 // --- LBT file parsing ---

@@ -66,6 +66,8 @@ cp parameters.json.example parameters.json
 | `rpcDelayMs` | `0` | Delay between RPC batches (rate limiting). |
 | `outputDir` | `./output` | Directory for intermediate and final output files. Relative paths resolve from the config file directory. |
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
+| `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
+| `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
 
 ## Commands
 
@@ -75,12 +77,12 @@ cp parameters.json.example parameters.json
 ./exit-certificate --config parameters.json
 ```
 
-Runs all steps sequentially: 0 → A → B → C → D → E.
+Runs all steps sequentially: 0 → A → B → C → D → E → F.
 
 ### Run a single step
 
 ```bash
-./exit-certificate --config parameters.json --step <0|a|b|c|d|e>
+./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f>
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
@@ -90,7 +92,7 @@ Each step reads its dependencies from the output directory (files written by pri
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`) or `all`. |
+| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`) or `all`. |
 
 ## Pipeline steps
 
@@ -107,6 +109,7 @@ This step replaces the need for the external [`getLBT`](https://github.com/aggla
 Scans all blocks from genesis to `targetBlock` and traces every transaction with `debug_traceTransaction` (prestateTracer, diffMode) to discover all addresses that were read or written.
 
 **Phases:**
+
 1. Quick scan — fetch block headers to find non-empty blocks
 2. Detail fetch — get full tx objects for non-empty blocks → tx hashes
 3. Trace — `debug_traceTransaction` → pre/post addresses
@@ -118,6 +121,7 @@ Scans all blocks from genesis to `targetBlock` and traces every transaction with
 Classifies addresses as EOA vs contract, then queries ETH balance and every wrapped-token balance at `targetBlock` for all EOAs. The wrapped token list comes from the LBT data (Step 0 or `lbtFile`).
 
 **Phases:**
+
 1. `eth_getCode` to classify EOA vs contract
 2. `eth_getBalance` for all EOAs
 3. `balanceOf` calls per token across all EOAs (token list from LBT)
@@ -133,6 +137,7 @@ Computes value locked in smart contracts using: `SC_locked = LBT_totalSupply - a
 ### Step D — Build exit certificate
 
 Creates the agglayer `Certificate` with `BridgeExit` entries for:
+
 1. Every (EOA, token) pair with a non-zero balance → exits to the same address on the destination network
 2. Every token with SC-locked value → exits to `exitAddress` on the destination network
 
@@ -143,6 +148,14 @@ Creates the agglayer `Certificate` with `BridgeExit` entries for:
 Scans L1 for `BridgeEvent` events targeting the L2, compares with L2 `ClaimEvent` data, and adds unclaimed deposits as additional bridge exits in the certificate. Requires `l1RpcUrl`.
 
 **Output:** `step-e-unclaimed-bridges.json`, `exit-certificate-final.json`
+
+### Step F — Agglayer token balance verification
+
+Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and compares each token's total balance reported by agglayer against the sum of the corresponding `BridgeExit` amounts in the certificate. Any mismatch is logged as a warning with per-exit detail.
+
+Skipped automatically when `agglayerAdminURL` is not set in options.
+
+**Output:** `step-f-verification.json`
 
 ## Output
 

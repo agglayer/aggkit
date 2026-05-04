@@ -47,7 +47,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Defaults (can be overridden by env vars)
-KURTOSIS_ENCLAVE="${KURTOSIS_ENCLAVE:-aggkit}"
+KURTOSIS_ENCLAVE="${KURTOSIS_ENCLAVE:-op}"
 KURTOSIS_ARTIFACT_AGGKIT_CONFIG="${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-aggkit-config}"
 L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
 L1_SERVICE="${L1_SERVICE:-el-1-geth-lighthouse}"
@@ -197,7 +197,8 @@ cat > "$OUTPUT_PATH" <<EOF
         "rpcDelayMs": 0,
         "outputDir": "./output-kurtosis",
         "l1StartBlock": 0,
-        "agglayerAdminURL": "$AGGLAYER_ADMIN_URL"
+        "agglayerAdminURL": "$AGGLAYER_ADMIN_URL", 
+        "abortOnGenesisBalance": false
     }
 }
 EOF

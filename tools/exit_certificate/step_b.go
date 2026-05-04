@@ -42,11 +42,11 @@ func RunStepB(ctx context.Context, cfg *Config, stepA *StepAResult) (*StepBResul
 	log.Infof("EOAs: %d, Contracts: %d", len(eoaAddrs), len(contractAddrs))
 
 	// Phase 2: fetch ETH balances
-	ethBalances, err := fetchETHBalances(ctx, rpcURL, eoaAddrs, blockTag, batchSize, concurrency)
+	eoaEthBalances, err := fetchETHBalances(ctx, rpcURL, eoaAddrs, blockTag, batchSize, concurrency)
 	if err != nil {
 		return nil, fmt.Errorf("fetch ETH balances: %w", err)
 	}
-	log.Infof("ETH: %d EOAs with non-zero balance", len(ethBalances))
+	log.Infof("ETH: %d EOAs with non-zero balance", len(eoaEthBalances))
 
 	// Phase 3: fetch wrapped token balances (parallel across tokens)
 	tokenBalances := fetchAllTokenBalances(ctx, rpcURL, stepA.WrappedTokens, eoaAddrs, blockTag, batchSize, concurrency)
@@ -57,8 +57,15 @@ func RunStepB(ctx context.Context, cfg *Config, stepA *StepAResult) (*StepBResul
 		tokenLookup[t.WrappedTokenAddress] = t
 	}
 
-	eoaBalances := buildEOABalances(eoaAddrs, ethBalances, tokenBalances, tokenLookup)
-	accumulated := buildAccumulated(ethBalances, tokenBalances, tokenLookup)
+	eoaBalances := buildEOABalances(eoaAddrs, eoaEthBalances, tokenBalances, tokenLookup)
+	accumulated := buildAccumulated(eoaEthBalances, tokenBalances, tokenLookup)
+
+	if err := checkGenesisBalances(ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency); err != nil {
+		if cfg.Options.AbortOnGenesisBalance {
+			return nil, err
+		}
+		log.Warnf("Genesis balance check failed (abortOnGenesisBalance=false, continuing): %v", err)
+	}
 
 	log.Infof("STEP B complete: %d EOAs with balances, %d token accumulations",
 		len(eoaBalances), len(accumulated))
@@ -68,6 +75,59 @@ func RunStepB(ctx context.Context, cfg *Config, stepA *StepAResult) (*StepBResul
 		Accumulated:       accumulated,
 		ContractAddresses: contractAddrs,
 	}, nil
+}
+
+func padLeft(s string, length int) string {
+	if len(s) >= length {
+		return s
+	}
+	return fmt.Sprintf("%s%s", string(make([]byte, length-len(s))), s)
+}
+
+// sumBalances returns the sum of all values in a map[common.Address]*big.Int.
+func sumBalances(balances map[common.Address]*big.Int) *big.Int {
+	total := new(big.Int)
+	for _, bal := range balances {
+		total.Add(total, bal)
+	}
+	return total
+}
+
+// checkGenesisBalances fetches ETH balances at block 0 for EOAs and contracts and returns
+// an error if any account has a non-zero genesis balance, since that indicates a genesis
+// preload that would inflate the exit certificate totals.
+func checkGenesisBalances(
+	ctx context.Context, rpcURL string,
+	eoaAddrs, contractAddrs []common.Address,
+	eoaEthBalances map[common.Address]*big.Int,
+	blockTag string, batchSize, concurrency int,
+) error {
+	scBalances, err := fetchETHBalances(ctx, rpcURL, contractAddrs, blockTag, batchSize, concurrency)
+	if err != nil {
+		return fmt.Errorf("fetch contract ETH balances: %w", err)
+	}
+	genesisBalances, err := fetchETHBalances(ctx, rpcURL, eoaAddrs, toBlockTag(0), batchSize, concurrency)
+	if err != nil {
+		return fmt.Errorf("fetch genesis ETH balances: %w", err)
+	}
+	if len(genesisBalances) == 0 {
+		return nil
+	}
+	for addr, bal := range genesisBalances {
+		log.Infof("🚨🚨🚨 Genesis ETH preload detected for %s: %s wei", addr.Hex(), bal.String())
+	}
+	genesisSumStr := sumBalances(genesisBalances).String()
+	eoaEthSumStr := sumBalances(eoaEthBalances).String()
+	scBalancesStr := sumBalances(scBalances).String()
+	totalBalance := new(big.Int).Add(sumBalances(eoaEthBalances), sumBalances(scBalances))
+	diffStr := new(big.Int).Sub(totalBalance, sumBalances(genesisBalances)).String()
+	maxLen := max(len(genesisSumStr), len(eoaEthSumStr), len(diffStr), len(scBalancesStr))
+	log.Infof("Genesis ETH preload total: %s wei (%d accounts)", padLeft(genesisSumStr, maxLen), len(genesisBalances))
+	log.Infof("Total EOA ETH            : %s wei (%d accounts)", padLeft(eoaEthSumStr, maxLen), len(eoaEthBalances))
+	log.Infof("Total contract ETH       : %s wei (%d accounts)", padLeft(scBalancesStr, maxLen), len(scBalances))
+	log.Infof("                           -------------------------------")
+	log.Infof("Total genesis subtraction: %s wei (%d accounts)", padLeft(diffStr, maxLen), len(eoaEthBalances))
+	return fmt.Errorf("genesis ETH preload detected in %d accounts: balances at block 0 are non-zero, indicating this is not a real network", len(genesisBalances))
 }
 
 // classifyAddresses separates addresses into EOA and contract via eth_getCode.
@@ -287,26 +347,18 @@ func buildAccumulated(
 ) []AccumulatedBalance {
 	result := make([]AccumulatedBalance, 0, len(tokenBalances)+1)
 
-	totalETH := new(big.Int)
-	for _, bal := range ethBalances {
-		totalETH.Add(totalETH, bal)
-	}
 	result = append(result, AccumulatedBalance{
 		WrappedTokenAddress: common.Address{},
-		TotalBalance:        totalETH.String(),
+		TotalBalance:        sumBalances(ethBalances).String(),
 	})
 
 	for tokenAddr, holders := range tokenBalances {
-		total := new(big.Int)
-		for _, bal := range holders {
-			total.Add(total, bal)
-		}
 		info := tokenLookup[tokenAddr]
 		result = append(result, AccumulatedBalance{
 			WrappedTokenAddress: tokenAddr,
 			OriginNetwork:       info.OriginNetwork,
 			OriginTokenAddress:  info.OriginTokenAddress,
-			TotalBalance:        total.String(),
+			TotalBalance:        sumBalances(holders).String(),
 		})
 	}
 
