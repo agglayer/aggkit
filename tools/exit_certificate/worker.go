@@ -91,7 +91,7 @@ func collectResults[R any](
 			if firstErr == nil {
 				firstErr = r.err
 			}
-			log.Warnf("%s job failed: %v", label, r.err)
+			log.Warnf("%s job failed: %v req: %+v", label, r.err, r.val)
 			continue
 		}
 		collect(r.val)
