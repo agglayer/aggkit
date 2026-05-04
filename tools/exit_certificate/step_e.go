@@ -13,10 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// bridgeEventTopic is keccak256("BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)").
-//"0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39f97571d4d7",
-// good one: 0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39366cb62f9b
-
 var bridgeEventTopic = crypto.Keccak256Hash([]byte("BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)"))
 
 // isClaimedSelector is the 4-byte ABI selector for isClaimed(uint32,uint32).
