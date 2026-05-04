@@ -37,7 +37,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valyala/fasttemplate v1.2.2
-	go.uber.org/zap v1.27.1
+	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.20.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516
 	google.golang.org/grpc v1.80.0
