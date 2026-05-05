@@ -60,9 +60,12 @@ func RunStepE(
 	newExits := depositsToExits(unclaimed, cfg)
 	log.Infof("Adding %d unclaimed-deposit exits to certificate", len(newExits))
 
-	finalCertificate := mergeCertificate(certificate, newExits)
-	log.Infof("STEP E complete: final certificate has %d total bridge exits",
-		len(finalCertificate.BridgeExits))
+	newImportedExits := depositsToImportedExits(unclaimed)
+	log.Infof("Adding %d unclaimed-deposit imported exits to certificate", len(newImportedExits))
+
+	finalCertificate := mergeCertificate(certificate, newExits, newImportedExits)
+	log.Infof("STEP E complete: certificate has %d bridge exits, %d imported bridge exits",
+		len(finalCertificate.BridgeExits), len(finalCertificate.ImportedBridgeExits))
 
 	return &StepEResult{
 		UnclaimedBridges: unclaimed,
@@ -166,6 +169,35 @@ func filterUnclaimedDeposits(
 	return unclaimed
 }
 
+func depositsToImportedExits(unclaimed []L1Deposit) []*agglayertypes.ImportedBridgeExit {
+	exits := make([]*agglayertypes.ImportedBridgeExit, 0, len(unclaimed))
+	for _, dep := range unclaimed {
+		if dep.Amount == nil || dep.Amount.Sign() == 0 {
+			continue
+		}
+		exits = append(exits, &agglayertypes.ImportedBridgeExit{
+			BridgeExit: &agglayertypes.BridgeExit{
+				LeafType: bridgetypes.LeafType(dep.LeafType),
+				TokenInfo: &agglayertypes.TokenInfo{
+					OriginNetwork:      dep.OriginNetwork,
+					OriginTokenAddress: dep.OriginAddress,
+				},
+				DestinationNetwork: dep.DestinationNetwork,
+				DestinationAddress: dep.DestinationAddress,
+				Amount:             dep.Amount,
+				Metadata:           dep.Metadata,
+			},
+			GlobalIndex: &agglayertypes.GlobalIndex{
+				MainnetFlag: true,
+				RollupIndex: 0,
+				LeafIndex:   dep.DepositCount,
+			},
+			// ClaimData is nil: Merkle proofs are not available via RPC
+		})
+	}
+	return exits
+}
+
 func depositsToExits(
 	unclaimed []L1Deposit, cfg *Config,
 ) []*agglayertypes.BridgeExit {
@@ -190,12 +222,19 @@ func depositsToExits(
 }
 
 func mergeCertificate(
-	certificate *agglayertypes.Certificate, newExits []*agglayertypes.BridgeExit,
+	certificate *agglayertypes.Certificate,
+	newExits []*agglayertypes.BridgeExit,
+	newImportedExits []*agglayertypes.ImportedBridgeExit,
 ) *agglayertypes.Certificate {
 	allExits := make([]*agglayertypes.BridgeExit, 0,
 		len(certificate.BridgeExits)+len(newExits))
 	allExits = append(allExits, certificate.BridgeExits...)
 	allExits = append(allExits, newExits...)
+
+	allImported := make([]*agglayertypes.ImportedBridgeExit, 0,
+		len(certificate.ImportedBridgeExits)+len(newImportedExits))
+	allImported = append(allImported, certificate.ImportedBridgeExits...)
+	allImported = append(allImported, newImportedExits...)
 
 	return &agglayertypes.Certificate{
 		NetworkID:           certificate.NetworkID,
@@ -203,7 +242,7 @@ func mergeCertificate(
 		PrevLocalExitRoot:   certificate.PrevLocalExitRoot,
 		NewLocalExitRoot:    certificate.NewLocalExitRoot,
 		BridgeExits:         allExits,
-		ImportedBridgeExits: certificate.ImportedBridgeExits,
+		ImportedBridgeExits: allImported,
 	}
 }
 
