@@ -75,6 +75,7 @@ cp parameters.json.example parameters.json
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
+| `continueOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
 
 ## Commands
 
@@ -117,9 +118,8 @@ This step replaces the need for the external [`getLBT`](https://github.com/aggla
 
 Scans all blocks from `l2StartBlock` to `targetBlock` and collects every address that participated in any transaction, using `debug_traceTransaction` (prestateTracer, diffMode).
 
-1. Quick scan — `eth_getBlockByNumber` (headers only, `false`) to find non-empty blocks
-2. Detail fetch — `eth_getBlockByNumber` (full tx objects, `true`) for non-empty blocks → extract tx hashes
-3. Trace — `debug_traceTransaction` (prestateTracer, diffMode) per hash to extract pre/post state addresses
+1. Scan — `eth_getBlockByNumber` (headers only, `false`) across all blocks → tx hashes are included directly in the response
+2. Trace — `debug_traceTransaction` (prestateTracer, diffMode) per hash to extract pre/post state addresses
 
 **Output:** `step-a-addresses.json`
 
