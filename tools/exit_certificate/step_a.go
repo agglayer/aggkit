@@ -192,7 +192,7 @@ func traceOneTransaction(ctx context.Context, rpcURL string, txHash common.Hash)
 		},
 	}, defaultRetries)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("trace transaction %s: %w", txHash.Hex(), err)
 	}
 
 	var trace struct {
@@ -200,7 +200,7 @@ func traceOneTransaction(ctx context.Context, rpcURL string, txHash common.Hash)
 		Post map[string]any `json:"post"`
 	}
 	if err := json.Unmarshal(result, &trace); err != nil {
-		return nil, fmt.Errorf("unmarshal trace: %w", err)
+		return nil, fmt.Errorf("unmarshal trace for transaction %s: %w", txHash.Hex(), err)
 	}
 
 	addrSet := make(map[common.Address]struct{}, len(trace.Pre)+len(trace.Post))
