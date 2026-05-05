@@ -42,108 +42,49 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 }
 
 func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
-	rpcURL := cfg.L2RPCURL
-	batchSize := cfg.Options.RPCBatchSize
-	concurrency := cfg.Options.ConcurrencyLimit
-
-	nonEmptyBlocks, err := scanBlockHeaders(ctx, rpcURL, cfg.Options.L2StartBlock, cfg.ResolvedTargetBlock, batchSize, concurrency)
-	if err != nil {
-		return nil, err
-	}
-	if len(nonEmptyBlocks) == 0 {
-		return nil, nil
-	}
-
-	return extractTxHashes(ctx, rpcURL, nonEmptyBlocks, batchSize, concurrency)
+	return scanBlockHeaders(ctx, cfg.L2RPCURL, cfg.Options.L2StartBlock, cfg.ResolvedTargetBlock,
+		cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit)
 }
 
 func scanBlockHeaders(
 	ctx context.Context, rpcURL string, startBlock, targetBlock uint64, batchSize, concurrency int,
-) ([]uint64, error) {
+) ([]common.Hash, error) {
 	totalBlocks := targetBlock - startBlock + 1
-	log.Infof("Phase 1: Scanning %d blocks [ %d to %d ] to get blockHeaders (concurrency=%d, batchSize=%d)...",
+	log.Infof("Scanning %d blocks [ %d to %d ] for tx hashes (concurrency=%d, batchSize=%d)...",
 		totalBlocks, startBlock, targetBlock, concurrency, batchSize)
 
-	headerCalls := make([]RPCCall, totalBlocks)
+	calls := make([]RPCCall, totalBlocks)
 	for b := startBlock; b <= targetBlock; b++ {
-		headerCalls[b-startBlock] = RPCCall{
+		calls[b-startBlock] = RPCCall{
 			Method: "eth_getBlockByNumber",
 			Params: []any{toBlockTag(b), false},
 		}
 	}
 
-	headerResults, err := concurrentBatchRPC(ctx, rpcURL, headerCalls, batchSize, concurrency, "L2 RPC/blockHeaders")
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "L2 RPC/blockHeaders")
 	if err != nil {
-		return nil, fmt.Errorf("phase 1 batch RPC: %w", err)
+		return nil, fmt.Errorf("scan block headers: %w", err)
 	}
 
-	var nonEmptyBlocks []uint64
-	for _, result := range headerResults {
-		if result == nil {
-			continue
-		}
-		var block struct {
-			Number       string   `json:"number"`
-			Transactions []string `json:"transactions"`
-		}
-		err = json.Unmarshal(result, &block)
-		if err != nil {
-			log.Warnf("Failed to unmarshal block header: %v", err)
-			continue
-		}
-		if err == nil && len(block.Transactions) > 0 {
-			nonEmptyBlocks = append(nonEmptyBlocks, hexToUint64(block.Number))
-		}
-	}
-
-	log.Infof("Phase 1 complete: %d non-empty blocks out of %d", len(nonEmptyBlocks), totalBlocks)
-	return nonEmptyBlocks, nil
-}
-
-func extractTxHashes(
-	ctx context.Context, rpcURL string, nonEmptyBlocks []uint64, batchSize, concurrency int,
-) ([]common.Hash, error) {
-	log.Infof("Phase 2: Fetching transactions from %d non-empty blocks...", len(nonEmptyBlocks))
-
-	txCalls := make([]RPCCall, len(nonEmptyBlocks))
-	for i, blockNum := range nonEmptyBlocks {
-		txCalls[i] = RPCCall{
-			Method: "eth_getBlockByNumber",
-			Params: []any{toBlockTag(blockNum), true},
-		}
-	}
-
-	txResults, err := concurrentBatchRPC(ctx, rpcURL, txCalls, batchSize, concurrency, "L2 RPC/blocksWithTxs")
-	if err != nil {
-		return nil, fmt.Errorf("phase 2 batch RPC: %w", err)
-	}
-
-	txHashes := parseTxHashesFromResults(txResults)
-	log.Infof("Phase 2 complete: %d tx hashes", len(txHashes))
-	return txHashes, nil
-}
-
-func parseTxHashesFromResults(results []json.RawMessage) []common.Hash {
 	var hashes []common.Hash
 	for _, result := range results {
 		if result == nil {
 			continue
 		}
 		var block struct {
-			Transactions []struct {
-				Hash string `json:"hash"`
-			} `json:"transactions"`
+			Transactions []string `json:"transactions"`
 		}
-		if json.Unmarshal(result, &block) != nil {
+		if err := json.Unmarshal(result, &block); err != nil {
+			log.Warnf("Failed to unmarshal block header: %v", err)
 			continue
 		}
-		for _, tx := range block.Transactions {
-			if tx.Hash != "" {
-				hashes = append(hashes, common.HexToHash(tx.Hash))
-			}
+		for _, h := range block.Transactions {
+			hashes = append(hashes, common.HexToHash(h))
 		}
 	}
-	return hashes
+
+	log.Infof("Scan complete: %d tx hashes from %d blocks", len(hashes), totalBlocks)
+	return hashes, nil
 }
 
 // traceTransactions traces all transactions via a worker pool.
