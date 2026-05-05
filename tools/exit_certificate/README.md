@@ -77,22 +77,30 @@ cp parameters.json.example parameters.json
 ./exit-certificate --config parameters.json
 ```
 
-Runs all steps sequentially: 0 → A → B → C → D → E → F.
+Runs all steps sequentially: 0 → A1 → A2 → B → C → D → E → F.
 
 ### Run a single step
 
 ```bash
-./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f>
+./exit-certificate --config parameters.json --step <0|a1|a2|b|c|d|e|f>
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
+
+```bash
+# Collect tx hashes only (fast, no tracing)
+./exit-certificate --config parameters.json --step a1
+
+# Trace the collected hashes (slow, requires debug RPC)
+./exit-certificate --config parameters.json --step a2
+```
 
 ### CLI flags
 
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`) or `all`. |
+| `--step` | — | `all` | Run a specific step (`0`, `a1`, `a2`, `b`, `c`, `d`, `e`, `f`) or `all`. |
 
 ## Pipeline steps
 
@@ -104,15 +112,20 @@ This step replaces the need for the external [`getLBT`](https://github.com/aggla
 
 **Output:** `step-0-lbt.json`
 
-### Step A — Collect touched addresses
+### Step A1 — Collect tx hashes
 
-Scans all blocks from genesis to `targetBlock` and traces every transaction with `debug_traceTransaction` (prestateTracer, diffMode) to discover all addresses that were read or written.
+Phases 1 and 2 of Step A: fetches block headers to find non-empty blocks, then retrieves the full tx list for each. No tracing is performed.
 
-**Phases:**
+1. Quick scan — `eth_getBlockByNumber` (headers only) to find non-empty blocks
+2. Detail fetch — `eth_getBlockByNumber` (full txs) → tx hashes
 
-1. Quick scan — fetch block headers to find non-empty blocks
-2. Detail fetch — get full tx objects for non-empty blocks → tx hashes
-3. Trace — `debug_traceTransaction` → pre/post addresses
+**Output:** `step-a1-tx-hashes.json`
+
+### Step A2 — Trace transactions
+
+Phase 3 of Step A: reads the tx hashes produced by A1 and traces each one with `debug_traceTransaction` (prestateTracer, diffMode) to collect all pre/post addresses.
+
+**Reads:** `step-a1-tx-hashes.json`
 
 **Output:** `step-a-addresses.json`
 
@@ -145,7 +158,12 @@ Creates the agglayer `Certificate` with `BridgeExit` entries for:
 
 ### Step E — Unclaimed L1→L2 bridge deposits
 
-Scans L1 for `BridgeEvent` events targeting the L2, compares with L2 `ClaimEvent` data, and adds unclaimed deposits as additional bridge exits in the certificate. Requires `l1RpcUrl`.
+Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit against `isClaimed` on the L2 bridge. Unclaimed deposits are added to the certificate in two ways:
+
+- **`bridge_exits`** — the deposit value that must be exited from L2
+- **`imported_bridge_exits`** — the in-flight L1→L2 claim, with `GlobalIndex{mainnet_flag: true, leaf_index: depositCount}` and `claim_data: null` (Merkle proofs are not available via plain RPC)
+
+Requires `l1RpcUrl`.
 
 **Output:** `step-e-unclaimed-bridges.json`, `exit-certificate-final.json`
 
@@ -159,7 +177,10 @@ Skipped automatically when `agglayerAdminURL` is not set in options.
 
 ## Output
 
-The final output is `exit-certificate-final.json` in the output directory. It is a standard agglayer `Certificate` JSON object with `bridge_exits` containing all the value to be exited from the chain.
+The final output is `exit-certificate-final.json` in the output directory. It is a standard agglayer `Certificate` JSON object with:
+
+- `bridge_exits` — all value to be exited from the chain (EOA balances, SC-locked value, unclaimed L1→L2 deposits)
+- `imported_bridge_exits` — unclaimed L1→L2 deposits represented as in-flight imports (from Step E, `claim_data` is `null`)
 
 ## Testing
 
