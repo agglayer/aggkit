@@ -169,6 +169,7 @@ func runAllStepA(ctx context.Context, cfg *Config, dir string, wrappedTokens []W
 		return nil, fmt.Errorf("step A: %w", err)
 	}
 	saveJSON(dir, "step-a-addresses.json", stepAResult.Addresses)
+	saveJSON(dir, "step-a-failed-traces.json", stepAResult.FailedTraces)
 	stepAResult.WrappedTokens = wrappedTokens
 	if len(wrappedTokens) > 0 {
 		log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
@@ -311,6 +312,7 @@ func runSingleA(ctx context.Context, cfg *Config, dir string) error {
 		return err
 	}
 	saveJSON(dir, "step-a-addresses.json", result.Addresses)
+	saveJSON(dir, "step-a-failed-traces.json", result.FailedTraces)
 	return nil
 }
 

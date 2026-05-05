@@ -59,6 +59,7 @@ type SCLockedValue struct {
 // StepAResult holds the output of Step A.
 type StepAResult struct {
 	Addresses     []common.Address `json:"addresses"`
+	FailedTraces  []common.Hash    `json:"failedTraces"`
 	WrappedTokens []WrappedToken   `json:"-"`
 }
 
