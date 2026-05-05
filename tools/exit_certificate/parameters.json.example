@@ -14,5 +14,7 @@
         "rpcDelayMs": 10,
         "outputDir": "./output",
         "l1StartBlock": 0
-    }
+    },
+    "signerKeyPath": "/path/to/keystore.json",
+    "signerKeyPassword": "keystore-password"
 }

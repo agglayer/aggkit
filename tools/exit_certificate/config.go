@@ -36,7 +36,9 @@ type Config struct {
 	ExitAddress        common.Address `json:"exitAddress"`
 	LBTFile            string         `json:"lbtFile"`
 	DestinationNetwork uint32         `json:"destinationNetwork"`
-	Options            Options        `json:"options"`
+	Options             Options        `json:"options"`
+	SignerKeyPath        string         `json:"signerKeyPath"`
+	SignerKeyPassword    string         `json:"signerKeyPassword"`
 
 	// ResolvedTargetBlock is populated at runtime after resolving "latest".
 	ResolvedTargetBlock uint64 `json:"-"`
@@ -102,6 +104,8 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	cfg.LBTFile = resolvePath(configDir, raw.LBTFile)
 	cfg.Options = mergeOptions(raw.Options, configDir)
+	cfg.SignerKeyPath = raw.SignerKeyPath
+	cfg.SignerKeyPassword = raw.SignerKeyPassword
 
 	return cfg, nil
 }
@@ -162,7 +166,9 @@ type rawConfig struct {
 	ExitAddress        string   `json:"exitAddress"`
 	LBTFile            string   `json:"lbtFile"`
 	DestinationNetwork uint32   `json:"destinationNetwork"`
-	Options            *rawOpts `json:"options"`
+	Options          *rawOpts `json:"options"`
+	SignerKeyPath     string   `json:"signerKeyPath"`
+	SignerKeyPassword string   `json:"signerKeyPassword"`
 }
 
 type rawOpts struct {
