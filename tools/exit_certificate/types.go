@@ -56,11 +56,6 @@ type SCLockedValue struct {
 	SCLockedBalance     string         `json:"scLockedBalance"`
 }
 
-// StepA1Result holds the output of Step A1 (collect tx hashes).
-type StepA1Result struct {
-	TxHashes []common.Hash `json:"txHashes"`
-}
-
 // StepAResult holds the output of Step A.
 type StepAResult struct {
 	Addresses     []common.Address `json:"addresses"`

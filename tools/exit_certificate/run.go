@@ -30,6 +30,14 @@ func Run(c *cli.Context) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	// CLI flags override config-file values for the signer.
+	if v := c.String("signer-key-path"); v != "" {
+		cfg.SignerKeyPath = v
+	}
+	if v := c.String("signer-key-password"); v != "" {
+		cfg.SignerKeyPassword = v
+	}
+
 	if err := resolveBlockA(ctx, cfg); err != nil {
 		return err
 	}
@@ -90,7 +98,7 @@ func parseBlockNumber(s string) (uint64, error) {
 
 // --- Full pipeline ---
 
-// runAll executes: 0 → A1 → A2 → B → C → D → E → F.
+// runAll executes: 0 → A → B → C → D → E → F.
 func runAll(ctx context.Context, cfg *Config) error {
 	dir := cfg.Options.OutputDir
 	if err := os.MkdirAll(dir, dirPermissions); err != nil {
@@ -105,12 +113,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("step 0 (LBT): %w", err)
 	}
 
-	stepA1Result, err := runAllStepA1(ctx, cfg, dir)
-	if err != nil {
-		return err
-	}
-
-	stepAResult, err := runAllStepA2(ctx, cfg, dir, wrappedTokens, stepA1Result.TxHashes)
+	stepAResult, err := runAllStepA(ctx, cfg, dir, wrappedTokens)
 	if err != nil {
 		return err
 	}
@@ -141,6 +144,14 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
+	if cfg.SignerKeyPath != "" {
+		signedCert, err := RunStepSign(ctx, cfg, finalCertificate)
+		if err != nil {
+			return fmt.Errorf("step SIGN: %w", err)
+		}
+		saveJSON(dir, "exit-certificate-signed.json", signedCert)
+	}
+
 	log.Info("")
 	log.Info("╔═══════════════════════════════════════════╗")
 	log.Info("║             Pipeline Complete              ║")
@@ -152,26 +163,17 @@ func runAll(ctx context.Context, cfg *Config) error {
 	return nil
 }
 
-func runAllStepA1(ctx context.Context, cfg *Config, dir string) (*StepA1Result, error) {
-	result, err := RunStepA1(ctx, cfg)
+func runAllStepA(ctx context.Context, cfg *Config, dir string, wrappedTokens []WrappedToken) (*StepAResult, error) {
+	stepAResult, err := RunStepA(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("step A1: %w", err)
+		return nil, fmt.Errorf("step A: %w", err)
 	}
-	saveJSON(dir, "step-a1-tx-hashes.json", result.TxHashes)
-	return result, nil
-}
-
-func runAllStepA2(ctx context.Context, cfg *Config, dir string, wrappedTokens []WrappedToken, txHashes []common.Hash) (*StepAResult, error) {
-	result, err := RunStepA2(ctx, cfg, txHashes)
-	if err != nil {
-		return nil, fmt.Errorf("step A2: %w", err)
-	}
-	saveJSON(dir, "step-a-addresses.json", result.Addresses)
-	result.WrappedTokens = wrappedTokens
+	saveJSON(dir, "step-a-addresses.json", stepAResult.Addresses)
+	stepAResult.WrappedTokens = wrappedTokens
 	if len(wrappedTokens) > 0 {
 		log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
 	}
-	return result, nil
+	return stepAResult, nil
 }
 
 func runAllStepB(ctx context.Context, cfg *Config, dir string, stepAResult *StepAResult) (*StepBResult, error) {
@@ -257,6 +259,11 @@ func logPipelineConfig(cfg *Config) {
 	log.Infof("Block Range:      %d", cfg.Options.BlockRange)
 	log.Infof("RPC Batch Size:   %d", cfg.Options.RPCBatchSize)
 	log.Infof("L2 Start Block:   %d", cfg.Options.L2StartBlock)
+	if cfg.SignerKeyPath != "" {
+		log.Infof("Signer Key:       %s", cfg.SignerKeyPath)
+	} else {
+		log.Info("Signer Key:       (not configured — certificate will not be signed)")
+	}
 }
 
 // --- Single step ---
@@ -270,10 +277,8 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 	switch step {
 	case "0":
 		return runSingle0(ctx, cfg, dir)
-	case "a1":
-		return runSingleA1(ctx, cfg, dir)
-	case "a2":
-		return runSingleA2(ctx, cfg, dir)
+	case "a":
+		return runSingleA(ctx, cfg, dir)
 	case "b":
 		return runSingleB(ctx, cfg, dir)
 	case "c":
@@ -284,8 +289,10 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleE(ctx, cfg, dir)
 	case "f":
 		return runSingleF(ctx, cfg, dir)
+	case "sign":
+		return runSingleSign(ctx, cfg, dir)
 	default:
-		return fmt.Errorf("unknown step: %s (use 0, a1, a2, b, c, d, e, f, or all)", step)
+		return fmt.Errorf("unknown step: %s (use 0, a, b, c, d, e, f, sign, or all)", step)
 	}
 }
 
@@ -298,21 +305,8 @@ func runSingle0(ctx context.Context, cfg *Config, dir string) error {
 	return nil
 }
 
-func runSingleA1(ctx context.Context, cfg *Config, dir string) error {
-	result, err := RunStepA1(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	saveJSON(dir, "step-a1-tx-hashes.json", result.TxHashes)
-	return nil
-}
-
-func runSingleA2(ctx context.Context, cfg *Config, dir string) error {
-	var txHashes []common.Hash
-	if err := loadJSON(dir, "step-a1-tx-hashes.json", &txHashes); err != nil {
-		return fmt.Errorf("load step A1 output: %w", err)
-	}
-	result, err := RunStepA2(ctx, cfg, txHashes)
+func runSingleA(ctx context.Context, cfg *Config, dir string) error {
+	result, err := RunStepA(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -388,6 +382,19 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 	}
 	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
 	saveJSON(dir, "exit-certificate-final.json", result.FinalCertificate)
+	return nil
+}
+
+func runSingleSign(ctx context.Context, cfg *Config, dir string) error {
+	var cert agglayertypes.Certificate
+	if err := loadJSON(dir, "exit-certificate-final.json", &cert); err != nil {
+		return fmt.Errorf("load final certificate: %w", err)
+	}
+	signed, err := RunStepSign(ctx, cfg, &cert)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "exit-certificate-signed.json", signed)
 	return nil
 }
 

@@ -8,6 +8,11 @@ Generate exit certificates for a chain migration — scans L2 state, computes ba
 
 **When to use it:** Use when an aggchain needs to exit the Agglayer ecosystem. The tool ensures all value on the L2 is accounted for and packaged into a single certificate.
 
+## Known limitations
+
+- **FEP (Finality by Execution Proof) is not supported.** The tool only handles Pessimistic Proof (PP) certificates. Chains running FEP mode cannot use this tool as-is.
+- **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not supported.** Transactions that emit these events on the bridge contract ([see contracts](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3)) are not detected or accounted for. Value associated with these flows may be missing from the generated certificate.
+
 ## Quick start
 
 ```bash
