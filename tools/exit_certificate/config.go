@@ -23,6 +23,9 @@ type Options struct {
 	// at block 0, which indicates a genesis preload that would inflate the exit certificate totals.
 	// Defaults to true; set to false only for Kurtosis or test environments.
 	AbortOnGenesisBalance bool `json:"abortOnGenesisBalance"`
+	// ContinueOnTraceError skips transactions whose debug_traceTransaction call fails instead of
+	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
+	ContinueOnTraceError bool `json:"continueOnTraceError"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -152,6 +155,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.AbortOnGenesisBalance != nil {
 		opts.AbortOnGenesisBalance = *raw.AbortOnGenesisBalance
 	}
+	if raw.ContinueOnTraceError != nil {
+		opts.ContinueOnTraceError = *raw.ContinueOnTraceError
+	}
 	return opts
 }
 
@@ -181,6 +187,7 @@ type rawOpts struct {
 	L2StartBlock           uint64 `json:"l2StartBlock"`
 	AgglayerAdminURL       string `json:"agglayerAdminURL"`
 	AbortOnGenesisBalance  *bool  `json:"abortOnGenesisBalance"`
+	ContinueOnTraceError   *bool  `json:"continueOnTraceError"`
 }
 
 // --- LBT file parsing ---
