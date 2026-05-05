@@ -60,6 +60,8 @@ cp parameters.json.example parameters.json
 | `exitAddress` | No | Address that receives SC-locked value exits. Defaults to zero address. |
 | `lbtFile` | No | Path to a pre-generated LBT JSON file. If omitted, the tool generates it automatically via Step 0. Can also be generated externally with the [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool from `agglayer-contracts`. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
+| `signerKeyPath` | No | Path to the keystore JSON file used to sign the certificate (Step SIGN). |
+| `signerKeyPassword` | No | Password for the keystore file. |
 
 ### Options
 
@@ -82,30 +84,24 @@ cp parameters.json.example parameters.json
 ./exit-certificate --config parameters.json
 ```
 
-Runs all steps sequentially: 0 → A1 → A2 → B → C → D → E → F.
+Runs all steps sequentially: 0 → A → B → C → D → E → F → SIGN (if `signerKeyPath` is set).
 
 ### Run a single step
 
 ```bash
-./exit-certificate --config parameters.json --step <0|a1|a2|b|c|d|e|f>
+./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f|sign>
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
-
-```bash
-# Collect tx hashes only (fast, no tracing)
-./exit-certificate --config parameters.json --step a1
-
-# Trace the collected hashes (slow, requires debug RPC)
-./exit-certificate --config parameters.json --step a2
-```
 
 ### CLI flags
 
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Run a specific step (`0`, `a1`, `a2`, `b`, `c`, `d`, `e`, `f`) or `all`. |
+| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`, `sign`) or `all`. |
+| `--signer-key-path` | — | — | Path to the keystore file (overrides `signerKeyPath` in config). |
+| `--signer-key-password` | — | — | Password for the keystore file (overrides `signerKeyPassword` in config). |
 
 ## Pipeline steps
 
@@ -117,20 +113,13 @@ This step replaces the need for the external [`getLBT`](https://github.com/aggla
 
 **Output:** `step-0-lbt.json`
 
-### Step A1 — Collect tx hashes
+### Step A — Collect addresses
 
-Phases 1 and 2 of Step A: fetches block headers to find non-empty blocks, then retrieves the full tx list for each. No tracing is performed.
+Scans all blocks from `l2StartBlock` to `targetBlock` and collects every address that participated in any transaction, using `debug_traceTransaction` (prestateTracer, diffMode).
 
-1. Quick scan — `eth_getBlockByNumber` (headers only) to find non-empty blocks
-2. Detail fetch — `eth_getBlockByNumber` (full txs) → tx hashes
-
-**Output:** `step-a1-tx-hashes.json`
-
-### Step A2 — Trace transactions
-
-Phase 3 of Step A: reads the tx hashes produced by A1 and traces each one with `debug_traceTransaction` (prestateTracer, diffMode) to collect all pre/post addresses.
-
-**Reads:** `step-a1-tx-hashes.json`
+1. Quick scan — `eth_getBlockByNumber` (headers only, `false`) to find non-empty blocks
+2. Detail fetch — `eth_getBlockByNumber` (full tx objects, `true`) for non-empty blocks → extract tx hashes
+3. Trace — `debug_traceTransaction` (prestateTracer, diffMode) per hash to extract pre/post state addresses
 
 **Output:** `step-a-addresses.json`
 
@@ -171,6 +160,16 @@ Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit again
 Requires `l1RpcUrl`.
 
 **Output:** `step-e-unclaimed-bridges.json`, `exit-certificate-final.json`
+
+### Step SIGN — Sign the certificate
+
+Signs `exit-certificate-final.json` with a local keystore and writes `exit-certificate-signed.json`. The signature is embedded in `AggchainData` as an `AggchainDataMultisig` ECDSA entry.
+
+Requires `signerKeyPath` (and optionally `signerKeyPassword`) in config, or the equivalent CLI flags. Skipped automatically in `all` mode when `signerKeyPath` is not set.
+
+**Reads:** `exit-certificate-final.json`
+
+**Output:** `exit-certificate-signed.json`
 
 ### Step F — Agglayer token balance verification
 

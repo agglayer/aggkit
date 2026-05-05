@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,13 +28,17 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 		return &StepAResult{}, nil
 	}
 
-	addresses, err := traceTransactions(ctx, cfg.L2RPCURL, txHashes, cfg.Options.ConcurrencyLimit)
+	addresses, failedTraces, err := traceTransactions(ctx, cfg.L2RPCURL, txHashes, cfg.Options.ConcurrencyLimit, cfg.Options.ContinueOnTraceError)
 	if err != nil {
 		return nil, fmt.Errorf("trace transactions: %w", err)
 	}
 
-	log.Infof("STEP A complete: %d unique addresses", len(addresses))
-	return &StepAResult{Addresses: addresses}, nil
+	if len(failedTraces) > 0 {
+		log.Warnf("STEP A complete: %d unique addresses (%d trace failures skipped)", len(addresses), len(failedTraces))
+	} else {
+		log.Infof("STEP A complete: %d unique addresses", len(addresses))
+	}
+	return &StepAResult{Addresses: addresses, FailedTraces: failedTraces}, nil
 }
 
 func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
@@ -142,19 +147,30 @@ func parseTxHashesFromResults(results []json.RawMessage) []common.Hash {
 }
 
 // traceTransactions traces all transactions via a worker pool.
+// When continueOnError is true, failed traces are collected in failedTraces instead of aborting.
 func traceTransactions(
 	ctx context.Context, rpcURL string,
-	txHashes []common.Hash, concurrency int,
-) ([]common.Address, error) {
+	txHashes []common.Hash, concurrency int, continueOnError bool,
+) (addresses []common.Address, failedTraces []common.Hash, err error) {
 	totalTx := len(txHashes)
 	log.Infof("Phase 3: Tracing %d transactions (concurrency=%d)...", totalTx, concurrency)
 
 	addressSet := make(map[common.Address]struct{})
+	var mu sync.Mutex
+	var failed []common.Hash
 
-	err := runWorkerPool(
+	poolErr := runWorkerPool(
 		txHashes, concurrency,
 		func(hash common.Hash) ([]common.Address, error) {
-			return traceOneTransaction(ctx, rpcURL, hash)
+			addrs, traceErr := traceOneTransaction(ctx, rpcURL, hash)
+			if traceErr != nil && continueOnError {
+				mu.Lock()
+				failed = append(failed, hash)
+				mu.Unlock()
+				log.Warnf("Trace failed for %s (skipping): %v", hash.Hex(), traceErr)
+				return nil, nil
+			}
+			return addrs, traceErr
 		},
 		func(addrs []common.Address) {
 			for _, addr := range addrs {
@@ -163,22 +179,22 @@ func traceTransactions(
 		},
 		"Traces",
 	)
-	if err != nil {
-		return nil, fmt.Errorf("phase 3 trace failures: %w", err)
+	if poolErr != nil {
+		return nil, nil, fmt.Errorf("phase 3 trace failures: %w", poolErr)
 	}
 
 	log.Infof("Phase 3 complete: %d unique addresses from %d traces", len(addressSet), totalTx)
 
 	delete(addressSet, common.Address{})
 
-	addresses := make([]common.Address, 0, len(addressSet))
+	addresses = make([]common.Address, 0, len(addressSet))
 	for addr := range addressSet {
 		addresses = append(addresses, addr)
 	}
 	sort.Slice(addresses, func(i, j int) bool {
 		return strings.ToLower(addresses[i].Hex()) < strings.ToLower(addresses[j].Hex())
 	})
-	return addresses, nil
+	return addresses, failed, nil
 }
 
 // traceOneTransaction traces a single transaction with prestateTracer (diffMode)
