@@ -11,19 +11,29 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// RunStepA collects all touched addresses from genesis to targetBlock using
-// debug_traceTransaction with prestateTracer + diffMode.
-func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
+// RunStepA1 collects all tx hashes from L2 blocks in the configured range.
+func RunStepA1(ctx context.Context, cfg *Config) (*StepA1Result, error) {
 	log.Info("═══════════════════════════════════════════")
-	log.Info(" STEP A — Collect addresses (prestateTracer)")
+	log.Info(" STEP A1 — Collect tx hashes")
 	log.Info("═══════════════════════════════════════════")
 
 	txHashes, err := collectTxHashes(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("collect tx hashes: %w", err)
 	}
+
+	log.Infof("STEP A1 complete: %d tx hashes", len(txHashes))
+	return &StepA1Result{TxHashes: txHashes}, nil
+}
+
+// RunStepA2 traces the given tx hashes and returns all touched addresses.
+func RunStepA2(ctx context.Context, cfg *Config, txHashes []common.Hash) (*StepAResult, error) {
+	log.Info("═══════════════════════════════════════════")
+	log.Info(" STEP A2 — Trace transactions (prestateTracer)")
+	log.Info("═══════════════════════════════════════════")
+
 	if len(txHashes) == 0 {
-		log.Info("STEP A complete: 0 unique addresses (no transactions found)")
+		log.Info("STEP A2 complete: 0 unique addresses (no transactions)")
 		return &StepAResult{}, nil
 	}
 
@@ -32,9 +42,10 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 		return nil, fmt.Errorf("trace transactions: %w", err)
 	}
 
-	log.Infof("STEP A complete: %d unique addresses", len(addresses))
+	log.Infof("STEP A2 complete: %d unique addresses", len(addresses))
 	return &StepAResult{Addresses: addresses}, nil
 }
+
 
 func collectTxHashes(ctx context.Context, cfg *Config) ([]common.Hash, error) {
 	rpcURL := cfg.L2RPCURL
