@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/agglayer"
+	aggsenderconfig "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitConfig "github.com/agglayer/aggkit/config"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
@@ -25,6 +26,9 @@ type Config struct {
 
 	// AgglayerClient is the AggLayer gRPC client configuration.
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
+
+	// AggSender contains the signer config used to craft staging certificates.
+	AggSender aggsenderconfig.Config `mapstructure:"AggSender"`
 
 	// BackwardForwardLET contains tool-specific settings.
 	BackwardForwardLET BackwardForwardLETConfig `mapstructure:"BackwardForwardLET"`
@@ -53,8 +57,8 @@ type BackwardForwardLETConfig struct {
 	// CertificateExitsFile is an optional path to a JSON override file containing
 	// pre-extracted bridge exits keyed by certificate height. When set, used as a
 	// fallback if the aggsender RPC cannot supply bridge exits for a height.
-	// Obtain the file by calling admin_getCertificate on the agglayer for each
-	// cert ID reported in the tool's missing-cert output.
+	// Prefer generating the file with the export-cert-exits subcommand from an
+	// authoritative height-to-cert-ID map.
 	CertificateExitsFile string `mapstructure:"CertificateExitsFile"`
 }
 

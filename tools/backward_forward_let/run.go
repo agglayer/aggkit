@@ -174,14 +174,19 @@ func Run(c *cli.Context) error {
 
 	PrintDiagnosis(os.Stdout, diagnosis)
 
-	if diagnosis.Case == NoDivergence {
+	if diagnosis.AggsenderAPIFailed {
+		fmt.Printf("\nNo recovery transactions were sent.\n")
+		fmt.Printf("Provide the missing certificate exits with --cert-exits-file, then rerun diagnosis.\n")
+		return nil
+	}
+
+	if diagnosis.IsCompleteNoDivergence() {
 		fmt.Println("Nothing to do: L1 settled state and L2 on-chain state are in sync.")
 		return nil
 	}
 
-	if diagnosis.AggsenderAPIFailed {
-		fmt.Printf("\nAggsender RPC was unreachable. Cannot proceed with recovery.\n")
-		fmt.Printf("Contact your AggLayer admin with the failed certificate details above.\n")
+	if c.Bool("diagnose-only") {
+		fmt.Println("Diagnose-only mode: no recovery transactions were sent.")
 		return nil
 	}
 

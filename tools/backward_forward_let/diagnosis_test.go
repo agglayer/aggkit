@@ -223,7 +223,8 @@ func TestPrintDiagnosis(t *testing.T) {
 	PrintDiagnosis(&buf, result)
 	output := buf.String()
 
-	require.Contains(t, output, "Case3")
+	require.Contains(t, output, "Status: Recovery required")
+	require.NotContains(t, output, "Case3")
 	require.Contains(t, output, ler.Hex())
 	require.Contains(t, output, tokenA.Hex())
 	require.Contains(t, output, "500")
@@ -241,6 +242,14 @@ func TestPrintDiagnosis_NoDivergence(t *testing.T) {
 	require.Contains(t, buf.String(), "NoDivergence")
 }
 
+func TestDiagnosisResult_IsCompleteNoDivergence(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, (&DiagnosisResult{Case: NoDivergence}).IsCompleteNoDivergence())
+	require.False(t, (&DiagnosisResult{Case: NoDivergence, AggsenderAPIFailed: true}).IsCompleteNoDivergence())
+	require.False(t, (&DiagnosisResult{Case: Case1}).IsCompleteNoDivergence())
+}
+
 // TestPrintDiagnosis_AggsenderAPIFailed verifies the actionable missing-cert output
 // when all cert IDs are resolved (no UNKNOWN entries).
 func TestPrintDiagnosis_AggsenderAPIFailed(t *testing.T) {
@@ -248,7 +257,7 @@ func TestPrintDiagnosis_AggsenderAPIFailed(t *testing.T) {
 
 	certID := common.HexToHash("0xDEAD")
 	result := &DiagnosisResult{
-		Case:               Case1,
+		Case:               NoDivergence,
 		AggsenderAPIFailed: true,
 		MissingCerts: []MissingCertInfo{
 			{Height: 7, CertID: certID, CertIDResolved: true},
@@ -268,6 +277,7 @@ func TestPrintDiagnosis_AggsenderAPIFailed(t *testing.T) {
 	require.Contains(t, output, "admin_getCertificate")
 	require.Contains(t, output, `"7":`)
 	require.Contains(t, output, "--cert-exits-file")
+	require.NotContains(t, output, "Case: NoDivergence")
 	// No UNKNOWN note when all cert IDs are resolved.
 	require.NotContains(t, output, "UNKNOWN")
 	require.NotContains(t, output, "certificate_per_network_cf")
@@ -552,26 +562,29 @@ func TestIsNotFound(t *testing.T) {
 	require.False(t, isNotFound(errors.New("some other error")))
 }
 
-// TestCaseDescription verifies caseDescription returns the correct string for each case.
-func TestCaseDescription(t *testing.T) {
+// TestRecoveryDescription verifies recoveryDescription returns public-facing strings without case labels.
+func TestRecoveryDescription(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		c    RecoveryCase
 		want string
 	}{
-		{Case1, "Case1"},
-		{Case2, "Case2"},
-		{Case3, "Case3"},
-		{Case4, "Case4"},
+		{Case1, "ForwardLET recovery required"},
+		{Case2, "BackwardLET and ForwardLET recovery required"},
+		{Case3, "ForwardLET recovery required"},
+		{Case4, "BackwardLET and ForwardLET recovery required"},
 		{NoDivergence, string(NoDivergence)}, // default branch
 	}
 
 	for _, tc := range tests {
 		t.Run(string(tc.c), func(t *testing.T) {
 			t.Parallel()
-			got := caseDescription(tc.c)
+			got := recoveryDescription(tc.c)
 			require.Contains(t, got, tc.want)
+			if tc.c != NoDivergence {
+				require.NotContains(t, got, string(tc.c))
+			}
 		})
 	}
 }
@@ -755,7 +768,7 @@ func TestCollectExtraL2Bridges_HappyPath(t *testing.T) {
 	require.Len(t, extra, 2)
 }
 
-// TestCollectExtraL2Bridges_NotFound verifies that NotFound entries are skipped.
+// TestCollectExtraL2Bridges_NotFound verifies that NotFound entries are safe stops.
 func TestCollectExtraL2Bridges_NotFound(t *testing.T) {
 	t.Parallel()
 
@@ -766,15 +779,16 @@ func TestCollectExtraL2Bridges_NotFound(t *testing.T) {
 		BridgeService: &stubBridgeService{
 			bridges: map[uint32]*bridgeservicetypes.BridgeResponse{
 				3: br3,
-				// DC 4 is absent → returns ErrNotFound → skipped
+				// DC 4 is absent and must stop recovery planning.
 			},
 		},
 		L2NetworkID: 1,
 	}
 
-	extra, err := collectExtraL2Bridges(context.Background(), env, 3, 5)
-	require.NoError(t, err)
-	require.Len(t, extra, 1)
+	_, err := collectExtraL2Bridges(context.Background(), env, 3, 5)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bridge service data not ready")
+	require.Contains(t, err.Error(), "DC=4")
 }
 
 // TestCollectExtraL2Bridges_ServiceError verifies a non-NotFound error is propagated.
@@ -874,7 +888,8 @@ func TestPrintDiagnosis_WithExtraL2Bridges(t *testing.T) {
 
 	require.Contains(t, output, "Extra Real L2 Bridges")
 	require.Contains(t, output, "200")
-	require.Contains(t, output, "Case2")
+	require.Contains(t, output, "Status: Recovery required")
+	require.NotContains(t, output, "Case2")
 }
 
 // TestFindDivergencePoint_NonMatchingExits verifies the path where exits from a cert

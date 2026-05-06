@@ -94,3 +94,9 @@ type MissingCertInfo struct {
 	// When false, the operator must contact the agglayer admin.
 	CertIDResolved bool
 }
+
+// IsCompleteNoDivergence reports whether the diagnosis fully proved that the
+// L1 settled state and L2 on-chain state are in sync.
+func (r *DiagnosisResult) IsCompleteNoDivergence() bool {
+	return r != nil && r.Case == NoDivergence && !r.AggsenderAPIFailed
+}

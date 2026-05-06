@@ -12,10 +12,8 @@ import (
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/codes"
 )
 
 // aggsenderRPCClient is the subset of rpcclient.Client used by the tool and its tests.
@@ -37,15 +35,14 @@ func Diagnose(ctx context.Context, env *Env) (*DiagnosisResult, error) {
 	result := &DiagnosisResult{Case: NoDivergence}
 
 	// Step 1 — Query AggLayer settled state.
-	info, err := env.AgglayerClient.GetNetworkInfo(ctx, env.L2NetworkID)
+	info, notFound, err := getNetworkInfoAllowNotFound(ctx, env.AgglayerClient, env.L2NetworkID)
 	if err != nil {
+		return nil, err
+	}
+	if notFound {
 		// A NotFound response means the network is not yet known to the agglayer
 		// (no certificates have been settled), so there is no divergence.
-		var grpcErr aggkitgrpc.GRPCError
-		if errors.As(err, &grpcErr) && grpcErr.Code == codes.NotFound {
-			return result, nil
-		}
-		return nil, fmt.Errorf("get network info from agglayer: %w", err)
+		return result, nil
 	}
 	if info.SettledHeight == nil {
 		// Agglayer has no settled certificates for this network.
@@ -285,9 +282,9 @@ func collectExtraL2Bridges(
 		br, err := env.BridgeService.GetBridgeByDepositCount(ctx, env.L2NetworkID, dc)
 		if err != nil {
 			if isNotFound(err) {
-				continue
+				return nil, fmt.Errorf("bridge service data not ready for recovery: missing L2 bridge at DC=%d; wait for bridge-service indexing and rerun diagnosis", dc)
 			}
-			return nil, fmt.Errorf("get L2 bridge at DC=%d: %w", dc, err)
+			return nil, fmt.Errorf("bridge service data not ready for recovery: get L2 bridge at DC=%d: %w", dc, err)
 		}
 		extra = append(extra, BridgeResponseToLeafData(br))
 	}
@@ -358,17 +355,17 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 		fmt.Fprintln(w)
 	}
 
-	if result.Case == NoDivergence {
-		fmt.Fprintln(w, "Case: NoDivergence — L1 settled state and L2 on-chain state are in sync.")
-		return
-	}
-
 	if result.AggsenderAPIFailed {
 		printMissingCertReport(w, result)
 		return
 	}
 
-	fmt.Fprintf(w, "Case: %s\n", caseDescription(result.Case))
+	if result.IsCompleteNoDivergence() {
+		fmt.Fprintln(w, "Case: NoDivergence — L1 settled state and L2 on-chain state are in sync.")
+		return
+	}
+
+	fmt.Fprintf(w, "Status: Recovery required - %s\n", recoveryDescription(result.Case))
 	fmt.Fprintf(w, "Divergence Point (matching leaf count): %d\n", result.DivergencePoint)
 	fmt.Fprintln(w)
 
@@ -436,6 +433,7 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 // admin_getCertificate on the agglayer, shows the override file template with the
 // actual heights, and prints the re-run command.
 func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
+	fmt.Fprintln(w, "Status: Missing certificate exits - recovery cannot continue yet.")
 	fmt.Fprintln(w, "WARNING: Aggsender RPC returned no bridge exit data for the following certificate heights.")
 	fmt.Fprintln(w, "Recovery cannot proceed until this data is provided.")
 	fmt.Fprintln(w)
@@ -475,46 +473,60 @@ func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
 		fmt.Fprintln(w)
 	}
 
-	fmt.Fprintln(w, "To extract bridge exits for each KNOWN cert ID:")
+	fmt.Fprintln(w, "Preferred batch export path:")
+	fmt.Fprintln(w, "  1. Build an authoritative cert ID map from agglayer admin data:")
+	fmt.Fprintln(w, "     {")
+	fmt.Fprintln(w, `       "network_id": <L2NetworkID>,`)
+	fmt.Fprintln(w, `       "certificates": {`)
+	for i, mc := range result.MissingCerts {
+		suffix := ","
+		if i == n-1 {
+			suffix = ""
+		}
+		certID := "<CertID>"
+		if mc.CertIDResolved {
+			certID = mc.CertID.Hex()
+		}
+		fmt.Fprintf(w, "         \"%d\": \"%s\"%s\n", mc.Height, certID, suffix)
+	}
+	fmt.Fprintln(w, "       }")
+	fmt.Fprintln(w, "     }")
+	fmt.Fprintln(w, "  2. Export the override JSON:")
+	fmt.Fprintln(w, "     backward-forward-let --cfg <config> export-cert-exits \\")
+	fmt.Fprintln(w, "       --agglayer-admin-url <agglayer-admin-url> \\")
+	fmt.Fprintln(w, "       --cert-ids-file <cert-ids.json> \\")
+	fmt.Fprintln(w, "       --out <certificate-exits.json>")
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "The exporter calls admin_getCertificate for each cert ID, validates network/height,")
+	fmt.Fprintln(w, "preserves empty bridge-exit lists, writes a source manifest, and prints the")
+	fmt.Fprintln(w, "diagnosis/recovery follow-up commands.")
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "Manual admin API shape for each KNOWN cert ID:")
 	fmt.Fprintln(w, "  POST http://<agglayer-admin-url>/")
 	fmt.Fprintln(w, "  Content-Type: application/json")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, `  {"jsonrpc":"2.0","method":"admin_getCertificate","params":["<CertID>"],"id":1}`)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  The response is [Certificate, CertificateHeader|null].")
-	fmt.Fprintln(w, `  Extract the "bridge_exits" field from the Certificate object.`)
-	fmt.Fprintln(w)
-
-	fmt.Fprintln(w, "Build a JSON override file in this format:")
-	fmt.Fprintln(w, "  {")
-	fmt.Fprintln(w, `    "network_id": <L2NetworkID>,`)
-	fmt.Fprintln(w, `    "heights": {`)
-	for i, mc := range result.MissingCerts {
-		suffix := ","
-		if i == n-1 {
-			suffix = ""
-		}
-		fmt.Fprintf(w, "      \"%d\": [ ...bridge_exits from admin_getCertificate response... ]%s\n",
-			mc.Height, suffix)
-	}
-	fmt.Fprintln(w, "    }")
-	fmt.Fprintln(w, "  }")
+	fmt.Fprintln(w, `  Use export-cert-exits to extract and re-marshal the "bridge_exits" field.`)
 	fmt.Fprintln(w)
 
 	fmt.Fprintln(w, "Re-run the tool with:")
 	fmt.Fprintln(w, "  backward-forward-let --cfg <config> --cert-exits-file <path-to-override.json>")
 }
 
-func caseDescription(c RecoveryCase) string {
+func recoveryDescription(c RecoveryCase) string {
 	switch c {
 	case Case1:
-		return "Case1 — ForwardLET only: single divergent leaf batch, no extra L2 bridges"
+		return "ForwardLET recovery required for divergent settled bridge exits"
 	case Case2:
-		return "Case2 — BackwardLET + ForwardLET: single divergent leaf + extra real L2 bridges"
+		return "BackwardLET and ForwardLET recovery required, including replay of real L2 bridges"
 	case Case3:
-		return "Case3 — ForwardLET only: multiple divergent leaf batches, no extra L2 bridges"
+		return "ForwardLET recovery required for multiple divergent settled bridge exits"
 	case Case4:
-		return "Case4 — BackwardLET + ForwardLET: multiple divergent leaves + extra real L2 bridges"
+		return "BackwardLET and ForwardLET recovery required, including multiple divergent exits and real L2 bridge replay"
 	default:
 		return string(c)
 	}
