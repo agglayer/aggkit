@@ -10,7 +10,6 @@ import (
 	"time"
 
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
-	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	claimstoragemocks "github.com/agglayer/aggkit/claimsync/types/mocks"
 	dbmocks "github.com/agglayer/aggkit/db/mocks"
 	logger "github.com/agglayer/aggkit/log"
@@ -220,35 +219,6 @@ func TestProcessor(t *testing.T) {
 		t.Logf("%s: %s", a.method(), a.desc())
 		a.execute(t)
 	}
-}
-
-// --- GetBoundaryBlockForClaimType ---
-
-func TestProcessor_GetBoundaryBlockForClaimType(t *testing.T) {
-	t.Parallel()
-	p := newTestProcessor(t)
-	ctx := context.Background()
-
-	b1 := sync.Block{
-		Num:  1,
-		Hash: common.HexToHash("0x01"),
-		Events: []any{
-			Event{Claim: &Claim{BlockNum: 1, BlockPos: 0, TxHash: common.HexToHash("0x1"), GlobalIndex: big.NewInt(1), Type: claimsynctypes.ClaimEvent}},
-		},
-	}
-	b3 := sync.Block{
-		Num:  3,
-		Hash: common.HexToHash("0x03"),
-		Events: []any{
-			Event{Claim: &Claim{BlockNum: 3, BlockPos: 0, TxHash: common.HexToHash("0x3"), GlobalIndex: big.NewInt(3), Type: claimsynctypes.ClaimEvent}},
-		},
-	}
-	require.NoError(t, p.ProcessBlock(ctx, b1))
-	require.NoError(t, p.ProcessBlock(ctx, b3))
-
-	blockNum, err := p.GetBoundaryBlockForClaimType(ctx, nil, claimsynctypes.ClaimEvent)
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), blockNum)
 }
 
 // --- ProcessBlock error paths (mocks) ---

@@ -68,11 +68,12 @@ func LoadConfig(c *cli.Context) (*Config, error) {
 	}
 
 	// Prepend defaults so template variables ({{L1Config.URL}}, {{L2URL}}, etc.) resolve.
-	allFiles := []aggkitConfig.FileData{
-		{Name: "default_mandatory_vars", Content: aggkitConfig.DefaultMandatoryVars},
-		{Name: "default_vars", Content: aggkitConfig.DefaultVars},
-		{Name: "default_values", Content: aggkitConfig.DefaultValues},
-	}
+	allFiles := make([]aggkitConfig.FileData, 0, 3+len(userFiles)) //nolint:mnd
+	allFiles = append(allFiles,
+		aggkitConfig.FileData{Name: "default_mandatory_vars", Content: aggkitConfig.DefaultMandatoryVars},
+		aggkitConfig.FileData{Name: "default_vars", Content: aggkitConfig.DefaultVars},
+		aggkitConfig.FileData{Name: "default_values", Content: aggkitConfig.DefaultValues},
+	)
 	allFiles = append(allFiles, userFiles...)
 
 	rendered, err := aggkitConfig.NewConfigRender(allFiles, aggkitConfig.EnvVarPrefix).Render()

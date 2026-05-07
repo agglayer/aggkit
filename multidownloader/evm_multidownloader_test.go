@@ -364,6 +364,38 @@ func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestEVMMultidownloader_StepSafe_TotalHeaderFailure(t *testing.T) {
+	data := newEVMMultidownloaderTestData(t, true)
+	data.MockInitialize(t, 1)
+	err := data.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{common.HexToAddress("0x1")},
+		FromBlock:         100,
+		ToBlock:           aggkittypes.FinalizedBlock,
+	})
+	require.NoError(t, err)
+	data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+		Return(uint64(150), nil).Maybe()
+	err = data.mdr.Initialize(t.Context())
+	require.NoError(t, err)
+
+	// FilterLogs returns one log so blocks is not empty
+	testLog := ethtypes.Log{BlockNumber: 120, Address: common.HexToAddress("0x1")}
+	data.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).
+		Return([]ethtypes.Log{testLog}, nil).Once()
+
+	// All headers fail — no partial success
+	rpcResult := aggkittypes.NewBlockHeadersResult()
+	rpcResult.AddError(120, fmt.Errorf("rpc error"))
+	data.mockEthClient.EXPECT().
+		RetrieveBlockHeaders(mock.Anything, []uint64{120}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
+		Return(rpcResult, nil).Once()
+
+	_, err = data.mdr.StepSafe(t.Context())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to retrieve any block headers")
+}
+
 func TestEVMMultidownloader_Start(t *testing.T) {
 	t.Run("initialization error is returned", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
@@ -625,8 +657,10 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			Return(unsafeBlocks, nil).Once()
 
 		// Mock RPC block headers retrieval for reorg detection
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(196)).Return(header196, nil).Once()
+		rpcResult := aggkittypes.NewBlockHeadersResult()
+		rpcResult.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
+		rpcResult.AddHeader(196, aggkittypes.NewBlockHeaderFromEthHeader(header196))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195, 196}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResult, nil).Once()
 
 		// Mock update to finalized
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195, 196}).Return(nil).Once()
@@ -750,7 +784,9 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			ParentHash: common.HexToHash("0xDIFFERENT"),
 			Time:       9999999,
 		}
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(headerDifferent, nil).Once()
+		rpcResultReorg := aggkittypes.NewBlockHeadersResult()
+		rpcResultReorg.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(headerDifferent))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResultReorg, nil).Once()
 
 		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
 		require.Error(t, err)
@@ -790,7 +826,9 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			Return(unsafeBlocks, nil).Once()
 
 		// Mock RPC block headers (no reorg)
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+		rpcResult195 := aggkittypes.NewBlockHeadersResult()
+		rpcResult195.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResult195, nil).Once()
 
 		// Mock update error
 		expectedErr := fmt.Errorf("update error")
@@ -834,7 +872,9 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 			Return(unsafeBlocks, nil).Once()
 
 		// Mock RPC block headers (no reorg)
-		data.mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(195)).Return(header195, nil).Once()
+		rpcResult195Commit := aggkittypes.NewBlockHeadersResult()
+		rpcResult195Commit.AddHeader(195, aggkittypes.NewBlockHeaderFromEthHeader(header195))
+		data.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).Return(rpcResult195Commit, nil).Once()
 
 		// Mock update success
 		data.mockStorage.EXPECT().UpdateBlockToFinalized(mockTx, []uint64{195}).Return(nil).Once()
@@ -843,6 +883,39 @@ func TestEVMMultidownloader_MoveUnsafeToSafeIfPossible(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot commit tx")
 		require.Contains(t, err.Error(), expectedErr.Error())
+	})
+
+	t.Run("all blocks not found triggers MissingBlock reorg error", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		ctx := context.Background()
+
+		finalizedBlockNumber := uint64(200)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, data.mdr.cfg.BlockFinality).
+			Return(finalizedBlockNumber, nil).Once()
+
+		mockTx := dbmocks.NewTxer(t)
+		mockTx.EXPECT().Rollback().Return(nil).Once()
+		data.mockStorage.EXPECT().NewTx(mock.Anything).Return(mockTx, nil).Once()
+
+		unsafeBlocks := aggkittypes.ListBlockHeaders{
+			&aggkittypes.BlockHeader{Number: 195, Hash: common.HexToHash("0x195")},
+		}
+		data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mockTx, &finalizedBlockNumber).
+			Return(unsafeBlocks, nil).Once()
+
+		rpcResult := aggkittypes.NewBlockHeadersResult()
+		rpcResult.AddError(195, aggkittypes.ErrNotFound)
+		data.mockEthClient.EXPECT().
+			RetrieveBlockHeaders(mock.Anything, []uint64{195}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
+			Return(rpcResult, nil).Once()
+
+		err := data.mdr.moveUnsafeToSafeIfPossible(ctx)
+		require.Error(t, err)
+		reorgErr := mdrtypes.CastDetectedReorgError(err)
+		require.NotNil(t, reorgErr)
+		require.Equal(t, mdrtypes.ReorgDetectionReason_MissingBlock, reorgErr.ReorgDetectionReason)
+		require.Equal(t, uint64(195), reorgErr.OffendingBlockNumber)
 	})
 }
 

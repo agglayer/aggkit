@@ -3,12 +3,15 @@ package claimsync
 import (
 	"context"
 	"math/big"
+	"os"
 	"path"
 	"testing"
 	"time"
 
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	configtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/claimmock"
@@ -17,6 +20,34 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGetLastBlockNumByGlobalIndexFromRPC_Exploratory(t *testing.T) {
+	t.Skip("This test is exploratory. Set the L2URL environment variable to run it.")
+	l2URL := os.Getenv("L2URL")
+	if l2URL == "" {
+		t.Skip("L2URL environment variable not set")
+	}
+	claimSyncer := &ClaimSync{
+		logger: log.WithFields("test", "TestGetLastBlockNumByGlobalIndexFromRPC_Exploratory"),
+	}
+	claimSyncer.cfg.BridgeAddr = common.HexToAddress("0x1348947e282138d8f377b467f7d9c2eb0f335d1f")
+	ctx := context.Background()
+	cfgEthClient := ethermanconfig.RPCClientConfig{
+		URL:  l2URL,
+		Mode: "basic",
+	}
+	ethClient, err := etherman.NewRPCClient(ctx, log.WithFields("test", "TestGetLastBlockNumByGlobalIndexFromRPC_Exploratory"), cfgEthClient)
+	require.NoError(t, err)
+	claimSyncer.ethClient = ethClient
+
+	globalIndex, ok := big.NewInt(0).SetString("18446744073710677822", 10)
+	require.True(t, ok)
+
+	block, found_, err := claimSyncer.GetLatestBlockNumByGlobalIndexFromRPC(ctx, globalIndex, &aggkittypes.LatestBlock)
+	require.NoError(t, err)
+	require.True(t, found_)
+	log.Infof("Block number for global index %s: %d", globalIndex.String(), block)
+}
 
 // TestClaimSyncerWaitUntilSetNextRequiredBlock verifies the deferred start behavior of ClaimSyncer:
 // it must not begin syncing until an explicit starting block is provided via SetNextRequiredBlock.

@@ -2,17 +2,12 @@ package agglayer
 
 import (
 	"context"
-	"errors"
 
 	"github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/agglayer/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-// NOTE:  errCodeAgglayerRateLimitExceeded is -10007
-
-var ErrAgglayerRateLimitExceeded = errors.New("agglayer rate limit exceeded")
 
 type AggLayerClientGetEpochConfiguration interface {
 	GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error)

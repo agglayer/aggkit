@@ -9,6 +9,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const defaultScanChunkSize = uint64(5000)
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "remove-ger"
@@ -36,6 +38,27 @@ func main() {
 	}
 	app.Action = remove_ger.Run
 	app.Commands = []*cli.Command{
+		{
+			Name:  "scan-invalid-claims",
+			Usage: "Scan L2 claims from a starting block and report GERs that are invalid on L1",
+			Flags: []cli.Flag{
+				&cli.Uint64Flag{
+					Name:     "from-block",
+					Usage:    "Starting L2 block number to scan (inclusive)",
+					Required: true,
+				},
+				&cli.Uint64Flag{
+					Name:  "to-block",
+					Usage: "Ending L2 block number to scan (inclusive, defaults to latest L2 block)",
+				},
+				&cli.Uint64Flag{
+					Name:  "chunk-size",
+					Usage: "Maximum L2 block range per eth_getLogs query",
+					Value: defaultScanChunkSize,
+				},
+			},
+			Action: remove_ger.RunScanInvalidClaims,
+		},
 		{
 			Name:  "generate",
 			Usage: "Generate an invalid GER scenario with ready-to-run cast commands for testing",

@@ -3,10 +3,11 @@ package claimsync
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
+	goSync "sync"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -30,9 +31,18 @@ import (
 var (
 	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
+	// AgglayerBridgeL2 version >= v12.2.1
 	detailedClaimEventSignature = crypto.Keccak256Hash([]byte(
 		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
 			"uint256,bytes32,bytes32,uint8,uint32," +
+			"address,uint32,address,uint256,bytes)",
+	))
+	// This event signature was used by AgglayerBridgeL2 versions v12.1.6 through v12.2.0.
+	// It corresponds to an intermediate event definition and is now considered outdated
+	// because it is missing the `uint8 leafType` field.
+	detailedClaimEventOutdatedSignature = crypto.Keccak256Hash([]byte(
+		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
+			"uint256,bytes32,bytes32,uint32," +
 			"address,uint32,address,uint256,bytes)",
 	))
 	unsetClaimEventSignature = crypto.Keccak256Hash([]byte("UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)"))
@@ -54,6 +64,23 @@ const (
 
 	// methodIDLength is the length of the method ID in bytes
 	methodIDLength = 4
+)
+
+const (
+	// CallTypeCall is a callTracer CALL frame.
+	CallTypeCall = "CALL"
+	// CallTypeDelegateCall is a callTracer DELEGATECALL frame.
+	CallTypeDelegateCall = "DELEGATECALL"
+	// CallTypeStaticCall is a callTracer STATICCALL frame.
+	CallTypeStaticCall = "STATICCALL"
+	// CallTypeCallCode is a callTracer CALLCODE frame.
+	CallTypeCallCode = "CALLCODE"
+	// CallTypeCreate is a callTracer CREATE frame.
+	CallTypeCreate = "CREATE"
+	// CallTypeCreate2 is a callTracer CREATE2 frame.
+	CallTypeCreate2 = "CREATE2"
+	// CallTypeSelfDestruct is a callTracer SELFDESTRUCT frame.
+	CallTypeSelfDestruct = "SELFDESTRUCT"
 )
 
 // BridgeDeployment represents the type of bridge contract deployment (sovereign vs non-sovereign).
@@ -84,9 +111,7 @@ type bridgeDeployment struct {
 
 // buildAppender creates the LogAppenderMap for claim events from the bridge contract.
 func buildAppender(
-	ctx context.Context,
 	ethClient aggkittypes.EthClienter,
-	querier ClaimQuerier,
 	bridgeAddr common.Address,
 	deployment *bridgeDeployment,
 	log aggkitcommon.Logger,
@@ -102,11 +127,19 @@ func buildAppender(
 		legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
 
 	appender[claimEventSignature] = buildClaimEventHandler(
-		ctx, deployment.agglayerBridge, ethClient, querier, bridgeAddr, syncFullClaims, log)
+		deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log)
 
 	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[setClaimEventSignature] = buildSetClaimEventHandler(deployment.agglayerBridgeL2)
+	appender[detailedClaimEventOutdatedSignature] = buildOutdatedContractWarningHandler(bridgeAddr, log)
+
+	log.Debugf("claimEventSignature:                 %s", claimEventSignature.Hex())
+	log.Debugf("claimEventSignaturePreEtrog:         %s", claimEventSignaturePreEtrog.Hex())
+	log.Debugf("detailedClaimEventSignature:         %s", detailedClaimEventSignature.Hex())
+	log.Debugf("detailedClaimEventOutdatedSignature: %s", detailedClaimEventOutdatedSignature.Hex())
+	log.Debugf("unsetClaimEventSignature:            %s", unsetClaimEventSignature.Hex())
+	log.Debugf("setClaimEventSignature:              %s", setClaimEventSignature.Hex())
 
 	return appender, nil
 }
@@ -162,38 +195,35 @@ func resolveBridgeDeployment(
 	}, nil
 }
 
+// buildOutdatedContractWarningHandler returns a handler that warns once when the bridge contract
+// emits the old DetailedClaimEvent variant (without the leafType field, v12.1.6–v12.2.0).
+// The event is dropped — callers should upgrade the contract to >= v12.2.1.
+func buildOutdatedContractWarningHandler(
+	bridgeAddr common.Address, logger aggkitcommon.Logger,
+) func(*sync.EVMBlock, types.Log) error {
+	var once goSync.Once
+	return func(b *sync.EVMBlock, l types.Log) error {
+		once.Do(func() {
+			logger.Warnf(
+				"claimsync: detected outdated DetailedClaimEvent (missing leafType field) "+
+					"from bridge contract %s at block %d. "+
+					"This event will be ignored. Please upgrade the bridge contract to >= v12.2.1.",
+				bridgeAddr.Hex(), l.BlockNumber,
+			)
+		})
+		return nil
+	}
+}
+
 // buildClaimEventHandler creates a handler for the ClaimEvent log.
 func buildClaimEventHandler(
-	ctx context.Context,
 	contract *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter,
-	querier ClaimQuerier,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	log aggkitcommon.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
-		// Skip if DetailedClaimEvent indexing has already started at this block
-		boundaryBlock, err := querier.GetBoundaryBlockForClaimType(ctx, nil, DetailedClaimEvent)
-		if err != nil && !errors.Is(err, db.ErrNotFound) {
-			return fmt.Errorf("claimsync: failed checking DetailedClaimEvent boundary: %w", err)
-		}
-		if err == nil && l.BlockNumber >= boundaryBlock {
-			log.Debugf("claimsync: skipping ClaimEvent at block %d; DetailedClaimEvent started at %d",
-				l.BlockNumber, boundaryBlock)
-			return nil
-		}
-
-		// Skip if a DetailedClaimEvent for the same tx is already in the block's events
-		for _, raw := range b.Events {
-			if e, ok := raw.(Event); ok && e.Claim != nil &&
-				e.Claim.Type == DetailedClaimEvent && e.Claim.TxHash == l.TxHash {
-				log.Debugf("claimsync: skipping ClaimEvent at block %d tx %s; DetailedClaimEvent already present",
-					l.BlockNumber, l.TxHash.Hex())
-				return nil
-			}
-		}
-
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("claimsync: error parsing ClaimEvent log: %w", err)
@@ -367,7 +397,39 @@ func buildSetClaimEventHandler(
 	}
 }
 
+// NewPreferDetailedClaimLogsHook returns a LogsHookFunc that removes ClaimEvent logs when
+// a DetailedClaimEvent log exists for the same transaction, so only the richer event is processed.
+func NewPreferDetailedClaimLogsHook(logger aggkitcommon.Logger) sync.LogsHookFunc {
+	return func(ctx context.Context, fromBlock, toBlock uint64, logs []types.Log) []types.Log {
+		// Collect tx hashes that have a DetailedClaimEvent.
+		detailedTxs := make(map[common.Hash]struct{})
+		for _, l := range logs {
+			if len(l.Topics) > 0 && l.Topics[0] == detailedClaimEventSignature {
+				detailedTxs[l.TxHash] = struct{}{}
+			}
+		}
+		if len(detailedTxs) == 0 {
+			return logs
+		}
+
+		// Filter out ClaimEvent logs whose tx already has a DetailedClaimEvent.
+		filtered := logs[:0]
+		for _, l := range logs {
+			if len(l.Topics) > 0 && l.Topics[0] == claimEventSignature {
+				if _, ok := detailedTxs[l.TxHash]; ok {
+					logger.Debugf("claimsync: dropping ClaimEvent log (tx %s, block %d): DetailedClaimEvent present",
+						l.TxHash.Hex(), l.BlockNumber)
+					continue
+				}
+			}
+			filtered = append(filtered, l)
+		}
+		return filtered
+	}
+}
+
 type Call struct {
+	Type  string            `json:"type"`
 	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
 	Value *rpctypes.ArgBig  `json:"value"`
@@ -403,7 +465,7 @@ func findCall(rootCall Call,
 			continue
 		}
 
-		if currentCall.To == targetAddr {
+		if currentCall.To == targetAddr && currentCall.Type == CallTypeCall {
 			if callback != nil {
 				found, err := callback(currentCall)
 				if err != nil {
@@ -470,23 +532,53 @@ func extractCallData(
 // - bridge: Target contract address.
 // - logger: Logger instance for debug logging.
 //
-// Returns an error if calldata isn't found.
+// Returns an error if calldata isn't found or if distinct matching calldata candidates are found.
 func setClaimCalldataFromRoot(
 	c *Claim,
 	rootCall *Call,
 	bridge common.Address,
 	logger aggkitcommon.Logger,
 ) error {
+	candidates := make([]Claim, 0, 1)
 	_, err := findCall(*rootCall, bridge,
 		func(call Call) (bool, error) {
 			// Skip reverted calls
 			if call.Err != nil {
 				return false, nil
 			}
-			return tryDecodeClaimCalldata(c, call.Input, logger)
+			candidate := *c
+			found, err := tryDecodeClaimCalldata(&candidate, call.Input, logger)
+			if err != nil {
+				return false, err
+			}
+			if !found {
+				return false, nil
+			}
+			if !hasClaimCandidate(candidates, candidate) {
+				candidates = append(candidates, candidate)
+			}
+			return true, nil
 		}, logger)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if len(candidates) != 1 {
+		return fmt.Errorf("ambiguous claim calldata for globalIndex %s: found %d matching bridge calls",
+			c.GlobalIndex.String(), len(candidates))
+	}
+
+	*c = candidates[0]
+	return nil
+}
+
+func hasClaimCandidate(candidates []Claim, candidate Claim) bool {
+	for _, existing := range candidates {
+		if reflect.DeepEqual(existing, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 // tryDecodeClaimCalldata attempts to find and decode the claim calldata from the provided input bytes.

@@ -72,6 +72,11 @@ func (i *initialStatusResult) String() string {
 	return res
 }
 
+func manualDBWipeRequiredErrorf(format string, args ...any) error {
+	base := fmt.Sprintf(format, args...)
+	return fmt.Errorf("%s. Manual recovery required: wipe the aggsender DB and restart aggsender", base)
+}
+
 // newInitialStatus creates a new initialStatus object, get the data from AggLayer and local storage
 func newInitialStatus(ctx context.Context,
 	logFn types.EmitLogFunc, networkID uint32,
@@ -197,12 +202,17 @@ func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
 	// CASE 2.1: certificate in storage but not in agglayer
 	// this is a non-sense, so throw an error
 	if localLastCert != nil && aggLayerLastCert == nil {
-		return nil, fmt.Errorf("recovery: certificate exists in storage but not in agglayer. Inconsistency")
+		return nil, manualDBWipeRequiredErrorf(
+			"recovery: certificate exists in storage but not in agglayer. Inconsistency",
+		)
 	}
 	// CASE 3.1: the certificate on the agglayer has less height than the one stored in the local storage
 	if aggLayerLastCert.Height < localLastCert.Height {
-		return nil, fmt.Errorf("recovery: the last certificate in the agglayer has less height (%d) "+
-			"than the one in the local storage (%d)", aggLayerLastCert.Height, localLastCert.Height)
+		return nil, manualDBWipeRequiredErrorf(
+			"recovery: the last certificate in the agglayer has less height (%d) than the one in the local storage (%d)",
+			aggLayerLastCert.Height,
+			localLastCert.Height,
+		)
 	}
 	// CASE 3.2: aggsender stopped between sending to agglayer and storing to the local storage
 	if aggLayerLastCert.Height == localLastCert.Height+1 {
@@ -218,8 +228,11 @@ func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
 	// note: we don't need to check individual fields of the certificate
 	// because CertificateID is a hash of all the fields
 	if localLastCert.CertificateID != aggLayerLastCert.CertificateID {
-		return nil, fmt.Errorf("recovery: Local certificate:\n %s \n is different from agglayer certificate:\n %s",
-			localLastCert.String(), aggLayerLastCert.String())
+		return nil, manualDBWipeRequiredErrorf(
+			"recovery: Local certificate:\n %s \n is different from agglayer certificate:\n %s",
+			localLastCert.String(),
+			aggLayerLastCert.String(),
+		)
 	}
 	// CASE 5: AggSender and AggLayer are at same page
 	// just update status
@@ -283,8 +296,10 @@ func (i *initialStatus) processLastSettledCert() (*initialStatusResult, error) {
 		// CASE 1: Local storage have settled certificate, but agglayer doesn't have one
 		// This is an invalid situation
 		if i.LocalLastSettledCert != nil {
-			return nil, fmt.Errorf("recovery: local settled certificate exists (%s)"+
-				"but agglayer has no settled certificate", i.LocalLastSettledCert.ID())
+			return nil, manualDBWipeRequiredErrorf(
+				"recovery: local settled certificate exists (%s) but agglayer has no settled certificate",
+				i.LocalLastSettledCert.ID(),
+			)
 		}
 
 		// CASE 2: Both local and agglayer have no settled certificate
@@ -307,10 +322,14 @@ func (i *initialStatus) processLastSettledCert() (*initialStatusResult, error) {
 	// CASE 4: We have a settled certificate in local storage
 	// but its height is higher than the one in the agglayer
 	if i.LocalLastSettledCert.Height > i.AgglayerLastSettledCert.Height {
-		return nil, fmt.Errorf("recovery: local settled certificate (%s) has higher height (%d) "+
-			"than agglayer settled certificate (%s) with height (%d)",
-			i.LocalLastSettledCert.ID(), i.LocalLastSettledCert.Height,
-			i.AgglayerLastSettledCert.ID(), i.AgglayerLastSettledCert.Height)
+		return nil, manualDBWipeRequiredErrorf(
+			"recovery: local settled certificate (%s) has higher height (%d) "+
+				"than agglayer settled certificate (%s) with height (%d)",
+			i.LocalLastSettledCert.ID(),
+			i.LocalLastSettledCert.Height,
+			i.AgglayerLastSettledCert.ID(),
+			i.AgglayerLastSettledCert.Height,
+		)
 	}
 
 	// CASE 5: We have a settled certificate in local storage with same height
@@ -320,11 +339,14 @@ func (i *initialStatus) processLastSettledCert() (*initialStatusResult, error) {
 		// this is a problem, because it means that the local storage has a different certificate
 		// than the one in the agglayer for the same height
 		if i.LocalLastSettledCert.CertificateID != i.AgglayerLastSettledCert.CertificateID {
-			return nil, fmt.Errorf("recovery: local settled certificate (%s) has same height (%d) "+
-				"but different certificate ID (%s) than agglayer settled certificate (%s)",
-				i.LocalLastSettledCert.ID(), i.LocalLastSettledCert.Height,
+			return nil, manualDBWipeRequiredErrorf(
+				"recovery: local settled certificate (%s) has same height (%d) "+
+					"but different certificate ID (%s) than agglayer settled certificate (%s)",
+				i.LocalLastSettledCert.ID(),
+				i.LocalLastSettledCert.Height,
 				i.LocalLastSettledCert.CertificateID,
-				i.AgglayerLastSettledCert.ID())
+				i.AgglayerLastSettledCert.ID(),
+			)
 		}
 
 		// CASE 5.2: the local settled certificate matches the agglayer settled certificate

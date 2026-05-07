@@ -170,8 +170,8 @@ func printGenerateOutput(r *GeneratedInvalidGER, l2RPCURL, bridgeAddr, gerAddr s
 		"\"claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)\" "+
 		"%s %s %s %s %s %d %s %d %s %s 0x\n",
 		l2RPCURL, bridgeAddr,
-		formatBytes32ArrayForCast(r.ProofLocal),
-		formatBytes32ArrayForCast(r.ProofRollup),
+		"\""+formatBytes32ArrayForCast(r.ProofLocal)+"\"",
+		"\""+formatBytes32ArrayForCast(r.ProofRollup)+"\"",
 		r.GlobalIndex.String(),
 		r.MainnetExitRoot.Hex(),
 		r.RollupExitRoot.Hex(),
