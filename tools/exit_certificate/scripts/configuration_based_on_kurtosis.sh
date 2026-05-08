@@ -213,8 +213,15 @@ update_vscode_launch() {
     local launch_file="$PROJECT_ROOT/.vscode/launch.json"
 
     if [[ ! -f "$launch_file" ]]; then
-        log_warn ".vscode/launch.json not found, skipping VS Code configuration"
-        return
+        mkdir -p "$(dirname "$launch_file")"
+        cat > "$launch_file" <<LAUNCH
+{
+    "version": "0.2.0",
+    "configurations": [
+    ]
+}
+LAUNCH
+        log_info "Created .vscode/launch.json"
     fi
 
     if grep -q '"exit_tool kurtosis"' "$launch_file"; then
