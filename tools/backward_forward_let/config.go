@@ -54,11 +54,9 @@ type BackwardForwardLETConfig struct {
 	// L2NetworkID is the network ID of the L2 chain.
 	L2NetworkID uint32 `mapstructure:"L2NetworkID"`
 
-	// CertificateExitsFile is an optional path to a JSON override file containing
-	// pre-extracted bridge exits keyed by certificate height. When set, used as a
-	// fallback if the aggsender RPC cannot supply bridge exits for a height.
-	// Prefer generating the file with the export-cert-exits subcommand from an
-	// authoritative height-to-cert-ID map.
+	// CertificateExitsFile is an optional path to a JSON fallback file containing
+	// raw AggLayer certificates or pre-extracted bridge exits keyed by certificate
+	// height. When set, used if the aggsender RPC cannot supply bridge exits for a height.
 	CertificateExitsFile string `mapstructure:"CertificateExitsFile"`
 }
 

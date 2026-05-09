@@ -136,7 +136,8 @@ type missingCertsError struct {
 // getBridgeExitsForHeight fetches bridge exits for a certificate height using a
 // two-source fallback chain:
 //  1. Aggsender RPC (primary) — works when the aggsender DB is intact.
-//  2. JSON override file (secondary) — operator-supplied pre-extracted data.
+//  2. JSON fallback file (secondary) — operator-supplied AggLayer certificate
+//     data or pre-extracted bridge exits.
 //
 // An error is returned only when both sources fail or the override has no entry
 // for the given height.
@@ -434,8 +435,8 @@ func PrintDiagnosis(w io.Writer, result *DiagnosisResult) {
 // printMissingCertReport prints actionable, copy-pasteable instructions when one
 // or more certificate heights had no bridge exit data from any source.
 // It lists each missing height with its cert ID (or UNKNOWN), explains how to call
-// admin_getCertificate on the agglayer, shows the override file template with the
-// actual heights, and prints the re-run command.
+// admin_getCertificate on the agglayer, shows the certificate export template
+// with the actual heights, and prints the re-run command.
 func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
 	fmt.Fprintln(w, "Status: Missing certificate exits - recovery cannot continue yet.")
 	fmt.Fprintln(w, "WARNING: Aggsender RPC returned no bridge exit data for the following certificate heights.")
@@ -478,7 +479,8 @@ func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
 	}
 
 	fmt.Fprintln(w, "Preferred batch export path:")
-	fmt.Fprintln(w, "  1. Build an authoritative cert ID map from agglayer admin data:")
+	fmt.Fprintln(w, "  1. Ask the agglayer admin owner to resolve an authoritative cert ID map")
+	fmt.Fprintln(w, "     from agglayer state, then fetch raw admin_getCertificate responses:")
 	fmt.Fprintln(w, "     {")
 	fmt.Fprintln(w, `       "network_id": <L2NetworkID>,`)
 	fmt.Fprintln(w, `       "certificates": {`)
@@ -495,16 +497,17 @@ func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
 	}
 	fmt.Fprintln(w, "       }")
 	fmt.Fprintln(w, "     }")
-	fmt.Fprintln(w, "  2. Export the override JSON:")
-	fmt.Fprintln(w, "     backward-forward-let --cfg <config> export-cert-exits \\")
-	fmt.Fprintln(w, "       --agglayer-admin-url <agglayer-admin-url> \\")
-	fmt.Fprintln(w, "       --cert-ids-file <cert-ids.json> \\")
-	fmt.Fprintln(w, "       --out <certificate-exits.json>")
+	fmt.Fprintln(w, "  2. Store the raw agglayer responses in an agglayer certificate file:")
+	fmt.Fprintln(w, "     {")
+	fmt.Fprintln(w, `       "network_id": <L2NetworkID>,`)
+	fmt.Fprintln(w, `       "certificates": {`)
+	fmt.Fprintln(w, `         "<height>": {"jsonrpc":"2.0","result":[<Certificate>, <CertificateHeader|null>]}`)
+	fmt.Fprintln(w, "       }")
+	fmt.Fprintln(w, "     }")
 	fmt.Fprintln(w)
 
-	fmt.Fprintln(w, "The exporter calls admin_getCertificate for each cert ID, validates network/height,")
-	fmt.Fprintln(w, "preserves empty bridge-exit lists, writes a source manifest, and prints the")
-	fmt.Fprintln(w, "diagnosis/recovery follow-up commands.")
+	fmt.Fprintln(w, "The --cert-exits-file loader accepts either this raw agglayer certificate file")
+	fmt.Fprintln(w, "or the Aggkit-native heights-to-bridge_exits override format.")
 	fmt.Fprintln(w)
 
 	fmt.Fprintln(w, "Manual admin API shape for each KNOWN cert ID:")
@@ -514,11 +517,11 @@ func printMissingCertReport(w io.Writer, result *DiagnosisResult) {
 	fmt.Fprintln(w, `  {"jsonrpc":"2.0","method":"admin_getCertificate","params":["<CertID>"],"id":1}`)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  The response is [Certificate, CertificateHeader|null].")
-	fmt.Fprintln(w, `  Use export-cert-exits to extract and re-marshal the "bridge_exits" field.`)
+	fmt.Fprintln(w, "  It can be stored directly under the matching height key in --cert-exits-file.")
 	fmt.Fprintln(w)
 
 	fmt.Fprintln(w, "Re-run the tool with:")
-	fmt.Fprintln(w, "  backward-forward-let --cfg <config> --cert-exits-file <path-to-override.json>")
+	fmt.Fprintln(w, "  backward-forward-let --cfg <config> --cert-exits-file <path-to-agglayer-certificates.json>")
 }
 
 func recoveryDescription(c RecoveryCase) string {
