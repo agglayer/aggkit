@@ -22,6 +22,7 @@ import (
 const (
 	DefaultExportCertExitsMaxCerts uint64 = 2000
 	DefaultExportCertExitsTimeout         = 30 * time.Minute
+	exportCertExitsFileMode               = 0o600
 )
 
 var fetchAdminCertificate = fetchAgglayerAdminCertificate
@@ -182,7 +183,11 @@ func sortedCertHeights(certIDs map[uint64]common.Hash) []uint64 {
 	return heights
 }
 
-func fetchAgglayerAdminCertificate(ctx context.Context, adminURL string, certID common.Hash) (*agglayertypes.Certificate, error) {
+func fetchAgglayerAdminCertificate(
+	ctx context.Context,
+	adminURL string,
+	certID common.Hash,
+) (*agglayertypes.Certificate, error) {
 	response, err := rpc.JSONRPCCallWithContext(ctx, adminURL, "admin_getCertificate", certID)
 	if err != nil {
 		return nil, err
@@ -192,7 +197,10 @@ func fetchAgglayerAdminCertificate(ctx context.Context, adminURL string, certID 
 	}
 	var pair [2]json.RawMessage
 	if err := json.Unmarshal(response.Result, &pair); err != nil {
-		return nil, fmt.Errorf("unmarshal admin_getCertificate result as [Certificate, CertificateHeader|null]: %w", err)
+		return nil, fmt.Errorf(
+			"unmarshal admin_getCertificate result as [Certificate, CertificateHeader|null]: %w",
+			err,
+		)
 	}
 	if len(pair[0]) == 0 || string(pair[0]) == "null" {
 		return nil, fmt.Errorf("admin_getCertificate returned nil certificate")
@@ -204,7 +212,12 @@ func fetchAgglayerAdminCertificate(ctx context.Context, adminURL string, certID 
 	return &cert, nil
 }
 
-func validateAdminCertificate(cert *agglayertypes.Certificate, networkID uint32, height uint64, certID common.Hash) error {
+func validateAdminCertificate(
+	cert *agglayertypes.Certificate,
+	networkID uint32,
+	height uint64,
+	certID common.Hash,
+) error {
 	if cert == nil {
 		return fmt.Errorf("certificate is nil")
 	}
@@ -215,7 +228,10 @@ func validateAdminCertificate(cert *agglayertypes.Certificate, networkID uint32,
 		return fmt.Errorf("height %d does not match expected %d", cert.Height, height)
 	}
 	if calculated := cert.CertificateID(); calculated != certID {
-		return fmt.Errorf("calculated certificate ID %s does not match expected %s", calculated.Hex(), certID.Hex())
+		return fmt.Errorf(
+			"calculated certificate ID %s does not match expected %s",
+			calculated.Hex(), certID.Hex(),
+		)
 	}
 	return nil
 }
@@ -225,7 +241,7 @@ func writeJSONFile(filePath string, value interface{}) error {
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", filePath, err)
 	}
-	if err := os.WriteFile(filePath, append(data, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(filePath, append(data, '\n'), exportCertExitsFileMode); err != nil {
 		return fmt.Errorf("write %s: %w", filePath, err)
 	}
 	return nil

@@ -282,7 +282,11 @@ func collectExtraL2Bridges(
 		br, err := env.BridgeService.GetBridgeByDepositCount(ctx, env.L2NetworkID, dc)
 		if err != nil {
 			if isNotFound(err) {
-				return nil, fmt.Errorf("bridge service data not ready for recovery: missing L2 bridge at DC=%d; wait for bridge-service indexing and rerun diagnosis", dc)
+				return nil, fmt.Errorf(
+					"bridge service data not ready for recovery: missing L2 bridge at DC=%d; "+
+						"wait for bridge-service indexing and rerun diagnosis",
+					dc,
+				)
 			}
 			return nil, fmt.Errorf("bridge service data not ready for recovery: get L2 bridge at DC=%d: %w", dc, err)
 		}

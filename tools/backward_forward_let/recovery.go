@@ -179,12 +179,12 @@ func stepBackwardLET(
 	}
 
 	var frontierBytes [32][32]byte
-	for i, h := range frontier {
-		frontierBytes[i] = [32]byte(h)
+	for i := 0; i < len(frontier); i++ {
+		frontierBytes[i] = [32]byte(frontier[i])
 	}
 	var proofBytes [32][32]byte
-	for i, h := range proof {
-		proofBytes[i] = [32]byte(h)
+	for i := 0; i < len(proof); i++ {
+		proofBytes[i] = [32]byte(proof[i])
 	}
 
 	tx, err := env.L2Bridge.BackwardLET(
@@ -437,7 +437,10 @@ func printFinalVerification(callOpts *bind.CallOpts, env *Env, diagnosis *Diagno
 	if finalLER == diagnosis.L1SettledLER && finalDC == diagnosis.L1SettledDepositCount {
 		fmt.Println("[verify] Final L2 state matches L1 settled state.")
 	} else {
-		fmt.Println("[verify] Final L2 state includes replayed L2 bridge data; rerun diagnosis after aggsender settles the follow-up certificate.")
+		fmt.Println(
+			"[verify] Final L2 state includes replayed L2 bridge data; " +
+				"rerun diagnosis after aggsender settles the follow-up certificate.",
+		)
 	}
 	return nil
 }

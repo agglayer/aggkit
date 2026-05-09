@@ -229,10 +229,11 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	defer recoveryCancel()
 	err = bfl.ExecuteRecovery(recoveryCtx, toolEnv, diagnosis)
 	require.NoError(t, err)
+	waitForAggsenderFollowUpCertificate(ctx, t, toolEnv, "case2-recovery")
 
 	// Verify: DC should equal DivergencePoint + divergent leaves + extra real bridges.
-	// For Case2, L2 LER will NOT match L1 settled LER because extra real L2 bridges were
-	// appended after the fake leaf; the next aggsender cert will advance L1 to match.
+	// For Case2, recovery appends extra real L2 bridges after the fake leaf. The follow-up
+	// aggsender certificate above advances L1 to the recovered L2 state before the next test.
 	callOpts := &bind.CallOpts{Context: ctx}
 	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
 		uint32(len(diagnosis.ExtraL2Bridges))
@@ -382,10 +383,11 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	defer recoveryCancel()
 	err = bfl.ExecuteRecovery(recoveryCtx, toolEnv, diagnosis)
 	require.NoError(t, err)
+	waitForAggsenderFollowUpCertificate(ctx, t, toolEnv, "case4-recovery")
 
 	// Verify: DC should equal DivergencePoint + divergent leaves + extra real bridges.
-	// For Case4, L2 LER will NOT match L1 settled LER because extra real L2 bridges were
-	// appended after the fake leaves; the next aggsender cert will advance L1 to match.
+	// For Case4, recovery appends extra real L2 bridges after the fake leaves. The follow-up
+	// aggsender certificate above advances L1 to the recovered L2 state before later tests.
 	callOpts := &bind.CallOpts{Context: ctx}
 	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
 		uint32(len(diagnosis.ExtraL2Bridges))
@@ -825,6 +827,74 @@ func waitForCertificateToSettle(
 		},
 	)
 	require.NoError(t, err, "timeout waiting for certificate at height=%d to settle", expectedHeight)
+}
+
+func waitForAggsenderFollowUpCertificate(ctx context.Context, t *testing.T, toolEnv *bfl.Env, label string) {
+	t.Helper()
+	waitForBridgeServiceSynced(ctx, t)
+
+	callOpts := &bind.CallOpts{Context: ctx}
+	root, err := toolEnv.L2Bridge.GetRoot(callOpts)
+	require.NoError(t, err, "get L2 root before aggsender follow-up")
+	l2LER := common.Hash(root)
+	dcBig, err := toolEnv.L2Bridge.DepositCount(callOpts)
+	require.NoError(t, err, "get L2 deposit count before aggsender follow-up")
+	l2DC := uint32(dcBig.Uint64())
+
+	info, err := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
+	require.NoError(t, err, "get network info before aggsender follow-up")
+	if agglayerMatchesL2(info, l2LER, l2DC) {
+		log.Infof("[waitForAggsenderFollowUpCertificate] %s already reconciled at dc=%d", label, l2DC)
+		return
+	}
+
+	log.Infof("[waitForAggsenderFollowUpCertificate] %s triggering aggsender to reconcile dc=%d ler=%s",
+		label, l2DC, l2LER.Hex())
+	triggerAggsenderCertificate(ctx, t)
+
+	err = pollWithBackoff(ctx, bflNoPendingTimeout, backoffInitial, backoffMax,
+		"aggsender-follow-up-"+label,
+		func() (bool, error) {
+			pollInfo, pollErr := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
+			if pollErr != nil {
+				log.Debugf("[waitForAggsenderFollowUpCertificate] GetNetworkInfo error (retrying): %v", pollErr)
+				return false, nil
+			}
+
+			settledH := nilStr
+			if pollInfo.SettledHeight != nil {
+				settledH = fmt.Sprintf("%d", *pollInfo.SettledHeight)
+			}
+			settledLER := nilStr
+			if pollInfo.SettledLER != nil {
+				settledLER = pollInfo.SettledLER.Hex()
+			}
+			settledDC := nilStr
+			if pollInfo.SettledLETLeafCount != nil {
+				settledDC = fmt.Sprintf("%d", *pollInfo.SettledLETLeafCount)
+			}
+			log.Debugf("[waitForAggsenderFollowUpCertificate] settledH=%s settledLER=%s settledDC=%s",
+				settledH, settledLER, settledDC)
+			return agglayerMatchesL2(pollInfo, l2LER, l2DC), nil
+		},
+	)
+	require.NoError(t, err, "timeout waiting for aggsender follow-up certificate after %s", label)
+}
+
+func agglayerMatchesL2(info agglayertypes.NetworkInfo, l2LER common.Hash, l2DC uint32) bool {
+	return info.SettledLER != nil &&
+		*info.SettledLER == l2LER &&
+		info.SettledLETLeafCount != nil &&
+		uint32(*info.SettledLETLeafCount) == l2DC
+}
+
+func triggerAggsenderCertificate(ctx context.Context, t *testing.T) {
+	t.Helper()
+	response, err := rpc.JSONRPCCallWithContext(ctx, testEnv.AggsenderRPCURL, "aggsender_triggerCertificate")
+	require.NoError(t, err, "trigger aggsender certificate")
+	if response.Error != nil {
+		require.Failf(t, "trigger aggsender certificate", "RPC error: %v", response.Error)
+	}
 }
 
 // loadCertSignerKey loads the sequencer keystore (the agglayer proof signer for PP networks).

@@ -132,7 +132,8 @@ func makeZeroHashes() []common.Hash {
 // set by any leaf insertion. This matches the contract's initial storage state and is required
 // by _checkValidSubtreeFrontier, which rejects non-zero values in unused positions.
 func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.Hash, error) {
-	if uint32(len(leafHashes)) < targetIndex {
+	target := int(targetIndex)
+	if len(leafHashes) < target {
 		return [32]common.Hash{}, fmt.Errorf(
 			"insufficient leaf hashes: need %d, got %d", targetIndex, len(leafHashes),
 		)
@@ -143,10 +144,11 @@ func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.H
 	// contract's initial _branch storage state before any leaves are inserted.
 	var frontier [32]common.Hash
 
-	for i := uint32(0); i < targetIndex; i++ {
-		node := leafHashes[i]
+	for i := 0; i < target; i++ {
+		node := leafHashes[i] //nolint:gosec // i is bounded by len(leafHashes) through target.
+		leafIndex := uint32(i)
 		for h := range 32 {
-			if (i>>h)&1 == 0 {
+			if (leafIndex>>h)&1 == 0 {
 				// Left child: cache node at this height, propagate up with zero sibling.
 				frontier[h] = node
 				node = crypto.Keccak256Hash(node.Bytes(), zeros[h].Bytes())

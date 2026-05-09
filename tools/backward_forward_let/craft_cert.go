@@ -20,6 +20,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const craftCertFileMode os.FileMode = 0o600
+
 // RunCraftCert builds a staging-only testing certificate and writes it as JSON.
 func RunCraftCert(c *cli.Context) error {
 	if !c.Bool("staging-only") {
@@ -65,7 +67,7 @@ func RunCraftCert(c *cli.Context) error {
 		return fmt.Errorf("marshal crafted certificate: %w", err)
 	}
 	out := filepath.Clean(c.String("out"))
-	if err := os.WriteFile(out, data, 0o600); err != nil {
+	if err := os.WriteFile(out, data, craftCertFileMode); err != nil {
 		return fmt.Errorf("write crafted certificate %s: %w", out, err)
 	}
 
@@ -96,7 +98,7 @@ func craftStagingCertificate(
 	env *Env,
 	opts craftCertOptions,
 ) (*agglayertypes.Certificate, error) {
-	amount, ok := new(big.Int).SetString(opts.Amount, 10)
+	amount, ok := new(big.Int).SetString(opts.Amount, decimalBase)
 	if !ok || amount.Sign() < 0 {
 		return nil, fmt.Errorf("--amount must be a non-negative base-10 integer")
 	}
@@ -119,18 +121,30 @@ func craftStagingCertificate(
 		prevLER = *info.SettledLER
 		existingLeafCount = uint32(*info.SettledLETLeafCount)
 		if opts.RequireNoOpenCerts && hasOpenPendingAtOrAbove(info, certHeight) {
-			return nil, fmt.Errorf("pending certificate race: latest pending height/status is %s; wait for it to settle or enter InError before crafting", pendingSummary(info))
+			return nil, fmt.Errorf(
+				"pending certificate race: latest pending height/status is %s; "+
+					"wait for it to settle or enter InError before crafting",
+				pendingSummary(info),
+			)
 		}
 		if l1InfoTreeLeafCount == 0 {
 			count, err := l1InfoTreeLeafCountFromAggsender(env, *info.SettledHeight)
 			if err != nil {
-				return nil, fmt.Errorf("get L1 info tree leaf count from aggsender for height %d: %w; rerun with --l1-info-tree-leaf-count", *info.SettledHeight, err)
+				return nil, fmt.Errorf(
+					"get L1 info tree leaf count from aggsender for height %d: %w; "+
+						"rerun with --l1-info-tree-leaf-count",
+					*info.SettledHeight, err,
+				)
 			}
 			l1InfoTreeLeafCount = count
 		}
 	} else {
 		if opts.RequireNoOpenCerts && hasOpenPendingAtOrAbove(info, 0) {
-			return nil, fmt.Errorf("pending certificate race: latest pending height/status is %s; wait for it to settle or enter InError before crafting", pendingSummary(info))
+			return nil, fmt.Errorf(
+				"pending certificate race: latest pending height/status is %s; "+
+					"wait for it to settle or enter InError before crafting",
+				pendingSummary(info),
+			)
 		}
 		callOpts := &bind.CallOpts{Context: ctx}
 		root, err := env.L2Bridge.GetRoot(callOpts)

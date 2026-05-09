@@ -13,7 +13,10 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const DefaultCertStatusTimeout = 30 * time.Minute
+const (
+	DefaultCertStatusTimeout = 30 * time.Minute
+	certStatusPollInterval   = 15 * time.Second
+)
 
 // RunCertStatus prints AggLayer certificate settlement and pending status.
 func RunCertStatus(c *cli.Context) error {
@@ -56,9 +59,9 @@ func RunCertStatus(c *cli.Context) error {
 				return fmt.Errorf("timed out after %s waiting for requested certificate status", timeout)
 			}
 			select {
-			case <-c.Context.Done():
-				return c.Context.Err()
-			case <-time.After(15 * time.Second):
+			case <-c.Done():
+				return c.Err()
+			case <-time.After(certStatusPollInterval):
 			}
 		}
 	}
@@ -111,7 +114,9 @@ func printCertStatusTo(w io.Writer, info agglayertypes.NetworkInfo, networkID ui
 		switch {
 		case info.SettledHeight != nil && *info.SettledHeight >= requestedHeight:
 			fmt.Fprintf(w, "Requested height status: Settled\n")
-		case info.LatestPendingHeight != nil && *info.LatestPendingHeight == requestedHeight && info.LatestPendingStatus != nil:
+		case info.LatestPendingHeight != nil &&
+			*info.LatestPendingHeight == requestedHeight &&
+			info.LatestPendingStatus != nil:
 			fmt.Fprintf(w, "Requested height status: %s\n", info.LatestPendingStatus.String())
 		default:
 			fmt.Fprintln(w, "Requested height status: not settled")
