@@ -27,12 +27,13 @@ Options:
   -h, --help                 Show this help
 
 Environment variables (override defaults):
-  KURTOSIS_ENCLAVE            Enclave name
-  KURTOSIS_ARTIFACT_AGGKIT_CONFIG  Aggkit config artifact name (default: aggkit-config-artifact)
-  L2_SERVICE_PREFIX           Kurtosis L2 execution client service prefix (default: op-el-1-op-geth-op-node)
-  L1_SERVICE                  Kurtosis L1 execution service name (default: el-1-geth-lighthouse)
-  EXIT_ADDRESS                Address to receive SC-locked value (default: zero address)
-  OUTPUT_FILE                 Output path (relative to project root)
+  KURTOSIS_ENCLAVE                    Enclave name
+  KURTOSIS_ARTIFACT_AGGKIT_CONFIG     Aggkit config artifact name (default: aggkit-config)
+  KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE  Sequencer keystore artifact (default: aggkit-sequencer-keystore)
+  L2_SERVICE_PREFIX                   Kurtosis L2 execution client service prefix (default: op-el-1-op-geth-op-node)
+  L1_SERVICE                          Kurtosis L1 execution service name (default: el-1-geth-lighthouse)
+  EXIT_ADDRESS                        Address to receive SC-locked value (default: zero address)
+  OUTPUT_FILE                         Output path (relative to project root)
 
 Examples:
   $0                          # Network 1, enclave "aggkit"
@@ -49,6 +50,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # Defaults (can be overridden by env vars)
 KURTOSIS_ENCLAVE="${KURTOSIS_ENCLAVE:-op}"
 KURTOSIS_ARTIFACT_AGGKIT_CONFIG="${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-aggkit-config}"
+KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE="${KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE:-aggkit-sequencer-keystore}"
 L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
 L1_SERVICE="${L1_SERVICE:-el-1-geth-lighthouse}"
 AGGLAYER_SERVICE="${AGGLAYER_SERVICE:-agglayer}"
@@ -119,37 +121,101 @@ get_agglayer_admin_url() {
     port_to_localhost_url "$raw"
 }
 
-get_bridge_address() {
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    # shellcheck disable=SC2064
-    trap "rm -rf '$tmp_dir'" RETURN
+get_agglayer_rpc_url() {
+    local raw
+    if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$AGGLAYER_SERVICE" aglr-readrpc 2>/dev/null); then
+        log_error "Failed to get agglayer readrpc port from service '$AGGLAYER_SERVICE' in enclave '$KURTOSIS_ENCLAVE'"
+        exit 1
+    fi
+    port_to_localhost_url "$raw"
+}
 
-    # Try network-specific artifact first (multi-chain: aggkit-config-artifact-001)
-    # then fall back to the generic single-chain artifact name.
+get_agglayer_grpc_url() {
+    local raw port
+    if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$AGGLAYER_SERVICE" aglr-grpc 2>/dev/null); then
+        log_error "Failed to get agglayer grpc port from service '$AGGLAYER_SERVICE' in enclave '$KURTOSIS_ENCLAVE'"
+        exit 1
+    fi
+    # kurtosis returns grpc://host:PORT — rebuild as http://localhost:PORT (insecure gRPC)
+    port=$(echo "$raw" | sed -E 's|^[a-zA-Z]+://||' | cut -f2 -d':')
+    echo "http://localhost:${port}"
+}
+
+# ---------------------------------------------------------------------------
+# Aggkit config artifact — downloaded once, reused by multiple functions
+# ---------------------------------------------------------------------------
+
+AGGKIT_CONFIG_DIR=""
+
+download_aggkit_config() {
+    AGGKIT_CONFIG_DIR=$(mktemp -d)
+
     local artifact_name="${KURTOSIS_ARTIFACT_AGGKIT_CONFIG}-${NETWORK_SUFFIX}"
-    if ! kurtosis files download "$KURTOSIS_ENCLAVE" "$artifact_name" "$tmp_dir" &>/dev/null; then
+    if ! kurtosis files download "$KURTOSIS_ENCLAVE" "$artifact_name" "$AGGKIT_CONFIG_DIR" &>/dev/null; then
         log_warn "Artifact '$artifact_name' not found, trying '$KURTOSIS_ARTIFACT_AGGKIT_CONFIG'..."
         artifact_name="$KURTOSIS_ARTIFACT_AGGKIT_CONFIG"
-        if ! kurtosis files download "$KURTOSIS_ENCLAVE" "$artifact_name" "$tmp_dir" &>/dev/null; then
+        if ! kurtosis files download "$KURTOSIS_ENCLAVE" "$artifact_name" "$AGGKIT_CONFIG_DIR" &>/dev/null; then
             log_error "Could not download artifact '$artifact_name' from enclave '$KURTOSIS_ENCLAVE'"
             exit 1
         fi
     fi
 
-    local config_file="$tmp_dir/config.toml"
-    if [[ ! -f "$config_file" ]]; then
+    if [[ ! -f "$AGGKIT_CONFIG_DIR/config.toml" ]]; then
         log_error "config.toml not found in downloaded artifact '$artifact_name'"
         exit 1
     fi
+}
 
+cleanup_aggkit_config() {
+    [[ -n "$AGGKIT_CONFIG_DIR" ]] && rm -rf "$AGGKIT_CONFIG_DIR"
+}
+
+get_bridge_address() {
     local addr
-    addr=$(grep 'BridgeAddr' "$config_file" | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
+    addr=$(grep 'BridgeAddr' "$AGGKIT_CONFIG_DIR/config.toml" | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
     if [[ -z "$addr" ]]; then
-        log_error "BridgeAddr not found in $config_file"
+        log_error "BridgeAddr not found in config.toml"
         exit 1
     fi
     echo "$addr"
+}
+
+# ---------------------------------------------------------------------------
+# Signer / keystore helpers
+# ---------------------------------------------------------------------------
+
+# Reads the AggSenderPrivateKey password from config.toml.
+get_signer_password() {
+    # AggSenderPrivateKey = {Path = "...", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"}
+    local password
+    password=$(grep 'AggSenderPrivateKey' "$AGGKIT_CONFIG_DIR/config.toml" \
+        | sed -E 's/.*Password = "([^"]+)".*/\1/')
+    echo "$password"
+}
+
+# Downloads the sequencer keystore file from the kurtosis artifact and writes
+# it to OUTPUT_KEYSTORE_PATH. Returns 1 if not available (signer skipped).
+get_sequencer_keystore() {
+    local dest="$1"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp_dir'" RETURN
+
+    if ! kurtosis files download "$KURTOSIS_ENCLAVE" "$KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE" "$tmp_dir" &>/dev/null; then
+        log_warn "Artifact '$KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE' not found — signerConfig will be omitted"
+        return 1
+    fi
+
+    local keystore_file
+    keystore_file=$(find "$tmp_dir" -maxdepth 1 -name "*.keystore" 2>/dev/null | head -1)
+    if [[ -z "$keystore_file" ]]; then
+        log_warn "No *.keystore file found in artifact '$KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE' — signerConfig will be omitted"
+        return 1
+    fi
+
+    cp "$keystore_file" "$dest"
+    chmod 600 "$dest"
 }
 
 # ---------------------------------------------------------------------------
@@ -170,15 +236,50 @@ log_info "Getting L2 RPC URL..."
 L2_RPC_URL=$(get_l2_rpc_url)
 log_info "L2 RPC URL: $L2_RPC_URL"
 
+log_info "Downloading aggkit config artifact..."
+download_aggkit_config
+trap cleanup_aggkit_config EXIT
+
 log_info "Getting bridge address from aggkit config artifact..."
 BRIDGE_ADDR=$(get_bridge_address)
 log_info "Bridge address: $BRIDGE_ADDR"
 
-log_info "Getting agglayer admin URL..."
+log_info "Getting agglayer URLs..."
 AGGLAYER_ADMIN_URL=$(get_agglayer_admin_url)
+AGGLAYER_RPC_URL=$(get_agglayer_rpc_url)
+AGGLAYER_GRPC_URL=$(get_agglayer_grpc_url)
 log_info "Agglayer admin URL: $AGGLAYER_ADMIN_URL"
+log_info "Agglayer RPC URL:   $AGGLAYER_RPC_URL"
+log_info "Agglayer gRPC URL:  $AGGLAYER_GRPC_URL"
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
+OUTPUT_DIR="$(dirname "$OUTPUT_PATH")"
+
+# ---------------------------------------------------------------------------
+# Signer config
+# ---------------------------------------------------------------------------
+SIGNER_CONFIG_BLOCK=""
+KEYSTORE_DEST="$OUTPUT_DIR/sequencer.keystore"
+
+log_info "Getting signer keystore from artifact '$KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE'..."
+if get_sequencer_keystore "$KEYSTORE_DEST"; then
+    SIGNER_PASSWORD=$(get_signer_password)
+    if [[ -z "$SIGNER_PASSWORD" ]]; then
+        log_warn "AggSenderPrivateKey password not found in config.toml — signerConfig will be omitted"
+        rm -f "$KEYSTORE_DEST"
+    else
+        KEYSTORE_RELATIVE="sequencer.keystore"
+        log_info "Keystore saved to: $KEYSTORE_DEST"
+        log_info "Signer password:   (extracted from config.toml)"
+        # Include trailing newline so the heredoc renders cleanly when the block is present
+        SIGNER_CONFIG_BLOCK="    \"signerConfig\": {
+        \"Method\": \"local\",
+        \"Path\": \"$KEYSTORE_RELATIVE\",
+        \"Password\": \"$SIGNER_PASSWORD\"
+    },
+"
+    fi
+fi
 
 cat > "$OUTPUT_PATH" <<EOF
 {
@@ -190,14 +291,16 @@ cat > "$OUTPUT_PATH" <<EOF
     "targetBlock": "latest",
     "exitAddress": "$EXIT_ADDRESS",
     "destinationNetwork": 0,
-    "options": {
+${SIGNER_CONFIG_BLOCK}    "options": {
         "blockRange": 5000,
         "concurrencyLimit": 20,
         "rpcBatchSize": 200,
         "rpcDelayMs": 0,
         "outputDir": "./output-kurtosis",
         "l1StartBlock": 0,
-        "agglayerAdminURL": "$AGGLAYER_ADMIN_URL", 
+        "agglayerAdminURL": "$AGGLAYER_ADMIN_URL",
+        "agglayerRpcUrl": "$AGGLAYER_RPC_URL",
+        "agglayerGrpcUrl": "$AGGLAYER_GRPC_URL",
         "abortOnGenesisBalance": false
     }
 }

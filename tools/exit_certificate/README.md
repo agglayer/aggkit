@@ -60,8 +60,7 @@ cp parameters.json.example parameters.json
 | `exitAddress` | No | Address that receives SC-locked value exits. Defaults to zero address. |
 | `lbtFile` | No | Path to a pre-generated LBT JSON file. If omitted, the tool generates it automatically via Step 0. Can also be generated externally with the [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool from `agglayer-contracts`. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
-| `signerKeyPath` | No | Path to the keystore JSON file used to sign the certificate (Step SIGN). |
-| `signerKeyPassword` | No | Password for the keystore file. |
+| `signerConfig` | No | Signer configuration object for Step SIGN. Same format as aggsender's `AggsenderPrivateKey`. Example: `{"Method": "local", "Path": "keystore.json", "Password": "pass"}`. |
 
 ### Options
 
@@ -75,6 +74,8 @@ cp parameters.json.example parameters.json
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
+| `agglayerRpcUrl` | `""` | Agglayer JSON-RPC endpoint. Required for Step H (`interop_getNetworkInfo`). |
+| `agglayerGrpcUrl` | `""` | Agglayer gRPC endpoint. Required for Step SUBMIT. |
 | `continueOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
 
 ## Commands
@@ -85,12 +86,14 @@ cp parameters.json.example parameters.json
 ./exit-certificate --config parameters.json
 ```
 
-Runs all steps sequentially: 0 → A → B → C → D → E → G → F → SIGN (if `signerKeyPath` is set).
+Runs all steps sequentially: 0 → A → B → C → D → E → F → G → H → I → SIGN (if `signerConfig` is set).
+
+Step SUBMIT is **not** part of the default pipeline — it must be triggered explicitly.
 
 ### Run a single step
 
 ```bash
-./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f|g|sign>
+./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f|g|h|i|sign|submit>
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
@@ -100,9 +103,7 @@ Each step reads its dependencies from the output directory (files written by pri
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `sign`) or `all`. |
-| `--signer-key-path` | — | — | Path to the keystore file (overrides `signerKeyPath` in config). |
-| `--signer-key-password` | — | — | Password for the keystore file (overrides `signerKeyPassword` in config). |
+| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h`, `i`, `sign`, `submit`) or `all`. |
 
 ## Pipeline steps
 
@@ -159,17 +160,7 @@ Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit again
 
 Requires `l1RpcUrl`.
 
-**Output:** `step-e-unclaimed-bridges.json`, `exit-certificate-final.json`
-
-### Step SIGN — Sign the certificate
-
-Signs `exit-certificate-final.json` with a local keystore and writes `exit-certificate-signed.json`. The signature is embedded in `AggchainData` as an `AggchainDataMultisig` ECDSA entry.
-
-Requires `signerKeyPath` (and optionally `signerKeyPassword`) in config, or the equivalent CLI flags. Skipped automatically in `all` mode when `signerKeyPath` is not set.
-
-**Reads:** `exit-certificate-final.json`
-
-**Output:** `exit-certificate-signed.json`
+**Output:** `step-e-unclaimed-bridges.json`, `step-e-exit-certificate.json`
 
 ### Step F — Agglayer token balance verification
 
@@ -177,17 +168,55 @@ Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and 
 
 Skipped automatically when `agglayerAdminURL` is not set in options.
 
-**Output:** `step-f-verification.json`
+**Reads:** `step-d-exit-certificate.json`
 
-### Step G — Calculate NewLocalExitRoot
+**Output:** `step-f-token-balances.json`, `step-f-checks.json`
 
-Computes the certificate `new_local_exit_root` from all `bridge_exits` and updates `exit-certificate-final.json` with the calculated value.
+### Step G — Compute NewLocalExitRoot (shadow-fork)
 
-If the certificate has no bridge exits, this step uses the canonical empty LER value.
+Computes the correct `new_local_exit_root` by replaying every `bridge_exit` from the certificate against a shadow-fork of the L2 chain via [Anvil](https://getfoundry.sh), then reading the resulting `localExitRoot` slot from the forked bridge contract.
+
+**Anvil is a required external dependency** (`anvil` binary in `$PATH`). If missing, the step fails with a clear error. When the certificate has no bridge exits, Anvil is skipped and the canonical empty LER is used.
+
+**Reads:** `step-e-exit-certificate.json`
+
+**Output:** `step-g-new-local-exit-root.json`
+
+### Step H — Fetch PreviousLocalExitRoot
+
+Calls `interop_getNetworkInfo` on the agglayer JSON-RPC and reads the `settled_ler` for the L2 network. If no certificate has been settled yet, `PreviousLocalExitRoot` is zero.
+
+Requires `agglayerRpcUrl` in options.
+
+**Output:** `step-h-previous-local-exit-root.json`
+
+### Step I — Assemble final certificate
+
+Reads the certificate from Step E and applies `NewLocalExitRoot` (from Step G) and `PreviousLocalExitRoot` (from Step H).
+
+**Reads:** `step-e-exit-certificate.json`, `step-g-new-local-exit-root.json`, `step-h-previous-local-exit-root.json`
+
+**Output:** `exit-certificate-final.json`
+
+### Step SIGN — Sign the certificate
+
+Signs `exit-certificate-final.json` with the configured keystore and writes `exit-certificate-signed.json`. The signature is embedded in `AggchainData` as an `AggchainDataMultisig` ECDSA entry.
+
+Requires `signerConfig` in config (same format as aggsender's `AggsenderPrivateKey`). Skipped automatically in `all` mode when `signerConfig` is not set.
 
 **Reads:** `exit-certificate-final.json`
 
-**Output:** `step-g-new-local-exit-root.json`, `exit-certificate-final.json`
+**Output:** `exit-certificate-signed.json`
+
+### Step SUBMIT — Send certificate to agglayer
+
+Sends `exit-certificate-signed.json` to the agglayer via gRPC and returns the certificate hash. **Not part of the default pipeline** — must be triggered with `--step submit`.
+
+Requires `agglayerGrpcUrl` in options.
+
+**Reads:** `exit-certificate-signed.json`
+
+**Output:** `step-submit-result.json`
 
 ## Output
 

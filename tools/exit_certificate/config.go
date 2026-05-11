@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -41,9 +42,8 @@ type Config struct {
 	ExitAddress        common.Address `json:"exitAddress"`
 	LBTFile            string         `json:"lbtFile"`
 	DestinationNetwork uint32         `json:"destinationNetwork"`
-	Options             Options        `json:"options"`
-	SignerKeyPath        string         `json:"signerKeyPath"`
-	SignerKeyPassword    string         `json:"signerKeyPassword"`
+	Options            Options                `json:"options"`
+	SignerConfig       signertypes.SignerConfig `json:"-"`
 
 	// ResolvedTargetBlock is populated at runtime after resolving "latest".
 	ResolvedTargetBlock uint64 `json:"-"`
@@ -109,10 +109,35 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	cfg.LBTFile = resolvePath(configDir, raw.LBTFile)
 	cfg.Options = mergeOptions(raw.Options, configDir)
-	cfg.SignerKeyPath = raw.SignerKeyPath
-	cfg.SignerKeyPassword = raw.SignerKeyPassword
+	if len(raw.SignerConfig) > 0 {
+		signerCfg, err := parseSignerConfig(raw.SignerConfig, configDir)
+		if err != nil {
+			return nil, fmt.Errorf("parse signerConfig: %w", err)
+		}
+		cfg.SignerConfig = signerCfg
+	}
 
 	return cfg, nil
+}
+
+// parseSignerConfig converts the flat JSON signer config into a SignerConfig.
+// The JSON format mirrors the TOML used by aggsender:
+//
+//	{ "Method": "local", "Path": "keystore.json", "Password": "pass" }
+func parseSignerConfig(data json.RawMessage, configDir string) (signertypes.SignerConfig, error) {
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return signertypes.SignerConfig{}, fmt.Errorf("unmarshal signer config: %w", err)
+	}
+	method, _ := m["Method"].(string)
+	delete(m, "Method")
+	if path, ok := m["Path"].(string); ok {
+		m["Path"] = resolvePath(configDir, path)
+	}
+	return signertypes.SignerConfig{
+		Method: signertypes.SignMethod(method),
+		Config: m,
+	}, nil
 }
 
 func resolvePath(baseDir, path string) string {
@@ -180,9 +205,8 @@ type rawConfig struct {
 	ExitAddress        string   `json:"exitAddress"`
 	LBTFile            string   `json:"lbtFile"`
 	DestinationNetwork uint32   `json:"destinationNetwork"`
-	Options          *rawOpts `json:"options"`
-	SignerKeyPath     string   `json:"signerKeyPath"`
-	SignerKeyPassword string   `json:"signerKeyPassword"`
+	Options      *rawOpts        `json:"options"`
+	SignerConfig json.RawMessage `json:"signerConfig"`
 }
 
 type rawOpts struct {
