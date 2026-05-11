@@ -30,14 +30,6 @@ func Run(c *cli.Context) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// CLI flags override config-file values for the signer.
-	if v := c.String("signer-key-path"); v != "" {
-		cfg.SignerKeyPath = v
-	}
-	if v := c.String("signer-key-password"); v != "" {
-		cfg.SignerKeyPassword = v
-	}
-
 	if err := resolveBlockA(ctx, cfg); err != nil {
 		return err
 	}
@@ -156,7 +148,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	if cfg.SignerKeyPath != "" {
+	if cfg.SignerConfig.Method != "" {
 		signedCert, err := RunStepSign(ctx, cfg, finalCertificate)
 		if err != nil {
 			return fmt.Errorf("step SIGN: %w", err)
@@ -270,6 +262,7 @@ func runAllStepE(ctx context.Context, cfg *Config, dir string, stepDCert *agglay
 		return nil, fmt.Errorf("step E: %w", err)
 	}
 	saveJSON(dir, "step-e-unclaimed-bridges.json", stepEResult.UnclaimedBridges)
+	saveJSON(dir, "step-e-exit-certificate.json", stepEResult.FinalCertificate)
 	return stepEResult.FinalCertificate, nil
 }
 
@@ -308,10 +301,10 @@ func logPipelineConfig(cfg *Config) {
 	} else {
 		log.Info("Agglayer gRPC:    (not configured — step submit will fail)")
 	}
-	if cfg.SignerKeyPath != "" {
-		log.Infof("Signer Key:       %s", cfg.SignerKeyPath)
+	if cfg.SignerConfig.Method != "" {
+		log.Infof("Signer:           method=%s", cfg.SignerConfig.Method)
 	} else {
-		log.Info("Signer Key:       (not configured — certificate will not be signed)")
+		log.Info("Signer:           (not configured — certificate will not be signed)")
 	}
 }
 
@@ -439,7 +432,7 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 		return err
 	}
 	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
-	saveJSON(dir, "exit-certificate-final.json", result.FinalCertificate)
+	saveJSON(dir, "step-e-exit-certificate.json", result.FinalCertificate)
 	return nil
 }
 
@@ -487,8 +480,8 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 
 func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 	var cert certificateJSON
-	if err := loadJSON(dir, "exit-certificate-final.json", &cert); err != nil {
-		return fmt.Errorf("load final certificate: %w", err)
+	if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
+		return fmt.Errorf("load step E certificate: %w", err)
 	}
 	result, err := RunStepG(ctx, cfg, cert.toAgglayerCertificate())
 	if err != nil {
@@ -509,8 +502,8 @@ func runSingleH(ctx context.Context, cfg *Config, dir string) error {
 
 func runSingleI(cfg *Config, dir string) error {
 	var cert certificateJSON
-	if err := loadJSON(dir, "exit-certificate-final.json", &cert); err != nil {
-		return fmt.Errorf("load final certificate: %w", err)
+	if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
+		return fmt.Errorf("load step E certificate: %w", err)
 	}
 	var gResult StepGResult
 	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
