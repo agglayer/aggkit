@@ -85,12 +85,12 @@ cp parameters.json.example parameters.json
 ./exit-certificate --config parameters.json
 ```
 
-Runs all steps sequentially: 0 → A → B → C → D → E → F → SIGN (if `signerKeyPath` is set).
+Runs all steps sequentially: 0 → A → B → C → D → E → G → F → SIGN (if `signerKeyPath` is set).
 
 ### Run a single step
 
 ```bash
-./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f|sign>
+./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f|g|sign>
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
@@ -100,7 +100,7 @@ Each step reads its dependencies from the output directory (files written by pri
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`, `sign`) or `all`. |
+| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `sign`) or `all`. |
 | `--signer-key-path` | — | — | Path to the keystore file (overrides `signerKeyPath` in config). |
 | `--signer-key-password` | — | — | Password for the keystore file (overrides `signerKeyPassword` in config). |
 
@@ -178,6 +178,16 @@ Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and 
 Skipped automatically when `agglayerAdminURL` is not set in options.
 
 **Output:** `step-f-verification.json`
+
+### Step G — Calculate NewLocalExitRoot
+
+Computes the certificate `new_local_exit_root` from all `bridge_exits` and updates `exit-certificate-final.json` with the calculated value.
+
+If the certificate has no bridge exits, this step uses the canonical empty LER value.
+
+**Reads:** `exit-certificate-final.json`
+
+**Output:** `step-g-new-local-exit-root.json`, `exit-certificate-final.json`
 
 ## Output
 

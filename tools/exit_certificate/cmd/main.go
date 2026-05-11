@@ -34,6 +34,21 @@ Pipeline steps (run in order by default):
   E  Cross-check the draft certificate against L1 to filter out bridge exits that
      have already been claimed. Skipped when l1RpcUrl is not set in the config.
 
+	F  Verify agglayer token balances against the certificate exits.
+
+	G  Calculate NewLocalExitRoot from the certificate bridge exits.
+
+	H  Fetch PreviousLocalExitRoot from the agglayer via interop_getNetworkInfo.
+	   Requires agglayerRpcUrl in options.
+
+	I  Assemble the final certificate by writing NewLocalExitRoot (from G) and
+	   PreviousLocalExitRoot (from H) into exit-certificate-final.json.
+
+  SIGN   Sign the final certificate with the configured keystore.
+
+  SUBMIT Send the signed certificate to the agglayer via gRPC.
+	   Requires agglayerGrpcUrl in options. Not part of the default pipeline.
+
 Use --step to run a single step (e.g. --step a). When running steps individually
 the output files from previous steps must already exist in the output directory.`
 	app.Flags = []cli.Flag{
@@ -45,7 +60,7 @@ the output files from previous steps must already exist in the output directory.
 		},
 		&cli.StringFlag{
 			Name:  "step",
-			Usage: "Run a specific step: 0, a, b, c, d, e, f, sign, or all",
+			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, or all",
 			Value: "all",
 		},
 		&cli.StringFlag{

@@ -124,3 +124,14 @@ type StepFResult struct {
 	TokenBalances json.RawMessage    `json:"tokenBalances,omitempty"`
 	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
 }
+
+// StepGResult holds the output of Step G (NewLocalExitRoot calculation).
+type StepGResult struct {
+	NewLocalExitRoot common.Hash `json:"newLocalExitRoot"`
+	BridgeExitCount  uint64      `json:"bridgeExitCount"`
+}
+
+// StepHResult holds the output of Step H (PreviousLocalExitRoot from agglayer).
+type StepHResult struct {
+	PreviousLocalExitRoot common.Hash `json:"previousLocalExitRoot"`
+}

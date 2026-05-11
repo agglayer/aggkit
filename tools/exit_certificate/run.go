@@ -98,7 +98,7 @@ func parseBlockNumber(s string) (uint64, error) {
 
 // --- Full pipeline ---
 
-// runAll executes: 0 → A → B → C → D → E → F.
+// runAll executes: 0 → A → B → C → D → E → F → G → H → I.
 func runAll(ctx context.Context, cfg *Config) error {
 	dir := cfg.Options.OutputDir
 	if err := os.MkdirAll(dir, dirPermissions); err != nil {
@@ -138,9 +138,21 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	saveJSON(dir, "exit-certificate-final.json", finalCertificate)
-
 	if err := runAllStepF(ctx, cfg, dir, stepDResult.Certificate); err != nil {
+		return err
+	}
+
+	gResult, err := runAllStepG(ctx, cfg, dir, finalCertificate)
+	if err != nil {
+		return err
+	}
+
+	hResult, err := runAllStepH(ctx, cfg, dir)
+	if err != nil {
+		return err
+	}
+
+	if err := runAllStepI(cfg, dir, finalCertificate, gResult, hResult); err != nil {
 		return err
 	}
 
@@ -213,6 +225,32 @@ func runAllStepF(ctx context.Context, cfg *Config, dir string, certificate *aggl
 	return nil
 }
 
+func runAllStepG(ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate) (*StepGResult, error) {
+	result, err := RunStepG(ctx, cfg, certificate)
+	if err != nil {
+		return nil, fmt.Errorf("step G: %w", err)
+	}
+	saveJSON(dir, "step-g-new-local-exit-root.json", result)
+	return result, nil
+}
+
+func runAllStepH(ctx context.Context, cfg *Config, dir string) (*StepHResult, error) {
+	result, err := RunStepH(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("step H: %w", err)
+	}
+	saveJSON(dir, "step-h-previous-local-exit-root.json", result)
+	return result, nil
+}
+
+func runAllStepI(cfg *Config, dir string, certificate *agglayertypes.Certificate, gResult *StepGResult, hResult *StepHResult) error {
+	if err := RunStepI(certificate, gResult, hResult); err != nil {
+		return fmt.Errorf("step I: %w", err)
+	}
+	saveJSON(dir, "exit-certificate-final.json", certificate)
+	return nil
+}
+
 func runAllStepD(cfg *Config, dir string, stepBResult *StepBResult, stepCResult *StepCResult) (*StepDResult, error) {
 	stepDResult, err := RunStepD(cfg, stepBResult, stepCResult)
 	if err != nil {
@@ -260,6 +298,16 @@ func logPipelineConfig(cfg *Config) {
 	log.Infof("Block Range:      %d", cfg.Options.BlockRange)
 	log.Infof("RPC Batch Size:   %d", cfg.Options.RPCBatchSize)
 	log.Infof("L2 Start Block:   %d", cfg.Options.L2StartBlock)
+	if cfg.Options.AgglayerRPCURL != "" {
+		log.Infof("Agglayer RPC:     %s", cfg.Options.AgglayerRPCURL)
+	} else {
+		log.Info("Agglayer RPC:     (not configured — step H will fail)")
+	}
+	if cfg.Options.AgglayerGRPCURL != "" {
+		log.Infof("Agglayer gRPC:    %s", cfg.Options.AgglayerGRPCURL)
+	} else {
+		log.Info("Agglayer gRPC:    (not configured — step submit will fail)")
+	}
 	if cfg.SignerKeyPath != "" {
 		log.Infof("Signer Key:       %s", cfg.SignerKeyPath)
 	} else {
@@ -290,10 +338,18 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleE(ctx, cfg, dir)
 	case "f":
 		return runSingleF(ctx, cfg, dir)
+	case "g":
+		return runSingleG(ctx, cfg, dir)
+	case "h":
+		return runSingleH(ctx, cfg, dir)
+	case "i":
+		return runSingleI(cfg, dir)
 	case "sign":
 		return runSingleSign(ctx, cfg, dir)
+	case "submit":
+		return runSingleSubmit(ctx, cfg, dir)
 	default:
-		return fmt.Errorf("unknown step: %s (use 0, a, b, c, d, e, f, sign, or all)", step)
+		return fmt.Errorf("unknown step: %s (use 0, a, b, c, d, e, f, g, h, i, sign, submit, or all)", step)
 	}
 }
 
@@ -400,6 +456,19 @@ func runSingleSign(ctx context.Context, cfg *Config, dir string) error {
 	return nil
 }
 
+func runSingleSubmit(ctx context.Context, cfg *Config, dir string) error {
+	var cert agglayertypes.Certificate
+	if err := loadJSON(dir, "exit-certificate-signed.json", &cert); err != nil {
+		return fmt.Errorf("load signed certificate: %w", err)
+	}
+	result, err := RunStepSubmit(ctx, cfg, &cert)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-submit-result.json", result)
+	return nil
+}
+
 func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 	var cert certificateJSON
 	if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
@@ -413,6 +482,49 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 		saveJSON(dir, "step-f-token-balances.json", result.TokenBalances)
 		saveJSON(dir, "step-f-checks.json", result.Checks)
 	}
+	return nil
+}
+
+func runSingleG(ctx context.Context, cfg *Config, dir string) error {
+	var cert certificateJSON
+	if err := loadJSON(dir, "exit-certificate-final.json", &cert); err != nil {
+		return fmt.Errorf("load final certificate: %w", err)
+	}
+	result, err := RunStepG(ctx, cfg, cert.toAgglayerCertificate())
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-g-new-local-exit-root.json", result)
+	return nil
+}
+
+func runSingleH(ctx context.Context, cfg *Config, dir string) error {
+	result, err := RunStepH(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-h-previous-local-exit-root.json", result)
+	return nil
+}
+
+func runSingleI(cfg *Config, dir string) error {
+	var cert certificateJSON
+	if err := loadJSON(dir, "exit-certificate-final.json", &cert); err != nil {
+		return fmt.Errorf("load final certificate: %w", err)
+	}
+	var gResult StepGResult
+	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
+		return fmt.Errorf("load step G result: %w", err)
+	}
+	var hResult StepHResult
+	if err := loadJSON(dir, "step-h-previous-local-exit-root.json", &hResult); err != nil {
+		return fmt.Errorf("load step H result: %w", err)
+	}
+	aggCert := cert.toAgglayerCertificate()
+	if err := RunStepI(aggCert, &gResult, &hResult); err != nil {
+		return err
+	}
+	saveJSON(dir, "exit-certificate-final.json", aggCert)
 	return nil
 }
 

@@ -18,7 +18,9 @@ type Options struct {
 	OutputDir              string `json:"outputDir"`
 	L1StartBlock           uint64 `json:"l1StartBlock"`
 	L2StartBlock           uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL     string `json:"agglayerAdminURL"`
+	AgglayerAdminURL string `json:"agglayerAdminURL"`
+	AgglayerRPCURL   string `json:"agglayerRpcUrl"`
+	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
 	// AbortOnGenesisBalance aborts the run if any EOA or contract has a non-zero ETH balance
 	// at block 0, which indicates a genesis preload that would inflate the exit certificate totals.
 	// Defaults to true; set to false only for Kurtosis or test environments.
@@ -152,6 +154,12 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
 	}
+	if raw.AgglayerRPCURL != "" {
+		opts.AgglayerRPCURL = raw.AgglayerRPCURL
+	}
+	if raw.AgglayerGRPCURL != "" {
+		opts.AgglayerGRPCURL = raw.AgglayerGRPCURL
+	}
 	if raw.AbortOnGenesisBalance != nil {
 		opts.AbortOnGenesisBalance = *raw.AbortOnGenesisBalance
 	}
@@ -185,7 +193,9 @@ type rawOpts struct {
 	OutputDir              string `json:"outputDir"`
 	L1StartBlock           uint64 `json:"l1StartBlock"`
 	L2StartBlock           uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL       string `json:"agglayerAdminURL"`
+	AgglayerAdminURL string `json:"agglayerAdminURL"`
+	AgglayerRPCURL   string `json:"agglayerRpcUrl"`
+	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
 	AbortOnGenesisBalance  *bool  `json:"abortOnGenesisBalance"`
 	ContinueOnTraceError   *bool  `json:"continueOnTraceError"`
 }
