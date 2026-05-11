@@ -63,14 +63,6 @@ the output files from previous steps must already exist in the output directory.
 			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, or all",
 			Value: "all",
 		},
-		&cli.StringFlag{
-			Name:  "signer-key-path",
-			Usage: "Path to the keystore file used to sign the certificate (overrides signerKeyPath in config)",
-		},
-		&cli.StringFlag{
-			Name:  "signer-key-password",
-			Usage: "Password for the keystore file (overrides signerKeyPassword in config)",
-		},
 	}
 	app.Action = exit_certificate.Run
 

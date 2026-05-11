@@ -18,8 +18,8 @@ func RunStepSign(ctx context.Context, cfg *Config, cert *agglayertypes.Certifica
 	log.Info(" STEP SIGN — Sign exit certificate")
 	log.Info("═══════════════════════════════════════════")
 
-	if cfg.SignerKeyPath == "" {
-		return nil, fmt.Errorf("signerKeyPath is required for signing")
+	if cfg.SignerConfig.Method == "" {
+		return nil, fmt.Errorf("signerConfig.Method is required for signing")
 	}
 
 	chainID, err := fetchL2ChainID(ctx, cfg.L2RPCURL)
@@ -27,10 +27,9 @@ func RunStepSign(ctx context.Context, cfg *Config, cert *agglayertypes.Certifica
 		return nil, fmt.Errorf("fetch L2 chain ID: %w", err)
 	}
 
-	signerCfg := signer.NewLocalSignerConfig(cfg.SignerKeyPath, cfg.SignerKeyPassword)
-	certSigner, err := signer.NewSigner(ctx, chainID, signerCfg, "exit-certificate", log.GetDefaultLogger())
+	certSigner, err := signer.NewSigner(ctx, chainID, cfg.SignerConfig, "exit-certificate", log.GetDefaultLogger())
 	if err != nil {
-		return nil, fmt.Errorf("load signer from %s: %w", cfg.SignerKeyPath, err)
+		return nil, fmt.Errorf("create signer (method=%s): %w", cfg.SignerConfig.Method, err)
 	}
 	if err := certSigner.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("initialize signer: %w", err)
