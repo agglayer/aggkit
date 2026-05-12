@@ -116,7 +116,15 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 		return nil, fmt.Errorf("setup impersonation: %w", err)
 	}
 
-	tokens, err := resolveTokenAddresses(ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits, cfg.L2NetworkID)
+	blockTag := toBlockTag(cfg.ResolvedTargetBlock)
+	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, blockTag)
+	if err != nil {
+		log.Warnf("Failed to fetch gas token info (assuming standard ETH): %v", err)
+		gasTokenNetwork = 0
+		gasTokenAddress = common.Address{}
+	}
+
+	tokens, err := resolveTokenAddresses(ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits, cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("resolve token addresses: %w", err)
 	}
@@ -228,9 +236,12 @@ func setupImpersonation(ctx context.Context, anvilURL string, sender common.Addr
 
 // resolveTokenAddresses returns the L2 token address for each bridge exit.
 // Results are in the same order as exits. Wrapped-token lookups are cached.
+// gasTokenNetwork and gasTokenAddress identify the chain's custom gas token (both
+// zero for standard ETH chains); exits that match are treated as native.
 func resolveTokenAddresses(
 	ctx context.Context, anvilURL string, bridgeAddr common.Address,
 	exits []*agglayertypes.BridgeExit, l2NetworkID uint32,
+	gasTokenNetwork uint32, gasTokenAddress common.Address,
 ) ([]resolvedToken, error) {
 	type cacheKey struct {
 		network uint32
@@ -243,6 +254,12 @@ func resolveTokenAddresses(
 		ti := be.TokenInfo
 		// Native ETH
 		if ti.OriginNetwork == 0 && ti.OriginTokenAddress == (common.Address{}) {
+			result[i] = resolvedToken{isNative: true}
+			continue
+		}
+		// Custom gas token — bridgeAsset expects token=address(0) for native
+		if gasTokenAddress != (common.Address{}) &&
+			ti.OriginNetwork == gasTokenNetwork && ti.OriginTokenAddress == gasTokenAddress {
 			result[i] = resolvedToken{isNative: true}
 			continue
 		}
