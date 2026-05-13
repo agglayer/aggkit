@@ -174,6 +174,10 @@ type StepGResult struct {
 	InitialLocalExitRoot common.Hash `json:"initialLocalExitRoot"`
 	NewLocalExitRoot     common.Hash `json:"newLocalExitRoot"`
 	BridgeExitCount      uint64      `json:"bridgeExitCount"`
+	// BridgeExitMetadata holds the Metadata field from the BridgeEvent emitted for each
+	// replayed bridge exit, in the same order as Certificate.BridgeExits. Step I applies
+	// these values to each BridgeExit.Metadata before finalising the certificate.
+	BridgeExitMetadata [][]byte `json:"bridgeExitMetadata,omitempty"`
 }
 
 // StepHResult holds the output of Step H (PreviousLocalExitRoot and next height from agglayer).
