@@ -10,6 +10,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseStepList(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    []string
+		wantErr bool
+	}{
+		{"single step", "f", []string{"f"}, false},
+		{"comma list", "h, i, sign", []string{"h", "i", "sign"}, false},
+		{"closed range", "f-i", []string{"f", "g", "h", "i"}, false},
+		{"open range", "f-", []string{"f", "g", "h", "i", "sign"}, false},
+		{"open range from sign", "sign-", []string{"sign"}, false},
+		{"single-step range", "g-g", []string{"g"}, false},
+		{"explicit range including submit", "sign-submit", []string{"sign", "submit"}, false},
+		{"reversed range error", "i-f", nil, true},
+		{"unknown from step", "z-i", nil, true},
+		{"unknown to step", "f-z", nil, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseStepList(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.want, got)
+			}
+		})
+	}
+}
+
 func TestParseBlockNumber_Decimal(t *testing.T) {
 	t.Parallel()
 	n, err := parseBlockNumber("12345")

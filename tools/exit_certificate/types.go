@@ -138,6 +138,9 @@ type TokenBalanceCheck struct {
 	AgglayerAmount     string             `json:"agglayerAmount"`
 	Match              bool               `json:"match"`
 	CertificateEntries []CertificateEntry `json:"certificateEntries,omitempty"`
+	// RemainingBalance is the cap budget for this token: min(LBT, agglayer).
+	// Not persisted to JSON; used internally by capCertificateExits.
+	RemainingBalance *big.Int `json:"-"`
 }
 
 // StepFResult holds the output of Step F (agglayer token balance check).
@@ -166,8 +169,11 @@ type StepCheckResult struct {
 
 // StepGResult holds the output of Step G (NewLocalExitRoot calculation).
 type StepGResult struct {
-	NewLocalExitRoot common.Hash `json:"newLocalExitRoot"`
-	BridgeExitCount  uint64      `json:"bridgeExitCount"`
+	// InitialLocalExitRoot is the LER read from the bridge contract at targetBlock,
+	// before any bridge exits from the certificate are replayed.
+	InitialLocalExitRoot common.Hash `json:"initialLocalExitRoot"`
+	NewLocalExitRoot     common.Hash `json:"newLocalExitRoot"`
+	BridgeExitCount      uint64      `json:"bridgeExitCount"`
 }
 
 // StepHResult holds the output of Step H (PreviousLocalExitRoot and next height from agglayer).

@@ -32,6 +32,9 @@ type Options struct {
 	// ContinueIfBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	ContinueIfBalanceMismatch bool `json:"continueIfBalanceMismatch"`
+	// IgnoreUnclaimed skips adding unclaimed L1→L2 deposits to the certificate in Step E.
+	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
+	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -212,6 +215,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.ContinueIfBalanceMismatch != nil {
 		opts.ContinueIfBalanceMismatch = *raw.ContinueIfBalanceMismatch
 	}
+	if raw.IgnoreUnclaimed != nil {
+		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
+	}
 	return opts
 }
 
@@ -245,6 +251,7 @@ type rawOpts struct {
 	AbortOnGenesisBalance     *bool `json:"abortOnGenesisBalance"`
 	ContinueOnTraceError      *bool `json:"continueOnTraceError"`
 	ContinueIfBalanceMismatch *bool `json:"continueIfBalanceMismatch"`
+	IgnoreUnclaimed           *bool `json:"ignoreUnclaimed"`
 }
 
 // --- LBT file parsing ---
