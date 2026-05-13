@@ -57,6 +57,21 @@ func RunStepE(
 	unclaimed := filterUnclaimedDeposits(l1Deposits, claimedSet)
 	log.Infof("Unclaimed L1→L2 deposits: %d", len(unclaimed))
 
+	if cfg.Options.IgnoreUnclaimed {
+		for _, dep := range unclaimed {
+			log.Warnf("⚠️  Unclaimed deposit ignored (ignoreUnclaimed=true): depositCount=%d originNetwork=%d originAddr=%s amount=%s tx=%s",
+				dep.DepositCount, dep.OriginNetwork, dep.OriginAddress.Hex(), dep.Amount, dep.TxHash.Hex())
+		}
+		if len(unclaimed) > 0 {
+			log.Warnf("⚠️  %d unclaimed deposit(s) detected but NOT added to the certificate (ignoreUnclaimed=true)", len(unclaimed))
+		}
+		log.Info("STEP E complete (certificate unchanged)")
+		return &StepEResult{
+			UnclaimedBridges: unclaimed,
+			FinalCertificate: certificate,
+		}, nil
+	}
+
 	newExits := depositsToExits(unclaimed, cfg)
 	log.Infof("Adding %d unclaimed-deposit exits to certificate", len(newExits))
 
