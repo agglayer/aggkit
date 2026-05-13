@@ -35,6 +35,8 @@ var (
 	// bridgeABI is the parsed ABI for the AgglayerBridgeL2 contract, used to
 	// encode/decode bridgeAsset, getRoot, and getTokenWrappedAddress calls.
 	bridgeABI abi.ABI
+
+	bridgeEventTopicHash common.Hash
 )
 
 func init() {
@@ -43,12 +45,33 @@ func init() {
 		panic(fmt.Sprintf("parse agglayerbridgel2 ABI: %v", err))
 	}
 	bridgeABI = *parsed
+	bridgeEventTopicHash = crypto.Keccak256Hash([]byte(
+		"BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)",
+	))
 }
 
 // tokenOriginKey identifies an L1/L2 token by its origin chain and address.
 type tokenOriginKey struct {
 	network uint32
 	addr    common.Address
+}
+
+// rpcLog is the JSON representation of a log entry in an eth_getTransactionReceipt response.
+type rpcLog struct {
+	Address string   `json:"address"`
+	Topics  []string `json:"topics"`
+	Data    string   `json:"data"`
+}
+
+type bridgeEventLog struct {
+	LeafType           uint8
+	OriginNetwork      uint32
+	OriginAddress      common.Address
+	DestinationNetwork uint32
+	DestinationAddress common.Address
+	Amount             *big.Int
+	Metadata           []byte
+	DepositCount       uint32
 }
 
 // RunStepG computes Certificate.NewLocalExitRoot by replaying all bridge exits
@@ -111,6 +134,7 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 		log.Debugf("token map: origin(network=%d addr=%s) -> L2 wrapped %s", k.network, k.addr.Hex(), v.Hex())
 	}
 
+	metadatas := make([][]byte, 0, len(certificate.BridgeExits))
 	for i, bridge := range certificate.BridgeExits {
 		isNative := isNativeBridgeExit(bridge.TokenInfo, gasTokenNetwork, gasTokenAddress, cfg.L2NetworkID)
 		log.Infof("[%d/%d] bridgeAsset bridge exit [%d/%s] -> %s:  amount=%s isNative=%t", i+1, len(certificate.BridgeExits),
@@ -132,9 +156,13 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 
 		}
 
-		if err := bridgeAsset(ctx, anvilURL, cfg.L2BridgeAddress, bridge, isNative, l2TokenAddr); err != nil {
+		event, err := bridgeAsset(ctx, anvilURL, cfg.L2BridgeAddress, bridge, isNative, l2TokenAddr)
+		if err != nil {
 			return nil, fmt.Errorf("bridge asset: %w", err)
 		}
+		log.Debugf("BridgeEvent depositCount=%d originNetwork=%d originAddress=%s amount=%s metadata=%x",
+			event.DepositCount, event.OriginNetwork, event.OriginAddress.Hex(), event.Amount, event.Metadata)
+		metadatas = append(metadatas, event.Metadata)
 	}
 
 	ler, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
@@ -146,6 +174,7 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 		InitialLocalExitRoot: initialLER,
 		NewLocalExitRoot:     ler,
 		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
+		BridgeExitMetadata:   metadatas,
 	}
 	log.Infof("Bridge exits processed: %d", result.BridgeExitCount)
 	log.Infof("NewLocalExitRoot: %s", result.NewLocalExitRoot.Hex())
@@ -206,7 +235,7 @@ func approveERC20(ctx context.Context, rpcURL string, bridgeAddr, sender common.
 		return fmt.Errorf("failed approve ERC-20 token: %w", err)
 	}
 
-	if err := waitForReceipt(ctx, rpcURL, txHash); err != nil {
+	if _, err := waitForReceipt(ctx, rpcURL, txHash); err != nil {
 		return fmt.Errorf("wait for approve ERC-20 token (%s) receipt: %w", tokenAddr.Hex(), err)
 	}
 	log.Debugf("✅ ERC-20 approval for bridgeAddr for L2Token: %s successful", tokenAddr.Hex())
@@ -218,7 +247,7 @@ func bridgeAsset(ctx context.Context, rpcURL string,
 	bridgeAddr common.Address,
 	bridgeExit *agglayertypes.BridgeExit,
 	isNative bool,
-	l2TokenAddr common.Address) error {
+	l2TokenAddr common.Address) (*bridgeEventLog, error) {
 	sender := bridgeExit.DestinationAddress
 
 	var value *big.Int
@@ -228,7 +257,7 @@ func bridgeAsset(ctx context.Context, rpcURL string,
 	}
 
 	if err := setupImpersonation(ctx, rpcURL, sender); err != nil {
-		return fmt.Errorf("setup impersonation for %s: %w", sender.Hex(), err)
+		return nil, fmt.Errorf("setup impersonation for %s: %w", sender.Hex(), err)
 	}
 
 	callData := encodeBridgeAssetCallRaw(
@@ -241,13 +270,18 @@ func bridgeAsset(ctx context.Context, rpcURL string,
 	txHash, err := sendAnvilTransaction(ctx, rpcURL, sender, bridgeAddr, value, callData)
 	if err != nil {
 		log.Errorf("Failed to bridge asset: %v", err)
-		return fmt.Errorf("failed bridge asset: %w", err)
+		return nil, fmt.Errorf("failed bridge asset: %w", err)
 	}
-	if err := waitForReceipt(ctx, rpcURL, txHash); err != nil {
+	logs, err := waitForReceipt(ctx, rpcURL, txHash)
+	if err != nil {
 		log.Errorf("Failed to get receipt for bridge asset tx: %v", err)
-		return fmt.Errorf("failed to get receipt for bridge asset tx: %w", err)
+		return nil, fmt.Errorf("failed to get receipt for bridge asset tx: %w", err)
 	}
-	return nil
+	event, err := parseBridgeEventFromLogs(logs)
+	if err != nil {
+		return nil, fmt.Errorf("parse BridgeEvent from receipt: %w", err)
+	}
+	return event, nil
 }
 
 func checkAnvilAvailable() error {
@@ -507,36 +541,68 @@ func sendAnvilTransaction(
 	return common.HexToHash(txHashHex), nil
 }
 
-func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) error {
+func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) ([]rpcLog, error) {
 	deadline := time.Now().Add(receiptPollTimeout)
 	for time.Now().Before(deadline) {
 		result, err := singleRPC(ctx, anvilURL, "eth_getTransactionReceipt",
 			[]any{txHash.Hex()}, defaultRetries)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if len(result) == 0 || string(result) == "null" {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil, ctx.Err()
 			case <-time.After(receiptPollInterval):
 				continue
 			}
 		}
 		var receipt struct {
-			Status      string `json:"status"`
-			BlockNumber string `json:"blockNumber"`
+			Status      string   `json:"status"`
+			BlockNumber string   `json:"blockNumber"`
+			Logs        []rpcLog `json:"logs"`
 		}
 		if err := json.Unmarshal(result, &receipt); err != nil {
-			return fmt.Errorf("parse receipt: %w", err)
+			return nil, fmt.Errorf("parse receipt: %w", err)
 		}
 		if receipt.Status == "0x0" {
 			reason := fetchRevertReason(ctx, anvilURL, txHash, receipt.BlockNumber)
-			return fmt.Errorf("transaction %s reverted: %s", txHash.Hex(), reason)
+			return nil, fmt.Errorf("transaction %s reverted: %s", txHash.Hex(), reason)
 		}
-		return nil
+		return receipt.Logs, nil
 	}
-	return fmt.Errorf("timeout waiting for receipt of %s", txHash.Hex())
+	return nil, fmt.Errorf("timeout waiting for receipt of %s", txHash.Hex())
+}
+
+func parseBridgeEventFromLogs(logs []rpcLog) (*bridgeEventLog, error) {
+	wantTopic := bridgeEventTopicHash.Hex()
+	for _, l := range logs {
+		if len(l.Topics) == 0 || !strings.EqualFold(l.Topics[0], wantTopic) {
+			continue
+		}
+		data, err := hex.DecodeString(strings.TrimPrefix(l.Data, "0x"))
+		if err != nil {
+			return nil, fmt.Errorf("decode BridgeEvent data: %w", err)
+		}
+		values, err := bridgeABI.Events["BridgeEvent"].Inputs.UnpackValues(data)
+		if err != nil {
+			return nil, fmt.Errorf("unpack BridgeEvent: %w", err)
+		}
+		if len(values) != 8 {
+			return nil, fmt.Errorf("expected 8 BridgeEvent fields, got %d", len(values))
+		}
+		return &bridgeEventLog{
+			LeafType:           values[0].(uint8),
+			OriginNetwork:      values[1].(uint32),
+			OriginAddress:      values[2].(common.Address),
+			DestinationNetwork: values[3].(uint32),
+			DestinationAddress: values[4].(common.Address),
+			Amount:             values[5].(*big.Int),
+			Metadata:           values[6].([]byte),
+			DepositCount:       values[7].(uint32),
+		}, nil
+	}
+	return nil, fmt.Errorf("BridgeEvent not found in receipt logs")
 }
 
 // knownErrors maps 4-byte selector (hex, no 0x) to signature and argument decoder.
