@@ -111,14 +111,18 @@ func RunStepF(
 	if !allMatch {
 		if cfg.Options.ContinueIfBalanceMismatch {
 			log.Warn("Balance mismatches detected — continuing anyway (continueIfBalanceMismatch=true)")
-			capMap := buildCapMap(checks)
-			if len(capMap) > 0 {
-				capped := *certificate
-				capped.BridgeExits = capBridgeExits(certificate.BridgeExits, capMap)
-				result.CappedCertificate = &capped
-				log.Infof("🔧 Capped certificate: %d → %d bridge exits",
-					len(certificate.BridgeExits), len(capped.BridgeExits))
+			for _, c := range checks {
+				if !c.Match {
+					log.Debugf("  ⚠️ check: network=%d addr=%s lbt=%s certificate=%s agglayer=%s match=%v",
+						c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount, c.Match)
+				}
 			}
+
+			capped := *certificate
+			capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks)
+			result.CappedCertificate = &capped
+			log.Infof("🔧 Capped certificate: %d → %d bridge exits",
+				len(certificate.BridgeExits), len(capped.BridgeExits))
 		} else {
 			return result, fmt.Errorf("token balance mismatches detected (set options.continueIfBalanceMismatch=true to ignore)")
 		}
@@ -215,8 +219,14 @@ func compareTokenBalances(
 			}
 			check.LBTAmount = lbtAmt.String()
 			check.Match = certAmt.Cmp(agglAmt) == 0 && agglAmt.Cmp(lbtAmt) == 0
+			if agglAmt.Cmp(lbtAmt) <= 0 {
+				check.RemainingBalance = new(big.Int).Set(agglAmt)
+			} else {
+				check.RemainingBalance = new(big.Int).Set(lbtAmt)
+			}
 		} else {
 			check.Match = certAmt.Cmp(agglAmt) == 0
+			check.RemainingBalance = new(big.Int).Set(agglAmt)
 		}
 
 		if !check.Match {
@@ -241,125 +251,58 @@ func compareTokenBalances(
 	return checks
 }
 
-// buildCapMap derives the per-token capped amount from the balance checks.
-// cappedAmt = min(agglayer, lbt) when LBT is available, agglayer otherwise.
-// Only tokens where certAmt > cappedAmt are included.
-func buildCapMap(checks []TokenBalanceCheck) map[tokenKey]*big.Int {
-	caps := make(map[tokenKey]*big.Int)
+// capCertificateExits returns a new slice of bridge exits trimmed to stay within each
+// token's RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
+// Exits are processed in order: each exit's amount is deducted from the token budget.
+// An exit that would exceed the budget is capped to the remaining amount.
+// Exits with a resulting zero amount are dropped.
+func capCertificateExits(exits []*agglayertypes.BridgeExit, checks []TokenBalanceCheck) []*agglayertypes.BridgeExit {
+	remaining := make(map[tokenKey]*big.Int, len(checks))
 	for _, c := range checks {
-		if c.Match {
+		if c.RemainingBalance == nil {
 			continue
 		}
-		certAmt, ok := new(big.Int).SetString(c.CertificateAmount, 10)
-		if !ok || certAmt.Sign() == 0 {
-			continue
-		}
-		agglAmt, ok := new(big.Int).SetString(c.AgglayerAmount, 10)
-		if !ok {
-			agglAmt = new(big.Int)
-		}
-
-		var cappedAmt *big.Int
-		if c.LBTAmount != "" {
-			lbtAmt, ok := new(big.Int).SetString(c.LBTAmount, 10)
-			if !ok {
-				lbtAmt = new(big.Int)
-			}
-			if agglAmt.Cmp(lbtAmt) <= 0 {
-				cappedAmt = new(big.Int).Set(agglAmt)
-			} else {
-				cappedAmt = new(big.Int).Set(lbtAmt)
-			}
-		} else {
-			cappedAmt = new(big.Int).Set(agglAmt)
-		}
-
-		if certAmt.Cmp(cappedAmt) > 0 {
-			k := tokenKey{
-				OriginNetwork:      c.OriginNetwork,
-				OriginTokenAddress: common.HexToAddress(c.OriginTokenAddress),
-			}
-			caps[k] = cappedAmt
-			log.Infof("🔧 Cap token (network=%d addr=%s): %s → %s (agglayer=%s lbt=%s)",
-				c.OriginNetwork, c.OriginTokenAddress,
-				certAmt.String(), cappedAmt.String(),
-				c.AgglayerAmount, c.LBTAmount)
-		}
+		k := tokenKey{c.OriginNetwork, common.HexToAddress(c.OriginTokenAddress)}
+		remaining[k] = new(big.Int).Set(c.RemainingBalance)
 	}
-	return caps
-}
 
-// capBridgeExits returns a new deep-copied slice of bridge exits with amounts proportionally
-// scaled down for any token present in capMap. Exits that scale to zero are removed.
-func capBridgeExits(exits []*agglayertypes.BridgeExit, capMap map[tokenKey]*big.Int) []*agglayertypes.BridgeExit {
-	// Group by token to compute per-token totals.
-	type group struct {
-		indices []int
-		total   *big.Int
-	}
-	groups := make(map[tokenKey]*group)
-	for i, e := range exits {
+	result := make([]*agglayertypes.BridgeExit, 0, len(exits))
+	for _, e := range exits {
 		if e == nil || e.TokenInfo == nil || e.Amount == nil {
+			result = append(result, e)
 			continue
 		}
 		k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
-		g, ok := groups[k]
-		if !ok {
-			g = &group{total: new(big.Int)}
-			groups[k] = g
+		rem, hasCap := remaining[k]
+		if !hasCap {
+			result = append(result, e)
+			continue
 		}
-		g.indices = append(g.indices, i)
-		g.total.Add(g.total, e.Amount)
-	}
-
-	// Pre-compute scaled amounts (default: keep original).
-	newAmounts := make([]*big.Int, len(exits))
-	for i, e := range exits {
-		if e != nil && e.Amount != nil {
-			newAmounts[i] = new(big.Int).Set(e.Amount)
+		if rem.Sign() == 0 {
+			log.Debugf("🔧 Drop bridge exit (network=%d addr=%s amount=%s): no budget left",
+				k.OriginNetwork, k.OriginTokenAddress, e.Amount)
+			continue
+		}
+		if e.Amount.Cmp(rem) <= 0 {
+			rem.Sub(rem, e.Amount)
+			result = append(result, e)
 		} else {
-			newAmounts[i] = new(big.Int)
+			exitCopy := *e
+			if e.TokenInfo != nil {
+				tc := *e.TokenInfo
+				exitCopy.TokenInfo = &tc
+			}
+			if e.Metadata != nil {
+				md := make([]byte, len(e.Metadata))
+				copy(md, e.Metadata)
+				exitCopy.Metadata = md
+			}
+			log.Infof("🔧 Cap bridge exit (network=%d addr=%s): %s → %s",
+				k.OriginNetwork, k.OriginTokenAddress, e.Amount, rem)
+			exitCopy.Amount = new(big.Int).Set(rem)
+			rem.SetInt64(0)
+			result = append(result, &exitCopy)
 		}
-	}
-
-	for k, cappedAmt := range capMap {
-		g, ok := groups[k]
-		if !ok || g.total.Sign() == 0 || cappedAmt.Cmp(g.total) >= 0 {
-			continue
-		}
-		sumScaled := new(big.Int)
-		for _, idx := range g.indices {
-			// scaled = original * cappedAmt / total
-			scaled := new(big.Int).Mul(exits[idx].Amount, cappedAmt)
-			scaled.Div(scaled, g.total)
-			newAmounts[idx] = scaled
-			sumScaled.Add(sumScaled, scaled)
-		}
-		// Add rounding remainder to the last exit to keep the exact capped total.
-		remainder := new(big.Int).Sub(cappedAmt, sumScaled)
-		if remainder.Sign() > 0 {
-			newAmounts[g.indices[len(g.indices)-1]].Add(newAmounts[g.indices[len(g.indices)-1]], remainder)
-		}
-	}
-
-	// Build result with deep-copied exits; drop zero-amount entries.
-	result := make([]*agglayertypes.BridgeExit, 0, len(exits))
-	for i, e := range exits {
-		if e == nil || newAmounts[i] == nil || newAmounts[i].Sign() == 0 {
-			continue
-		}
-		exitCopy := *e
-		if e.TokenInfo != nil {
-			tc := *e.TokenInfo
-			exitCopy.TokenInfo = &tc
-		}
-		if e.Metadata != nil {
-			md := make([]byte, len(e.Metadata))
-			copy(md, e.Metadata)
-			exitCopy.Metadata = md
-		}
-		exitCopy.Amount = new(big.Int).Set(newAmounts[i])
-		result = append(result, &exitCopy)
 	}
 	return result
 }

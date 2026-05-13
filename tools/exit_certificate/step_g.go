@@ -66,7 +66,16 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 
 	if len(certificate.BridgeExits) == 0 {
 		log.Info("No bridge exits — using EmptyLER")
-		return &StepGResult{NewLocalExitRoot: bridgesynctypes.EmptyLER, BridgeExitCount: 0}, nil
+		initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(cfg.ResolvedTargetBlock))
+		if err != nil {
+			log.Warnf("Could not read initial LocalExitRoot: %v", err)
+		}
+		log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
+		return &StepGResult{
+			InitialLocalExitRoot: initialLER,
+			NewLocalExitRoot:     bridgesynctypes.EmptyLER,
+			BridgeExitCount:      0,
+		}, nil
 	}
 
 	if err := checkAnvilAvailable(); err != nil {
@@ -86,6 +95,12 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 		gasTokenNetwork = 0
 		gasTokenAddress = common.Address{}
 	}
+
+	initialLER, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
+	if err != nil {
+		return nil, fmt.Errorf("read initial local exit root: %w", err)
+	}
+	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
 
 	lbtMap := buildLBTTokenMap(lbtEntries)
 	l2Tokens, err := resolveTokenAddresses(ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits, cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress, lbtMap)
@@ -121,14 +136,16 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 			return nil, fmt.Errorf("bridge asset: %w", err)
 		}
 	}
-	ler, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress)
+
+	ler, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
 	if err != nil {
 		return nil, fmt.Errorf("read local exit root: %w", err)
 	}
 
 	result := &StepGResult{
-		NewLocalExitRoot: ler,
-		BridgeExitCount:  uint64(len(certificate.BridgeExits)),
+		InitialLocalExitRoot: initialLER,
+		NewLocalExitRoot:     ler,
+		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
 	}
 	log.Infof("Bridge exits processed: %d", result.BridgeExitCount)
 	log.Infof("NewLocalExitRoot: %s", result.NewLocalExitRoot.Hex())
@@ -179,6 +196,9 @@ func approveERC20(ctx context.Context, rpcURL string, bridgeAddr, sender common.
 	}
 
 	callData := encodeERC20ApproveCallRaw(bridgeAddr, amount)
+	if err := setupImpersonation(ctx, rpcURL, sender); err != nil {
+		return fmt.Errorf("setup impersonation for %s to approve ERC-20 token: %w", sender.Hex(), err)
+	}
 
 	txHash, err := sendAnvilTransaction(ctx, rpcURL, sender, tokenAddr, nil, callData)
 	if err != nil {
@@ -599,18 +619,18 @@ func fetchRevertReason(ctx context.Context, anvilURL string, txHash common.Hash,
 	return callErr.Error()
 }
 
-// readLocalExitRoot calls getRoot() on the bridge contract to get the current LER.
-func readLocalExitRoot(ctx context.Context, anvilURL string, bridgeAddr common.Address) (common.Hash, error) {
+// readLocalExitRoot calls getRoot() on the bridge contract to get the LER at blockTag.
+func readLocalExitRoot(ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string) (common.Hash, error) {
 	callData, err := bridgeABI.Pack("getRoot")
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("pack getRoot: %w", err)
 	}
-	raw, err := singleRPC(ctx, anvilURL, "eth_call", []any{
+	raw, err := singleRPC(ctx, rpcURL, "eth_call", []any{
 		map[string]any{
 			"to":   bridgeAddr.Hex(),
 			"data": "0x" + hex.EncodeToString(callData),
 		},
-		"latest",
+		blockTag,
 	}, defaultRetries)
 	if err != nil {
 		return common.Hash{}, err

@@ -137,7 +137,7 @@ func TestStepE_MergeCertificateExits(t *testing.T) {
 		BridgeExits: []*agglayertypes.BridgeExit{existingExit},
 	}
 
-	finalCert := mergeCertificate(certificate, []*agglayertypes.BridgeExit{newExit})
+	finalCert := mergeCertificate(certificate, []*agglayertypes.BridgeExit{newExit}, nil)
 
 	require.Len(t, finalCert.BridgeExits, 2)
 	require.Equal(t, big.NewInt(100), finalCert.BridgeExits[0].Amount)
