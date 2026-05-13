@@ -12,7 +12,9 @@ import (
 
 // RunStepH fetches the PreviousLocalExitRoot for the L2 network from the agglayer
 // by calling GetNetworkInfo and reading the SettledLER field.
-func RunStepH(ctx context.Context, cfg *Config) (*StepHResult, error) {
+// gResult is the output of Step G; when provided, its InitialLocalExitRoot is compared
+// against the agglayer's settled LER and an error is returned on mismatch.
+func RunStepH(ctx context.Context, cfg *Config, gResult *StepGResult) (*StepHResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP H - Fetch PreviousLocalExitRoot")
 	log.Info("═══════════════════════════════════════════")
@@ -45,8 +47,21 @@ func RunStepH(ctx context.Context, cfg *Config) (*StepHResult, error) {
 		nextHeight = *info.SettledHeight + 1
 	}
 
-	log.Infof("PreviousLocalExitRoot: %s", prevLER.Hex())
+	log.Infof("PreviousLocalExitRoot (agglayer): %s", prevLER.Hex())
 	log.Infof("Next certificate height: %d", nextHeight)
+
+	if gResult != nil {
+		log.Infof("InitialLocalExitRoot  (L2 chain): %s", gResult.InitialLocalExitRoot.Hex())
+		if gResult.InitialLocalExitRoot != prevLER {
+			return nil, fmt.Errorf(
+				"LocalExitRoot mismatch: L2 chain has %s but agglayer settled %s — "+
+					"the chain may have unaccounted bridge exits",
+				gResult.InitialLocalExitRoot.Hex(), prevLER.Hex(),
+			)
+		}
+		log.Info("✅ InitialLocalExitRoot matches agglayer settled LER")
+	}
+
 	log.Info("STEP H complete")
 	return &StepHResult{PreviousLocalExitRoot: prevLER, Height: nextHeight}, nil
 }

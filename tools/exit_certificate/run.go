@@ -49,7 +49,11 @@ func Run(c *cli.Context) error {
 		return runAll(ctx, cfg)
 	}
 
-	for _, s := range parseStepList(step) {
+	steps, err := parseStepList(step)
+	if err != nil {
+		return err
+	}
+	for _, s := range steps {
 		if err := runSingleStep(ctx, s, cfg); err != nil {
 			return err
 		}
@@ -57,16 +61,77 @@ func Run(c *cli.Context) error {
 	return nil
 }
 
-// parseStepList splits a comma-separated step list and trims whitespace.
-// E.g. "h, i, sign" → ["h", "i", "sign"].
-func parseStepList(raw string) []string {
+// orderedSteps is the canonical pipeline order used for range expansion.
+var orderedSteps = []string{"check", "0", "a", "b", "c", "d", "e", "f", "g", "h", "i", "sign", "submit", "wait"}
+
+// lastAutoStep is the implicit end for open ranges (X-).
+// "submit" and "wait" must always be specified explicitly.
+const lastAutoStep = "sign"
+
+// parseStepList splits a comma-separated step list, expanding range notation.
+// "f-i"  → ["f", "g", "h", "i"]
+// "f-"   → ["f", "g", "h", "i", "sign", "submit", "wait"]
+// "h, i, sign" → ["h", "i", "sign"]
+func parseStepList(raw string) ([]string, error) {
 	var steps []string
-	for _, s := range strings.Split(raw, ",") {
-		if t := strings.TrimSpace(s); t != "" {
-			steps = append(steps, t)
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if strings.Contains(token, "-") {
+			expanded, err := expandStepRange(token)
+			if err != nil {
+				return nil, err
+			}
+			steps = append(steps, expanded...)
+		} else {
+			steps = append(steps, token)
 		}
 	}
-	return steps
+	return steps, nil
+}
+
+func expandStepRange(token string) ([]string, error) {
+	parts := strings.SplitN(token, "-", 2)
+	from, to := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+
+	fromIdx := -1
+	for i, s := range orderedSteps {
+		if s == from {
+			fromIdx = i
+			break
+		}
+	}
+	if fromIdx == -1 {
+		return nil, fmt.Errorf("unknown step in range %q: %q", token, from)
+	}
+
+	// Open range: stop at lastAutoStep (submit/wait require explicit opt-in).
+	toIdx := -1
+	for i, s := range orderedSteps {
+		if s == lastAutoStep {
+			toIdx = i
+			break
+		}
+	}
+	if to != "" {
+		toIdx = -1
+		for i, s := range orderedSteps {
+			if s == to {
+				toIdx = i
+				break
+			}
+		}
+		if toIdx == -1 {
+			return nil, fmt.Errorf("unknown step in range %q: %q", token, to)
+		}
+		if toIdx < fromIdx {
+			return nil, fmt.Errorf("invalid range %q: %q comes before %q in the pipeline", token, to, from)
+		}
+	}
+
+	return orderedSteps[fromIdx : toIdx+1], nil
 }
 
 // resolveBlockA resolves "latest" to a concrete block number, or parses the numeric value.
@@ -170,7 +235,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	hResult, err := runAllStepH(ctx, cfg, dir)
+	hResult, err := runAllStepH(ctx, cfg, dir, gResult)
 	if err != nil {
 		return err
 	}
@@ -252,9 +317,8 @@ func runAllStepF(
 	}
 	if result.CappedCertificate != nil {
 		// Apply the same per-token caps to the final certificate (which may include step E exits).
-		capMap := buildCapMap(result.Checks)
 		cappedFinal := *finalCert
-		cappedFinal.BridgeExits = capBridgeExits(finalCert.BridgeExits, capMap)
+		cappedFinal.BridgeExits = capCertificateExits(finalCert.BridgeExits, result.Checks)
 		saveJSON(dir, "step-f-capped-certificate.json", &cappedFinal)
 		log.Infof("🔧 Capped final certificate saved (%d → %d bridge exits)",
 			len(finalCert.BridgeExits), len(cappedFinal.BridgeExits))
@@ -272,8 +336,8 @@ func runAllStepG(ctx context.Context, cfg *Config, dir string, certificate *aggl
 	return result, nil
 }
 
-func runAllStepH(ctx context.Context, cfg *Config, dir string) (*StepHResult, error) {
-	result, err := RunStepH(ctx, cfg)
+func runAllStepH(ctx context.Context, cfg *Config, dir string, gResult *StepGResult) (*StepHResult, error) {
+	result, err := RunStepH(ctx, cfg, gResult)
 	if err != nil {
 		return nil, fmt.Errorf("step H: %w", err)
 	}
@@ -597,7 +661,11 @@ func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 }
 
 func runSingleH(ctx context.Context, cfg *Config, dir string) error {
-	result, err := RunStepH(ctx, cfg)
+	var gResult StepGResult
+	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
+		return fmt.Errorf("load step G result: %w", err)
+	}
+	result, err := RunStepH(ctx, cfg, &gResult)
 	if err != nil {
 		return err
 	}
@@ -607,8 +675,17 @@ func runSingleH(ctx context.Context, cfg *Config, dir string) error {
 
 func runSingleI(ctx context.Context, cfg *Config, dir string) error {
 	var cert certificateJSON
-	if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
-		return fmt.Errorf("load step E certificate: %w", err)
+	cappedPath := filepath.Join(dir, "step-f-capped-certificate.json")
+	if _, err := os.Stat(cappedPath); err == nil {
+		if err := loadJSON(dir, "step-f-capped-certificate.json", &cert); err != nil {
+			return fmt.Errorf("load step F capped certificate: %w", err)
+		}
+		log.Warn("⚠️  Using capped certificate from step F (step-f-capped-certificate.json)")
+	} else {
+		if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
+			return fmt.Errorf("load step E certificate: %w", err)
+		}
+		log.Info("Using certificate from step E (step-e-exit-certificate.json)")
 	}
 	var gResult StepGResult
 	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
