@@ -26,16 +26,39 @@ tools/exit_certificate/
 ├── step_e.go            — unclaimed L1→L2 deposits
 ├── step_f.go            — agglayer token balance verification
 ├── step_g.go            — NewLocalExitRoot computation
+├── step_h.go            — fetch PreviousLocalExitRoot from agglayer
+├── step_i.go            — assemble final certificate (LER, prev LER, L1InfoTreeLeafCount)
+├── step_check.go        — prerequisite checks (Anvil, L1 RPC, network type, threshold, gas token)
 ├── step_sign.go         — ECDSA certificate signing
+├── step_submit.go       — send certificate to agglayer via gRPC
+├── step_wait.go         — poll agglayer until certificate is settled or in error
 └── parameters.json.example
 ```
 
 ## Pipeline
 
-Full pipeline order: **0 → A → B → C → D → E → F → G → H → I → SIGN**
+Full pipeline order (`runAll`): **CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN**
+
+Post-submission steps (explicit only, not part of `runAll`): **SUBMIT → WAIT**
 
 Each step reads its inputs from disk (output dir) and writes its outputs to disk. The
 `runAll` path passes data in memory directly; `runSingleStep` always loads from disk.
+
+### Step CHECK — Verify prerequisites
+
+Runs automatically as the first step of the full pipeline, and can also be triggered individually with `--step check`.
+
+All checks run regardless of individual failures. A combined error lists every failed check.
+
+1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
+2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
+3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
+4. **`sovereignRollupAddr` is set** — required; fails if zero address.
+5. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 4 passed.
+6. **Threshold is 1** — queries `Threshold()` and `GetAggchainSignerInfos()`. Fails if threshold > 1. Also verifies the bridge address on the contract matches config. Only runs if checks 2 and 4 passed.
+7. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is set (not supported).
+
+- **Output:** `step-check-result.json` (`StepCheckResult`)
 
 ### Step 0 — Generate LBT
 
@@ -83,12 +106,16 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 ### Step F — Agglayer balance verification
 
 - **Requires:** `agglayerAdminURL` in options (skipped otherwise).
-- Calls `admin_getTokenBalance` on the agglayer admin RPC and compares per-token totals against the certificate.
-- Mismatches are warnings, not errors — step never aborts the pipeline.
-- **Output:** `step-f-token-balances.json`, `step-f-checks.json` (`[]TokenBalanceCheck`)
-
+- Calls `admin_getTokenBalance` on the agglayer admin RPC and performs a **three-way comparison** per token: `LBT (Step 0) == agglayer == certificate sum`. Each token is logged with ✅ or ❌.
+- **LBT data:** loaded from `step-0-lbt.json` (or `lbtFile`). If unavailable, falls back to two-way comparison (certificate vs agglayer).
+- **On mismatch:** aborts the pipeline with an error by default.
+- **`continueIfBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
+- `buildCapMap` / `capBridgeExits` are the internal helpers for computing and applying the caps. Proportional scaling preserves the exact capped total by adding any integer-division remainder to the last exit of each group.
+- **Output:** `step-f-token-balances.json`, `step-f-checks.json` (`[]TokenBalanceCheck`), `step-f-capped-certificate.json` *(only when `continueIfBalanceMismatch=true` and mismatches exist)*
 
 ### Step G — Compute NewLocalExitRoot (shadow-fork)
+
+> **Input priority (single-step mode):** uses `step-f-capped-certificate.json` if it exists (logged with ⚠️), otherwise falls back to `step-e-exit-certificate.json`. In `runAll` the in-memory certificate already reflects any capping done by Step F.
 
 Computes the correct `NewLocalExitRoot` by replaying every `bridge_exit` from the certificate
 against a shadow-fork of the L2 chain, then reading the resulting `localExitRoot` storage slot
@@ -131,7 +158,7 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 
 ### Step H — Fetch PreviousLocalExitRoot
 
-- **Requires:** `options.agglayerRpcUrl` — step H is mandatory and fails if not set.
+- **Requires:** `options.agglayerGrpcUrl` — uses `agglayer.NewAgglayerClient` (gRPC), same as step SUBMIT.
 - Calls `interop_getNetworkInfo` with `l2NetworkId` on the agglayer JSON-RPC and reads `settled_ler`.
 - If no certificate has been settled yet (`settled_ler` is null), `PreviousLocalExitRoot` is zero.
 - **Output:** `step-h-previous-local-exit-root.json` (`StepHResult`)
@@ -141,7 +168,10 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 - Reads `step-e-exit-certificate.json` (base from E), `step-g-new-local-exit-root.json`, and
   `step-h-previous-local-exit-root.json` (optional).
 - Sets `Certificate.NewLocalExitRoot` from G and `Certificate.PrevLocalExitRoot` from H.
-- **Output:** `exit-certificate-final.json` (updated with both roots)
+- **Fetches `L1InfoTreeLeafCount`** — scans L1 backwards from the latest L1 block for the most
+  recent `UpdateL1InfoTreeV2` event emitted by `l1GlobalExitRootAddress` and sets
+  `Certificate.L1InfoTreeLeafCount`. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
+- **Output:** `exit-certificate-final.json` (updated with both roots and leaf count)
 
 ### Step SIGN — Sign certificate
 
@@ -157,6 +187,16 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 - Loads `exit-certificate-signed.json`, creates an agglayer gRPC client, and calls `SendCertificate`.
 - **Output:** `step-submit-result.json` (`StepSubmitResult` with `certificateHash`)
 
+### Step WAIT — Wait for certificate settlement
+
+- **Not part of `runAll`** — must be triggered explicitly with `--step wait`.
+- **Requires:** `options.agglayerGrpcUrl`.
+- Reads `step-submit-result.json` for the certificate hash.
+- **Phase 1:** checks for any pre-existing pending certificate on the network (different hash). If found, polls until it reaches a final state before proceeding.
+- **Phase 2:** polls `GetCertificateHeader` every 5 seconds until the submitted certificate is `Settled` (success) or `InError` (returns an error).
+- Logs the settlement tx hash on success.
+- **Output:** `step-wait-result.json` (`StepWaitResult`)
+
 ## Key types (`types.go`)
 
 | Type | Description |
@@ -167,14 +207,20 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 | `AccumulatedBalance` | Sum across all EOAs for a single token |
 | `SCLockedValue` | LBT total − EOA accumulated, per token |
 | `L1Deposit` | Parsed `BridgeEvent` log from L1 |
-| `TokenBalanceCheck` | Step F comparison: certificate amount vs agglayer amount |
+| `TokenBalanceCheck` | Step F three-way comparison: `LBTAmount` (Step 0), `CertificateAmount` (sum of exits), `AgglayerAmount`. `LBTAmount` is empty when LBT data was unavailable (two-way fallback). |
 | `StepGResult` | `NewLocalExitRoot` hash + bridge exit count |
-| `StepHResult` | `PreviousLocalExitRoot` from agglayer |
+| `StepHResult` | `PreviousLocalExitRoot` + next certificate height from agglayer |
 | `StepSubmitResult` | `certificateHash` returned by the agglayer after submission |
+| `StepWaitResult` | `certificateHash`, `finalStatus`, optional `settlementTxHash`, `elapsedSeconds`, optional `pendingCertWaited` |
 
 ## Config fields (`config.go`)
 
 Required: `l2RpcUrl`, `l2BridgeAddress`, `targetBlock`.
+
+Notable optional fields:
+
+- `sovereignRollupAddr` — address of the `aggchainbase` contract on L1. Required by Step CHECK (checks 4–6). Without it Step CHECK fails.
+- `l1GlobalExitRootAddress` — address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. Without it Step I fails.
 
 Defaults applied by `LoadConfig`:
 
@@ -182,6 +228,7 @@ Defaults applied by `LoadConfig`:
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.abortOnGenesisBalance` = `true` — abort if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `false` only for Kurtosis/test environments.
+- `options.continueIfBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
 - Relative paths in `lbtFile`, `options.outputDir`, and `signerConfig.Path` resolve from the directory containing the config file.
 
 `signerConfig` uses `signertypes.SignerConfig` (same type as aggsender's `AggsenderPrivateKey`). The JSON format is flat — `Method`, `Path`, `Password` are top-level keys (matching the TOML inline table style). Parsed by `parseSignerConfig` which splits `Method` out and puts the rest into `Config map[string]any`.
@@ -200,13 +247,14 @@ Defaults applied by `LoadConfig`:
 - **`parameters.json` and `output/` are git-ignored** — never commit them.
 - **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step I → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
 - **LBT resolution:** `resolveOrGenerateLBT` → if `lbtFile` is set and exists, use it and skip Step 0; if set but missing, fall back to Step 0 with a warning; if not set, always run Step 0.
-- **Step F reads from `step-d-exit-certificate.json`**, not the final certificate — it verifies the base L2 balances before the E/G additions.
+- **Step F reads from `step-d-exit-certificate.json`** for the balance check (not the final certificate), so the comparison reflects pure L2 exits before Step E additions. When capping is triggered, the caps are also applied to the final (Step E) certificate's `BridgeExits` in `runAll`, and saved as `step-f-capped-certificate.json`.
+- **File chain with capping:** when `continueIfBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
+- **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
 - **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — `abortOnGenesisBalance=true` catches this early.
 - **`debug_traceTransaction` must be available** on the L2 RPC (Step A). Archive node required.
 - **Step G requires Anvil** (`anvil` binary in `$PATH`, from the Foundry toolchain). The step fails fast with a clear error if it is missing.
 - **FEP chains are not supported.** Only Pessimistic Proof certificates are generated.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not handled** — value from those flows may be missing.
-
 
 ## Testing
 

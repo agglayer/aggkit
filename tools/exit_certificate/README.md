@@ -60,7 +60,11 @@ cp parameters.json.example parameters.json
 | `exitAddress` | No | Address that receives SC-locked value exits. Defaults to zero address. |
 | `lbtFile` | No | Path to a pre-generated LBT JSON file. If omitted, the tool generates it automatically via Step 0. Can also be generated externally with the [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool from `agglayer-contracts`. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
+| `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
+| `l1GlobalExitRootAddress` | Yes* | Address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. |
 | `signerConfig` | No | Signer configuration object for Step SIGN. Same format as aggsender's `AggsenderPrivateKey`. Example: `{"Method": "local", "Path": "keystore.json", "Password": "pass"}`. |
+
+> **\*Required for specific steps:** `sovereignRollupAddr` is required by Step CHECK; `l1GlobalExitRootAddress` is required by Step I. Without them those steps fail.
 
 ### Options
 
@@ -74,9 +78,9 @@ cp parameters.json.example parameters.json
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
-| `agglayerRpcUrl` | `""` | Agglayer JSON-RPC endpoint. Required for Step H (`interop_getNetworkInfo`). |
-| `agglayerGrpcUrl` | `""` | Agglayer gRPC endpoint. Required for Step SUBMIT. |
+| `agglayerGrpcUrl` | `""` | Agglayer gRPC endpoint. Required for Steps H and SUBMIT. |
 | `continueOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
+| `continueIfBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
 
 ## Commands
 
@@ -86,26 +90,53 @@ cp parameters.json.example parameters.json
 ./exit-certificate --config parameters.json
 ```
 
-Runs all steps sequentially: 0 → A → B → C → D → E → F → G → H → I → SIGN (if `signerConfig` is set).
+Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN (if `signerConfig` is set).
 
-Step SUBMIT is **not** part of the default pipeline — it must be triggered explicitly.
+Steps SUBMIT and WAIT are **not** part of the default pipeline — they must be triggered explicitly.
 
-### Run a single step
+### Run one or more steps
 
 ```bash
-./exit-certificate --config parameters.json --step <0|a|b|c|d|e|f|g|h|i|sign|submit>
+# Single step
+./exit-certificate --config parameters.json --step h
+
+# Multiple steps (comma-separated, run in the given order)
+./exit-certificate --config parameters.json --step h,i,sign
+./exit-certificate --config parameters.json --step "sign, submit"
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
+Spaces around commas are ignored. Execution stops at the first step that fails.
 
 ### CLI flags
 
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Run a specific step (`0`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h`, `i`, `sign`, `submit`) or `all`. |
+| `--step` | — | `all` | Step(s) to run: `all`, a single step name, or a comma-separated list (e.g. `h,i,sign`). Valid names: `check`, `0`, `a`–`i`, `sign`, `submit`, `wait`. |
+| `--verbose` | — | `false` | Enable debug logging. Without this flag only `info`, `warn` and `error` messages are shown. |
 
 ## Pipeline steps
+
+### Step CHECK — Verify prerequisites
+
+Runs automatically as the first step of the full pipeline. Can also be run individually:
+
+```bash
+./exit-certificate --config parameters.json --step check
+```
+
+All checks run regardless of individual failures; a combined error lists every failed check.
+
+1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
+2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
+3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
+4. **`sovereignRollupAddr` is set** — required; fails if zero address.
+5. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. FEP is not supported. Only runs if checks 2 and 4 passed.
+6. **Threshold is 1** — queries the multisig threshold. Fails if > 1. Also verifies the bridge address on the contract matches config. Logs all committee signers and their URLs. Only runs if checks 2 and 4 passed.
+7. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is configured (not supported).
+
+**Output:** `step-check-result.json`
 
 ### Step 0 — Generate LBT (Local Balance Tree)
 
@@ -164,13 +195,35 @@ Requires `l1RpcUrl`.
 
 ### Step F — Agglayer token balance verification
 
-Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and compares each token's total balance reported by agglayer against the sum of the corresponding `BridgeExit` amounts in the certificate. Any mismatch is logged as a warning with per-exit detail.
+Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and performs a **three-way comparison** per token:
+
+| Source | What it represents |
+| ------ | ------------------ |
+| **LBT** (Step 0) | `totalSupply` of the wrapped token at `targetBlock` — what the L2 contract holds |
+| **Agglayer** | What the agglayer believes is locked for this L2 network |
+| **Certificate** | Sum of all `BridgeExit` amounts for that token |
+
+All three values must be equal. Each token is logged with ✅ or ❌:
+
+```text
+✅ (network=1 addr=0xabc...): lbt=1000  certificate=1000  agglayer=1000
+❌ MISMATCH (network=1 addr=0xdef...): lbt=800  certificate=1000  agglayer=900
+```
+
+**If mismatches are found:**
+
+- By default Step F **aborts the pipeline** with an error.
+- Set `options.continueIfBalanceMismatch: true` to continue instead. In that case the step produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. Subsequent steps in the pipeline (G, H, I) automatically use this capped certificate.
+
+When running Step G individually it also prefers `step-f-capped-certificate.json` over `step-e-exit-certificate.json` if the capped file exists (logged with ⚠️).
+
+LBT data comes from `step-0-lbt.json` (or `lbtFile`). If not available, the comparison falls back to two-way (certificate vs agglayer only).
 
 Skipped automatically when `agglayerAdminURL` is not set in options.
 
-**Reads:** `step-d-exit-certificate.json`
+**Reads:** `step-d-exit-certificate.json`, `step-0-lbt.json`
 
-**Output:** `step-f-token-balances.json`, `step-f-checks.json`
+**Output:** `step-f-token-balances.json`, `step-f-checks.json`, `step-f-capped-certificate.json` *(only when mismatches exist and `continueIfBalanceMismatch=true`)*
 
 ### Step G — Compute NewLocalExitRoot (shadow-fork)
 
@@ -178,7 +231,7 @@ Computes the correct `new_local_exit_root` by replaying every `bridge_exit` from
 
 **Anvil is a required external dependency** (`anvil` binary in `$PATH`). If missing, the step fails with a clear error. When the certificate has no bridge exits, Anvil is skipped and the canonical empty LER is used.
 
-**Reads:** `step-e-exit-certificate.json`
+**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `continueIfBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`.
 
 **Output:** `step-g-new-local-exit-root.json`
 
@@ -186,13 +239,17 @@ Computes the correct `new_local_exit_root` by replaying every `bridge_exit` from
 
 Calls `interop_getNetworkInfo` on the agglayer JSON-RPC and reads the `settled_ler` for the L2 network. If no certificate has been settled yet, `PreviousLocalExitRoot` is zero.
 
-Requires `agglayerRpcUrl` in options.
+Requires `agglayerGrpcUrl` in options.
 
 **Output:** `step-h-previous-local-exit-root.json`
 
 ### Step I — Assemble final certificate
 
-Reads the certificate from Step E and applies `NewLocalExitRoot` (from Step G) and `PreviousLocalExitRoot` (from Step H).
+Reads the certificate from Step E and applies:
+
+- `NewLocalExitRoot` from Step G
+- `PreviousLocalExitRoot` and certificate height from Step H
+- `L1InfoTreeLeafCount` — scans L1 backwards from the latest L1 block for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 
 **Reads:** `step-e-exit-certificate.json`, `step-g-new-local-exit-root.json`, `step-h-previous-local-exit-root.json`
 
@@ -217,6 +274,21 @@ Requires `agglayerGrpcUrl` in options.
 **Reads:** `exit-certificate-signed.json`
 
 **Output:** `step-submit-result.json`
+
+### Step WAIT — Wait for certificate settlement
+
+Polls the agglayer until the submitted certificate reaches a final state. **Not part of the default pipeline** — must be triggered with `--step wait`.
+
+Requires `agglayerGrpcUrl` in options. Reads `step-submit-result.json` for the certificate hash.
+
+Two phases:
+
+1. If a different pending certificate is already in flight on the network, waits for it to settle (or enter error) before proceeding.
+2. Polls `GetCertificateHeader` every 5 seconds until the submitted certificate is `Settled` or `InError`. Returns an error if `InError`.
+
+**Reads:** `step-submit-result.json`
+
+**Output:** `step-wait-result.json`
 
 ## Output
 
