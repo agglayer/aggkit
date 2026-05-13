@@ -53,6 +53,22 @@ type jsonRPCResponse struct {
 type jsonRPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    string `json:"data"`
+}
+
+// RPCExecutionError is returned by singleRPC when the node returns an RPC-level error.
+// Data holds the raw hex-encoded revert payload (e.g. ABI-encoded custom error).
+type RPCExecutionError struct {
+	Code    int
+	Message string
+	Data    string
+}
+
+func (e *RPCExecutionError) Error() string {
+	if e.Data != "" {
+		return fmt.Sprintf("RPC error: %s (data: %s)", e.Message, e.Data)
+	}
+	return fmt.Sprintf("RPC error: %s", e.Message)
 }
 
 // RPCCall represents a single JSON-RPC method call.
@@ -129,7 +145,8 @@ func singleRPC(ctx context.Context, url, method string, params []any, retries in
 		return nil, fmt.Errorf("RPC call %s returned empty response", method)
 	}
 	if responses[0].Error != nil {
-		return nil, fmt.Errorf("RPC error: %s", responses[0].Error.Message)
+		rpcErr := responses[0].Error
+		return nil, &RPCExecutionError{Code: rpcErr.Code, Message: rpcErr.Message, Data: rpcErr.Data}
 	}
 	return responses[0].Result, nil
 }

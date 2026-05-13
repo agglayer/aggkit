@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,7 +21,6 @@ type Options struct {
 	L1StartBlock           uint64 `json:"l1StartBlock"`
 	L2StartBlock           uint64 `json:"l2StartBlock"`
 	AgglayerAdminURL string `json:"agglayerAdminURL"`
-	AgglayerRPCURL   string `json:"agglayerRpcUrl"`
 	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
 	// AbortOnGenesisBalance aborts the run if any EOA or contract has a non-zero ETH balance
 	// at block 0, which indicates a genesis preload that would inflate the exit certificate totals.
@@ -29,6 +29,9 @@ type Options struct {
 	// ContinueOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
 	ContinueOnTraceError bool `json:"continueOnTraceError"`
+	// ContinueIfBalanceMismatch suppresses the error returned by Step F when token balances
+	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
+	ContinueIfBalanceMismatch bool `json:"continueIfBalanceMismatch"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -39,11 +42,15 @@ type Config struct {
 	L1BridgeAddress    common.Address `json:"l1BridgeAddress"`
 	L2NetworkID        uint32         `json:"l2NetworkId"`
 	TargetBlock        string         `json:"targetBlock"`
-	ExitAddress        common.Address `json:"exitAddress"`
-	LBTFile            string         `json:"lbtFile"`
-	DestinationNetwork uint32         `json:"destinationNetwork"`
-	Options            Options                `json:"options"`
-	SignerConfig       signertypes.SignerConfig `json:"-"`
+	ExitAddress             common.Address `json:"exitAddress"`
+	LBTFile                 string         `json:"lbtFile"`
+	DestinationNetwork      uint32         `json:"destinationNetwork"`
+	SovereignRollupAddr     common.Address `json:"sovereignRollupAddr"`
+	// L1GlobalExitRootAddress is the address of the PolygonZkEVMGlobalExitRootV2 contract on L1.
+	// Required for Step I to fetch the L1InfoTreeLeafCount from UpdateL1InfoTreeV2 events.
+	L1GlobalExitRootAddress common.Address `json:"l1GlobalExitRootAddress"`
+	Options              Options                `json:"options"`
+	SignerConfig         signertypes.SignerConfig `json:"-"`
 
 	// ResolvedTargetBlock is populated at runtime after resolving "latest".
 	ResolvedTargetBlock uint64 `json:"-"`
@@ -88,13 +95,15 @@ func LoadConfig(configPath string) (*Config, error) {
 	configDir := filepath.Dir(configPath)
 
 	cfg := &Config{
-		L2RPCURL:           raw.L2RPCURL,
-		L1RPCURL:           raw.L1RPCURL,
-		L2BridgeAddress:    common.HexToAddress(raw.L2BridgeAddress),
-		L2NetworkID:        raw.L2NetworkID,
-		ExitAddress:        common.HexToAddress(raw.ExitAddress),
-		DestinationNetwork: raw.DestinationNetwork,
-		TargetBlock:        raw.TargetBlock,
+		L2RPCURL:                raw.L2RPCURL,
+		L1RPCURL:                raw.L1RPCURL,
+		L2BridgeAddress:         common.HexToAddress(raw.L2BridgeAddress),
+		L2NetworkID:             raw.L2NetworkID,
+		ExitAddress:             common.HexToAddress(raw.ExitAddress),
+		DestinationNetwork:      raw.DestinationNetwork,
+		TargetBlock:             raw.TargetBlock,
+		SovereignRollupAddr:     common.HexToAddress(raw.SovereignRollupAddr),
+		L1GlobalExitRootAddress: common.HexToAddress(raw.L1GlobalExitRootAddress),
 	}
 
 	if raw.L1BridgeAddress != "" {
@@ -125,18 +134,30 @@ func LoadConfig(configPath string) (*Config, error) {
 //
 //	{ "Method": "local", "Path": "keystore.json", "Password": "pass" }
 func parseSignerConfig(data json.RawMessage, configDir string) (signertypes.SignerConfig, error) {
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return signertypes.SignerConfig{}, fmt.Errorf("unmarshal signer config: %w", err)
 	}
-	method, _ := m["Method"].(string)
-	delete(m, "Method")
-	if path, ok := m["Path"].(string); ok {
-		m["Path"] = resolvePath(configDir, path)
+	method, _ := raw["Method"].(string)
+
+	// The go_signer library looks up config keys in lowercase (e.g. "path", "password").
+	// Normalize all non-Method keys to lowercase so JSON with "Path"/"Password" works.
+	cfg := make(map[string]any, len(raw))
+	for k, v := range raw {
+		if k == "Method" {
+			continue
+		}
+		key := strings.ToLower(k)
+		if key == "path" {
+			if s, ok := v.(string); ok {
+				v = resolvePath(configDir, s)
+			}
+		}
+		cfg[key] = v
 	}
 	return signertypes.SignerConfig{
 		Method: signertypes.SignMethod(method),
-		Config: m,
+		Config: cfg,
 	}, nil
 }
 
@@ -179,9 +200,6 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
 	}
-	if raw.AgglayerRPCURL != "" {
-		opts.AgglayerRPCURL = raw.AgglayerRPCURL
-	}
 	if raw.AgglayerGRPCURL != "" {
 		opts.AgglayerGRPCURL = raw.AgglayerGRPCURL
 	}
@@ -191,20 +209,25 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.ContinueOnTraceError != nil {
 		opts.ContinueOnTraceError = *raw.ContinueOnTraceError
 	}
+	if raw.ContinueIfBalanceMismatch != nil {
+		opts.ContinueIfBalanceMismatch = *raw.ContinueIfBalanceMismatch
+	}
 	return opts
 }
 
 // rawConfig mirrors the JSON structure with string addresses.
 type rawConfig struct {
-	L2RPCURL           string   `json:"l2RpcUrl"`
-	L1RPCURL           string   `json:"l1RpcUrl"`
-	L2BridgeAddress    string   `json:"l2BridgeAddress"`
-	L1BridgeAddress    string   `json:"l1BridgeAddress"`
-	L2NetworkID        uint32   `json:"l2NetworkId"`
-	TargetBlock        string   `json:"targetBlock"`
-	ExitAddress        string   `json:"exitAddress"`
-	LBTFile            string   `json:"lbtFile"`
-	DestinationNetwork uint32   `json:"destinationNetwork"`
+	L2RPCURL                string   `json:"l2RpcUrl"`
+	L1RPCURL                string   `json:"l1RpcUrl"`
+	L2BridgeAddress         string   `json:"l2BridgeAddress"`
+	L1BridgeAddress         string   `json:"l1BridgeAddress"`
+	L2NetworkID             uint32   `json:"l2NetworkId"`
+	TargetBlock             string   `json:"targetBlock"`
+	ExitAddress             string   `json:"exitAddress"`
+	LBTFile                 string   `json:"lbtFile"`
+	DestinationNetwork      uint32   `json:"destinationNetwork"`
+	SovereignRollupAddr     string   `json:"sovereignRollupAddr"`
+	L1GlobalExitRootAddress string   `json:"l1GlobalExitRootAddress"`
 	Options      *rawOpts        `json:"options"`
 	SignerConfig json.RawMessage `json:"signerConfig"`
 }
@@ -218,10 +241,10 @@ type rawOpts struct {
 	L1StartBlock           uint64 `json:"l1StartBlock"`
 	L2StartBlock           uint64 `json:"l2StartBlock"`
 	AgglayerAdminURL string `json:"agglayerAdminURL"`
-	AgglayerRPCURL   string `json:"agglayerRpcUrl"`
 	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
-	AbortOnGenesisBalance  *bool  `json:"abortOnGenesisBalance"`
-	ContinueOnTraceError   *bool  `json:"continueOnTraceError"`
+	AbortOnGenesisBalance     *bool `json:"abortOnGenesisBalance"`
+	ContinueOnTraceError      *bool `json:"continueOnTraceError"`
+	ContinueIfBalanceMismatch *bool `json:"continueIfBalanceMismatch"`
 }
 
 // --- LBT file parsing ---
