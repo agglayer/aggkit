@@ -8,11 +8,29 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// StepWaitResult holds the outcome of the WAIT step.
+type StepWaitResult struct {
+	CertificateHash  common.Hash                     `json:"certificateHash"`
+	FinalStatus      agglayertypes.CertificateStatus `json:"finalStatus"`
+	SettlementTxHash *common.Hash                    `json:"settlementTxHash,omitempty"`
+	ElapsedSeconds   float64                         `json:"elapsedSeconds"`
+	// PendingCertWaited is set when a pre-existing pending certificate was found on the
+	// network and waited for before polling our submitted certificate.
+	PendingCertWaited *common.Hash `json:"pendingCertWaited,omitempty"`
+}
+
 // WrappedToken describes a wrapped token deployed on L2 by the bridge contract.
 type WrappedToken struct {
 	WrappedTokenAddress common.Address `json:"wrappedTokenAddress"`
 	OriginNetwork       uint32         `json:"originNetwork"`
 	OriginTokenAddress  common.Address `json:"originTokenAddress"`
+}
+
+// LegacyToken records a wrapped token address that was replaced by a SetSovereignTokenAddress
+// override, along with its totalSupply at the target block.
+type LegacyToken struct {
+	Address common.Address `json:"address"`
+	Balance string         `json:"balance"`
 }
 
 // LBTEntry is a single entry from the Local Balance Tree file exported by the getLBT tool.
@@ -21,6 +39,9 @@ type LBTEntry struct {
 	OriginNetwork       uint32         `json:"originNetwork"`
 	OriginTokenAddress  common.Address `json:"originTokenAddress"`
 	Balance             string         `json:"balance"`
+	// LegacyTokens holds previous wrapped addresses (replaced via SetSovereignTokenAddress)
+	// and their totalSupply at the target block. Populated only when an override was applied.
+	LegacyTokens []LegacyToken `json:"legacyTokens,omitempty"`
 }
 
 // EOATokenBalance records a single token balance for an EOA.
@@ -107,10 +128,12 @@ type CertificateEntry struct {
 	Amount             string `json:"amount"`
 }
 
-// TokenBalanceCheck holds the comparison between the certificate total and the agglayer state for one token.
+// TokenBalanceCheck holds the three-way comparison between Step 0 (LBT), the certificate bridge exits,
+// and the agglayer state for one token. LBTAmount is empty when LBT data was not available.
 type TokenBalanceCheck struct {
 	OriginNetwork      uint32             `json:"originNetwork"`
 	OriginTokenAddress string             `json:"originTokenAddress"`
+	LBTAmount          string             `json:"lbtAmount,omitempty"`
 	CertificateAmount  string             `json:"certificateAmount"`
 	AgglayerAmount     string             `json:"agglayerAmount"`
 	Match              bool               `json:"match"`
@@ -119,10 +142,26 @@ type TokenBalanceCheck struct {
 
 // StepFResult holds the output of Step F (agglayer token balance check).
 type StepFResult struct {
-	Skipped       bool               `json:"skipped,omitempty"`
-	AllMatch      bool               `json:"allMatch,omitempty"`
-	TokenBalances json.RawMessage    `json:"tokenBalances,omitempty"`
-	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
+	Skipped           bool                       `json:"skipped,omitempty"`
+	AllMatch          bool                       `json:"allMatch,omitempty"`
+	TokenBalances     json.RawMessage            `json:"tokenBalances,omitempty"`
+	Checks            []TokenBalanceCheck        `json:"checks,omitempty"`
+	// CappedCertificate is set when mismatches were found and continueIfBalanceMismatch=true.
+	// Bridge exits are proportionally scaled down to min(agglayer, lbt) per token.
+	CappedCertificate *agglayertypes.Certificate `json:"cappedCertificate,omitempty"`
+}
+
+// StepCheckResult holds the output of Step CHECK (prerequisite verification).
+type StepCheckResult struct {
+	AnvilInstalled  bool     `json:"anvilInstalled"`
+	BridgeNetworkID uint32   `json:"bridgeNetworkID"`
+	NetworkType     string   `json:"networkType"`
+	Threshold       uint64   `json:"threshold"`
+	SignerCount     int      `json:"signerCount"`
+	Signers         []string `json:"signers,omitempty"`
+	GasTokenAddress string   `json:"gasTokenAddress,omitempty"`
+	GasTokenNetwork uint32   `json:"gasTokenNetwork,omitempty"`
+	WETHToken       string   `json:"wethToken,omitempty"`
 }
 
 // StepGResult holds the output of Step G (NewLocalExitRoot calculation).
@@ -131,7 +170,10 @@ type StepGResult struct {
 	BridgeExitCount  uint64      `json:"bridgeExitCount"`
 }
 
-// StepHResult holds the output of Step H (PreviousLocalExitRoot from agglayer).
+// StepHResult holds the output of Step H (PreviousLocalExitRoot and next height from agglayer).
 type StepHResult struct {
 	PreviousLocalExitRoot common.Hash `json:"previousLocalExitRoot"`
+	// Height is the certificate height to use for the exit certificate (settled_height + 1,
+	// or 0 if no certificate has been settled yet).
+	Height uint64 `json:"height"`
 }

@@ -48,7 +48,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Defaults (can be overridden by env vars)
-KURTOSIS_ENCLAVE="${KURTOSIS_ENCLAVE:-op}"
+KURTOSIS_ENCLAVE="${KURTOSIS_ENCLAVE:-aggkit}"
 KURTOSIS_ARTIFACT_AGGKIT_CONFIG="${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-aggkit-config}"
 KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE="${KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE:-aggkit-sequencer-keystore}"
 L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
@@ -121,15 +121,6 @@ get_agglayer_admin_url() {
     port_to_localhost_url "$raw"
 }
 
-get_agglayer_rpc_url() {
-    local raw
-    if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$AGGLAYER_SERVICE" aglr-readrpc 2>/dev/null); then
-        log_error "Failed to get agglayer readrpc port from service '$AGGLAYER_SERVICE' in enclave '$KURTOSIS_ENCLAVE'"
-        exit 1
-    fi
-    port_to_localhost_url "$raw"
-}
-
 get_agglayer_grpc_url() {
     local raw port
     if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$AGGLAYER_SERVICE" aglr-grpc 2>/dev/null); then
@@ -177,6 +168,18 @@ get_bridge_address() {
         log_error "BridgeAddr not found in config.toml"
         exit 1
     fi
+    echo "$addr"
+}
+
+get_sovereign_rollup_addr() {
+    local addr
+    addr=$(grep -E '^\s*SovereignRollupAddr\s*=' "$AGGKIT_CONFIG_DIR/config.toml" | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
+    echo "$addr"
+}
+
+get_l1_global_exit_root_address() {
+    local addr
+    addr=$(grep -E '^\s*polygonZkEVMGlobalExitRootAddress\s*=' "$AGGKIT_CONFIG_DIR/config.toml" | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
     echo "$addr"
 }
 
@@ -244,12 +247,26 @@ log_info "Getting bridge address from aggkit config artifact..."
 BRIDGE_ADDR=$(get_bridge_address)
 log_info "Bridge address: $BRIDGE_ADDR"
 
+log_info "Getting sovereign rollup address from aggkit config artifact..."
+SOVEREIGN_ROLLUP_ADDR=$(get_sovereign_rollup_addr)
+if [[ -n "$SOVEREIGN_ROLLUP_ADDR" ]]; then
+    log_info "SovereignRollupAddr: $SOVEREIGN_ROLLUP_ADDR"
+else
+    log_warn "SovereignRollupAddr not found in config.toml — threshold check will be skipped at sign time"
+fi
+
+log_info "Getting L1 GlobalExitRoot address from aggkit config artifact..."
+L1_GLOBAL_EXIT_ROOT_ADDR=$(get_l1_global_exit_root_address)
+if [[ -n "$L1_GLOBAL_EXIT_ROOT_ADDR" ]]; then
+    log_info "L1GlobalExitRootAddress: $L1_GLOBAL_EXIT_ROOT_ADDR"
+else
+    log_warn "polygonZkEVMGlobalExitRootAddress not found in config.toml — l1GlobalExitRootAddress will be omitted (Step I will fail)"
+fi
+
 log_info "Getting agglayer URLs..."
 AGGLAYER_ADMIN_URL=$(get_agglayer_admin_url)
-AGGLAYER_RPC_URL=$(get_agglayer_rpc_url)
 AGGLAYER_GRPC_URL=$(get_agglayer_grpc_url)
 log_info "Agglayer admin URL: $AGGLAYER_ADMIN_URL"
-log_info "Agglayer RPC URL:   $AGGLAYER_RPC_URL"
 log_info "Agglayer gRPC URL:  $AGGLAYER_GRPC_URL"
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
@@ -281,6 +298,18 @@ if get_sequencer_keystore "$KEYSTORE_DEST"; then
     fi
 fi
 
+SOVEREIGN_ROLLUP_LINE=""
+if [[ -n "$SOVEREIGN_ROLLUP_ADDR" ]]; then
+    SOVEREIGN_ROLLUP_LINE="    \"sovereignRollupAddr\": \"$SOVEREIGN_ROLLUP_ADDR\",
+"
+fi
+
+L1_GLOBAL_EXIT_ROOT_LINE=""
+if [[ -n "$L1_GLOBAL_EXIT_ROOT_ADDR" ]]; then
+    L1_GLOBAL_EXIT_ROOT_LINE="    \"l1GlobalExitRootAddress\": \"$L1_GLOBAL_EXIT_ROOT_ADDR\",
+"
+fi
+
 cat > "$OUTPUT_PATH" <<EOF
 {
     "l2RpcUrl": "$L2_RPC_URL",
@@ -291,7 +320,7 @@ cat > "$OUTPUT_PATH" <<EOF
     "targetBlock": "latest",
     "exitAddress": "$EXIT_ADDRESS",
     "destinationNetwork": 0,
-${SIGNER_CONFIG_BLOCK}    "options": {
+${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "options": {
         "blockRange": 5000,
         "concurrencyLimit": 20,
         "rpcBatchSize": 200,
@@ -299,7 +328,6 @@ ${SIGNER_CONFIG_BLOCK}    "options": {
         "outputDir": "./output-kurtosis",
         "l1StartBlock": 0,
         "agglayerAdminURL": "$AGGLAYER_ADMIN_URL",
-        "agglayerRpcUrl": "$AGGLAYER_RPC_URL",
         "agglayerGrpcUrl": "$AGGLAYER_GRPC_URL",
         "abortOnGenesisBalance": false
     }

@@ -49,6 +49,10 @@ Pipeline steps (run in order by default):
   SUBMIT Send the signed certificate to the agglayer via gRPC.
 	   Requires agglayerGrpcUrl in options. Not part of the default pipeline.
 
+  WAIT   Poll the agglayer every 5 seconds until the submitted certificate is
+         settled or enters an error state. Reads step-submit-result.json for
+         the certificate hash. Requires agglayerGrpcUrl in options.
+
 Use --step to run a single step (e.g. --step a). When running steps individually
 the output files from previous steps must already exist in the output directory.`
 	app.Flags = []cli.Flag{
@@ -62,6 +66,10 @@ the output files from previous steps must already exist in the output directory.
 			Name:  "step",
 			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, or all",
 			Value: "all",
+		},
+		&cli.BoolFlag{
+			Name:  "verbose",
+			Usage: "Enable debug logging",
 		},
 	}
 	app.Action = exit_certificate.Run
