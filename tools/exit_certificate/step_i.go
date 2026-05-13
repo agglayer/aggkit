@@ -34,6 +34,17 @@ func RunStepI(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 	certificate.NewLocalExitRoot = gResult.NewLocalExitRoot
 	log.Infof("NewLocalExitRoot:      %s", certificate.NewLocalExitRoot.Hex())
 
+	if len(gResult.BridgeExitMetadata) > 0 {
+		if len(gResult.BridgeExitMetadata) != len(certificate.BridgeExits) {
+			return fmt.Errorf("step G metadata count (%d) does not match bridge exits count (%d)",
+				len(gResult.BridgeExitMetadata), len(certificate.BridgeExits))
+		}
+		for i, meta := range gResult.BridgeExitMetadata {
+			certificate.BridgeExits[i].Metadata = meta
+		}
+		log.Infof("Applied bridge exit metadata from Step G (%d entries)", len(gResult.BridgeExitMetadata))
+	}
+
 	if hResult != nil {
 		certificate.PrevLocalExitRoot = hResult.PreviousLocalExitRoot
 		certificate.Height = hResult.Height
