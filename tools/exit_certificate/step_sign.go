@@ -34,11 +34,19 @@ func RunStepSign(ctx context.Context, cfg *Config, cert *agglayertypes.Certifica
 	if err := certSigner.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("initialize signer: %w", err)
 	}
+	log.Infof("Signer public address: %s", certSigner.PublicAddress().Hex())
+
+	log.Infof("Certificate to sign: networkID=%d height=%d prevLER=%s newLER=%s bridgeExits=%d importedBridgeExits=%d",
+		cert.NetworkID, cert.Height,
+		cert.PrevLocalExitRoot.Hex(), cert.NewLocalExitRoot.Hex(),
+		len(cert.BridgeExits), len(cert.ImportedBridgeExits))
+	log.Infof("CertificateID: %s", cert.CertificateID().Hex())
 
 	hashToSign, err := validator.HashCertificateToSign(cert)
 	if err != nil {
 		return nil, fmt.Errorf("hash certificate to sign: %w", err)
 	}
+	log.Infof("Hash to sign:  %s", hashToSign.Hex())
 
 	sig, err := certSigner.SignHash(ctx, hashToSign)
 	if err != nil {
