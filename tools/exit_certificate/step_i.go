@@ -9,6 +9,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
@@ -40,7 +41,10 @@ func RunStepI(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 				len(gResult.BridgeExitMetadata), len(certificate.BridgeExits))
 		}
 		for i, meta := range gResult.BridgeExitMetadata {
-			certificate.BridgeExits[i].Metadata = meta
+			// aggsender applies crypto.Keccak256 to the raw BridgeEvent metadata before
+			// storing it in BridgeExit.Metadata (see aggsender/converters/bridge_exit_converter.go
+			// convertBridgeMetadata). We must do the same so BridgeExit.Hash() matches.
+			certificate.BridgeExits[i].Metadata = crypto.Keccak256(meta)
 		}
 		log.Infof("Applied bridge exit metadata from Step G (%d entries)", len(gResult.BridgeExitMetadata))
 	}
