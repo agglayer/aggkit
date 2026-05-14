@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -28,6 +29,7 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 
 	finalAddrs := make(map[common.Address]struct{})
 	var allFailed []common.Hash
+	stepStart := time.Now()
 
 	for start := cfg.Options.L2StartBlock; start <= cfg.ResolvedTargetBlock; start += windowSize {
 		end := min(start+windowSize-1, cfg.ResolvedTargetBlock)
@@ -52,6 +54,21 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 			finalAddrs[addr] = struct{}{}
 		}
 		allFailed = append(allFailed, failed...)
+
+		blocksProcessed := end - cfg.Options.L2StartBlock + 1
+		elapsed := time.Since(stepStart)
+		blocksPerSec := float64(blocksProcessed) / elapsed.Seconds()
+		remaining := cfg.ResolvedTargetBlock - end
+		var eta string
+		if blocksPerSec > 0 {
+			eta = (time.Duration(float64(remaining)/blocksPerSec) * time.Second).Round(time.Second).String()
+		} else {
+			eta = "—"
+		}
+		log.Infof("Progress: %d/%d blocks (%.1f%%) — %.0f blocks/s — ETA %s",
+			blocksProcessed, totalBlocks,
+			float64(blocksProcessed)/float64(totalBlocks)*100,
+			blocksPerSec, eta)
 	}
 
 	delete(finalAddrs, common.Address{})
