@@ -92,6 +92,23 @@ cp parameters.json.example parameters.json
 
 Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN (if `signerConfig` is set).
 
+| Step | Name | What it does |
+| :--: | ---- | ------------ |
+| CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
+| 0 | Generate LBT | Scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at `targetBlock`. Skipped if `lbtFile` is set. |
+| A | Collect addresses | Traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. |
+| B | EOA balances | Classifies addresses as EOA vs contract; fetches ETH balance and every wrapped-token balance for each EOA at `targetBlock`. |
+| C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
+| D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
+| E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2 and adds them as both `bridge_exits` and `imported_bridge_exits`. |
+| F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `continueIfBalanceMismatch=true` produces a proportionally capped certificate. |
+| G | NewLocalExitRoot | Shadow-forks L2 at `targetBlock` via Anvil, replays all bridge exits, and reads the resulting `localExitRoot` from the forked bridge contract. |
+| H | PreviousLocalExitRoot | Fetches `settled_ler` from the agglayer gRPC to obtain the previous LER and the next certificate height. |
+| I | Assemble final cert | Applies `NewLocalExitRoot` (G), `PreviousLocalExitRoot` + height (H), bridge exit metadata, and `L1InfoTreeLeafCount` (from the latest `UpdateL1InfoTreeV2` event on L1). |
+| SIGN | Sign certificate | Hashes the certificate and signs it with the configured keystore; wraps the signature in `AggchainDataMultisig`. |
+| SUBMIT | Send to agglayer | Sends the signed certificate to the agglayer via gRPC. **Not part of the default pipeline.** |
+| WAIT | Wait for settlement | Polls `GetCertificateHeader` every 5 s until the certificate is `Settled` or `InError`. **Not part of the default pipeline.** |
+
 Steps SUBMIT and WAIT are **not** part of the default pipeline — they must be triggered explicitly.
 
 ### Run one or more steps
