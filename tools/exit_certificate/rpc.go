@@ -99,15 +99,11 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 	if err != nil {
 		return nil, err
 	}
-	if len(responses) > 0 && responses[0].Error != nil {
-		return nil, fmt.Errorf("RPC error: %s", responses[0].Error.Message)
-	}
 	if len(responses) != len(calls) {
 		return nil, fmt.Errorf("RPC response count %d does not match request count %d", len(responses), len(calls))
 	}
 
 	results := make([]json.RawMessage, len(calls))
-	var firstRPCErr error
 	for _, r := range responses {
 		idx := r.ID - 1
 		if idx < 0 || idx >= len(results) {
@@ -115,14 +111,11 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 		}
 		if r.Error != nil {
 			log.Warnf("RPC error for request id=%d: [%d] %s", r.ID, r.Error.Code, r.Error.Message)
-			if firstRPCErr == nil {
-				firstRPCErr = fmt.Errorf("request id=%d: [%d] %s", r.ID, r.Error.Code, r.Error.Message)
-			}
 			continue
 		}
 		results[idx] = r.Result
 	}
-	return results, firstRPCErr
+	return results, nil
 }
 
 // singleRPC sends one JSON-RPC call. Uses the same HTTP transport as batchRPC
