@@ -117,8 +117,13 @@ type L1Deposit struct {
 
 // StepEResult holds the output of Step E.
 type StepEResult struct {
-	UnclaimedBridges []L1Deposit                `json:"unclaimedBridges"`
-	FinalCertificate *agglayertypes.Certificate `json:"finalCertificate"`
+	// UnclaimedBridges are unclaimed L1→L2 deposits with leaf_type=asset that were added
+	// to the certificate as bridge exits and imported bridge exits.
+	UnclaimedBridges []L1Deposit `json:"unclaimedBridges"`
+	// UnclaimedMessages are unclaimed L1→L2 deposits with leaf_type=message. These are
+	// logged as warnings but NOT added to the certificate (messages are not transferable assets).
+	UnclaimedMessages []L1Deposit                `json:"unclaimedMessages,omitempty"`
+	FinalCertificate  *agglayertypes.Certificate `json:"finalCertificate"`
 }
 
 // CertificateEntry is one bridge exit entry for a given token, used in mismatch reports.

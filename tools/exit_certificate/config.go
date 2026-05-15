@@ -35,6 +35,14 @@ type Options struct {
 	// IgnoreUnclaimed skips adding unclaimed L1→L2 deposits to the certificate in Step E.
 	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
 	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
+	// BridgeServiceURL is the base URL of the bridge service REST API.
+	// When set, Step E queries the bridge service for pending bridges targeting this L2 and returns an
+	// error if any unclaimed deposits are found.
+	// Aggkit example:  "http://127.0.0.1:32970"
+	// zkevm example:   "http://127.0.0.1:33019"
+	BridgeServiceURL string `json:"bridgeServiceURL"`
+	// BridgeServiceType selects the bridge service API flavour: "aggkit" (default) or "zkevm".
+	BridgeServiceType string `json:"bridgeServiceType"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -218,6 +226,12 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.IgnoreUnclaimed != nil {
 		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
 	}
+	if raw.BridgeServiceURL != "" {
+		opts.BridgeServiceURL = raw.BridgeServiceURL
+	}
+	if raw.BridgeServiceType != "" {
+		opts.BridgeServiceType = raw.BridgeServiceType
+	}
 	return opts
 }
 
@@ -248,10 +262,12 @@ type rawOpts struct {
 	L2StartBlock           uint64 `json:"l2StartBlock"`
 	AgglayerAdminURL string `json:"agglayerAdminURL"`
 	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
-	AbortOnGenesisBalance     *bool `json:"abortOnGenesisBalance"`
-	ContinueOnTraceError      *bool `json:"continueOnTraceError"`
-	ContinueIfBalanceMismatch *bool `json:"continueIfBalanceMismatch"`
-	IgnoreUnclaimed           *bool `json:"ignoreUnclaimed"`
+	AbortOnGenesisBalance     *bool  `json:"abortOnGenesisBalance"`
+	ContinueOnTraceError      *bool  `json:"continueOnTraceError"`
+	ContinueIfBalanceMismatch *bool  `json:"continueIfBalanceMismatch"`
+	IgnoreUnclaimed           *bool  `json:"ignoreUnclaimed"`
+	BridgeServiceURL          string `json:"bridgeServiceURL"`
+	BridgeServiceType         string `json:"bridgeServiceType"`
 }
 
 // --- LBT file parsing ---
