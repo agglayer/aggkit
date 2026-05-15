@@ -32,6 +32,7 @@ Environment variables (override defaults):
   KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE  Sequencer keystore artifact (default: aggkit-sequencer-keystore)
   L2_SERVICE_PREFIX                   Kurtosis L2 execution client service prefix (default: op-el-1-op-geth-op-node)
   L1_SERVICE                          Kurtosis L1 execution service name (default: el-1-geth-lighthouse)
+  ZKEVM_BRIDGE_SERVICE_PREFIX         Kurtosis zkevm-bridge-service prefix (default: zkevm-bridge-service)
   EXIT_ADDRESS                        Address to receive SC-locked value (default: zero address)
   OUTPUT_FILE                         Output path (relative to project root)
 
@@ -54,6 +55,7 @@ KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE="${KURTOSIS_ARTIFACT_SEQUENCER_KEYSTORE:-ag
 L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
 L1_SERVICE="${L1_SERVICE:-el-1-geth-lighthouse}"
 AGGLAYER_SERVICE="${AGGLAYER_SERVICE:-agglayer}"
+ZKEVM_BRIDGE_SERVICE_PREFIX="${ZKEVM_BRIDGE_SERVICE_PREFIX:-zkevm-bridge-service}"
 EXIT_ADDRESS="${EXIT_ADDRESS:-0x0000000000000000000000000000000000000000}"
 OUTPUT_FILE="${OUTPUT_FILE:-tmp/exit_certificate-kurtosis.json}"
 NETWORK_INDEX=1
@@ -77,6 +79,7 @@ done
 
 NETWORK_SUFFIX=$(printf '%03d' "$NETWORK_INDEX")
 L2_SERVICE="${L2_SERVICE_PREFIX}-${NETWORK_SUFFIX}"
+ZKEVM_BRIDGE_SERVICE="${ZKEVM_BRIDGE_SERVICE_PREFIX}-${NETWORK_SUFFIX}"
 OUTPUT_PATH="$PROJECT_ROOT/$OUTPUT_FILE"
 
 # ---------------------------------------------------------------------------
@@ -130,6 +133,14 @@ get_agglayer_grpc_url() {
     # kurtosis returns grpc://host:PORT — rebuild as http://localhost:PORT (insecure gRPC)
     port=$(echo "$raw" | sed -E 's|^[a-zA-Z]+://||' | cut -f2 -d':')
     echo "http://localhost:${port}"
+}
+
+get_zkevm_bridge_service_url() {
+    local raw
+    if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$ZKEVM_BRIDGE_SERVICE" rpc 2>/dev/null); then
+        return 1
+    fi
+    port_to_localhost_url "$raw"
 }
 
 # ---------------------------------------------------------------------------
@@ -269,6 +280,14 @@ AGGLAYER_GRPC_URL=$(get_agglayer_grpc_url)
 log_info "Agglayer admin URL: $AGGLAYER_ADMIN_URL"
 log_info "Agglayer gRPC URL:  $AGGLAYER_GRPC_URL"
 
+log_info "Getting zkevm bridge service URL (service: $ZKEVM_BRIDGE_SERVICE)..."
+ZKEVM_BRIDGE_SERVICE_URL=""
+if ZKEVM_BRIDGE_SERVICE_URL=$(get_zkevm_bridge_service_url); then
+    log_info "zkevm bridge service URL: $ZKEVM_BRIDGE_SERVICE_URL"
+else
+    log_warn "Service '$ZKEVM_BRIDGE_SERVICE' not found in enclave — bridgeServiceURL will be omitted (Step E bridge service check skipped)"
+fi
+
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 OUTPUT_DIR="$(dirname "$OUTPUT_PATH")"
 
@@ -310,6 +329,12 @@ if [[ -n "$L1_GLOBAL_EXIT_ROOT_ADDR" ]]; then
 "
 fi
 
+BRIDGE_SERVICE_OPTS=""
+if [[ -n "$ZKEVM_BRIDGE_SERVICE_URL" ]]; then
+    BRIDGE_SERVICE_OPTS="        \"bridgeServiceURL\": \"$ZKEVM_BRIDGE_SERVICE_URL\",
+        \"bridgeServiceType\": \"zkevm\""
+fi
+
 cat > "$OUTPUT_PATH" <<EOF
 {
     "l2RpcUrl": "$L2_RPC_URL",
@@ -329,7 +354,8 @@ ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "op
         "l1StartBlock": 0,
         "agglayerAdminURL": "$AGGLAYER_ADMIN_URL",
         "agglayerGrpcUrl": "$AGGLAYER_GRPC_URL",
-        "abortOnGenesisBalance": false
+        "abortOnGenesisBalance": false${BRIDGE_SERVICE_OPTS:+,
+$BRIDGE_SERVICE_OPTS}
     }
 }
 EOF

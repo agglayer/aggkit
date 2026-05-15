@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
+	"strings"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
@@ -57,34 +59,51 @@ func RunStepE(
 	unclaimed := filterUnclaimedDeposits(l1Deposits, claimedSet)
 	log.Infof("Unclaimed L1→L2 deposits: %d", len(unclaimed))
 
-	if cfg.Options.IgnoreUnclaimed {
-		for _, dep := range unclaimed {
-			log.Warnf("⚠️  Unclaimed deposit ignored (ignoreUnclaimed=true): depositCount=%d originNetwork=%d originAddr=%s amount=%s tx=%s",
-				dep.DepositCount, dep.OriginNetwork, dep.OriginAddress.Hex(), dep.Amount, dep.TxHash.Hex())
+	if cfg.Options.BridgeServiceURL != "" {
+		if err := checkBridgeServicePendingBridges(ctx, cfg, unclaimed); err != nil {
+			return nil, fmt.Errorf("bridge service pending bridges check: %w", err)
 		}
-		if len(unclaimed) > 0 {
-			log.Warnf("⚠️  %d unclaimed deposit(s) detected but NOT added to the certificate (ignoreUnclaimed=true)", len(unclaimed))
-		}
-		log.Info("STEP E complete (certificate unchanged)")
-		return &StepEResult{
-			UnclaimedBridges: unclaimed,
-			FinalCertificate: certificate,
-		}, nil
+	} else {
+		log.Info("Bridge service URL not configured — skipping bridge service pending bridges check")
 	}
 
-	newExits := depositsToExits(unclaimed, cfg)
-	log.Infof("Adding %d unclaimed-deposit exits to certificate", len(newExits))
+	unclaimedAssets, unclaimedMessages := splitByLeafType(unclaimed)
+	if len(unclaimedMessages) > 0 {
+		log.Infof("⚠️ Unclaimed message deposits (leaf_type=1, excluded from certificate): %d", len(unclaimedMessages))
+	} else {
+		log.Info("✅ No unclaimed message deposits found")
+	}
+	logUnclaimedAssetSummary(ctx, cfg, unclaimedAssets)
+	if cfg.Options.IgnoreUnclaimed {
 
-	newImportedExits := depositsToImportedExits(unclaimed)
-	log.Infof("Adding %d unclaimed-deposit imported exits to certificate", len(newImportedExits))
+		log.Info("STEP E complete (certificate unchanged) ignored unclaimed deposits")
+		return &StepEResult{
+			UnclaimedBridges:  unclaimedAssets,
+			UnclaimedMessages: unclaimedMessages,
+			FinalCertificate:  certificate,
+		}, nil
+	}
+	if len(unclaimedAssets) > 0 {
+		return &StepEResult{
+			UnclaimedBridges:  unclaimedAssets,
+			UnclaimedMessages: unclaimedMessages,
+			FinalCertificate:  nil,
+		}, fmt.Errorf("Not supported unclaimed deposits, require to implement merkle proofs")
+	}
+	newExits := depositsToExits(unclaimedAssets, cfg)
+	log.Infof("Adding %d unclaimed asset-deposit exits to certificate", len(newExits))
+
+	newImportedExits := depositsToImportedExits(unclaimedAssets)
+	log.Infof("Adding %d unclaimed asset-deposit imported exits to certificate", len(newImportedExits))
 
 	finalCertificate := mergeCertificate(certificate, newExits, newImportedExits)
 	log.Infof("STEP E complete: certificate has %d bridge exits, %d imported bridge exits",
 		len(finalCertificate.BridgeExits), len(finalCertificate.ImportedBridgeExits))
 
 	return &StepEResult{
-		UnclaimedBridges: unclaimed,
-		FinalCertificate: finalCertificate,
+		UnclaimedBridges:  unclaimedAssets,
+		UnclaimedMessages: unclaimedMessages,
+		FinalCertificate:  finalCertificate,
 	}, nil
 }
 
@@ -184,6 +203,178 @@ func filterUnclaimedDeposits(
 	return unclaimed
 }
 
+// splitByLeafType partitions deposits into assets (leaf_type=0) and messages (leaf_type=1).
+func splitByLeafType(deposits []L1Deposit) (assets, messages []L1Deposit) {
+	for _, dep := range deposits {
+		if bridgetypes.LeafType(dep.LeafType) == bridgetypes.LeafTypeMessage {
+			messages = append(messages, dep)
+		} else {
+			assets = append(assets, dep)
+		}
+	}
+	return
+}
+
+// logUnclaimedAssetSummary logs a single summary line plus one line per token group
+// showing the total amount. Token names are fetched from the origin-network RPC.
+// Native tokens (zero address) are displayed with amounts converted from wei to ETH.
+func logUnclaimedAssetSummary(ctx context.Context, cfg *Config, assets []L1Deposit) {
+	if len(assets) == 0 {
+		return
+	}
+
+	type tokenKey struct {
+		originNetwork uint32
+		originAddress common.Address
+	}
+
+	totals := make(map[tokenKey]*big.Int)
+	for _, dep := range assets {
+		key := tokenKey{dep.OriginNetwork, dep.OriginAddress}
+		if totals[key] == nil {
+			totals[key] = new(big.Int)
+		}
+		if dep.Amount != nil {
+			totals[key].Add(totals[key], dep.Amount)
+		}
+	}
+
+	// Sort keys for deterministic output: by network then address.
+	keys := make([]tokenKey, 0, len(totals))
+	for k := range totals {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].originNetwork != keys[j].originNetwork {
+			return keys[i].originNetwork < keys[j].originNetwork
+		}
+		return keys[i].originAddress.Hex() < keys[j].originAddress.Hex()
+	})
+
+	log.Warnf("⚠️  %d unclaimed asset deposit(s) ignored (ignoreUnclaimed=true):", len(assets))
+	for _, key := range keys {
+		total := totals[key]
+		name, decimals := fetchTokenInfo(ctx, cfg, key.originNetwork, key.originAddress)
+		log.Warnf("    %s (network=%d): %s", name, key.originNetwork, formatTokenAmount(total, decimals))
+	}
+}
+
+// fetchTokenInfo returns the token name and decimals for a given origin token.
+// For native tokens (zero address) it returns ("ETH", 18) without any RPC call.
+// For ERC-20s it calls name() and decimals() using the appropriate RPC URL.
+func fetchTokenInfo(ctx context.Context, cfg *Config, originNetwork uint32, originAddress common.Address) (name string, decimals uint8) {
+	if originAddress == (common.Address{}) {
+		if originNetwork == 0 {
+			return "ETH", 18
+		}
+		return fmt.Sprintf("native(net=%d)", originNetwork), 18
+	}
+
+	var rpcURL string
+	switch originNetwork {
+	case 0:
+		rpcURL = cfg.L1RPCURL
+	case cfg.L2NetworkID:
+		rpcURL = cfg.L2RPCURL
+	}
+
+	shortAddr := originAddress.Hex()[:10] + "…"
+
+	if rpcURL == "" {
+		return shortAddr, 0
+	}
+
+	name = fetchTokenName(ctx, rpcURL, originAddress)
+	if name == "" {
+		name = shortAddr
+	}
+	decimals = fetchTokenDecimals(ctx, rpcURL, originAddress)
+	return name, decimals
+}
+
+const (
+	abiSelectorName     = "0x06fdde03" // keccak256("name()")[:4]
+	abiSelectorDecimals = "0x313ce567" // keccak256("decimals()")[:4]
+)
+
+func fetchTokenName(ctx context.Context, rpcURL string, addr common.Address) string {
+	result, err := singleRPC(ctx, rpcURL, "eth_call", []any{
+		map[string]string{"to": addr.Hex(), "data": abiSelectorName},
+		"latest",
+	}, defaultRetries)
+	if err != nil {
+		return ""
+	}
+	var hex string
+	if json.Unmarshal(result, &hex) != nil {
+		return ""
+	}
+	return decodeABIString(common.FromHex(hex))
+}
+
+func fetchTokenDecimals(ctx context.Context, rpcURL string, addr common.Address) uint8 {
+	result, err := singleRPC(ctx, rpcURL, "eth_call", []any{
+		map[string]string{"to": addr.Hex(), "data": abiSelectorDecimals},
+		"latest",
+	}, defaultRetries)
+	if err != nil {
+		return 0
+	}
+	var hex string
+	if json.Unmarshal(result, &hex) != nil {
+		return 0
+	}
+	data := common.FromHex(hex)
+	if len(data) < 32 {
+		return 0
+	}
+	d, err := safeUint8(new(big.Int).SetBytes(data[len(data)-32:]))
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
+// decodeABIString decodes an ABI-encoded string return value (offset + length + data).
+func decodeABIString(data []byte) string {
+	// Layout: 32-byte offset | 32-byte length | UTF-8 bytes
+	if len(data) < 64 {
+		return ""
+	}
+	strLen := new(big.Int).SetBytes(data[32:64]).Uint64()
+	if 64+strLen > uint64(len(data)) {
+		return ""
+	}
+	return string(data[64 : 64+strLen])
+}
+
+// formatTokenAmount formats an amount using the token's decimals.
+// If decimals > 0 the value is divided by 10^decimals and shown with up to 6 significant
+// decimal places. If decimals == 0 the raw integer is shown (wei).
+func formatTokenAmount(amount *big.Int, decimals uint8) string {
+	if amount == nil {
+		return "0"
+	}
+	if decimals == 0 {
+		return amount.String() + " (raw)"
+	}
+	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+	whole := new(big.Int).Quo(amount, divisor)
+	remainder := new(big.Int).Mod(amount, divisor)
+
+	if remainder.Sign() == 0 {
+		return fmt.Sprintf("%s", whole)
+	}
+	// Show up to 6 decimal places.
+	const maxDecimals = 6
+	shift := int(decimals) - maxDecimals
+	if shift > 0 {
+		remainder.Quo(remainder, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(shift)), nil))
+	}
+	fmtStr := fmt.Sprintf("%%s.%%0%dd", min(int(decimals), maxDecimals))
+	return fmt.Sprintf(fmtStr, whole, remainder)
+}
+
 func depositsToImportedExits(unclaimed []L1Deposit) []*agglayertypes.ImportedBridgeExit {
 	exits := make([]*agglayertypes.ImportedBridgeExit, 0, len(unclaimed))
 	for _, dep := range unclaimed {
@@ -259,6 +450,206 @@ func mergeCertificate(
 		BridgeExits:         allExits,
 		ImportedBridgeExits: allImported,
 	}
+}
+
+const (
+	bridgeSvcPageSize = 1000
+	// BridgeServiceTypeAggkit selects the aggkit bridge service API (/bridge/v1/bridges).
+	BridgeServiceTypeAggkit = "aggkit"
+	// BridgeServiceTypeZkevm selects the zkevm-bridge-service API (/pending-bridges).
+	BridgeServiceTypeZkevm = "zkevm"
+)
+
+// checkBridgeServicePendingBridges dispatches to the appropriate bridge service implementation
+// based on cfg.Options.BridgeServiceType ("aggkit" or "zkevm", default "aggkit").
+// checkBridgeServicePendingBridges compares what the bridge service reports as pending against
+// the unclaimed deposits the L1 scan found. Any discrepancy is returned as an error.
+func checkBridgeServicePendingBridges(ctx context.Context, cfg *Config, unclaimed []L1Deposit) error {
+	switch cfg.Options.BridgeServiceType {
+	case BridgeServiceTypeZkevm:
+		return checkZkevmPendingBridges(ctx, cfg, unclaimed)
+	default:
+		return checkAggkitPendingBridges(ctx, cfg, unclaimed)
+	}
+}
+
+// reportPendingDiscrepancies compares the set of deposit counts reported by the bridge service
+// against the set from the L1 scan and returns an error describing any differences.
+func reportPendingDiscrepancies(label string, unclaimed []L1Deposit, svcCounts map[uint32]struct{}) error {
+	scanSet := make(map[uint32]struct{}, len(unclaimed))
+	for _, dep := range unclaimed {
+		scanSet[dep.DepositCount] = struct{}{}
+	}
+
+	var inSvcOnly, inScanOnly []uint32
+	for dc := range svcCounts {
+		if _, ok := scanSet[dc]; !ok {
+			inSvcOnly = append(inSvcOnly, dc)
+		}
+	}
+	for dc := range scanSet {
+		if _, ok := svcCounts[dc]; !ok {
+			inScanOnly = append(inScanOnly, dc)
+		}
+	}
+
+	if len(inSvcOnly) == 0 && len(inScanOnly) == 0 {
+		log.Infof("%s pending bridges match L1 scan (%d unclaimed deposit(s))", label, len(unclaimed))
+		return nil
+	}
+
+	sort.Slice(inSvcOnly, func(i, j int) bool { return inSvcOnly[i] < inSvcOnly[j] })
+	sort.Slice(inScanOnly, func(i, j int) bool { return inScanOnly[i] < inScanOnly[j] })
+
+	var parts []string
+	if len(inSvcOnly) > 0 {
+		parts = append(parts, fmt.Sprintf("%s reports %d deposit(s) not found by L1 scan: depositCounts=%v", label, len(inSvcOnly), inSvcOnly))
+	}
+	if len(inScanOnly) > 0 {
+		parts = append(parts, fmt.Sprintf("L1 scan found %d deposit(s) not reported by %s: depositCounts=%v", len(inScanOnly), label, inScanOnly))
+	}
+	return fmt.Errorf("bridge service pending bridges mismatch: %s", strings.Join(parts, "; "))
+}
+
+// ── aggkit bridge service ────────────────────────────────────────────────────
+
+// aggkitBridgeEntry is a minimal bridge event from the aggkit bridge service REST API.
+type aggkitBridgeEntry struct {
+	LeafType           uint8  `json:"leaf_type"`
+	OriginNetwork      uint32 `json:"origin_network"`
+	OriginAddress      string `json:"origin_address"`
+	DestinationNetwork uint32 `json:"destination_network"`
+	DestinationAddress string `json:"destination_address"`
+	Amount             string `json:"amount"`
+	Metadata           string `json:"metadata"`
+	DepositCount       uint32 `json:"deposit_count"`
+	TxHash             string `json:"tx_hash"`
+	BlockNum           uint64 `json:"block_num"`
+}
+
+type aggkitBridgesResult struct {
+	Bridges []*aggkitBridgeEntry `json:"bridges"`
+	Count   int                  `json:"count"`
+}
+
+// checkAggkitPendingBridges fetches unclaimed deposits from the aggkit bridge service
+// (GET /bridge/v1/bridges?network_id=0 + isClaimed check) and compares against the L1 scan.
+func checkAggkitPendingBridges(ctx context.Context, cfg *Config, unclaimed []L1Deposit) error {
+	baseURL := strings.TrimRight(cfg.Options.BridgeServiceURL, "/")
+	log.Infof("Querying aggkit bridge service for pending bridges (url=%s, l2NetworkID=%d)", baseURL, cfg.L2NetworkID)
+
+	var matching []*aggkitBridgeEntry
+	for page := 1; ; page++ {
+		reqURL := fmt.Sprintf("%s/bridge/v1/bridges?network_id=0&page_number=%d&page_size=%d",
+			baseURL, page, bridgeSvcPageSize)
+
+		body, err := httpGetJSON(ctx, reqURL)
+		if err != nil {
+			return fmt.Errorf("aggkit bridge service page %d: %w", page, err)
+		}
+
+		var result aggkitBridgesResult
+		if err := json.Unmarshal(body, &result); err != nil {
+			return fmt.Errorf("parse aggkit bridge service response page %d: %w", page, err)
+		}
+
+		for _, b := range result.Bridges {
+			if b.DestinationNetwork == cfg.L2NetworkID {
+				matching = append(matching, b)
+			}
+		}
+		log.Infof("Aggkit bridge service page %d: %d entries, %d targeting L2", page, len(result.Bridges), len(matching))
+
+		if len(result.Bridges) < bridgeSvcPageSize {
+			break
+		}
+	}
+
+	// Check isClaimed for each matching bridge to build the service's unclaimed set.
+	deposits := make([]L1Deposit, len(matching))
+	for i, b := range matching {
+		deposits[i] = L1Deposit{DepositCount: b.DepositCount}
+	}
+	claimedSet, err := checkClaimedBatch(ctx, cfg, deposits)
+	if err != nil {
+		return fmt.Errorf("isClaimed check for aggkit bridge service entries: %w", err)
+	}
+
+	svcCounts := make(map[uint32]struct{})
+	for _, b := range matching {
+		if _, ok := claimedSet[b.DepositCount]; !ok {
+			svcCounts[b.DepositCount] = struct{}{}
+		}
+	}
+
+	return reportPendingDiscrepancies("aggkit bridge service", unclaimed, svcCounts)
+}
+
+// ── zkevm bridge service ─────────────────────────────────────────────────────
+
+// zkevmDeposit matches the JSON-encoded Deposit message returned by the zkevm-bridge-service
+// gRPC gateway (field names are lowerCamelCase per protobuf JSON encoding).
+type zkevmDeposit struct {
+	LeafType      uint32 `json:"leafType"`
+	OrigNet       uint32 `json:"origNet"`
+	OrigAddr      string `json:"origAddr"`
+	Amount        string `json:"amount"`
+	DestNet       uint32 `json:"destNet"`
+	DestAddr      string `json:"destAddr"`
+	BlockNum      uint64 `json:"blockNum"`
+	DepositCnt    uint32 `json:"depositCnt"`
+	NetworkID     uint32 `json:"networkId"`
+	TxHash        string `json:"txHash"`
+	ClaimTxHash   string `json:"claimTxHash"`
+	Metadata      string `json:"metadata"`
+	ReadyForClaim bool   `json:"readyForClaim"`
+	GlobalIndex   string `json:"globalIndex"`
+}
+
+type zkevmPendingBridgesResponse struct {
+	Deposits []*zkevmDeposit `json:"deposits"`
+	TotalCnt uint64          `json:"totalCnt"`
+}
+
+// checkZkevmPendingBridges fetches pending (unclaimed, ready-to-claim) deposits from the
+// zkevm-bridge-service (GET /pending-bridges, both leaf types) and compares against the L1 scan.
+func checkZkevmPendingBridges(ctx context.Context, cfg *Config, unclaimed []L1Deposit) error {
+	baseURL := strings.TrimRight(cfg.Options.BridgeServiceURL, "/")
+	log.Infof("Querying zkevm bridge service for pending bridges (url=%s, l2NetworkID=%d)", baseURL, cfg.L2NetworkID)
+
+	svcCounts := make(map[uint32]struct{})
+
+	for _, leafType := range []uint32{0, 1} {
+		var offset uint32
+		for {
+			reqURL := fmt.Sprintf("%s/pending-bridges?dest_net=%d&leaf_type=%d&limit=%d&offset=%d",
+				baseURL, cfg.L2NetworkID, leafType, bridgeSvcPageSize, offset)
+
+			body, err := httpGetJSON(ctx, reqURL)
+			if err != nil {
+				return fmt.Errorf("zkevm bridge service (leaf_type=%d, offset=%d): %w", leafType, offset, err)
+			}
+
+			var result zkevmPendingBridgesResponse
+			if err := json.Unmarshal(body, &result); err != nil {
+				return fmt.Errorf("parse zkevm bridge service response (leaf_type=%d): %w", leafType, err)
+			}
+
+			for _, d := range result.Deposits {
+				if d.DestNet == cfg.L2NetworkID {
+					svcCounts[d.DepositCnt] = struct{}{}
+				}
+			}
+			log.Infof("Zkevm bridge service leaf_type=%d offset=%d: %d/%d deposits", leafType, offset, len(result.Deposits), result.TotalCnt)
+
+			offset += uint32(len(result.Deposits))
+			if len(result.Deposits) == 0 || uint64(offset) >= result.TotalCnt {
+				break
+			}
+		}
+	}
+
+	return reportPendingDiscrepancies("zkevm bridge service", unclaimed, svcCounts)
 }
 
 // fetchL1BridgeEvents scans L1 for BridgeEvents using a worker pool.

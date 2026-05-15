@@ -176,6 +176,31 @@ func doRPCAttempt(ctx context.Context, url string, body []byte) ([]byte, error) 
 	return respBody, nil
 }
 
+// httpGetJSON performs a GET request to the given URL and returns the response body.
+func httpGetJSON(ctx context.Context, reqURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create GET request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return body, nil
+}
+
 func parseRPCResponse(data []byte) ([]jsonRPCResponse, error) {
 	var responses []jsonRPCResponse
 	if err := json.Unmarshal(data, &responses); err != nil {
