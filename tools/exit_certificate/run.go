@@ -372,6 +372,7 @@ func runAllStepE(ctx context.Context, cfg *Config, dir string, stepDCert *agglay
 		return nil, fmt.Errorf("step E: %w", err)
 	}
 	saveJSON(dir, "step-e-unclaimed-bridges.json", stepEResult.UnclaimedBridges)
+	saveJSON(dir, "step-e-unclaimed-messages.json", stepEResult.UnclaimedMessages)
 	saveJSON(dir, "step-e-exit-certificate.json", stepEResult.FinalCertificate)
 	return stepEResult.FinalCertificate, nil
 }
@@ -550,6 +551,7 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 		return err
 	}
 	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
+	saveJSON(dir, "step-e-unclaimed-messages.json", result.UnclaimedMessages)
 	saveJSON(dir, "step-e-exit-certificate.json", result.FinalCertificate)
 	return nil
 }
