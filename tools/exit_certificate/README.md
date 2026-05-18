@@ -86,6 +86,40 @@ cp parameters.json.example parameters.json
 | `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 
+### Important configuration notes
+
+**`l1RpcUrl` — required in practice**
+
+Although marked optional, `l1RpcUrl` is needed for Step E (unclaimed deposit detection) and Step I (`L1InfoTreeLeafCount`). In a real exit scenario you should always set it. Without it, Step E is silently skipped and the certificate may be missing unclaimed L1→L2 deposits.
+
+**`exitAddress` — keep the private key**
+
+SC-locked value (tokens held in smart contracts) is bridged to `exitAddress` on the destination network. Use an address **whose private key you control** — once the certificate is settled, those funds can only be recovered by signing transactions from that address. If the key is lost, the value is permanently inaccessible.
+
+**`signerConfig` — required to sign and submit**
+
+Step SIGN requires a signer configuration. Use the same JSON format as aggsender's `AggsenderPrivateKey`:
+
+```json
+"signerConfig": {
+  "Method": "local",
+  "Path": "/path/to/keystore.json",
+  "Password": "your-password"
+}
+```
+
+Without this field, Step SIGN is skipped when running the full pipeline and you will need to sign manually.
+
+#### Options to skip failing checks
+
+Some options let you continue past conditions that would otherwise abort the pipeline. Use them with care:
+
+| Option | Default | When to change |
+| ------ | ------- | -------------- |
+| `continueOnTraceError` | `false` | Set to `true` if some transactions fail `debug_traceTransaction` (e.g. the node does not have full archive traces for old blocks). Failed hashes are saved to `step-a-failed-traces.json` — review them to confirm the missing value is acceptable. |
+| `abortOnGenesisBalance` | `true` | Set to `false` only for Kurtosis or test environments where addresses are pre-funded at genesis. In production, a non-zero genesis balance indicates a misconfiguration. |
+| `ignoreUnclaimed` | `false` | Set to `true` to proceed even when unclaimed L1→L2 asset deposits are detected. The deposits are logged with a warning but the certificate is left unchanged. Only safe if you have independently verified the unclaimed deposits are negligible or already handled. |
+
 ## Commands
 
 ### Run full pipeline
