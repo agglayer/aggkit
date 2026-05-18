@@ -25,12 +25,15 @@ const isClaimedSelector = "0xcc461632"
 // isClaimed(leafIndex, sourceBridgeNetwork) uses 0 for mainnet.
 const sourceBridgeNetworkMainnet = 0
 
-// RunStepE finds unclaimed L1→L2 bridge deposits and adds them to the exit certificate.
+// RunStepE finds unclaimed L1→L2 bridge deposits and reports them.
 //
 // Approach:
 //  1. Scan L1 bridge for BridgeEvent where destinationNetwork == L2 networkId
 //  2. For each deposit, call isClaimed(depositCount, 0) on the L2 bridge contract
-//  3. Unclaimed deposits become BridgeExit entries in the certificate
+//  3. Message deposits (leaf_type=1) are saved separately and never added to the certificate.
+//  4. Asset deposits (leaf_type=0): if none, the certificate is passed through unchanged.
+//     If ignoreUnclaimed=true, detected deposits are logged but the certificate is unchanged.
+//     If ignoreUnclaimed=false and any assets are found, the step errors (Merkle proofs not yet implemented).
 func RunStepE(
 	ctx context.Context, cfg *Config,
 	certificate *agglayertypes.Certificate,
@@ -74,6 +77,15 @@ func RunStepE(
 		log.Info("✅ No unclaimed message deposits found")
 	}
 	logUnclaimedAssetSummary(ctx, cfg, unclaimedAssets)
+
+	if len(unclaimedAssets) == 0 {
+		log.Info("STEP E complete (no unclaimed asset deposits)")
+		return &StepEResult{
+			UnclaimedBridges:  unclaimedAssets,
+			UnclaimedMessages: unclaimedMessages,
+			FinalCertificate:  certificate,
+		}, nil
+	}
 	if cfg.Options.IgnoreUnclaimed {
 
 		log.Info("STEP E complete (certificate unchanged) ignored unclaimed deposits")
@@ -83,28 +95,13 @@ func RunStepE(
 			FinalCertificate:  certificate,
 		}, nil
 	}
-	if len(unclaimedAssets) > 0 {
-		return &StepEResult{
-			UnclaimedBridges:  unclaimedAssets,
-			UnclaimedMessages: unclaimedMessages,
-			FinalCertificate:  nil,
-		}, fmt.Errorf("Not supported unclaimed deposits, require to implement merkle proofs")
-	}
-	newExits := depositsToExits(unclaimedAssets, cfg)
-	log.Infof("Adding %d unclaimed asset-deposit exits to certificate", len(newExits))
-
-	newImportedExits := depositsToImportedExits(unclaimedAssets)
-	log.Infof("Adding %d unclaimed asset-deposit imported exits to certificate", len(newImportedExits))
-
-	finalCertificate := mergeCertificate(certificate, newExits, newImportedExits)
-	log.Infof("STEP E complete: certificate has %d bridge exits, %d imported bridge exits",
-		len(finalCertificate.BridgeExits), len(finalCertificate.ImportedBridgeExits))
 
 	return &StepEResult{
 		UnclaimedBridges:  unclaimedAssets,
 		UnclaimedMessages: unclaimedMessages,
-		FinalCertificate:  finalCertificate,
-	}, nil
+		FinalCertificate:  nil,
+	}, fmt.Errorf("Not supported unclaimed deposits, require to implement merkle proofs")
+
 }
 
 func resolveL1LatestBlock(ctx context.Context, cfg *Config) (uint64, error) {
@@ -373,58 +370,6 @@ func formatTokenAmount(amount *big.Int, decimals uint8) string {
 	}
 	fmtStr := fmt.Sprintf("%%s.%%0%dd", min(int(decimals), maxDecimals))
 	return fmt.Sprintf(fmtStr, whole, remainder)
-}
-
-func depositsToImportedExits(unclaimed []L1Deposit) []*agglayertypes.ImportedBridgeExit {
-	exits := make([]*agglayertypes.ImportedBridgeExit, 0, len(unclaimed))
-	for _, dep := range unclaimed {
-		if dep.Amount == nil || dep.Amount.Sign() == 0 {
-			continue
-		}
-		exits = append(exits, &agglayertypes.ImportedBridgeExit{
-			BridgeExit: &agglayertypes.BridgeExit{
-				LeafType: bridgetypes.LeafType(dep.LeafType),
-				TokenInfo: &agglayertypes.TokenInfo{
-					OriginNetwork:      dep.OriginNetwork,
-					OriginTokenAddress: dep.OriginAddress,
-				},
-				DestinationNetwork: dep.DestinationNetwork,
-				DestinationAddress: dep.DestinationAddress,
-				Amount:             dep.Amount,
-				Metadata:           dep.Metadata,
-			},
-			GlobalIndex: &agglayertypes.GlobalIndex{
-				MainnetFlag: true,
-				RollupIndex: 0,
-				LeafIndex:   dep.DepositCount,
-			},
-			// ClaimData is nil: Merkle proofs are not available via RPC
-		})
-	}
-	return exits
-}
-
-func depositsToExits(
-	unclaimed []L1Deposit, cfg *Config,
-) []*agglayertypes.BridgeExit {
-	exits := make([]*agglayertypes.BridgeExit, 0, len(unclaimed))
-	for _, dep := range unclaimed {
-		if dep.Amount == nil || dep.Amount.Sign() == 0 {
-			continue
-		}
-		exits = append(exits, &agglayertypes.BridgeExit{
-			LeafType: bridgetypes.LeafType(dep.LeafType),
-			TokenInfo: &agglayertypes.TokenInfo{
-				OriginNetwork:      dep.OriginNetwork,
-				OriginTokenAddress: dep.OriginAddress,
-			},
-			DestinationNetwork: cfg.DestinationNetwork,
-			DestinationAddress: dep.DestinationAddress,
-			Amount:             dep.Amount,
-			Metadata:           dep.Metadata,
-		})
-	}
-	return exits
 }
 
 func mergeCertificate(
