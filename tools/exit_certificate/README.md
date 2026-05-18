@@ -79,8 +79,12 @@ cp parameters.json.example parameters.json
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
 | `agglayerGrpcUrl` | `""` | Agglayer gRPC endpoint. Required for Steps H and SUBMIT. |
+| `abortOnGenesisBalance` | `true` | When `true`, Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `false` only for Kurtosis or test environments. |
 | `continueOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
 | `continueIfBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
+| `ignoreUnclaimed` | `false` | When `true`, Step E detects and logs unclaimed deposits but leaves the certificate unchanged. When `false` (default), any unclaimed asset deposit causes the pipeline to error. |
+| `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
+| `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 
 ## Commands
 
@@ -100,7 +104,7 @@ Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F →
 | B | EOA balances | Classifies addresses as EOA vs contract; fetches ETH balance and every wrapped-token balance for each EOA at `targetBlock`. |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
 | D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
-| E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2 and adds them as both `bridge_exits` and `imported_bridge_exits`. |
+| E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2. Message deposits (`leaf_type=1`) are saved to `step-e-unclaimed-messages.json` and never added to the certificate. Asset deposits (`leaf_type=0`): if none are found the certificate is passed through unchanged; if any are found and `ignoreUnclaimed=true` they are logged but the certificate remains unchanged; if found and `ignoreUnclaimed=false` the pipeline errors (Merkle proof support not yet implemented). Optionally cross-checks against a bridge service. |
 | F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `continueIfBalanceMismatch=true` produces a proportionally capped certificate. |
 | G | NewLocalExitRoot | Shadow-forks L2 at `targetBlock` via Anvil, replays all bridge exits, and reads the resulting `localExitRoot` from the forked bridge contract. |
 | H | PreviousLocalExitRoot | Fetches `settled_ler` from the agglayer gRPC to obtain the previous LER and the next certificate height. |
@@ -201,14 +205,19 @@ Creates the agglayer `Certificate` with `BridgeExit` entries for:
 
 ### Step E — Unclaimed L1→L2 bridge deposits
 
-Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit against `isClaimed` on the L2 bridge. Unclaimed deposits are added to the certificate in two ways:
+Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit against `isClaimed` on the L2 bridge. Deposits are split by leaf type:
 
-- **`bridge_exits`** — the deposit value that must be exited from L2
-- **`imported_bridge_exits`** — the in-flight L1→L2 claim, with `GlobalIndex{mainnet_flag: true, leaf_index: depositCount}` and `claim_data: null` (Merkle proofs are not available via plain RPC)
+- **Message deposits (`leaf_type=1`)** — never added to the certificate. Saved to `step-e-unclaimed-messages.json` for review.
+- **Asset deposits (`leaf_type=0`)** — three outcomes depending on what is found:
+  - **No unclaimed asset deposits** → step completes, certificate passed through unchanged.
+  - **Unclaimed asset deposits found + `ignoreUnclaimed=true`** → deposits are detected, amounts logged with a warning, certificate left unchanged.
+  - **Unclaimed asset deposits found + `ignoreUnclaimed=false`** → pipeline **errors**. Adding unclaimed deposits to the certificate requires Merkle proofs which are not yet implemented.
+
+When `bridgeServiceURL` is set, Step E compares its detected unclaimed set against the bridge service's pending-bridges and errors if the sets differ. Supports both aggkit (`/bridge/v1/bridges`) and zkevm-bridge-service (`/pending-bridges`) via `bridgeServiceType`.
 
 Requires `l1RpcUrl`.
 
-**Output:** `step-e-unclaimed-bridges.json`, `step-e-exit-certificate.json`
+**Output:** `step-e-unclaimed-bridges.json`, `step-e-unclaimed-messages.json`, `step-e-exit-certificate.json`
 
 ### Step F — Agglayer token balance verification
 
@@ -268,7 +277,7 @@ Reads the certificate from Step E and applies:
 - `PreviousLocalExitRoot` and certificate height from Step H
 - `L1InfoTreeLeafCount` — scans L1 backwards from the latest L1 block for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 
-**Reads:** `step-e-exit-certificate.json`, `step-g-new-local-exit-root.json`, `step-h-previous-local-exit-root.json`
+**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `continueIfBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`; plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
 
 **Output:** `exit-certificate-final.json`
 
@@ -311,8 +320,8 @@ Two phases:
 
 The final output is `exit-certificate-final.json` in the output directory. It is a standard agglayer `Certificate` JSON object with:
 
-- `bridge_exits` — all value to be exited from the chain (EOA balances, SC-locked value, unclaimed L1→L2 deposits)
-- `imported_bridge_exits` — unclaimed L1→L2 deposits represented as in-flight imports (from Step E, `claim_data` is `null`)
+- `bridge_exits` — all value to be exited from the chain: EOA balances (Step B/D) and SC-locked value (Step C/D).
+- `imported_bridge_exits` — empty unless a future implementation adds Merkle-proof-backed unclaimed L1→L2 deposits (Step E does not populate this field today).
 
 ## Testing
 

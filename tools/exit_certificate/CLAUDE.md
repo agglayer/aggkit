@@ -100,8 +100,9 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 - **Requires:** `l1RpcUrl` (skipped otherwise).
 - Scans L1 `BridgeEvent` events targeting L2 network, checks each deposit against `isClaimed` on L2 bridge.
-- Adds unclaimed deposits as both `bridge_exits` and `imported_bridge_exits` (with `claim_data: null`).
-- **Output:** `step-e-unclaimed-bridges.json` (`[]L1Deposit`), `step-e-exit-certificate.json`
+- Splits unclaimed deposits by leaf type: **assets** (`leaf_type=0`) are added to the certificate as `bridge_exits` + `imported_bridge_exits` (with `claim_data: null`); **messages** (`leaf_type=1`) are excluded from the certificate and saved separately.
+- **Bridge service cross-check:** when `options.bridgeServiceURL` is set, compares the detected unclaimed asset set against the bridge service's pending-bridges and errors on any discrepancy. Controlled by `options.bridgeServiceType` (`"aggkit"` → `GET /bridge/v1/bridges`; `"zkevm"` → `GET /pending-bridges`).
+- **Output:** `step-e-unclaimed-bridges.json` (`[]L1Deposit`), `step-e-unclaimed-messages.json` (`[]L1Deposit`, always written), `step-e-exit-certificate.json`
 
 ### Step F — Agglayer balance verification
 
@@ -221,6 +222,8 @@ Notable optional fields:
 
 - `sovereignRollupAddr` — address of the `aggchainbase` contract on L1. Required by Step CHECK (checks 4–6). Without it Step CHECK fails.
 - `l1GlobalExitRootAddress` — address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. Without it Step I fails.
+- `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
+- `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
 
 Defaults applied by `LoadConfig`:
 
