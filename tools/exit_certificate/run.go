@@ -362,19 +362,30 @@ func runAllStepD(cfg *Config, dir string, stepBResult *StepBResult, stepCResult 
 	return stepDResult, nil
 }
 
+// saveStepEFiles persists step E outputs to disk. Always writes the unclaimed bridges and
+// messages files; only writes the certificate when it is non-nil.
+func saveStepEFiles(dir string, result *StepEResult) {
+	if result == nil {
+		return
+	}
+	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
+	saveJSON(dir, "step-e-unclaimed-messages.json", result.UnclaimedMessages)
+	if result.FinalCertificate != nil {
+		saveJSON(dir, "step-e-exit-certificate.json", result.FinalCertificate)
+	}
+}
+
 func runAllStepE(ctx context.Context, cfg *Config, dir string, stepDCert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
 	if cfg.L1RPCURL == "" {
 		log.Warn("STEP E skipped: no L1 RPC provided")
 		return stepDCert, nil
 	}
-	stepEResult, err := RunStepE(ctx, cfg, stepDCert)
+	result, err := RunStepE(ctx, cfg, stepDCert)
+	saveStepEFiles(dir, result)
 	if err != nil {
 		return nil, fmt.Errorf("step E: %w", err)
 	}
-	saveJSON(dir, "step-e-unclaimed-bridges.json", stepEResult.UnclaimedBridges)
-	saveJSON(dir, "step-e-unclaimed-messages.json", stepEResult.UnclaimedMessages)
-	saveJSON(dir, "step-e-exit-certificate.json", stepEResult.FinalCertificate)
-	return stepEResult.FinalCertificate, nil
+	return result.FinalCertificate, nil
 }
 
 func logPipelineConfig(cfg *Config) {
@@ -547,13 +558,8 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 		return fmt.Errorf("load step D output: %w", err)
 	}
 	result, err := RunStepE(ctx, cfg, cert.toAgglayerCertificate())
-	if err != nil {
-		return err
-	}
-	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
-	saveJSON(dir, "step-e-unclaimed-messages.json", result.UnclaimedMessages)
-	saveJSON(dir, "step-e-exit-certificate.json", result.FinalCertificate)
-	return nil
+	saveStepEFiles(dir, result)
+	return err
 }
 
 func runSingleSign(ctx context.Context, cfg *Config, dir string) error {
