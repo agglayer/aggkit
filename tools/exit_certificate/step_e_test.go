@@ -10,6 +10,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFormatTokenAmount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		amount   *big.Int
+		decimals uint8
+		expected string
+	}{
+		{"nil amount", nil, 18, "0"},
+		{"zero decimals", big.NewInt(12345), 0, "12345 (raw)"},
+		{"exact whole number", new(big.Int).Mul(big.NewInt(3), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)), 18, "3"},
+		{"1.5 tokens", new(big.Int).SetUint64(1_500_000_000_000_000_000), 18, "1.5"},
+		{"small sub-unit value (user case)", big.NewInt(4938271560), 18, "0.00000000493827156"},
+		{"trailing zeros stripped", big.NewInt(1_500_000), 6, "1.5"},
+		{"fractional only, no leading fraction digit trimmed", big.NewInt(1234567890), 6, "1234.56789"},
+		{"zero amount", big.NewInt(0), 18, "0"},
+		{"one wei", big.NewInt(1), 18, "0.000000000000000001"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, formatTokenAmount(tc.amount, tc.decimals))
+		})
+	}
+}
+
 func TestDecodeBridgeEvent_Valid(t *testing.T) {
 	t.Parallel()
 
@@ -107,6 +135,65 @@ func TestFilterUnclaimedDeposits(t *testing.T) {
 
 	require.Len(t, unclaimed, 1)
 	require.Equal(t, uint32(2), unclaimed[0].DepositCount)
+}
+
+func TestReportPendingDiscrepancies_NoDiscrepancy(t *testing.T) {
+	t.Parallel()
+
+	unclaimed := []L1Deposit{
+		{DepositCount: 1},
+		{DepositCount: 2},
+		{DepositCount: 3},
+	}
+	svcCounts := map[uint32]struct{}{1: {}, 2: {}, 3: {}}
+
+	err := reportPendingDiscrepancies("test service", unclaimed, svcCounts)
+	require.NoError(t, err)
+}
+
+func TestReportPendingDiscrepancies_BothEmpty(t *testing.T) {
+	t.Parallel()
+
+	err := reportPendingDiscrepancies("test service", nil, map[uint32]struct{}{})
+	require.NoError(t, err)
+}
+
+func TestReportPendingDiscrepancies_InSvcOnly(t *testing.T) {
+	t.Parallel()
+
+	unclaimed := []L1Deposit{{DepositCount: 1}}
+	svcCounts := map[uint32]struct{}{1: {}, 5: {}, 9: {}}
+
+	err := reportPendingDiscrepancies("test service", unclaimed, svcCounts)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test service reports 2 deposit(s) not found by L1 scan")
+	require.Contains(t, err.Error(), "[5 9]")
+	require.NotContains(t, err.Error(), "L1 scan found")
+}
+
+func TestReportPendingDiscrepancies_InScanOnly(t *testing.T) {
+	t.Parallel()
+
+	unclaimed := []L1Deposit{{DepositCount: 1}, {DepositCount: 7}, {DepositCount: 3}}
+	svcCounts := map[uint32]struct{}{1: {}}
+
+	err := reportPendingDiscrepancies("test service", unclaimed, svcCounts)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "L1 scan found 2 deposit(s) not reported by test service")
+	require.Contains(t, err.Error(), "[3 7]")
+	require.NotContains(t, err.Error(), "test service reports")
+}
+
+func TestReportPendingDiscrepancies_BothSides(t *testing.T) {
+	t.Parallel()
+
+	unclaimed := []L1Deposit{{DepositCount: 1}, {DepositCount: 2}}
+	svcCounts := map[uint32]struct{}{1: {}, 99: {}}
+
+	err := reportPendingDiscrepancies("test service", unclaimed, svcCounts)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test service reports 1 deposit(s) not found by L1 scan")
+	require.Contains(t, err.Error(), "L1 scan found 1 deposit(s) not reported by test service")
 }
 
 func TestStepE_MergeCertificateExits(t *testing.T) {
