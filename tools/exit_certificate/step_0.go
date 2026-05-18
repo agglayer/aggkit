@@ -24,10 +24,8 @@ var (
 )
 
 const (
-	totalSupplySelector     = "0x18160ddd" // totalSupply()
-	gasTokenAddressSelector = "0x3c351e10" // gasTokenAddress()
-	gasTokenNetworkSelector = "0x3e197043" // gasTokenNetwork()
-	wethTokenSelector       = "0xa25927e2" // WETHToken()
+	totalSupplySelector = "0x18160ddd" // totalSupply()
+	wethTokenSelector   = "0xa25927e2" // WETHToken()
 )
 
 // RunStep0 generates the Local Balance Tree (LBT) by scanning the L2 bridge
