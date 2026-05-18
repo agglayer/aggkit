@@ -61,17 +61,17 @@ func RunStepE(
 	log.Infof("Already claimed on L2: %d", len(claimedSet))
 
 	unclaimed := filterUnclaimedDeposits(l1Deposits, claimedSet)
-	log.Infof("Unclaimed L1→L2 deposits: %d", len(unclaimed))
+	unclaimedAssets, unclaimedMessages := splitByLeafType(unclaimed)
+	log.Infof("Unclaimed L1→L2 deposits: %d  (asset=%d, messages=%d)", len(unclaimed), len(unclaimedAssets), len(unclaimedMessages))
 
 	if cfg.Options.BridgeServiceURL != "" {
-		if err := checkBridgeServicePendingBridges(ctx, cfg, unclaimed); err != nil {
+		if err := checkBridgeServicePendingBridges(ctx, cfg, unclaimedAssets); err != nil {
 			return nil, fmt.Errorf("bridge service pending bridges check: %w", err)
 		}
 	} else {
 		log.Info("Bridge service URL not configured — skipping bridge service pending bridges check")
 	}
 
-	unclaimedAssets, unclaimedMessages := splitByLeafType(unclaimed)
 	if len(unclaimedMessages) > 0 {
 		log.Infof("⚠️ Unclaimed message deposits (leaf_type=1, excluded from certificate): %d", len(unclaimedMessages))
 	} else {
