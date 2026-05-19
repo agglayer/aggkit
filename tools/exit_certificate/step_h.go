@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/agglayer"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -19,21 +18,19 @@ func RunStepH(ctx context.Context, cfg *Config, gResult *StepGResult) (*StepHRes
 	log.Info(" STEP H - Fetch PreviousLocalExitRoot")
 	log.Info("═══════════════════════════════════════════")
 
-	if cfg.Options.AgglayerGRPCURL == "" {
-		return nil, fmt.Errorf("agglayerGrpcUrl is required for step H")
+	agglayerClientCfg := cfg.Options.AgglayerClient
+	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
+		return nil, fmt.Errorf("agglayerClient.grpc.url is required for step H")
 	}
-	grpcConfig := aggkitgrpc.DefaultConfig()
-	grpcConfig.URL = cfg.Options.AgglayerGRPCURL
-	client, err := agglayer.NewAgglayerClient(agglayer.ClientConfig{
-		GRPC: grpcConfig,
-	}, log.GetDefaultLogger())
+
+	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
 	if err != nil {
 		return nil, fmt.Errorf("create agglayer client: %w", err)
 	}
 
 	info, err := client.GetNetworkInfo(ctx, cfg.L2NetworkID)
 	if err != nil {
-		return nil, fmt.Errorf("get network info (network %d): %w", cfg.L2NetworkID, err)
+		return nil, fmt.Errorf("get network info (network %d) from %s: %w", cfg.L2NetworkID, agglayerClientCfg.GRPC.URL, err)
 	}
 
 	var prevLER common.Hash

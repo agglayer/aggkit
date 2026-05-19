@@ -413,8 +413,8 @@ func logPipelineConfig(cfg *Config) {
 	log.Infof("Block Range:      %d", cfg.Options.BlockRange)
 	log.Infof("RPC Batch Size:   %d", cfg.Options.RPCBatchSize)
 	log.Infof("L2 Start Block:   %d", cfg.Options.L2StartBlock)
-	if cfg.Options.AgglayerGRPCURL != "" {
-		log.Infof("Agglayer gRPC:    %s", cfg.Options.AgglayerGRPCURL)
+	if cfg.Options.AgglayerClient.GRPC != nil && cfg.Options.AgglayerClient.GRPC.URL != "" {
+		log.Infof("Agglayer gRPC:    %s", cfg.Options.AgglayerClient.GRPC.URL)
 	} else {
 		log.Info("Agglayer gRPC:    (not configured — step submit will fail)")
 	}
