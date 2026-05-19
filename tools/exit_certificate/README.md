@@ -52,7 +52,7 @@ cp parameters.json.example parameters.json
 | Field | Required | Description |
 | :---: | :------: | :---------: |
 | `l2RpcUrl` | Yes | L2 JSON-RPC endpoint. Must support `debug_traceTransaction` for Step A. |
-| `l1RpcUrl` | No | L1 JSON-RPC endpoint. Required only for Step E (unclaimed bridge detection). |
+| `l1RpcUrl` | Yes* | L1 JSON-RPC endpoint. Required by Step E (unclaimed deposit detection) and Step I (`L1InfoTreeLeafCount`). Without it Step E is silently skipped and Step I fails — the resulting certificate will be incomplete. |
 | `l2BridgeAddress` | Yes | L2 bridge contract address. |
 | `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
@@ -64,7 +64,7 @@ cp parameters.json.example parameters.json
 | `l1GlobalExitRootAddress` | Yes* | Address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. |
 | `signerConfig` | No | Signer configuration object for Step SIGN. Same format as aggsender's `AggsenderPrivateKey`. Example: `{"Method": "local", "Path": "keystore.json", "Password": "pass"}`. |
 
-> **\*Required for specific steps:** `sovereignRollupAddr` is required by Step CHECK; `l1GlobalExitRootAddress` is required by Step I. Without them those steps fail.
+> **\*Required for specific steps:** `l1RpcUrl` is required by Steps E and I; `sovereignRollupAddr` is required by Step CHECK; `l1GlobalExitRootAddress` is required by Step I. Without them those steps fail.
 
 ### Options
 
