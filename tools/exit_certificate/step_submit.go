@@ -6,7 +6,6 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -18,21 +17,18 @@ type StepSubmitResult struct {
 
 // RunStepSubmit sends the signed certificate to the agglayer via gRPC and
 // returns the certificate hash assigned by the agglayer.
-// Requires options.agglayerGrpcUrl.
+// Requires options.agglayerClient.grpc.url.
 func RunStepSubmit(ctx context.Context, cfg *Config, cert *agglayertypes.Certificate) (*StepSubmitResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP SUBMIT - Send certificate to agglayer")
 	log.Info("═══════════════════════════════════════════")
 
-	if cfg.Options.AgglayerGRPCURL == "" {
-		return nil, fmt.Errorf("agglayerGrpcUrl is required for step submit")
+	agglayerClientCfg := cfg.Options.AgglayerClient
+	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
+		return nil, fmt.Errorf("agglayerClient.grpc.url is required for step submit")
 	}
 
-	grpcConfig := aggkitgrpc.DefaultConfig()
-	grpcConfig.URL = cfg.Options.AgglayerGRPCURL
-	client, err := agglayer.NewAgglayerClient(agglayer.ClientConfig{
-		GRPC: grpcConfig,
-	}, log.GetDefaultLogger())
+	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
 	if err != nil {
 		return nil, fmt.Errorf("create agglayer gRPC client: %w", err)
 	}

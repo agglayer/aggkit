@@ -109,7 +109,7 @@ func scanBlockHeaders(
 		}
 	}
 
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "L2 RPC/blockHeaders")
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "STEP A: L2 RPC/blockHeaders")
 	if err != nil {
 		return nil, fmt.Errorf("scan block headers: %w", err)
 	}

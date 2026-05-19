@@ -49,12 +49,16 @@ func RunStepF(
 	}
 
 	log.Infof("Querying %s (network %d)", cfg.Options.AgglayerAdminURL, cfg.L2NetworkID)
+	if cfg.Options.AgglayerAdminToken != "" {
+		log.Info("Using bearer token for agglayer admin authentication")
+	}
 
-	raw, err := singleRPC(
+	raw, err := singleRPCAuth(
 		ctx, cfg.Options.AgglayerAdminURL,
 		"admin_getTokenBalance",
 		[]any{cfg.L2NetworkID, nil},
 		defaultRetries,
+		cfg.Options.AgglayerAdminToken,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("admin_getTokenBalance (network %d): %w", cfg.L2NetworkID, err)
