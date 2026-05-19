@@ -47,11 +47,11 @@ Pipeline steps (run in order by default):
   SIGN   Sign the final certificate with the configured keystore.
 
   SUBMIT Send the signed certificate to the agglayer via gRPC.
-	   Requires agglayerGrpcUrl in options. Not part of the default pipeline.
+	   Requires agglayerClient.grpc.url in options. Not part of the default pipeline.
 
   WAIT   Poll the agglayer every 5 seconds until the submitted certificate is
          settled or enters an error state. Reads step-submit-result.json for
-         the certificate hash. Requires agglayerGrpcUrl in options.
+         the certificate hash. Requires agglayerClient.grpc.url in options.
 
 Use --step to run a single step (e.g. --step a). When running steps individually
 the output files from previous steps must already exist in the output directory.`

@@ -95,9 +95,13 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 		return nil, fmt.Errorf("marshal batch request: %w", err)
 	}
 
-	responses, err := doRPCWithRetry(ctx, url, body, retries)
+	responses, err := doRPCWithRetry(ctx, url, body, retries, "")
 	if err != nil {
 		return nil, err
+	}
+	if len(responses) == 1 && responses[0].Error != nil {
+		e := responses[0].Error
+		return nil, &RPCExecutionError{Code: e.Code, Message: e.Message, Data: e.Data}
 	}
 	if len(responses) != len(calls) {
 		return nil, fmt.Errorf("RPC response count %d does not match request count %d", len(responses), len(calls))
@@ -121,6 +125,12 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 // singleRPC sends one JSON-RPC call. Uses the same HTTP transport as batchRPC
 // but propagates RPC-level errors as Go errors.
 func singleRPC(ctx context.Context, url, method string, params []any, retries int) (json.RawMessage, error) {
+	return singleRPCAuth(ctx, url, method, params, retries, "")
+}
+
+// singleRPCAuth is like singleRPC but adds an Authorization: Bearer header when bearerToken is non-empty.
+// Use this for endpoints protected by Google Cloud IAP or similar token-based auth.
+func singleRPCAuth(ctx context.Context, url, method string, params []any, retries int, bearerToken string) (json.RawMessage, error) {
 	if retries <= 0 {
 		retries = defaultRetries
 	}
@@ -130,7 +140,7 @@ func singleRPC(ctx context.Context, url, method string, params []any, retries in
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	responses, err := doRPCWithRetry(ctx, url, body, retries)
+	responses, err := doRPCWithRetry(ctx, url, body, retries, bearerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -144,12 +154,15 @@ func singleRPC(ctx context.Context, url, method string, params []any, retries in
 	return responses[0].Result, nil
 }
 
-func doRPCAttempt(ctx context.Context, url string, body []byte) ([]byte, error) {
+func doRPCAttempt(ctx context.Context, url string, body []byte, bearerToken string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -216,10 +229,10 @@ func maskRPCURL(rawURL string) string {
 }
 
 // doRPCWithRetry handles the HTTP POST + retry loop.
-func doRPCWithRetry(ctx context.Context, rpcURL string, body []byte, retries int) ([]jsonRPCResponse, error) {
+func doRPCWithRetry(ctx context.Context, rpcURL string, body []byte, retries int, bearerToken string) ([]jsonRPCResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= retries; attempt++ {
-		respBody, err := doRPCAttempt(ctx, rpcURL, body)
+		respBody, err := doRPCAttempt(ctx, rpcURL, body, bearerToken)
 		if err != nil {
 			lastErr = err
 			if attempt < retries {
