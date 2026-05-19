@@ -110,6 +110,8 @@ Step SIGN requires a signer configuration. Use the same JSON format as aggsender
 
 Without this field, Step SIGN is skipped when running the full pipeline and you will need to sign manually.
 
+The example above uses a local keystore file. Other backends (GCP KMS, AWS KMS, etc.) are also supported. For the full list of signer methods and their configuration options see the [go_signer](https://github.com/agglayer/go_signer) repository.
+
 #### Options to skip failing checks
 
 Some options let you continue past conditions that would otherwise abort the pipeline. Use them with care:
