@@ -353,7 +353,7 @@ ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "op
         "outputDir": "./output-kurtosis",
         "l1StartBlock": 0,
         "agglayerAdminURL": "$AGGLAYER_ADMIN_URL",
-        "agglayerGrpcUrl": "$AGGLAYER_GRPC_URL",
+        "agglayerClient": { "GRPC": { "URL": "$AGGLAYER_GRPC_URL" } },
         "abortOnGenesisBalance": false${BRIDGE_SERVICE_OPTS:+,
 $BRIDGE_SERVICE_OPTS}
     }

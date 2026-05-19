@@ -7,7 +7,6 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -25,21 +24,18 @@ const (
 //
 //  2. Poll the submitted certificate by hash until it is Settled (success) or InError (error).
 //
-// Requires options.agglayerGrpcUrl.
+// Requires options.agglayerClient.grpc.url.
 func RunStepWait(ctx context.Context, cfg *Config, certHash common.Hash) (*StepWaitResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP WAIT - Wait for certificate settlement")
 	log.Info("═══════════════════════════════════════════")
 
-	if cfg.Options.AgglayerGRPCURL == "" {
-		return nil, fmt.Errorf("agglayerGrpcUrl is required for step wait")
+	agglayerClientCfg := cfg.Options.AgglayerClient
+	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
+		return nil, fmt.Errorf("agglayerClient.grpc.url is required for step wait")
 	}
 
-	grpcConfig := aggkitgrpc.DefaultConfig()
-	grpcConfig.URL = cfg.Options.AgglayerGRPCURL
-	client, err := agglayer.NewAgglayerClient(agglayer.ClientConfig{
-		GRPC: grpcConfig,
-	}, log.GetDefaultLogger())
+	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
 	if err != nil {
 		return nil, fmt.Errorf("create agglayer gRPC client: %w", err)
 	}

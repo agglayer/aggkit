@@ -1,0 +1,31 @@
+{
+    "l1RpcUrl": "<YOUR_L1_RPC_URL>",
+    "l2RpcUrl": "https://rpc-katana.t.conduit.xyz/",
+    "l1BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+    "l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+    "l2NetworkId": 20,
+    "targetBlock": "latest",
+    "exitAddress": "0x0000000000000000000000000000000000001234",
+    "destinationNetwork": 0,
+    "signerConfig": {
+        "Method": "local",
+        "Path": "signer.keystore",
+        "Password": "<PASSWORD>"
+    },
+    "options": {
+        "blockRange": 10000,
+        "concurrencyLimit": 10,
+        "rpcBatchSize": 99,
+        "rpcDelayMs": 10,
+        "outputDir": "./output-mainnet",
+        "l1StartBlock": 22431675,
+        "continueOnTraceError": false,
+        "abortOnGenesisBalance": true,
+        "ignoreUnclaimed": false,
+        "agglayerClient": {
+            "GRPC": {
+                "URL": "<AGGLAYER_GRPC_URL>"
+            }
+        }
+    }
+}

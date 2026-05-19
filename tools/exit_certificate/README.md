@@ -78,7 +78,8 @@ cp parameters.json.example parameters.json
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
-| `agglayerGrpcUrl` | `""` | Agglayer gRPC endpoint. Required for Steps H and SUBMIT. |
+| `agglayerAdminToken` | `""` | Bearer token for authenticating requests to `agglayerAdminURL`. Required when the admin endpoint is protected by Google Cloud IAP. See [Authenticating with IAP](#authenticating-with-iap) for how to obtain it. |
+| `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
 | `abortOnGenesisBalance` | `true` | When `true`, Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `false` only for Kurtosis or test environments. |
 | `continueOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
 | `continueIfBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
@@ -96,6 +97,37 @@ Although marked optional, `l1RpcUrl` is needed for Step E (unclaimed deposit det
 
 SC-locked value (tokens held in smart contracts) is bridged to `exitAddress` on the destination network. Use an address **whose private key you control** — once the certificate is settled, those funds can only be recovered by signing transactions from that address. If the key is lost, the value is permanently inaccessible.
 
+**`agglayerClient` — required for Steps H, SUBMIT, and WAIT**
+
+Uses the same `agglayer.ClientConfig` struct as aggsender. At minimum provide the gRPC URL; unset fields default to the same values used by aggsender:
+
+```json
+"agglayerClient": {
+  "GRPC": {
+    "URL": "localhost:50051"
+  }
+}
+```
+
+Full example with all fields (timeouts accept Go duration strings: `"5s"`, `"1m"`, etc.):
+
+```json
+"agglayerClient": {
+  "GRPC": {
+    "URL": "localhost:50051",
+    "RequestTimeout": "30s",
+    "MinConnectTimeout": "5s",
+    "UseTLS": false,
+    "Retry": {
+      "MaxAttempts": 3,
+      "InitialBackoff": "1s",
+      "MaxBackoff": "10s",
+      "BackoffMultiplier": 2.0
+    }
+  }
+}
+```
+
 **`signerConfig` — required to sign and submit**
 
 Step SIGN requires a signer configuration. Use the same JSON format as aggsender's `AggsenderPrivateKey`:
@@ -111,6 +143,30 @@ Step SIGN requires a signer configuration. Use the same JSON format as aggsender
 Without this field, Step SIGN is skipped when running the full pipeline and you will need to sign manually.
 
 The example above uses a local keystore file. Other backends (GCP KMS, AWS KMS, etc.) are also supported. For the full list of signer methods and their configuration options see the [go_signer](https://github.com/agglayer/go_signer) repository.
+
+#### Authenticating with IAP
+
+When `agglayerAdminURL` points to a production endpoint protected by Google Cloud IAP (Identity-Aware Proxy), requests must include a Bearer token. Obtain it with `gcloud`:
+
+```bash
+export JWT=$(gcloud auth print-identity-token \
+  --impersonate-service-account=<SERVICE_ACCOUNT_EMAIL> \
+  --audiences=<AUDIENCE> \
+  --include-email)
+```
+
+Then set `agglayerAdminToken` in your config to the value of `$JWT`.
+
+Environment-specific values:
+
+| Environment | `SERVICE_ACCOUNT_EMAIL` | `AUDIENCE` | `agglayerAdminURL` |
+| ----------- | ----------------------- | ---------- | ------------------ |
+| spec | `agglayer-spec-admin-iap@prj-polygonlabs-cdk-dev.iam.gserviceaccount.com` | `593545957356-gnjisnf3rad64es8uh4isj8lindaa05f.apps.googleusercontent.com` | `https://admin-agglayer-spec.polygon.technology` |
+| bali | `agglayer-bali-admin-iap@prj-polygonlabs-cdk-dev.iam.gserviceaccount.com` | `593545957356-hi10sk8kqkm8aee4qe6n0rbad4krjla0.apps.googleusercontent.com` | `https://admin-agglayer-dev.polygon.technology` |
+| cardona | `agglayer-cardona-admin-iap@prj-polygonlabs-cdk-test.iam.gserviceaccount.com` | `515506276380-m2s53r0hfd0ppfjh7kdv92rc1g3taet8.apps.googleusercontent.com` | `https://admin-agglayer-test.polygon.technology` |
+| mainnet | `agglayer-mainnet-admin-iap@prj-polygonlabs-cdk-prod.iam.gserviceaccount.com` | `837347663102-9et4sc5kokg8rdbrehcut9bl3qpg2gc6.apps.googleusercontent.com` | `https://admin-agglayer.polygon.technology` |
+
+The IAP token expires after ~1 hour. If Step F returns an `Invalid IAP credentials` error, regenerate the token and update the config.
 
 #### Options to skip failing checks
 
@@ -301,7 +357,7 @@ Computes the correct `new_local_exit_root` by replaying every `bridge_exit` from
 
 Calls `interop_getNetworkInfo` on the agglayer JSON-RPC and reads the `settled_ler` for the L2 network. If no certificate has been settled yet, `PreviousLocalExitRoot` is zero.
 
-Requires `agglayerGrpcUrl` in options.
+Requires `agglayerClient.GRPC.URL` in options.
 
 **Output:** `step-h-previous-local-exit-root.json`
 
@@ -331,7 +387,7 @@ Requires `signerConfig` in config (same format as aggsender's `AggsenderPrivateK
 
 Sends `exit-certificate-signed.json` to the agglayer via gRPC and returns the certificate hash. **Not part of the default pipeline** — must be triggered with `--step submit`.
 
-Requires `agglayerGrpcUrl` in options.
+Requires `agglayerClient.GRPC.URL` in options.
 
 **Reads:** `exit-certificate-signed.json`
 
@@ -341,7 +397,7 @@ Requires `agglayerGrpcUrl` in options.
 
 Polls the agglayer until the submitted certificate reaches a final state. **Not part of the default pipeline** — must be triggered with `--step wait`.
 
-Requires `agglayerGrpcUrl` in options. Reads `step-submit-result.json` for the certificate hash.
+Requires `agglayerClient.GRPC.URL` in options. Reads `step-submit-result.json` for the certificate hash.
 
 Two phases:
 

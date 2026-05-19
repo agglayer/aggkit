@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/agglayer/aggkit/agglayer"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -20,8 +22,12 @@ type Options struct {
 	OutputDir              string `json:"outputDir"`
 	L1StartBlock           uint64 `json:"l1StartBlock"`
 	L2StartBlock           uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL string `json:"agglayerAdminURL"`
-	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
+	AgglayerAdminURL  string                `json:"agglayerAdminURL"`
+	// AgglayerAdminToken is an optional Bearer token for authenticating requests to agglayerAdminURL.
+	// Required when the admin endpoint is protected by Google Cloud IAP.
+	// Obtain it with: gcloud auth print-identity-token --impersonate-service-account=<SA> --audiences=<AUDIENCE> --include-email
+	AgglayerAdminToken string                `json:"agglayerAdminToken"`
+	AgglayerClient     agglayer.ClientConfig `json:"agglayerClient"`
 	// AbortOnGenesisBalance aborts the run if any EOA or contract has a non-zero ETH balance
 	// at block 0, which indicates a genesis preload that would inflate the exit certificate totals.
 	// Defaults to true; set to false only for Kurtosis or test environments.
@@ -211,8 +217,31 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
 	}
-	if raw.AgglayerGRPCURL != "" {
-		opts.AgglayerGRPCURL = raw.AgglayerGRPCURL
+	if raw.AgglayerAdminToken != "" {
+		opts.AgglayerAdminToken = raw.AgglayerAdminToken
+	}
+	if raw.AgglayerClient != nil {
+		clientCfg := *raw.AgglayerClient
+		grpcDefaults := aggkitgrpc.DefaultConfig()
+		if clientCfg.GRPC != nil {
+			if clientCfg.GRPC.URL != "" {
+				grpcDefaults.URL = clientCfg.GRPC.URL
+			}
+			if clientCfg.GRPC.MinConnectTimeout.Duration != 0 {
+				grpcDefaults.MinConnectTimeout = clientCfg.GRPC.MinConnectTimeout
+			}
+			if clientCfg.GRPC.RequestTimeout.Duration != 0 {
+				grpcDefaults.RequestTimeout = clientCfg.GRPC.RequestTimeout
+			}
+			if clientCfg.GRPC.UseTLS {
+				grpcDefaults.UseTLS = clientCfg.GRPC.UseTLS
+			}
+			if clientCfg.GRPC.Retry != nil {
+				grpcDefaults.Retry = clientCfg.GRPC.Retry
+			}
+		}
+		clientCfg.GRPC = grpcDefaults
+		opts.AgglayerClient = clientCfg
 	}
 	if raw.AbortOnGenesisBalance != nil {
 		opts.AbortOnGenesisBalance = *raw.AbortOnGenesisBalance
@@ -260,8 +289,9 @@ type rawOpts struct {
 	OutputDir              string `json:"outputDir"`
 	L1StartBlock           uint64 `json:"l1StartBlock"`
 	L2StartBlock           uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL string `json:"agglayerAdminURL"`
-	AgglayerGRPCURL  string `json:"agglayerGrpcUrl"`
+	AgglayerAdminURL   string                 `json:"agglayerAdminURL"`
+	AgglayerAdminToken string                 `json:"agglayerAdminToken"`
+	AgglayerClient     *agglayer.ClientConfig `json:"agglayerClient"`
 	AbortOnGenesisBalance     *bool  `json:"abortOnGenesisBalance"`
 	ContinueOnTraceError      *bool  `json:"continueOnTraceError"`
 	ContinueIfBalanceMismatch *bool  `json:"continueIfBalanceMismatch"`
