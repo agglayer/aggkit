@@ -92,7 +92,8 @@ build-docker: ## Builds a docker image with the aggkit binary
 		--build-arg GITREV=$(GITREV) \
 		--build-arg GITBRANCH=$(GITBRANCH) \
 		-t aggkit:local -f ./Dockerfile .
-	@ver=$$(docker run --rm aggkit:local version | awk '/^Version:/{print $$2}'); \
+	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
+		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
 		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
 		echo "Version check passed: $$ver"
 
@@ -104,7 +105,8 @@ build-docker-ci: ## Builds a docker image with the aggkit binary for CI (include
 		--build-arg GITREV=$(GITREV) \
 		--build-arg GITBRANCH=$(GITBRANCH) \
 		-t aggkit:local -f ./Dockerfile .
-	@ver=$$(docker run --rm aggkit:local version | awk '/^Version:/{print $$2}'); \
+	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
+		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
 		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
 		echo "Version check passed: $$ver"
 
@@ -115,7 +117,8 @@ build-docker-nc: ## Builds a docker image with the aggkit binary - but without b
 		--build-arg GITREV=$(GITREV) \
 		--build-arg GITBRANCH=$(GITBRANCH) \
 		-t aggkit:local -f ./Dockerfile .
-	@ver=$$(docker run --rm aggkit:local version | awk '/^Version:/{print $$2}'); \
+	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
+		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
 		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
 		echo "Version check passed: $$ver"
 
