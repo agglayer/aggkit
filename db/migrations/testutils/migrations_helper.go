@@ -35,7 +35,7 @@ func copyFile(src string, dst string) error {
 		return fmt.Errorf("failed to read file %s: %w", src, err)
 	}
 	// Write data to dst
-	err = os.WriteFile(dst, data, 0600) //nolint:mnd,gosec
+	err = os.WriteFile(dst, data, 0600) //nolint:mnd
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", dst, err)
 	}
