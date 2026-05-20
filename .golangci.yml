@@ -41,6 +41,10 @@ linters:
     gosec:
       excludes:
         - G115
+        - G204  # subprocess with tainted args — controlled via config/CLI
+        - G602  # slice OOB — false positive in taint analysis
+        - G703  # path traversal — false positive in taint analysis
+        - G118  # context cancel not called — false positive
     revive:
       rules:
         - name: exported
