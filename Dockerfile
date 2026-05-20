@@ -21,7 +21,7 @@ RUN go mod download
 COPY . .
 
 # Compile binary
-RUN VERSION="${VERSION}" GITREV="${GITREV}" GITBRANCH="${GITBRANCH}" make build-aggkit build-tools
+RUN make build-aggkit build-tools
 
 # ================================
 # STAGE 2: Final runtime image
