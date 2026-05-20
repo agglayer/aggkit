@@ -88,9 +88,9 @@ $(GOBIN)/remove_ger: ## Build remove_ger tool
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
 	docker build \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GITREV=$(GITREV) \
-		--build-arg GITBRANCH=$(GITBRANCH) \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GITREV="$(GITREV)" \
+		--build-arg GITBRANCH="$(GITBRANCH)" \
 		-t aggkit:local -f ./Dockerfile .
 	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
 		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
@@ -101,9 +101,9 @@ build-docker: ## Builds a docker image with the aggkit binary
 build-docker-ci: ## Builds a docker image with the aggkit binary for CI (includes shell)
 	docker build \
 		--build-arg INCLUDE_SHELL=true \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GITREV=$(GITREV) \
-		--build-arg GITBRANCH=$(GITBRANCH) \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GITREV="$(GITREV)" \
+		--build-arg GITBRANCH="$(GITBRANCH)" \
 		-t aggkit:local -f ./Dockerfile .
 	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
 		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
@@ -113,9 +113,9 @@ build-docker-ci: ## Builds a docker image with the aggkit binary for CI (include
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
 	docker build --no-cache=true \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GITREV=$(GITREV) \
-		--build-arg GITBRANCH=$(GITBRANCH) \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GITREV="$(GITREV)" \
+		--build-arg GITBRANCH="$(GITBRANCH)" \
 		-t aggkit:local -f ./Dockerfile .
 	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
 		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
