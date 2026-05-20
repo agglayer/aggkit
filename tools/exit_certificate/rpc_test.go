@@ -12,8 +12,6 @@ import (
 )
 
 func TestBatchRPC_Success(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var requests []jsonRPCRequest
 		err := json.NewDecoder(r.Body).Decode(&requests)
@@ -47,8 +45,6 @@ func TestBatchRPC_Success(t *testing.T) {
 }
 
 func TestBatchRPC_RPCError(t *testing.T) {
-	t.Parallel()
-
 	// Single-call batch where the response is an RPC error: batchRPC propagates it as an error.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		responses := []jsonRPCResponse{
@@ -73,8 +69,6 @@ func TestBatchRPC_RPCError(t *testing.T) {
 }
 
 func TestBatchRPC_MultipleCallsOneError(t *testing.T) {
-	t.Parallel()
-
 	// Two-call batch: first succeeds, second has an RPC error → nil at that index, no error returned.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		responses := []jsonRPCResponse{
@@ -100,8 +94,6 @@ func TestBatchRPC_MultipleCallsOneError(t *testing.T) {
 }
 
 func TestBatchRPC_HTTPError(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("internal server error"))
@@ -119,8 +111,6 @@ func TestBatchRPC_HTTPError(t *testing.T) {
 }
 
 func TestBatchRPC_ContextCancelled(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
 	}))
@@ -138,8 +128,6 @@ func TestBatchRPC_ContextCancelled(t *testing.T) {
 }
 
 func TestSingleRPC_Success(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := jsonRPCResponse{
 			JSONRPC: "2.0",
@@ -161,8 +149,6 @@ func TestSingleRPC_Success(t *testing.T) {
 }
 
 func TestSingleRPC_RPCError(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := jsonRPCResponse{
 			JSONRPC: "2.0",
@@ -181,16 +167,12 @@ func TestSingleRPC_RPCError(t *testing.T) {
 }
 
 func TestSleepWithBackoff(t *testing.T) {
-	t.Parallel()
-
 	// sleepWithBackoff is a void function; just verify it doesn't panic
 	// The actual delay values are tested via the formula: min(1000 * 2^attempt, 10000) ms
 	require.NotPanics(t, func() { sleepWithBackoff(0) })
 }
 
 func TestSingleRPCAuth_SendsBearerToken(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer my-iap-token", r.Header.Get("Authorization"))
 		resp := jsonRPCResponse{JSONRPC: "2.0", ID: 1, Result: json.RawMessage(`"ok"`)}
@@ -208,8 +190,6 @@ func TestSingleRPCAuth_SendsBearerToken(t *testing.T) {
 }
 
 func TestSingleRPCAuth_NoTokenSendsNoHeader(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Empty(t, r.Header.Get("Authorization"))
 		resp := jsonRPCResponse{JSONRPC: "2.0", ID: 1, Result: json.RawMessage(`"ok"`)}
@@ -224,8 +204,6 @@ func TestSingleRPCAuth_NoTokenSendsNoHeader(t *testing.T) {
 }
 
 func TestHttpGetJSON_Success(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "application/json", r.Header.Get("Accept"))
 		w.Header().Set("Content-Type", "application/json")
@@ -242,8 +220,6 @@ func TestHttpGetJSON_Success(t *testing.T) {
 }
 
 func TestHttpGetJSON_HTTPError(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("not found"))
@@ -257,29 +233,23 @@ func TestHttpGetJSON_HTTPError(t *testing.T) {
 }
 
 func TestMaskRPCURL(t *testing.T) {
-	t.Parallel()
-
 	require.Equal(t, "https://node.example.com", maskRPCURL("https://node.example.com/api/v1?key=secret"))
 	require.Equal(t, "http://localhost:8545", maskRPCURL("http://localhost:8545/"))
 	require.Equal(t, "bad url", maskRPCURL("bad url"))
 }
 
 func TestRPCExecutionError_WithData(t *testing.T) {
-	t.Parallel()
 	e := &RPCExecutionError{Code: -32000, Message: "execution reverted", Data: "0xdeadbeef"}
 	require.Contains(t, e.Error(), "execution reverted")
 	require.Contains(t, e.Error(), "0xdeadbeef")
 }
 
 func TestRPCExecutionError_WithoutData(t *testing.T) {
-	t.Parallel()
 	e := &RPCExecutionError{Code: -32000, Message: "execution reverted"}
 	require.Equal(t, "RPC error: execution reverted", e.Error())
 }
 
 func TestConcurrentBatchRPC_Basic(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var requests []jsonRPCRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&requests))
@@ -307,8 +277,6 @@ func TestConcurrentBatchRPC_Basic(t *testing.T) {
 }
 
 func TestDoRPCWithRetry_ExhaustsRetries(t *testing.T) {
-	t.Parallel()
-
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -325,16 +293,12 @@ func TestDoRPCWithRetry_ExhaustsRetries(t *testing.T) {
 }
 
 func TestConcurrentBatchRPC_Empty(t *testing.T) {
-	t.Parallel()
-
 	results, err := concurrentBatchRPC(context.Background(), "http://unused", nil, 10, 2, "test")
 	require.NoError(t, err)
 	require.Nil(t, results)
 }
 
 func TestBatchRPC_SingleResponse(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := jsonRPCResponse{
 			JSONRPC: "2.0",
