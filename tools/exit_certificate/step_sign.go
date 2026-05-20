@@ -13,7 +13,9 @@ import (
 
 // RunStepSign signs the certificate with the configured keystore and sets AggchainData
 // to an AggchainDataMultisig containing the ECDSA signature.
-func RunStepSign(ctx context.Context, cfg *Config, cert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
+func RunStepSign(
+	ctx context.Context, cfg *Config, cert *agglayertypes.Certificate,
+) (*agglayertypes.Certificate, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP SIGN — Sign exit certificate")
 	log.Info("═══════════════════════════════════════════")

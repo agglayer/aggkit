@@ -60,7 +60,9 @@ func RunStepB(ctx context.Context, cfg *Config, stepA *StepAResult) (*StepBResul
 	eoaBalances := buildEOABalances(eoaAddrs, eoaEthBalances, tokenBalances, tokenLookup)
 	accumulated := buildAccumulated(eoaEthBalances, tokenBalances, tokenLookup)
 
-	if err := checkGenesisBalances(ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency); err != nil {
+	if err := checkGenesisBalances(
+		ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency,
+	); err != nil {
 		if cfg.Options.AbortOnGenesisBalance {
 			return nil, err
 		}
@@ -127,7 +129,11 @@ func checkGenesisBalances(
 	log.Infof("Total contract ETH       : %s wei (%d accounts)", padLeft(scBalancesStr, maxLen), len(scBalances))
 	log.Infof("                           -------------------------------")
 	log.Infof("Total genesis subtraction: %s wei (%d accounts)", padLeft(diffStr, maxLen), len(eoaEthBalances))
-	return fmt.Errorf("genesis ETH preload detected in %d accounts: balances at block 0 are non-zero, indicating this is not a real network", len(genesisBalances))
+	return fmt.Errorf(
+		"genesis ETH preload detected in %d accounts: "+
+			"balances at block 0 are non-zero, indicating this is not a real network",
+		len(genesisBalances),
+	)
 }
 
 // classifyAddresses separates addresses into EOA and contract via eth_getCode.

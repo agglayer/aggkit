@@ -162,7 +162,7 @@ func compareTokenBalances(
 	agglayerMap := make(map[tokenKey]*big.Int, len(agglayerEntries))
 	for _, e := range agglayerEntries {
 		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
-		amount, ok := new(big.Int).SetString(e.Amount, 10)
+		amount, ok := new(big.Int).SetString(e.Amount, decimalBase)
 		if !ok {
 			log.Warnf("Could not parse agglayer amount %q for token (network=%d addr=%s)",
 				e.Amount, e.OriginNetwork, e.OriginTokenAddress.Hex())
@@ -174,7 +174,7 @@ func compareTokenBalances(
 	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
 	for _, e := range lbtEntries {
 		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
-		amount, ok := new(big.Int).SetString(e.Balance, 10)
+		amount, ok := new(big.Int).SetString(e.Balance, decimalBase)
 		if !ok {
 			log.Warnf("Could not parse LBT balance %q for token (network=%d addr=%s)",
 				e.Balance, e.OriginNetwork, e.OriginTokenAddress.Hex())

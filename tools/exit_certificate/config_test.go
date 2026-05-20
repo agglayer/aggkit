@@ -219,6 +219,118 @@ func TestLoadLBTWrappedTokens_ValidFile(t *testing.T) {
 	require.Equal(t, common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"), tokens[1].WrappedTokenAddress)
 }
 
+func TestLoadConfig_AgglayerAdminToken(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100",
+		"options": {
+			"agglayerAdminURL": "https://admin.example.com",
+			"agglayerAdminToken": "test-jwt-token"
+		}
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, "https://admin.example.com", cfg.Options.AgglayerAdminURL)
+	require.Equal(t, "test-jwt-token", cfg.Options.AgglayerAdminToken)
+}
+
+func TestParseSignerConfig_Valid(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	raw := json.RawMessage(`{"Method": "local", "Path": "keystore.json", "Password": "secret"}`)
+
+	cfg, err := parseSignerConfig(raw, dir)
+	require.NoError(t, err)
+	require.Equal(t, "local", string(cfg.Method))
+	require.Equal(t, filepath.Join(dir, "keystore.json"), cfg.Config["path"])
+	require.Equal(t, "secret", cfg.Config["password"])
+}
+
+func TestParseSignerConfig_InvalidJSON(t *testing.T) {
+	t.Parallel()
+	_, err := parseSignerConfig(json.RawMessage(`{bad}`), "/tmp")
+	require.Error(t, err)
+}
+
+func TestMergeOptions_BoolFlags(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100",
+		"options": {
+			"abortOnGenesisBalance": false,
+			"continueOnTraceError": true,
+			"continueIfBalanceMismatch": true,
+			"ignoreUnclaimed": true
+		}
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.False(t, cfg.Options.AbortOnGenesisBalance)
+	require.True(t, cfg.Options.ContinueOnTraceError)
+	require.True(t, cfg.Options.ContinueIfBalanceMismatch)
+	require.True(t, cfg.Options.IgnoreUnclaimed)
+}
+
+func TestLoadConfig_AgglayerClient(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100",
+		"options": {
+			"agglayerClient": {
+				"GRPC": {
+					"URL": "agglayer.example.com:50051",
+					"UseTLS": true
+				}
+			}
+		}
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Options.AgglayerClient.GRPC)
+	require.Equal(t, "agglayer.example.com:50051", cfg.Options.AgglayerClient.GRPC.URL)
+	require.True(t, cfg.Options.AgglayerClient.GRPC.UseTLS)
+}
+
+func TestMergeOptions_BridgeService(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100",
+		"options": {
+			"bridgeServiceURL": "http://bridge:8080",
+			"bridgeServiceType": "zkevm"
+		}
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, "http://bridge:8080", cfg.Options.BridgeServiceURL)
+	require.Equal(t, "zkevm", cfg.Options.BridgeServiceType)
+}
+
 func TestLoadLBTEntries_ValidFile(t *testing.T) {
 	t.Parallel()
 
