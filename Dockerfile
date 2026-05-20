@@ -8,6 +8,11 @@ RUN apk add --no-cache gcc musl-dev make sqlite-dev git
 
 WORKDIR /app
 
+# Version build arguments (injected from host git metadata)
+ARG VERSION
+ARG GITREV
+ARG GITBRANCH
+
 # Download Go dependencies
 COPY go.mod go.sum ./
 RUN go mod download
@@ -16,7 +21,7 @@ RUN go mod download
 COPY . .
 
 # Compile binary
-RUN make build-aggkit build-tools
+RUN VERSION="${VERSION}" GITREV="${GITREV}" GITBRANCH="${GITBRANCH}" make build-aggkit build-tools
 
 # ================================
 # STAGE 2: Final runtime image
