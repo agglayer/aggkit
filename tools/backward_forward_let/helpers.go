@@ -144,9 +144,9 @@ func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.H
 	// contract's initial _branch storage state before any leaves are inserted.
 	var frontier [32]common.Hash
 
-	for i := 0; i < target; i++ {
+	for i := uint32(0); i < targetIndex; i++ {
 		node := leafHashes[i]
-		leafIndex := uint32(i)
+		leafIndex := i
 		for h := range 32 {
 			if (leafIndex>>h)&1 == 0 {
 				// Left child: cache node at this height, propagate up with zero sibling.

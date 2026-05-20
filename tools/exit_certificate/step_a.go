@@ -67,7 +67,7 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 		}
 		log.Infof("Progress: %d/%d blocks (%.1f%%) — %.0f blocks/s — ETA %s",
 			blocksProcessed, totalBlocks,
-			float64(blocksProcessed)/float64(totalBlocks)*100,
+			float64(blocksProcessed)/float64(totalBlocks)*percentMultiplier,
 			blocksPerSec, eta)
 	}
 

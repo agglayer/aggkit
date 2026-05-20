@@ -131,15 +131,15 @@ func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config) []wrappedToken
 	return allEvents
 }
 
-// fetchWrappedTokenEventsInRange fetches NewWrappedToken logs in a single block range.
-func fetchWrappedTokenEventsInRange(
+// fetchEventLogsInRange calls eth_getLogs for one topic on bridgeAddr and returns the raw data hex strings.
+func fetchEventLogsInRange(
 	ctx context.Context, rpcURL string, bridgeAddr common.Address,
-	fromBlock, toBlock uint64,
-) ([]wrappedTokenEvent, error) {
+	topic common.Hash, fromBlock, toBlock uint64,
+) ([]string, error) {
 	result, err := singleRPC(ctx, rpcURL, "eth_getLogs", []any{
 		map[string]any{
 			"address":   bridgeAddr.Hex(),
-			"topics":    []string{newWrappedTokenTopic.Hex()},
+			"topics":    []string{topic.Hex()},
 			"fromBlock": toBlockTag(fromBlock),
 			"toBlock":   toBlockTag(toBlock),
 		},
@@ -147,17 +147,31 @@ func fetchWrappedTokenEventsInRange(
 	if err != nil {
 		return nil, err
 	}
-
 	var logs []struct {
 		Data string `json:"data"`
 	}
 	if err := json.Unmarshal(result, &logs); err != nil {
 		return nil, fmt.Errorf("unmarshal logs: %w", err)
 	}
+	data := make([]string, len(logs))
+	for i, lg := range logs {
+		data[i] = lg.Data
+	}
+	return data, nil
+}
 
-	events := make([]wrappedTokenEvent, 0, len(logs))
-	for _, lg := range logs {
-		ev, err := decodeNewWrappedTokenEvent(lg.Data)
+// fetchWrappedTokenEventsInRange fetches NewWrappedToken logs in a single block range.
+func fetchWrappedTokenEventsInRange(
+	ctx context.Context, rpcURL string, bridgeAddr common.Address,
+	fromBlock, toBlock uint64,
+) ([]wrappedTokenEvent, error) {
+	logData, err := fetchEventLogsInRange(ctx, rpcURL, bridgeAddr, newWrappedTokenTopic, fromBlock, toBlock)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]wrappedTokenEvent, 0, len(logData))
+	for _, data := range logData {
+		ev, err := decodeNewWrappedTokenEvent(data)
 		if err != nil {
 			log.Warnf("Failed to decode NewWrappedToken event: %v", err)
 			continue
@@ -192,8 +206,8 @@ func applySovereignTokenOverrides(ctx context.Context, cfg *Config, events []wra
 	// Track which origin tokens we've seen so we can add new entries for tokens that only
 	// appear in SetSovereignTokenAddress (no prior NewWrappedToken event).
 	seen := make(map[originKey]bool, len(events))
-	result := make([]wrappedTokenEvent, len(events))
-	for i, ev := range events {
+	result := make([]wrappedTokenEvent, 0, len(events))
+	for _, ev := range events {
 		k := originKey{ev.OriginNetwork, ev.OriginTokenAddress}
 		seen[k] = true
 		if sovereign, ok := overrideMap[k]; ok {
@@ -202,7 +216,7 @@ func applySovereignTokenOverrides(ctx context.Context, cfg *Config, events []wra
 			ev.LegacyAddrs = append(ev.LegacyAddrs, ev.WrappedTokenAddr)
 			ev.WrappedTokenAddr = sovereign
 		}
-		result[i] = ev
+		result = append(result, ev)
 	}
 
 	// Add entries for sovereign tokens without a prior NewWrappedToken event.
@@ -267,28 +281,13 @@ func fetchSetSovereignTokenEventsInRange(
 	ctx context.Context, rpcURL string, bridgeAddr common.Address,
 	fromBlock, toBlock uint64,
 ) ([]sovereignTokenOverride, error) {
-	result, err := singleRPC(ctx, rpcURL, "eth_getLogs", []any{
-		map[string]any{
-			"address":   bridgeAddr.Hex(),
-			"topics":    []string{setSovereignTokenTopic.Hex()},
-			"fromBlock": toBlockTag(fromBlock),
-			"toBlock":   toBlockTag(toBlock),
-		},
-	}, defaultRetries)
+	logData, err := fetchEventLogsInRange(ctx, rpcURL, bridgeAddr, setSovereignTokenTopic, fromBlock, toBlock)
 	if err != nil {
 		return nil, err
 	}
-
-	var logs []struct {
-		Data string `json:"data"`
-	}
-	if err := json.Unmarshal(result, &logs); err != nil {
-		return nil, fmt.Errorf("unmarshal SetSovereignTokenAddress logs: %w", err)
-	}
-
-	overrides := make([]sovereignTokenOverride, 0, len(logs))
-	for _, lg := range logs {
-		ov, err := decodeSetSovereignTokenEvent(lg.Data)
+	overrides := make([]sovereignTokenOverride, 0, len(logData))
+	for _, data := range logData {
+		ov, err := decodeSetSovereignTokenEvent(data)
 		if err != nil {
 			log.Warnf("Failed to decode SetSovereignTokenAddress event: %v", err)
 			continue
@@ -356,15 +355,15 @@ func fetchTotalSupplies(
 	// We record where legacy calls start per event so we can reconstruct the results.
 	type legacySlice struct{ start, count int }
 	legacyIndex := make([]legacySlice, len(events))
-	calls := make([]RPCCall, len(events))
-	for i, ev := range events {
-		calls[i] = RPCCall{
+	calls := make([]RPCCall, 0, len(events))
+	for _, ev := range events {
+		calls = append(calls, RPCCall{
 			Method: "eth_call",
 			Params: []any{
 				map[string]string{"to": ev.WrappedTokenAddr.Hex(), "data": totalSupplySelector},
 				blockTag,
 			},
-		}
+		})
 	}
 	legacyStart := len(calls)
 	for i, ev := range events {
@@ -444,7 +443,7 @@ func computeNativeBalance(
 		unlocked = new(big.Int)
 	}
 
-	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, rpcURL, bridgeAddr, blockTag)
+	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, rpcURL, bridgeAddr)
 	if err != nil {
 		gasTokenNetwork = 0
 		gasTokenAddress = common.Address{}
@@ -461,7 +460,7 @@ func computeNativeBalance(
 // fetchGasTokenInfo calls gasTokenNetwork() and gasTokenAddress() on the bridge.
 func fetchGasTokenInfo(
 	ctx context.Context, rpcURL string,
-	bridgeAddr common.Address, blockTag string,
+	bridgeAddr common.Address,
 ) (uint32, common.Address, error) {
 	l2Client, err := ethclient.DialContext(ctx, rpcURL)
 	if err != nil {

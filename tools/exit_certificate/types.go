@@ -150,10 +150,10 @@ type TokenBalanceCheck struct {
 
 // StepFResult holds the output of Step F (agglayer token balance check).
 type StepFResult struct {
-	Skipped           bool                       `json:"skipped,omitempty"`
-	AllMatch          bool                       `json:"allMatch,omitempty"`
-	TokenBalances     json.RawMessage            `json:"tokenBalances,omitempty"`
-	Checks            []TokenBalanceCheck        `json:"checks,omitempty"`
+	Skipped       bool                `json:"skipped,omitempty"`
+	AllMatch      bool                `json:"allMatch,omitempty"`
+	TokenBalances json.RawMessage     `json:"tokenBalances,omitempty"`
+	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
 	// CappedCertificate is set when mismatches were found and continueIfBalanceMismatch=true.
 	// Bridge exits are proportionally scaled down to min(agglayer, lbt) per token.
 	CappedCertificate *agglayertypes.Certificate `json:"cappedCertificate,omitempty"`

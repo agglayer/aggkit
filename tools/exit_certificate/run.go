@@ -93,7 +93,7 @@ func parseStepList(raw string) ([]string, error) {
 }
 
 func expandStepRange(token string) ([]string, error) {
-	parts := strings.SplitN(token, "-", 2)
+	parts := strings.SplitN(token, "-", splitInTwo)
 	from, to := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 
 	fromIdx := -1
@@ -327,7 +327,9 @@ func runAllStepF(
 	return finalCert, nil
 }
 
-func runAllStepG(ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry) (*StepGResult, error) {
+func runAllStepG(
+	ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) (*StepGResult, error) {
 	result, err := RunStepG(ctx, cfg, certificate, lbtEntries)
 	if err != nil {
 		return nil, fmt.Errorf("step G: %w", err)
@@ -345,7 +347,10 @@ func runAllStepH(ctx context.Context, cfg *Config, dir string, gResult *StepGRes
 	return result, nil
 }
 
-func runAllStepI(ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate, gResult *StepGResult, hResult *StepHResult) error {
+func runAllStepI(
+	ctx context.Context, cfg *Config, dir string,
+	certificate *agglayertypes.Certificate, gResult *StepGResult, hResult *StepHResult,
+) error {
 	if err := RunStepI(ctx, cfg, certificate, gResult, hResult); err != nil {
 		return fmt.Errorf("step I: %w", err)
 	}
@@ -375,7 +380,9 @@ func saveStepEFiles(dir string, result *StepEResult) {
 	}
 }
 
-func runAllStepE(ctx context.Context, cfg *Config, dir string, stepDCert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
+func runAllStepE(
+	ctx context.Context, cfg *Config, dir string, stepDCert *agglayertypes.Certificate,
+) (*agglayertypes.Certificate, error) {
 	if cfg.L1RPCURL == "" {
 		log.Warn("STEP E skipped: no L1 RPC provided")
 		return stepDCert, nil

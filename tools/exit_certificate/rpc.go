@@ -130,7 +130,9 @@ func singleRPC(ctx context.Context, url, method string, params []any, retries in
 
 // singleRPCAuth is like singleRPC but adds an Authorization: Bearer header when bearerToken is non-empty.
 // Use this for endpoints protected by Google Cloud IAP or similar token-based auth.
-func singleRPCAuth(ctx context.Context, url, method string, params []any, retries int, bearerToken string) (json.RawMessage, error) {
+func singleRPCAuth(
+	ctx context.Context, url, method string, params []any, retries int, bearerToken string,
+) (json.RawMessage, error) {
 	if retries <= 0 {
 		retries = defaultRetries
 	}
@@ -229,7 +231,9 @@ func maskRPCURL(rawURL string) string {
 }
 
 // doRPCWithRetry handles the HTTP POST + retry loop.
-func doRPCWithRetry(ctx context.Context, rpcURL string, body []byte, retries int, bearerToken string) ([]jsonRPCResponse, error) {
+func doRPCWithRetry(
+	ctx context.Context, rpcURL string, body []byte, retries int, bearerToken string,
+) ([]jsonRPCResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= retries; attempt++ {
 		respBody, err := doRPCAttempt(ctx, rpcURL, body, bearerToken)
