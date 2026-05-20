@@ -101,7 +101,9 @@ func RunStepWait(ctx context.Context, cfg *Config, certHash common.Hash) (*StepW
 
 // waitUntilFinal polls GetCertificateHeader every waitPollInterval until the certificate
 // reaches a closed state (Settled or InError) and returns the final header.
-func waitUntilFinal(ctx context.Context, client agglayer.AgglayerClientInterface, certHash common.Hash) (*agglayertypes.CertificateHeader, error) {
+func waitUntilFinal(
+	ctx context.Context, client agglayer.AgglayerClientInterface, certHash common.Hash,
+) (*agglayertypes.CertificateHeader, error) {
 	var lastStatus agglayertypes.CertificateStatus = -1
 	start := time.Now()
 

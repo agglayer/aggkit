@@ -20,7 +20,9 @@ var (
 
 // RunStepI assembles the final certificate by applying the NewLocalExitRoot from Step G,
 // the PreviousLocalExitRoot from Step H, and the L1InfoTreeLeafCount from L1.
-func RunStepI(ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate, gResult *StepGResult, hResult *StepHResult) error {
+func RunStepI(
+	ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate, gResult *StepGResult, hResult *StepHResult,
+) error {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP I - Assemble final certificate")
 	log.Info("═══════════════════════════════════════════")
@@ -58,7 +60,7 @@ func RunStepI(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 
 	leafCount, err := fetchL1InfoTreeLeafCount(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("Could not fetch L1InfoTreeLeafCount: %v", err)
+		return fmt.Errorf("could not fetch L1InfoTreeLeafCount: %w", err)
 	} else {
 		certificate.L1InfoTreeLeafCount = leafCount
 		log.Infof("L1InfoTreeLeafCount:   %d", leafCount)
@@ -145,7 +147,7 @@ func queryUpdateL1InfoTreeV2(
 
 	// Take the LAST log (highest block number) in this range.
 	last := logs[len(logs)-1]
-	if len(last.Topics) < 2 {
+	if len(last.Topics) < minTopicsForLeaf {
 		return 0, false, fmt.Errorf("UpdateL1InfoTreeV2 log has only %d topics", len(last.Topics))
 	}
 

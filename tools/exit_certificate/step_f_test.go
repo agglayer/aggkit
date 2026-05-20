@@ -2,13 +2,43 @@ package exit_certificate
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunStepF_WithBearerToken(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer my-iap-token", r.Header.Get("Authorization"))
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2NetworkID: 1,
+		Options: Options{
+			AgglayerAdminURL:   server.URL,
+			AgglayerAdminToken: "my-iap-token",
+		},
+	}
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Skipped)
+}
 
 func TestRunStepF_Skipped(t *testing.T) {
 	t.Parallel()
@@ -17,6 +47,116 @@ func TestRunStepF_Skipped(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.Skipped)
+}
+
+func TestRunStepF_AllMatch(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[{"originNetwork":0,"originTokenAddress":"0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa","amount":"1000"}]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(1000),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "1000"}}
+
+	cfg := &Config{L2NetworkID: 0, Options: Options{AgglayerAdminURL: server.URL}}
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch)
+	require.Nil(t, result.CappedCertificate)
+}
+
+func TestRunStepF_MismatchAborts(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[{"originNetwork":0,"originTokenAddress":"0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa","amount":"500"}]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(1000),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	cfg := &Config{L2NetworkID: 0, Options: Options{AgglayerAdminURL: server.URL}}
+	_, err := RunStepF(context.Background(), cfg, cert, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mismatch")
+}
+
+func TestRunStepF_MismatchContinues(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[{"originNetwork":0,"originTokenAddress":"0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa","amount":"500"}]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(1000),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	cfg := &Config{
+		L2NetworkID: 0,
+		Options: Options{
+			AgglayerAdminURL:          server.URL,
+			ContinueIfBalanceMismatch: true,
+		},
+	}
+	result, err := RunStepF(context.Background(), cfg, cert, nil)
+	require.NoError(t, err)
+	require.False(t, result.AllMatch)
+	require.NotNil(t, result.CappedCertificate)
+}
+
+func TestRunStepF_RPCError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2NetworkID: 1, Options: Options{AgglayerAdminURL: server.URL}}
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	require.Error(t, err)
 }
 
 func TestGroupBridgeExitsByToken(t *testing.T) {

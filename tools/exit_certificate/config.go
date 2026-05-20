@@ -15,17 +15,18 @@ import (
 
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
-	BlockRange             int    `json:"blockRange"`
-	ConcurrencyLimit       int    `json:"concurrencyLimit"`
-	RPCBatchSize           int    `json:"rpcBatchSize"`
-	RPCDelayMs             int    `json:"rpcDelayMs"`
-	OutputDir              string `json:"outputDir"`
-	L1StartBlock           uint64 `json:"l1StartBlock"`
-	L2StartBlock           uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL  string                `json:"agglayerAdminURL"`
+	BlockRange       int    `json:"blockRange"`
+	ConcurrencyLimit int    `json:"concurrencyLimit"`
+	RPCBatchSize     int    `json:"rpcBatchSize"`
+	RPCDelayMs       int    `json:"rpcDelayMs"`
+	OutputDir        string `json:"outputDir"`
+	L1StartBlock     uint64 `json:"l1StartBlock"`
+	L2StartBlock     uint64 `json:"l2StartBlock"`
+	AgglayerAdminURL string `json:"agglayerAdminURL"`
 	// AgglayerAdminToken is an optional Bearer token for authenticating requests to agglayerAdminURL.
 	// Required when the admin endpoint is protected by Google Cloud IAP.
-	// Obtain it with: gcloud auth print-identity-token --impersonate-service-account=<SA> --audiences=<AUDIENCE> --include-email
+	// Obtain it with: gcloud auth print-identity-token --impersonate-service-account=<SA>
+	// --audiences=<AUDIENCE> --include-email
 	AgglayerAdminToken string                `json:"agglayerAdminToken"`
 	AgglayerClient     agglayer.ClientConfig `json:"agglayerClient"`
 	// AbortOnGenesisBalance aborts the run if any EOA or contract has a non-zero ETH balance
@@ -53,21 +54,21 @@ type Options struct {
 
 // Config holds all parameters required by the exit certificate tool.
 type Config struct {
-	L2RPCURL           string         `json:"l2RpcUrl"`
-	L1RPCURL           string         `json:"l1RpcUrl"`
-	L2BridgeAddress    common.Address `json:"l2BridgeAddress"`
-	L1BridgeAddress    common.Address `json:"l1BridgeAddress"`
-	L2NetworkID        uint32         `json:"l2NetworkId"`
-	TargetBlock        string         `json:"targetBlock"`
-	ExitAddress             common.Address `json:"exitAddress"`
-	LBTFile                 string         `json:"lbtFile"`
-	DestinationNetwork      uint32         `json:"destinationNetwork"`
-	SovereignRollupAddr     common.Address `json:"sovereignRollupAddr"`
+	L2RPCURL            string         `json:"l2RpcUrl"`
+	L1RPCURL            string         `json:"l1RpcUrl"`
+	L2BridgeAddress     common.Address `json:"l2BridgeAddress"`
+	L1BridgeAddress     common.Address `json:"l1BridgeAddress"`
+	L2NetworkID         uint32         `json:"l2NetworkId"`
+	TargetBlock         string         `json:"targetBlock"`
+	ExitAddress         common.Address `json:"exitAddress"`
+	LBTFile             string         `json:"lbtFile"`
+	DestinationNetwork  uint32         `json:"destinationNetwork"`
+	SovereignRollupAddr common.Address `json:"sovereignRollupAddr"`
 	// L1GlobalExitRootAddress is the address of the PolygonZkEVMGlobalExitRootV2 contract on L1.
 	// Required for Step I to fetch the L1InfoTreeLeafCount from UpdateL1InfoTreeV2 events.
-	L1GlobalExitRootAddress common.Address `json:"l1GlobalExitRootAddress"`
-	Options              Options                `json:"options"`
-	SignerConfig         signertypes.SignerConfig `json:"-"`
+	L1GlobalExitRootAddress common.Address           `json:"l1GlobalExitRootAddress"`
+	Options                 Options                  `json:"options"`
+	SignerConfig            signertypes.SignerConfig `json:"-"`
 
 	// ResolvedTargetBlock is populated at runtime after resolving "latest".
 	ResolvedTargetBlock uint64 `json:"-"`
@@ -266,38 +267,38 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 
 // rawConfig mirrors the JSON structure with string addresses.
 type rawConfig struct {
-	L2RPCURL                string   `json:"l2RpcUrl"`
-	L1RPCURL                string   `json:"l1RpcUrl"`
-	L2BridgeAddress         string   `json:"l2BridgeAddress"`
-	L1BridgeAddress         string   `json:"l1BridgeAddress"`
-	L2NetworkID             uint32   `json:"l2NetworkId"`
-	TargetBlock             string   `json:"targetBlock"`
-	ExitAddress             string   `json:"exitAddress"`
-	LBTFile                 string   `json:"lbtFile"`
-	DestinationNetwork      uint32   `json:"destinationNetwork"`
-	SovereignRollupAddr     string   `json:"sovereignRollupAddr"`
-	L1GlobalExitRootAddress string   `json:"l1GlobalExitRootAddress"`
-	Options      *rawOpts        `json:"options"`
-	SignerConfig json.RawMessage `json:"signerConfig"`
+	L2RPCURL                string          `json:"l2RpcUrl"`
+	L1RPCURL                string          `json:"l1RpcUrl"`
+	L2BridgeAddress         string          `json:"l2BridgeAddress"`
+	L1BridgeAddress         string          `json:"l1BridgeAddress"`
+	L2NetworkID             uint32          `json:"l2NetworkId"`
+	TargetBlock             string          `json:"targetBlock"`
+	ExitAddress             string          `json:"exitAddress"`
+	LBTFile                 string          `json:"lbtFile"`
+	DestinationNetwork      uint32          `json:"destinationNetwork"`
+	SovereignRollupAddr     string          `json:"sovereignRollupAddr"`
+	L1GlobalExitRootAddress string          `json:"l1GlobalExitRootAddress"`
+	Options                 *rawOpts        `json:"options"`
+	SignerConfig            json.RawMessage `json:"signerConfig"`
 }
 
 type rawOpts struct {
-	BlockRange             int    `json:"blockRange"`
-	ConcurrencyLimit       int    `json:"concurrencyLimit"`
-	RPCBatchSize           int    `json:"rpcBatchSize"`
-	RPCDelayMs             int    `json:"rpcDelayMs"`
-	OutputDir              string `json:"outputDir"`
-	L1StartBlock           uint64 `json:"l1StartBlock"`
-	L2StartBlock           uint64 `json:"l2StartBlock"`
-	AgglayerAdminURL   string                 `json:"agglayerAdminURL"`
-	AgglayerAdminToken string                 `json:"agglayerAdminToken"`
-	AgglayerClient     *agglayer.ClientConfig `json:"agglayerClient"`
-	AbortOnGenesisBalance     *bool  `json:"abortOnGenesisBalance"`
-	ContinueOnTraceError      *bool  `json:"continueOnTraceError"`
-	ContinueIfBalanceMismatch *bool  `json:"continueIfBalanceMismatch"`
-	IgnoreUnclaimed           *bool  `json:"ignoreUnclaimed"`
-	BridgeServiceURL          string `json:"bridgeServiceURL"`
-	BridgeServiceType         string `json:"bridgeServiceType"`
+	BlockRange                int                    `json:"blockRange"`
+	ConcurrencyLimit          int                    `json:"concurrencyLimit"`
+	RPCBatchSize              int                    `json:"rpcBatchSize"`
+	RPCDelayMs                int                    `json:"rpcDelayMs"`
+	OutputDir                 string                 `json:"outputDir"`
+	L1StartBlock              uint64                 `json:"l1StartBlock"`
+	L2StartBlock              uint64                 `json:"l2StartBlock"`
+	AgglayerAdminURL          string                 `json:"agglayerAdminURL"`
+	AgglayerAdminToken        string                 `json:"agglayerAdminToken"`
+	AgglayerClient            *agglayer.ClientConfig `json:"agglayerClient"`
+	AbortOnGenesisBalance     *bool                  `json:"abortOnGenesisBalance"`
+	ContinueOnTraceError      *bool                  `json:"continueOnTraceError"`
+	ContinueIfBalanceMismatch *bool                  `json:"continueIfBalanceMismatch"`
+	IgnoreUnclaimed           *bool                  `json:"ignoreUnclaimed"`
+	BridgeServiceURL          string                 `json:"bridgeServiceURL"`
+	BridgeServiceType         string                 `json:"bridgeServiceType"`
 }
 
 // --- LBT file parsing ---
