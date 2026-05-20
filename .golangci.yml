@@ -43,8 +43,6 @@ linters:
         - G115
         - G204  # subprocess with tainted args — controlled via config/CLI
         - G602  # slice OOB — false positive in taint analysis
-        - G703  # path traversal — false positive in taint analysis
-        - G118  # context cancel not called — false positive
     revive:
       rules:
         - name: exported
@@ -66,6 +64,12 @@ linters:
       - linters:
           - dupl
         path: etherman/contracts/contracts_(banana|elderberry)\.go
+      - linters:
+          - gosec
+        text: "G703"  # path traversal false positive — not a valid rule ID in golangci-lint v2.4.0
+      - linters:
+          - gosec
+        text: "G118"  # context cancel false positive — not a valid rule ID in golangci-lint v2.4.0
     paths:
       - tests
       - third_party$
