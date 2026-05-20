@@ -31,7 +31,7 @@ func replaceDotsInTemplateVariables(template string) string {
 }
 
 func readFile(filename string) (string, error) {
-	content, err := os.ReadFile(filename) //nolint:gosec
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return "", err
 	}
