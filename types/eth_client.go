@@ -49,6 +49,9 @@ type BaseEthereumClienter interface {
 type CustomEthereumClienter interface {
 	// Like HeaderByNumber but returns a custom BlockHeader type.
 	CustomHeaderByNumber(ctx context.Context, number *BlockNumberFinality) (*BlockHeader, error)
+	// RetrieveBlockHeaders retrieves block headers for the given block numbers.
+	// Uses batch RPC requests when available, falling back to individual requests otherwise.
+	RetrieveBlockHeaders(ctx context.Context, blockNumbers []uint64, maxConcurrency int) (*BlockHeadersResult, error)
 }
 
 // RPCClienter defines an interface for making generic RPC calls.

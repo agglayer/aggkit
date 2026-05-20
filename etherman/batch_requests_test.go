@@ -3,7 +3,6 @@ package etherman
 import (
 	"context"
 	"errors"
-	"math/big"
 	"os"
 	"testing"
 
@@ -11,7 +10,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mockaggkittypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
@@ -92,11 +90,9 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 	t.Run("uses legacy when rpcClient is nil", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
 		for _, bn := range blockNumbers {
-			mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(bn))).
-				Return(&types.Header{
-					Number: big.NewInt(int64(bn)),
-					Time:   123,
-				}, nil).Once()
+			mockEthClient.EXPECT().
+				CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(bn)).
+				Return(&aggkittypes.BlockHeader{Number: bn}, nil).Once()
 		}
 		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
 
@@ -116,7 +112,9 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 
 	t.Run("collects errors from legacy method", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
-		mockEthClient.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, errors.New("legacy error")).Times(len(blockNumbers))
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(nil, errors.New("legacy error")).Times(len(blockNumbers))
 		result, err := RetrieveBlockHeaders(ctx, logger, mockEthClient, nil, blockNumbers, maxConcurrency)
 
 		require.NoError(t, err) // No catastrophic error
@@ -127,31 +125,59 @@ func TestRetrieveBlockHeaders(t *testing.T) {
 		}
 	})
 }
+
 func TestRetrieveBlockHeadersLegacy(t *testing.T) {
 	ctx := t.Context()
 	logger := log.WithFields("test", "test")
-	blockNumbers := []uint64{
-		100,
-		200,
-		400,
-		500,
-	}
+	blockNumbers := []uint64{100, 200, 400, 500}
 	maxConcurrency := 1
 
 	t.Run("successful retrieval", func(t *testing.T) {
 		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
 		for _, bn := range blockNumbers {
-			mockEthClient.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(bn))).
-				Return(&types.Header{
-					Number: big.NewInt(int64(bn)),
-					Time:   123,
-				}, nil).Once()
+			mockEthClient.EXPECT().
+				CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(bn)).
+				Return(&aggkittypes.BlockHeader{Number: bn}, nil).Once()
 		}
 		result, err := RetrieveBlockHeadersLegacy(ctx, logger, mockEthClient, blockNumbers, maxConcurrency)
 
 		require.NoError(t, err)
 		require.True(t, result.Success())
 		assert.Equal(t, len(blockNumbers), len(result.Headers))
+		for _, bn := range blockNumbers {
+			require.Equal(t, bn, result.Headers[bn].Number)
+		}
+	})
+
+	t.Run("partial failure", func(t *testing.T) {
+		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(blockNumbers[0])).
+			Return(&aggkittypes.BlockHeader{Number: blockNumbers[0]}, nil).Once()
+		for _, bn := range blockNumbers[1:] {
+			mockEthClient.EXPECT().
+				CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(bn)).
+				Return(nil, errors.New("rpc error")).Once()
+		}
+		result, err := RetrieveBlockHeadersLegacy(ctx, logger, mockEthClient, blockNumbers, maxConcurrency)
+
+		require.NoError(t, err)
+		require.False(t, result.Success())
+		require.True(t, result.PartialSuccess())
+		require.Len(t, result.Headers, 1)
+		require.Len(t, result.Errors, len(blockNumbers)-1)
+	})
+
+	t.Run("all fail", func(t *testing.T) {
+		mockEthClient := mockaggkittypes.NewBaseEthereumClienter(t)
+		mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(nil, errors.New("not found")).Times(len(blockNumbers))
+		result, err := RetrieveBlockHeadersLegacy(ctx, logger, mockEthClient, blockNumbers, maxConcurrency)
+
+		require.NoError(t, err)
+		require.False(t, result.Success())
+		require.Len(t, result.Errors, len(blockNumbers))
 	})
 }
 
