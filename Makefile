@@ -87,15 +87,40 @@ $(GOBIN)/remove_ger: ## Build remove_ger tool
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
-	docker build -t aggkit:local -f ./Dockerfile .
+	docker build \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GITREV="$(GITREV)" \
+		--build-arg GITBRANCH="$(GITBRANCH)" \
+		-t aggkit:local -f ./Dockerfile .
+	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
+		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
+		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
+		echo "Version check passed: $$ver"
 
 .PHONY: build-docker-ci
 build-docker-ci: ## Builds a docker image with the aggkit binary for CI (includes shell)
-	docker build --build-arg INCLUDE_SHELL=true -t aggkit:local -f ./Dockerfile .
+	docker build \
+		--build-arg INCLUDE_SHELL=true \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GITREV="$(GITREV)" \
+		--build-arg GITBRANCH="$(GITBRANCH)" \
+		-t aggkit:local -f ./Dockerfile .
+	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
+		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
+		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
+		echo "Version check passed: $$ver"
 
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
-	docker build --no-cache=true -t aggkit:local -f ./Dockerfile .
+	docker build --no-cache=true \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg GITREV="$(GITREV)" \
+		--build-arg GITBRANCH="$(GITBRANCH)" \
+		-t aggkit:local -f ./Dockerfile .
+	@out=$$(docker run --rm aggkit:local version) || { echo "ERROR: docker run failed"; exit 1; }; \
+		ver=$$(echo "$$out" | awk '/^Version:/{print $$2}'); \
+		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
+		echo "Version check passed: $$ver"
 
 .PHONY: build-docker-debug
 build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no optimizations)
