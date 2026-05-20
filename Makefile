@@ -92,6 +92,9 @@ build-docker: ## Builds a docker image with the aggkit binary
 		--build-arg GITREV=$(GITREV) \
 		--build-arg GITBRANCH=$(GITBRANCH) \
 		-t aggkit:local -f ./Dockerfile .
+	@ver=$$(docker run --rm aggkit:local version | awk '/^Version:/{print $$2}'); \
+		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
+		echo "Version check passed: $$ver"
 
 .PHONY: build-docker-ci
 build-docker-ci: ## Builds a docker image with the aggkit binary for CI (includes shell)
@@ -101,6 +104,9 @@ build-docker-ci: ## Builds a docker image with the aggkit binary for CI (include
 		--build-arg GITREV=$(GITREV) \
 		--build-arg GITBRANCH=$(GITBRANCH) \
 		-t aggkit:local -f ./Dockerfile .
+	@ver=$$(docker run --rm aggkit:local version | awk '/^Version:/{print $$2}'); \
+		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
+		echo "Version check passed: $$ver"
 
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
@@ -109,6 +115,9 @@ build-docker-nc: ## Builds a docker image with the aggkit binary - but without b
 		--build-arg GITREV=$(GITREV) \
 		--build-arg GITBRANCH=$(GITBRANCH) \
 		-t aggkit:local -f ./Dockerfile .
+	@ver=$$(docker run --rm aggkit:local version | awk '/^Version:/{print $$2}'); \
+		[ -n "$$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }; \
+		echo "Version check passed: $$ver"
 
 .PHONY: build-docker-debug
 build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no optimizations)
