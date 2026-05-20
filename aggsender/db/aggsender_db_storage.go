@@ -563,7 +563,7 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 	if strings.HasPrefix(nonAcceptedCert.SignedCertificate, PrefixFilename) {
 		// The content is pointing to a file
 		certificateFilePath := nonAcceptedCert.SignedCertificate[1:]
-		data, err := os.ReadFile(certificateFilePath)
+		data, err := os.ReadFile(certificateFilePath) //nolint:gosec
 		if err != nil {
 			return nil, fmt.Errorf("getNonAcceptedCertificate: failed to read signed certificate file %s: %w",
 				certificateFilePath, err)

@@ -80,18 +80,19 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 	zeroAddr := [20]byte{}
 	if cfg.SovereignRollupAddr == zeroAddr {
 		log.Info("❌ sovereignRollupAddr is not set — required to verify network type and threshold")
-		failures = append(failures, "sovereignRollupAddr is required (set it in the config to verify the network is PP with threshold=1)")
-		result.NetworkType = "unchecked"
+		msg := "sovereignRollupAddr is required (set it in the config to verify the network is PP with threshold=1)"
+		failures = append(failures, msg)
+		result.NetworkType = uncheckedStatus
 	} else if l1Client != nil {
 		// --- 5 & 6. Network type + threshold ---
 		checkContractPrereqs(ctx, cfg, l1Client, result, &failures)
 	} else {
 		// L1 client failed — contract checks cannot run
-		result.NetworkType = "unchecked"
+		result.NetworkType = uncheckedStatus
 		log.Info("❌ network type and threshold checks skipped — l1RpcUrl is not available")
 		failures = append(failures, "network type and threshold could not be verified (l1RpcUrl unavailable)")
 	}
-	checkNativeGasToken(ctx, cfg, result, &failures)
+	checkNativeGasToken(ctx, cfg, &failures)
 
 	log.Info("───────────────────────────────────────────")
 	if len(failures) == 0 {
@@ -141,11 +142,10 @@ func checkL2NetworkID(ctx context.Context, cfg *Config, result *StepCheckResult,
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
 	}
-
 }
 
-func checkNativeGasToken(ctx context.Context, cfg *Config, result *StepCheckResult, failures *[]string) {
-	gasTokenNetwork, gasTokenAddr, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, "latest")
+func checkNativeGasToken(ctx context.Context, cfg *Config, failures *[]string) {
+	gasTokenNetwork, gasTokenAddr, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress)
 	if err != nil {
 		msg := fmt.Sprintf("fetch bridge gas token info: %v", err)
 		log.Infof("❌ %s", msg)
@@ -163,13 +163,15 @@ func checkNativeGasToken(ctx context.Context, cfg *Config, result *StepCheckResu
 
 // checkContractPrereqs queries the aggchainbase contract for network type and threshold.
 // l1Client is already dialed and verified reachable by the caller.
-func checkContractPrereqs(ctx context.Context, cfg *Config, l1Client *ethclient.Client, result *StepCheckResult, failures *[]string) {
+func checkContractPrereqs(
+	ctx context.Context, cfg *Config, l1Client *ethclient.Client, result *StepCheckResult, failures *[]string,
+) {
 	caller, err := aggchainbase.NewAggchainbaseCaller(cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		msg := fmt.Sprintf("create aggchainbase caller (addr=%s): %v", cfg.SovereignRollupAddr.Hex(), err)
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
-		result.NetworkType = "unchecked"
+		result.NetworkType = uncheckedStatus
 		return
 	}
 
@@ -237,7 +239,8 @@ func checkContractPrereqs(ctx context.Context, cfg *Config, l1Client *ethclient.
 		*failures = append(*failures, msg)
 	} else {
 		if bridgeAddr != cfg.L2BridgeAddress {
-			msg := fmt.Sprintf("bridge address mismatch: bridge contract=%s, config=%s", bridgeAddr.Hex(), cfg.L2BridgeAddress.Hex())
+			msg := fmt.Sprintf("bridge address mismatch: bridge contract=%s, config=%s",
+				bridgeAddr.Hex(), cfg.L2BridgeAddress.Hex())
 			log.Infof("❌ %s", msg)
 			*failures = append(*failures, msg)
 		} else {

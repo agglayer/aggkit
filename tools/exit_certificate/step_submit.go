@@ -40,7 +40,8 @@ func RunStepSubmit(ctx context.Context, cfg *Config, cert *agglayertypes.Certifi
 	}
 	if pending != nil && !pending.Status.IsClosed() {
 		return nil, fmt.Errorf(
-			"network %d already has a pending certificate (hash: %s, height: %d, status: %s) — wait for it to settle before submitting a new one",
+			"network %d already has a pending certificate (hash: %s, height: %d, status: %s)"+
+				" — wait for it to settle before submitting a new one",
 			cfg.L2NetworkID, pending.CertificateID.Hex(), pending.Height, pending.Status,
 		)
 	}

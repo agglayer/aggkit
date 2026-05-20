@@ -12,6 +12,15 @@ const (
 	decimalBase     = 10
 	hexLetterOffset = 10
 	maxMetadataSize = 1 << 20 // 1 MB
+
+	abiWordBytes      = 32  // EVM ABI word size in bytes
+	twoABIWords       = 64  // two ABI words (offset + length header for dynamic types)
+	fourABIWords      = 128 // four ABI words (error decoder minimum size)
+	splitInTwo        = 2   // used with strings.SplitN
+	bridgeEventFields = 8   // number of fields in the BridgeEvent log
+	ethDecimals       = 18  // standard ETH/ERC-20 decimal precision
+	minTopicsForLeaf  = 2   // minimum topics required to extract leaf count
+	uncheckedStatus   = "unchecked"
 )
 
 // safeUint32 converts a big.Int to uint32, returning an error on overflow.

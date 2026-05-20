@@ -78,7 +78,9 @@ type bridgeEventLog struct {
 // against an Anvil shadow-fork of the L2 chain at cfg.ResolvedTargetBlock.
 // lbtEntries is the output of Step 0; when non-nil it is used as a lookup table for
 // wrapped token addresses so that getTokenWrappedAddress RPC calls are avoided.
-func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry) (*StepGResult, error) {
+func RunStepG(
+	ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) (*StepGResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP G - Calculate NewLocalExitRoot")
 	log.Info("═══════════════════════════════════════════")
@@ -111,8 +113,7 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 	}
 	defer cleanup()
 
-	blockTag := toBlockTag(cfg.ResolvedTargetBlock)
-	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, blockTag)
+	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress)
 	if err != nil {
 		log.Warnf("Failed to fetch gas token info (assuming standard ETH): %v", err)
 		gasTokenNetwork = 0
@@ -126,7 +127,10 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
 
 	lbtMap := buildLBTTokenMap(lbtEntries)
-	l2Tokens, err := resolveTokenAddresses(ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits, cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress, lbtMap)
+	l2Tokens, err := resolveTokenAddresses(
+		ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits,
+		cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress, lbtMap,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("resolve token addresses: %w", err)
 	}
@@ -136,7 +140,7 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 
 	metadatas := make([][]byte, 0, len(certificate.BridgeExits))
 	for i, bridge := range certificate.BridgeExits {
-		isNative := isNativeBridgeExit(bridge.TokenInfo, gasTokenNetwork, gasTokenAddress, cfg.L2NetworkID)
+		isNative := isNativeBridgeExit(bridge.TokenInfo, gasTokenNetwork, gasTokenAddress)
 		log.Infof("[%d/%d] bridgeAsset bridge exit [%d/%s] -> %s:  amount=%s isNative=%t", i+1, len(certificate.BridgeExits),
 			bridge.TokenInfo.OriginNetwork, bridge.TokenInfo.OriginTokenAddress.Hex(),
 			bridge.DestinationAddress.Hex(),
@@ -150,10 +154,11 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 			}
 
 			// Do an allowance of ERC20 before doing the bridge
-			if err := approveERC20(ctx, anvilURL, cfg.L2BridgeAddress, bridge.DestinationAddress, bridge, l2TokenAddr); err != nil {
+			if err := approveERC20(
+				ctx, anvilURL, cfg.L2BridgeAddress, bridge.DestinationAddress, bridge, l2TokenAddr,
+			); err != nil {
 				return nil, fmt.Errorf("approve ERC20: %w", err)
 			}
-
 		}
 
 		event, err := bridgeAsset(ctx, anvilURL, cfg.L2BridgeAddress, bridge, isNative, l2TokenAddr)
@@ -182,13 +187,19 @@ func RunStepG(ctx context.Context, cfg *Config, certificate *agglayertypes.Certi
 	return result, nil
 }
 
-func isNativeBridgeExit(ti *agglayertypes.TokenInfo, gasTokenNetwork uint32, gasTokenAddress common.Address, l2NetworkID uint32) bool {
-	return ti == nil || ti.OriginTokenAddress == (common.Address{}) || (ti.OriginNetwork == gasTokenNetwork && ti.OriginTokenAddress == gasTokenAddress)
+func isNativeBridgeExit(
+	ti *agglayertypes.TokenInfo, gasTokenNetwork uint32, gasTokenAddress common.Address,
+) bool {
+	return ti == nil ||
+		ti.OriginTokenAddress == (common.Address{}) ||
+		(ti.OriginNetwork == gasTokenNetwork && ti.OriginTokenAddress == gasTokenAddress)
 }
 
 // findTokenAddress looks up the L2 ERC-20 address for a bridge exit in the token map
 // returned by resolveTokenAddresses.
-func findTokenAddress(bridgeExit *agglayertypes.BridgeExit, tokenMap map[tokenOriginKey]common.Address) (common.Address, error) {
+func findTokenAddress(
+	bridgeExit *agglayertypes.BridgeExit, tokenMap map[tokenOriginKey]common.Address,
+) (common.Address, error) {
 	if bridgeExit.TokenInfo == nil {
 		return common.Address{}, fmt.Errorf("bridge exit has nil TokenInfo")
 	}
@@ -213,7 +224,8 @@ func approveERC20(ctx context.Context, rpcURL string, bridgeAddr, sender common.
 	}
 
 	log.Debugf("Approving ERC-20 L2 token: %s for L1 token (network=%d addr=%s) with amount %s",
-		tokenAddr.Hex(), bridgeExit.TokenInfo.OriginNetwork, bridgeExit.TokenInfo.OriginTokenAddress.Hex(), bridgeExit.Amount.String())
+		tokenAddr.Hex(), bridgeExit.TokenInfo.OriginNetwork,
+		bridgeExit.TokenInfo.OriginTokenAddress.Hex(), bridgeExit.Amount.String())
 
 	amount := bridgeExit.Amount
 	if amount == nil {
@@ -297,7 +309,11 @@ func findFreePort() (int, error) {
 		return 0, err
 	}
 	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port, nil
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("unexpected listener address type %T", ln.Addr())
+	}
+	return tcpAddr.Port, nil
 }
 
 func startAnvil(ctx context.Context, l2RPCURL string, targetBlock uint64) (string, func(), error) {
@@ -391,7 +407,7 @@ func resolveTokenAddresses(
 			continue // already resolved
 		}
 		// Skip native tokens — no ERC-20 address to look up.
-		if isNativeBridgeExit(ti, gasTokenNetwork, gasTokenAddress, l2NetworkID) {
+		if isNativeBridgeExit(ti, gasTokenNetwork, gasTokenAddress) {
 			continue
 		}
 		// L2-native token — its L2 address is the origin address itself.
@@ -460,9 +476,12 @@ func callGetTokenWrappedAddress(
 // ensureERC20Balance checks the ERC-20 balance of account on tokenAddr.
 // If the balance is below required, it sets the OZ slot-0 storage entry via
 // hardhat_setStorageAt so that the subsequent bridgeAsset call does not revert.
-func ensureERC20Balance(ctx context.Context, rpcURL string, tokenAddr, account common.Address, required *big.Int) error {
+func ensureERC20Balance(
+	ctx context.Context, rpcURL string, tokenAddr, account common.Address, required *big.Int,
+) error {
 	selector := crypto.Keccak256([]byte("balanceOf(address)"))[:4]
-	callData := append(selector, common.LeftPadBytes(account.Bytes(), 32)...)
+	selector = append(selector, common.LeftPadBytes(account.Bytes(), abiWordBytes)...)
+	callData := selector
 
 	raw, err := singleRPC(ctx, rpcURL, "eth_call", []any{
 		map[string]any{
@@ -479,7 +498,7 @@ func ensureERC20Balance(ctx context.Context, rpcURL string, tokenAddr, account c
 	if err := json.Unmarshal(raw, &hexBal); err != nil {
 		return fmt.Errorf("parse balanceOf result: %w", err)
 	}
-	bal, ok := new(big.Int).SetString(strings.TrimPrefix(hexBal, "0x"), 16)
+	bal, ok := new(big.Int).SetString(strings.TrimPrefix(hexBal, "0x"), hexBase)
 	if !ok {
 		return fmt.Errorf("invalid balanceOf hex: %s", hexBal)
 	}
@@ -489,9 +508,10 @@ func ensureERC20Balance(ctx context.Context, rpcURL string, tokenAddr, account c
 		return nil
 	}
 
-	log.Infof("❌ ERC-20 %s balance of %s insufficient (%s < %s) — patching via storage", tokenAddr.Hex(), account.Hex(), bal, required)
-	return fmt.Errorf("ERC-20 balance insufficient token: %s account: %s balance: %s required: %s", tokenAddr.Hex(), account.Hex(), bal, required)
-	return nil
+	log.Infof("❌ ERC-20 %s balance of %s insufficient (%s < %s) — patching via storage",
+		tokenAddr.Hex(), account.Hex(), bal, required)
+	return fmt.Errorf("ERC-20 balance insufficient token: %s account: %s balance: %s required: %s",
+		tokenAddr.Hex(), account.Hex(), bal, required)
 }
 
 // encodeERC20ApproveCallRaw ABI-encodes an ERC-20 approve(spender, amount) call.
@@ -501,12 +521,14 @@ func encodeERC20ApproveCallRaw(spender common.Address, amount *big.Int) []byte {
 		amount = new(big.Int)
 	}
 	selector := crypto.Keccak256([]byte("approve(address,uint256)"))[:4]
-	encodedSpender := common.LeftPadBytes(spender.Bytes(), 32)
-	encodedAmount := common.LeftPadBytes(amount.Bytes(), 32)
+	encodedSpender := common.LeftPadBytes(spender.Bytes(), abiWordBytes)
+	encodedAmount := common.LeftPadBytes(amount.Bytes(), abiWordBytes)
 	return append(selector, append(encodedSpender, encodedAmount...)...)
 }
 
-func encodeBridgeAssetCallRaw(destNetwork uint32, destAddr common.Address, amount *big.Int, tokenAddr common.Address) []byte {
+func encodeBridgeAssetCallRaw(
+	destNetwork uint32, destAddr common.Address, amount *big.Int, tokenAddr common.Address,
+) []byte {
 	if amount == nil {
 		amount = new(big.Int)
 	}
@@ -528,7 +550,7 @@ func sendAnvilTransaction(
 		"data": "0x" + hex.EncodeToString(data),
 	}
 	if value != nil && value.Sign() > 0 {
-		tx["value"] = "0x" + value.Text(16)
+		tx["value"] = "0x" + value.Text(hexBase)
 	}
 	result, err := singleRPC(ctx, anvilURL, "eth_sendTransaction", []any{tx}, defaultRetries)
 	if err != nil {
@@ -588,18 +610,29 @@ func parseBridgeEventFromLogs(logs []rpcLog) (*bridgeEventLog, error) {
 		if err != nil {
 			return nil, fmt.Errorf("unpack BridgeEvent: %w", err)
 		}
-		if len(values) != 8 {
-			return nil, fmt.Errorf("expected 8 BridgeEvent fields, got %d", len(values))
+		if len(values) != bridgeEventFields {
+			return nil, fmt.Errorf("expected %d BridgeEvent fields, got %d", bridgeEventFields, len(values))
+		}
+		leafType, ok0 := values[0].(uint8)
+		originNetwork, ok1 := values[1].(uint32)
+		originAddress, ok2 := values[2].(common.Address)
+		destNetwork, ok3 := values[3].(uint32)
+		destAddress, ok4 := values[4].(common.Address)
+		amount, ok5 := values[5].(*big.Int)
+		metadata, ok6 := values[6].([]byte)
+		depositCount, ok7 := values[7].(uint32)
+		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 {
+			return nil, fmt.Errorf("unexpected field types in BridgeEvent values")
 		}
 		return &bridgeEventLog{
-			LeafType:           values[0].(uint8),
-			OriginNetwork:      values[1].(uint32),
-			OriginAddress:      values[2].(common.Address),
-			DestinationNetwork: values[3].(uint32),
-			DestinationAddress: values[4].(common.Address),
-			Amount:             values[5].(*big.Int),
-			Metadata:           values[6].([]byte),
-			DepositCount:       values[7].(uint32),
+			LeafType:           leafType,
+			OriginNetwork:      originNetwork,
+			OriginAddress:      originAddress,
+			DestinationNetwork: destNetwork,
+			DestinationAddress: destAddress,
+			Amount:             amount,
+			Metadata:           metadata,
+			DepositCount:       depositCount,
 		}, nil
 	}
 	return nil, fmt.Errorf("BridgeEvent not found in receipt logs")
@@ -614,7 +647,7 @@ var knownErrors = map[string]struct {
 	"14603c01": {
 		sig: "LocalBalanceTreeUnderflow(uint32,address,uint256,uint256)",
 		decode: func(args []byte) string {
-			if len(args) < 128 {
+			if len(args) < fourABIWords {
 				return ""
 			}
 			network := uint32(new(big.Int).SetBytes(args[0:32]).Uint64())
@@ -686,7 +719,9 @@ func fetchRevertReason(ctx context.Context, anvilURL string, txHash common.Hash,
 }
 
 // readLocalExitRoot calls getRoot() on the bridge contract to get the LER at blockTag.
-func readLocalExitRoot(ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string) (common.Hash, error) {
+func readLocalExitRoot(
+	ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string,
+) (common.Hash, error) {
 	callData, err := bridgeABI.Pack("getRoot")
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("pack getRoot: %w", err)

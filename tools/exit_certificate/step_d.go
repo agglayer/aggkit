@@ -50,7 +50,7 @@ func buildEOAExits(stepB *StepBResult, destNetwork uint32) []*agglayertypes.Brid
 	log.Infof("Processing %d EOA balance entries...", totalEOAs)
 
 	logInterval := max(totalEOAs/logGranularity, 1)
-	var exits []*agglayertypes.BridgeExit
+	exits := make([]*agglayertypes.BridgeExit, 0, len(stepB.EOABalances))
 	for i, eoa := range stepB.EOABalances {
 		if totalEOAs > 0 && (i+1)%logInterval == 0 {
 			log.Infof("  EOA progress: %d/%d", i+1, totalEOAs)
