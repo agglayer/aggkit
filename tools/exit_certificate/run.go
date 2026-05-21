@@ -715,6 +715,7 @@ func loadTargetBlock(dir string) (uint64, error) {
 	return n, nil
 }
 
+
 // loadWrappedTokensFromLBT loads tokens from the step-0 output.
 func loadWrappedTokensFromLBT(dir string) ([]WrappedToken, error) {
 	tokens, err := LoadLBTWrappedTokens(filepath.Join(dir, "step-0-lbt.json"))
