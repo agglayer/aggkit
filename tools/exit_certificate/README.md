@@ -58,7 +58,6 @@ cp parameters.json.example parameters.json
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
 | `targetBlock` | Yes | Target block number or `"latest"`. All state is captured at this block. |
 | `exitAddress` | No | Address that receives SC-locked value exits. Defaults to zero address. |
-| `lbtFile` | No | Path to a pre-generated LBT JSON file. If omitted, the tool generates it automatically via Step 0. Can also be generated externally with the [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool from `agglayer-contracts`. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
 | `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
 | `l1GlobalExitRootAddress` | Yes* | Address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. |
@@ -191,7 +190,7 @@ Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F →
 | Step | Name | What it does |
 | :--: | ---- | ------------ |
 | CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
-| 0 | Generate LBT | Scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at `targetBlock`. Skipped if `lbtFile` is set. |
+| 0 | Generate LBT | Scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at `targetBlock`. |
 | A | Collect addresses | Traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. |
 | B | EOA balances | Classifies addresses as EOA vs contract; fetches ETH balance and every wrapped-token balance for each EOA at `targetBlock`. |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
@@ -255,7 +254,7 @@ All checks run regardless of individual failures; a combined error lists every f
 
 Scans the L2 bridge contract for `NewWrappedToken` events and fetches the `totalSupply` of each wrapped token at `targetBlock`. Also computes the unlocked native token balance and checks for WETH.
 
-This step replaces the need for the external [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool and the `lbtFile` config parameter. If `lbtFile` is already set and the file exists, this step is skipped and the pre-generated file is used instead.
+This step replaces the need for the external [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool.
 
 **Output:** `step-0-lbt.json`
 
@@ -270,7 +269,7 @@ Scans all blocks from `l2StartBlock` to `targetBlock` and collects every address
 
 ### Step B — EOA balance checking
 
-Classifies addresses as EOA vs contract, then queries ETH balance and every wrapped-token balance at `targetBlock` for all EOAs. The wrapped token list comes from the LBT data (Step 0 or `lbtFile`).
+Classifies addresses as EOA vs contract, then queries ETH balance and every wrapped-token balance at `targetBlock` for all EOAs. The wrapped token list comes from the LBT data (Step 0).
 
 **Phases:**
 
@@ -282,7 +281,7 @@ Classifies addresses as EOA vs contract, then queries ETH balance and every wrap
 
 ### Step C — SC-locked value extraction
 
-Computes value locked in smart contracts using: `SC_locked = LBT_totalSupply - accumulated_EOA_balances`. Uses the LBT data (Step 0 or `lbtFile`) for total supply per token.
+Computes value locked in smart contracts using: `SC_locked = LBT_totalSupply - accumulated_EOA_balances`. Uses the LBT data (Step 0) for total supply per token.
 
 **Output:** `step-c-sc-locked-values.json`
 
@@ -335,7 +334,7 @@ All three values must be equal. Each token is logged with ✅ or ❌:
 
 When running Step G individually it also prefers `step-f-capped-certificate.json` over `step-e-exit-certificate.json` if the capped file exists (logged with ⚠️).
 
-LBT data comes from `step-0-lbt.json` (or `lbtFile`). If not available, the comparison falls back to two-way (certificate vs agglayer only).
+LBT data comes from `step-0-lbt.json`. If not available, the comparison falls back to two-way (certificate vs agglayer only).
 
 Skipped automatically when `agglayerAdminURL` is not set in options.
 

@@ -61,7 +61,6 @@ type Config struct {
 	L2NetworkID         uint32         `json:"l2NetworkId"`
 	TargetBlock         string         `json:"targetBlock"`
 	ExitAddress         common.Address `json:"exitAddress"`
-	LBTFile             string         `json:"lbtFile"`
 	DestinationNetwork  uint32         `json:"destinationNetwork"`
 	SovereignRollupAddr common.Address `json:"sovereignRollupAddr"`
 	// L1GlobalExitRootAddress is the address of the PolygonZkEVMGlobalExitRootV2 contract on L1.
@@ -134,7 +133,6 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.L2NetworkID = 1
 	}
 
-	cfg.LBTFile = resolvePath(configDir, raw.LBTFile)
 	cfg.Options = mergeOptions(raw.Options, configDir)
 	if len(raw.SignerConfig) > 0 {
 		signerCfg, err := parseSignerConfig(raw.SignerConfig, configDir)
@@ -274,7 +272,6 @@ type rawConfig struct {
 	L2NetworkID             uint32          `json:"l2NetworkId"`
 	TargetBlock             string          `json:"targetBlock"`
 	ExitAddress             string          `json:"exitAddress"`
-	LBTFile                 string          `json:"lbtFile"`
 	DestinationNetwork      uint32          `json:"destinationNetwork"`
 	SovereignRollupAddr     string          `json:"sovereignRollupAddr"`
 	L1GlobalExitRootAddress string          `json:"l1GlobalExitRootAddress"`

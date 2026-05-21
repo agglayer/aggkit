@@ -7,23 +7,13 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
-// RunStepC loads LBT entries from the configured file and computes SC-locked values.
-func RunStepC(cfg *Config, stepB *StepBResult) (*StepCResult, error) {
-	lbtEntries, err := LoadLBTEntries(cfg.LBTFile)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("Loading LBT data from: %s", cfg.LBTFile)
-	return RunStepCWithEntries(lbtEntries, stepB)
-}
-
-// RunStepCWithEntries computes the value locked in smart contracts for each token.
+// RunStepC computes the value locked in smart contracts for each token.
 //
 // Formula: SC_locked = LBT_totalSupply − accumulated_EOA_balances
 //
 // The LBT gives total supply per token. The accumulated EOA balances (Step B)
 // tell us how much is held by EOAs. The difference is held by smart contracts.
-func RunStepCWithEntries(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResult, error) {
+func RunStepC(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP C — SC-locked value extraction")
 	log.Info("═══════════════════════════════════════════")

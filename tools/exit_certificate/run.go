@@ -293,7 +293,7 @@ func runAllStepC(dir string, lbtEntries []LBTEntry, stepBResult *StepBResult) (*
 		log.Warn("STEP C skipped: no LBT data available")
 		return &StepCResult{}, nil
 	}
-	stepCResult, err := RunStepCWithEntries(lbtEntries, stepBResult)
+	stepCResult, err := RunStepC(lbtEntries, stepBResult)
 	if err != nil {
 		return nil, fmt.Errorf("step C: %w", err)
 	}
@@ -410,11 +410,6 @@ func logPipelineConfig(cfg *Config) {
 	log.Infof("L2 Network ID:    %d", cfg.L2NetworkID)
 	log.Infof("Exit Address:     %s", cfg.ExitAddress.Hex())
 	log.Infof("Dest Network:     %d", cfg.DestinationNetwork)
-	if cfg.LBTFile != "" {
-		log.Infof("LBT File:         %s (pre-generated, skipping step 0)", cfg.LBTFile)
-	} else {
-		log.Info("LBT File:         (not configured — will generate via step 0)")
-	}
 	log.Infof("Output Dir:       %s", cfg.Options.OutputDir)
 	log.Infof("Concurrency:      %d", cfg.Options.ConcurrencyLimit)
 	log.Infof("Block Range:      %d", cfg.Options.BlockRange)
@@ -450,7 +445,7 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 	case "b":
 		return runSingleB(ctx, cfg, dir)
 	case "c":
-		return runSingleC(cfg, dir)
+		return runSingleC(dir)
 	case "d":
 		return runSingleD(cfg, dir)
 	case "e":
@@ -507,7 +502,7 @@ func runSingleB(ctx context.Context, cfg *Config, dir string) error {
 	if err := loadJSON(dir, "step-a-addresses.json", &addresses); err != nil {
 		return fmt.Errorf("load step A output: %w", err)
 	}
-	wrappedTokens, err := loadWrappedTokensFromLBT(cfg, dir)
+	wrappedTokens, err := loadWrappedTokensFromLBT(dir)
 	if err != nil {
 		return err
 	}
@@ -526,12 +521,16 @@ func runSingleB(ctx context.Context, cfg *Config, dir string) error {
 	return nil
 }
 
-func runSingleC(cfg *Config, dir string) error {
+func runSingleC(dir string) error {
 	var accumulated []AccumulatedBalance
 	if err := loadJSON(dir, "step-b-accumulated.json", &accumulated); err != nil {
 		return fmt.Errorf("load step B output: %w", err)
 	}
-	result, err := RunStepC(cfg, &StepBResult{Accumulated: accumulated})
+	var lbtEntries []LBTEntry
+	if err := loadJSON(dir, "step-0-lbt.json", &lbtEntries); err != nil {
+		return fmt.Errorf("load LBT data (step 0): %w", err)
+	}
+	result, err := RunStepC(lbtEntries, &StepBResult{Accumulated: accumulated})
 	if err != nil {
 		return err
 	}
@@ -617,9 +616,6 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 	// Try to load LBT entries for three-way comparison; nil disables LBT check.
 	var lbtEntries []LBTEntry
 	lbtPath := filepath.Join(dir, "step-0-lbt.json")
-	if cfg.LBTFile != "" {
-		lbtPath = cfg.LBTFile
-	}
 	if entries, err := LoadLBTEntries(lbtPath); err == nil {
 		lbtEntries = entries
 	} else {
@@ -656,9 +652,6 @@ func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 	}
 
 	lbtPath := filepath.Join(dir, "step-0-lbt.json")
-	if cfg.LBTFile != "" {
-		lbtPath = cfg.LBTFile
-	}
 	var lbtEntries []LBTEntry
 	if entries, err := LoadLBTEntries(lbtPath); err == nil {
 		lbtEntries = entries
@@ -720,41 +713,21 @@ func runSingleI(ctx context.Context, cfg *Config, dir string) error {
 
 // --- LBT resolution ---
 
-// resolveOrGenerateLBT loads from lbtFile if present, otherwise runs Step 0.
+// resolveOrGenerateLBT always runs Step 0 and saves step-0-lbt.json.
 func resolveOrGenerateLBT(ctx context.Context, cfg *Config, dir string) ([]LBTEntry, []WrappedToken, error) {
-	if cfg.LBTFile != "" {
-		if _, err := os.Stat(cfg.LBTFile); err == nil {
-			entries, err := LoadLBTEntries(cfg.LBTFile)
-			if err != nil {
-				return nil, nil, fmt.Errorf("load LBT file: %w", err)
-			}
-			tokens := LBTEntriesToWrappedTokens(entries)
-			log.Infof("Loaded %d LBT entries (%d wrapped tokens) from %s", len(entries), len(tokens), cfg.LBTFile)
-			return entries, tokens, nil
-		}
-		log.Warnf("LBT file not found at %s — generating via step 0", cfg.LBTFile)
-	}
-
 	entries, err := RunStep0(ctx, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 	saveJSON(dir, "step-0-lbt.json", entries)
-	cfg.LBTFile = filepath.Join(dir, "step-0-lbt.json")
-
 	return entries, LBTEntriesToWrappedTokens(entries), nil
 }
 
-// loadWrappedTokensFromLBT loads tokens from lbtFile or the step-0 output.
-func loadWrappedTokensFromLBT(cfg *Config, dir string) ([]WrappedToken, error) {
-	if cfg.LBTFile != "" {
-		if tokens, err := LoadLBTWrappedTokens(cfg.LBTFile); err == nil && len(tokens) > 0 {
-			return tokens, nil
-		}
-	}
+// loadWrappedTokensFromLBT loads tokens from the step-0 output.
+func loadWrappedTokensFromLBT(dir string) ([]WrappedToken, error) {
 	tokens, err := LoadLBTWrappedTokens(filepath.Join(dir, "step-0-lbt.json"))
 	if err != nil {
-		return nil, fmt.Errorf("no LBT data available: configure lbtFile or run step 0 first")
+		return nil, fmt.Errorf("no LBT data available: run step 0 first")
 	}
 	return tokens, nil
 }
