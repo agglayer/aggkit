@@ -92,6 +92,13 @@ jobs:
             INCLUDE_SHELL=${{ matrix.variant.include_shell }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true
 
+      - name: Verify version in image
+        run: |
+          out=$(docker run --rm "${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}" version) || { echo "ERROR: docker run failed"; exit 1; }
+          ver=$(echo "$out" | awk '/^Version:/{print $2}')
+          [ -n "$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }
+          echo "Version check passed: $ver"
+
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
