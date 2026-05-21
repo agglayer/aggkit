@@ -1,5 +1,6 @@
-# Version control
-.git/
+# Version control — exclude credential files that actions/checkout writes
+# but keep the rest of .git so git describe / git rev-parse work correctly.
+.git/config
 .gitignore
 
 # Sensitive / secret files
