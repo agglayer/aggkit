@@ -31,14 +31,18 @@ jobs:
         run: make build-docker
 
       - name: Verify version in image
+        env:
+          IMAGE_NAME: ${{ inputs.docker-image-name }}
         run: |
-          out=$(docker run --rm ${{ inputs.docker-image-name }}:local version) || { echo "ERROR: docker run failed"; exit 1; }
+          out=$(docker run --rm "${IMAGE_NAME}:local" version) || { echo "ERROR: docker run failed"; exit 1; }
           ver=$(echo "$out" | awk '/^Version:/{print $2}')
           [ -n "$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }
           echo "Version check passed: $ver"
 
       - name: Save Aggkit Image to Archive
-        run: docker save --output /tmp/${{ inputs.docker-image-name }}.tar ${{ inputs.docker-image-name }}
+        env:
+          IMAGE_NAME: ${{ inputs.docker-image-name }}
+        run: docker save --output "/tmp/${IMAGE_NAME}.tar" "${IMAGE_NAME}"
 
       - name: Upload Aggkit Archive
         uses: actions/upload-artifact@v4
