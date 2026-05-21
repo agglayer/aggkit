@@ -30,6 +30,13 @@ jobs:
       - name: Build Aggkit Docker Image
         run: make build-docker
 
+      - name: Verify version in image
+        run: |
+          out=$(docker run --rm ${{ inputs.docker-image-name }}:local version) || { echo "ERROR: docker run failed"; exit 1; }
+          ver=$(echo "$out" | awk '/^Version:/{print $2}')
+          [ -n "$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }
+          echo "Version check passed: $ver"
+
       - name: Save Aggkit Image to Archive
         run: docker save --output /tmp/${{ inputs.docker-image-name }}.tar ${{ inputs.docker-image-name }}
 
