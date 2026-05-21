@@ -1,10 +1,6 @@
-# Version control — exclude .git but keep the minimal metadata needed for
-# git describe / git rev-parse (HEAD, packed-refs, refs/). This avoids
-# sending .git/config which may contain credentials from actions/checkout.
-.git/
-!.git/HEAD
-!.git/packed-refs
-!.git/refs/
+# Version control — exclude credential files that actions/checkout writes
+# but keep the rest of .git so git describe / git rev-parse work correctly.
+.git/config
 .gitignore
 
 # Sensitive / secret files
