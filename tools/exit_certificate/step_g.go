@@ -77,11 +77,11 @@ type bridgeEventLog struct {
 }
 
 // RunStepG computes Certificate.NewLocalExitRoot by replaying all bridge exits
-// against an Anvil shadow-fork of the L2 chain at cfg.ResolvedTargetBlock.
+// against an Anvil shadow-fork of the L2 chain at targetBlock.
 // lbtEntries is the output of Step 0; when non-nil it is used as a lookup table for
 // wrapped token addresses so that getTokenWrappedAddress RPC calls are avoided.
 func RunStepG(
-	ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+	ctx context.Context, cfg *Config, targetBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (*StepGResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP G - Calculate NewLocalExitRoot")
@@ -93,7 +93,7 @@ func RunStepG(
 
 	if len(certificate.BridgeExits) == 0 {
 		log.Info("No bridge exits — using EmptyLER")
-		initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(cfg.ResolvedTargetBlock))
+		initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(targetBlock))
 		if err != nil {
 			log.Warnf("Could not read initial LocalExitRoot: %v", err)
 		}
@@ -109,7 +109,7 @@ func RunStepG(
 		return nil, err
 	}
 
-	anvilURL, cleanup, err := startAnvil(ctx, cfg.L2RPCURL, cfg.ResolvedTargetBlock)
+	anvilURL, cleanup, err := startAnvil(ctx, cfg.L2RPCURL, targetBlock)
 	if err != nil {
 		return nil, fmt.Errorf("start anvil: %w", err)
 	}

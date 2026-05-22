@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -38,10 +37,6 @@ func Run(c *cli.Context) error {
 	cfg, err := LoadConfig(c.String("config"))
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
-	}
-
-	if err := resolveBlockA(ctx, cfg); err != nil {
-		return err
 	}
 
 	step := c.String("step")
@@ -134,25 +129,6 @@ func expandStepRange(token string) ([]string, error) {
 	return orderedSteps[fromIdx : toIdx+1], nil
 }
 
-// resolveBlockA resolves "latest" to a concrete block number, or parses the numeric value.
-func resolveBlockA(ctx context.Context, cfg *Config) error {
-	if cfg.TargetBlock == "latest" || cfg.TargetBlock == "" {
-		blockNum, err := resolveLatestBlock(ctx, cfg.L2RPCURL)
-		if err != nil {
-			return fmt.Errorf("resolve latest block: %w", err)
-		}
-		cfg.ResolvedTargetBlock = blockNum
-		log.Infof("Resolved targetBlock=\"latest\" → %d", cfg.ResolvedTargetBlock)
-		return nil
-	}
-	blockNum, err := parseBlockNumber(cfg.TargetBlock)
-	if err != nil {
-		return fmt.Errorf("invalid targetBlock %q: %w", cfg.TargetBlock, err)
-	}
-	cfg.ResolvedTargetBlock = blockNum
-	return nil
-}
-
 func resolveLatestBlock(ctx context.Context, rpcURL string) (uint64, error) {
 	result, err := singleRPC(ctx, rpcURL, "eth_blockNumber", nil, defaultRetries)
 	if err != nil {
@@ -163,18 +139,6 @@ func resolveLatestBlock(ctx context.Context, rpcURL string) (uint64, error) {
 		return 0, fmt.Errorf("parse block number: %w", err)
 	}
 	return hexToUint64(hex), nil
-}
-
-// parseBlockNumber parses a block number string (decimal or 0x-hex).
-func parseBlockNumber(s string) (uint64, error) {
-	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-		return hexToUint64(s), nil
-	}
-	n, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("not a valid block number (expected decimal or 0x-hex): %w", err)
-	}
-	return n, nil
 }
 
 // --- Full pipeline ---
@@ -195,17 +159,17 @@ func runAll(ctx context.Context, cfg *Config) error {
 	}
 	saveJSON(dir, "step-check-result.json", checkResult)
 
-	lbtEntries, wrappedTokens, err := resolveOrGenerateLBT(ctx, cfg, dir)
+	lbtEntries, wrappedTokens, targetBlock, err := resolveOrGenerateLBT(ctx, cfg, dir)
 	if err != nil {
 		return fmt.Errorf("step 0 (LBT): %w", err)
 	}
 
-	stepAResult, err := runAllStepA(ctx, cfg, dir, wrappedTokens)
+	stepAResult, err := runAllStepA(ctx, cfg, dir, targetBlock, wrappedTokens)
 	if err != nil {
 		return err
 	}
 
-	stepBResult, err := runAllStepB(ctx, cfg, dir, stepAResult)
+	stepBResult, err := runAllStepB(ctx, cfg, dir, targetBlock, stepAResult)
 	if err != nil {
 		return err
 	}
@@ -230,7 +194,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	gResult, err := runAllStepG(ctx, cfg, dir, finalCertificate, lbtEntries)
+	gResult, err := runAllStepG(ctx, cfg, dir, targetBlock, finalCertificate, lbtEntries)
 	if err != nil {
 		return err
 	}
@@ -263,8 +227,10 @@ func runAll(ctx context.Context, cfg *Config) error {
 	return nil
 }
 
-func runAllStepA(ctx context.Context, cfg *Config, dir string, wrappedTokens []WrappedToken) (*StepAResult, error) {
-	stepAResult, err := RunStepA(ctx, cfg)
+func runAllStepA(
+	ctx context.Context, cfg *Config, dir string, targetBlock uint64, wrappedTokens []WrappedToken,
+) (*StepAResult, error) {
+	stepAResult, err := RunStepA(ctx, cfg, targetBlock)
 	if err != nil {
 		return nil, fmt.Errorf("step A: %w", err)
 	}
@@ -277,8 +243,10 @@ func runAllStepA(ctx context.Context, cfg *Config, dir string, wrappedTokens []W
 	return stepAResult, nil
 }
 
-func runAllStepB(ctx context.Context, cfg *Config, dir string, stepAResult *StepAResult) (*StepBResult, error) {
-	stepBResult, err := RunStepB(ctx, cfg, stepAResult)
+func runAllStepB(
+	ctx context.Context, cfg *Config, dir string, targetBlock uint64, stepAResult *StepAResult,
+) (*StepBResult, error) {
+	stepBResult, err := RunStepB(ctx, cfg, targetBlock, stepAResult)
 	if err != nil {
 		return nil, fmt.Errorf("step B: %w", err)
 	}
@@ -328,9 +296,10 @@ func runAllStepF(
 }
 
 func runAllStepG(
-	ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+	ctx context.Context, cfg *Config, dir string, targetBlock uint64,
+	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (*StepGResult, error) {
-	result, err := RunStepG(ctx, cfg, certificate, lbtEntries)
+	result, err := RunStepG(ctx, cfg, targetBlock, certificate, lbtEntries)
 	if err != nil {
 		return nil, fmt.Errorf("step G: %w", err)
 	}
@@ -406,7 +375,7 @@ func logPipelineConfig(cfg *Config) {
 		log.Info("L1 RPC:           (not configured — step E will be skipped)")
 	}
 	log.Infof("L2 Bridge:        %s", cfg.L2BridgeAddress.Hex())
-	log.Infof("Target Block:     %d", cfg.ResolvedTargetBlock)
+	log.Infof("Target Block:     %s", cfg.TargetBlock)
 	log.Infof("L2 Network ID:    %d", cfg.L2NetworkID)
 	log.Infof("Exit Address:     %s", cfg.ExitAddress.Hex())
 	log.Infof("Dest Network:     %d", cfg.DestinationNetwork)
@@ -479,16 +448,21 @@ func runSingleCheck(ctx context.Context, cfg *Config, dir string) error {
 }
 
 func runSingle0(ctx context.Context, cfg *Config, dir string) error {
-	entries, err := RunStep0(ctx, cfg)
+	result, err := RunStep0(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-0-lbt.json", entries)
+	saveJSON(dir, "step-0-l2_target_block.json", result.TargetBlock)
+	saveJSON(dir, "step-0-lbt.json", result.Entries)
 	return nil
 }
 
 func runSingleA(ctx context.Context, cfg *Config, dir string) error {
-	result, err := RunStepA(ctx, cfg)
+	targetBlock, err := loadTargetBlock(dir)
+	if err != nil {
+		return err
+	}
+	result, err := RunStepA(ctx, cfg, targetBlock)
 	if err != nil {
 		return err
 	}
@@ -508,7 +482,11 @@ func runSingleB(ctx context.Context, cfg *Config, dir string) error {
 	}
 	log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
 
-	result, err := RunStepB(ctx, cfg, &StepAResult{
+	targetBlock, err := loadTargetBlock(dir)
+	if err != nil {
+		return err
+	}
+	result, err := RunStepB(ctx, cfg, targetBlock, &StepAResult{
 		Addresses:     addresses,
 		WrappedTokens: wrappedTokens,
 	})
@@ -660,7 +638,11 @@ func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 		log.Warnf("STEP G: LBT not available, falling back to getTokenWrappedAddress: %v", err)
 	}
 
-	result, err := RunStepG(ctx, cfg, cert.toAgglayerCertificate(), lbtEntries)
+	targetBlock, err := loadTargetBlock(dir)
+	if err != nil {
+		return err
+	}
+	result, err := RunStepG(ctx, cfg, targetBlock, cert.toAgglayerCertificate(), lbtEntries)
 	if err != nil {
 		return err
 	}
@@ -714,13 +696,23 @@ func runSingleI(ctx context.Context, cfg *Config, dir string) error {
 // --- LBT resolution ---
 
 // resolveOrGenerateLBT always runs Step 0 and saves step-0-lbt.json.
-func resolveOrGenerateLBT(ctx context.Context, cfg *Config, dir string) ([]LBTEntry, []WrappedToken, error) {
-	entries, err := RunStep0(ctx, cfg)
+func resolveOrGenerateLBT(ctx context.Context, cfg *Config, dir string) ([]LBTEntry, []WrappedToken, uint64, error) {
+	result, err := RunStep0(ctx, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
-	saveJSON(dir, "step-0-lbt.json", entries)
-	return entries, LBTEntriesToWrappedTokens(entries), nil
+	saveJSON(dir, "step-0-l2_target_block.json", result.TargetBlock)
+	saveJSON(dir, "step-0-lbt.json", result.Entries)
+	return result.Entries, LBTEntriesToWrappedTokens(result.Entries), result.TargetBlock, nil
+}
+
+// loadTargetBlock reads the resolved L2 target block number saved by Step 0.
+func loadTargetBlock(dir string) (uint64, error) {
+	var n uint64
+	if err := loadJSON(dir, "step-0-l2_target_block.json", &n); err != nil {
+		return 0, fmt.Errorf("load target block (run step 0 first): %w", err)
+	}
+	return n, nil
 }
 
 // loadWrappedTokensFromLBT loads tokens from the step-0 output.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -31,27 +32,36 @@ const (
 // RunStep0 generates the Local Balance Tree (LBT) by scanning the L2 bridge
 // for NewWrappedToken events and fetching each token's totalSupply.
 // This replaces the external getLBT tool.
-func RunStep0(ctx context.Context, cfg *Config) ([]LBTEntry, error) {
+func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP 0 — Generate LBT (Local Balance Tree)")
 	log.Info("═══════════════════════════════════════════")
 
+	blockNum, err := resolveTargetBlockNumber(ctx, cfg.L2RPCURL, cfg.TargetBlock)
+	if err != nil {
+		return nil, fmt.Errorf("resolve target block: %w", err)
+	}
+	if !cfg.TargetBlock.IsConstant() {
+		log.Infof("Resolved targetBlock=%q → %d", cfg.TargetBlock.String(), blockNum)
+	}
+
 	rpcURL := cfg.L2RPCURL
 	bridgeAddr := cfg.L2BridgeAddress
-	blockTag := toBlockTag(cfg.ResolvedTargetBlock)
+
+	blockTag := toBlockTag(blockNum)
 
 	log.Infof("Bridge address: %s", bridgeAddr.Hex())
-	log.Infof("Block number:   %d", cfg.ResolvedTargetBlock)
+	log.Infof("Block number:   %d", blockNum)
 
 	// 1. Scan for NewWrappedToken events
-	events := fetchNewWrappedTokenEvents(ctx, cfg)
+	events := fetchNewWrappedTokenEvents(ctx, cfg, blockNum)
 	log.Infof("Found %d NewWrappedToken events", len(events))
 
 	// 2. Apply SetSovereignTokenAddress overrides: if the bridge manager remapped an origin
 	// token to a different ERC-20 after the original NewWrappedToken event, use the sovereign
 	// address instead. This keeps the LBT's wrapped addresses consistent with what
 	// getTokenWrappedAddress() returns on the live contract.
-	events = applySovereignTokenOverrides(ctx, cfg, events)
+	events = applySovereignTokenOverrides(ctx, cfg, blockNum, events)
 
 	// 3. Fetch totalSupply for each token concurrently
 	log.Infof("Fetching totalSupply for %d tokens...", len(events))
@@ -84,7 +94,7 @@ func RunStep0(ctx context.Context, cfg *Config) ([]LBTEntry, error) {
 	}
 
 	log.Infof("STEP 0 complete: %d LBT entries", len(entries))
-	return entries, nil
+	return &Step0Result{TargetBlock: blockNum, Entries: entries}, nil
 }
 
 // wrappedTokenEvent holds parsed NewWrappedToken event data.
@@ -97,10 +107,9 @@ type wrappedTokenEvent struct {
 }
 
 // fetchNewWrappedTokenEvents scans for NewWrappedToken events via a worker pool.
-func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config) []wrappedTokenEvent {
+func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) []wrappedTokenEvent {
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
-	toBlock := cfg.ResolvedTargetBlock
 
 	type blockRangeJob struct{ from, to uint64 }
 	var jobs []blockRangeJob
@@ -185,8 +194,10 @@ func fetchWrappedTokenEventsInRange(
 // token address for any origin tokens that have been remapped by the bridge manager.
 // When setSovereignTokenAddress is called on the bridge, getTokenWrappedAddress returns the
 // sovereign address instead of the original wrapped one, so the LBT must reflect the same.
-func applySovereignTokenOverrides(ctx context.Context, cfg *Config, events []wrappedTokenEvent) []wrappedTokenEvent {
-	overrides := fetchSetSovereignTokenEvents(ctx, cfg)
+func applySovereignTokenOverrides(
+	ctx context.Context, cfg *Config, toBlock uint64, events []wrappedTokenEvent,
+) []wrappedTokenEvent {
+	overrides := fetchSetSovereignTokenEvents(ctx, cfg, toBlock)
 	if len(overrides) == 0 {
 		return events
 	}
@@ -245,10 +256,9 @@ type sovereignTokenOverride struct {
 }
 
 // fetchSetSovereignTokenEvents scans for SetSovereignTokenAddress events via a worker pool.
-func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config) []sovereignTokenOverride {
+func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) []sovereignTokenOverride {
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
-	toBlock := cfg.ResolvedTargetBlock
 
 	type blockRangeJob struct{ from, to uint64 }
 	var jobs []blockRangeJob
@@ -533,4 +543,51 @@ func fetchWETHBalance(
 		OriginTokenAddress:  common.Address{},
 		Balance:             supply.String(),
 	}, nil
+}
+
+// resolveTargetBlockNumber resolves a BlockNumberFinality to a concrete block number.
+// Constant finalities are returned directly; named finalities (latest, finalized, safe,
+// pending) and any configured offset are resolved via the L2 RPC.
+func resolveTargetBlockNumber(
+	ctx context.Context, rpcURL string, finality aggkittypes.BlockNumberFinality,
+) (uint64, error) {
+	if finality.IsConstant() {
+		return finality.Specific, nil
+	}
+	client, err := ethclient.DialContext(ctx, rpcURL)
+	if err != nil {
+		return 0, fmt.Errorf("dial L2 RPC: %w", err)
+	}
+	defer client.Close()
+	return finality.BlockNumber(ctx, &ethClientAdapter{client})
+}
+
+// ethClientAdapter wraps *ethclient.Client to satisfy aggkittypes.CustomEthereumClienter
+// for the sole purpose of resolving a BlockNumberFinality to a concrete block number.
+type ethClientAdapter struct {
+	*ethclient.Client
+}
+
+func (a *ethClientAdapter) CustomHeaderByNumber(
+	ctx context.Context, number *aggkittypes.BlockNumberFinality,
+) (*aggkittypes.BlockHeader, error) {
+	bigInt := number.ToBigInt()
+	if number.HasOffset() {
+		base, err := a.HeaderByNumber(ctx, number.Block.ToBigInt())
+		if err != nil {
+			return nil, err
+		}
+		bigInt = new(big.Int).SetUint64(number.CalculateBlockNumber(base.Number.Uint64()))
+	}
+	header, err := a.HeaderByNumber(ctx, bigInt)
+	if err != nil {
+		return nil, err
+	}
+	return &aggkittypes.BlockHeader{Number: header.Number.Uint64()}, nil
+}
+
+func (a *ethClientAdapter) RetrieveBlockHeaders(
+	_ context.Context, _ []uint64, _ int,
+) (*aggkittypes.BlockHeadersResult, error) {
+	return nil, fmt.Errorf("not implemented")
 }

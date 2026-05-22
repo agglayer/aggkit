@@ -17,22 +17,22 @@ import (
 // debug_traceTransaction with prestateTracer + diffMode.
 // Blocks are scanned in windows of Options.BlockRange to bound peak memory usage:
 // at most one window of block headers and their tx hashes are in memory at a time.
-func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
+func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP A — Collect addresses (prestateTracer)")
 	log.Info("═══════════════════════════════════════════")
 
 	windowSize := uint64(cfg.Options.BlockRange)
-	totalBlocks := cfg.ResolvedTargetBlock - cfg.Options.L2StartBlock + 1
+	totalBlocks := targetBlock - cfg.Options.L2StartBlock + 1
 	log.Infof("Scanning %d blocks in windows of %d (L2 %d → %d)...",
-		totalBlocks, windowSize, cfg.Options.L2StartBlock, cfg.ResolvedTargetBlock)
+		totalBlocks, windowSize, cfg.Options.L2StartBlock, targetBlock)
 
 	finalAddrs := make(map[common.Address]struct{})
 	var allFailed []common.Hash
 	stepStart := time.Now()
 
-	for start := cfg.Options.L2StartBlock; start <= cfg.ResolvedTargetBlock; start += windowSize {
-		end := min(start+windowSize-1, cfg.ResolvedTargetBlock)
+	for start := cfg.Options.L2StartBlock; start <= targetBlock; start += windowSize {
+		end := min(start+windowSize-1, targetBlock)
 
 		hashes, err := scanBlockHeaders(ctx, cfg.L2RPCURL, start, end,
 			cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit)
@@ -58,7 +58,7 @@ func RunStepA(ctx context.Context, cfg *Config) (*StepAResult, error) {
 		blocksProcessed := end - cfg.Options.L2StartBlock + 1
 		elapsed := time.Since(stepStart)
 		blocksPerSec := float64(blocksProcessed) / elapsed.Seconds()
-		remaining := cfg.ResolvedTargetBlock - end
+		remaining := targetBlock - end
 		var eta string
 		if blocksPerSec > 0 {
 			eta = (time.Duration(float64(remaining)/blocksPerSec) * time.Second).Round(time.Second).String()
