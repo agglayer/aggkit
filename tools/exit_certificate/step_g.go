@@ -29,6 +29,8 @@ const (
 
 	// largeETHBalance is MaxUint256 in hex, enough for any bridgeAsset call regardless of exit amounts.
 	largeETHBalance = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+	abiFuncSelectorSize = 4 // bytes in an ABI function selector
 )
 
 var (
@@ -473,9 +475,10 @@ func callGetTokenWrappedAddress(
 	return addr, nil
 }
 
-// erc20NamespacedStorageLocation is the ERC-20 storage namespace for OZ v5 upgradeable tokens:
-// keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC20")) - 1)) & ~bytes32(0xff)
-var erc20NamespacedStorageLocation = common.HexToHash("0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00")
+// erc20NamespacedStorageLocation is the ERC-20 storage namespace for OZ v5 upgradeable tokens.
+var erc20NamespacedStorageLocation = common.HexToHash(
+	"0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00",
+)
 
 // ensureERC20Balance checks the ERC-20 balance of account on tokenAddr.
 // If insufficient it patches _balances[account] via hardhat_setStorageAt.
@@ -486,8 +489,9 @@ func ensureERC20Balance(
 	ctx context.Context, rpcURL string, tokenAddr, account common.Address, required *big.Int,
 ) error {
 	balanceOf := func() (*big.Int, error) {
-		callData := append(crypto.Keccak256([]byte("balanceOf(address)"))[:4],
-			common.LeftPadBytes(account.Bytes(), abiWordBytes)...)
+		callData := make([]byte, abiFuncSelectorSize+abiWordBytes)
+		copy(callData, crypto.Keccak256([]byte("balanceOf(address)"))[:abiFuncSelectorSize])
+		copy(callData[abiFuncSelectorSize:], common.LeftPadBytes(account.Bytes(), abiWordBytes))
 		raw, err := singleRPC(ctx, rpcURL, "eth_call", []any{
 			map[string]any{"to": tokenAddr.Hex(), "data": "0x" + hex.EncodeToString(callData)},
 			"latest",
@@ -533,8 +537,8 @@ func ensureERC20Balance(
 
 	// Try OZ v4 (slot 0) first, then OZ v5 upgradeable (namespaced storage).
 	candidates := []string{
-		erc20BalanceSlot(common.Hash{}),                     // OZ v4: _balances at slot 0
-		erc20BalanceSlot(erc20NamespacedStorageLocation),    // OZ v5 upgradeable
+		erc20BalanceSlot(common.Hash{}),                  // OZ v4: _balances at slot 0
+		erc20BalanceSlot(erc20NamespacedStorageLocation), // OZ v5 upgradeable
 	}
 
 	for _, slotHex := range candidates {
