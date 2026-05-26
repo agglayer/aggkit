@@ -29,6 +29,8 @@ const (
 
 	// largeETHBalance is MaxUint256 in hex, enough for any bridgeAsset call regardless of exit amounts.
 	largeETHBalance = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+	abiFuncSelectorSize = 4 // bytes in an ABI function selector
 )
 
 var (
@@ -473,45 +475,92 @@ func callGetTokenWrappedAddress(
 	return addr, nil
 }
 
+// erc20NamespacedStorageLocation is the ERC-20 storage namespace for OZ v5 upgradeable tokens.
+var erc20NamespacedStorageLocation = common.HexToHash(
+	"0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00",
+)
+
 // ensureERC20Balance checks the ERC-20 balance of account on tokenAddr.
-// If the balance is below required, it sets the OZ slot-0 storage entry via
-// hardhat_setStorageAt so that the subsequent bridgeAsset call does not revert.
+// If insufficient it patches _balances[account] via hardhat_setStorageAt.
+// Tries two storage layouts in order, verifying balanceOf after each patch:
+//  1. OZ v4 non-upgradeable: _balances at mapping slot 0
+//  2. OZ v5 upgradeable: _balances inside the namespaced ERC20Storage struct
 func ensureERC20Balance(
 	ctx context.Context, rpcURL string, tokenAddr, account common.Address, required *big.Int,
 ) error {
-	selector := crypto.Keccak256([]byte("balanceOf(address)"))[:4]
-	selector = append(selector, common.LeftPadBytes(account.Bytes(), abiWordBytes)...)
-	callData := selector
+	balanceOf := func() (*big.Int, error) {
+		callData := make([]byte, abiFuncSelectorSize+abiWordBytes)
+		copy(callData, crypto.Keccak256([]byte("balanceOf(address)"))[:abiFuncSelectorSize])
+		copy(callData[abiFuncSelectorSize:], common.LeftPadBytes(account.Bytes(), abiWordBytes))
+		raw, err := singleRPC(ctx, rpcURL, "eth_call", []any{
+			map[string]any{"to": tokenAddr.Hex(), "data": "0x" + hex.EncodeToString(callData)},
+			"latest",
+		}, defaultRetries)
+		if err != nil {
+			return nil, fmt.Errorf("balanceOf(%s): %w", account.Hex(), err)
+		}
+		var hexBal string
+		if err := json.Unmarshal(raw, &hexBal); err != nil {
+			return nil, fmt.Errorf("parse balanceOf result: %w", err)
+		}
+		bal, ok := new(big.Int).SetString(strings.TrimPrefix(hexBal, "0x"), hexBase)
+		if !ok {
+			return nil, fmt.Errorf("invalid balanceOf hex: %s", hexBal)
+		}
+		return bal, nil
+	}
 
-	raw, err := singleRPC(ctx, rpcURL, "eth_call", []any{
-		map[string]any{
-			"to":   tokenAddr.Hex(),
-			"data": "0x" + hex.EncodeToString(callData),
-		},
-		"latest",
-	}, defaultRetries)
+	bal, err := balanceOf()
 	if err != nil {
-		return fmt.Errorf("balanceOf(%s): %w", account.Hex(), err)
+		return err
 	}
-
-	var hexBal string
-	if err := json.Unmarshal(raw, &hexBal); err != nil {
-		return fmt.Errorf("parse balanceOf result: %w", err)
-	}
-	bal, ok := new(big.Int).SetString(strings.TrimPrefix(hexBal, "0x"), hexBase)
-	if !ok {
-		return fmt.Errorf("invalid balanceOf hex: %s", hexBal)
-	}
-
 	if bal.Cmp(required) >= 0 {
 		log.Debugf("ERC-20 %s balance of %s is sufficient (%s >= %s)", tokenAddr.Hex(), account.Hex(), bal, required)
 		return nil
 	}
 
-	log.Infof("❌ ERC-20 %s balance of %s insufficient (%s < %s) — patching via storage",
+	log.Infof("ERC-20 %s balance of %s insufficient (%s < %s) — patching via storage slot",
 		tokenAddr.Hex(), account.Hex(), bal, required)
-	return fmt.Errorf("ERC-20 balance insufficient token: %s account: %s balance: %s required: %s",
-		tokenAddr.Hex(), account.Hex(), bal, required)
+
+	valueHex := "0x" + hex.EncodeToString(common.LeftPadBytes(required.Bytes(), abiWordBytes))
+
+	// erc20BalanceSlot returns keccak256(abi.encode(account, mapSlot)),
+	// which is the Solidity storage slot for _balances[account] when _balances
+	// is a mapping located at mapSlot.
+	erc20BalanceSlot := func(mapSlot common.Hash) string {
+		preimage := append(
+			common.LeftPadBytes(account.Bytes(), abiWordBytes),
+			mapSlot.Bytes()...,
+		)
+		return "0x" + hex.EncodeToString(crypto.Keccak256(preimage))
+	}
+
+	// Try OZ v4 (slot 0) first, then OZ v5 upgradeable (namespaced storage).
+	candidates := []string{
+		erc20BalanceSlot(common.Hash{}),                  // OZ v4: _balances at slot 0
+		erc20BalanceSlot(erc20NamespacedStorageLocation), // OZ v5 upgradeable
+	}
+
+	for _, slotHex := range candidates {
+		if _, err := singleRPC(ctx, rpcURL, "hardhat_setStorageAt",
+			[]any{tokenAddr.Hex(), slotHex, valueHex}, defaultRetries); err != nil {
+			return fmt.Errorf("set ERC-20 balance storage slot: %w", err)
+		}
+		newBal, err := balanceOf()
+		if err != nil {
+			return err
+		}
+		if newBal.Cmp(required) >= 0 {
+			log.Infof("✅ ERC-20 %s balance of %s patched to %s (slot %s)",
+				tokenAddr.Hex(), account.Hex(), required, slotHex)
+			return nil
+		}
+		log.Debugf("slot %s did not update balanceOf — trying next layout", slotHex)
+	}
+
+	return fmt.Errorf("could not patch ERC-20 balance for token %s account %s: "+
+		"no storage layout matched (tried OZ v4 slot-0 and OZ v5 upgradeable)",
+		tokenAddr.Hex(), account.Hex())
 }
 
 // encodeERC20ApproveCallRaw ABI-encodes an ERC-20 approve(spender, amount) call.

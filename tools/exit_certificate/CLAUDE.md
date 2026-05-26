@@ -62,7 +62,7 @@ All checks run regardless of individual failures. A combined error lists every f
 
 ### Step 0 — Generate LBT
 
-- **Trigger:** runs unless `lbtFile` is set and the file exists.
+- **Trigger:** always runs as part of the full pipeline.
 - **Does:** scans L2 bridge `NewWrappedToken` events, fetches `totalSupply` per token at `targetBlock`, computes unlocked native balance.
 - **Output:** `step-0-lbt.json` (`[]LBTEntry`)
 
@@ -108,7 +108,7 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 - **Requires:** `agglayerAdminURL` in options (skipped otherwise).
 - Calls `admin_getTokenBalance` on the agglayer admin RPC and performs a **three-way comparison** per token: `LBT (Step 0) == agglayer == certificate sum`. Each token is logged with ✅ or ❌.
-- **LBT data:** loaded from `step-0-lbt.json` (or `lbtFile`). If unavailable, falls back to two-way comparison (certificate vs agglayer).
+- **LBT data:** loaded from `step-0-lbt.json`. If unavailable, falls back to two-way comparison (certificate vs agglayer).
 - **On mismatch:** aborts the pipeline with an error by default.
 - **`continueIfBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
 - `buildCapMap` / `capBridgeExits` are the internal helpers for computing and applying the caps. Proportional scaling preserves the exact capped total by adding any integer-division remainder to the last exit of each group.
@@ -232,7 +232,7 @@ Defaults applied by `LoadConfig`:
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.abortOnGenesisBalance` = `true` — abort if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `false` only for Kurtosis/test environments.
 - `options.continueIfBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
-- Relative paths in `lbtFile`, `options.outputDir`, and `signerConfig.Path` resolve from the directory containing the config file.
+- Relative paths in `options.outputDir` and `signerConfig.Path` resolve from the directory containing the config file.
 
 `signerConfig` uses `signertypes.SignerConfig` (same type as aggsender's `AggsenderPrivateKey`). The JSON format is flat — `Method`, `Path`, `Password` are top-level keys (matching the TOML inline table style). Parsed by `parseSignerConfig` which splits `Method` out and puts the rest into `Config map[string]any`.
 
@@ -249,7 +249,7 @@ Defaults applied by `LoadConfig`:
 - **Output dir:** All intermediate files land in `options.outputDir` (default `./output` relative to the config file). The dir is created automatically.
 - **`parameters.json` and `output/` are git-ignored** — never commit them.
 - **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step I → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
-- **LBT resolution:** `resolveOrGenerateLBT` → if `lbtFile` is set and exists, use it and skip Step 0; if set but missing, fall back to Step 0 with a warning; if not set, always run Step 0.
+- **LBT resolution:** `resolveOrGenerateLBT` always runs Step 0 and saves `step-0-lbt.json`.
 - **Step F reads from `step-d-exit-certificate.json`** for the balance check (not the final certificate), so the comparison reflects pure L2 exits before Step E additions. When capping is triggered, the caps are also applied to the final (Step E) certificate's `BridgeExits` in `runAll`, and saved as `step-f-capped-certificate.json`.
 - **File chain with capping:** when `continueIfBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
 - **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
