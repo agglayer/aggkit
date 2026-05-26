@@ -145,7 +145,7 @@ func computeFrontier(leafHashes []common.Hash, targetIndex uint32) ([32]common.H
 	var frontier [32]common.Hash
 
 	for i := 0; i < target; i++ {
-		node := leafHashes[i] //nolint:gosec // i is bounded by len(leafHashes) through target.
+		node := leafHashes[i]
 		leafIndex := uint32(i)
 		for h := range 32 {
 			if (leafIndex>>h)&1 == 0 {

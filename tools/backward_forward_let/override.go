@@ -163,8 +163,10 @@ func loadAgglayerCertificatesOverride(filePath string, data []byte) (*BridgeExit
 			return nil, fmt.Errorf("agglayer certificates file %s: height %d: %w", filePath, height, err)
 		}
 		if cert.NetworkID != raw.NetworkID {
-			return nil, fmt.Errorf("agglayer certificates file %s: height %d certificate network_id %d does not match file network_id %d",
-				filePath, height, cert.NetworkID, raw.NetworkID)
+			return nil, fmt.Errorf(
+				"agglayer certificates file %s: height %d certificate network_id %d does not match file network_id %d",
+				filePath, height, cert.NetworkID, raw.NetworkID,
+			)
 		}
 		if cert.Height != height {
 			return nil, fmt.Errorf("agglayer certificates file %s: height key %d does not match certificate height %d",
@@ -194,7 +196,7 @@ func extractAgglayerCertificate(data json.RawMessage) (*agglayertypes.Certificat
 		Error  json.RawMessage `json:"error"`
 	}
 	if err := json.Unmarshal(data, &rpcResponse); err == nil {
-		if len(rpcResponse.Error) > 0 && string(rpcResponse.Error) != "null" {
+		if len(rpcResponse.Error) > 0 && string(rpcResponse.Error) != jsonNullLiteral {
 			return nil, fmt.Errorf("admin_getCertificate response contains error: %s", string(rpcResponse.Error))
 		}
 		if len(rpcResponse.Result) > 0 {
@@ -203,7 +205,7 @@ func extractAgglayerCertificate(data json.RawMessage) (*agglayertypes.Certificat
 	}
 
 	var pair [2]json.RawMessage
-	if err := json.Unmarshal(data, &pair); err == nil && len(pair[0]) > 0 && string(pair[0]) != "null" {
+	if err := json.Unmarshal(data, &pair); err == nil && len(pair[0]) > 0 && string(pair[0]) != jsonNullLiteral {
 		return extractAgglayerCertificate(pair[0])
 	}
 

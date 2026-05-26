@@ -32,7 +32,8 @@ func main() {
 		&cli.StringFlag{
 			Name:    "cert-exits-file",
 			Aliases: []string{"f"},
-			Usage: "Path to a JSON fallback file containing either raw AggLayer certificates or pre-extracted bridge exits keyed by certificate height." +
+			Usage: "Path to a JSON fallback file containing either raw AggLayer certificates or pre-extracted" +
+				" bridge exits keyed by certificate height." +
 				" Use when the aggsender DB is empty and the tool reports missing certificate exits.",
 		},
 	}

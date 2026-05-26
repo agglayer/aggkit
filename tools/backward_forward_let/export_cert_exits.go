@@ -23,6 +23,7 @@ const (
 	DefaultExportCertExitsMaxCerts uint64 = 2000
 	DefaultExportCertExitsTimeout         = 30 * time.Minute
 	exportCertExitsFileMode               = 0o600
+	jsonNullLiteral                       = "null"
 )
 
 var fetchAdminCertificate = fetchAgglayerAdminCertificate
@@ -202,7 +203,7 @@ func fetchAgglayerAdminCertificate(
 			err,
 		)
 	}
-	if len(pair[0]) == 0 || string(pair[0]) == "null" {
+	if len(pair[0]) == 0 || string(pair[0]) == jsonNullLiteral {
 		return nil, fmt.Errorf("admin_getCertificate returned nil certificate")
 	}
 	var cert agglayertypes.Certificate
