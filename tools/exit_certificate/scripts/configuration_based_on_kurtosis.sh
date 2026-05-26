@@ -56,7 +56,27 @@ L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
 L1_SERVICE="${L1_SERVICE:-el-1-geth-lighthouse}"
 AGGLAYER_SERVICE="${AGGLAYER_SERVICE:-agglayer}"
 ZKEVM_BRIDGE_SERVICE_PREFIX="${ZKEVM_BRIDGE_SERVICE_PREFIX:-zkevm-bridge-service}"
-EXIT_ADDRESS="${EXIT_ADDRESS:-0x0000000000000000000000000000000000000000}"
+_EXIT_ADDRESS_DEFAULT="0xe25f5B65E4976025f670e52b790a9746F27A3DB6"
+_EXIT_PRIVKEY_DEFAULT="0xe78f81aa81c6cf9e996084770b2aae4ee1d9e7cddb8724f4dfe60a8bd1c309fe"
+_EXIT_KEYSTORE_DEFAULT='{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"ed35c21427a13a62ca21f86751eb2138"},"ciphertext":"8bbd3830f060f97242508910cbfe38684647fbd915da1ba69298ba7a4fce751d","kdf":"scrypt","kdfparams":{"dklen":32,"n":8192,"p":1,"r":8,"salt":"fb2518fcadcccc9c72cac2dee9c379b3d6f744e7ceabd54f0a830acdbd51589f"},"mac":"371d6de1c647951463b43faab5f7a7f01da59cab491b518ca9c46a023b3875a0"},"id":"0983519f-aef8-448b-8a4b-7f2e0e924845","version":3}'
+_EXIT_KEYSTORE_PASSWORD="test"
+EXIT_ADDRESS="${EXIT_ADDRESS:-$_EXIT_ADDRESS_DEFAULT}"
+if [[ "$EXIT_ADDRESS" == "$_EXIT_ADDRESS_DEFAULT" ]]; then
+    _key_dir="$PROJECT_ROOT/tmp"
+    mkdir -p "$_key_dir"
+    _privkey_file="$_key_dir/exit_address_privatekey.txt"
+    _keystore_file="$_key_dir/exit_address.keystore"
+    if [[ ! -f "$_privkey_file" ]]; then
+        printf '%s\n' "$_EXIT_PRIVKEY_DEFAULT" > "$_privkey_file"
+        chmod 600 "$_privkey_file"
+        log_info "Exit address private key saved to: $_privkey_file"
+    fi
+    if [[ ! -f "$_keystore_file" ]]; then
+        printf '%s\n' "$_EXIT_KEYSTORE_DEFAULT" > "$_keystore_file"
+        chmod 600 "$_keystore_file"
+        log_info "Exit address keystore saved to: $_keystore_file (password: $_EXIT_KEYSTORE_PASSWORD)"
+    fi
+fi
 OUTPUT_FILE="${OUTPUT_FILE:-tmp/exit_certificate-kurtosis.json}"
 NETWORK_INDEX=1
 

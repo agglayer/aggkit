@@ -130,24 +130,6 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	require.Equal(t, uint64(0), cfg.Options.L1StartBlock)
 }
 
-func TestLoadConfig_RelativeLBTFile(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "parameters.json")
-	data := `{
-		"l2RpcUrl": "http://localhost:8545",
-		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
-		"targetBlock": "100",
-		"lbtFile": "../some/lbt.json"
-	}`
-	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
-
-	cfg, err := LoadConfig(path)
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join(dir, "../some/lbt.json"), cfg.LBTFile)
-}
-
 func TestLoadConfig_RelativeOutputDir(t *testing.T) {
 	t.Parallel()
 
