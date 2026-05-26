@@ -109,6 +109,11 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	configDir := filepath.Dir(configPath)
 
+	targetBlock, err := parseTargetBlock(raw.TargetBlock)
+	if err != nil {
+		return nil, fmt.Errorf("invalid targetBlock %q: %w", raw.TargetBlock, err)
+	}
+
 	cfg := &Config{
 		L2RPCURL:                raw.L2RPCURL,
 		L1RPCURL:                raw.L1RPCURL,
@@ -116,7 +121,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		L2NetworkID:             raw.L2NetworkID,
 		ExitAddress:             common.HexToAddress(raw.ExitAddress),
 		DestinationNetwork:      raw.DestinationNetwork,
-		TargetBlock:             parseTargetBlock(raw.TargetBlock),
+		TargetBlock:             targetBlock,
 		SovereignRollupAddr:     common.HexToAddress(raw.SovereignRollupAddr),
 		L1GlobalExitRootAddress: common.HexToAddress(raw.L1GlobalExitRootAddress),
 	}
@@ -144,16 +149,16 @@ func LoadConfig(configPath string) (*Config, error) {
 }
 
 // parseTargetBlock converts the raw JSON string to a BlockNumberFinality.
-// An empty or "latest" value resolves to LatestBlock.
-func parseTargetBlock(s string) aggkittypes.BlockNumberFinality {
+// An empty value resolves to LatestBlock; any other invalid value returns an error.
+func parseTargetBlock(s string) (aggkittypes.BlockNumberFinality, error) {
 	if s == "" {
-		return aggkittypes.LatestBlock
+		return aggkittypes.LatestBlock, nil
 	}
 	tb, err := aggkittypes.NewBlockNumberFinality(s)
 	if err != nil {
-		return aggkittypes.LatestBlock
+		return aggkittypes.LatestBlock, err
 	}
-	return *tb
+	return *tb, nil
 }
 
 // parseSignerConfig converts the flat JSON signer config into a SignerConfig.

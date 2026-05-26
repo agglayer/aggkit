@@ -313,6 +313,89 @@ func TestMergeOptions_BridgeService(t *testing.T) {
 	require.Equal(t, "zkevm", cfg.Options.BridgeServiceType)
 }
 
+func TestParseTargetBlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		input        string
+		wantErr      bool
+		wantBlock    string
+		wantSpecific uint64
+	}{
+		{
+			name:      "empty defaults to latest",
+			input:     "",
+			wantBlock: "LatestBlock",
+		},
+		{
+			name:      "LatestBlock tag",
+			input:     "LatestBlock",
+			wantBlock: "LatestBlock",
+		},
+		{
+			name:      "FinalizedBlock tag",
+			input:     "FinalizedBlock",
+			wantBlock: "FinalizedBlock",
+		},
+		{
+			name:         "numeric block",
+			input:        "12345",
+			wantSpecific: 12345,
+		},
+		{
+			name:    "typo FinalizedBock returns error",
+			input:   "FinalizedBock",
+			wantErr: true,
+		},
+		{
+			name:    "hex garbage returns error",
+			input:   "0xZZ",
+			wantErr: true,
+		},
+		{
+			name:    "random string returns error",
+			input:   "notablock",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := parseTargetBlock(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tc.wantBlock != "" {
+				require.Equal(t, tc.wantBlock, result.Block.String())
+			}
+			if tc.wantSpecific != 0 {
+				require.Equal(t, tc.wantSpecific, result.Specific)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_InvalidTargetBlock(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "FinalizedBock"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid targetBlock")
+	require.Contains(t, err.Error(), "FinalizedBock")
+}
+
 func TestLoadLBTEntries_ValidFile(t *testing.T) {
 	t.Parallel()
 
