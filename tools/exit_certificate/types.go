@@ -83,10 +83,16 @@ type SCLockedValue struct {
 	SCLockedBalance     string         `json:"scLockedBalance"`
 }
 
+// FailedTrace pairs a transaction hash with the RPC error that caused its trace to fail.
+type FailedTrace struct {
+	Hash  common.Hash `json:"hash"`
+	Error string      `json:"error"`
+}
+
 // StepAResult holds the output of Step A.
 type StepAResult struct {
 	Addresses     []common.Address `json:"addresses"`
-	FailedTraces  []common.Hash    `json:"failedTraces"`
+	FailedTraces  []FailedTrace    `json:"failedTraces"`
 	WrappedTokens []WrappedToken   `json:"-"`
 }
 

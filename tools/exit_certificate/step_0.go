@@ -61,7 +61,10 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 	// token to a different ERC-20 after the original NewWrappedToken event, use the sovereign
 	// address instead. This keeps the LBT's wrapped addresses consistent with what
 	// getTokenWrappedAddress() returns on the live contract.
-	events = applySovereignTokenOverrides(ctx, cfg, blockNum, events)
+	events, err = applySovereignTokenOverrides(ctx, cfg, blockNum, events)
+	if err != nil {
+		return nil, fmt.Errorf("apply sovereign token overrides: %w", err)
+	}
 
 	// 3. Fetch totalSupply for each token concurrently
 	log.Infof("Fetching totalSupply for %d tokens...", len(events))
@@ -75,13 +78,11 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 
 	// 3. Native token unlocked balance
 	var nativeEntry *LBTEntry
-	if nativeEntry, err := computeNativeBalance(ctx, rpcURL, bridgeAddr, blockTag); err != nil {
+	if nativeEntry, err = computeNativeBalance(ctx, rpcURL, bridgeAddr, blockTag); err != nil {
 		log.Warnf("Failed to compute native balance: %v", err)
 	} else {
 		entries = append(entries, *nativeEntry)
 		log.Infof("Native token unlocked balance: %s", nativeEntry.Balance)
-	}
-	if nativeEntry != nil {
 		log.Infof("Native token info - OriginNetwork: %d, OriginTokenAddress: %s",
 			nativeEntry.OriginNetwork, nativeEntry.OriginTokenAddress.Hex())
 	}
@@ -124,7 +125,7 @@ func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64
 	var allEvents []wrappedTokenEvent
 
 	err := runWorkerPool(
-		jobs, concurrency,
+		ctx, jobs, concurrency,
 		func(j blockRangeJob) ([]wrappedTokenEvent, error) {
 			return fetchWrappedTokenEventsInRange(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, j.from, j.to)
 		},
@@ -196,10 +197,13 @@ func fetchWrappedTokenEventsInRange(
 // sovereign address instead of the original wrapped one, so the LBT must reflect the same.
 func applySovereignTokenOverrides(
 	ctx context.Context, cfg *Config, toBlock uint64, events []wrappedTokenEvent,
-) []wrappedTokenEvent {
-	overrides := fetchSetSovereignTokenEvents(ctx, cfg, toBlock)
+) ([]wrappedTokenEvent, error) {
+	overrides, err := fetchSetSovereignTokenEvents(ctx, cfg, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("fetch SetSovereignTokenAddress events: %w", err)
+	}
 	if len(overrides) == 0 {
-		return events
+		return events, nil
 	}
 
 	// Build override map: (originNetwork, originToken) → sovereignAddr
@@ -245,7 +249,7 @@ func applySovereignTokenOverrides(
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // sovereignTokenOverride holds data decoded from a SetSovereignTokenAddress event.
@@ -256,7 +260,7 @@ type sovereignTokenOverride struct {
 }
 
 // fetchSetSovereignTokenEvents scans for SetSovereignTokenAddress events via a worker pool.
-func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) []sovereignTokenOverride {
+func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) ([]sovereignTokenOverride, error) {
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
 
@@ -268,8 +272,8 @@ func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config, toBlock uint
 	}
 
 	var allOverrides []sovereignTokenOverride
-	err := runWorkerPool(
-		jobs, concurrency,
+	if err := runWorkerPool(
+		ctx, jobs, concurrency,
 		func(j blockRangeJob) ([]sovereignTokenOverride, error) {
 			return fetchSetSovereignTokenEventsInRange(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, j.from, j.to)
 		},
@@ -277,13 +281,12 @@ func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config, toBlock uint
 			allOverrides = append(allOverrides, ovs...)
 		},
 		"SetSovereignTokenAddress",
-	)
-	if err != nil {
-		log.Warnf("Some SetSovereignTokenAddress queries failed: %v", err)
+	); err != nil {
+		return nil, err
 	}
 
 	log.Infof("Found %d SetSovereignTokenAddress overrides", len(allOverrides))
-	return allOverrides
+	return allOverrides, nil
 }
 
 // fetchSetSovereignTokenEventsInRange fetches SetSovereignTokenAddress logs in a single block range.

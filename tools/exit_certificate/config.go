@@ -17,6 +17,10 @@ import (
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
 	BlockRange       int    `json:"blockRange"`
+	// StepAWindowSize is the number of blocks loaded into memory at once during Step A
+	// (address collection via debug_traceTransaction). Defaults to BlockRange.
+	// Tune independently when trace calls need a different chunk size than log queries.
+	StepAWindowSize  int    `json:"stepAWindowSize"`
 	ConcurrencyLimit int    `json:"concurrencyLimit"`
 	RPCBatchSize     int    `json:"rpcBatchSize"`
 	RPCDelayMs       int    `json:"rpcDelayMs"`
@@ -73,12 +77,14 @@ type Config struct {
 
 const (
 	defaultBlockRange       = 5000
+	defaultStepAWindowSize  = 5000
 	defaultConcurrencyLimit = 20
 	defaultRPCBatchSize     = 200
 )
 
 var defaultOptions = Options{
 	BlockRange:            defaultBlockRange,
+	StepAWindowSize:       defaultStepAWindowSize,
 	ConcurrencyLimit:      defaultConcurrencyLimit,
 	RPCBatchSize:          defaultRPCBatchSize,
 	RPCDelayMs:            0,
@@ -211,6 +217,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.BlockRange > 0 {
 		opts.BlockRange = raw.BlockRange
 	}
+	if raw.StepAWindowSize > 0 {
+		opts.StepAWindowSize = raw.StepAWindowSize
+	}
 	if raw.ConcurrencyLimit > 0 {
 		opts.ConcurrencyLimit = raw.ConcurrencyLimit
 	}
@@ -297,6 +306,7 @@ type rawConfig struct {
 
 type rawOpts struct {
 	BlockRange                int                    `json:"blockRange"`
+	StepAWindowSize           int                    `json:"stepAWindowSize"`
 	ConcurrencyLimit          int                    `json:"concurrencyLimit"`
 	RPCBatchSize              int                    `json:"rpcBatchSize"`
 	RPCDelayMs                int                    `json:"rpcDelayMs"`

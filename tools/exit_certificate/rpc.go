@@ -236,11 +236,14 @@ func doRPCWithRetry(
 ) ([]jsonRPCResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= retries; attempt++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		respBody, err := doRPCAttempt(ctx, rpcURL, body, bearerToken)
 		if err != nil {
 			lastErr = err
 			if attempt < retries {
-				sleepWithBackoff(attempt)
+				sleepWithBackoff(ctx, attempt)
 				continue
 			}
 			return nil, fmt.Errorf("RPC failed after %d attempts on %s: %w", retries, maskRPCURL(rpcURL), lastErr)
@@ -250,12 +253,15 @@ func doRPCWithRetry(
 	return nil, fmt.Errorf("RPC failed after %d attempts on %s", retries, maskRPCURL(rpcURL))
 }
 
-func sleepWithBackoff(attempt int) {
+func sleepWithBackoff(ctx context.Context, attempt int) {
 	ms := math.Min(
 		float64(baseBackoffMs*int(math.Pow(backoffExponent, float64(attempt)))),
 		float64(maxBackoffMs),
 	)
-	time.Sleep(time.Duration(ms) * time.Millisecond)
+	select {
+	case <-time.After(time.Duration(ms) * time.Millisecond):
+	case <-ctx.Done():
+	}
 }
 
 // indexedBatchResult pairs batch RPC results with their offset in the global slice.
@@ -288,7 +294,7 @@ func concurrentBatchRPC(
 	allResults := make([]json.RawMessage, len(allCalls))
 
 	err := runWorkerPool(
-		jobs, concurrency,
+		ctx, jobs, concurrency,
 		func(j batchJob) (indexedBatchResult, error) {
 			res, err := batchRPC(ctx, url, j.calls, defaultRetries)
 			return indexedBatchResult{offset: j.offset, results: res}, err
