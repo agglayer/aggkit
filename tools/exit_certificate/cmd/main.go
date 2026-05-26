@@ -19,7 +19,7 @@ func main() {
 Pipeline steps (run in order by default):
 
   0  Generate the Locked Balance Table (LBT) by scanning the L2 bridge contract
-     for wrapped token mappings. Skipped when lbtFile is set in the config.
+     for wrapped token mappings.
 
   A  Collect all unique sender/receiver addresses from bridge events up to the
      target block.

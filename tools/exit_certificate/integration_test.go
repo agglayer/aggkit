@@ -31,7 +31,6 @@ func TestLoadParametersJSON(t *testing.T) {
 	require.Greater(t, cfg.Options.BlockRange, 0)
 	require.Greater(t, cfg.Options.ConcurrencyLimit, 0)
 	require.Greater(t, cfg.Options.RPCBatchSize, 0)
-	require.NotEmpty(t, cfg.LBTFile)
 }
 
 // TestStepD_WithProductionLikeData tests Step D with data structures matching
