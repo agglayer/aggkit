@@ -4,7 +4,7 @@
     "l1BridgeAddress": "0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582",
     "l2BridgeAddress": "0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582",
     "l2NetworkId": 1,
-    "targetBlock": "latest",
+    "targetBlock": "LatestBlock",
     "exitAddress": "0x0000000000000000000000000000000000001234",
     "sovereignRollupAddr": "0xA13Ddb14437A8F34897131367ad3ca78416d6bCa",
     "destinationNetwork": 0,

@@ -362,7 +362,7 @@ cat > "$OUTPUT_PATH" <<EOF
     "l2BridgeAddress": "$BRIDGE_ADDR",
     "l1BridgeAddress": "$BRIDGE_ADDR",
     "l2NetworkId": $NETWORK_INDEX,
-    "targetBlock": "latest",
+    "targetBlock": "LatestBlock",
     "exitAddress": "$EXIT_ADDRESS",
     "destinationNetwork": 0,
 ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "options": {

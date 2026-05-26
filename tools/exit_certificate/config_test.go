@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +83,7 @@ func TestLoadConfig_FullConfig(t *testing.T) {
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
 		"l1BridgeAddress": "0x1111111111111111111111111111111111111111",
 		"l2NetworkId": 5,
-		"targetBlock": "latest",
+		"targetBlock": "LatestBlock",
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"destinationNetwork": 0,
 		"options": {
@@ -100,7 +101,7 @@ func TestLoadConfig_FullConfig(t *testing.T) {
 	require.Equal(t, "http://l2:8545", cfg.L2RPCURL)
 	require.Equal(t, "http://l1:8545", cfg.L1RPCURL)
 	require.Equal(t, uint32(5), cfg.L2NetworkID)
-	require.Equal(t, "latest", cfg.TargetBlock)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.TargetBlock)
 	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), cfg.ExitAddress)
 	require.Equal(t, common.HexToAddress("0x1111111111111111111111111111111111111111"), cfg.L1BridgeAddress)
 	require.Equal(t, 10000, cfg.Options.BlockRange)
