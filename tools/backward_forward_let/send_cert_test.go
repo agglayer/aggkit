@@ -144,6 +144,20 @@ func TestSendCertificate_HappyPath(t *testing.T) {
 	require.Equal(t, certJSON, *storage.saved.SignedCertificate)
 }
 
+func TestSendCertificate_NoDB(t *testing.T) {
+	t.Parallel()
+
+	expectedHash := common.HexToHash("0xbeef")
+	sender := &stubAgglayerSender{hash: expectedHash}
+
+	certJSON := minimalCertJSON(9)
+	var cert agglayertypes.Certificate
+	require.NoError(t, cert.UnmarshalJSON([]byte(certJSON)))
+
+	err := sendCertificate(context.Background(), cert, certJSON, sender, nil)
+	require.NoError(t, err)
+}
+
 func TestSendCertificate_AgglayerError(t *testing.T) {
 	t.Parallel()
 
@@ -160,20 +174,6 @@ func TestSendCertificate_AgglayerError(t *testing.T) {
 	require.ErrorIs(t, err, agglayerErr)
 	// DB must not be written if agglayer fails.
 	require.Nil(t, storage.saved)
-}
-
-func TestSendCertificate_NoDB(t *testing.T) {
-	t.Parallel()
-
-	expectedHash := common.HexToHash("0xbeef")
-	sender := &stubAgglayerSender{hash: expectedHash}
-
-	certJSON := minimalCertJSON(4)
-	var cert agglayertypes.Certificate
-	require.NoError(t, cert.UnmarshalJSON([]byte(certJSON)))
-
-	err := sendCertificate(context.Background(), cert, certJSON, sender, nil)
-	require.NoError(t, err)
 }
 
 func TestSendCertificate_DBError(t *testing.T) {
@@ -302,6 +302,7 @@ func newSendCertCLIContext(flags map[string]string) *cli.Context {
 	fs.String("cert-file", "", "")
 	fs.String("db-path", "", "")
 	fs.Bool("no-db", false, "")
+	fs.Bool("staging-only", false, "")
 	for name, val := range flags {
 		_ = fs.Set(name, val)
 	}
@@ -328,7 +329,6 @@ func TestRunSendCert_LoadConfigError(t *testing.T) {
 				&cli.StringFlag{Name: "cert-json"},
 				&cli.StringFlag{Name: "cert-file"},
 				&cli.StringFlag{Name: "db-path"},
-				&cli.BoolFlag{Name: "no-db"},
 			},
 		},
 	}
@@ -362,4 +362,30 @@ func TestRunSendCert_InvalidCertJSON(t *testing.T) {
 	err := RunSendCert(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "parse certificate JSON")
+}
+
+func TestRunSendCert_NoDBRequiresStagingOnly(t *testing.T) {
+	t.Parallel()
+
+	ctx := newSendCertCLIContext(map[string]string{
+		"cert-json": minimalCertJSON(1),
+		"no-db":     "true",
+	})
+	err := RunSendCert(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--no-db requires --staging-only")
+}
+
+func TestRunSendCert_NoDBRejectsDBPath(t *testing.T) {
+	t.Parallel()
+
+	ctx := newSendCertCLIContext(map[string]string{
+		"cert-json":    minimalCertJSON(1),
+		"db-path":      "/tmp/test.sqlite",
+		"no-db":        "true",
+		"staging-only": "true",
+	})
+	err := RunSendCert(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--no-db and --db-path are mutually exclusive")
 }

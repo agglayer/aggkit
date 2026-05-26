@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/agglayer"
+	aggsenderconfig "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitConfig "github.com/agglayer/aggkit/config"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
@@ -26,17 +27,11 @@ type Config struct {
 	// AgglayerClient is the AggLayer gRPC client configuration.
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 
-	// AggSender contains the subset of aggsender config reused by craft-cert signer resolution.
-	AggSender CraftCertAggsenderConfig `mapstructure:"AggSender"`
+	// AggSender contains the signer config used to craft staging certificates.
+	AggSender aggsenderconfig.Config `mapstructure:"AggSender"`
 
 	// BackwardForwardLET contains tool-specific settings.
 	BackwardForwardLET BackwardForwardLETConfig `mapstructure:"BackwardForwardLET"`
-}
-
-// CraftCertAggsenderConfig contains the aggsender signer settings reused by craft-cert.
-type CraftCertAggsenderConfig struct {
-	// AggsenderPrivateKey is the shared signer config used to sign certificates.
-	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 }
 
 // BackwardForwardLETConfig contains configuration specific to the backward/forward LET tool.
@@ -59,11 +54,9 @@ type BackwardForwardLETConfig struct {
 	// L2NetworkID is the network ID of the L2 chain.
 	L2NetworkID uint32 `mapstructure:"L2NetworkID"`
 
-	// CertificateExitsFile is an optional path to a JSON override file containing
-	// pre-extracted bridge exits keyed by certificate height. When set, used as a
-	// fallback if the aggsender RPC cannot supply bridge exits for a height.
-	// Obtain the file by calling admin_getCertificate on the agglayer for each
-	// cert ID reported in the tool's missing-cert output.
+	// CertificateExitsFile is an optional path to a JSON fallback file containing
+	// raw AggLayer certificates or pre-extracted bridge exits keyed by certificate
+	// height. When set, used if the aggsender RPC cannot supply bridge exits for a height.
 	CertificateExitsFile string `mapstructure:"CertificateExitsFile"`
 }
 

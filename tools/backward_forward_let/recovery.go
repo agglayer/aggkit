@@ -8,6 +8,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	gethTypes "github.com/ethereum/go-ethereum/core/types"
 )
 
 // ExecuteRecovery performs the on-chain recovery steps for the given diagnosis.
@@ -78,6 +79,10 @@ func ExecuteRecovery(ctx context.Context, env *Env, diagnosis *DiagnosisResult) 
 		}
 	}
 
+	if err := printFinalVerification(callOpts, env, diagnosis); err != nil {
+		return fmt.Errorf("final verification: %w", err)
+	}
+
 	return nil
 }
 
@@ -94,6 +99,7 @@ func stepActivateEmergency(
 	if err != nil {
 		return fmt.Errorf("send ActivateEmergencyState tx: %w", err)
 	}
+	printTxSent("ActivateEmergencyState", tx)
 
 	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
@@ -102,6 +108,7 @@ func stepActivateEmergency(
 	if receipt.Status != 1 {
 		return fmt.Errorf("ActivateEmergencyState tx failed (status=%d)", receipt.Status)
 	}
+	printTxConfirmed("ActivateEmergencyState", receipt)
 
 	active, err := env.L2Bridge.IsEmergencyState(callOpts)
 	if err != nil {
@@ -128,6 +135,7 @@ func stepDeactivateEmergency(
 	if err != nil {
 		return fmt.Errorf("send DeactivateEmergencyState tx: %w", err)
 	}
+	printTxSent("DeactivateEmergencyState", tx)
 
 	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
@@ -136,6 +144,7 @@ func stepDeactivateEmergency(
 	if receipt.Status != 1 {
 		return fmt.Errorf("DeactivateEmergencyState tx failed (status=%d)", receipt.Status)
 	}
+	printTxConfirmed("DeactivateEmergencyState", receipt)
 
 	active, err := env.L2Bridge.IsEmergencyState(callOpts)
 	if err != nil {
@@ -170,12 +179,12 @@ func stepBackwardLET(
 	}
 
 	var frontierBytes [32][32]byte
-	for i, h := range frontier {
-		frontierBytes[i] = [32]byte(h)
+	for i := 0; i < len(frontier); i++ {
+		frontierBytes[i] = [32]byte(frontier[i])
 	}
 	var proofBytes [32][32]byte
-	for i, h := range proof {
-		proofBytes[i] = [32]byte(h)
+	for i := 0; i < len(proof); i++ {
+		proofBytes[i] = [32]byte(proof[i])
 	}
 
 	tx, err := env.L2Bridge.BackwardLET(
@@ -188,6 +197,7 @@ func stepBackwardLET(
 	if err != nil {
 		return fmt.Errorf("send BackwardLET tx: %w", err)
 	}
+	printTxSent("BackwardLET", tx)
 
 	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
@@ -196,6 +206,7 @@ func stepBackwardLET(
 	if receipt.Status != 1 {
 		return fmt.Errorf("BackwardLET tx failed (status=%d)", receipt.Status)
 	}
+	printTxConfirmed("BackwardLET", receipt)
 
 	dcBig, err := env.L2Bridge.DepositCount(callOpts)
 	if err != nil {
@@ -255,6 +266,7 @@ func stepForwardLETDivergentLeaves(
 	if err != nil {
 		return fmt.Errorf("send ForwardLET (divergent leaves) tx: %w", err)
 	}
+	printTxSent("ForwardLET (divergent leaves)", tx)
 
 	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
@@ -263,6 +275,7 @@ func stepForwardLETDivergentLeaves(
 	if receipt.Status != 1 {
 		return fmt.Errorf("ForwardLET (divergent leaves) tx failed (status=%d)", receipt.Status)
 	}
+	printTxConfirmed("ForwardLET (divergent leaves)", receipt)
 
 	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves))
 
@@ -343,6 +356,7 @@ func stepForwardLETExtraL2Bridges(
 	if err != nil {
 		return fmt.Errorf("send ForwardLET (extra L2 bridges) tx: %w", err)
 	}
+	printTxSent("ForwardLET (extra L2 bridges)", tx)
 
 	receipt, err := env.waitReceiptFn(ctx, tx)
 	if err != nil {
@@ -351,6 +365,7 @@ func stepForwardLETExtraL2Bridges(
 	if receipt.Status != 1 {
 		return fmt.Errorf("ForwardLET (extra L2 bridges) tx failed (status=%d)", receipt.Status)
 	}
+	printTxConfirmed("ForwardLET (extra L2 bridges)", receipt)
 
 	expectedDC := afterDivergentCount + uint32(len(diagnosis.ExtraL2Bridges))
 
@@ -373,5 +388,59 @@ func stepForwardLETExtraL2Bridges(
 	}
 
 	fmt.Printf("[step] ForwardLET (extra L2 bridges) complete. DC=%d, LER=%s\n", expectedDC, expectedLER.Hex())
+	return nil
+}
+
+func printTxSent(name string, tx *gethTypes.Transaction) {
+	hash, ok := txHashHex(tx)
+	if !ok {
+		fmt.Printf("[tx] %s sent.\n", name)
+		return
+	}
+	fmt.Printf("[tx] %s sent: %s\n", name, hash)
+}
+
+func txHashHex(tx *gethTypes.Transaction) (hash string, ok bool) {
+	if tx == nil {
+		return "", false
+	}
+	defer func() {
+		if recover() != nil {
+			hash = ""
+			ok = false
+		}
+	}()
+	return tx.Hash().Hex(), true
+}
+
+func printTxConfirmed(name string, receipt *gethTypes.Receipt) {
+	if receipt == nil || receipt.BlockNumber == nil {
+		fmt.Printf("[tx] %s confirmed.\n", name)
+		return
+	}
+	fmt.Printf("[tx] %s confirmed in block %s.\n", name, receipt.BlockNumber.String())
+}
+
+func printFinalVerification(callOpts *bind.CallOpts, env *Env, diagnosis *DiagnosisResult) error {
+	dcBig, err := env.L2Bridge.DepositCount(callOpts)
+	if err != nil {
+		return fmt.Errorf("get final deposit count: %w", err)
+	}
+	root32, err := env.L2Bridge.GetRoot(callOpts)
+	if err != nil {
+		return fmt.Errorf("get final LER: %w", err)
+	}
+
+	finalDC := uint32(dcBig.Uint64())
+	finalLER := common.Hash(root32)
+	fmt.Printf("[verify] Final L2 state: DC=%d, LER=%s\n", finalDC, finalLER.Hex())
+	if finalLER == diagnosis.L1SettledLER && finalDC == diagnosis.L1SettledDepositCount {
+		fmt.Println("[verify] Final L2 state matches L1 settled state.")
+	} else {
+		fmt.Println(
+			"[verify] Final L2 state includes replayed L2 bridge data; " +
+				"rerun diagnosis after aggsender settles the follow-up certificate.",
+		)
+	}
 	return nil
 }

@@ -34,7 +34,7 @@ type certStorager interface {
 
 // RunSendCert is the CLI action for the send-cert subcommand.
 // It reads a certificate from JSON (--cert-json or --cert-file), sends it to the agglayer,
-// and optionally stores it in the aggsender SQLite DB.
+// and stores it in the aggsender SQLite DB.
 func RunSendCert(c *cli.Context) error {
 	// Load config.
 	cfg, err := LoadConfig(c)
@@ -52,6 +52,14 @@ func RunSendCert(c *cli.Context) error {
 		return fmt.Errorf("parse certificate JSON: %w", err)
 	}
 
+	noDB := c.Bool("no-db")
+	if noDB && !c.Bool("staging-only") {
+		return fmt.Errorf("--no-db requires --staging-only")
+	}
+	if noDB && c.String("db-path") != "" {
+		return fmt.Errorf("--no-db and --db-path are mutually exclusive")
+	}
+
 	// Create agglayer client.
 	logger := log.GetDefaultLogger()
 	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient, logger)
@@ -59,13 +67,15 @@ func RunSendCert(c *cli.Context) error {
 		return fmt.Errorf("create agglayer client: %w", err)
 	}
 
-	var storage certStorager
-	if !c.Bool("no-db") {
-		dbPath := c.String("db-path")
-		storage, err = openAggsenderStorage(logger, dbPath)
-		if err != nil {
-			return err
-		}
+	// Open aggsender DB.
+	if noDB {
+		return sendCertificate(c.Context, cert, certJSON, agglayerClient, nil)
+	}
+
+	dbPath := c.String("db-path")
+	storage, err := openAggsenderStorage(logger, dbPath)
+	if err != nil {
+		return err
 	}
 
 	return sendCertificate(c.Context, cert, certJSON, agglayerClient, storage)
@@ -85,10 +95,12 @@ func sendCertificate(
 	if err != nil {
 		return fmt.Errorf("send certificate to agglayer: %w", err)
 	}
-	fmt.Printf("Certificate sent. Hash: %s\n", certHash.Hex())
+	fmt.Printf("Certificate ID: %s\n", certHash.Hex())
+	fmt.Printf("Certificate height: %d\n", cert.Height)
 
 	if storage == nil {
-		fmt.Println("Skipping aggsender DB storage (--no-db).")
+		fmt.Println("Aggsender DB storage skipped (--no-db).")
+		fmt.Printf("Next: backward-forward-let --cfg <config> cert-status --wait-settled --height %d\n", cert.Height)
 		return nil
 	}
 
@@ -127,9 +139,11 @@ func sendCertificate(
 
 	// Store in DB.
 	if err := storage.SaveLastSentCertificate(ctx, record); err != nil {
-		return fmt.Errorf("store certificate in aggsender DB: %w", err)
+		return fmt.Errorf("certificate sent with hash %s at height %d, but storing in aggsender DB failed: %w",
+			certHash.Hex(), cert.Height, err)
 	}
 	fmt.Printf("Certificate stored in aggsender DB at height %d.\n", cert.Height)
+	fmt.Printf("Next: backward-forward-let --cfg <config> cert-status --wait-settled --height %d\n", cert.Height)
 	return nil
 }
 

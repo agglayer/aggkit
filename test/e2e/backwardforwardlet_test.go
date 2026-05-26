@@ -232,7 +232,9 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 
 	// Verify: DC should equal DivergencePoint + divergent leaves + extra real bridges.
 	// For Case2, L2 LER will NOT match L1 settled LER because extra real L2 bridges were
-	// appended after the fake leaf; the next aggsender cert will advance L1 to match.
+	// appended after the fake leaf. The operator-documented procedure (wipe aggsender DB)
+	// is what advances L1 in production; we skip that here since later tests are tolerant
+	// of leaked Case2 state (Case3 accepts Case3 or Case4 classification).
 	callOpts := &bind.CallOpts{Context: ctx}
 	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
 		uint32(len(diagnosis.ExtraL2Bridges))
@@ -385,7 +387,8 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 
 	// Verify: DC should equal DivergencePoint + divergent leaves + extra real bridges.
 	// For Case4, L2 LER will NOT match L1 settled LER because extra real L2 bridges were
-	// appended after the fake leaves; the next aggsender cert will advance L1 to match.
+	// appended after the fake leaves. The operator-documented procedure (wipe aggsender DB)
+	// is what advances L1 in production; not exercised here.
 	callOpts := &bind.CallOpts{Context: ctx}
 	expectedDC := diagnosis.DivergencePoint + uint32(len(diagnosis.DivergentLeaves)) +
 		uint32(len(diagnosis.ExtraL2Bridges))
