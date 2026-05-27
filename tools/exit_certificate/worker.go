@@ -106,11 +106,10 @@ func collectResults[R any](
 	for {
 		select {
 		case <-ctx.Done():
-			// Drain resultCh in the background so workers can finish and release resources.
-			go func() {
-				for range resultCh {
-				}
-			}()
+			// Drain resultCh synchronously so all in-flight workers finish before we return.
+			// A background drain would let workers mutate captured state after the caller returns.
+			for range resultCh {
+			}
 			if firstErr != nil {
 				return firstErr
 			}
