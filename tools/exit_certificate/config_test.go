@@ -68,7 +68,7 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://localhost:8545", cfg.L2RPCURL)
 	require.Equal(t, common.HexToAddress("0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"), cfg.L2BridgeAddress)
-	require.Equal(t, "100", cfg.TargetBlock)
+	require.Equal(t, *aggkittypes.NewBlockNumber(100), cfg.TargetBlock)
 	require.Equal(t, uint32(1), cfg.L2NetworkID)
 	require.Equal(t, cfg.L2BridgeAddress, cfg.L1BridgeAddress)
 }
