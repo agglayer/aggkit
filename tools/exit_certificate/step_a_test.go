@@ -175,7 +175,7 @@ func TestTraceTransactions_ContinueOnError_CollectsFailed(t *testing.T) {
 	require.Len(t, addrs, 1)
 	require.Equal(t, common.HexToAddress(addrGood), addrs[0])
 	require.Len(t, failed, 1)
-	require.Equal(t, badHash, failed[0])
+	require.Equal(t, badHash, failed[0].Hash)
 }
 
 // When continueOnError=false, the first trace failure aborts the run.
