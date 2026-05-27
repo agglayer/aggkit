@@ -56,7 +56,7 @@ cp parameters.json.example parameters.json
 | `l2BridgeAddress` | Yes | L2 bridge contract address. |
 | `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
-| `targetBlock` | Yes | Target block number or `"latest"`. All state is captured at this block. |
+| `targetBlock` | No | Target block for state capture. Accepts a decimal number (`"21000000"`), hex (`"0x1406f40"`), or a finality keyword: `"LatestBlock"`, `"FinalizedBlock"`, `"SafeBlock"`, `"PendingBlock"`. An optional negative offset can be appended (e.g. `"LatestBlock/-10"` = ten blocks before latest). Omitting the field or setting it to `""` defaults to `"LatestBlock"`. The keyword is resolved to a concrete block number at the start of Step 0 and saved to `step-0-l2_target_block.json`. All subsequent steps use that fixed number. |
 | `exitAddress` | No | Address that receives SC-locked value exits. Defaults to zero address. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
 | `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
@@ -190,7 +190,7 @@ Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F →
 | Step | Name | What it does |
 | :--: | ---- | ------------ |
 | CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
-| 0 | Generate LBT | Scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at `targetBlock`. |
+| 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. |
 | A | Collect addresses | Traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. |
 | B | EOA balances | Classifies addresses as EOA vs contract; fetches ETH balance and every wrapped-token balance for each EOA at `targetBlock`. |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
@@ -252,11 +252,29 @@ All checks run regardless of individual failures; a combined error lists every f
 
 ### Step 0 — Generate LBT (Local Balance Tree)
 
-Scans the L2 bridge contract for `NewWrappedToken` events and fetches the `totalSupply` of each wrapped token at `targetBlock`. Also computes the unlocked native token balance and checks for WETH.
+#### Target block resolution
+
+The `targetBlock` config field accepts a finality keyword, an optional offset, or a concrete block number. Step 0 resolves it to a `uint64` before doing any work:
+
+| `targetBlock` value | How it is resolved |
+| ------------------- | ------------------ |
+| `""` or omitted | Equivalent to `"LatestBlock"` |
+| `"LatestBlock"` | `eth_getBlockByNumber("latest")` on the L2 RPC |
+| `"FinalizedBlock"` | `eth_getBlockByNumber("finalized")` on the L2 RPC |
+| `"SafeBlock"` | `eth_getBlockByNumber("safe")` on the L2 RPC |
+| `"PendingBlock"` | `eth_getBlockByNumber("pending")` on the L2 RPC |
+| `"LatestBlock/-10"` | Latest block number minus 10 |
+| `"21000000"` / `"0x1406f40"` | Used directly, no RPC call needed |
+
+The resolved number is written to `step-0-l2_target_block.json` and used as a fixed reference by all subsequent steps (A, B, G). When running individual steps the file must exist (produced by a prior Step 0 run).
+
+#### LBT generation
+
+After resolution, Step 0 scans the L2 bridge contract for `NewWrappedToken` events and fetches the `totalSupply` of each wrapped token at the resolved block. It also applies any `SetSovereignTokenAddress` overrides (remapped wrapped addresses), computes the unlocked native token balance, and checks for a WETH entry if the chain has a custom gas token.
 
 This step replaces the need for the external [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool.
 
-**Output:** `step-0-lbt.json`
+**Output:** `step-0-l2_target_block.json` (resolved block number), `step-0-lbt.json` (LBT entries)
 
 ### Step A — Collect addresses
 

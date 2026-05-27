@@ -4,7 +4,7 @@
     "l1BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
     "l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
     "l2NetworkId": 20,
-    "targetBlock": "latest",
+    "targetBlock": "LatestBlock",
     "exitAddress": "0x0000000000000000000000000000000000001234",
     "destinationNetwork": 0,
     "signerConfig": {

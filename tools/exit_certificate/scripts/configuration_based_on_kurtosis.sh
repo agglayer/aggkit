@@ -362,7 +362,7 @@ cat > "$OUTPUT_PATH" <<EOF
     "l2BridgeAddress": "$BRIDGE_ADDR",
     "l1BridgeAddress": "$BRIDGE_ADDR",
     "l2NetworkId": $NETWORK_INDEX,
-    "targetBlock": "latest",
+    "targetBlock": "LatestBlock",
     "exitAddress": "$EXIT_ADDRESS",
     "destinationNetwork": 0,
 ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "options": {
@@ -461,3 +461,14 @@ PYEOF
 }
 
 update_vscode_launch
+
+# ---------------------------------------------------------------------------
+# Suggest clearing previous output
+# ---------------------------------------------------------------------------
+
+OUTPUT_KURTOSIS_DIR="$PROJECT_ROOT/tmp/output-kurtosis"
+if [[ -d "$OUTPUT_KURTOSIS_DIR" ]]; then
+    log_warn "Previous output directory exists: $OUTPUT_KURTOSIS_DIR"
+    log_warn "Consider removing it before running the tool to avoid stale intermediate files:"
+    log_warn "  rm -rf \"$OUTPUT_KURTOSIS_DIR\""
+fi

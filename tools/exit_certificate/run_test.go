@@ -45,26 +45,6 @@ func TestParseStepList(t *testing.T) {
 	}
 }
 
-func TestParseBlockNumber_Decimal(t *testing.T) {
-	t.Parallel()
-	n, err := parseBlockNumber("12345")
-	require.NoError(t, err)
-	require.Equal(t, uint64(12345), n)
-}
-
-func TestParseBlockNumber_Hex(t *testing.T) {
-	t.Parallel()
-	n, err := parseBlockNumber("0xff")
-	require.NoError(t, err)
-	require.Equal(t, uint64(255), n)
-}
-
-func TestParseBlockNumber_Invalid(t *testing.T) {
-	t.Parallel()
-	_, err := parseBlockNumber("abc")
-	require.Error(t, err)
-}
-
 func TestSaveAndLoadJSON(t *testing.T) {
 	t.Parallel()
 
