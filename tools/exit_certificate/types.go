@@ -33,6 +33,12 @@ type LegacyToken struct {
 	Balance string         `json:"balance"`
 }
 
+// Step0Result holds the output of Step 0 (LBT generation).
+type Step0Result struct {
+	TargetBlock uint64     `json:"targetBlock"`
+	Entries     []LBTEntry `json:"entries"`
+}
+
 // LBTEntry is a single entry from the Local Balance Tree file exported by the getLBT tool.
 type LBTEntry struct {
 	WrappedTokenAddress common.Address `json:"wrappedTokenAddress"`

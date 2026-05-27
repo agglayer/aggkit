@@ -24,13 +24,13 @@ const (
 
 // RunStepB classifies addresses as EOA vs contract, then collects ETH and wrapped
 // token balances at targetBlock for all EOAs.
-func RunStepB(ctx context.Context, cfg *Config, stepA *StepAResult) (*StepBResult, error) {
+func RunStepB(ctx context.Context, cfg *Config, targetBlock uint64, stepA *StepAResult) (*StepBResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP B — EOA balance checking")
 	log.Info("═══════════════════════════════════════════")
 
 	rpcURL := cfg.L2RPCURL
-	blockTag := toBlockTag(cfg.ResolvedTargetBlock)
+	blockTag := toBlockTag(targetBlock)
 	batchSize := cfg.Options.RPCBatchSize
 	concurrency := cfg.Options.ConcurrencyLimit
 
