@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -208,10 +209,19 @@ func TestTraceTransactions_AbortOnError(t *testing.T) {
 // returning the error — i.e. all remaining transactions in the window were still traced.
 // The fix adds context cancellation so in-flight workers abort as soon as the first
 // failure is detected.
+//
+// The test uses two transactions in a single block window with ConcurrencyLimit=1 so they
+// are dispatched sequentially. The first trace always fails; the second should be cancelled
+// before it is sent, proving that the worker pool stops early rather than tracing everything.
 func TestRunStepA_AbortOnTraceError(t *testing.T) {
 	t.Parallel()
 
-	const txHex = "0x0000000000000000000000000000000000000000000000000000000000001234"
+	const (
+		txHex  = "0x0000000000000000000000000000000000000000000000000000000000001234"
+		txHex2 = "0x0000000000000000000000000000000000000000000000000000000000005678"
+	)
+
+	var traceCalls atomic.Int32
 
 	// The server must handle two call shapes:
 	//   • batch  (body starts with '[') — eth_getBlockByNumber from scanBlockHeaders
@@ -229,14 +239,15 @@ func TestRunStepA_AbortOnTraceError(t *testing.T) {
 				resps[i] = jsonRPCResponse{
 					JSONRPC: "2.0",
 					ID:      req.ID,
-					Result:  json.RawMessage(`{"transactions":["` + txHex + `"]}`),
+					Result:  json.RawMessage(`{"transactions":["` + txHex + `","` + txHex2 + `"]}`),
 				}
 			}
 			require.NoError(t, json.NewEncoder(w).Encode(resps))
 			return
 		}
 
-		// Single request: always fail the trace.
+		// Single request: count and always fail the trace.
+		traceCalls.Add(1)
 		require.NoError(t, json.NewEncoder(w).Encode(jsonRPCResponse{
 			JSONRPC: "2.0",
 			ID:      1,
@@ -260,6 +271,8 @@ func TestRunStepA_AbortOnTraceError(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "trace transactions")
 	require.ErrorContains(t, err, "trace not available")
+	// With abort-on-first-failure the second tx must not be traced.
+	require.Less(t, traceCalls.Load(), int32(2), "worker pool must abort after the first trace failure")
 }
 
 func TestHexToUint64(t *testing.T) {

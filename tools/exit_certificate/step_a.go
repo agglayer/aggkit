@@ -15,7 +15,7 @@ import (
 
 // RunStepA collects all touched addresses from genesis to targetBlock using
 // debug_traceTransaction with prestateTracer + diffMode.
-// Blocks are scanned in windows of Options.BlockRange to bound peak memory usage:
+// Blocks are scanned in windows of Options.StepAWindowSize to bound peak memory usage:
 // at most one window of block headers and their tx hashes are in memory at a time.
 func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResult, error) {
 	log.Info("═══════════════════════════════════════════")

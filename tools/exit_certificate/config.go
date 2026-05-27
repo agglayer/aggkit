@@ -18,7 +18,7 @@ import (
 type Options struct {
 	BlockRange int `json:"blockRange"`
 	// StepAWindowSize is the number of blocks loaded into memory at once during Step A
-	// (address collection via debug_traceTransaction). Defaults to BlockRange.
+	// (address collection via debug_traceTransaction). Defaults to 5000, independently of BlockRange.
 	// Tune independently when trace calls need a different chunk size than log queries.
 	StepAWindowSize  int    `json:"stepAWindowSize"`
 	ConcurrencyLimit int    `json:"concurrencyLimit"`
