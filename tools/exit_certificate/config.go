@@ -9,6 +9,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -54,23 +55,20 @@ type Options struct {
 
 // Config holds all parameters required by the exit certificate tool.
 type Config struct {
-	L2RPCURL            string         `json:"l2RpcUrl"`
-	L1RPCURL            string         `json:"l1RpcUrl"`
-	L2BridgeAddress     common.Address `json:"l2BridgeAddress"`
-	L1BridgeAddress     common.Address `json:"l1BridgeAddress"`
-	L2NetworkID         uint32         `json:"l2NetworkId"`
-	TargetBlock         string         `json:"targetBlock"`
-	ExitAddress         common.Address `json:"exitAddress"`
-	DestinationNetwork  uint32         `json:"destinationNetwork"`
-	SovereignRollupAddr common.Address `json:"sovereignRollupAddr"`
+	L2RPCURL            string                          `json:"l2RpcUrl"`
+	L1RPCURL            string                          `json:"l1RpcUrl"`
+	L2BridgeAddress     common.Address                  `json:"l2BridgeAddress"`
+	L1BridgeAddress     common.Address                  `json:"l1BridgeAddress"`
+	L2NetworkID         uint32                          `json:"l2NetworkId"`
+	TargetBlock         aggkittypes.BlockNumberFinality `json:"targetBlock"`
+	ExitAddress         common.Address                  `json:"exitAddress"`
+	DestinationNetwork  uint32                          `json:"destinationNetwork"`
+	SovereignRollupAddr common.Address                  `json:"sovereignRollupAddr"`
 	// L1GlobalExitRootAddress is the address of the PolygonZkEVMGlobalExitRootV2 contract on L1.
 	// Required for Step I to fetch the L1InfoTreeLeafCount from UpdateL1InfoTreeV2 events.
 	L1GlobalExitRootAddress common.Address           `json:"l1GlobalExitRootAddress"`
 	Options                 Options                  `json:"options"`
 	SignerConfig            signertypes.SignerConfig `json:"-"`
-
-	// ResolvedTargetBlock is populated at runtime after resolving "latest".
-	ResolvedTargetBlock uint64 `json:"-"`
 }
 
 const (
@@ -111,6 +109,11 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	configDir := filepath.Dir(configPath)
 
+	targetBlock, err := parseTargetBlock(raw.TargetBlock)
+	if err != nil {
+		return nil, fmt.Errorf("invalid targetBlock %q: %w", raw.TargetBlock, err)
+	}
+
 	cfg := &Config{
 		L2RPCURL:                raw.L2RPCURL,
 		L1RPCURL:                raw.L1RPCURL,
@@ -118,7 +121,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		L2NetworkID:             raw.L2NetworkID,
 		ExitAddress:             common.HexToAddress(raw.ExitAddress),
 		DestinationNetwork:      raw.DestinationNetwork,
-		TargetBlock:             raw.TargetBlock,
+		TargetBlock:             targetBlock,
 		SovereignRollupAddr:     common.HexToAddress(raw.SovereignRollupAddr),
 		L1GlobalExitRootAddress: common.HexToAddress(raw.L1GlobalExitRootAddress),
 	}
@@ -143,6 +146,19 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// parseTargetBlock converts the raw JSON string to a BlockNumberFinality.
+// An empty value resolves to LatestBlock; any other invalid value returns an error.
+func parseTargetBlock(s string) (aggkittypes.BlockNumberFinality, error) {
+	if s == "" {
+		return aggkittypes.LatestBlock, nil
+	}
+	tb, err := aggkittypes.NewBlockNumberFinality(s)
+	if err != nil {
+		return aggkittypes.LatestBlock, err
+	}
+	return *tb, nil
 }
 
 // parseSignerConfig converts the flat JSON signer config into a SignerConfig.
