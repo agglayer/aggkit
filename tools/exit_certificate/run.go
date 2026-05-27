@@ -375,7 +375,7 @@ func logPipelineConfig(cfg *Config) {
 		log.Info("L1 RPC:           (not configured — step E will be skipped)")
 	}
 	log.Infof("L2 Bridge:        %s", cfg.L2BridgeAddress.Hex())
-	log.Infof("Target Block:     %s", cfg.TargetBlock)
+	log.Infof("Target Block:     %s", cfg.TargetBlock.String())
 	log.Infof("L2 Network ID:    %d", cfg.L2NetworkID)
 	log.Infof("Exit Address:     %s", cfg.ExitAddress.Hex())
 	log.Infof("Dest Network:     %d", cfg.DestinationNetwork)

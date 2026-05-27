@@ -22,6 +22,10 @@ func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResul
 	log.Info(" STEP A — Collect addresses (prestateTracer)")
 	log.Info("═══════════════════════════════════════════")
 
+	if targetBlock < cfg.Options.L2StartBlock {
+		return nil, fmt.Errorf("targetBlock %d is before l2StartBlock %d", targetBlock, cfg.Options.L2StartBlock)
+	}
+
 	windowSize := uint64(cfg.Options.BlockRange)
 	totalBlocks := targetBlock - cfg.Options.L2StartBlock + 1
 	log.Infof("Scanning %d blocks in windows of %d (L2 %d → %d)...",
