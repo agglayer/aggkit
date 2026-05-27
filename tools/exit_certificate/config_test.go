@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +68,7 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://localhost:8545", cfg.L2RPCURL)
 	require.Equal(t, common.HexToAddress("0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"), cfg.L2BridgeAddress)
-	require.Equal(t, "100", cfg.TargetBlock)
+	require.Equal(t, *aggkittypes.NewBlockNumber(100), cfg.TargetBlock)
 	require.Equal(t, uint32(1), cfg.L2NetworkID)
 	require.Equal(t, cfg.L2BridgeAddress, cfg.L1BridgeAddress)
 }
@@ -82,7 +83,7 @@ func TestLoadConfig_FullConfig(t *testing.T) {
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
 		"l1BridgeAddress": "0x1111111111111111111111111111111111111111",
 		"l2NetworkId": 5,
-		"targetBlock": "latest",
+		"targetBlock": "LatestBlock",
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"destinationNetwork": 0,
 		"options": {
@@ -100,7 +101,7 @@ func TestLoadConfig_FullConfig(t *testing.T) {
 	require.Equal(t, "http://l2:8545", cfg.L2RPCURL)
 	require.Equal(t, "http://l1:8545", cfg.L1RPCURL)
 	require.Equal(t, uint32(5), cfg.L2NetworkID)
-	require.Equal(t, "latest", cfg.TargetBlock)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.TargetBlock)
 	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), cfg.ExitAddress)
 	require.Equal(t, common.HexToAddress("0x1111111111111111111111111111111111111111"), cfg.L1BridgeAddress)
 	require.Equal(t, 10000, cfg.Options.BlockRange)
@@ -311,6 +312,89 @@ func TestMergeOptions_BridgeService(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://bridge:8080", cfg.Options.BridgeServiceURL)
 	require.Equal(t, "zkevm", cfg.Options.BridgeServiceType)
+}
+
+func TestParseTargetBlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		input        string
+		wantErr      bool
+		wantBlock    string
+		wantSpecific uint64
+	}{
+		{
+			name:      "empty defaults to latest",
+			input:     "",
+			wantBlock: "LatestBlock",
+		},
+		{
+			name:      "LatestBlock tag",
+			input:     "LatestBlock",
+			wantBlock: "LatestBlock",
+		},
+		{
+			name:      "FinalizedBlock tag",
+			input:     "FinalizedBlock",
+			wantBlock: "FinalizedBlock",
+		},
+		{
+			name:         "numeric block",
+			input:        "12345",
+			wantSpecific: 12345,
+		},
+		{
+			name:    "typo FinalizedBock returns error",
+			input:   "FinalizedBock",
+			wantErr: true,
+		},
+		{
+			name:    "hex garbage returns error",
+			input:   "0xZZ",
+			wantErr: true,
+		},
+		{
+			name:    "random string returns error",
+			input:   "notablock",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := parseTargetBlock(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tc.wantBlock != "" {
+				require.Equal(t, tc.wantBlock, result.Block.String())
+			}
+			if tc.wantSpecific != 0 {
+				require.Equal(t, tc.wantSpecific, result.Specific)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_InvalidTargetBlock(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "FinalizedBock"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid targetBlock")
+	require.Contains(t, err.Error(), "FinalizedBock")
 }
 
 func TestLoadLBTEntries_ValidFile(t *testing.T) {

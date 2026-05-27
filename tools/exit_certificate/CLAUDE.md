@@ -63,8 +63,8 @@ All checks run regardless of individual failures. A combined error lists every f
 ### Step 0 — Generate LBT
 
 - **Trigger:** always runs as part of the full pipeline.
-- **Does:** scans L2 bridge `NewWrappedToken` events, fetches `totalSupply` per token at `targetBlock`, computes unlocked native balance.
-- **Output:** `step-0-lbt.json` (`[]LBTEntry`)
+- **Does:** first resolves `targetBlock` (finality keyword, optional offset, or concrete number) to a `uint64` via an RPC call when needed; then scans L2 bridge `NewWrappedToken` events, fetches `totalSupply` per token at the resolved block, computes unlocked native balance.
+- **Output:** `step-0-l2_target_block.json` (resolved block number as `uint64`), `step-0-lbt.json` (`[]LBTEntry`)
 
 ### Step A — Collect addresses
 
@@ -217,6 +217,8 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 ## Config fields (`config.go`)
 
 Required: `l2RpcUrl`, `l2BridgeAddress`, `targetBlock`.
+
+`targetBlock` accepts: a finality keyword (`LatestBlock`, `FinalizedBlock`, `SafeBlock`, `PendingBlock`), an optional negative offset appended with `/` (e.g. `LatestBlock/-10`), a decimal block number (`"21000000"`), or a hex block number (`"0x1406f40"`). An empty string defaults to `LatestBlock`. The keyword is resolved to a concrete `uint64` at the start of Step 0 and written to `step-0-l2_target_block.json`; all subsequent steps (A, B, G) read that fixed number. The old lowercase aliases (`latest`, `finalized`, `safe`, `pending`) are **not** accepted — use the PascalCase keywords.
 
 Notable optional fields:
 
