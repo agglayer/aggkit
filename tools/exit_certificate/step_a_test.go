@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testAddr1 = "0x1000000000000000000000000000000000000001"
+
 // newTraceServer returns a test server that responds to debug_traceTransaction.
 // The handler receives the tx hash (from params[0]) and returns the result/error
 // provided by the given responder function.
@@ -34,7 +36,7 @@ func newTraceServer(t *testing.T, responder func(txHex string) jsonRPCResponse) 
 func TestTraceOneTransaction_Success(t *testing.T) {
 	t.Parallel()
 
-	addr1 := "0x1000000000000000000000000000000000000001"
+	addr1 := testAddr1
 	addr2 := "0x2000000000000000000000000000000000000002"
 	addr3 := "0x3000000000000000000000000000000000000003"
 
@@ -64,7 +66,7 @@ func TestTraceOneTransaction_Success(t *testing.T) {
 func TestTraceOneTransaction_DeduplicatesPreAndPost(t *testing.T) {
 	t.Parallel()
 
-	addr := "0x1000000000000000000000000000000000000001"
+	addr := testAddr1
 
 	server := newTraceServer(t, func(_ string) jsonRPCResponse {
 		return jsonRPCResponse{
@@ -149,7 +151,7 @@ func TestTraceTransactions_ContinueOnError_CollectsFailed(t *testing.T) {
 
 	goodHash := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000001111")
 	badHash := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000002222")
-	addrGood := "0x1000000000000000000000000000000000000001"
+	addrGood := testAddr1
 
 	server := newTraceServer(t, func(txHex string) jsonRPCResponse {
 		if txHex == goodHash.Hex() {
