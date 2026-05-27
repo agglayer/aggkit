@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonrollupmanagerpessimistic"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -184,6 +185,8 @@ func checkContractPrereqs(
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
 		result.NetworkType = "unknown"
+		log.Info("   (AGGCHAINTYPE unavailable — contract may be pre-aggchainbase; attempting legacy rollup manager diagnostics)")
+		logLegacyRollupInfo(ctx, caller, cfg.SovereignRollupAddr, l1Client)
 	} else if aggchainType == aggchainTypePP {
 		result.NetworkType = "PP"
 		log.Info("✅ network type is Pessimistic Proof (PP) — supported")
@@ -256,4 +259,53 @@ func checkContractPrereqs(
 	} else {
 		log.Infof("   RollupManager address: %s", rollupManager.Hex())
 	}
+}
+
+// logLegacyRollupInfo gathers rollup manager diagnostics when AGGCHAINTYPE is unavailable
+// (pre-aggchainbase contracts). It does not modify check results or failures — it only logs.
+func logLegacyRollupInfo(
+	ctx context.Context,
+	caller *aggchainbase.AggchainbaseCaller,
+	sovereignRollupAddr common.Address,
+	l1Client *ethclient.Client,
+) {
+	callOpts := &bind.CallOpts{Context: ctx}
+
+	rollupManagerAddr, err := caller.RollupManager(callOpts)
+	if err != nil {
+		log.Infof("   (legacy diagnostics) RollupManager() failed: %v", err)
+		return
+	}
+	log.Infof("   (legacy diagnostics) RollupManager: %s", rollupManagerAddr.Hex())
+
+	rmCaller, err := polygonrollupmanagerpessimistic.NewPolygonrollupmanagerpessimisticCaller(rollupManagerAddr, l1Client)
+	if err != nil {
+		log.Infof("   (legacy diagnostics) create rollup manager caller: %v", err)
+		return
+	}
+
+	rollupID, err := rmCaller.RollupAddressToID(callOpts, sovereignRollupAddr)
+	if err != nil {
+		log.Infof("   (legacy diagnostics) RollupAddressToID(%s): %v", sovereignRollupAddr.Hex(), err)
+		return
+	}
+	log.Infof("   (legacy diagnostics) rollupID: %d", rollupID)
+
+	rollupData, err := rmCaller.RollupIDToRollupData(callOpts, rollupID)
+	if err != nil {
+		log.Infof("   (legacy diagnostics) RollupIDToRollupData(%d): %v", rollupID, err)
+		return
+	}
+	log.Infof("   (legacy diagnostics) rollupTypeID: %d  chainID: %d  forkID: %d  rollupVerifierType: %d",
+		rollupData.RollupTypeID, rollupData.ChainID, rollupData.ForkID, rollupData.RollupVerifierType)
+
+	typeInfo, err := rmCaller.RollupTypeMap(callOpts, uint32(rollupData.RollupTypeID))
+	if err != nil {
+		log.Infof("   (legacy diagnostics) RollupTypeMap(%d): %v", rollupData.RollupTypeID, err)
+		return
+	}
+	log.Infof("   (legacy diagnostics) rollupType: consensusImpl=%s  verifier=%s  forkID=%d  verifierType=%d  obsolete=%v",
+		typeInfo.ConsensusImplementation.Hex(), typeInfo.Verifier.Hex(), typeInfo.ForkID, typeInfo.RollupVerifierType, typeInfo.Obsolete)
+	log.Infof("   (legacy diagnostics) rollupType: genesis=%x  programVKey=%x",
+		typeInfo.Genesis, typeInfo.ProgramVKey)
 }
