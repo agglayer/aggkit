@@ -651,7 +651,7 @@ func fetchL1BridgeEvents(
 	var allDeposits []L1Deposit
 
 	err := runWorkerPool(
-		jobs, concurrency,
+		ctx, jobs, concurrency,
 		func(j blockRangeJob) ([]L1Deposit, error) {
 			return fetchBridgeEventsInRange(
 				ctx, cfg.L1RPCURL, cfg.L1BridgeAddress, cfg.L2NetworkID, j.from, j.to,
