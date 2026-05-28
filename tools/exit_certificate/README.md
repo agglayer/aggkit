@@ -69,7 +69,8 @@ cp parameters.json.example parameters.json
 
 | Field | Default | Description |
 | :---: | :-----: | :---------: |
-| `blockRange` | `5000` | Block range per `eth_getLogs` query. |
+| `blockRange` | `5000` | Block range per `eth_getLogs` query (Steps 0, B, E). |
+| `stepAWindowSize` | `5000` | Number of blocks loaded into memory per iteration in Step A (address collection via `debug_traceTransaction`). Set independently when trace calls need a different chunk size than log queries. |
 | `concurrencyLimit` | `20` | Max concurrent RPC requests. |
 | `rpcBatchSize` | `200` | Max calls per JSON-RPC batch request. |
 | `rpcDelayMs` | `0` | Delay between RPC batches (rate limiting). |

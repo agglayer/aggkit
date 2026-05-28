@@ -167,9 +167,17 @@ func TestSingleRPC_RPCError(t *testing.T) {
 }
 
 func TestSleepWithBackoff(t *testing.T) {
-	// sleepWithBackoff is a void function; just verify it doesn't panic
-	// The actual delay values are tested via the formula: min(1000 * 2^attempt, 10000) ms
-	require.NotPanics(t, func() { sleepWithBackoff(0) })
+	require.NotPanics(t, func() { sleepWithBackoff(context.Background(), 0) })
+}
+
+func TestSleepWithBackoff_ContextCancelled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before the call
+
+	start := time.Now()
+	sleepWithBackoff(ctx, 1) // attempt 1 → 2000 ms without context awareness
+	require.Less(t, time.Since(start), 100*time.Millisecond, "sleepWithBackoff must return immediately when context is cancelled")
 }
 
 func TestSingleRPCAuth_SendsBearerToken(t *testing.T) {

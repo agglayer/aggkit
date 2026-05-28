@@ -15,6 +15,7 @@
     },
     "options": {
         "blockRange": 10000,
+        "stepAWindowSize": 10000,
         "concurrencyLimit": 10,
         "rpcBatchSize": 99,
         "rpcDelayMs": 10,
