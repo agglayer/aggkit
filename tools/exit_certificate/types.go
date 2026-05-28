@@ -89,11 +89,16 @@ type FailedTrace struct {
 	Error string      `json:"error"`
 }
 
-// StepAResult holds the output of Step A.
+// StepAResult holds the combined output of Step A (A1 + A2).
 type StepAResult struct {
 	Addresses     []common.Address `json:"addresses"`
 	FailedTraces  []FailedTrace    `json:"failedTraces"`
 	WrappedTokens []WrappedToken   `json:"-"`
+}
+
+// StepA2Result holds addresses recovered from tx receipts of failed traces (Step A2).
+type StepA2Result struct {
+	Addresses []common.Address `json:"addresses"`
 }
 
 // StepBResult holds the output of Step B.

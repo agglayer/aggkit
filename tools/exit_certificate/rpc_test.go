@@ -45,7 +45,8 @@ func TestBatchRPC_Success(t *testing.T) {
 }
 
 func TestBatchRPC_RPCError(t *testing.T) {
-	// Single-call batch where the response is an RPC error: batchRPC propagates it as an error.
+	// Single-call batch where the node always returns a per-item RPC error.
+	// batchRPC exhausts retries and returns an error.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		responses := []jsonRPCResponse{
 			{JSONRPC: "2.0", ID: 1, Error: &jsonRPCError{Code: -32000, Message: "not found"}},
@@ -62,18 +63,22 @@ func TestBatchRPC_RPCError(t *testing.T) {
 
 	_, err := batchRPC(ctx, server.URL, calls, 1)
 	require.Error(t, err)
-	var rpcErr *RPCExecutionError
-	require.ErrorAs(t, err, &rpcErr)
-	require.Equal(t, -32000, rpcErr.Code)
-	require.Contains(t, rpcErr.Message, "not found")
+	require.Contains(t, err.Error(), "1/1 calls still failing")
 }
 
 func TestBatchRPC_MultipleCallsOneError(t *testing.T) {
-	// Two-call batch: first succeeds, second has an RPC error → nil at that index, no error returned.
+	// Two-call batch where the second call always returns a per-item RPC error.
+	// batchRPC exhausts retries and returns an error — no nil slots are silently accepted.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		responses := []jsonRPCResponse{
-			{JSONRPC: "2.0", ID: 1, Result: json.RawMessage(`"0x1"`)},
-			{JSONRPC: "2.0", ID: 2, Error: &jsonRPCError{Code: -32000, Message: "not found"}},
+		var requests []jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&requests))
+		responses := make([]jsonRPCResponse, len(requests))
+		for i, req := range requests {
+			if req.Method == "eth_getBlockByNumber" {
+				responses[i] = jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: &jsonRPCError{Code: -32000, Message: "not found"}}
+			} else {
+				responses[i] = jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: json.RawMessage(`"0x1"`)}
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		require.NoError(t, json.NewEncoder(w).Encode(responses))
@@ -86,11 +91,44 @@ func TestBatchRPC_MultipleCallsOneError(t *testing.T) {
 		{Method: "eth_getBlockByNumber", Params: []any{"0x999", false}},
 	}
 
-	results, err := batchRPC(ctx, server.URL, calls, 1)
+	_, err := batchRPC(ctx, server.URL, calls, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "1/2 calls still failing")
+}
+
+func TestBatchRPC_RetriesFailedItems(t *testing.T) {
+	// Two-call batch: both fail on attempt 1, both succeed on attempt 2.
+	// batchRPC must retry only the failed items and return complete results with no error.
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var requests []jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&requests))
+		callCount++
+		responses := make([]jsonRPCResponse, len(requests))
+		for i, req := range requests {
+			if callCount == 1 {
+				responses[i] = jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: &jsonRPCError{Code: -32000, Message: "overloaded"}}
+			} else {
+				responses[i] = jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: json.RawMessage(`"0x1"`)}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(responses))
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	calls := []RPCCall{
+		{Method: "eth_getBalance", Params: nil},
+		{Method: "eth_getBalance", Params: nil},
+	}
+
+	results, err := batchRPC(ctx, server.URL, calls, 2)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	require.NotNil(t, results[0])
-	require.Nil(t, results[1])
+	require.NotNil(t, results[1])
+	require.Equal(t, 2, callCount)
 }
 
 func TestBatchRPC_HTTPError(t *testing.T) {
