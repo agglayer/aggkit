@@ -78,47 +78,92 @@ type RPCCall struct {
 }
 
 // batchRPC sends a batch of JSON-RPC calls in a single HTTP POST.
-// Returns ordered results; individual RPC errors are logged and become nil entries.
-// Returns an error if any individual response contained an RPC-level error.
+// Returns ordered results matching the input calls slice. Per-item RPC errors are retried
+// up to retries times. Returns an error if any call still fails after all retries.
 func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]json.RawMessage, error) {
 	if retries <= 0 {
 		retries = defaultRetries
 	}
 
-	requests := make([]jsonRPCRequest, len(calls))
-	for i, c := range calls {
-		requests[i] = jsonRPCRequest{JSONRPC: "2.0", Method: c.Method, Params: c.Params, ID: i + 1}
-	}
-
-	body, err := json.Marshal(requests)
-	if err != nil {
-		return nil, fmt.Errorf("marshal batch request: %w", err)
-	}
-
-	responses, err := doRPCWithRetry(ctx, url, body, retries, "")
-	if err != nil {
-		return nil, err
-	}
-	if len(responses) == 1 && responses[0].Error != nil {
-		e := responses[0].Error
-		return nil, &RPCExecutionError{Code: e.Code, Message: e.Message, Data: e.Data}
-	}
-	if len(responses) != len(calls) {
-		return nil, fmt.Errorf("RPC response count %d does not match request count %d", len(responses), len(calls))
-	}
-
 	results := make([]json.RawMessage, len(calls))
-	for _, r := range responses {
-		idx := r.ID - 1
-		if idx < 0 || idx >= len(results) {
-			continue
-		}
-		if r.Error != nil {
-			log.Warnf("RPC error for request id=%d: [%d] %s", r.ID, r.Error.Code, r.Error.Message)
-			continue
-		}
-		results[idx] = r.Result
+	pendingIdxs := make([]int, len(calls))
+	for i := range pendingIdxs {
+		pendingIdxs[i] = i
 	}
+
+	for attempt := 1; attempt <= retries && len(pendingIdxs) > 0; attempt++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if attempt > 1 {
+			log.Warnf("batchRPC: retrying %d/%d failed calls (attempt %d/%d)",
+				len(pendingIdxs), len(calls), attempt, retries)
+			sleepWithBackoff(ctx, attempt-1)
+		}
+
+		subCalls := make([]RPCCall, len(pendingIdxs))
+		for i, origIdx := range pendingIdxs {
+			subCalls[i] = calls[origIdx]
+		}
+
+		requests := make([]jsonRPCRequest, len(subCalls))
+		for i, c := range subCalls {
+			requests[i] = jsonRPCRequest{JSONRPC: "2.0", Method: c.Method, Params: c.Params, ID: i + 1}
+		}
+
+		body, err := json.Marshal(requests)
+		if err != nil {
+			return nil, fmt.Errorf("marshal batch request: %w", err)
+		}
+
+		responses, err := doRPCWithRetry(ctx, url, body, 1, "")
+		if err != nil {
+			if attempt == retries {
+				return nil, err
+			}
+			log.Warnf("batchRPC attempt %d/%d HTTP error: %v", attempt, retries, err)
+			continue
+		}
+
+		// Whole-batch rejection: node returned a single error object for multiple pending calls.
+		if len(responses) == 1 && responses[0].Error != nil && len(subCalls) > 1 {
+			e := responses[0].Error
+			if attempt == retries {
+				return nil, &RPCExecutionError{Code: e.Code, Message: e.Message, Data: e.Data}
+			}
+			log.Warnf("batchRPC attempt %d/%d: node rejected batch of %d calls [%d] %s — retrying",
+				attempt, retries, len(subCalls), e.Code, e.Message)
+			continue
+		}
+
+		if len(responses) != len(subCalls) {
+			return nil, fmt.Errorf("RPC response count %d does not match request count %d",
+				len(responses), len(subCalls))
+		}
+
+		var nextPending []int
+		for _, r := range responses {
+			localIdx := r.ID - 1
+			if localIdx < 0 || localIdx >= len(pendingIdxs) {
+				continue
+			}
+			origIdx := pendingIdxs[localIdx]
+			if r.Error != nil {
+				log.Warnf("RPC error for %s id=%d (attempt %d/%d): [%d] %s",
+					calls[origIdx].Method, origIdx+1, attempt, retries, r.Error.Code, r.Error.Message)
+				nextPending = append(nextPending, origIdx)
+				continue
+			}
+			results[origIdx] = r.Result
+		}
+		pendingIdxs = nextPending
+	}
+
+	if len(pendingIdxs) > 0 {
+		return nil, fmt.Errorf("batchRPC: %d/%d calls still failing after %d attempts",
+			len(pendingIdxs), len(calls), retries)
+	}
+
 	return results, nil
 }
 

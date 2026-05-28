@@ -29,6 +29,10 @@ func TestParseStepList(t *testing.T) {
 		{"reversed range error", "i-f", nil, true},
 		{"unknown from step", "z-i", nil, true},
 		{"unknown to step", "f-z", nil, true},
+		// Step A alias and sub-step expansion.
+		{"a alias expands to a1 a2", "a", []string{"a1", "a2"}, false},
+		{"a-b expands a to a1 a2 then b", "a-b", []string{"a1", "a2", "b"}, false},
+		{"a2-b range", "a2-b", []string{"a2", "b"}, false},
 	}
 
 	for _, tc := range tests {
