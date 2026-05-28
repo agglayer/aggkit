@@ -185,7 +185,8 @@ func checkContractPrereqs(
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
 		result.NetworkType = "unknown"
-		log.Info("   (AGGCHAINTYPE unavailable — contract may be pre-aggchainbase; attempting legacy rollup manager diagnostics)")
+		log.Info("   (AGGCHAINTYPE unavailable — contract may be pre-aggchainbase;" +
+			" attempting legacy rollup manager diagnostics)")
 		logLegacyRollupInfo(ctx, caller, cfg.SovereignRollupAddr, l1Client)
 	} else if aggchainType == aggchainTypePP {
 		result.NetworkType = "PP"
@@ -305,7 +306,8 @@ func logLegacyRollupInfo(
 		return
 	}
 	log.Infof("   (legacy diagnostics) rollupType: consensusImpl=%s  verifier=%s  forkID=%d  verifierType=%d  obsolete=%v",
-		typeInfo.ConsensusImplementation.Hex(), typeInfo.Verifier.Hex(), typeInfo.ForkID, typeInfo.RollupVerifierType, typeInfo.Obsolete)
+		typeInfo.ConsensusImplementation.Hex(), typeInfo.Verifier.Hex(),
+		typeInfo.ForkID, typeInfo.RollupVerifierType, typeInfo.Obsolete)
 	log.Infof("   (legacy diagnostics) rollupType: genesis=%x  programVKey=%x",
 		typeInfo.Genesis, typeInfo.ProgramVKey)
 }
