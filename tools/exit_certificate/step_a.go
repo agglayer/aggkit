@@ -15,7 +15,7 @@ import (
 
 // RunStepA collects all touched addresses from genesis to targetBlock using
 // debug_traceTransaction with prestateTracer + diffMode.
-// Blocks are scanned in windows of Options.BlockRange to bound peak memory usage:
+// Blocks are scanned in windows of Options.StepAWindowSize to bound peak memory usage:
 // at most one window of block headers and their tx hashes are in memory at a time.
 func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResult, error) {
 	log.Info("═══════════════════════════════════════════")
@@ -26,13 +26,13 @@ func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResul
 		return nil, fmt.Errorf("targetBlock %d is before l2StartBlock %d", targetBlock, cfg.Options.L2StartBlock)
 	}
 
-	windowSize := uint64(cfg.Options.BlockRange)
+	windowSize := uint64(cfg.Options.StepAWindowSize)
 	totalBlocks := targetBlock - cfg.Options.L2StartBlock + 1
 	log.Infof("Scanning %d blocks in windows of %d (L2 %d → %d)...",
 		totalBlocks, windowSize, cfg.Options.L2StartBlock, targetBlock)
 
 	finalAddrs := make(map[common.Address]struct{})
-	var allFailed []common.Hash
+	var allFailed []FailedTrace
 	stepStart := time.Now()
 
 	for start := cfg.Options.L2StartBlock; start <= targetBlock; start += windowSize {
@@ -145,26 +145,46 @@ func scanBlockHeaders(
 func traceTransactions(
 	ctx context.Context, rpcURL string,
 	txHashes []common.Hash, concurrency int, continueOnError bool,
-) (addresses []common.Address, failedTraces []common.Hash, err error) {
+) (addresses []common.Address, failedTraces []FailedTrace, err error) {
 	totalTx := len(txHashes)
 	log.Infof("Tracing %d transactions (concurrency=%d)...", totalTx, concurrency)
 
+	// When continueOnError=false we cancel the derived context on the first failure so
+	// in-flight workers abort their HTTP calls immediately instead of tracing every
+	// remaining transaction before the error is returned.
+	traceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	addressSet := make(map[common.Address]struct{})
 	var mu sync.Mutex
-	var failed []common.Hash
+	var failed []FailedTrace
+
+	// firstTraceErr captures the original failure before context.Canceled errors from
+	// aborted workers arrive — ensuring the caller sees a meaningful error message.
+	var firstTraceErr error
 
 	poolErr := runWorkerPool(
-		txHashes, concurrency,
+		traceCtx, txHashes, concurrency,
 		func(hash common.Hash) ([]common.Address, error) {
-			addrs, traceErr := traceOneTransaction(ctx, rpcURL, hash)
-			if traceErr != nil && continueOnError {
+			addrs, traceErr := traceOneTransaction(traceCtx, rpcURL, hash)
+			if traceErr != nil {
+				if continueOnError {
+					mu.Lock()
+					failed = append(failed, FailedTrace{Hash: hash, Error: traceErr.Error()})
+					mu.Unlock()
+					log.Warnf("Trace failed for %s (skipping): %v", hash.Hex(), traceErr)
+					return nil, nil
+				}
+				log.Errorf("Trace failed for %s : %v", hash.Hex(), traceErr)
 				mu.Lock()
-				failed = append(failed, hash)
+				if firstTraceErr == nil {
+					firstTraceErr = traceErr
+				}
 				mu.Unlock()
-				log.Warnf("Trace failed for %s (skipping): %v", hash.Hex(), traceErr)
-				return nil, nil
+				cancel() // abort in-flight workers
+				return addrs, traceErr
 			}
-			return addrs, traceErr
+			return addrs, nil
 		},
 		func(addrs []common.Address) {
 			for _, addr := range addrs {
@@ -174,6 +194,9 @@ func traceTransactions(
 		"Traces",
 	)
 	if poolErr != nil {
+		if firstTraceErr != nil {
+			return nil, nil, fmt.Errorf("trace failures: %w", firstTraceErr)
+		}
 		return nil, nil, fmt.Errorf("trace failures: %w", poolErr)
 	}
 
