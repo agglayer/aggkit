@@ -13,13 +13,34 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// RunStepA collects all touched addresses from genesis to targetBlock using
+// RunStepA runs Step A1 followed by Step A2 and returns the combined result.
+// Step A1 collects touched addresses via debug_traceTransaction (prestateTracer + diffMode).
+// Step A2 recovers additional addresses from tx receipts for any traces that failed in A1.
+func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResult, error) {
+	a1Result, err := RunStepA1(ctx, cfg, targetBlock)
+	if err != nil {
+		return nil, err
+	}
+	a2Result, err := RunStepA2(ctx, cfg, a1Result.FailedTraces)
+	if err != nil {
+		return nil, err
+	}
+	combined := mergeAddresses(a1Result.Addresses, a2Result.Addresses)
+	log.Infof("STEP A complete: %d addresses (A1: %d, A2 new: %d)",
+		len(combined), len(a1Result.Addresses), len(combined)-len(a1Result.Addresses))
+	return &StepAResult{
+		Addresses:    combined,
+		FailedTraces: a1Result.FailedTraces,
+	}, nil
+}
+
+// RunStepA1 collects all touched addresses from genesis to targetBlock using
 // debug_traceTransaction with prestateTracer + diffMode.
 // Blocks are scanned in windows of Options.StepAWindowSize to bound peak memory usage:
 // at most one window of block headers and their tx hashes are in memory at a time.
-func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResult, error) {
+func RunStepA1(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResult, error) {
 	log.Info("═══════════════════════════════════════════")
-	log.Info(" STEP A — Collect addresses (prestateTracer)")
+	log.Info(" STEP A1 — Collect addresses (prestateTracer)")
 	log.Info("═══════════════════════════════════════════")
 
 	if targetBlock < cfg.Options.L2StartBlock {
@@ -78,7 +99,7 @@ func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResul
 	delete(finalAddrs, common.Address{})
 
 	if len(finalAddrs) == 0 && len(allFailed) == 0 {
-		log.Info("STEP A complete: 0 unique addresses (no transactions found)")
+		log.Info("STEP A1 complete: 0 unique addresses (no transactions found)")
 		return &StepAResult{}, nil
 	}
 
@@ -91,11 +112,144 @@ func RunStepA(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResul
 	})
 
 	if len(allFailed) > 0 {
-		log.Warnf("STEP A complete: %d unique addresses (%d trace failures skipped)", len(addresses), len(allFailed))
+		log.Warnf("STEP A1 complete: %d unique addresses (%d trace failures — run step A2 to recover)",
+			len(addresses), len(allFailed))
 	} else {
-		log.Infof("STEP A complete: %d unique addresses", len(addresses))
+		log.Infof("STEP A1 complete: %d unique addresses", len(addresses))
 	}
 	return &StepAResult{Addresses: addresses, FailedTraces: allFailed}, nil
+}
+
+// RunStepA2 recovers addresses from tx receipts for traces that failed in Step A1.
+// For each FailedTrace it calls eth_getTransactionReceipt and extracts all addresses
+// found in the receipt: sender (from), recipient (to), created contract, and log emitters.
+// Failed receipt fetches are logged as warnings and skipped rather than aborting.
+func RunStepA2(ctx context.Context, cfg *Config, failedTraces []FailedTrace) (*StepA2Result, error) {
+	log.Info("═══════════════════════════════════════════")
+	log.Info(" STEP A2 — Recover addresses from tx receipts")
+	log.Info("═══════════════════════════════════════════")
+
+	if len(failedTraces) == 0 {
+		log.Info("STEP A2 complete: no failed traces — nothing to process")
+		return &StepA2Result{}, nil
+	}
+
+	log.Infof("Processing %d failed traces via eth_getTransactionReceipt...", len(failedTraces))
+
+	hashes := make([]common.Hash, len(failedTraces))
+	for i, ft := range failedTraces {
+		hashes[i] = ft.Hash
+	}
+
+	addrSet := make(map[common.Address]struct{})
+
+	err := runWorkerPool(
+		ctx, hashes, cfg.Options.ConcurrencyLimit,
+		func(hash common.Hash) ([]common.Address, error) {
+			addrs, fetchErr := receiptAddresses(ctx, cfg.L2RPCURL, hash)
+			if fetchErr != nil {
+				log.Warnf("STEP A2: receipt failed for %s (skipping): %v", hash.Hex(), fetchErr)
+				return nil, nil
+			}
+			return addrs, nil
+		},
+		func(addrs []common.Address) {
+			for _, addr := range addrs {
+				addrSet[addr] = struct{}{}
+			}
+		},
+		"Receipts",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fetch receipts: %w", err)
+	}
+
+	delete(addrSet, common.Address{})
+
+	addresses := make([]common.Address, 0, len(addrSet))
+	for addr := range addrSet {
+		addresses = append(addresses, addr)
+	}
+	sort.Slice(addresses, func(i, j int) bool {
+		return strings.ToLower(addresses[i].Hex()) < strings.ToLower(addresses[j].Hex())
+	})
+
+	log.Infof("STEP A2 complete: %d addresses recovered from %d failed traces", len(addresses), len(failedTraces))
+	return &StepA2Result{Addresses: addresses}, nil
+}
+
+// receiptAddresses fetches eth_getTransactionReceipt for hash and returns all addresses
+// found in the receipt: sender (from), recipient (to), created contract, and log emitters.
+func receiptAddresses(ctx context.Context, rpcURL string, hash common.Hash) ([]common.Address, error) {
+	result, err := singleRPC(ctx, rpcURL, "eth_getTransactionReceipt", []any{hash.Hex()}, defaultRetries)
+	if err != nil {
+		return nil, fmt.Errorf("receipt %s: %w", hash.Hex(), err)
+	}
+
+	if len(result) == 0 || string(result) == "null" {
+		return nil, fmt.Errorf("receipt for %s is null", hash.Hex())
+	}
+
+	var receipt struct {
+		From            string  `json:"from"`
+		To              *string `json:"to"`
+		ContractAddress *string `json:"contractAddress"`
+		Logs            []struct {
+			Address string `json:"address"`
+		} `json:"logs"`
+	}
+	if err := json.Unmarshal(result, &receipt); err != nil {
+		return nil, fmt.Errorf("unmarshal receipt %s: %w", hash.Hex(), err)
+	}
+
+	addrSet := make(map[common.Address]struct{})
+	addHex := func(s string) {
+		if s == "" || s == "0x" {
+			return
+		}
+		addr := common.HexToAddress(s)
+		if addr != (common.Address{}) {
+			addrSet[addr] = struct{}{}
+		}
+	}
+
+	addHex(receipt.From)
+	if receipt.To != nil {
+		addHex(*receipt.To)
+	}
+	if receipt.ContractAddress != nil {
+		addHex(*receipt.ContractAddress)
+	}
+	for _, l := range receipt.Logs {
+		addHex(l.Address)
+	}
+
+	addresses := make([]common.Address, 0, len(addrSet))
+	for addr := range addrSet {
+		addresses = append(addresses, addr)
+	}
+	return addresses, nil
+}
+
+// mergeAddresses deduplicates and sorts the union of two address slices.
+func mergeAddresses(a, b []common.Address) []common.Address {
+	seen := make(map[common.Address]struct{}, len(a)+len(b))
+	for _, addr := range a {
+		seen[addr] = struct{}{}
+	}
+	for _, addr := range b {
+		seen[addr] = struct{}{}
+	}
+	delete(seen, common.Address{})
+
+	merged := make([]common.Address, 0, len(seen))
+	for addr := range seen {
+		merged = append(merged, addr)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		return strings.ToLower(merged[i].Hex()) < strings.ToLower(merged[j].Hex())
+	})
+	return merged
 }
 
 func scanBlockHeaders(

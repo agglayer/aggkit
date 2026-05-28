@@ -39,6 +39,13 @@ func Run(c *cli.Context) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	if err := os.MkdirAll(cfg.Options.OutputDir, dirPermissions); err != nil {
+		return fmt.Errorf("create output dir: %w", err)
+	}
+	if err := migrateStepAToA1(cfg.Options.OutputDir); err != nil {
+		return err
+	}
+
 	step := c.String("step")
 	if step == "" || step == "all" {
 		return runAll(ctx, cfg)
@@ -57,7 +64,8 @@ func Run(c *cli.Context) error {
 }
 
 // orderedSteps is the canonical pipeline order used for range expansion.
-var orderedSteps = []string{"check", "0", "a", "b", "c", "d", "e", "f", "g", "h", "i", "sign", "submit", "wait"}
+// "a" is an alias for "a1,a2" and is handled in parseStepList; it is not listed here.
+var orderedSteps = []string{"check", "0", "a1", "a2", "b", "c", "d", "e", "f", "g", "h", "i", "sign", "submit", "wait"}
 
 // lastAutoStep is the implicit end for open ranges (X-).
 // "submit" and "wait" must always be specified explicitly.
@@ -67,6 +75,9 @@ const lastAutoStep = "sign"
 // "f-i"  → ["f", "g", "h", "i"]
 // "f-"   → ["f", "g", "h", "i", "sign", "submit", "wait"]
 // "h, i, sign" → ["h", "i", "sign"]
+// "a"    → ["a1", "a2"] (alias for both sub-steps)
+// "a-b"  → ["a1", "a2", "b"] ("a" expands to "a1" as range start)
+// "0-a"  → ["0", "a1", "a2"] ("a" expands to "a2" as range end)
 func parseStepList(raw string) ([]string, error) {
 	var steps []string
 	for _, token := range strings.Split(raw, ",") {
@@ -75,11 +86,22 @@ func parseStepList(raw string) ([]string, error) {
 			continue
 		}
 		if strings.Contains(token, "-") {
-			expanded, err := expandStepRange(token)
+			// Map "a" to "a1" (range start) or "a2" (range end) before expanding.
+			parts := strings.SplitN(token, "-", splitInTwo)
+			from, to := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+			if from == "a" {
+				from = "a1"
+			}
+			if to == "a" {
+				to = "a2"
+			}
+			expanded, err := expandStepRange(from + "-" + to)
 			if err != nil {
 				return nil, err
 			}
 			steps = append(steps, expanded...)
+		} else if token == "a" {
+			steps = append(steps, "a1", "a2")
 		} else {
 			steps = append(steps, token)
 		}
@@ -230,17 +252,33 @@ func runAll(ctx context.Context, cfg *Config) error {
 func runAllStepA(
 	ctx context.Context, cfg *Config, dir string, targetBlock uint64, wrappedTokens []WrappedToken,
 ) (*StepAResult, error) {
-	stepAResult, err := RunStepA(ctx, cfg, targetBlock)
+	a1Result, err := RunStepA1(ctx, cfg, targetBlock)
 	if err != nil {
-		return nil, fmt.Errorf("step A: %w", err)
+		return nil, fmt.Errorf("step A1: %w", err)
 	}
-	saveJSON(dir, "step-a-addresses.json", stepAResult.Addresses)
-	saveJSON(dir, "step-a-failed-traces.json", stepAResult.FailedTraces)
-	stepAResult.WrappedTokens = wrappedTokens
+	saveJSON(dir, "step-a1-addresses.json", a1Result.Addresses)
+	saveJSON(dir, "step-a1-failed-traces.json", a1Result.FailedTraces)
+
+	a2Result, err := RunStepA2(ctx, cfg, a1Result.FailedTraces)
+	if err != nil {
+		return nil, fmt.Errorf("step A2: %w", err)
+	}
+	saveJSON(dir, "step-a2-addresses.json", a2Result.Addresses)
+
+	combined := mergeAddresses(a1Result.Addresses, a2Result.Addresses)
+	log.Infof("STEP A complete: %d addresses (A1: %d, A2 new: %d)",
+		len(combined), len(a1Result.Addresses), len(combined)-len(a1Result.Addresses))
+	saveJSON(dir, "step-a-addresses.json", combined)
+
+	result := &StepAResult{
+		Addresses:     combined,
+		FailedTraces:  a1Result.FailedTraces,
+		WrappedTokens: wrappedTokens,
+	}
 	if len(wrappedTokens) > 0 {
 		log.Infof("Using %d wrapped tokens for balance scanning", len(wrappedTokens))
 	}
-	return stepAResult, nil
+	return result, nil
 }
 
 func runAllStepB(
@@ -411,6 +449,10 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingle0(ctx, cfg, dir)
 	case "a":
 		return runSingleA(ctx, cfg, dir)
+	case "a1":
+		return runSingleA1(ctx, cfg, dir)
+	case "a2":
+		return runSingleA2(ctx, cfg, dir)
 	case "b":
 		return runSingleB(ctx, cfg, dir)
 	case "c":
@@ -434,7 +476,8 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 	case "wait":
 		return runSingleWait(ctx, cfg, dir)
 	default:
-		return fmt.Errorf("unknown step: %s (use check, 0, a, b, c, d, e, f, g, h, i, sign, submit, wait, or all)", step)
+		return fmt.Errorf("unknown step: %s (use check, 0, a, a1, a2, b, c, d, e, f, g, h, i, sign, submit, wait, or all)",
+			step)
 	}
 }
 
@@ -457,18 +500,77 @@ func runSingle0(ctx context.Context, cfg *Config, dir string) error {
 	return nil
 }
 
+// runSingleA runs A1 then A2, producing all four output files.
 func runSingleA(ctx context.Context, cfg *Config, dir string) error {
+	if err := runSingleA1(ctx, cfg, dir); err != nil {
+		return err
+	}
+	return runSingleA2(ctx, cfg, dir)
+}
+
+// runSingleA1 runs Step A1 and writes step-a1-addresses.json and step-a1-failed-traces.json.
+func runSingleA1(ctx context.Context, cfg *Config, dir string) error {
 	targetBlock, err := loadTargetBlock(dir)
 	if err != nil {
 		return err
 	}
-	result, err := RunStepA(ctx, cfg, targetBlock)
+	result, err := RunStepA1(ctx, cfg, targetBlock)
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-a-addresses.json", result.Addresses)
-	saveJSON(dir, "step-a-failed-traces.json", result.FailedTraces)
+	saveJSON(dir, "step-a1-addresses.json", result.Addresses)
+	saveJSON(dir, "step-a1-failed-traces.json", result.FailedTraces)
 	return nil
+}
+
+// runSingleA2 runs Step A2 and writes step-a2-addresses.json and step-a-addresses.json.
+// Legacy step-a-* files are migrated to step-a1-* at startup (see Run), so they will
+// already be in the correct location by the time this function is called.
+func runSingleA2(ctx context.Context, cfg *Config, dir string) error {
+	var failedTraces []FailedTrace
+	if err := loadJSON(dir, "step-a1-failed-traces.json", &failedTraces); err != nil {
+		return fmt.Errorf("load step A1 failed traces (run step a1 first): %w", err)
+	}
+
+	a2Result, err := RunStepA2(ctx, cfg, failedTraces)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-a2-addresses.json", a2Result.Addresses)
+
+	var a1Addresses []common.Address
+	if err := loadJSON(dir, "step-a1-addresses.json", &a1Addresses); err != nil {
+		return fmt.Errorf("load step A1 addresses: %w", err)
+	}
+	combined := mergeAddresses(a1Addresses, a2Result.Addresses)
+	log.Infof("STEP A complete: %d addresses (A1: %d, A2 new: %d)",
+		len(combined), len(a1Addresses), len(combined)-len(a1Addresses))
+	saveJSON(dir, "step-a-addresses.json", combined)
+	return nil
+}
+
+// migrateStepAToA1 renames legacy step-a-* output files to step-a1-* when the A1 files
+// are absent. This allows step A2 to be run after a pipeline that predates the A1/A2 split.
+func migrateStepAToA1(dir string) error {
+	rename := func(oldName, newName string) error {
+		oldPath := filepath.Join(dir, oldName)
+		newPath := filepath.Join(dir, newName)
+		if _, err := os.Stat(newPath); err == nil {
+			return nil // new file already exists — nothing to do
+		}
+		if _, err := os.Stat(oldPath); err != nil {
+			return nil // old file also absent — nothing to do
+		}
+		log.Infof("Migrating %s → %s", oldName, newName)
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("rename %s: %w", oldName, err)
+		}
+		return nil
+	}
+	if err := rename("step-a-addresses.json", "step-a1-addresses.json"); err != nil {
+		return err
+	}
+	return rename("step-a-failed-traces.json", "step-a1-failed-traces.json")
 }
 
 func runSingleB(ctx context.Context, cfg *Config, dir string) error {
