@@ -105,6 +105,10 @@ build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no o
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
 
+.PHONY: test-unit-short
+test-unit-short: ## Runs only the fast unit tests (skips integration tests). Suitable for editor on-save runs.
+	go test -count=1 -short -timeout 2m ./...
+
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
 	go test -v -timeout 30m ./test/e2e/...

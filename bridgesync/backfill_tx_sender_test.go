@@ -1840,6 +1840,9 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 }
 
 func TestBackfillTxnSenderIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	// Skip integration test if no RPC URL is provided
 	rpcURL := os.Getenv("TEST_RPC_URL")
 	if rpcURL == "" {

@@ -257,6 +257,9 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_IteratorCloseError(t
 
 // Test with simulated backend to get real contract behavior
 func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_SimulatedBackend(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
@@ -282,6 +285,9 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_SimulatedBackend(t *
 
 // Test with real contract events to test iterator behavior
 func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithRealEvents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
@@ -310,6 +316,9 @@ func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_WithRealEvents(t *te
 
 // Test the actual iterator behavior by creating a test that exercises the iterator loop
 func TestAgglayerBridgeL2Reader_GetUnsetClaimsForBlockRange_IteratorBehavior(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	bridgeAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 

@@ -70,6 +70,9 @@ func newSimulatedClient(t *testing.T) (
 }
 
 func TestE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := t.Context()
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestE2E.sqlite")
 
@@ -163,6 +166,9 @@ func TestE2E(t *testing.T) {
 }
 
 func TestWithReorgs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	t.Parallel()
 	tests := []struct {
 		name                      string
@@ -399,6 +405,9 @@ func showLeafs(t *testing.T, ctx context.Context, syncer *l1infotreesync.L1InfoT
 }
 
 func TestStressAndReorgs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	t.Skip("Skipping E2E test, this test is works locally but fails in CI")
 	const (
 		totalIterations       = 3

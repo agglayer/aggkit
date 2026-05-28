@@ -13,6 +13,9 @@ import (
 )
 
 func TestStartProfilingHttpServer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	// Mock configuration
 	config := Config{
 		ProfilingHost: "127.0.0.1",

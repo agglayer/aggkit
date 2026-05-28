@@ -13,6 +13,9 @@ import (
 )
 
 func TestEVM_GERInjection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	tests := []struct {
 		name                     string
 		enableAggOracleCommittee bool
@@ -72,6 +75,9 @@ func TestEVM_GERInjection(t *testing.T) {
 }
 
 func TestEVM_AggOracleCommitteeModeWithQuorum3(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	cfg := helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract)
 	cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee = true
 	cfg.AggOracleCommitteeCfg.Quorum = 3

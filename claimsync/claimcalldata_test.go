@@ -26,6 +26,9 @@ type testCase struct {
 }
 
 func TestClaimCalldata(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	testCases := make([]testCase, 0, 46)
 
 	ctx, cancelFn := context.WithCancel(context.Background())
