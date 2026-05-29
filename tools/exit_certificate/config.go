@@ -47,6 +47,10 @@ type Options struct {
 	// IgnoreUnclaimed skips adding unclaimed L1→L2 deposits to the certificate in Step E.
 	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
 	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
+	// ExtraERC20Contracts is an optional list of ERC-20 contract addresses whose token holders
+	// are decomposed in Step B3. Each contract is queried with balanceOf for every EOA address
+	// collected in Step A.
+	ExtraERC20Contracts []common.Address `json:"extraErc20Contracts,omitempty"`
 	// BridgeServiceURL is the base URL of the bridge service REST API.
 	// When set, Step E queries the bridge service for pending bridges targeting this L2 and returns an
 	// error if any unclaimed deposits are found.
@@ -77,7 +81,7 @@ type Config struct {
 
 const (
 	defaultBlockRange       = 5000
-	defaultStepAWindowSize  = 5000
+	defaultStepAWindowSize  = 150000
 	defaultConcurrencyLimit = 20
 	defaultRPCBatchSize     = 200
 )
@@ -279,6 +283,13 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.IgnoreUnclaimed != nil {
 		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
 	}
+	if len(raw.ExtraERC20Contracts) > 0 {
+		addrs := make([]common.Address, 0, len(raw.ExtraERC20Contracts))
+		for _, s := range raw.ExtraERC20Contracts {
+			addrs = append(addrs, common.HexToAddress(s))
+		}
+		opts.ExtraERC20Contracts = addrs
+	}
 	if raw.BridgeServiceURL != "" {
 		opts.BridgeServiceURL = raw.BridgeServiceURL
 	}
@@ -319,7 +330,8 @@ type rawOpts struct {
 	AbortOnGenesisBalance     *bool                  `json:"abortOnGenesisBalance"`
 	ContinueOnTraceError      *bool                  `json:"continueOnTraceError"`
 	ContinueIfBalanceMismatch *bool                  `json:"continueIfBalanceMismatch"`
-	IgnoreUnclaimed           *bool                  `json:"ignoreUnclaimed"`
+	IgnoreUnclaimed     *bool    `json:"ignoreUnclaimed"`
+	ExtraERC20Contracts []string `json:"extraErc20Contracts"`
 	BridgeServiceURL          string                 `json:"bridgeServiceURL"`
 	BridgeServiceType         string                 `json:"bridgeServiceType"`
 }
