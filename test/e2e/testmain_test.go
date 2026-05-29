@@ -28,9 +28,17 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	// Select the env to run via E2E_ENV (defaults to op-pp when unset/empty) so an env
+	// with no migrated tests yet still boots + sanity-checks. Unknown values fail fast
+	// with the list of valid env names.
+	envName, err := envs.ParseENVName(os.Getenv("E2E_ENV"))
+	if err != nil {
+		log.Fatalf("invalid E2E_ENV: %v", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 
-	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
+	env, err := envs.LoadEnv(ctx, envName)
 	if err != nil {
 		cancel()
 		log.Fatalf("failed to load env: %v", err)
@@ -47,8 +55,14 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	// Post-test bridge health-check
-	if code == 0 {
+	// Post-test bridge health-check. The flow mints/approves a MintableERC20 on L2, which
+	// the loader only auto-deploys for native-gas envs. On custom-gas / cdk-erigon envs
+	// (Capabilities.NativeGas == false) MintableERC20 is nil, so skip the ERC20 bridge flow
+	// to avoid a nil panic; such envs only need to boot + sanity-check here.
+	if code == 0 && !env.Capabilities.NativeGas {
+		log.Infof("[POSTTEST] Skipping ERC20 mint/approve/bridge flow (native_gas=false); env booted and passed sanity checks.")
+	}
+	if code == 0 && env.Capabilities.NativeGas {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 8*time.Minute)
 

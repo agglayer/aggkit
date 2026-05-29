@@ -122,6 +122,27 @@ var envCapabilities = map[ENVName]EnvCapabilities{
 	},
 }
 
+// KnownEnvs returns the list of valid env names, ordered as declared. It is used
+// to validate the E2E_ENV selection and to surface valid values in error messages.
+func KnownEnvs() []ENVName {
+	return []ENVName{EnvOpPP, EnvOpFEP, EnvOpFEPCommittee, EnvOpPP2Chains, EnvCDKErigon3Chains}
+}
+
+// ParseENVName resolves a string to a known ENVName. An empty string resolves to
+// EnvOpPP so the default behavior (op-pp) is preserved when E2E_ENV is unset. An
+// unrecognized value returns an error listing the valid values.
+func ParseENVName(s string) (ENVName, error) {
+	if s == "" {
+		return EnvOpPP, nil
+	}
+	for _, name := range KnownEnvs() {
+		if string(name) == s {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("unknown env %q; valid values: %v", s, KnownEnvs())
+}
+
 // capabilitiesFor returns the capabilities for the named env. Unknown envs
 // default to the op-pp-equivalent shape (native gas, op-stack, single network)
 // so previously-supported behavior is preserved.
