@@ -309,6 +309,108 @@ kurtosis run --enclave op-pp-2chains --args-file /tmp/op-pp-2.yml .   # chain 00
 # aggkit test/e2e/envs/op-pp-2chains/ (strip the timestamped wrapper dir).
 ```
 
+## cdk-erigon-3chains
+
+This env has **three cdk-erigon** (pessimistic, `ecdsa-multisig` consensus) L2
+networks sharing one L1 + agglayer. It is the only env whose sequencer is
+**cdk-erigon** (not op-stack/op-geth/op-reth) and the only **mixed custom-gas**
+env: two chains use a custom gas token, one is native ETH.
+
+- chain `001`: `l2_chain_id 2151908`, `l2_network_id 1` — deploys the shared L1 +
+  agglayer; **custom gas token** (`gas_token_enabled: true`). NOTE: doc 1 does not
+  override `l2_chain_id`, so 001 keeps the cdk-erigon default chain id `2151908`.
+- chain `002`: `l2_chain_id 20202`, `l2_network_id 2` — reuses L1 + agglayer
+  (`deploy_l1: false` / `deploy_agglayer: false`), `deployment_suffix "-002"`;
+  **custom gas token**.
+- chain `003`: `l2_chain_id 20203`, `l2_network_id 3` — reuses L1 + agglayer,
+  `deployment_suffix "-003"`; **native** gas (`gas_token_enabled: false`).
+
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs` (snapshotted
+  2026-05-29; snapshot name `cdk-erigon-20260529-225318`). Built on the P3
+  per-topology cdk-erigon capture. Several **bounded, backward-compatible
+  cdk-erigon-only** snapshot-tool fixes were required (op-pp / op-fep /
+  op-pp-2chains captures unaffected — gated on `chain_type == "cdk-erigon"` or
+  on the absence of op-stack artifacts):
+  - `discover-containers.sh`: discover the per-network `contracts-<prefix>`
+    deployer container.
+  - `extract-state.sh`: for cdk-erigon chains also extract the aggkit
+    `config.toml` + keystores and the deployment output `combined-<prefix>.json`
+    (the authoritative custom gas-token source).
+  - `generate-summary.sh`: read the L2 chain id from `dynamic-*-chainspec.json`
+    (fallback `zkevm.l2-chain-id` in config.yaml); read `contracts.gas_token`
+    from `combined.json` (`gasTokenAddress`, zero address dropped as native);
+    add the cdk-erigon L2 mnemonic
+    (`lab code glass agree ...`) to the pk map and source L2 accounts from the
+    flat `dynamic-*-allocs.json` (no `.alloc` wrapper) so the pre-funded admin
+    EOA carries a usable private key.
+  - `generate-compose.sh`: cdk-erigon EL service uses `entrypoint: ["cdk-erigon"]`
+    + flags-only command, `user: "0:0"` (matches kurtosis `User(uid=0,gid=0)`, so
+    the root-owned datadir volume is writable), and network aliases so the
+    captured configs resolve the kurtosis hostnames (`el-1-geth-lighthouse` for
+    L1; `cdk-erigon-rpc-<prefix>` for the L2 EL). cdk-erigon aggkit runs
+    `--components=aggsender,bridge` (the `aggoracle` component is dropped: a
+    snapshot-clean cdk-erigon EL boots a fresh datadir and re-derives blocks as a
+    sequencer, which does not replay the post-genesis L2 GER-manager
+    initialization, so `globalExitRootUpdater()` reverts and aggoracle would
+    crash-loop; aggsender + bridge do not need it).
+- Preset: `.github/tests/aggkit-e2e-envs/cdk-erigon-3chains.yml` — a
+  **multi-document YAML** (three `---` documents, one standalone single-chain
+  args-file each), a faithful mirror of the legacy aggkit CI
+  `kurtosis-cdk-args-{3,4,5}` compositions (`cdk_erigon_args_base` +
+  `multi_chains_args_{2,3}` + `custom_gas_token`). `main.star` deploys one L2 per
+  `kurtosis run`, so the three documents are applied **sequentially into one
+  shared enclave**: doc 1 deploys L1 + agglayer + L2-001 (custom gas), doc 2
+  reuses them and adds L2-002 (custom gas), doc 3 adds L2-003 (native).
+- `summary.json` lists `001`, `002`, `003` under `networks.l2_networks`, each
+  carrying its L2 RPC under the **`cdk-erigon`** service key (NOT `op-geth`) —
+  internal `http://cdk-erigon-<prefix>:8545`, external 001:`:11545` / 002:`:12545`
+  / 003:`:13545`. `001` and `002` carry `contracts.gas_token`
+  (`0x72ae2643…` / `0xB965D107…`); `003` does not. The compose carries three
+  `cdk-erigon-<prefix>` ELs + three `aggkit-<prefix>` + the shared L1
+  (geth/beacon/validator) + agglayer.
+- Loader: `EnvCDKErigon3Chains` (`Sequencer: cdk-erigon`, `MultiNetwork`,
+  `MultiAggkit`). Bounded loader changes:
+  - `summaryL2Network.Services` gained a `cdk-erigon` service struct, and
+    `Contracts` gained `gas_token`. A new `l2RPCURLForNetwork` helper selects the
+    per-network L2 EL RPC (prefer `op-geth`, else `cdk-erigon`); it backs the
+    per-network client dial, the `L2Config.OpGethRPCURL` field (still populated —
+    sequencer-agnostically — for op-stack byte-compatibility; rename flagged for
+    P12), and `waitForServices`.
+  - `L2Contracts.GasTokenAddress` surfaces the custom gas-token address when
+    present (no ABI binding).
+  - Per-network gas model: the env-level `NativeGas` flag means "native deploys
+    permitted" (`true` here); the MintableERC20 auto-deploy is gated per network
+    on `NativeGas AND (network has no gas_token)`. So `001`/`002` skip the deploy
+    and surface their gas token, `003` deploys MintableERC20. op-* envs are
+    unchanged (no `gas_token` ⇒ same env-level behavior).
+- `CheckEnv` validates all three networks (topology-agnostic). A generic
+  per-chain health probe (`test/e2e/envs/zz_p10_probe_test.go`) asserts chain id /
+  advancing block / live `NetworkID` for all three and the surfaced gas-token
+  address for 001/002. It is a verification harness only — no migrated bridge
+  test (the legacy `bridge-e2e-3-chains` / `bridge-e2e-custom-gas` ports are out
+  of scope).
+- Boot status: `docker compose up -d` brings all 11 services healthy
+  (geth/beacon/validator L1, agglayer, and `cdk-erigon`/`aggkit` for 001/002/003);
+  the three cdk-erigon ELs re-derive from L1 and produce blocks (chain ids
+  2151908 / 20202 / 20203). Proven via `docker compose up -d` and the LoadEnv
+  path — NOT `verify.sh` (docker-py host bug).
+- Regenerate with (split the multi-doc preset, then apply all three docs IN ORDER
+  to one enclave):
+
+```
+cd kurtosis-cdk   # branch feat/aggkit-e2e-envs
+yq 'select(documents() == 0)' .github/tests/aggkit-e2e-envs/cdk-erigon-3chains.yml > /tmp/cdk-1.yml
+yq 'select(documents() == 1)' .github/tests/aggkit-e2e-envs/cdk-erigon-3chains.yml > /tmp/cdk-2.yml
+yq 'select(documents() == 2)' .github/tests/aggkit-e2e-envs/cdk-erigon-3chains.yml > /tmp/cdk-3.yml
+kurtosis run --enclave cdk-erigon --args-file /tmp/cdk-1.yml .   # chain 001 -> L1 + agglayer + L2-001 (custom gas)
+kurtosis run --enclave cdk-erigon --args-file /tmp/cdk-2.yml .   # chain 002 -> reuses L1 + agglayer, adds L2-002 (custom gas)
+kurtosis run --enclave cdk-erigon --args-file /tmp/cdk-3.yml .   # chain 003 -> reuses L1 + agglayer, adds L2-003 (native)
+./snapshot/snapshot.sh cdk-erigon --skip-verify
+# then copy snapshots/cdk-erigon-<TIMESTAMP>/ contents into
+# aggkit test/e2e/envs/cdk-erigon-3chains/ (strip the timestamped wrapper dir).
+# (If yq is unavailable, split the 3 docs with PyYAML safe_load_all.)
+```
+
 ## Debug
 
 In order to debug (VS Code):

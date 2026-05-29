@@ -116,7 +116,12 @@ var envCapabilities = map[ENVName]EnvCapabilities{
 		MultiAggkit:  true,
 	},
 	EnvCDKErigon3Chains: {
-		NativeGas:    false,
+		// NativeGas is the env-level "native deploys permitted" flag, not a claim
+		// that every chain is native. This env is mixed-gas: networks 001/002 are
+		// custom-gas and 003 is native ETH. The per-network MintableERC20 decision
+		// is (NativeGas allowed) AND (network has no gas_token), so 001/002 skip
+		// the deploy + surface their gas token while 003 deploys MintableERC20.
+		NativeGas:    true,
 		Sequencer:    SequencerCDKErigon,
 		MultiNetwork: true,
 		MultiAggkit:  true,
@@ -237,9 +242,14 @@ type L2Config struct {
 	// AggkitServiceName is the docker-compose service name for this network's
 	// aggkit instance (e.g. "aggkit-001").
 	AggkitServiceName string
-	// OpGethRPCURL is the external URL of this network's op-geth (L2 EL) JSON-RPC
-	// endpoint. This is the RPC to dial for standard eth_* calls (chain id, blocks,
+	// OpGethRPCURL is the external URL of this network's L2 EL JSON-RPC endpoint.
+	// Despite the op-geth-specific name (kept for backward compatibility), it is
+	// populated with whichever sequencer EL the network uses: op-geth for
+	// op-stack chains, cdk-erigon for cdk-erigon chains (see l2RPCURLForNetwork).
+	// This is the RPC to dial for standard eth_* calls (chain id, blocks,
 	// balances). Distinct from AggsenderRPCURL, which is the aggkit node RPC.
+	// NOTE (P12): consider renaming to a sequencer-agnostic field (e.g. L2RPCURL)
+	// across the wider API; left as-is here to keep this change bounded.
 	OpGethRPCURL string
 	// AggsenderRPCURL is the external URL of this network's aggsender JSON-RPC endpoint.
 	AggsenderRPCURL string
@@ -267,6 +277,13 @@ type L2Contracts struct {
 	// GetAggOracleMembersCount) so callers can verify the M-of-N committee.
 	AggOracleCommittee        *aggoraclecommittee.Aggoraclecommittee
 	AggOracleCommitteeAddress common.Address
+
+	// GasTokenAddress is the custom gas-token contract address for custom-gas
+	// chains (e.g. cdk-erigon networks 001/002), sourced from
+	// summary.json networks.l2_networks.<key>.contracts.gas_token. It is the
+	// zero address for native-ETH chains. Surfacing the address lets tests
+	// detect a custom-gas chain; no ABI binding is created here.
+	GasTokenAddress common.Address
 }
 
 // ClientsConfig contains RPC clients
@@ -291,6 +308,12 @@ type summaryL2Network struct {
 		// AggOracleCommittee is the AggOracleCommittee proxy address, present
 		// only for committee-enabled envs (op-fep-committee). Empty otherwise.
 		AggOracleCommittee string `json:"aggoracle_committee"`
+		// GasToken is the custom gas-token contract address, present only for
+		// custom-gas chains (e.g. cdk-erigon custom-gas networks). Empty/absent
+		// for native-ETH chains. When non-empty the network is treated as
+		// custom-gas: the MintableERC20 auto-deploy is skipped and the address
+		// is surfaced on L2Contracts.GasTokenAddress.
+		GasToken string `json:"gas_token"`
 	} `json:"contracts"`
 	Services struct {
 		OpGeth struct {
@@ -298,6 +321,14 @@ type summaryL2Network struct {
 				External string `json:"external"`
 			} `json:"http_rpc"`
 		} `json:"op-geth"`
+		// CDKErigon is the L2 EL RPC for cdk-erigon sequencer chains. cdk-erigon
+		// envs emit their L2 RPC under this key instead of "op-geth"; the loader
+		// selects whichever is present (see l2RPCURLForNetwork).
+		CDKErigon struct {
+			HTTPRpc struct {
+				External string `json:"external"`
+			} `json:"http_rpc"`
+		} `json:"cdk-erigon"`
 		Aggkit struct {
 			RPC struct {
 				External string `json:"external"`
@@ -445,8 +476,14 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			return nil, fmt.Errorf("parse L2 chain ID for network %s: %s", key, l2Network.ChainID)
 		}
 
-		// Create L2 client
-		l2Client, err := ethclient.DialContext(ctx, l2Network.Services.OpGeth.HTTPRpc.External)
+		// Create L2 client. The RPC URL is selected per sequencer type (op-geth
+		// for op-stack, cdk-erigon for cdk-erigon chains) so multi-sequencer envs
+		// dial the correct EL.
+		l2RPCURL := l2RPCURLForNetwork(l2Network)
+		if l2RPCURL == "" {
+			return nil, fmt.Errorf("no L2 EL RPC URL (op-geth/cdk-erigon) for network %s", key)
+		}
+		l2Client, err := ethclient.DialContext(ctx, l2RPCURL)
 		if err != nil {
 			return nil, fmt.Errorf("dial L2 client for network %s: %w", key, err)
 		}
@@ -475,6 +512,19 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			GlobalExitRoot:  globalExitRoot,
 		}
 
+		// Surface the custom gas-token address for custom-gas chains. When
+		// summary.json carries a non-empty contracts.gas_token the network uses a
+		// custom gas token (e.g. cdk-erigon networks 001/002); the address is
+		// exposed so tests can detect/skip native-ETH-only paths. Native chains
+		// (no gas_token, or the zero address) leave this as the zero address.
+		gasTokenStr := strings.TrimSpace(l2Network.Contracts.GasToken)
+		networkHasGasToken := gasTokenStr != "" && common.HexToAddress(gasTokenStr) != (common.Address{})
+		if networkHasGasToken {
+			l2Contracts.GasTokenAddress = common.HexToAddress(gasTokenStr)
+			log.Infof("[LoadEnv] custom gas token %s surfaced for network %s",
+				l2Contracts.GasTokenAddress.Hex(), key)
+		}
+
 		// Bind the AggOracleCommittee contract for committee-enabled envs so
 		// callers can read the on-chain quorum and membership (M-of-N). The
 		// address is present in summary.json only when the env was snapshotted
@@ -491,12 +541,17 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			log.Infof("[LoadEnv] AggOracleCommittee bound at %s for network %s", committeeAddr.Hex(), key)
 		}
 
-		// Conditionally deploy a MintableERC20 for native-gas / op-stack envs. This
-		// is used by tests that bridge L2-native tokens, which bypass the Local
-		// Balance Tree underflow check in AgglayerBridgeL2. Custom-gas / cdk-erigon
-		// envs do not assume an op-geth native-ETH deploy path, so the deploy is
-		// skipped there (their token/gas handling is wired in later plan steps).
-		if caps.NativeGas {
+		// Conditionally deploy a MintableERC20 for native-gas networks. This is
+		// used by tests that bridge L2-native tokens, which bypass the Local
+		// Balance Tree underflow check in AgglayerBridgeL2. The decision is
+		// per-network: a network is native iff the env allows native gas
+		// (caps.NativeGas) AND the network itself has no custom gas token. This
+		// lets mixed-gas multi-chain envs behave correctly — e.g. cdk-erigon-3chains
+		// where 001/002 are custom-gas (skip deploy, surface gas_token) and 003 is
+		// native (deploy). op-* envs are unchanged: they have no gas_token, so the
+		// per-network condition reduces to the previous env-level caps.NativeGas.
+		deployMintable := caps.NativeGas && !networkHasGasToken
+		if deployMintable {
 			erc20Addr, erc20Contract, err := deployMintableERC20(ctx, l2Client, l2ChainID, l2Network.Accounts)
 			if err != nil {
 				return nil, fmt.Errorf("deploy MintableERC20 for network %s: %w", key, err)
@@ -505,8 +560,9 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			l2Contracts.MintableERC20Address = erc20Addr
 			log.Infof("[LoadEnv] MintableERC20 deployed at %s for network %s", erc20Addr.Hex(), key)
 		} else {
-			log.Infof("[LoadEnv] skipping MintableERC20 deploy for network %s (sequencer=%s, native_gas=false)",
-				key, caps.Sequencer)
+			log.Infof("[LoadEnv] skipping MintableERC20 deploy for network %s "+
+				"(sequencer=%s, env_native_gas=%v, network_has_gas_token=%v)",
+				key, caps.Sequencer, caps.NativeGas, networkHasGasToken)
 		}
 
 		// Collect this network's L2 keys (deduplicate by address)
@@ -530,7 +586,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			Transactor:        l2Transactor,
 			SummaryKey:        key,
 			AggkitServiceName: aggkitServiceNameForKey(key),
-			OpGethRPCURL:      l2Network.Services.OpGeth.HTTPRpc.External,
+			OpGethRPCURL:      l2RPCURL,
 			AggsenderRPCURL:   l2Network.Services.Aggkit.RPC.External,
 			BridgeServiceURL:  l2Network.Services.Aggkit.BridgeService.External,
 			Keys:              l2KeyPool,
@@ -791,6 +847,18 @@ func aggkitServiceNameForKey(networkKey string) string {
 	return "aggkit-" + networkKey
 }
 
+// l2RPCURLForNetwork returns the external L2 EL JSON-RPC URL for a network,
+// selecting the sequencer-appropriate service key: op-stack chains expose their
+// EL under services."op-geth", cdk-erigon chains under services."cdk-erigon".
+// op-geth is preferred when present so op-* envs are byte-compatible; cdk-erigon
+// is used otherwise. The returned URL is the RPC to dial for standard eth_* calls.
+func l2RPCURLForNetwork(l2Network summaryL2Network) string {
+	if url := l2Network.Services.OpGeth.HTTPRpc.External; url != "" {
+		return url
+	}
+	return l2Network.Services.CDKErigon.HTTPRpc.External
+}
+
 // aggkitDataDirForKey returns the host directory bind-mounted into the aggkit
 // container for the given network key as /tmp (e.g. <envDir>/aggkit-001-data).
 func aggkitDataDirForKey(envDir, networkKey string) string {
@@ -1039,12 +1107,12 @@ func waitForServices(ctx context.Context, summary *summaryJSON) error {
 		return fmt.Errorf("wait for L1 geth: %w", err)
 	}
 
-	// Wait for every L2 network's op-geth and bridge service to be ready, in a
-	// deterministic order.
+	// Wait for every L2 network's EL (op-geth or cdk-erigon) and bridge service to
+	// be ready, in a deterministic order.
 	for _, key := range sortedL2Keys(summary.Networks.L2Networks) {
 		l2Network := summary.Networks.L2Networks[key]
-		if err := waitForEthereumService(ctx, l2Network.Services.OpGeth.HTTPRpc.External); err != nil {
-			return fmt.Errorf("wait for L2 op-geth (network %s): %w", key, err)
+		if err := waitForEthereumService(ctx, l2RPCURLForNetwork(l2Network)); err != nil {
+			return fmt.Errorf("wait for L2 EL (network %s): %w", key, err)
 		}
 
 		// Wait for bridge service to be ready
