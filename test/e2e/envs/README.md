@@ -36,6 +36,63 @@ args:
           max_channel_duration: 999999  # ✅ Delays batching ~11 days
 ```
 
+## op-fep
+
+This network has a single OP network running in FEP (Full Execution Proof) mode
+with an op-succinct **mock** prover and agglayer integration.
+
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs` @ `bd3308c9`
+  (the P4 presets commit; the snapshot tooling extensions for the FEP topology
+  are `0fe7bf4b` + `5f06bd83` on the same branch).
+- Preset: `.github/tests/aggkit-e2e-envs/op-fep.yml`
+- snapshot `chain_type`: `op-stack`; the summary captures an
+  `op-succinct-proposer` service marked `settled: false` (FEP prover wired but
+  not settled at snapshot time).
+- Kurtosis config (key args, faithful mirror of the aggkit CI `op_succinct_args`
+  composition minus `bridge_spammer`):
+
+```yml
+deployment_stages:
+  deploy_op_succinct: true
+  deploy_cdk_bridge_infra: false
+
+args:
+  aggkit_image: aggkit:local
+  consensus_contract_type: fep
+  use_agg_sender_validator: true
+  agg_sender_multisig_threshold: 2
+  agg_sender_validator_total_number: 3
+  # Override additional_services to exclude bridge_spammer (snapshot-clean)
+  additional_services: []
+  binary_name: aggkit
+  aggkit_components: aggsender,aggoracle
+  l2_chain_id: 20201
+  l2_network_id: 1
+  op_succinct_mock: true
+  op_succinct_agglayer: true
+  op_succinct_agg_proof_mode: compressed
+  op_succinct_submission_interval: "1"
+
+optimism_package:
+  chains:
+    "001":
+      proposer_params:
+        enabled: false
+      network_params:
+        network_id: "20201"
+```
+
+- Regenerate with:
+
+```
+cd kurtosis-cdk   # branch feat/aggkit-e2e-envs
+kurtosis run --enclave op-fep --args-file .github/tests/aggkit-e2e-envs/op-fep.yml .
+./snapshot/snapshot.sh op-fep
+./snapshot/verify.sh snapshot/snapshots/op-fep-<TIMESTAMP>/
+# then copy snapshot/snapshots/op-fep-<TIMESTAMP>/ contents into
+# aggkit test/e2e/envs/op-fep/ (strip the timestamped wrapper dir).
+```
+
 ## Debug
 
 In order to debug (VS Code):
