@@ -224,10 +224,10 @@ func TestNotSubscribed(t *testing.T) {
 }
 
 func TestDetectReorgs(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in -short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	syncerID := "test-syncer"

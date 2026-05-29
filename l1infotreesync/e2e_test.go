@@ -166,10 +166,10 @@ func TestE2E(t *testing.T) {
 }
 
 func TestWithReorgs(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping integration test in -short mode")
 	}
-	t.Parallel()
 	tests := []struct {
 		name                      string
 		useMultidownloaderForTest bool
