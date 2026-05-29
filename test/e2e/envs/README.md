@@ -56,6 +56,14 @@ with an op-succinct **mock** prover and agglayer integration.
   not settled at snapshot time). The L2 EL is op-reth (`op-reth:v2.2.5`) run
   with `op-reth-entrypoint.sh`; the summary logical service key stays `op-geth`
   for loader compatibility.
+- Loader: `EnvOpFEP` (capabilities `Sequencer: op-stack`, `NativeGas: true`,
+  `SettlementSupported: false`, single-network/single-aggkit). `LoadEnv` parses
+  the single FEP network into `Env.L2` / `PrimaryL2()`; the per-network L2 EL RPC
+  is dialed via `L2Config.OpGethRPCURL` (populated from
+  `networks.l2_networks.001.services.op-geth.http_rpc.external`). Because
+  `SettlementSupported: false`, `testmain_test.go` capability-gates out the
+  post-test L2->L1 bridge-settlement assertion for this env (boot/load/checks
+  smoke only).
 - Boot status: `docker compose up -d` brings all core services healthy
   (geth/beacon/validator L1, op-reth EL, op-node, agglayer, aggkit, postgres);
   `E2E_ENV=op-fep go test ./test/e2e/... -run TestMain` passes LoadEnv + CheckEnv
