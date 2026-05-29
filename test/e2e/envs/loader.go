@@ -85,6 +85,16 @@ type EnvCapabilities struct {
 
 	// MultiAggkit is true when the environment runs more than one aggkit service.
 	MultiAggkit bool
+
+	// SettlementSupported is true when the environment can complete an L1<->L2
+	// bridge + L2->L1 settlement flow post-boot. It gates the post-test bridge
+	// health-check in TestMain. The FEP envs (op-fep, op-fep-committee) have a
+	// known, documented L2->L1 FEP-settlement limitation (snapshots emit
+	// settled:false; see ENVS_INTEGRATION_PLAN P3/P4), so they are CI'd as
+	// boot/load/checks smoke ONLY and set this to false to exclude the
+	// settlement assertion. All other envs set it to true so their full
+	// post-test bridge/settlement health-check still runs unchanged.
+	SettlementSupported bool
 }
 
 // envCapabilities is the per-env capability table. Entries for the new envs are
@@ -92,28 +102,36 @@ type EnvCapabilities struct {
 // reachable; their snapshots/runtime paths are completed in later plan steps.
 var envCapabilities = map[ENVName]EnvCapabilities{
 	EnvOpPP: {
-		NativeGas:    true,
-		Sequencer:    SequencerOpStack,
-		MultiNetwork: false,
-		MultiAggkit:  false,
+		NativeGas:           true,
+		Sequencer:           SequencerOpStack,
+		MultiNetwork:        false,
+		MultiAggkit:         false,
+		SettlementSupported: true,
 	},
 	EnvOpFEP: {
 		NativeGas:    true,
 		Sequencer:    SequencerOpStack,
 		MultiNetwork: false,
 		MultiAggkit:  false,
+		// FEP settlement (L2->L1) is a documented out-of-scope limitation for the
+		// snapshotted FEP envs (settled:false). CI'd as boot/load/checks smoke only.
+		SettlementSupported: false,
 	},
 	EnvOpFEPCommittee: {
 		NativeGas:    true,
 		Sequencer:    SequencerOpStack,
 		MultiNetwork: false,
 		MultiAggkit:  false,
+		// Same FEP settlement limitation as op-fep; committee quorum is still
+		// validated by checks.go, but the L2->L1 settlement assertion is excluded.
+		SettlementSupported: false,
 	},
 	EnvOpPP2Chains: {
-		NativeGas:    true,
-		Sequencer:    SequencerOpStack,
-		MultiNetwork: true,
-		MultiAggkit:  true,
+		NativeGas:           true,
+		Sequencer:           SequencerOpStack,
+		MultiNetwork:        true,
+		MultiAggkit:         true,
+		SettlementSupported: true,
 	},
 	EnvCDKErigon3Chains: {
 		// NativeGas is the env-level "native deploys permitted" flag, not a claim
@@ -121,10 +139,11 @@ var envCapabilities = map[ENVName]EnvCapabilities{
 		// custom-gas and 003 is native ETH. The per-network MintableERC20 decision
 		// is (NativeGas allowed) AND (network has no gas_token), so 001/002 skip
 		// the deploy + surface their gas token while 003 deploys MintableERC20.
-		NativeGas:    true,
-		Sequencer:    SequencerCDKErigon,
-		MultiNetwork: true,
-		MultiAggkit:  true,
+		NativeGas:           true,
+		Sequencer:           SequencerCDKErigon,
+		MultiNetwork:        true,
+		MultiAggkit:         true,
+		SettlementSupported: true,
 	},
 }
 
@@ -157,10 +176,11 @@ func capabilitiesFor(envName ENVName) EnvCapabilities {
 		return caps
 	}
 	return EnvCapabilities{
-		NativeGas:    true,
-		Sequencer:    SequencerOpStack,
-		MultiNetwork: false,
-		MultiAggkit:  false,
+		NativeGas:           true,
+		Sequencer:           SequencerOpStack,
+		MultiNetwork:        false,
+		MultiAggkit:         false,
+		SettlementSupported: true,
 	}
 }
 

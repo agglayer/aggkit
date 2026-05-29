@@ -3,15 +3,44 @@ name: Go E2E Tests
 on:
   pull_request: {}
   workflow_dispatch: {}
-  # Uncomment to run on schedule (e.g., nightly)
-  # schedule:
-  #   - cron: "0 2 * * *"  # Run at 2 AM UTC daily
+  # Heavy envs (op-fep, op-fep-committee, op-pp-2chains, cdk-erigon-3chains) run
+  # on this nightly schedule and on manual dispatch, not on every PR (see the
+  # setup-matrix job's env-name gating below).
+  schedule:
+    - cron: "0 2 * * *"  # Run at 2 AM UTC daily
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # P11: Emit the env_name matrix dynamically so heavy envs are gated by trigger.
+  # On pull_request only the light, fully-published env (op-pp) runs so PRs stay
+  # fast; on schedule (nightly) and workflow_dispatch all five envs run. The same
+  # JSON feeds both the pull-docker-images and test-go-e2e matrices so their legs
+  # stay one-to-one (test-go-e2e needs: the matching pull-docker-images artifact).
+  setup-matrix:
+    name: Compute env matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      env_names: ${{ steps.set.outputs.env_names }}
+    steps:
+      - name: Select env_name list by trigger
+        id: set
+        run: |
+          # op-pp uses fully-published images and is the fast PR gate. The four
+          # heavy envs (FEP prover/committee, multi-chain) are heavier and depend
+          # on env snapshot images, so they run only on nightly schedule / manual
+          # dispatch to keep PR runs fast.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            env_names='["op-pp"]'
+          else
+            env_names='["op-pp","op-fep","op-fep-committee","op-pp-2chains","cdk-erigon-3chains"]'
+          fi
+          echo "env_names=${env_names}" >> "$GITHUB_OUTPUT"
+          echo "Selected env_names (${{ github.event_name }}): ${env_names}"
+
   build-docker-image:
     name: Build Docker Image
     runs-on: ubuntu-latest
@@ -37,16 +66,13 @@ jobs:
     name: Pull Docker Images (${{ matrix.env_name }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: setup-matrix
     strategy:
       fail-fast: false
       matrix:
-        env_name:
-          - op-pp
-          # P11: append new env names here, one list item each, as pure data:
-          #   - op-fep
-          #   - op-fep-committee
-          #   - op-pp-2chains
-          #   - cdk-erigon-3chains
+        # P11: env_name list comes from setup-matrix (op-pp on PR; all five on
+        # schedule/dispatch). Kept identical to the test-go-e2e job matrix.
+        env_name: ${{ fromJSON(needs.setup-matrix.outputs.env_names) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -82,17 +108,14 @@ jobs:
     # Raised from 45 to 90 to accommodate heavier multi-container envs (kept consistent with
     # the go test -timeout in the Makefile's test-e2e target).
     timeout-minutes: 90
-    needs: [build-docker-image, pull-docker-images]
+    needs: [setup-matrix, build-docker-image, pull-docker-images]
     strategy:
       fail-fast: false
       matrix:
-        env_name:
-          - op-pp
-          # P11: append the same new env names here, one list item each, as pure data:
-          #   - op-fep
-          #   - op-fep-committee
-          #   - op-pp-2chains
-          #   - cdk-erigon-3chains
+        # P11: same env_name list as the pull-docker-images job matrix (from
+        # setup-matrix) so each test-go-e2e leg needs: the matching
+        # pull-docker-images artifact.
+        env_name: ${{ fromJSON(needs.setup-matrix.outputs.env_names) }}
     env:
       # Selects the env directory under test/e2e/envs/<env_name> and is consumed by
       # make test-e2e -> TestMain (envs.ParseENVName). Unset defaults to op-pp.

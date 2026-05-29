@@ -67,7 +67,16 @@ func TestMain(m *testing.M) {
 	if code == 0 && !env.Capabilities.NativeGas {
 		log.Infof("[POSTTEST] Skipping ERC20 mint/approve/bridge flow (native_gas=false); env booted and passed sanity checks.")
 	}
-	if code == 0 && env.Capabilities.NativeGas {
+	// FEP envs (op-fep, op-fep-committee) have a documented L2->L1 FEP-settlement
+	// limitation (snapshots emit settled:false). They are CI'd as boot/load/checks
+	// (+committee quorum) smoke ONLY, so skip the bridge/settlement health-check
+	// here rather than letting it red the leg on the known limitation.
+	if code == 0 && env.Capabilities.NativeGas && !env.Capabilities.SettlementSupported {
+		log.Infof("[POSTTEST] Skipping L1<->L2 bridge/settlement health-check " +
+			"(settlement_supported=false; documented FEP L2->L1 settled:false limitation); " +
+			"env booted and passed sanity checks.")
+	}
+	if code == 0 && env.Capabilities.NativeGas && env.Capabilities.SettlementSupported {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 8*time.Minute)
 
