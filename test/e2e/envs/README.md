@@ -197,6 +197,118 @@ kurtosis run --enclave op-fep-committee --args-file .github/tests/aggkit-e2e-env
 # aggkit test/e2e/envs/op-fep-committee/ (strip the timestamped wrapper dir).
 ```
 
+## op-pp-2chains
+
+This env has **two** OP-PP (pessimistic, `ecdsa-multisig` consensus) L2 networks
+sharing one L1 + agglayer — the same topology as the single-chain `op-pp`, just
+two chains:
+
+- chain `001`: `l2_chain_id 20201`, `l2_network_id 1` — deploys the shared L1 +
+  agglayer.
+- chain `002`: `l2_chain_id 20202`, `l2_network_id 2` — reuses the L1 + agglayer
+  (`deploy_l1: false` / `deploy_agglayer: false`), `deployment_suffix "-002"`.
+
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `d71f4265`
+  (snapshotted 2026-05-29; snapshot name `op-pp-2chains-20260529-220608`). The
+  multi-L2 snapshot capture (P3) and the op-reth EL + L1-geth archive-flush
+  bootability fixes (inherited from the op-fep work) worked unchanged for this
+  topology — no kurtosis-cdk source changes were needed.
+- Preset: `.github/tests/aggkit-e2e-envs/op-pp-2chains.yml` — a **multi-document
+  YAML** (one `---` document per chain). `main.star` deploys exactly one L2 per
+  `kurtosis run`, so the two documents are applied **sequentially into one shared
+  enclave** (the legacy `aggkit-e2e-multi-chains.yml` model): doc 1 deploys the
+  L1 + agglayer + L2-001, doc 2 reuses them and adds L2-002.
+- `summary.json` lists **both** `001` and `002` under `networks.l2_networks` with
+  distinct ports (001: op-geth `:11545` / aggkit `:11576`; 002: op-geth `:12545`
+  / aggkit `:12576`), each with its own contracts and accounts. The compose
+  carries both L2 stacks (`op-geth-001`/`op-node-001`/`aggkit-001` and the `-002`
+  equivalents) plus the single shared L1 (geth/beacon/validator) and agglayer.
+  The L2 EL is op-reth (`op-reth:v2.2.5`) run with `op-reth-entrypoint.sh`; the
+  summary logical service key stays `op-geth` for loader compatibility.
+- Loader: `EnvOpPP2Chains` (`NativeGas: true`). `LoadEnv` parses both networks
+  into `Env.L2s` (`len >= 2`); `Env.L2` / `PrimaryL2()` is `001`,
+  `L2ByNetworkID(2)` is `002`. A minimal in-worktree loader fix was made so
+  multi-network connectivity checks dial each network's **op-geth** RPC: a new
+  `L2Config.OpGethRPCURL` field is populated from
+  `networks.l2_networks.<key>.services.op-geth.http_rpc.external`, and
+  `clientForNetwork` now prefers it (previously non-primary networks fell back to
+  the aggkit node RPC, which does not serve `eth_*`). `CheckEnv` validates both
+  networks; a generic per-chain health probe
+  (`test/e2e/envs/zz_p9_probe_test.go`) asserts chain id / advancing block /
+  non-zero balance for both 001 and 002. No L2↔L2 bridging test is included.
+- Boot status: `docker compose up -d` brings all 10 services healthy
+  (geth/beacon/validator L1, agglayer, and op-geth/op-node/aggkit for both 001
+  and 002); both L2s restore from baked state and produce blocks
+  (chain ids 20201 / 20202).
+- Kurtosis config (the two `---` documents, faithful mirror of the aggkit CI
+  `kurtosis-cdk-args-1` / `-args-2` compositions minus `bridge_spammer`):
+
+```yml
+# === Document 1: chain "001" (deploys shared L1 + agglayer) ===
+deployment_stages:
+  deploy_op_succinct: false
+  deploy_cdk_bridge_infra: false
+args:
+  aggkit_image: aggkit:local
+  consensus_contract_type: ecdsa-multisig
+  use_agg_sender_validator: true
+  agg_sender_multisig_threshold: 2
+  agg_sender_validator_total_number: 3
+  additional_services: []
+  binary_name: aggkit
+  aggkit_components: aggsender,aggoracle
+  l2_chain_id: 20201
+  l2_network_id: 1
+optimism_package:
+  predeployed_contracts: true
+  chains:
+    "001":
+      proposer_params:
+        enabled: false
+      network_params:
+        network_id: "20201"
+---
+# === Document 2: chain "002" (reuses the shared L1 + agglayer) ===
+deployment_stages:
+  deploy_op_succinct: false
+  deploy_cdk_bridge_infra: false
+  deploy_l1: false
+  deploy_agglayer: false
+args:
+  aggkit_image: aggkit:local
+  consensus_contract_type: ecdsa-multisig
+  use_agg_sender_validator: true
+  agg_sender_multisig_threshold: 2
+  agg_sender_validator_total_number: 3
+  additional_services: []
+  binary_name: aggkit
+  aggkit_components: aggsender,aggoracle
+  l2_chain_id: 20202
+  l2_network_id: 2
+  deployment_suffix: "-002"
+optimism_package:
+  chains:
+    "002":
+      proposer_params:
+        enabled: false
+      network_params:
+        network_id: "20202"
+```
+
+- Regenerate with (split the multi-doc preset, then apply both docs IN ORDER to
+  one enclave):
+
+```
+cd kurtosis-cdk   # branch feat/aggkit-e2e-envs
+yq 'select(documents() == 0)' .github/tests/aggkit-e2e-envs/op-pp-2chains.yml > /tmp/op-pp-1.yml
+yq 'select(documents() == 1)' .github/tests/aggkit-e2e-envs/op-pp-2chains.yml > /tmp/op-pp-2.yml
+kurtosis run --enclave op-pp-2chains --args-file /tmp/op-pp-1.yml .   # chain 001 -> L1 + agglayer + L2-001
+kurtosis run --enclave op-pp-2chains --args-file /tmp/op-pp-2.yml .   # chain 002 -> reuses L1 + agglayer, adds L2-002
+./snapshot/snapshot.sh op-pp-2chains
+# then copy snapshots/op-pp-2chains-<TIMESTAMP>/ contents into
+# aggkit test/e2e/envs/op-pp-2chains/ (strip the timestamped wrapper dir).
+```
+
 ## Debug
 
 In order to debug (VS Code):

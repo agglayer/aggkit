@@ -237,6 +237,10 @@ type L2Config struct {
 	// AggkitServiceName is the docker-compose service name for this network's
 	// aggkit instance (e.g. "aggkit-001").
 	AggkitServiceName string
+	// OpGethRPCURL is the external URL of this network's op-geth (L2 EL) JSON-RPC
+	// endpoint. This is the RPC to dial for standard eth_* calls (chain id, blocks,
+	// balances). Distinct from AggsenderRPCURL, which is the aggkit node RPC.
+	OpGethRPCURL string
 	// AggsenderRPCURL is the external URL of this network's aggsender JSON-RPC endpoint.
 	AggsenderRPCURL string
 	// BridgeServiceURL is the external URL of this network's bridge REST API.
@@ -526,6 +530,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			Transactor:        l2Transactor,
 			SummaryKey:        key,
 			AggkitServiceName: aggkitServiceNameForKey(key),
+			OpGethRPCURL:      l2Network.Services.OpGeth.HTTPRpc.External,
 			AggsenderRPCURL:   l2Network.Services.Aggkit.RPC.External,
 			BridgeServiceURL:  l2Network.Services.Aggkit.BridgeService.External,
 			Keys:              l2KeyPool,

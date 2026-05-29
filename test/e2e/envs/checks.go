@@ -156,13 +156,16 @@ func (e *Env) checkL2Connectivity(ctx context.Context) error {
 // clientForNetwork returns an *ethclient.Client for the given L2 network and a cleanup function.
 // The primary network reuses the shared e.Clients.L2 client (cleanup is a no-op) so single-network
 // envs behave identically to before. Non-primary networks are dialed on demand and the returned
-// cleanup closes that connection. Falling back to AggsenderRPCURL keeps the check usable even if
-// no dedicated op-geth URL is exposed for the network.
+// cleanup closes that connection. Non-primary networks are dialed via their op-geth (L2 EL) URL so
+// standard eth_* calls work; AggsenderRPCURL (the aggkit node RPC) is only a last-resort fallback.
 func (e *Env) clientForNetwork(ctx context.Context, l2 L2Config, primary bool) (*ethclient.Client, func(), error) {
 	if primary {
 		return e.Clients.L2, func() {}, nil
 	}
-	url := l2.AggsenderRPCURL
+	url := l2.OpGethRPCURL
+	if url == "" {
+		url = l2.AggsenderRPCURL
+	}
 	if url == "" {
 		return nil, func() {}, fmt.Errorf("no RPC URL available for network %s/%d", l2.SummaryKey, l2.NetworkID)
 	}
