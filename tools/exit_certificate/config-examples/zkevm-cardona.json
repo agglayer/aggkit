@@ -7,6 +7,7 @@
     "targetBlock": "LatestBlock",
     "exitAddress": "0x0000000000000000000000000000000000001234",
     "sovereignRollupAddr": "0xA13Ddb14437A8F34897131367ad3ca78416d6bCa",
+    "l1GlobalExitRootAddress": "<L1_GLOBAL_EXIT_ROOT_ADDRESS>",
     "destinationNetwork": 0,
     "signerConfig": {
         "Method": "local",
@@ -21,12 +22,19 @@
         "rpcDelayMs": 10,
         "outputDir": "./output-cardona",
         "l1StartBlock": 5157692,
+        "continueOnTraceError": false,
+        "abortOnGenesisBalance": true,
+        "ignoreUnclaimed": false,
+        "continueIfBalanceMismatch": false,
+        "extraErc20Contracts": [],
         "bridgeServiceURL": "https://bridge-api.cardona.zkevm-rpc.com",
         "bridgeServiceType": "zkevm",
         "agglayerClient": {
             "GRPC": {
                 "URL": "<AGGLAYER_GRPC_URL>"
             }
-        }
+        },
+        "agglayerAdminURL": "<AGGLAYER_ADMIN_URL>",
+        "agglayerAdminToken": "<JWT>"
     }
 }
