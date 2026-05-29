@@ -89,7 +89,7 @@ func TestRunStepD_WithSCLockedValues(t *testing.T) {
 				OriginTokenAddress:  tokenOriginAddr,
 				LBTBalance:          "1000000",
 				EOAAccumulated:      "300000",
-				SCLockedBalance:     "700000",
+				PendingSCLockedBalance:     "700000",
 			},
 			{
 				WrappedTokenAddress: common.HexToAddress("0xCCCC"),
@@ -97,7 +97,7 @@ func TestRunStepD_WithSCLockedValues(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0xDDDD"),
 				LBTBalance:          "500000",
 				EOAAccumulated:      "500000",
-				SCLockedBalance:     "0",
+				PendingSCLockedBalance:     "0",
 			},
 		},
 	}
@@ -170,7 +170,7 @@ func TestRunStepD_CombinedEOAAndSCLocked(t *testing.T) {
 				WrappedTokenAddress: common.HexToAddress("0xAAAA"),
 				OriginNetwork:       0,
 				OriginTokenAddress:  common.HexToAddress("0xBBBB"),
-				SCLockedBalance:     "500000",
+				PendingSCLockedBalance:     "500000",
 			},
 		},
 	}

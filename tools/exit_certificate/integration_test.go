@@ -76,7 +76,7 @@ func TestStepD_WithProductionLikeData(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
 				LBTBalance:          "5000000000",
 				EOAAccumulated:      "1000000000",
-				SCLockedBalance:     "4000000000",
+				PendingSCLockedBalance:     "4000000000",
 			},
 		},
 	}

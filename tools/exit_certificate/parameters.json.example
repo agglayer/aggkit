@@ -13,7 +13,8 @@
         "rpcBatchSize": 200,
         "rpcDelayMs": 10,
         "outputDir": "./output",
-        "l1StartBlock": 0
+        "l1StartBlock": 0,
+        "extraErc20Contracts": []
     },
     "signerKeyPath": "/path/to/keystore.json",
     "signerKeyPassword": "keystore-password"
