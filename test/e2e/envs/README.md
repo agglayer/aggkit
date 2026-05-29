@@ -108,6 +108,95 @@ kurtosis run --enclave op-fep --args-file .github/tests/aggkit-e2e-envs/op-fep.y
 # aggkit test/e2e/envs/op-fep/ (strip the timestamped wrapper dir).
 ```
 
+## op-fep-committee
+
+This network is the `op-fep` topology (single OP network in FEP mode, op-succinct
+**mock** prover, agglayer integration) **plus an AggOracle committee**: the
+AggOracle is governed by an on-chain `AggOracleCommittee` proxy with a **2-of-3**
+quorum (`use_agg_oracle_committee: true`, `agg_oracle_committee_quorum: 2`,
+`agg_oracle_committee_total_members: 3`).
+
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `d71f4265`.
+  It inherits all the op-fep op-reth/Teku/proposer bootability fixes (`b3e13ba9`)
+  and adds (in `d71f4265`) a minimal, backward-compatible committee-capture path
+  to the snapshot tool
+  (`snapshot/scripts/discover-containers.sh`, `extract-state.sh`,
+  `generate-compose.sh`, `generate-summary.sh`): the extra AggOracle committee
+  member services (kurtosis `aggkit-001-aggoracle-committee-00N`, each an aggkit
+  `--components=aggoracle` service with its own `aggoracle-N.keystore`) are
+  discovered, their `/etc/aggkit` (config + keystores) captured under
+  `config/001/committee/00N/etc`, re-emitted as compose services, and the
+  `AggOracleCommittee` proxy address is recorded in `summary.json` under
+  `networks.l2_networks.001.contracts.aggoracle_committee`. The same commit also
+  lengthens the L1 geth SIGTERM grace in `extract-state.sh` so geth flushes its
+  full chain head to disk before capture (a short grace produced a committee
+  snapshot whose restored geth lagged its rollup L1-origin, so op-reth could
+  never reach the origin block).
+- Preset: `.github/tests/aggkit-e2e-envs/op-fep-committee.yml` (faithful mirror
+  of the aggkit CI `single_chain_op_succinct_aggoracle_committee_args`
+  composition minus `bridge_spammer`; `additional_services: []`).
+- Difference vs `op-fep`: adds two `aggkit-001-aggoracle-committee-000/001`
+  services + their captured keystores, and the `contracts.aggoracle_committee`
+  address. Everything else (op-reth EL, op-node, agglayer, postgres,
+  op-succinct-proposer marked `settled: false`) is identical to op-fep.
+- Loader: the `EnvOpFEPCommittee` ENVName (`NativeGas: true`) binds the on-chain
+  `AggOracleCommittee` contract (`L2Contracts.AggOracleCommittee` /
+  `AggOracleCommitteeAddress`) when the summary carries the committee address,
+  exposing `Quorum()` / `GetAllAggOracleMembers()` / `GetAggOracleMembersCount()`
+  to callers. A minimal load+read probe
+  (`test/e2e/committee_probe_test.go::TestAggOracleCommitteeQuorumProbe`)
+  verifies the 2-of-3 quorum on-chain; it is inert (skips) for non-committee envs.
+- Boot status: `docker compose up -d` brings all core services healthy
+  (geth/beacon/validator L1, op-reth EL, op-node, agglayer, aggkit, postgres) plus
+  the two committee member aggkit services; the op-succinct proposer crash-loops
+  on FEP settlement (same `settled: false` limitation as op-fep — architectural,
+  out of scope).
+- Kurtosis config (key args):
+
+```yml
+deployment_stages:
+  deploy_op_succinct: true
+  deploy_cdk_bridge_infra: false
+
+args:
+  aggkit_image: aggkit:local
+  consensus_contract_type: fep
+  use_agg_sender_validator: true
+  agg_sender_multisig_threshold: 2
+  agg_sender_validator_total_number: 3
+  additional_services: []
+  binary_name: aggkit
+  aggkit_components: aggsender,aggoracle
+  l2_chain_id: 20201
+  l2_network_id: 1
+  op_succinct_mock: true
+  op_succinct_agglayer: true
+  op_succinct_agg_proof_mode: compressed
+  op_succinct_submission_interval: "1"
+  use_agg_oracle_committee: true
+  agg_oracle_committee_quorum: 2
+  agg_oracle_committee_total_members: 3
+
+optimism_package:
+  chains:
+    "001":
+      proposer_params:
+        enabled: false
+      network_params:
+        network_id: "20201"
+        seconds_per_slot: 1
+```
+
+- Regenerate with:
+
+```
+cd kurtosis-cdk   # branch feat/aggkit-e2e-envs
+kurtosis run --enclave op-fep-committee --args-file .github/tests/aggkit-e2e-envs/op-fep-committee.yml .
+./snapshot/snapshot.sh op-fep-committee
+# then copy snapshots/op-fep-committee-<TIMESTAMP>/ contents into
+# aggkit test/e2e/envs/op-fep-committee/ (strip the timestamped wrapper dir).
+```
+
 ## Debug
 
 In order to debug (VS Code):

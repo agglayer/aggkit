@@ -18,6 +18,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/mintableerc20"
@@ -253,6 +254,15 @@ type L2Contracts struct {
 	GlobalExitRoot       *agglayergerl2.Agglayergerl2
 	MintableERC20        *mintableerc20.Mintableerc20
 	MintableERC20Address common.Address
+
+	// AggOracleCommittee is the bound on-chain AggOracleCommittee contract,
+	// populated only for committee-enabled envs (e.g. op-fep-committee) where
+	// summary.json carries the committee proxy address under
+	// contracts.aggoracle_committee. nil otherwise. Exposes read-only access to
+	// the committee quorum and membership (Quorum / GetAllAggOracleMembers /
+	// GetAggOracleMembersCount) so callers can verify the M-of-N committee.
+	AggOracleCommittee        *aggoraclecommittee.Aggoraclecommittee
+	AggOracleCommitteeAddress common.Address
 }
 
 // ClientsConfig contains RPC clients
@@ -274,6 +284,9 @@ type summaryL2Network struct {
 	Contracts struct {
 		L2Bridge       string `json:"l2_bridge"`
 		GlobalExitRoot string `json:"global_exit_root"`
+		// AggOracleCommittee is the AggOracleCommittee proxy address, present
+		// only for committee-enabled envs (op-fep-committee). Empty otherwise.
+		AggOracleCommittee string `json:"aggoracle_committee"`
 	} `json:"contracts"`
 	Services struct {
 		OpGeth struct {
@@ -456,6 +469,22 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			L2Bridge:        l2Bridge,
 			L2BridgeAddress: l2BridgeAddr,
 			GlobalExitRoot:  globalExitRoot,
+		}
+
+		// Bind the AggOracleCommittee contract for committee-enabled envs so
+		// callers can read the on-chain quorum and membership (M-of-N). The
+		// address is present in summary.json only when the env was snapshotted
+		// with use_agg_oracle_committee (e.g. op-fep-committee); otherwise this
+		// is skipped and AggOracleCommittee stays nil.
+		if addr := strings.TrimSpace(l2Network.Contracts.AggOracleCommittee); addr != "" {
+			committeeAddr := common.HexToAddress(addr)
+			committee, err := aggoraclecommittee.NewAggoraclecommittee(committeeAddr, l2Client)
+			if err != nil {
+				return nil, fmt.Errorf("initialize AggOracleCommittee contract for network %s: %w", key, err)
+			}
+			l2Contracts.AggOracleCommittee = committee
+			l2Contracts.AggOracleCommitteeAddress = committeeAddr
+			log.Infof("[LoadEnv] AggOracleCommittee bound at %s for network %s", committeeAddr.Hex(), key)
 		}
 
 		// Conditionally deploy a MintableERC20 for native-gas / op-stack envs. This
