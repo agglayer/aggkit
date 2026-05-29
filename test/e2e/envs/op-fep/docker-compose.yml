@@ -121,12 +121,12 @@ services:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.2.5
     container_name: op-fep-20260529-161738-op-geth-001
     hostname: op-geth-001
-    entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
+    entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
     volumes:
       - ./config/001/jwt.hex:/jwt/jwtsecret:ro
       - ./config/001/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
       - ./config/001/rollup.json:/rollup-ro/rollup.json:ro
-      - ./config/001/op-geth-entrypoint.sh:/entrypoint/op-geth-entrypoint.sh:ro
+      - ./config/001/op-reth-entrypoint.sh:/entrypoint/op-reth-entrypoint.sh:ro
       - l2-shared-001:/shared
     ports:
       - "11545:8545"    # HTTP RPC
@@ -137,7 +137,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
       interval: 2s
       timeout: 3s
       retries: 3
@@ -201,7 +201,10 @@ services:
     env_file:
       - ./config/001/op-succinct/proposer.env
     volumes:
-      - ./config/001/op-succinct/configs:/app/configs:ro
+      # Writable: the validity-proposer writes derived config/workspace files
+      # under /app/configs at startup; a read-only mount makes it fail with
+      # "Read-only file system (os error 30)" before it can run.
+      - ./config/001/op-succinct/configs:/app/configs:rw
     ports:
       - "11080:8080"    # Prometheus metrics
     depends_on:

@@ -41,13 +41,28 @@ args:
 This network has a single OP network running in FEP (Full Execution Proof) mode
 with an op-succinct **mock** prover and agglayer integration.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs` @ `bd3308c9`
-  (the P4 presets commit; the snapshot tooling extensions for the FEP topology
-  are `0fe7bf4b` + `5f06bd83` on the same branch).
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`. The FEP snapshot
+  tooling lives in commits `0fe7bf4b` + `5f06bd83` (per-topology capture) and
+  `05f04196` (op-reth EL entrypoint). The bootability fixes for the op-reth EL
+  restore path — op-reth healthcheck (JSON-RPC POST), op-succinct proposer
+  hostname rewrite + writable `/app/configs`, and the Fulu-spec / best-effort
+  genesis.ssz patch in the baked beacon — are in commit `b3e13ba9` on the
+  same branch. The compose in this dir is
+  regenerated deterministically by `snapshot/scripts/generate-compose.sh` from
+  the captured snapshot state.
 - Preset: `.github/tests/aggkit-e2e-envs/op-fep.yml`
 - snapshot `chain_type`: `op-stack`; the summary captures an
   `op-succinct-proposer` service marked `settled: false` (FEP prover wired but
-  not settled at snapshot time).
+  not settled at snapshot time). The L2 EL is op-reth (`op-reth:v2.2.5`) run
+  with `op-reth-entrypoint.sh`; the summary logical service key stays `op-geth`
+  for loader compatibility.
+- Boot status: `docker compose up -d` brings all core services healthy
+  (geth/beacon/validator L1, op-reth EL, op-node, agglayer, aggkit, postgres);
+  `E2E_ENV=op-fep go test ./test/e2e/... -run TestMain` passes LoadEnv + CheckEnv
+  and a full L1->L2 ERC20 bridge round-trip. The L2->L1 direction needs FEP
+  proof settlement, which the op-succinct proposer cannot perform on a restored
+  snapshot (it enforces an on-chain rollup-config-hash that the snapshot's
+  genesis-time re-anchoring changes) — consistent with `settled: false`.
 - Kurtosis config (key args, faithful mirror of the aggkit CI `op_succinct_args`
   composition minus `bridge_spammer`):
 
