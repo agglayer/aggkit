@@ -1089,9 +1089,14 @@ func ensureDockerComposeRunning(ctx context.Context, envDir string, networkKeys 
 		log.Debugf("prepared aggkit data dir: %s\n", dataDir)
 	}
 
-	// Step 5: Start fresh
-	log.Debugf("running docker compose up -d for %s\n", projectName)
-	cmd := newDockerComposeCmd(ctx, envDir, "up", "-d")
+	// Step 5: Start fresh.
+	// Use --wait so the command blocks until every service is healthy/running instead of
+	// returning as soon as containers are created. On a cold host (images loaded for the first
+	// time) the health-gated dependencies (e.g. agglayer, op-geth) can be slow to become healthy;
+	// a plain "up -d" can abort early on those depends_on conditions. The generous --wait-timeout
+	// accommodates the heavier multi-container envs (FEP prover, committee, multi-chain).
+	log.Debugf("running docker compose up -d --wait for %s\n", projectName)
+	cmd := newDockerComposeCmd(ctx, envDir, "up", "-d", "--wait", "--wait-timeout", "600")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker compose up: %w\nOutput:\n%s", err, string(output))
