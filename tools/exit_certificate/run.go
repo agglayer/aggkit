@@ -78,8 +78,8 @@ const lastAutoStep = "sign"
 // "f-"   → ["f", "g", "h", "i", "sign", "submit", "wait"]
 // "h, i, sign" → ["h", "i", "sign"]
 // "a"    → ["a1", "a2"] (alias for both sub-steps)
-// "b"    → ["b1", "b2"] (alias for both sub-steps)
-// "a-b"  → ["a1", "a2", "b1", "b2"] ("a"→"a1" start, "b"→"b2" end)
+// "b"    → ["b1", "b2", "b3"] (alias for all three sub-steps)
+// "a-b"  → ["a1", "a2", "b1", "b2", "b3"] ("a"→"a1" start, "b"→"b3" end)
 // "0-a"  → ["0", "a1", "a2"] ("a" expands to "a2" as range end)
 func parseStepList(raw string) ([]string, error) {
 	var steps []string

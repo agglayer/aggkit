@@ -58,12 +58,8 @@ func RunStepB2(
 	err := runWorkerPool(
 		ctx, jobs, concurrency,
 		func(j erc20ProbeJob) (erc20ProbeResult, error) {
-			tokenLabel := j.info.name
-			if tokenLabel == "" {
-				tokenLabel = j.info.symbol
-			}
 			wrappedBalances, err := checkWrappedTokenBalances(
-				ctx, cfg.L2RPCURL, j.addr, wrappedTokens, blockTag, batchSize, concurrency, tokenLabel, true,
+				ctx, cfg.L2RPCURL, j.addr, wrappedTokens, blockTag, batchSize, concurrency,
 			)
 			if err != nil {
 				return erc20ProbeResult{}, fmt.Errorf("check wrapped balances for ERC-20 %s: %w", j.addr.Hex(), err)
@@ -116,12 +112,11 @@ func RunStepB2(
 // checkWrappedTokenBalances calls balanceOf(contractAddr) on each wrapped token contract
 // and eth_getBalance for native ETH. Returns only entries where the balance is > 0.
 // ETH is represented as the zero-address token (OriginNetwork=0, OriginTokenAddress=0x0,
-// WrappedTokenAddress=0x0). Pass silent=true to suppress progress logs (recommended when
-// called concurrently).
+// WrappedTokenAddress=0x0).
 func checkWrappedTokenBalances(
 	ctx context.Context, rpcURL string,
 	contractAddr common.Address, wrappedTokens []WrappedToken,
-	blockTag string, batchSize, concurrency int, tokenLabel string, silent bool,
+	blockTag string, batchSize, concurrency int,
 ) ([]WrappedTokenBalance, error) {
 	// calls = [balanceOf(t0), ..., balanceOf(tN), eth_getBalance]
 	calls := make([]RPCCall, len(wrappedTokens)+1)
@@ -142,11 +137,7 @@ func checkWrappedTokenBalances(
 		Params: []any{contractAddr.Hex(), blockTag},
 	}
 
-	label := fmt.Sprintf("step_b2: %-20.20s wrappedBalances", tokenLabel)
-	if silent {
-		label = ""
-	}
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, label)
+	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "")
 	if err != nil {
 		return nil, err
 	}

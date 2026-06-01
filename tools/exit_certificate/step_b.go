@@ -39,8 +39,9 @@ func RunStepB(ctx context.Context, cfg *Config, targetBlock uint64, stepA *StepA
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("STEP B complete: %d EOAs, %d token accumulations, %d ERC-20 contracts detected, %d ERC-20 holder breakdowns",
-		len(b1Result.EOABalances), len(b1Result.Accumulated), len(b2Result.DetectedERC20s), len(b3Result.Breakdowns))
+	log.Infof("STEP B complete: %d EOAs, %d token accumulations, %d ERC-20 detected, %d ERC-20 holder breakdowns",
+		len(b1Result.EOABalances), len(b1Result.Accumulated),
+		len(b2Result.DetectedERC20s), len(b3Result.Breakdowns))
 	return &StepBResult{
 		EOABalances:           b1Result.EOABalances,
 		Accumulated:           b1Result.Accumulated,

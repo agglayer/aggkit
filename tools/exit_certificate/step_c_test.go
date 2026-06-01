@@ -121,9 +121,10 @@ func TestRunStepC_MultipleTokens(t *testing.T) {
 // --- ERC20HolderBreakdown tests ---
 
 // fixture used by the breakdown tests:
-//   LBT[token] = 2000, EOA_accumulated[token] = 1000
-//   → raw SC_locked = 1000 (the vault's holdings are inside this)
-//   vault holds 900 of token
+//
+//	LBT[token] = 2000, EOA_accumulated[token] = 1000
+//	→ raw SC_locked = 1000 (the vault's holdings are inside this)
+//	vault holds 900 of token
 func breakdownFixture() (tokenAddr, originAddr, vaultAddr, alice, bob common.Address, lbtEntries []LBTEntry, accumulated []AccumulatedBalance) {
 	tokenAddr = common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	originAddr = common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")

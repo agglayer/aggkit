@@ -16,6 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	rpcMethodEthCall       = "eth_call"
+	rpcMethodEthGetBalance = "eth_getBalance"
+)
+
 // rpcTestCall holds the decoded parts of a single JSON-RPC request
 // received by a test server.
 type rpcTestCall struct {
@@ -45,7 +50,7 @@ func newEthCallServer(t *testing.T, respond func(rpcTestCall) (json.RawMessage, 
 			tc := rpcTestCall{Method: req.Method}
 			if len(req.Params) > 0 {
 				switch req.Method {
-				case "eth_call":
+				case rpcMethodEthCall:
 					var obj struct {
 						To   string `json:"to"`
 						Data string `json:"data"`
@@ -56,7 +61,7 @@ func newEthCallServer(t *testing.T, respond func(rpcTestCall) (json.RawMessage, 
 					if len(obj.Data) >= 10 {
 						tc.Selector = strings.ToLower(obj.Data[:10])
 					}
-				case "eth_getBalance":
+				case rpcMethodEthGetBalance:
 					var addr string
 					_ = json.Unmarshal(req.Params[0], &addr)
 					tc.To = strings.ToLower(addr)
@@ -135,7 +140,7 @@ func TestCheckWrappedTokenBalances_AllZeroReturnEmpty(t *testing.T) {
 	defer server.Close()
 
 	balances, err := checkWrappedTokenBalances(
-		context.Background(), server.URL, contractAddr, nil, "latest", 200, 5, "test", true,
+		context.Background(), server.URL, contractAddr, nil, "latest", 200, 5,
 	)
 	require.NoError(t, err)
 	require.Empty(t, balances)
@@ -148,7 +153,7 @@ func TestCheckWrappedTokenBalances_ETHBalanceOnly(t *testing.T) {
 	ethBal := big.NewInt(5_000_000)
 
 	server := newEthCallServer(t, func(tc rpcTestCall) (json.RawMessage, *jsonRPCError) {
-		if tc.Method == "eth_getBalance" {
+		if tc.Method == rpcMethodEthGetBalance {
 			return abiUint256(ethBal), nil
 		}
 		return abiZero(), nil
@@ -156,7 +161,7 @@ func TestCheckWrappedTokenBalances_ETHBalanceOnly(t *testing.T) {
 	defer server.Close()
 
 	balances, err := checkWrappedTokenBalances(
-		context.Background(), server.URL, contractAddr, nil, "latest", 200, 5, "test", true,
+		context.Background(), server.URL, contractAddr, nil, "latest", 200, 5,
 	)
 	require.NoError(t, err)
 	require.Len(t, balances, 1)
@@ -178,7 +183,7 @@ func TestCheckWrappedTokenBalances_WrappedTokenHeld(t *testing.T) {
 	}}
 
 	server := newEthCallServer(t, func(tc rpcTestCall) (json.RawMessage, *jsonRPCError) {
-		if tc.Method == "eth_call" && tc.To == addrLow(tokenAddr) {
+		if tc.Method == rpcMethodEthCall && tc.To == addrLow(tokenAddr) {
 			return abiUint256(tokenBal), nil
 		}
 		return abiZero(), nil
@@ -186,7 +191,7 @@ func TestCheckWrappedTokenBalances_WrappedTokenHeld(t *testing.T) {
 	defer server.Close()
 
 	balances, err := checkWrappedTokenBalances(
-		context.Background(), server.URL, contractAddr, wrappedTokens, "latest", 200, 5, "test", true,
+		context.Background(), server.URL, contractAddr, wrappedTokens, "latest", 200, 5,
 	)
 	require.NoError(t, err)
 	require.Len(t, balances, 1)
@@ -202,10 +207,10 @@ func TestCheckWrappedTokenBalances_ETHAndTokenBothNonZero(t *testing.T) {
 	tokenAddr := common.HexToAddress("0xABCD000000000000000000000000000000000002")
 
 	server := newEthCallServer(t, func(tc rpcTestCall) (json.RawMessage, *jsonRPCError) {
-		if tc.Method == "eth_getBalance" {
+		if tc.Method == rpcMethodEthGetBalance {
 			return abiUint256(big.NewInt(1_000_000)), nil
 		}
-		if tc.Method == "eth_call" && tc.To == addrLow(tokenAddr) {
+		if tc.Method == rpcMethodEthCall && tc.To == addrLow(tokenAddr) {
 			return abiUint256(big.NewInt(500)), nil
 		}
 		return abiZero(), nil
@@ -214,7 +219,7 @@ func TestCheckWrappedTokenBalances_ETHAndTokenBothNonZero(t *testing.T) {
 
 	balances, err := checkWrappedTokenBalances(
 		context.Background(), server.URL, contractAddr,
-		[]WrappedToken{{WrappedTokenAddress: tokenAddr}}, "latest", 200, 5, "test", true,
+		[]WrappedToken{{WrappedTokenAddress: tokenAddr}}, "latest", 200, 5,
 	)
 	require.NoError(t, err)
 	require.Len(t, balances, 2)
@@ -434,4 +439,3 @@ func TestRunStepB2_DetectedERC20_HoldsTrackedToken(t *testing.T) {
 	require.Equal(t, tokenAddr, d.WrappedTokenBalances[0].Token.WrappedTokenAddress)
 	require.Equal(t, tokenBal.String(), d.WrappedTokenBalances[0].Balance)
 }
-

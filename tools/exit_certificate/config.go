@@ -330,8 +330,8 @@ type rawOpts struct {
 	AbortOnGenesisBalance     *bool                  `json:"abortOnGenesisBalance"`
 	ContinueOnTraceError      *bool                  `json:"continueOnTraceError"`
 	ContinueIfBalanceMismatch *bool                  `json:"continueIfBalanceMismatch"`
-	IgnoreUnclaimed     *bool    `json:"ignoreUnclaimed"`
-	ExtraERC20Contracts []string `json:"extraErc20Contracts"`
+	IgnoreUnclaimed           *bool                  `json:"ignoreUnclaimed"`
+	ExtraERC20Contracts       []string               `json:"extraErc20Contracts"`
 	BridgeServiceURL          string                 `json:"bridgeServiceURL"`
 	BridgeServiceType         string                 `json:"bridgeServiceType"`
 }

@@ -23,6 +23,8 @@ const (
 	idleConnTimeoutSec  = 90
 	httpTimeoutSec      = 120
 	maxIdleConnsPerHost = 100
+	// eip1474RevertCode is the JSON-RPC error code for a contract revert per EIP-1474.
+	eip1474RevertCode = 3
 )
 
 // httpClient keeps a large per-host idle connection pool to avoid throttling
@@ -82,7 +84,7 @@ type RPCCall struct {
 // code 3 per EIP-1474, or any message containing "revert". These should not
 // be retried because the same call will revert again.
 func isRevertError(e *jsonRPCError) bool {
-	if e.Code == 3 {
+	if e.Code == eip1474RevertCode {
 		return true
 	}
 	return strings.Contains(strings.ToLower(e.Message), "revert")
