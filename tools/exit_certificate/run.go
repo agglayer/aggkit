@@ -355,6 +355,9 @@ func runAllStepG(
 		return nil, fmt.Errorf("step G: %w", err)
 	}
 	saveJSON(dir, "step-g-new-local-exit-root.json", result)
+	// RunStepG reorders certificate.BridgeExits to the shadow-fork deposit order; persist the
+	// reordered certificate for inspection and parity with single-step mode.
+	saveJSON(dir, "step-g-reordered-certificate.json", certificate)
 	return result, nil
 }
 
@@ -827,6 +830,12 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 	return nil
 }
 
+// fileExists reports whether path exists and is accessible.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 	var cert certificateJSON
 	cappedPath := filepath.Join(dir, "step-f-capped-certificate.json")
@@ -855,11 +864,15 @@ func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	result, err := RunStepG(ctx, cfg, targetBlock, cert.toAgglayerCertificate(), lbtEntries)
+	aggCert := cert.toAgglayerCertificate()
+	result, err := RunStepG(ctx, cfg, targetBlock, aggCert, lbtEntries)
 	if err != nil {
 		return err
 	}
 	saveJSON(dir, "step-g-new-local-exit-root.json", result)
+	// RunStepG reorders aggCert.BridgeExits to the shadow-fork deposit order. Persist it so the
+	// single-step Step I picks up the reordered exits instead of the pre-G ordering.
+	saveJSON(dir, "step-g-reordered-certificate.json", aggCert)
 	return nil
 }
 
@@ -878,13 +891,22 @@ func runSingleH(ctx context.Context, cfg *Config, dir string) error {
 
 func runSingleI(ctx context.Context, cfg *Config, dir string) error {
 	var cert certificateJSON
+	reorderedPath := filepath.Join(dir, "step-g-reordered-certificate.json")
 	cappedPath := filepath.Join(dir, "step-f-capped-certificate.json")
-	if _, err := os.Stat(cappedPath); err == nil {
+	switch {
+	case fileExists(reorderedPath):
+		// Step G reorders the bridge exits to the shadow-fork deposit order; this is the
+		// authoritative ordering that matches the computed NewLocalExitRoot.
+		if err := loadJSON(dir, "step-g-reordered-certificate.json", &cert); err != nil {
+			return fmt.Errorf("load step G reordered certificate: %w", err)
+		}
+		log.Info("Using reordered certificate from step G (step-g-reordered-certificate.json)")
+	case fileExists(cappedPath):
 		if err := loadJSON(dir, "step-f-capped-certificate.json", &cert); err != nil {
 			return fmt.Errorf("load step F capped certificate: %w", err)
 		}
 		log.Warn("⚠️  Using capped certificate from step F (step-f-capped-certificate.json)")
-	} else {
+	default:
 		if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
 			return fmt.Errorf("load step E certificate: %w", err)
 		}

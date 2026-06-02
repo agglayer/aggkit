@@ -73,6 +73,43 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	require.Equal(t, cfg.L2BridgeAddress, cfg.L1BridgeAddress)
 }
 
+func TestLoadConfig_DepositOrderSource(t *testing.T) {
+	t.Parallel()
+
+	base := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100"`
+
+	t.Run("defaults to events", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "c.json")
+		require.NoError(t, os.WriteFile(path, []byte(base+"}"), 0o600))
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.Equal(t, DepositOrderEvents, cfg.Options.DepositOrderSource)
+	})
+
+	t.Run("bridgesync is accepted", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "c.json")
+		data := base + `, "options": {"depositOrderSource": "bridgesync"}}`
+		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.Equal(t, DepositOrderBridgesync, cfg.Options.DepositOrderSource)
+	})
+
+	t.Run("invalid value is rejected", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "c.json")
+		data := base + `, "options": {"depositOrderSource": "nope"}}`
+		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+		_, err := LoadConfig(path)
+		require.ErrorContains(t, err, "invalid depositOrderSource")
+	})
+}
+
 func TestLoadConfig_FullConfig(t *testing.T) {
 	t.Parallel()
 

@@ -290,6 +290,11 @@ type StepGResult struct {
 	// replayed bridge exit, in the same order as Certificate.BridgeExits. Step I applies
 	// these values to each BridgeExit.Metadata before finalising the certificate.
 	BridgeExitMetadata [][]byte `json:"bridgeExitMetadata,omitempty"`
+	// ShadowForkFirstBlock is the first block of the Anvil shadow-fork that contains the
+	// replayed bridge exits (fork head + 1). Because the replay runs in parallel, the order
+	// in which BridgeEvents are emitted is non-deterministic; this block lets a later step
+	// scan the BridgeEvent logs from here and recover the correct bridge ordering by depositCount.
+	ShadowForkFirstBlock uint64 `json:"shadowForkFirstBlock,omitempty"`
 }
 
 // StepHResult holds the output of Step H (PreviousLocalExitRoot and next height from agglayer).

@@ -24,6 +24,7 @@
         "extraErc20Contracts": [],
         "bridgeServiceURL": "",
         "bridgeServiceType": "aggkit",
+        "depositOrderSource": "events",
         "agglayerClient": {
             "GRPC": {
                 "URL": "<AGGLAYER_GRPC_URL>",

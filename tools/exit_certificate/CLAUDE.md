@@ -152,11 +152,32 @@ contract on a fork eliminates that divergence risk.
 **Approach:**
 
 1. **Fork L2 at `targetBlock`** — spin up an Anvil instance (`anvil --fork-url <l2RpcUrl>
-   --fork-block-number <targetBlock>`). Anvil is a required external dependency for this step.
-2. **Impersonate a funded sender** — use `anvil_impersonateAccount` + `anvil_setBalance` so
-   `bridgeAsset` calls can be sent without a real private key.
-3. **Replay bridge exits** — for each `BridgeExit` in the certificate (`bridge_exits` list),
-   send an `eth_sendTransaction` calling
+   --fork-block-number <targetBlock> --block-time <anvilBlockTimeSeconds> --disable-block-gas-limit
+   --auto-impersonate --no-rate-limit`). Anvil is a required external dependency for this step.
+   **Interval mining** (`--block-time`) is used instead of auto-mine: with auto-mine each `bridgeAsset`
+   would produce its own block, so a mainnet replay (hundreds of thousands of exits) accumulates that
+   many blocks and Anvil degrades until receipt polling times out. Anvil instead mines a block every
+   interval, batching all pending txs into it; `--disable-block-gas-limit` lets one block hold every
+   pending tx. `--auto-impersonate` drops the per-tx `anvil_impersonateAccount` calls (balance is set
+   once per sender). `--no-rate-limit` disables Anvil's internal ~330 CUPS throttle to the fork
+   backend, which otherwise caps cold-state fetches to a few exits/s regardless of concurrency.
+   Correctness is unchanged: each worker still waits for its tx's receipt before the next exit, so the
+   per-exit balance patching stays correctly ordered.
+
+   > **Fork backend is the bottleneck.** Replaying against a *remote* `l2RpcUrl` means every cold
+   > storage slot is a network round-trip; throughput is bound by the upstream RPC's latency and rate
+   > limits. The send/collect pipeline (step 3) keeps that from being made worse by per-tx receipt
+   > waits, but it cannot remove the fetch cost itself. Transient fork errors are retried
+   > (`isTransientForkError`, `--retries`/`--fork-retry-backoff`) so a dropped connection doesn't abort
+   > the run. For a large replay, fork against a **local archive node** to remove the network cost
+   > entirely.
+2. **Fund the senders** — Anvil runs with `--auto-impersonate`, so any account can send txs; each
+   sender's ETH balance is set once with `anvil_setBalance`. For ERC-20 exits, the sender's token
+   balance is patched to `MaxUint256` via storage and a single `approve(bridge, MaxUint256)` is sent
+   per (sender, token) — so a sender can bridge a token any number of times without
+   underflowing balance/allowance.
+3. **Replay bridge exits via a send/collect pipeline** — for each `BridgeExit` in the certificate
+   (`bridge_exits` list), send an `eth_sendTransaction` calling
    [`bridgeAsset`](https://github.com/agglayer/agglayer-contracts/blob/v12.2.3/contracts/AgglayerBridge.sol)
    on the L2 bridge contract with the same parameters:
    - `destinationNetwork` — from the `BridgeExit`
@@ -165,10 +186,38 @@ contract on a fork eliminates that divergence risk.
    - `token` — derived from `TokenInfo.OriginTokenAddress` / `OriginNetwork`
    - `forceUpdateGlobalExitRoot = false`
    - `permitData = ""`
-4. **Read `localExitRoot`** — after all calls, call the `localExitRootManager().localExitRoot()`
-   view function (or read the storage slot directly) on the bridge contract.
-5. **Return result** — assign the result to `Certificate.NewLocalExitRoot` and return it to the
-   caller. Saving `step-g-new-local-exit-root.json` is the orchestrator's responsibility, not Step G's.
+
+   `replayBridgeExits` does **not** wait for each tx's receipt before sending the next — with
+   interval mining that would cap throughput at ~concurrency/`--block-time`. Instead it runs a
+   **send/collect pipeline**: sender workers (one per sender group, `concurrency = options.concurrencyLimit`)
+   fire all of a sender's txs without waiting and push each onto a bounded channel
+   (`replayInFlightWindow`), while collector workers pull those and fetch receipts + `BridgeEvent`
+   metadata in parallel. The channel capacity bounds the unconfirmed mempool, so block size and
+   memory stay bounded. **Exits are grouped by sender (`DestinationAddress`)**: same-sender txs are
+   sent sequentially so Anvil assigns nonces in order (approve before bridge); different senders are
+   independent. Before any tx is sent, the fork head + 1 is recorded as `ShadowForkFirstBlock`.
+4. **Read `localExitRoot`** — after all calls, call `getRoot()` on the bridge contract. The LER is
+   independent of replay order (each deposit lands at its own tree index), so parallelism is safe.
+5. **Recover deposit order and reorder the certificate** — the parallel replay assigns
+   `depositCount`s non-deterministically, so the certificate's `bridge_exits` order must be aligned
+   with the actual exit-tree leaf order or it would not match the computed `NewLocalExitRoot`
+   (agglayer rebuilds the LER by inserting `bridge_exits` in order). Two interchangeable mechanisms
+   recover the canonical order from the shadow-fork, selected via `options.depositOrderSource`
+   (dispatched by `recoverShadowForkDepositOrder` in `step_g_order.go`):
+   - **`"events"`** (default, `readShadowForkBridges` in `step_g_events.go`): reads `BridgeEvent`
+     logs directly from the fork via `eth_getLogs`, **only from `ShadowForkFirstBlock`** onward (it
+     does not sync the full L2 history). Lightweight and the recommended path.
+   - **`"bridgesync"`** (`syncShadowForkBridges` in `step_g_bridgesync.go`): spins up an L2
+     `bridgesync` syncer against the Anvil fork (reusing the production component), syncs **all** L2
+     bridges from genesis, then filters those at `BlockNum >= ShadowForkFirstBlock` (the replayed
+     ones).
+
+   Both produce `[]shadowForkBridge` ordered by `DepositCount`. `reorderCertificateExits`
+   (`step_g_order.go`) matches each replayed bridge back to a certificate exit by leaf content
+   `(originNetwork, originAddress, destinationNetwork, destinationAddress, amount)` and reorders
+   `Certificate.BridgeExits` (and the metadata slice) in place to deposit order.
+6. **Return result** — assign the LER to `Certificate.NewLocalExitRoot` and return it. Saving
+   `step-g-new-local-exit-root.json` is the orchestrator's responsibility, not Step G's.
 
 **Anvil dependency:** the tool shells out to `anvil` (from the Foundry toolchain). If `anvil`
 is not in `$PATH`, Step G must fail with a clear error message pointing to
@@ -177,7 +226,18 @@ is not in `$PATH`, Step G must fail with a clear error message pointing to
 **Empty bridge exits:** if the certificate has no `bridge_exits`, skip the fork entirely and
 use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 
-- **Output:** `step-g-new-local-exit-root.json` (`StepGResult`)
+**Reordered certificate output:** because Step G reorders `bridge_exits`, the orchestrator saves the
+reordered certificate as `step-g-reordered-certificate.json`. In `runAll` the in-memory certificate
+(already reordered) flows to Step I; in single-step mode Step I prefers
+`step-g-reordered-certificate.json` over the capped/Step-E certificates so the final certificate
+matches the computed LER. `StepGResult.ShadowForkFirstBlock` records the first replayed block.
+
+**Abort on replay failure:** the parallel replay is fail-fast — the first `approveERC20`/`bridgeAsset`
+failure cancels the shared context (so the other workers stop), aborts Step G with the real error
+(not `context.Canceled`), and the `defer cleanup()` kills Anvil. The offending exit is persisted to
+`step-g-failed-exit.json` (`FailedBridgeExit`) for inspection.
+
+- **Output:** `step-g-new-local-exit-root.json` (`StepGResult`), `step-g-reordered-certificate.json`, `step-g-failed-exit.json` *(only on replay failure)*
 
 ### Step H — Fetch PreviousLocalExitRoot
 
@@ -188,8 +248,9 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 
 ### Step I — Assemble final certificate
 
-- Reads `step-e-exit-certificate.json` (base from E), `step-g-new-local-exit-root.json`, and
-  `step-h-previous-local-exit-root.json` (optional).
+- Reads the base certificate (single-step priority: `step-g-reordered-certificate.json` >
+  `step-f-capped-certificate.json` > `step-e-exit-certificate.json`), `step-g-new-local-exit-root.json`,
+  and `step-h-previous-local-exit-root.json` (optional).
 - Sets `Certificate.NewLocalExitRoot` from G and `Certificate.PrevLocalExitRoot` from H.
 - **Fetches `L1InfoTreeLeafCount`** — scans L1 backwards from the latest L1 block for the most
   recent `UpdateL1InfoTreeV2` event emitted by `l1GlobalExitRootAddress` and sets
@@ -231,7 +292,7 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 | `SCLockedValue` | LBT total − EOA accumulated, per token |
 | `L1Deposit` | Parsed `BridgeEvent` log from L1 |
 | `TokenBalanceCheck` | Step F three-way comparison: `LBTAmount` (Step 0), `CertificateAmount` (sum of exits), `AgglayerAmount`. `LBTAmount` is empty when LBT data was unavailable (two-way fallback). |
-| `StepGResult` | `NewLocalExitRoot` hash + bridge exit count |
+| `StepGResult` | `NewLocalExitRoot` hash + bridge exit count + `BridgeExitMetadata` + `ShadowForkFirstBlock` (first replayed shadow-fork block, used to recover deposit order) |
 | `StepHResult` | `PreviousLocalExitRoot` + next certificate height from agglayer |
 | `StepSubmitResult` | `certificateHash` returned by the agglayer after submission |
 | `StepWaitResult` | `certificateHash`, `finalStatus`, optional `settlementTxHash`, `elapsedSeconds`, optional `pendingCertWaited` |
@@ -248,6 +309,7 @@ Notable optional fields:
 - `l1GlobalExitRootAddress` — address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. Without it Step I fails.
 - `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
+- `options.depositOrderSource` — `"events"` (default) or `"bridgesync"`. Selects how Step G recovers the canonical bridge deposit order from the shadow-fork after the parallel replay. `"events"` reads `BridgeEvent` logs directly from the fork (only the replayed blocks); `"bridgesync"` reuses the bridgesync component (syncs all L2 bridges from genesis). `LoadConfig` rejects any other value.
 
 Defaults applied by `LoadConfig`:
 

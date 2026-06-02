@@ -59,6 +59,10 @@ type Options struct {
 	BridgeServiceURL string `json:"bridgeServiceURL"`
 	// BridgeServiceType selects the bridge service API flavour: "aggkit" (default) or "zkevm".
 	BridgeServiceType string `json:"bridgeServiceType"`
+	// DepositOrderSource selects how Step G recovers the canonical bridge deposit order from the
+	// shadow-fork after the parallel replay: "events" (default — reads BridgeEvent logs directly
+	// from the fork) or "bridgesync" (reuses the bridgesync component, syncing all L2 bridges).
+	DepositOrderSource string `json:"depositOrderSource"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -96,6 +100,7 @@ var defaultOptions = Options{
 	L1StartBlock:          0,
 	L2StartBlock:          0,
 	AbortOnGenesisBalance: true,
+	DepositOrderSource:    DefaultDepositOrderSource,
 }
 
 // LoadConfig reads and validates the JSON config file.
@@ -147,6 +152,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	cfg.Options = mergeOptions(raw.Options, configDir)
+	switch cfg.Options.DepositOrderSource {
+	case DepositOrderEvents, DepositOrderBridgesync:
+	default:
+		return nil, fmt.Errorf("invalid depositOrderSource %q (expected %q or %q)",
+			cfg.Options.DepositOrderSource, DepositOrderEvents, DepositOrderBridgesync)
+	}
 	if len(raw.SignerConfig) > 0 {
 		signerCfg, err := parseSignerConfig(raw.SignerConfig, configDir)
 		if err != nil {
@@ -296,6 +307,9 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.BridgeServiceType != "" {
 		opts.BridgeServiceType = raw.BridgeServiceType
 	}
+	if raw.DepositOrderSource != "" {
+		opts.DepositOrderSource = raw.DepositOrderSource
+	}
 	return opts
 }
 
@@ -334,6 +348,7 @@ type rawOpts struct {
 	ExtraERC20Contracts       []string               `json:"extraErc20Contracts"`
 	BridgeServiceURL          string                 `json:"bridgeServiceURL"`
 	BridgeServiceType         string                 `json:"bridgeServiceType"`
+	DepositOrderSource        string                 `json:"depositOrderSource"`
 }
 
 // --- LBT file parsing ---

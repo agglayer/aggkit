@@ -9,7 +9,10 @@ import (
 	"math/big"
 	"net"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	agglayerbridgel2 "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -22,15 +25,59 @@ import (
 )
 
 const (
-	anvilReadyTimeout   = 30 * time.Second
-	anvilPollInterval   = 300 * time.Millisecond
-	receiptPollTimeout  = 30 * time.Second
-	receiptPollInterval = 200 * time.Millisecond
+	anvilReadyTimeout = 30 * time.Second
+	anvilPollInterval = 300 * time.Millisecond
+	// receiptPollTimeout is how long a collector waits for one tx's receipt. With interval mining a
+	// tx's receipt only appears once its whole block is mined, which — for a block batching many
+	// cold-state txs against a remote fork — can take a while, so this is generous to avoid false
+	// timeouts. A tx that truly never mines still fails after this bound.
+	receiptPollTimeout = 120 * time.Second
+	// receiptPollInterval is how long a worker waits between receipt polls. With --no-mining the tx
+	// is mined by the background miner (see backgroundMineInterval), not synchronously on send, so
+	// the first poll always misses; keep this small so that miss costs ~tens of ms, not a fixed 200ms
+	// floor per tx (which at mainnet scale dominated the whole replay).
+	receiptPollInterval = 25 * time.Millisecond
 
 	// largeETHBalance is MaxUint256 in hex, enough for any bridgeAsset call regardless of exit amounts.
 	largeETHBalance = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 	abiFuncSelectorSize = 4 // bytes in an ABI function selector
+
+	// replayProgressSteps is how many progress lines replayBridgeExits aims to emit over the full
+	// replay (one roughly every 1% of exits), instead of one line per individual bridge.
+	replayProgressSteps = 100
+
+	// replayLogMaxGap caps how long the replay can run without emitting a progress line, so there is
+	// periodic feedback even when 1% of exits (replayProgressSteps) takes a long time to complete.
+	replayLogMaxGap = 15 * time.Second
+
+	// forkRetryAttempts/forkRetryBackoff bound how often a replay tx send is retried when the remote
+	// fork backend drops a request (see isTransientForkError). Forking a remote RPC under concurrency
+	// causes intermittent transport failures; a few backed-off retries ride them out without killing
+	// the whole replay.
+	forkRetryAttempts = 5
+	forkRetryBackoff  = 500 * time.Millisecond
+
+	// replayInFlightWindow bounds how many sent-but-unconfirmed bridge txs sit in Anvil's mempool at
+	// once (the send/collect pipeline's channel capacity). It decouples send throughput from the
+	// per-tx receipt wait while keeping block size and memory bounded — sending all exits at once
+	// would have Anvil mine one gigantic block. It also caps how many txs land in a single interval
+	// block, bounding that block's mine time (and thus the receipt latency collectors wait on).
+	replayInFlightWindow = 2000
+
+	// anvilBlockTimeSeconds is Anvil's --block-time: it mines a block on this fixed interval, batching
+	// all txs pending at each tick into one block. This bounds block count (runtime/interval) instead
+	// of one-per-tx (~hundreds of thousands), which kept Anvil from degrading. A worker waits up to
+	// one interval for its receipt, so this also caps replay throughput at ~concurrency/interval.
+	anvilBlockTimeSeconds = 2
+
+	// anvilTxGasLimit is the explicit gas limit set on every replay transaction. We do NOT rely on
+	// Anvil's auto gas estimation: the parallel replay submits many bridgeAsset txs concurrently, so
+	// estimateGas runs against a pending state whose global depositCount (and thus the exit-tree
+	// Merkle path / SSTORE cost) differs from what the tx sees when actually mined. That under-estimate
+	// caused intermittent out-of-gas reverts ("reverted: no revert reason available"). A fixed, generous
+	// limit (well under Anvil's 30M block limit) removes the estimation race. A bridgeAsset costs ~300k.
+	anvilTxGasLimit = "0x4c4b40" // 5,000,000
 )
 
 var (
@@ -39,6 +86,10 @@ var (
 	bridgeABI abi.ABI
 
 	bridgeEventTopicHash common.Hash
+
+	// maxUint256 is 2^256-1, used as the patched ERC-20 balance and approve amount so a sender can
+	// bridge a token any number of times without underflowing its balance/allowance.
+	maxUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
 )
 
 func init() {
@@ -74,6 +125,49 @@ type bridgeEventLog struct {
 	Amount             *big.Int
 	Metadata           []byte
 	DepositCount       uint32
+}
+
+// FailedBridgeExit records the bridge exit whose replay aborted Step G, persisted to
+// step-g-failed-exit.json so the offending exit can be inspected after the run fails.
+type FailedBridgeExit struct {
+	Index              int    `json:"index"`
+	Error              string `json:"error"`
+	OriginNetwork      uint32 `json:"originNetwork"`
+	OriginTokenAddress string `json:"originTokenAddress"`
+	DestinationNetwork uint32 `json:"destinationNetwork"`
+	DestinationAddress string `json:"destinationAddress"`
+	Amount             string `json:"amount"`
+	IsNative           bool   `json:"isNative"`
+	L2TokenAddress     string `json:"l2TokenAddress"`
+}
+
+// isContextCanceled reports whether err is (or wraps) context.Canceled. Used to suppress noisy
+// error logs from the in-flight replay workers that abort once failFast cancels the shared context
+// after the first real failure — those cancellations are expected, not the root cause.
+func isContextCanceled(err error) bool {
+	return errors.Is(err, context.Canceled)
+}
+
+// isTransientForkError reports whether err looks like a transient failure of Anvil's fork backend
+// (the upstream L2 RPC) — a dropped connection, transport error, or timeout while Anvil lazily
+// fetches forked state — rather than a real EVM revert. Forking a remote/public RPC under high
+// concurrency triggers these intermittently; they are worth retrying, whereas a contract revert is
+// deterministic and must not be retried.
+func isTransientForkError(err error) bool {
+	if err == nil || isContextCanceled(err) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// A genuine revert is reported as "...reverted..."; never treat those as transient.
+	if strings.Contains(msg, "revert") {
+		return false
+	}
+	for _, marker := range []string{"fork error", "transport", "dispatch", "timeout", "connection", "eof"} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // RunStepG computes Certificate.NewLocalExitRoot by replaying all bridge exits
@@ -128,6 +222,17 @@ func RunStepG(
 	}
 	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
 
+	// Record the first shadow-fork block that will contain the replayed bridge exits, before
+	// any transaction is sent. The parallel replay below emits BridgeEvents in a non-deterministic
+	// order, so a later step scans the logs from this block to recover the correct ordering by
+	// depositCount. eth_call (used by resolveTokenAddresses) does not mine blocks, so head+1 stays valid.
+	forkHead, err := readAnvilBlockNumber(ctx, anvilURL)
+	if err != nil {
+		return nil, fmt.Errorf("read shadow-fork block number: %w", err)
+	}
+	shadowForkFirstBlock := forkHead + 1
+	log.Infof("Shadow-fork first block (for bridge event ordering): %d", shadowForkFirstBlock)
+
 	lbtMap := buildLBTTokenMap(lbtEntries)
 	l2Tokens, err := resolveTokenAddresses(
 		ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits,
@@ -139,37 +244,15 @@ func RunStepG(
 	for k, v := range l2Tokens {
 		log.Debugf("token map: origin(network=%d addr=%s) -> L2 wrapped %s", k.network, k.addr.Hex(), v.Hex())
 	}
-
-	metadatas := make([][]byte, 0, len(certificate.BridgeExits))
-	for i, bridge := range certificate.BridgeExits {
-		isNative := isNativeBridgeExit(bridge.TokenInfo, gasTokenNetwork, gasTokenAddress)
-		log.Infof("[%d/%d] bridgeAsset bridge exit [%d/%s] -> %s:  amount=%s isNative=%t", i+1, len(certificate.BridgeExits),
-			bridge.TokenInfo.OriginNetwork, bridge.TokenInfo.OriginTokenAddress.Hex(),
-			bridge.DestinationAddress.Hex(),
-			bridge.Amount.String(), isNative)
-
-		var l2TokenAddr common.Address
-		if !isNative {
-			l2TokenAddr, err = findTokenAddress(bridge, l2Tokens)
-			if err != nil {
-				return nil, fmt.Errorf("find token address: %w", err)
-			}
-
-			// Do an allowance of ERC20 before doing the bridge
-			if err := approveERC20(
-				ctx, anvilURL, cfg.L2BridgeAddress, bridge.DestinationAddress, bridge, l2TokenAddr,
-			); err != nil {
-				return nil, fmt.Errorf("approve ERC20: %w", err)
-			}
-		}
-
-		event, err := bridgeAsset(ctx, anvilURL, cfg.L2BridgeAddress, bridge, isNative, l2TokenAddr)
-		if err != nil {
-			return nil, fmt.Errorf("bridge asset: %w", err)
-		}
-		log.Debugf("BridgeEvent depositCount=%d originNetwork=%d originAddress=%s amount=%s metadata=%x",
-			event.DepositCount, event.OriginNetwork, event.OriginAddress.Hex(), event.Amount, event.Metadata)
-		metadatas = append(metadatas, event.Metadata)
+	log.Infof("Replaying %d bridge exits on Anvil with concurrency %d...", len(certificate.BridgeExits), max(cfg.Options.ConcurrencyLimit, 1))
+	// Anvil mines on its own --block-time interval (see anvilBlockTimeSeconds); workers just send and
+	// poll for receipts. By the time replayBridgeExits returns, every tx has been waited on and mined,
+	// so getRoot below reflects all replayed exits.
+	metadatas, err := replayBridgeExits(
+		ctx, cfg, anvilURL, certificate.BridgeExits, l2Tokens, gasTokenNetwork, gasTokenAddress,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	ler, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
@@ -177,16 +260,266 @@ func RunStepG(
 		return nil, fmt.Errorf("read local exit root: %w", err)
 	}
 
+	// The parallel replay produced a non-deterministic deposit order, so recover the canonical
+	// order from the shadow-fork (via the mechanism selected in options.depositOrderSource) and
+	// reorder the certificate's bridge exits to match. This keeps Certificate.BridgeExits consistent
+	// with the NewLocalExitRoot just computed.
+	replayed, err := recoverShadowForkDepositOrder(ctx, cfg, anvilURL, shadowForkFirstBlock)
+	if err != nil {
+		return nil, fmt.Errorf("recover shadow-fork deposit order: %w", err)
+	}
+	metadatas, err = reorderCertificateExits(certificate, metadatas, replayed, gasTokenNetwork, gasTokenAddress)
+	if err != nil {
+		return nil, fmt.Errorf("reorder certificate by deposit order: %w", err)
+	}
+	log.Infof("Reordered %d bridge exits to match shadow-fork deposit order", len(replayed))
+
 	result := &StepGResult{
 		InitialLocalExitRoot: initialLER,
 		NewLocalExitRoot:     ler,
 		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
 		BridgeExitMetadata:   metadatas,
+		ShadowForkFirstBlock: shadowForkFirstBlock,
 	}
 	log.Infof("Bridge exits processed: %d", result.BridgeExitCount)
 	log.Infof("NewLocalExitRoot: %s", result.NewLocalExitRoot.Hex())
 	log.Info("STEP G complete")
 	return result, nil
+}
+
+// readAnvilBlockNumber returns the current head block number of the Anvil shadow-fork.
+func readAnvilBlockNumber(ctx context.Context, anvilURL string) (uint64, error) {
+	raw, err := singleRPC(ctx, anvilURL, "eth_blockNumber", nil, defaultRetries)
+	if err != nil {
+		return 0, err
+	}
+	var hexStr string
+	if err := json.Unmarshal(raw, &hexStr); err != nil {
+		return 0, fmt.Errorf("parse eth_blockNumber: %w", err)
+	}
+	return hexToUint64(hexStr), nil
+}
+
+// exitJob bundles a bridge exit with its index in Certificate.BridgeExits and the
+// replay parameters resolved up front (native flag and L2 token address).
+type exitJob struct {
+	index       int
+	bridge      *agglayertypes.BridgeExit
+	isNative    bool
+	l2TokenAddr common.Address
+}
+
+// sentTx pairs a sent bridgeAsset transaction with the exit that produced it, so the collect phase
+// can fetch the receipt, detect reverts, and record the BridgeEvent metadata at the right index.
+type sentTx struct {
+	index int
+	hash  common.Hash
+	job   exitJob
+}
+
+// replayBridgeExits replays every bridge exit against the Anvil shadow-fork and returns the
+// BridgeEvent metadata indexed by the original position in exits.
+//
+// It uses a send/collect pipeline rather than send-and-wait per tx: with Anvil on a --block-time
+// interval, waiting for each tx's receipt before sending the next would cap throughput at
+// ~concurrency/block-time. Instead, sender workers fire all of a sender's txs without waiting
+// (pushing each onto a bounded channel), while collector workers pull those and fetch receipts in
+// parallel. The channel's capacity (replayInFlightWindow) bounds how many txs sit unconfirmed in
+// Anvil's mempool, so block size and memory stay bounded (sending all ~915k at once would mine one
+// gigantic block). Each metadata is written to metadatas[index], keeping it aligned with
+// Certificate.BridgeExits regardless of completion order; the canonical deposit order is recovered
+// later from the emitted BridgeEvents.
+//
+// Within a sender's group txs are sent sequentially so Anvil assigns nonces in order (an ERC-20
+// approve must precede its bridgeAsset). Balances/allowances are set generously once per sender (and
+// per token) up front, so multiple exits from the same sender never underflow regardless of the
+// order in which the batched block executes them.
+func replayBridgeExits(
+	ctx context.Context, cfg *Config, anvilURL string,
+	exits []*agglayertypes.BridgeExit, l2Tokens map[tokenOriginKey]common.Address,
+	gasTokenNetwork uint32, gasTokenAddress common.Address,
+) ([][]byte, error) {
+	metadatas := make([][]byte, len(exits))
+
+	groupsBySender := make(map[common.Address][]exitJob)
+	for i, bridge := range exits {
+		isNative := isNativeBridgeExit(bridge.TokenInfo, gasTokenNetwork, gasTokenAddress)
+		var l2TokenAddr common.Address
+		if !isNative {
+			addr, err := findTokenAddress(bridge, l2Tokens)
+			if err != nil {
+				return nil, fmt.Errorf("find token address: %w", err)
+			}
+			l2TokenAddr = addr
+		}
+		sender := bridge.DestinationAddress
+		groupsBySender[sender] = append(groupsBySender[sender], exitJob{
+			index: i, bridge: bridge, isNative: isNative, l2TokenAddr: l2TokenAddr,
+		})
+	}
+
+	groups := make([][]exitJob, 0, len(groupsBySender))
+	for _, g := range groupsBySender {
+		groups = append(groups, g)
+	}
+
+	concurrency := max(cfg.Options.ConcurrencyLimit, 1)
+
+	// Fail fast: cancel the shared context on the first error so senders and collectors stop, and
+	// keep the real error in replayErr (the pipeline would otherwise surface context.Canceled).
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var (
+		replayErr  error
+		replayOnce sync.Once
+	)
+	failFast := func(job exitJob, err error) error {
+		replayOnce.Do(func() {
+			replayErr = err
+			// Persist the offending exit so it can be inspected after the run aborts.
+			saveFailedExit(cfg.Options.OutputDir, job, err)
+			cancel()
+		})
+		return err
+	}
+
+	total := len(exits)
+	// Progress is reported as an aggregate %/ETA over collected receipts (~100 log lines) rather than
+	// one line per bridge. A line is emitted on the first receipt, every logInterval, the last, and at
+	// least every replayLogMaxGap, so there is always early and periodic feedback.
+	start := time.Now()
+	logInterval := max(total/replayProgressSteps, 1)
+	var completed, lastLogNanos int64
+	maybeLogProgress := func() {
+		done := atomic.AddInt64(&completed, 1)
+		now := time.Now().UnixNano()
+		if done == 1 || done%int64(logInterval) == 0 || int(done) == total {
+			atomic.StoreInt64(&lastLogNanos, now)
+			logReplayProgress(int(done), total, start)
+			return
+		}
+		last := atomic.LoadInt64(&lastLogNanos)
+		if now-last >= int64(replayLogMaxGap) && atomic.CompareAndSwapInt64(&lastLogNanos, last, now) {
+			logReplayProgress(int(done), total, start)
+		}
+	}
+
+	// pending carries sent txs from the sender workers to the collector workers; its capacity bounds
+	// the number of unconfirmed txs in Anvil's mempool.
+	pending := make(chan sentTx, replayInFlightWindow)
+
+	// Collectors: fetch each sent tx's receipt, detect reverts, and record its BridgeEvent metadata.
+	var collectWg sync.WaitGroup
+	for c := 0; c < concurrency; c++ {
+		collectWg.Add(1)
+		go func() {
+			defer collectWg.Done()
+			for s := range pending {
+				logs, err := waitForReceipt(ctx, anvilURL, s.hash)
+				if err != nil {
+					if !isContextCanceled(err) {
+						failFast(s.job, fmt.Errorf("get receipt %s for exit %d: %w", s.hash.Hex(), s.index+1, err))
+					}
+					continue
+				}
+				event, err := parseBridgeEventFromLogs(logs)
+				if err != nil {
+					failFast(s.job, fmt.Errorf("parse BridgeEvent for exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
+					continue
+				}
+				metadatas[s.index] = event.Metadata
+				maybeLogProgress()
+			}
+		}()
+	}
+
+	// Senders: for each sender, fund it and pre-approve its tokens once, then send all its bridge
+	// txs (sequential for nonce order) onto pending without waiting for receipts.
+	sendGroup := func(group []exitJob) (struct{}, error) {
+		if len(group) == 0 {
+			return struct{}{}, nil
+		}
+		sender := group[0].bridge.DestinationAddress
+		if err := setSenderBalance(ctx, anvilURL, sender); err != nil {
+			return struct{}{}, failFast(group[0], fmt.Errorf("set balance for %s: %w", sender.Hex(), err))
+		}
+		approved := make(map[common.Address]bool)
+		for _, job := range group {
+			if job.isNative || approved[job.l2TokenAddr] {
+				continue
+			}
+			approved[job.l2TokenAddr] = true
+			if err := prepareERC20Token(ctx, anvilURL, cfg.L2BridgeAddress, sender, job.l2TokenAddr); err != nil {
+				return struct{}{}, failFast(job, fmt.Errorf("prepare ERC20 token %s: %w", job.l2TokenAddr.Hex(), err))
+			}
+		}
+		for _, job := range group {
+			log.Debugf("[exit %d/%d] send bridgeAsset [%d/%s] -> %s amount=%s isNative=%t",
+				job.index+1, total, job.bridge.TokenInfo.OriginNetwork, job.bridge.TokenInfo.OriginTokenAddress.Hex(),
+				job.bridge.DestinationAddress.Hex(), job.bridge.Amount.String(), job.isNative)
+			hash, err := sendBridgeAssetTx(ctx, anvilURL, cfg.L2BridgeAddress, job.bridge, job.isNative, job.l2TokenAddr)
+			if err != nil {
+				return struct{}{}, failFast(job, fmt.Errorf("send bridge asset for exit %d: %w", job.index+1, err))
+			}
+			select {
+			case pending <- sentTx{index: job.index, hash: hash, job: job}:
+			case <-ctx.Done():
+				return struct{}{}, ctx.Err()
+			}
+		}
+		return struct{}{}, nil
+	}
+
+	log.Infof("Sending bridge exits (in-flight window %d) and collecting receipts...", replayInFlightWindow)
+	sendErr := runWorkerPool(ctx, groups, concurrency, sendGroup, func(struct{}) {}, "")
+	// All sends finished (or aborted): close pending so collectors drain and exit.
+	close(pending)
+	collectWg.Wait()
+
+	if replayErr != nil {
+		log.Errorf("Replay failed: %v", replayErr)
+		return nil, replayErr
+	}
+	if sendErr != nil {
+		log.Errorf("send phase failed: %v", sendErr)
+		return nil, sendErr
+	}
+
+	return metadatas, nil
+}
+
+// saveFailedExit writes the bridge exit whose replay aborted Step G to step-g-failed-exit.json in
+// dir, so the offending exit can be inspected after the run fails. Best-effort: any write error is
+// logged by saveJSON and does not mask the original replay error.
+func saveFailedExit(dir string, job exitJob, replayErr error) {
+	fe := FailedBridgeExit{
+		Index:              job.index,
+		Error:              replayErr.Error(),
+		DestinationNetwork: job.bridge.DestinationNetwork,
+		DestinationAddress: job.bridge.DestinationAddress.Hex(),
+		Amount:             bigIntKey(job.bridge.Amount),
+		IsNative:           job.isNative,
+		L2TokenAddress:     job.l2TokenAddr.Hex(),
+	}
+	if job.bridge.TokenInfo != nil {
+		fe.OriginNetwork = job.bridge.TokenInfo.OriginNetwork
+		fe.OriginTokenAddress = job.bridge.TokenInfo.OriginTokenAddress.Hex()
+	}
+	saveJSON(dir, "step-g-failed-exit.json", fe)
+}
+
+// logReplayProgress logs the replay completion percentage, throughput, and ETA. start is the
+// time the replay began; done is the number of exits replayed so far out of total.
+func logReplayProgress(done, total int, start time.Time) {
+	elapsed := time.Since(start)
+	rate := float64(done) / elapsed.Seconds()
+	eta := "—"
+	if rate > 0 {
+		remaining := total - done
+		eta = (time.Duration(float64(remaining)/rate) * time.Second).Round(time.Second).String()
+	}
+	log.Infof("  bridgeAsset replay: %d/%d (%.1f%%) — %.0f exits/s — ETA %s",
+		done, total, float64(done)/float64(total)*percentMultiplier, rate, eta)
 }
 
 func isNativeBridgeExit(
@@ -214,64 +547,47 @@ func findTokenAddress(
 	return addr, nil
 }
 
-// approveERC20 sets the token balance and bridge allowance for sender on the ERC-20 token
-// via Anvil storage manipulation (OZ slot 0 / slot 1), so that the subsequent bridgeAsset
-// call does not revert with insufficient balance or allowance.
-func approveERC20(ctx context.Context, rpcURL string, bridgeAddr, sender common.Address,
-	bridgeExit *agglayertypes.BridgeExit,
-	l2TokenAddr common.Address) error {
-	tokenAddr := l2TokenAddr
-	if tokenAddr == (common.Address{}) {
+// prepareERC20Token makes sender able to bridge the L2 ERC-20 token any number of times: it patches
+// a large balance via Anvil storage manipulation and sends a single approve(bridge, MaxUint256). It
+// does NOT wait for the approve receipt — the approve has a lower nonce than the sender's bridge txs,
+// so Anvil executes it first when the batched block is mined; an insufficient-allowance failure would
+// surface as a revert on the bridge tx's receipt. Called once per (sender, token).
+func prepareERC20Token(ctx context.Context, rpcURL string, bridgeAddr, sender, l2TokenAddr common.Address) error {
+	if l2TokenAddr == (common.Address{}) {
 		return fmt.Errorf("invalid L2 token address")
 	}
+	log.Debugf("Preparing ERC-20 L2 token %s for sender %s (balance + approve MaxUint256)",
+		l2TokenAddr.Hex(), sender.Hex())
 
-	log.Debugf("Approving ERC-20 L2 token: %s for L1 token (network=%d addr=%s) with amount %s",
-		tokenAddr.Hex(), bridgeExit.TokenInfo.OriginNetwork,
-		bridgeExit.TokenInfo.OriginTokenAddress.Hex(), bridgeExit.Amount.String())
-
-	amount := bridgeExit.Amount
-	if amount == nil {
-		amount = new(big.Int)
-	}
-
-	if err := ensureERC20Balance(ctx, rpcURL, tokenAddr, sender, amount); err != nil {
+	// A large balance covers every exit of this token for this sender regardless of how many there
+	// are or the order the batched block executes them; the per-exit burn amount is what affects the
+	// token's totalSupply, not this balance.
+	if err := ensureERC20Balance(ctx, rpcURL, l2TokenAddr, sender, maxUint256); err != nil {
 		return fmt.Errorf("ensure ERC-20 balance: %w", err)
 	}
 
-	callData := encodeERC20ApproveCallRaw(bridgeAddr, amount)
-	if err := setupImpersonation(ctx, rpcURL, sender); err != nil {
-		return fmt.Errorf("setup impersonation for %s to approve ERC-20 token: %w", sender.Hex(), err)
+	callData := encodeERC20ApproveCallRaw(bridgeAddr, maxUint256)
+	if _, err := sendAnvilTransaction(ctx, rpcURL, sender, l2TokenAddr, nil, callData); err != nil {
+		if !isContextCanceled(err) {
+			log.Errorf("Failed to send approve for ERC-20 token %s: %v", l2TokenAddr.Hex(), err)
+		}
+		return fmt.Errorf("send approve ERC-20 token %s: %w", l2TokenAddr.Hex(), err)
 	}
-
-	txHash, err := sendAnvilTransaction(ctx, rpcURL, sender, tokenAddr, nil, callData)
-	if err != nil {
-		log.Errorf("Failed to approve ERC-20 token: %v", err)
-		return fmt.Errorf("failed approve ERC-20 token: %w", err)
-	}
-
-	if _, err := waitForReceipt(ctx, rpcURL, txHash); err != nil {
-		return fmt.Errorf("wait for approve ERC-20 token (%s) receipt: %w", tokenAddr.Hex(), err)
-	}
-	log.Debugf("✅ ERC-20 approval for bridgeAddr for L2Token: %s successful", tokenAddr.Hex())
-
 	return nil
 }
 
-func bridgeAsset(ctx context.Context, rpcURL string,
+// sendBridgeAssetTx sends (without waiting for the receipt) a bridgeAsset call replaying bridgeExit
+// against the fork, returning the tx hash for the collect phase to fetch the receipt and metadata.
+func sendBridgeAssetTx(ctx context.Context, rpcURL string,
 	bridgeAddr common.Address,
 	bridgeExit *agglayertypes.BridgeExit,
 	isNative bool,
-	l2TokenAddr common.Address) (*bridgeEventLog, error) {
+	l2TokenAddr common.Address) (common.Hash, error) {
 	sender := bridgeExit.DestinationAddress
 
 	var value *big.Int
-
 	if isNative && bridgeExit.Amount != nil {
 		value = bridgeExit.Amount
-	}
-
-	if err := setupImpersonation(ctx, rpcURL, sender); err != nil {
-		return nil, fmt.Errorf("setup impersonation for %s: %w", sender.Hex(), err)
 	}
 
 	callData := encodeBridgeAssetCallRaw(
@@ -283,19 +599,12 @@ func bridgeAsset(ctx context.Context, rpcURL string,
 
 	txHash, err := sendAnvilTransaction(ctx, rpcURL, sender, bridgeAddr, value, callData)
 	if err != nil {
-		log.Errorf("Failed to bridge asset: %v", err)
-		return nil, fmt.Errorf("failed bridge asset: %w", err)
+		if !isContextCanceled(err) {
+			log.Errorf("Failed to send bridge asset tx: %v", err)
+		}
+		return common.Hash{}, fmt.Errorf("send bridge asset tx: %w", err)
 	}
-	logs, err := waitForReceipt(ctx, rpcURL, txHash)
-	if err != nil {
-		log.Errorf("Failed to get receipt for bridge asset tx: %v", err)
-		return nil, fmt.Errorf("failed to get receipt for bridge asset tx: %w", err)
-	}
-	event, err := parseBridgeEventFromLogs(logs)
-	if err != nil {
-		return nil, fmt.Errorf("parse BridgeEvent from receipt: %w", err)
-	}
-	return event, nil
+	return txHash, nil
 }
 
 func checkAnvilAvailable() error {
@@ -329,6 +638,27 @@ func startAnvil(ctx context.Context, l2RPCURL string, targetBlock uint64) (strin
 		"--fork-block-number", fmt.Sprintf("%d", targetBlock),
 		"--port", fmt.Sprintf("%d", port),
 		"--silent",
+		// Batch mining: with auto-mine each bridgeAsset would mine its own block, so a mainnet replay
+		// (hundreds of thousands of exits) accumulates that many blocks and Anvil degrades until
+		// receipt polling times out. Instead Anvil mines on a fixed interval (--block-time), batching
+		// all txs pending at each tick into one block. --disable-block-gas-limit lets a single block
+		// hold every pending tx regardless of their (explicit) gas limits.
+		"--block-time", strconv.Itoa(anvilBlockTimeSeconds),
+		"--disable-block-gas-limit",
+		// Accept eth_sendTransaction from any account without a per-tx anvil_impersonateAccount call.
+		// The replay only needs each sender's balance set once (see replayBridgeExits), so this drops
+		// two RPC round-trips per replayed tx.
+		"--auto-impersonate",
+		// Fork-backend resilience: replaying against a remote RPC triggers many lazy state fetches;
+		// the upstream intermittently drops connections. Let Anvil retry those fetches with backoff
+		// and a generous timeout before surfacing a Fork Error.
+		"--retries", "10",
+		"--fork-retry-backoff", "1000",
+		"--timeout", "120000",
+		// Anvil self-throttles requests to the fork backend to ~330 compute-units/s by default, which
+		// caps cold-state fetches globally (independent of our concurrency) to a few exits/s. Disable
+		// it so the replay is bound by the upstream RPC's real capacity, not Anvil's internal limiter.
+		"--no-rate-limit",
 	)
 	if err := cmd.Start(); err != nil {
 		return "", nil, fmt.Errorf("start anvil process: %w", err)
@@ -365,11 +695,10 @@ func waitForAnvil(ctx context.Context, anvilURL string) error {
 	return fmt.Errorf("anvil not ready after %s", anvilReadyTimeout)
 }
 
-func setupImpersonation(ctx context.Context, anvilURL string, sender common.Address) error {
-	if _, err := singleRPC(ctx, anvilURL, "anvil_impersonateAccount",
-		[]any{sender.Hex()}, defaultRetries); err != nil {
-		return fmt.Errorf("impersonate account: %w", err)
-	}
+// setSenderBalance funds sender with largeETHBalance so its bridgeAsset calls (native value + gas)
+// never fail on insufficient funds. Anvil runs with --auto-impersonate, so no impersonation call is
+// needed; the balance only has to be set once per sender (it stays large across that sender's exits).
+func setSenderBalance(ctx context.Context, anvilURL string, sender common.Address) error {
 	if _, err := singleRPC(ctx, anvilURL, "anvil_setBalance",
 		[]any{sender.Hex(), largeETHBalance}, defaultRetries); err != nil {
 		return fmt.Errorf("set balance: %w", err)
@@ -519,7 +848,7 @@ func ensureERC20Balance(
 		return nil
 	}
 
-	log.Infof("ERC-20 %s balance of %s insufficient (%s < %s) — patching via storage slot",
+	log.Debugf("ERC-20 %s balance of %s insufficient (%s < %s) — patching via storage slot",
 		tokenAddr.Hex(), account.Hex(), bal, required)
 
 	valueHex := "0x" + hex.EncodeToString(common.LeftPadBytes(required.Bytes(), abiWordBytes))
@@ -551,7 +880,7 @@ func ensureERC20Balance(
 			return err
 		}
 		if newBal.Cmp(required) >= 0 {
-			log.Infof("✅ ERC-20 %s balance of %s patched to %s (slot %s)",
+			log.Debugf("✅ ERC-20 %s balance of %s patched to %s (slot %s)",
 				tokenAddr.Hex(), account.Hex(), required, slotHex)
 			return nil
 		}
@@ -581,7 +910,11 @@ func encodeBridgeAssetCallRaw(
 	if amount == nil {
 		amount = new(big.Int)
 	}
-	data, err := bridgeABI.Pack("bridgeAsset", destNetwork, destAddr, amount, tokenAddr, true, []byte{})
+	// forceUpdateGlobalExitRoot=false (per the Step G spec): the local exit tree leaf — and thus
+	// getRoot()/NewLocalExitRoot — is inserted regardless of this flag. Setting it true would push a
+	// GlobalExitRoot update (extra, variable-cost SSTOREs) on every exit, inflating gas and the
+	// estimation variance for no benefit here.
+	data, err := bridgeABI.Pack("bridgeAsset", destNetwork, destAddr, amount, tokenAddr, false, []byte{})
 	if err != nil {
 		// Static types match the ABI; Pack only fails on type mismatches, which cannot happen here.
 		panic(fmt.Sprintf("pack bridgeAsset: %v", err))
@@ -597,14 +930,33 @@ func sendAnvilTransaction(
 		"from": from.Hex(),
 		"to":   to.Hex(),
 		"data": "0x" + hex.EncodeToString(data),
+		// Explicit gas limit: do not let Anvil auto-estimate (see anvilTxGasLimit) — concurrent
+		// estimation races the global depositCount and under-estimates, causing out-of-gas reverts.
+		"gas": anvilTxGasLimit,
 	}
 	if value != nil && value.Sign() > 0 {
 		tx["value"] = "0x" + value.Text(hexBase)
 	}
-	result, err := singleRPC(ctx, anvilURL, "eth_sendTransaction", []any{tx}, defaultRetries)
-	if err != nil {
-		return common.Hash{}, err
+	var result json.RawMessage
+	var err error
+	for attempt := 1; ; attempt++ {
+		result, err = singleRPC(ctx, anvilURL, "eth_sendTransaction", []any{tx}, defaultRetries)
+		if err == nil {
+			break
+		}
+		// A remote fork backend can drop a fetch while Anvil resolves state for this tx; the send
+		// never landed, so retrying is safe. Bounded retries with backoff; real errors fail at once.
+		if !isTransientForkError(err) || attempt >= forkRetryAttempts {
+			return common.Hash{}, err
+		}
+		log.Debugf("transient fork error sending tx (attempt %d/%d, retrying): %v", attempt, forkRetryAttempts, err)
+		select {
+		case <-ctx.Done():
+			return common.Hash{}, ctx.Err()
+		case <-time.After(forkRetryBackoff):
+		}
 	}
+	log.Debugf("eth_sendTransaction raw result: %s", string(result))
 	var txHashHex string
 	if err := json.Unmarshal(result, &txHashHex); err != nil {
 		return common.Hash{}, fmt.Errorf("parse tx hash: %w", err)
@@ -618,6 +970,17 @@ func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) ([
 		result, err := singleRPC(ctx, anvilURL, "eth_getTransactionReceipt",
 			[]any{txHash.Hex()}, defaultRetries)
 		if err != nil {
+			// A remote fork backend hiccups under load (dropped connection / timeout); these are
+			// transient, so keep polling within the deadline instead of aborting the whole replay.
+			if isTransientForkError(err) {
+				log.Debugf("transient fork error polling receipt %s (retrying): %v", txHash.Hex(), err)
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(receiptPollInterval):
+					continue
+				}
+			}
 			return nil, err
 		}
 		if len(result) == 0 || string(result) == "null" {
@@ -646,45 +1009,56 @@ func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) ([
 }
 
 func parseBridgeEventFromLogs(logs []rpcLog) (*bridgeEventLog, error) {
-	wantTopic := bridgeEventTopicHash.Hex()
 	for _, l := range logs {
-		if len(l.Topics) == 0 || !strings.EqualFold(l.Topics[0], wantTopic) {
-			continue
-		}
-		data, err := hex.DecodeString(strings.TrimPrefix(l.Data, "0x"))
+		event, matched, err := parseBridgeEventLog(l.Topics, l.Data)
 		if err != nil {
-			return nil, fmt.Errorf("decode BridgeEvent data: %w", err)
+			return nil, err
 		}
-		values, err := bridgeABI.Events["BridgeEvent"].Inputs.UnpackValues(data)
-		if err != nil {
-			return nil, fmt.Errorf("unpack BridgeEvent: %w", err)
+		if matched {
+			return event, nil
 		}
-		if len(values) != bridgeEventFields {
-			return nil, fmt.Errorf("expected %d BridgeEvent fields, got %d", bridgeEventFields, len(values))
-		}
-		leafType, ok0 := values[0].(uint8)
-		originNetwork, ok1 := values[1].(uint32)
-		originAddress, ok2 := values[2].(common.Address)
-		destNetwork, ok3 := values[3].(uint32)
-		destAddress, ok4 := values[4].(common.Address)
-		amount, ok5 := values[5].(*big.Int)
-		metadata, ok6 := values[6].([]byte)
-		depositCount, ok7 := values[7].(uint32)
-		if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 {
-			return nil, fmt.Errorf("unexpected field types in BridgeEvent values")
-		}
-		return &bridgeEventLog{
-			LeafType:           leafType,
-			OriginNetwork:      originNetwork,
-			OriginAddress:      originAddress,
-			DestinationNetwork: destNetwork,
-			DestinationAddress: destAddress,
-			Amount:             amount,
-			Metadata:           metadata,
-			DepositCount:       depositCount,
-		}, nil
 	}
 	return nil, fmt.Errorf("BridgeEvent not found in receipt logs")
+}
+
+// parseBridgeEventLog decodes a single log's topics/data into a bridgeEventLog. It returns
+// matched=false (with no error) when the log is not a BridgeEvent, so callers can skip it.
+func parseBridgeEventLog(topics []string, data string) (*bridgeEventLog, bool, error) {
+	if len(topics) == 0 || !strings.EqualFold(topics[0], bridgeEventTopicHash.Hex()) {
+		return nil, false, nil
+	}
+	raw, err := hex.DecodeString(strings.TrimPrefix(data, "0x"))
+	if err != nil {
+		return nil, false, fmt.Errorf("decode BridgeEvent data: %w", err)
+	}
+	values, err := bridgeABI.Events["BridgeEvent"].Inputs.UnpackValues(raw)
+	if err != nil {
+		return nil, false, fmt.Errorf("unpack BridgeEvent: %w", err)
+	}
+	if len(values) != bridgeEventFields {
+		return nil, false, fmt.Errorf("expected %d BridgeEvent fields, got %d", bridgeEventFields, len(values))
+	}
+	leafType, ok0 := values[0].(uint8)
+	originNetwork, ok1 := values[1].(uint32)
+	originAddress, ok2 := values[2].(common.Address)
+	destNetwork, ok3 := values[3].(uint32)
+	destAddress, ok4 := values[4].(common.Address)
+	amount, ok5 := values[5].(*big.Int)
+	metadata, ok6 := values[6].([]byte)
+	depositCount, ok7 := values[7].(uint32)
+	if !ok0 || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 {
+		return nil, false, fmt.Errorf("unexpected field types in BridgeEvent values")
+	}
+	return &bridgeEventLog{
+		LeafType:           leafType,
+		OriginNetwork:      originNetwork,
+		OriginAddress:      originAddress,
+		DestinationNetwork: destNetwork,
+		DestinationAddress: destAddress,
+		Amount:             amount,
+		Metadata:           metadata,
+		DepositCount:       depositCount,
+	}, true, nil
 }
 
 // knownErrors maps 4-byte selector (hex, no 0x) to signature and argument decoder.
