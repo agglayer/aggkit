@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/log"
@@ -22,6 +23,8 @@ const (
 	idleConnTimeoutSec  = 90
 	httpTimeoutSec      = 120
 	maxIdleConnsPerHost = 100
+	// eip1474RevertCode is the JSON-RPC error code for a contract revert per EIP-1474.
+	eip1474RevertCode = 3
 )
 
 // httpClient keeps a large per-host idle connection pool to avoid throttling
@@ -77,6 +80,16 @@ type RPCCall struct {
 	Params []any
 }
 
+// isRevertError returns true for errors that represent a contract revert —
+// code 3 per EIP-1474, or any message containing "revert". These should not
+// be retried because the same call will revert again.
+func isRevertError(e *jsonRPCError) bool {
+	if e.Code == eip1474RevertCode {
+		return true
+	}
+	return strings.Contains(strings.ToLower(e.Message), "revert")
+}
+
 // batchRPC sends a batch of JSON-RPC calls in a single HTTP POST.
 // Returns ordered results matching the input calls slice. Per-item RPC errors are retried
 // up to retries times. Returns an error if any call still fails after all retries.
@@ -90,6 +103,7 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 	for i := range pendingIdxs {
 		pendingIdxs[i] = i
 	}
+	var permanentlyFailed []int
 
 	for attempt := 1; attempt <= retries && len(pendingIdxs) > 0; attempt++ {
 		if ctx.Err() != nil {
@@ -149,6 +163,12 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 			}
 			origIdx := pendingIdxs[localIdx]
 			if r.Error != nil {
+				if isRevertError(r.Error) {
+					log.Warnf("RPC call %s id=%d reverted (not retrying): [%d] %s",
+						calls[origIdx].Method, origIdx+1, r.Error.Code, r.Error.Message)
+					permanentlyFailed = append(permanentlyFailed, origIdx)
+					continue
+				}
 				log.Warnf("RPC error for %s id=%d (attempt %d/%d): [%d] %s",
 					calls[origIdx].Method, origIdx+1, attempt, retries, r.Error.Code, r.Error.Message)
 				nextPending = append(nextPending, origIdx)
@@ -159,6 +179,9 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 		pendingIdxs = nextPending
 	}
 
+	if len(permanentlyFailed) > 0 {
+		return nil, fmt.Errorf("batchRPC: %d/%d calls reverted (not retried)", len(permanentlyFailed), len(calls))
+	}
 	if len(pendingIdxs) > 0 {
 		return nil, fmt.Errorf("batchRPC: %d/%d calls still failing after %d attempts",
 			len(pendingIdxs), len(calls), retries)

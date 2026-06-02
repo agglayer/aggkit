@@ -86,6 +86,7 @@ cp parameters.json.example parameters.json
 | `ignoreUnclaimed` | `false` | When `true`, Step E detects and logs unclaimed deposits but leaves the certificate unchanged. When `false` (default), any unclaimed asset deposit causes the pipeline to error. |
 | `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
+| `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. For each address the tool calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
 
 ### Important configuration notes
 
@@ -193,7 +194,7 @@ Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F →
 | CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
 | 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. |
 | A | Collect addresses | Traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. |
-| B | EOA balances | Classifies addresses as EOA vs contract; fetches ETH balance and every wrapped-token balance for each EOA at `targetBlock`. |
+| B | EOA balances + ERC-20 detection | B1: classifies addresses and fetches ETH/token balances for EOAs. B2: probes contracts for the ERC-20 interface and checks if they hold tracked wrapped tokens. B3: fetches holder breakdowns for `extraErc20Contracts` (skips any already processed by B2). |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
 | D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
 | E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2. Message deposits (`leaf_type=1`) are saved to `step-e-unclaimed-messages.json` and never added to the certificate. Asset deposits (`leaf_type=0`): if none are found the certificate is passed through unchanged; if any are found and `ignoreUnclaimed=true` they are logged but the certificate remains unchanged; if found and `ignoreUnclaimed=false` the pipeline errors (Merkle proof support not yet implemented). Optionally cross-checks against a bridge service. |
@@ -226,7 +227,7 @@ Spaces around commas are ignored. Execution stops at the first step that fails.
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Step(s) to run: `all`, a single step name, or a comma-separated list (e.g. `h,i,sign`). Valid names: `check`, `0`, `a`–`i`, `sign`, `submit`, `wait`. |
+| `--step` | — | `all` | Step(s) to run: `all`, a single step name, or a comma-separated list (e.g. `h,i,sign`). Valid names: `check`, `0`, `a`, `a1`, `a2`, `b`, `b1`, `b2`, `b3`, `c`–`i`, `sign`, `submit`, `wait`. The aliases `a` and `b` expand to their sub-steps. |
 | `--verbose` | — | `false` | Enable debug logging. Without this flag only `info`, `warn` and `error` messages are shown. |
 
 ## Pipeline steps
@@ -286,7 +287,11 @@ Scans all blocks from `l2StartBlock` to `targetBlock` and collects every address
 
 **Output:** `step-a-addresses.json`
 
-### Step B — EOA balance checking
+### Step B — EOA balance checking + ERC-20 detection
+
+Step B runs three sub-steps in sequence: B1, B2, and B3. Running `--step b` executes all three.
+
+#### Step B1 — EOA classification and balance fetching
 
 Classifies addresses as EOA vs contract, then queries ETH balance and every wrapped-token balance at `targetBlock` for all EOAs. The wrapped token list comes from the LBT data (Step 0).
 
@@ -294,9 +299,26 @@ Classifies addresses as EOA vs contract, then queries ETH balance and every wrap
 
 1. `eth_getCode` to classify EOA vs contract
 2. `eth_getBalance` for all EOAs
-3. `balanceOf` calls per token across all EOAs (token list from LBT)
+3. `balanceOf` calls per token × per EOA (token list from LBT)
 
 **Output:** `step-b-eoa-balances.json`, `step-b-accumulated.json`, `step-b-contract-addresses.json`
+
+#### Step B2 — ERC-20 detection in contracts
+
+Probes every contract address for the ERC-20 interface by calling `totalSupply()`. For each ERC-20 found, checks whether it holds any of the tracked wrapped tokens:
+
+- Holds at least one tracked token → **DetectedERC20** (relevant to the certificate)
+- Holds none → **DiscardedERC20** (no tracked value locked inside)
+
+**Output:** `step-b2-detected-erc20s.json`, `step-b2-discarded-erc20s.json`
+
+#### Step B3 — Extra ERC-20 holder decomposition
+
+Fetches the per-EOA token balance for each contract listed in `options.extraErc20Contracts`. These are ERC-20 contracts that should be decomposed into individual holder balances regardless of whether they were discovered by Step B2.
+
+Skipped automatically when `options.extraErc20Contracts` is empty.
+
+**Output:** `step-b3-erc20-holders.json`
 
 ### Step C — SC-locked value extraction
 

@@ -80,7 +80,16 @@ type SCLockedValue struct {
 	OriginTokenAddress  common.Address `json:"originTokenAddress"`
 	LBTBalance          string         `json:"lbtBalance"`
 	EOAAccumulated      string         `json:"eoaAccumulated"`
-	SCLockedBalance     string         `json:"scLockedBalance"`
+	// ERC20HoldersCovered is the portion of SC-locked value distributed as individual
+	// bridge exits to holders of ERC-20 vault contracts (from Step B3 breakdowns).
+	// Empty when no breakdown applies to this token.
+	ERC20HoldersCovered string `json:"erc20HoldersCovered,omitempty"`
+	// TotalSCLockedBalance is the gross value locked in smart contracts: LBT - EOA.
+	// It includes both the portion covered by ERC-20 holder bridges and the remainder.
+	TotalSCLockedBalance string `json:"totalSCLockedBalance"`
+	// PendingSCLockedBalance is the net SC-locked value that requires a bridge exit to
+	// exitAddress: TotalSCLockedBalance − ERC20HoldersCovered.
+	PendingSCLockedBalance string `json:"pendingSCLockedBalance"`
 }
 
 // FailedTrace pairs a transaction hash with the RPC error that caused its trace to fail.
@@ -101,16 +110,98 @@ type StepA2Result struct {
 	Addresses []common.Address `json:"addresses"`
 }
 
-// StepBResult holds the output of Step B.
-type StepBResult struct {
+// StepB1Result holds the output produced exclusively by Step B1
+// (address classification and balance fetching). It does not include
+// the ERC-20 detection data added by Step B2.
+type StepB1Result struct {
 	EOABalances       []EOABalance         `json:"eoaBalances"`
 	Accumulated       []AccumulatedBalance `json:"accumulated"`
 	ContractAddresses []common.Address     `json:"contractAddresses"`
 }
 
+// StepBResult holds the combined output of Step B (B1 + B2 + B3).
+type StepBResult struct {
+	EOABalances           []EOABalance           `json:"eoaBalances"`
+	Accumulated           []AccumulatedBalance   `json:"accumulated"`
+	ContractAddresses     []common.Address       `json:"contractAddresses"`
+	DetectedERC20s        []DetectedERC20        `json:"detectedErc20s,omitempty"`
+	DiscardedERC20s       []DiscardedERC20       `json:"discardedErc20s,omitempty"`
+	ERC20HolderBreakdowns []ERC20HolderBreakdown `json:"erc20HolderBreakdowns,omitempty"`
+}
+
+// ERC20HolderBreakdown holds the full holder decomposition for a single ERC-20 contract
+// produced by Step B3.
+type ERC20HolderBreakdown struct {
+	Address common.Address `json:"address"`
+	Holders []ERC20Holder  `json:"holders"`
+	// Detected is the collateral info from Step B2: which tracked wrapped tokens this
+	// contract holds, plus its name/symbol/totalSupply. Nil when the contract was not
+	// present in the B2 detected list (e.g. it holds no tracked wrapped tokens).
+	Detected *DetectedERC20 `json:"detected,omitempty"`
+}
+
+// StepB3Result holds the output of Step B3 (extra ERC-20 holder decomposition).
+type StepB3Result struct {
+	Breakdowns []ERC20HolderBreakdown `json:"breakdowns"`
+}
+
+// StepB2Result holds the output of Step B2.
+type StepB2Result struct {
+	// DetectedERC20s are contracts that hold at least one tracked wrapped token.
+	DetectedERC20s []DetectedERC20 `json:"detectedErc20s"`
+	// DiscardedERC20s are contracts that responded to totalSupply() but hold none
+	// of the tracked wrapped tokens and are therefore irrelevant to the certificate.
+	DiscardedERC20s []DiscardedERC20 `json:"discardedErc20s,omitempty"`
+}
+
+// DetectedERC20 holds an ERC-20 contract that holds at least one tracked wrapped token.
+type DetectedERC20 struct {
+	Address              common.Address        `json:"address"`
+	Name                 string                `json:"name,omitempty"`
+	Symbol               string                `json:"symbol,omitempty"`
+	TotalSupply          string                `json:"totalSupply"`
+	WrappedTokenBalances []WrappedTokenBalance `json:"wrappedTokenBalances"`
+}
+
+// DiscardedERC20 is an ERC-20 contract that holds none of the tracked wrapped tokens.
+type DiscardedERC20 struct {
+	Address     common.Address `json:"address"`
+	Name        string         `json:"name,omitempty"`
+	Symbol      string         `json:"symbol,omitempty"`
+	TotalSupply string         `json:"totalSupply"`
+}
+
+// WrappedTokenBalance is the balance of a tracked wrapped token held by an ERC-20 contract.
+type WrappedTokenBalance struct {
+	Token   WrappedToken `json:"token"`
+	Balance string       `json:"balance"`
+}
+
+// ERC20Holder is an (address, balance) pair produced by Step B2.
+type ERC20Holder struct {
+	Address common.Address `json:"address"`
+	Balance string         `json:"balance"`
+}
+
+// HolderBridge is an individual bridge exit for a holder of an ERC-20 vault/staking
+// contract, representing their proportional share of the tracked wrapped tokens locked
+// inside that contract. Produced by Step C from the Step B3 breakdown data.
+type HolderBridge struct {
+	VaultAddress        common.Address `json:"vaultAddress"`
+	WrappedTokenAddress common.Address `json:"wrappedTokenAddress"`
+	OriginNetwork       uint32         `json:"originNetwork"`
+	OriginTokenAddress  common.Address `json:"originTokenAddress"`
+	HolderAddress       common.Address `json:"holderAddress"`
+	Amount              string         `json:"amount"`
+}
+
 // StepCResult holds the output of Step C.
 type StepCResult struct {
 	SCLockedValues []SCLockedValue `json:"scLockedValues"`
+	// HolderBridges are individual bridge exits for holders of ERC-20 vault contracts
+	// whose breakdowns were provided by Step B3. These replace what would otherwise be a
+	// single SC-locked exit to exitAddress for the portion of value they cover.
+	HolderBridges []HolderBridge `json:"holderBridges,omitempty"`
 }
 
 // StepDResult holds the output of Step D.
@@ -167,7 +258,6 @@ type TokenBalanceCheck struct {
 
 // StepFResult holds the output of Step F (agglayer token balance check).
 type StepFResult struct {
-	Skipped       bool                `json:"skipped,omitempty"`
 	AllMatch      bool                `json:"allMatch,omitempty"`
 	TokenBalances json.RawMessage     `json:"tokenBalances,omitempty"`
 	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
