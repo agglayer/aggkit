@@ -107,7 +107,10 @@ test-unit: ## Runs the unit tests
 
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	go test -v -timeout 30m ./test/e2e/...
+	# Timeout raised to 90m to accommodate heavier multi-container envs (op-pp-2chains,
+	# cdk-erigon-3chains) so a heavier env is not killed by the Go test timeout before the
+	# CI job timeout. Env selection is via E2E_ENV (inherited from the environment); unset = op-pp.
+	go test -v -timeout 90m ./test/e2e/...
 
 .PHONY: lint
 lint: ## Runs the linter

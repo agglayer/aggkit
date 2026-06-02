@@ -28,9 +28,22 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	// Select the env to run via E2E_ENV (defaults to op-pp when unset/empty) so an env
+	// with no migrated tests yet still boots + sanity-checks. Unknown values fail fast
+	// with the list of valid env names.
+	envName, err := envs.ParseENVName(os.Getenv("E2E_ENV"))
+	if err != nil {
+		log.Fatalf("invalid E2E_ENV: %v", err)
+	}
 
-	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
+	// LoadEnv brings the docker-compose stack up and blocks until the L2 EL
+	// dependency chain is healthy. op-geth-backed envs (op-pp) settle in well
+	// under a minute, but op-reth-backed FEP envs (op-fep) take ~75s (op-reth
+	// init + L1 must produce up to the L2 origin block), so use the loader's own
+	// service-ready budget rather than a tight 1-minute cap. op-pp is unaffected.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+
+	env, err := envs.LoadEnv(ctx, envName)
 	if err != nil {
 		cancel()
 		log.Fatalf("failed to load env: %v", err)
@@ -47,8 +60,23 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	// Post-test bridge health-check
-	if code == 0 {
+	// Post-test bridge health-check. The flow mints/approves a MintableERC20 on L2, which
+	// the loader only auto-deploys for native-gas envs. On custom-gas / cdk-erigon envs
+	// (Capabilities.NativeGas == false) MintableERC20 is nil, so skip the ERC20 bridge flow
+	// to avoid a nil panic; such envs only need to boot + sanity-check here.
+	if code == 0 && !env.Capabilities.NativeGas {
+		log.Infof("[POSTTEST] Skipping ERC20 mint/approve/bridge flow (native_gas=false); env booted and passed sanity checks.")
+	}
+	// FEP envs (op-fep, op-fep-committee) have a documented L2->L1 FEP-settlement
+	// limitation (snapshots emit settled:false). They are CI'd as boot/load/checks
+	// (+committee quorum) smoke ONLY, so skip the bridge/settlement health-check
+	// here rather than letting it red the leg on the known limitation.
+	if code == 0 && env.Capabilities.NativeGas && !env.Capabilities.SettlementSupported {
+		log.Infof("[POSTTEST] Skipping L1<->L2 bridge/settlement health-check " +
+			"(settlement_supported=false; documented FEP L2->L1 settled:false limitation); " +
+			"env booted and passed sanity checks.")
+	}
+	if code == 0 && env.Capabilities.NativeGas && env.Capabilities.SettlementSupported {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 		// The L2->L1 leg only becomes claimable after a PP certificate covering its exit settles and
 		// the rollup exit root propagates into a new GER / L1 Info Tree leaf, which spans several
