@@ -235,23 +235,45 @@ two chains:
 - chain `002`: `l2_chain_id 20202`, `l2_network_id 2` — reuses the L1 + agglayer
   (`deploy_l1: false` / `deploy_agglayer: false`), `deployment_suffix "-002"`.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `d71f4265`
-  (snapshotted 2026-05-29; snapshot name `op-pp-2chains-20260529-220608`). The
-  multi-L2 snapshot capture (P3) and the op-reth EL + L1-geth archive-flush
-  bootability fixes (inherited from the op-fep work) worked unchanged for this
-  topology — no kurtosis-cdk source changes were needed.
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `aa58f6c9`
+  ("aggkit-e2e: pin op-geth EL + op-node finality flags + miner API on both
+  op-pp-2chains chains"; snapshotted 2026-06-02; snapshot name
+  `op-pp-2c-20260602-162655`). This regeneration folds in the **same complete set
+  of fixes proven on the single-chain `op-pp` env** (see the `op-pp` section
+  above), applied to **BOTH** chains 001 and 002, so each restored OP-Stack L2
+  actually finalizes:
+    1. **op-batcher captured per chain** — the snapshot tool's per-network
+       discovery loop captures `op-batcher-001` AND `op-batcher-002`
+       (image `op-batcher:v1.16.9`, funded `--private-key`,
+       `--data-availability-type=calldata`), each with its enclave hostnames
+       rewritten to that chain's restored compose hostnames
+       (`op-geth-00N` / `op-node-00N` / `geth`).
+    2. **op-node finality flags on both chains** — each chain's
+       `op-node-entrypoint.sh` runs op-node with `--l1.http-poll-interval=2s`
+       and `--l1.epoch-poll-interval=12s`.
+    3. **op-geth `miner` API on both chains** — each chain's
+       `op-geth-entrypoint.sh` exposes the `miner` namespace so the batcher's
+       startup `miner_setMaxDASize` succeeds.
+  The preset also pins the L2 EL to **op-geth** (`op-geth:v1.101605.0`) on both
+  participants of both chains (op-reth was EL-flaky on loaded hosts).
 - Preset: `.github/tests/aggkit-e2e-envs/op-pp-2chains.yml` — a **multi-document
   YAML** (one `---` document per chain). `main.star` deploys exactly one L2 per
   `kurtosis run`, so the two documents are applied **sequentially into one shared
   enclave** (the legacy `aggkit-e2e-multi-chains.yml` model): doc 1 deploys the
-  L1 + agglayer + L2-001, doc 2 reuses them and adds L2-002.
+  L1 + agglayer + L2-001, doc 2 reuses them and adds L2-002. Both documents pin
+  op-geth EL on `sequencer1` + `rpc1` and set op-node `cl.extra_params` to
+  `[--rollup.l1-chain-config=/l1/genesis.json, --l1.http-poll-interval=2s,
+  --l1.epoch-poll-interval=12s]`.
 - `summary.json` lists **both** `001` and `002` under `networks.l2_networks` with
-  distinct ports (001: op-geth `:11545` / aggkit `:11576`; 002: op-geth `:12545`
-  / aggkit `:12576`), each with its own contracts and accounts. The compose
-  carries both L2 stacks (`op-geth-001`/`op-node-001`/`aggkit-001` and the `-002`
-  equivalents) plus the single shared L1 (geth/beacon/validator) and agglayer.
-  The L2 EL is op-reth (`op-reth:v2.2.5`) run with `op-reth-entrypoint.sh`; the
-  summary logical service key stays `op-geth` for loader compatibility.
+  distinct ports (001: op-geth `:11545` / aggkit `:11576` / op-batcher `:11548`;
+  002: op-geth `:12545` / aggkit `:12576` / op-batcher `:12548`), each with its
+  own contracts and accounts. Each L2's `services` now carries **`op-batcher`**
+  (`batches_to_l1: true`) alongside `op-geth` / `op-node` / `aggkit`. The compose
+  carries both L2 stacks (`op-geth-00N`/`op-node-00N`/`op-batcher-00N`/`aggkit-00N`)
+  plus the single shared L1 (geth/beacon/validator) and agglayer. The L2 EL is
+  **op-geth** (`op-geth:v1.101605.0`) run with `op-geth-entrypoint.sh` (`miner`
+  API enabled); op-node runs with the two finality flags via
+  `op-node-entrypoint.sh`.
 - Loader: `EnvOpPP2Chains` (`NativeGas: true`). `LoadEnv` parses both networks
   into `Env.L2s` (`len >= 2`); `Env.L2` / `PrimaryL2()` is `001`,
   `L2ByNetworkID(2)` is `002`. A minimal in-worktree loader fix was made so
@@ -263,10 +285,33 @@ two chains:
   networks; a generic per-chain health probe
   (`test/e2e/envs/zz_p9_probe_test.go`) asserts chain id / advancing block /
   non-zero balance for both 001 and 002. No L2↔L2 bridging test is included.
-- Boot status: `docker compose up -d` brings all 10 services healthy
-  (geth/beacon/validator L1, agglayer, and op-geth/op-node/aggkit for both 001
-  and 002); both L2s restore from baked state and produce blocks
+- Boot status: `docker compose up -d --wait` brings all **12** services healthy
+  (geth/beacon/validator L1, agglayer, and op-geth/op-node/op-batcher/aggkit for
+  both 001 and 002); both L2s restore from baked state and produce blocks
   (chain ids 20201 / 20202).
+- **Both L2s finalize on restore (proven 2026-06-02).** Restored this dir to a
+  scratch copy with remapped host ports + a distinct `oppp2ctest-` container
+  prefix / compose project, `docker compose up -d --wait` (all 12 healthy), then
+  polled both op-nodes' `optimism_syncStatus` and both op-geths'
+  `eth_getBlockByNumber("finalized")`:
+
+  | t (UTC)  | 001 unsafe | 001 safe | **001 finalized** | 002 unsafe | 002 safe | **002 finalized** | L1 finalized |
+  |----------|-----------|----------|-------------------|-----------|----------|-------------------|--------------|
+  | 16:30:44 | 36        | 12       | 0                 | 36        | 12       | 0                 | 267          |
+  | 16:31:09 | 61        | 35       | 0                 | 61        | 35       | 0                 | 275          |
+  | 16:31:34 | 86        | 59       | **23**            | 86        | 71       | **23**            | 291          |
+  | 16:31:59 | 111       | 71       | **35**            | 112       | 71       | **35**            | 299          |
+
+  **Both** L2s' `finalized` advanced 0 → 23 → 35, matching each op-geth's own
+  `finalized` tag exactly; L1 finalized advanced 259 → 299; both op-batchers
+  healthy and posting. (After 16:32 the restored single-shared L1 geth — an
+  archive replay on a heavily loaded host — stopped sealing new payloads
+  [`Stopping work on payload reason=timeout`, beacon "Block: empty, Peers: 0"],
+  capping L1 finalized at 299 and therefore both L2s' finalized at 35. This is the
+  same environmental loaded-host L1-EL stall noted for `op-pp`, NOT a snapshot or
+  preset defect: the native enclave finalized fine and climbed past 195/291 on
+  both chains before snapshot. The PASS criterion — both restored L2s' `finalized`
+  advance past 0 in lock-step — was met.)
 - Kurtosis config (the two `---` documents, faithful mirror of the aggkit CI
   `kurtosis-cdk-args-1` / `-args-2` compositions minus `bridge_spammer`):
 
@@ -290,6 +335,15 @@ optimism_package:
   predeployed_contracts: true
   chains:
     "001":
+      participants:        # op-geth EL + op-node finality flags on both participants
+        sequencer1:
+          sequencer: true
+          el: {type: op-geth, image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0}
+          cl: {type: op-node, extra_params: [--rollup.l1-chain-config=/l1/genesis.json, --l1.http-poll-interval=2s, --l1.epoch-poll-interval=12s]}
+        rpc1:
+          sequencer: sequencer1
+          el: {type: op-geth, image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0}
+          cl: {type: op-node, extra_params: [--rollup.l1-chain-config=/l1/genesis.json, --l1.http-poll-interval=2s, --l1.epoch-poll-interval=12s]}
       proposer_params:
         enabled: false
       network_params:
@@ -316,6 +370,15 @@ args:
 optimism_package:
   chains:
     "002":
+      participants:        # op-geth EL + op-node finality flags on both participants
+        sequencer1:
+          sequencer: true
+          el: {type: op-geth, image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0}
+          cl: {type: op-node, extra_params: [--rollup.l1-chain-config=/l1/genesis.json, --l1.http-poll-interval=2s, --l1.epoch-poll-interval=12s]}
+        rpc1:
+          sequencer: sequencer1
+          el: {type: op-geth, image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0}
+          cl: {type: op-node, extra_params: [--rollup.l1-chain-config=/l1/genesis.json, --l1.http-poll-interval=2s, --l1.epoch-poll-interval=12s]}
       proposer_params:
         enabled: false
       network_params:

@@ -1,13 +1,22 @@
 # Ethereum L1 Snapshot Environment
-# Enclave: op-pp-2chains
-# Tag: op-pp-2chains-20260529-220643-op-pp-2chains
-# Genesis: 0x7aeffb38439130cb66a53e976c631974b134266b7e2b58c31fcffe5d1674601a
+# Enclave: op-pp-2c
+# Tag: op-pp-2c-20260602-162746
+# Genesis: 0xcc4ec2e4b3fb297a3b39320349f270395b15dc995c29a4ad383f99eaa534ce4b
 
 services:
   geth:
-    image: snapshot-geth:op-pp-2chains-20260529-220643-op-pp-2chains
-    container_name: op-pp-2chains-20260529-220608-geth
+    image: snapshot-geth:op-pp-2c-20260602-162746
+    container_name: op-pp-2c-20260602-162655-geth
     hostname: geth
+    # Alias the restored L1 EL under its original kurtosis service name so
+    # components that hardcode the kurtosis L1 RPC hostname keep resolving it.
+    # cdk-erigon's captured config.yaml references zkevm.l1-rpc-url as
+    # http://el-1-geth-lighthouse:8545; op-stack instead has its L1 hostnames
+    # rewritten to "geth" during adaptation. The alias is harmless for op-stack.
+    networks:
+      default:
+        aliases:
+          - el-1-geth-lighthouse
     command:
       - "--http"
       - "--http.addr=0.0.0.0"
@@ -51,8 +60,8 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:op-pp-2chains-20260529-220643-op-pp-2chains
-    container_name: op-pp-2chains-20260529-220608-beacon
+    image: snapshot-beacon:op-pp-2c-20260602-162746
+    container_name: op-pp-2c-20260602-162655-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -72,8 +81,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:op-pp-2chains-20260529-220643-op-pp-2chains
-    container_name: op-pp-2chains-20260529-220608-validator
+    image: snapshot-validator:op-pp-2c-20260602-162746
+    container_name: op-pp-2c-20260602-162655-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -89,7 +98,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: op-pp-2chains-20260529-220608-agglayer
+    container_name: op-pp-2c-20260602-162655-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -118,15 +127,15 @@ services:
       - RUST_BACKTRACE=1
 
   op-geth-001:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.2.5
-    container_name: op-pp-2chains-20260529-220608-op-geth-001
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
+    container_name: op-pp-2c-20260602-162655-op-geth-001
     hostname: op-geth-001
-    entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
+    entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
       - ./config/001/jwt.hex:/jwt/jwtsecret:ro
       - ./config/001/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
       - ./config/001/rollup.json:/rollup-ro/rollup.json:ro
-      - ./config/001/op-reth-entrypoint.sh:/entrypoint/op-reth-entrypoint.sh:ro
+      - ./config/001/op-geth-entrypoint.sh:/entrypoint/op-geth-entrypoint.sh:ro
       - l2-shared-001:/shared
     ports:
       - "11545:8545"    # HTTP RPC
@@ -137,7 +146,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
       interval: 2s
       timeout: 3s
       retries: 3
@@ -145,7 +154,7 @@ services:
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-pp-2chains-20260529-220608-op-node-001
+    container_name: op-pp-2c-20260602-162655-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -174,9 +183,44 @@ services:
       retries: 3
       start_period: 240s
 
+  op-batcher-001:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
+    container_name: op-pp-2c-20260602-162655-op-batcher-001
+    hostname: op-batcher-001
+    command:
+      - "op-batcher"
+      - "--l2-eth-rpc=http://op-geth-001:8545"
+      - "--rollup-rpc=http://op-node-001:8547"
+      - "--poll-interval=1s"
+      - "--sub-safety-margin=6"
+      - "--num-confirmations=1"
+      - "--safe-abort-nonce-too-low-count=3"
+      - "--resubmission-timeout=30s"
+      - "--rpc.addr=0.0.0.0"
+      - "--rpc.port=8548"
+      - "--rpc.enable-admin"
+      - "--max-channel-duration=1"
+      - "--l1-eth-rpc=http://geth:8545"
+      - "--private-key=0xa51bc3351fffe667d7f2fd30dc040687e2d65e2f941837bad219bb1f0466dfaa"
+      - "--data-availability-type=blobs"
+      - "--altda.enabled=false"
+      - "--altda.da-server="
+      - "--altda.da-service"
+      - "--data-availability-type=calldata"
+    ports:
+      - "11548:8548"    # batcher RPC/admin
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+    restart: unless-stopped
+
   aggkit-001:
     image: aggkit:local
-    container_name: op-pp-2chains-20260529-220608-aggkit-001
+    container_name: op-pp-2c-20260602-162655-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
@@ -205,15 +249,15 @@ services:
       - RUST_BACKTRACE=1
 
   op-geth-002:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.2.5
-    container_name: op-pp-2chains-20260529-220608-op-geth-002
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
+    container_name: op-pp-2c-20260602-162655-op-geth-002
     hostname: op-geth-002
-    entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
+    entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
       - ./config/002/jwt.hex:/jwt/jwtsecret:ro
       - ./config/002/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
       - ./config/002/rollup.json:/rollup-ro/rollup.json:ro
-      - ./config/002/op-reth-entrypoint.sh:/entrypoint/op-reth-entrypoint.sh:ro
+      - ./config/002/op-geth-entrypoint.sh:/entrypoint/op-geth-entrypoint.sh:ro
       - l2-shared-002:/shared
     ports:
       - "12545:8545"    # HTTP RPC
@@ -224,7 +268,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
       interval: 2s
       timeout: 3s
       retries: 3
@@ -232,7 +276,7 @@ services:
 
   op-node-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-pp-2chains-20260529-220608-op-node-002
+    container_name: op-pp-2c-20260602-162655-op-node-002
     hostname: op-node-002
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -261,9 +305,44 @@ services:
       retries: 3
       start_period: 240s
 
+  op-batcher-002:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
+    container_name: op-pp-2c-20260602-162655-op-batcher-002
+    hostname: op-batcher-002
+    command:
+      - "op-batcher"
+      - "--l2-eth-rpc=http://op-geth-002:8545"
+      - "--rollup-rpc=http://op-node-002:8547"
+      - "--poll-interval=1s"
+      - "--sub-safety-margin=6"
+      - "--num-confirmations=1"
+      - "--safe-abort-nonce-too-low-count=3"
+      - "--resubmission-timeout=30s"
+      - "--rpc.addr=0.0.0.0"
+      - "--rpc.port=8548"
+      - "--rpc.enable-admin"
+      - "--max-channel-duration=1"
+      - "--l1-eth-rpc=http://geth:8545"
+      - "--private-key=0x441ee527c854d6ecf1cac3ea055b37c7563dcf7ed185ef4257f059b3c8172037"
+      - "--data-availability-type=blobs"
+      - "--altda.enabled=false"
+      - "--altda.da-server="
+      - "--altda.da-service"
+      - "--data-availability-type=calldata"
+    ports:
+      - "12548:8548"    # batcher RPC/admin
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-002:
+        condition: service_healthy
+      op-node-002:
+        condition: service_healthy
+    restart: unless-stopped
+
   aggkit-002:
     image: aggkit:local
-    container_name: op-pp-2chains-20260529-220608-aggkit-002
+    container_name: op-pp-2c-20260602-162655-aggkit-002
     hostname: aggkit-002
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
