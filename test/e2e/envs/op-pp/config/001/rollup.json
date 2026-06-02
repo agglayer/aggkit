@@ -1,16 +1,16 @@
 {
   "genesis": {
     "l1": {
-      "hash": "0xf86bf40343c68cc8a6561f37078e13c98d2726af3f5e82abee7534d839e14e1a",
-      "number": 384
+      "hash": "0x4da260c85cd1ac6f5c012f7cdd8c2d23c775fdf154638b625460f585327784f1",
+      "number": 147
     },
     "l2": {
-      "hash": "0x110dfbe3bcc7ff12e45393a2212d849956caf4319c0b2d81ba5faa0961c1b528",
+      "hash": "0x6c67fbfe3b4045e39e6f00ceb839bb6e5e87a8eabcce87d0f7e82968278926ca",
       "number": 0
     },
-    "l2_time": 1771276740,
+    "l2_time": 1780415435,
     "system_config": {
-      "batcherAddr": "0xd3f2c5afb2d76f5579f326b0cd7da5f5a4126c35",
+      "batcherAddr": "0xb169bc8e767801d625519bff9c4dbe24eb74fb35",
       "overhead": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "scalar": "0x010000000000000000000000000000000000000000000000000c3c9d00000558",
       "gasLimit": 60000000,
@@ -25,7 +25,7 @@
   "seq_window_size": 3600,
   "channel_timeout": 300,
   "l1_chain_id": 271828,
-  "l2_chain_id": 2151908,
+  "l2_chain_id": 20201,
   "regolith_time": 0,
   "canyon_time": 0,
   "delta_time": 0,
@@ -35,9 +35,9 @@
   "holocene_time": 0,
   "isthmus_time": 0,
   "jovian_time": 0,
-  "batch_inbox_address": "0x00a4fe4c6aaa0729d7699c387e7f281dd64afa2a",
-  "deposit_contract_address": "0x545bedfe9bcdacaf00d146780696a13d0725c6d3",
-  "l1_system_config_address": "0x8ac263436a517e49ae3bc5e35375a13af516150c",
+  "batch_inbox_address": "0x000ccf0c3a64a7f7a5bd386fccf4ef18ceae7e05",
+  "deposit_contract_address": "0x474178ad3a6fe09eb2293fd8c2eccf8fb5c59f28",
+  "l1_system_config_address": "0x12ceb0b1db4f1f4f72d55744340f45618ea413ac",
   "protocol_versions_address": "0x373e0b8b80a15cdf587c1263654c6b5edd195a43",
   "chain_op_config": {
     "eip1559Elasticity": 6,

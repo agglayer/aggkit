@@ -82,7 +82,7 @@ exec op-node \
     --rollup.config=/tmp/rollup.json \
     --l1=http://geth:8545 \
     --l1.beacon=http://beacon:4000 \
-    --l2=http://${OP_GETH_HOST:-op-geth-001}:8551 \
+    --l2=http://"${OP_GETH_HOST:-op-geth-001}":8551 \
     --l2.jwt-secret=/jwt/jwtsecret \
     --rpc.addr=0.0.0.0 \
     --rpc.port=8547 \
@@ -91,6 +91,19 @@ exec op-node \
     --sequencer.enabled \
     --sequencer.l1-confs=0 \
     --rollup.l1-chain-config=/network-configs/l1-genesis.json \
+    --l1.http-poll-interval=2s \
+    --l1.epoch-poll-interval=12s \
     --metrics.enabled \
     --metrics.addr=0.0.0.0 \
     --metrics.port=7300
+
+# --l1.http-poll-interval=2s : the kurtosis devnet L1 runs ~2s/slot. op-node's
+#   default L1 head poll is 12s, which skips ~6 contiguous L1 blocks per poll and
+#   op-node misreads that as an L1 re-org -> chronic derivation engine resets ->
+#   local_safe/cross_safe/finalized wiped to genesis every cycle -> the restored
+#   L2 NEVER finalizes. Matching the poll to the slot time eliminates the false
+#   re-orgs.
+# --l1.epoch-poll-interval=12s : op-node's default L1 safe/finalized refresh is
+#   6m24s, so even without the false re-orgs the L2 finalized head only advances
+#   every ~6m24s. 12s makes finality prompt and continuous.
+# Proven natively + post-restore: L2 finalized advances past 0 and keeps climbing.

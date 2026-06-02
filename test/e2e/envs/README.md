@@ -4,37 +4,56 @@ The different E2E envs found on this directory have been generated using the [sn
 
 ## op-pp
 
-This network has a single OP PP network.
+This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
+(`ecdsa-multisig` consensus, native ETH gas) on one L1 + agglayer.
 
-- Kurtosis commit `566ac102b9098f40475c6cc306f03e9750f2ff97`
-- Kurtosis config file:
-
-```yml
-args:
-  l1_electra_fork_epoch: 0
-  l1_fulu_fork_epoch: 18446744073709551615
-
-  sequencer_type: op-geth
-  consensus_contract_type: ecdsa-multisig
-  aggkit_image: ghcr.io/agglayer/aggkit:0.8.0
-
-  # aggsender-validator related params (required for aggkit 0.8.0)
-  use_agg_sender_validator: True
-  agg_sender_validator_total_number: 1
-  agg_sender_multisig_threshold: 1
-
-  # Override additional_services to exclude bridge_spammer
-  additional_services:
-    - agglogger
-
-  optimism_package:
-    chains:
-      "001":
-        proposer_params:
-          enabled: false  # ✅ No state root proposals
-        batcher_params:
-          max_channel_duration: 999999  # ✅ Delays batching ~11 days
-```
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit
+  `df96c41e` ("aggkit-e2e: add op-pp preset + make snapshot capture op-geth EL,
+  op-batcher & finalize on restore"). That commit (a) adds the op-pp preset, and
+  (b) folds three fixes into the snapshot tool so a RESTORED OP-Stack L2 actually
+  finalizes:
+    1. **op-batcher captured** — discover/extract/generate-compose/generate-summary
+       now capture the per-chain `op-batcher` (image `op-batcher:v1.16.9`, the
+       funded `--private-key`, `--data-availability-type=calldata`), replaying
+       its launch CMD verbatim with enclave hostnames rewritten to the restored
+       compose hostnames. The batcher is what posts L2 batch data to the L1
+       batch-inbox; without it the restored L2 sequences `unsafe` blocks forever
+       but `safe`/`finalized` stay at 0.
+    2. **op-node finality flags** — `op-node-entrypoint.sh` runs op-node with
+       `--l1.http-poll-interval=2s` (match the 2s devnet L1 slot; the 12s default
+       makes op-node false-detect re-orgs and engine-reset to genesis every cycle)
+       and `--l1.epoch-poll-interval=12s` (refresh L1 safe/finalized promptly; the
+       6m24s default makes finality impractically slow).
+    3. **op-geth `miner` API** — `op-geth-entrypoint.sh` exposes the `miner`
+       namespace on http/ws so the batcher's startup `miner_setMaxDASize` (DA
+       throttling) succeeds; otherwise the restored batcher crashes on boot.
+  The op-pp preset also pins the L2 EL to **op-geth** (`op-geth:v1.101605.0`,
+  not the op-reth default — op-reth was EL-flaky on loaded hosts; op-geth ran
+  solid). The compose/summary in this dir are regenerated deterministically by
+  `snapshot/scripts/generate-compose.sh` / `generate-summary.sh` from the
+  captured snapshot state.
+- Preset: `.github/tests/aggkit-e2e-envs/op-pp.yml` (single OP-PP chain,
+  pessimistic, native ETH, `deploy_l1` + `deploy_agglayer`, op-geth EL,
+  op-batcher default-on, op-node `cl.extra_params` finality flags,
+  snapshot-clean: `additional_services: []`, no bridge_spammer / no settlement).
+- snapshot `chain_type`: `op-stack`. `summary.json`
+  `networks.l2_networks.001.services` now carries **`op-batcher`** (with
+  `batches_to_l1: true`) alongside `op-geth` / `op-node` / `aggkit`; the
+  loader-facing logical key for the L2 EL stays `op-geth`. `docker-compose.yml`
+  includes the `op-batcher-001` service (depends_on geth + op-geth-001 +
+  op-node-001) and op-node runs with the two finality flags.
+- Loader: `EnvOpPP`. `op-batcher` is a compose-only service (the loader does not
+  read it), so the new key is backward-compatible — `make build` +
+  `golangci-lint run ./test/e2e/...` stay green and the loader's `summaryJSON`
+  still parses (op-geth/aggkit/L1 RPC keys intact, chain_id `20201`).
+- **L2 finalizes on restore (proven).** Copied this dir to a scratch dir with
+  remapped host ports + a distinct container prefix, `docker compose up -d
+  --wait` (all 8 services healthy incl. op-batcher), then polled L2 over several
+  minutes. L2 `finalized` advanced **0 → 156 → 191 → 203 → 239** (monotone,
+  keeps climbing); L1 `finalized` advanced in lock-step; op-geth's own
+  `eth_getBlockByNumber("finalized")` matched op-node exactly; op-batcher stayed
+  healthy and posted calldata batches throughout (0 chronic op-node engine
+  resets).
 
 ## op-fep
 

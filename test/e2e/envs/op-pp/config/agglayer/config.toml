@@ -4,7 +4,7 @@
 # This configuration has been adapted from the Kurtosis enclave for use in
 # a docker-compose environment. Key changes:
 #
-# - L1 RPC endpoints changed to use 'geth' hostname (from el-1-geth-lighthouse)
+# - L1 RPC endpoints changed to use 'geth' hostname (from Kurtosis service name)
 # - L2 RPC endpoints commented out (L2 stack not included in L1-only snapshot)
 # - Gas price floor configured (1 gwei minimum to ensure L1 miners accept txs)
 # - All contract addresses and keys preserved from original deployment
@@ -64,7 +64,7 @@ ceiling = "100gwei"    # 100 gwei maximum
 multiplier = 1000      # 1.0x multiplier (scaled by 1000)
 
 [log]
-# level = "info"
+# level = "debug"
 level = "debug" # we want debug visibility for now
 outputs = ["stderr"]
 format = "pretty"

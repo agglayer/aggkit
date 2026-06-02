@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Install jq (not included in op-geth Alpine image)
+# Install jq (not included in op-geth image)
 apk add --no-cache jq > /dev/null 2>&1
 
 echo "=== op-geth entrypoint ==="
@@ -17,12 +17,12 @@ if [ -d "/data/geth" ] && [ -f "/shared/l2_genesis_hash" ]; then
         --http.port=8545 \
         --http.vhosts='*' \
         --http.corsdomain='*' \
-        --http.api=admin,engine,net,eth,web3,debug,txpool \
+        --http.api=admin,engine,net,eth,web3,debug,txpool,miner \
         --ws \
         --ws.addr=0.0.0.0 \
         --ws.port=8546 \
         --ws.origins='*' \
-        --ws.api=admin,engine,net,eth,web3,debug,txpool \
+        --ws.api=admin,engine,net,eth,web3,debug,txpool,miner \
         --authrpc.addr=0.0.0.0 \
         --authrpc.port=8551 \
         --authrpc.vhosts='*' \
@@ -44,10 +44,38 @@ echo "=== Patching L2 genesis timestamp ==="
 # Copy genesis to writable location
 cp /genesis-ro/l2-genesis.json /tmp/genesis.json
 
-# Patch timestamp to current time (hex)
-NOW=$(date +%s)
+# Read L1 origin block number from rollup.json
+L1_BLOCK_NUM=$(jq -r '.genesis.l1.number' /rollup-ro/rollup.json)
+L1_BLOCK_HEX=$(printf '0x%x' "$L1_BLOCK_NUM")
+echo "L1 origin block number: $L1_BLOCK_NUM ($L1_BLOCK_HEX)"
+
+# Wait for L1 geth to serve the origin block and get its timestamp
+echo "Waiting for L1 geth to be available..."
+L1_ORIGIN_TIMESTAMP=""
+L1_WAIT=0
+while [ $L1_WAIT -lt 120 ]; do
+    RESP=$(wget -qO- --post-data="{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"$L1_BLOCK_HEX\",false],\"id\":1}" --header="Content-Type: application/json" http://geth:8545 2>/dev/null || true)
+    if [ -n "$RESP" ]; then
+        L1_ORIGIN_TIMESTAMP=$(echo "$RESP" | jq -r '.result.timestamp // empty')
+        if [ -n "$L1_ORIGIN_TIMESTAMP" ]; then
+            break
+        fi
+    fi
+    echo "Waiting for L1 geth to serve block $L1_BLOCK_NUM... ($L1_WAIT/120s)"
+    sleep 2
+    L1_WAIT=$((L1_WAIT + 2))
+done
+
+if [ -z "$L1_ORIGIN_TIMESTAMP" ]; then
+    echo "ERROR: Could not fetch L1 origin block timestamp after 120s"
+    exit 1
+fi
+
+# Convert hex timestamp to decimal and add 1
+L1_ORIGIN_TS_DEC=$(printf '%d' "$L1_ORIGIN_TIMESTAMP")
+NOW=$((L1_ORIGIN_TS_DEC + 1))
 NOW_HEX=$(printf '0x%x' "$NOW")
-echo "Patching L2 genesis timestamp to $NOW ($NOW_HEX)"
+echo "L1 origin timestamp: $L1_ORIGIN_TS_DEC, setting L2 genesis timestamp to $NOW ($NOW_HEX)"
 
 jq --arg ts "$NOW_HEX" '.timestamp = $ts' /tmp/genesis.json > /tmp/genesis-patched.json
 mv /tmp/genesis-patched.json /tmp/genesis.json
@@ -100,12 +128,12 @@ exec geth \
     --http.port=8545 \
     --http.vhosts='*' \
     --http.corsdomain='*' \
-    --http.api=admin,engine,net,eth,web3,debug,txpool \
+    --http.api=admin,engine,net,eth,web3,debug,txpool,miner \
     --ws \
     --ws.addr=0.0.0.0 \
     --ws.port=8546 \
     --ws.origins='*' \
-    --ws.api=admin,engine,net,eth,web3,debug,txpool \
+    --ws.api=admin,engine,net,eth,web3,debug,txpool,miner \
     --authrpc.addr=0.0.0.0 \
     --authrpc.port=8551 \
     --authrpc.vhosts='*' \
