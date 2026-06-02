@@ -72,15 +72,37 @@ All checks run regardless of individual failures. A combined error lists every f
 - **Output:** `step-a-addresses.json` (`[]common.Address`), `step-a-failed-traces.json` (`[]common.Hash`)
 - **Option:** `continueOnTraceError=true` skips failed traces instead of aborting.
 
-### Step B — EOA balance checking
+### Step B — EOA balance checking + ERC-20 detection
 
-Three phases:
+Three sub-steps: B1, B2, B3. Running `--step b` executes all three.
+
+#### Step B1 — EOA classification and balance fetching
 
 1. `eth_getCode` → classify each address as EOA or contract
 2. `eth_getBalance` for all EOAs at `targetBlock`
 3. `balanceOf(address)` per wrapped token × per EOA (token list from LBT)
 
 - **Output:** `step-b-eoa-balances.json` (`[]EOABalance`), `step-b-accumulated.json` (`[]AccumulatedBalance`), `step-b-contract-addresses.json` (`[]common.Address`)
+
+#### Step B2 — ERC-20 detection in contracts
+
+Probes each contract address with `totalSupply()` / `balanceOf(address(0))` to confirm the ERC-20 interface. For each detected ERC-20, calls `balanceOf(contractAddr)` on every tracked wrapped token and `eth_getBalance` to find which tracked tokens it holds.
+
+- Holds ≥ 1 tracked token → `DetectedERC20` (relevant)
+- Holds none → `DiscardedERC20` (irrelevant)
+
+- **Output:** `step-b2-detected-erc20s.json` (`[]DetectedERC20`), `step-b2-discarded-erc20s.json` (`[]DiscardedERC20`)
+
+#### Step B3 — Extra ERC-20 holder decomposition
+
+Iterates over `options.extraErc20Contracts`. For each address:
+
+- If Step B2 already populated `Holders` for it, copies those holders and marks `AlreadyFromB2=true` — no RPC call.
+- Otherwise, calls `fetchTokenBalances` (one RPC batch of `balanceOf` for every EOA from Step A).
+
+Skipped automatically when `options.extraErc20Contracts` is empty.
+
+- **Output:** `step-b3-erc20-holders.json` (`[]ERC20HolderBreakdown`)
 
 ### Step C — SC-locked value
 

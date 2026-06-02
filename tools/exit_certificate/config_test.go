@@ -125,7 +125,7 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
 	require.Equal(t, 5000, cfg.Options.BlockRange)
-	require.Equal(t, 5000, cfg.Options.StepAWindowSize)
+	require.Equal(t, 150000, cfg.Options.StepAWindowSize)
 	require.Equal(t, 20, cfg.Options.ConcurrencyLimit)
 	require.Equal(t, 200, cfg.Options.RPCBatchSize)
 	require.Equal(t, 0, cfg.Options.RPCDelayMs)

@@ -33,7 +33,7 @@ type tokenKey struct {
 // RunStepF queries the agglayer admin API for token balances and performs a three-way comparison:
 // LBT (Step 0 total supplies) == agglayer balance == sum of certificate bridge exits.
 // lbtEntries may be nil when LBT data is unavailable; the check then falls back to two-way comparison.
-// Skipped when agglayerAdminURL is not set in options.
+// agglayerAdminURL is required; returns an error when not set.
 func RunStepF(
 	ctx context.Context, cfg *Config,
 	certificate *agglayertypes.Certificate,
@@ -44,8 +44,7 @@ func RunStepF(
 	log.Info("═══════════════════════════════════════════")
 
 	if cfg.Options.AgglayerAdminURL == "" {
-		log.Warn("STEP F skipped: agglayerAdminURL not set in options")
-		return &StepFResult{Skipped: true}, nil
+		return nil, fmt.Errorf("step F requires agglayerAdminURL to be set in options")
 	}
 
 	log.Infof("Querying %s (network %d)", cfg.Options.AgglayerAdminURL, cfg.L2NetworkID)

@@ -7,14 +7,35 @@
     "targetBlock": "LatestBlock",
     "exitAddress": "0x0000000000000000000000000000000000000001",
     "destinationNetwork": 0,
+    "sovereignRollupAddr": "<SOVEREIGN_ROLLUP_ADDR>",
+    "l1GlobalExitRootAddress": "<L1_GLOBAL_EXIT_ROOT_ADDRESS>",
     "options": {
         "blockRange": 10000,
+        "stepAWindowSize": 150000,
         "concurrencyLimit": 200,
         "rpcBatchSize": 200,
         "rpcDelayMs": 10,
         "outputDir": "./output",
-        "l1StartBlock": 0
+        "l1StartBlock": 0,
+        "continueOnTraceError": false,
+        "abortOnGenesisBalance": true,
+        "ignoreUnclaimed": false,
+        "continueIfBalanceMismatch": false,
+        "extraErc20Contracts": [],
+        "bridgeServiceURL": "",
+        "bridgeServiceType": "aggkit",
+        "agglayerClient": {
+            "GRPC": {
+                "URL": "<AGGLAYER_GRPC_URL>",
+                "UseTLS": false
+            }
+        },
+        "agglayerAdminURL": "<AGGLAYER_ADMIN_URL>",
+        "agglayerAdminToken": "<JWT>"
     },
-    "signerKeyPath": "/path/to/keystore.json",
-    "signerKeyPassword": "keystore-password"
+    "signerConfig": {
+        "Method": "local",
+        "Path": "/path/to/keystore.json",
+        "Password": "<PASSWORD>"
+    }
 }
