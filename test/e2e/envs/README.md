@@ -196,28 +196,52 @@ AggOracle is governed by an on-chain `AggOracleCommittee` proxy with a **2-of-3*
 quorum (`use_agg_oracle_committee: true`, `agg_oracle_committee_quorum: 2`,
 `agg_oracle_committee_total_members: 3`).
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `d71f4265`.
-  It inherits all the op-fep op-reth/Teku/proposer bootability fixes (`b3e13ba9`)
-  and adds (in `d71f4265`) a minimal, backward-compatible committee-capture path
-  to the snapshot tool
-  (`snapshot/scripts/discover-containers.sh`, `extract-state.sh`,
-  `generate-compose.sh`, `generate-summary.sh`): the extra AggOracle committee
-  member services (kurtosis `aggkit-001-aggoracle-committee-00N`, each an aggkit
-  `--components=aggoracle` service with its own `aggoracle-N.keystore`) are
-  discovered, their `/etc/aggkit` (config + keystores) captured under
-  `config/001/committee/00N/etc`, re-emitted as compose services, and the
-  `AggOracleCommittee` proxy address is recorded in `summary.json` under
-  `networks.l2_networks.001.contracts.aggoracle_committee`. The same commit also
-  lengthens the L1 geth SIGTERM grace in `extract-state.sh` so geth flushes its
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `c8740844`
+  (regenerated 2026-06-02; supersedes `d71f4265`). It inherits all the op-fep
+  op-reth/Teku/proposer bootability fixes (`b3e13ba9`) and the committee-capture
+  path (`d71f4265`): the extra AggOracle committee member services (kurtosis
+  `aggkit-001-aggoracle-committee-00N`, each an aggkit `--components=aggoracle`
+  service with its own `aggoracle-N.keystore`) are discovered, their `/etc/aggkit`
+  (config + keystores) captured under `config/001/committee/00N/etc`, re-emitted
+  as compose services, and the `AggOracleCommittee` proxy address is recorded in
+  `summary.json` under `networks.l2_networks.001.contracts.aggoracle_committee`.
+  `extract-state.sh` also lengthens the L1 geth SIGTERM grace so geth flushes its
   full chain head to disk before capture (a short grace produced a committee
   snapshot whose restored geth lagged its rollup L1-origin, so op-reth could
   never reach the origin block).
+- **Finality fix set (regenerated 2026-06-02, fc745b2e — proven on
+  op-pp/op-pp-2chains/op-fep).** The previous committee env restored but its L2
+  never finalized: it had no `op-batcher` and op-node finalization was wedged.
+  This regeneration folds in the full fix set, so the **restored** L2 finalizes:
+  1. **op-batcher captured** — `op-batcher-001` (image `op-batcher:v1.16.9`,
+     funded `--private-key`, `--data-availability-type=calldata`) is now a compose
+     service and a `summary.json` service (`batches_to_l1: true`); its launch CMD
+     is replayed verbatim with enclave hostnames rewritten to `op-geth-001` /
+     `op-node-001` / `geth`, host RPC port `11548`. Without it the L2 sequences
+     unsafe blocks forever but never derives safe/finalized.
+  2. **op-node finality flags** in `config/001/op-node-entrypoint.sh`:
+     `--l1.http-poll-interval=2s` (the 12s default misreads the fast 2s L1 as
+     re-orgs → chronic engine resets → never finalizes) and
+     `--l1.epoch-poll-interval=12s` (the 6m24s default makes finality impractically
+     slow).
+  3. **op-reth `miner` API** in `config/001/op-reth-entrypoint.sh`
+     (`--http.api`/`--ws.api` include `miner`) so op-batcher's
+     `miner_setMaxDASize` call at startup succeeds (verified `true` on restore).
+  - **EL = op-reth (required).** Unlike op-pp/op-pp-2chains (op-geth), the
+    op-succinct/FEP path is hard-coupled to op-reth (input_parser `fail()`s
+    otherwise; the proposer/sovereign/agglayer scripts reference the op-reth EL
+    hostname). op-geth is not an option here.
+  - **Restored-env finality proof (2026-06-02, isolated restore, op-reth EL):**
+    L2 `finalized` advanced **0 → 10 → 22 → 58 → 70 → 118** (op-geth `finalized`
+    tag matched op-node exactly), L1 finalized 203 → 283 in lock-step, op-batcher
+    healthy and posting. Committee quorum re-verified on the restored proxy:
+    `quorum()=2`, 4 members.
 - Preset: `.github/tests/aggkit-e2e-envs/op-fep-committee.yml` (faithful mirror
   of the aggkit CI `single_chain_op_succinct_aggoracle_committee_args`
   composition minus `bridge_spammer`; `additional_services: []`).
 - Difference vs `op-fep`: adds two `aggkit-001-aggoracle-committee-000/001`
   services + their captured keystores, and the `contracts.aggoracle_committee`
-  address. Everything else (op-reth EL, op-node, agglayer, postgres,
+  address. Everything else (op-reth EL, op-node, op-batcher, agglayer, postgres,
   op-succinct-proposer marked `settled: false`) is identical to op-fep.
 - Loader: the `EnvOpFEPCommittee` ENVName (`NativeGas: true`) binds the on-chain
   `AggOracleCommittee` contract (`L2Contracts.AggOracleCommittee` /
@@ -260,6 +284,19 @@ args:
 optimism_package:
   chains:
     "001":
+      participants:        # EL pinned to op-reth (FEP-required); op-node finality flags
+        sequencer1:
+          sequencer: true
+          el: {type: op-reth, image: .../op-reth:v2.2.5}
+          cl: {type: op-node, extra_params: [--rollup.l1-chain-config=/l1/genesis.json,
+                                             --l1.http-poll-interval=2s,
+                                             --l1.epoch-poll-interval=12s]}
+        rpc1:
+          sequencer: sequencer1
+          el: {type: op-reth, image: .../op-reth:v2.2.5}
+          cl: {type: op-node, extra_params: [--rollup.l1-chain-config=/l1/genesis.json,
+                                             --l1.http-poll-interval=2s,
+                                             --l1.epoch-poll-interval=12s]}
       proposer_params:
         enabled: false
       network_params:
