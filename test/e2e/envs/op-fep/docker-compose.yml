@@ -1,13 +1,22 @@
 # Ethereum L1 Snapshot Environment
 # Enclave: op-fep
-# Tag: op-fep-20260529-161812
-# Genesis: 0x54625bf39f28e3171c95442238429e5cfe00a49b7294f1f4be36b3f2c4a0f2d9
+# Tag: op-fep-20260602-165952
+# Genesis: 0xadf184d0aeb36d786ca65bb47541064e248f3d4cfb3ca98f3bd3c1d5a9faf3a0
 
 services:
   geth:
-    image: snapshot-geth:op-fep-20260529-161812
-    container_name: op-fep-20260529-161738-geth
+    image: snapshot-geth:op-fep-20260602-165952
+    container_name: op-fep-20260602-165149-geth
     hostname: geth
+    # Alias the restored L1 EL under its original kurtosis service name so
+    # components that hardcode the kurtosis L1 RPC hostname keep resolving it.
+    # cdk-erigon's captured config.yaml references zkevm.l1-rpc-url as
+    # http://el-1-geth-lighthouse:8545; op-stack instead has its L1 hostnames
+    # rewritten to "geth" during adaptation. The alias is harmless for op-stack.
+    networks:
+      default:
+        aliases:
+          - el-1-geth-lighthouse
     command:
       - "--http"
       - "--http.addr=0.0.0.0"
@@ -51,8 +60,8 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:op-fep-20260529-161812
-    container_name: op-fep-20260529-161738-beacon
+    image: snapshot-beacon:op-fep-20260602-165952
+    container_name: op-fep-20260602-165149-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -72,8 +81,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:op-fep-20260529-161812
-    container_name: op-fep-20260529-161738-validator
+    image: snapshot-validator:op-fep-20260602-165952
+    container_name: op-fep-20260602-165149-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -89,7 +98,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: op-fep-20260529-161738-agglayer
+    container_name: op-fep-20260602-165149-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -119,7 +128,7 @@ services:
 
   op-geth-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.2.5
-    container_name: op-fep-20260529-161738-op-geth-001
+    container_name: op-fep-20260602-165149-op-geth-001
     hostname: op-geth-001
     entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
     volumes:
@@ -145,7 +154,7 @@ services:
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-fep-20260529-161738-op-node-001
+    container_name: op-fep-20260602-165149-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -174,9 +183,44 @@ services:
       retries: 3
       start_period: 240s
 
+  op-batcher-001:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
+    container_name: op-fep-20260602-165149-op-batcher-001
+    hostname: op-batcher-001
+    command:
+      - "op-batcher"
+      - "--l2-eth-rpc=http://op-geth-001:8545"
+      - "--rollup-rpc=http://op-node-001:8547"
+      - "--poll-interval=1s"
+      - "--sub-safety-margin=6"
+      - "--num-confirmations=1"
+      - "--safe-abort-nonce-too-low-count=3"
+      - "--resubmission-timeout=30s"
+      - "--rpc.addr=0.0.0.0"
+      - "--rpc.port=8548"
+      - "--rpc.enable-admin"
+      - "--max-channel-duration=1"
+      - "--l1-eth-rpc=http://geth:8545"
+      - "--private-key=0xa51bc3351fffe667d7f2fd30dc040687e2d65e2f941837bad219bb1f0466dfaa"
+      - "--data-availability-type=blobs"
+      - "--altda.enabled=false"
+      - "--altda.da-server="
+      - "--altda.da-service"
+      - "--data-availability-type=calldata"
+    ports:
+      - "11548:8548"    # batcher RPC/admin
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+    restart: unless-stopped
+
   postgres-001:
     image: postgres:16-alpine
-    container_name: op-fep-20260529-161738-postgres-001
+    container_name: op-fep-20260602-165149-postgres-001
     hostname: postgres-001
     environment:
       - POSTGRES_USER=op_succinct_user
@@ -194,7 +238,7 @@ services:
 
   op-succinct-proposer-001:
     image: ghcr.io/agglayer/op-succinct/op-succinct-agglayer:v3.5.0-agglayer
-    container_name: op-fep-20260529-161738-op-succinct-proposer-001
+    container_name: op-fep-20260602-165149-op-succinct-proposer-001
     hostname: op-succinct-proposer-001
     # env_file restores the captured proposer wiring (L2OO addr, prover mode,
     # agglayer gateway). Generated from proposer-env.json during restore.
@@ -216,7 +260,7 @@ services:
 
   aggkit-001:
     image: aggkit:local
-    container_name: op-fep-20260529-161738-aggkit-001
+    container_name: op-fep-20260602-165149-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:

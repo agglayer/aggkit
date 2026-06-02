@@ -15,7 +15,7 @@
     "terminalTotalDifficulty": 0,
     "terminalTotalDifficultyPassed": true,
     "shanghaiTime": 0,
-    "cancunTime": 1780071157,
+    "cancunTime": 1780418736,
     "blobSchedule": {
       "cancun": {
         "target": 3,
@@ -39,9 +39,9 @@
       }
     },
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
-    "pragueTime": 1780071173,
-    "osakaTime": 1780071189,
-    "bpo1Time": 1780071189
+    "pragueTime": 1780418752,
+    "osakaTime": 1780418768,
+    "bpo1Time": 1780418768
   },
   "alloc": {
     "0x0000000000000000000000000000000000000000": {
@@ -946,5 +946,5 @@
   "nonce": "0x1234",
   "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-  "timestamp": "1780071141"
+  "timestamp": "1780418720"
 }

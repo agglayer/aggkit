@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 6gPSYvb1PGB5LxwNeeNIB6TI4cxjWO3kTWfHe4LG3CxiLXazcfFkO9t6UuwjICk
+\restrict Pn0bTxZKUDb0c17OiET8jpL0toYf0a2bghjwqTFzoq6LzDXB591UBNRi5ba5AAO
 
 -- Dumped from database version 17.6 (Debian 17.6-2.pgdg13+1)
 -- Dumped by pg_dump version 17.6 (Debian 17.6-2.pgdg13+1)
@@ -125,9 +125,9 @@ ALTER TABLE ONLY public.requests ALTER COLUMN id SET DEFAULT nextval('public.req
 --
 
 COPY public._sqlx_migrations (version, description, installed_on, success, checksum, execution_time) FROM stdin;
-1	init	2026-05-29 16:17:01.503165+00	t	\\xd6c22d9a7bb3b2090397ad9693a0caa13e897a92cb0f1eb05be9dad93a695848590510c0ebe1aeb8eb308f671b32537a	2855840
-2	add fields to requests	2026-05-29 16:17:01.507221+00	t	\\x6a216a28e01227f8582ea3d441994af79f734a1e3d23ce370e742ea51f89068ab78825e31512618f493b33fbe1b4bfda	1277246
-3	chain locks	2026-05-29 16:17:01.509414+00	t	\\x2efbf52cf0ef8780a0bee3eda20a07ab50c4e563cc1f236ed46c15b833e50a64f480920b019885802ac9827252e507f0	1754126
+1	init	2026-06-02 16:49:56.697581+00	t	\\xd6c22d9a7bb3b2090397ad9693a0caa13e897a92cb0f1eb05be9dad93a695848590510c0ebe1aeb8eb308f671b32537a	2867198
+2	add fields to requests	2026-06-02 16:49:56.70154+00	t	\\x6a216a28e01227f8582ea3d441994af79f734a1e3d23ce370e742ea51f89068ab78825e31512618f493b33fbe1b4bfda	1161072
+3	chain locks	2026-06-02 16:49:56.703792+00	t	\\x2efbf52cf0ef8780a0bee3eda20a07ab50c4e563cc1f236ed46c15b833e50a64f480920b019885802ac9827252e507f0	1758532
 \.
 
 
@@ -136,7 +136,7 @@ COPY public._sqlx_migrations (version, description, installed_on, success, check
 --
 
 COPY public.chain_locks (l1_chain_id, l2_chain_id, locked_at) FROM stdin;
-271828	20201	2026-05-29 16:17:08.211349
+271828	20201	2026-06-02 16:52:03.291694
 \.
 
 
@@ -145,6 +145,8 @@ COPY public.chain_locks (l1_chain_id, l2_chain_id, locked_at) FROM stdin;
 --
 
 COPY public.requests (id, status, req_type, mode, start_block, end_block, created_at, updated_at, proof_request_id, checkpointed_l1_block_number, checkpointed_l1_block_hash, execution_statistics, witnessgen_duration, execution_duration, proof_request_time, prove_duration, range_vkey_commitment, aggregation_vkey_hash, rollup_config_hash, relay_tx_hash, proof, total_nb_transactions, total_eth_gas_used, total_l1_fees, total_tx_fees, l1_chain_id, l2_chain_id, contract_address, prover_address, l1_head_block_number) FROM stdin;
+1	4	0	1	1	61	2026-06-02 16:51:03.265433	2026-06-02 16:51:10.966205	\N	\N	\N	{"bn_add_cycles": 0, "bn_mul_cycles": 0, "total_sp1_gas": 157198613, "bn_pair_cycles": 0, "kzg_eval_cycles": 0, "derivation_cycles": 38466767, "ec_recover_cycles": 0, "p256_verify_cycles": 0, "oracle_verify_cycles": 3178711, "block_execution_cycles": 72851462, "blob_verification_cycles": 728, "total_instruction_cycles": 137463812}	1	6	\N	\N	\\x0e5158b64c46007c04e5972727a2a26832337fbe765162294b0ce1ed0db36f9d	\N	\\xc9b7e414ca91ee1e96f9153c5dcf71bfc61b149e81285604b75777ebea02fc88	\N	\\x01000000000000000000000000000000000000000000000000000000000000000000000000000000134243013037620580485009248768018069090267698507765387011d32cc34e4a25e43977ed82150242403a09a480ebbb9611a759fa36d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a8000000000000002000000000000000f741a35d2eb9323f7410da9bf1ec9a760d9f97de399b86ca112bd1c14572a2ba20000000000000004f8bef84c5a3530bc2082971403fd24fbc2f993136b85f10b68f81a35a807b2820000000000000004af27ef877bd5d45aaa044e3cb16d39c45e0c649803c6cd739677cf2afd7c49e3d000000000000002000000000000000c9b7e414ca91ee1e96f9153c5dcf71bfc61b149e81285604b75777ebea02fc88060000000000000076352e302e3000	63	3058212	4953	50469045799953	271828	20201	\N	\N	145
+2	1	0	1	61	121	2026-06-02 16:52:03.289285	2026-06-02 16:52:03.295843	\N	\N	\N	null	\N	\N	\N	\N	\\x0e5158b64c46007c04e5972727a2a26832337fbe765162294b0ce1ed0db36f9d	\N	\\xc9b7e414ca91ee1e96f9153c5dcf71bfc61b149e81285604b75777ebea02fc88	\N	\N	66	3145716	3788	93947606070788	271828	20201	\N	\N	175
 \.
 
 
@@ -152,7 +154,7 @@ COPY public.requests (id, status, req_type, mode, start_block, end_block, create
 -- Name: requests_id_seq; Type: SEQUENCE SET; Schema: public; Owner: op_succinct_user
 --
 
-SELECT pg_catalog.setval('public.requests_id_seq', 1, false);
+SELECT pg_catalog.setval('public.requests_id_seq', 2, true);
 
 
 --
@@ -183,5 +185,5 @@ ALTER TABLE ONLY public.requests
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 6gPSYvb1PGB5LxwNeeNIB6TI4cxjWO3kTWfHe4LG3CxiLXazcfFkO9t6UuwjICk
+\unrestrict Pn0bTxZKUDb0c17OiET8jpL0toYf0a2bghjwqTFzoq6LzDXB591UBNRi5ba5AAO
 
