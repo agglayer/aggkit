@@ -7,11 +7,21 @@ The different E2E envs found on this directory have been generated using the [sn
 This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
 (`ecdsa-multisig` consensus, native ETH gas) on one L1 + agglayer.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit
-  `59f26eff` ("aggkit-e2e: add op-pp preset + make snapshot capture op-geth EL,
-  op-batcher & finalize on restore"). That commit (a) adds the op-pp preset, and
-  (b) folds three fixes into the snapshot tool so a RESTORED OP-Stack L2 actually
-  finalizes:
+- Regenerated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit
+  `89dedc4f` ("aggkit-e2e: make plain PP/FEP envs single-signer (no aggsender
+  multisig)") — **single-signer aggsender; certs settle**. The earlier capture
+  (`59f26eff`) baked an on-chain aggsender validator multisig (threshold 2 of 3)
+  but ran no `aggkit-*-aggsender-validator-00N` containers, so the aggsender
+  stalled at `validatorPoller threshold not reached: 1/2`, never sent a cert, and
+  the agglayer cert header stayed `null` (breaking every cert-dependent test,
+  e.g. L2->L1 bridge claims). The preset is now single-signer
+  (`use_agg_sender_validator: false`, `agg_sender_multisig_threshold: 1`,
+  `agg_sender_validator_total_number: 0`), so the lone aggsender self-validates
+  (1/1) and certificates settle. The regenerated `aggkit-config.toml` no longer
+  carries an `[AggSender.ValidatorClient]` block, and no remote validator members
+  are baked on-chain (no `aggsender-validator-002/003`). `59f26eff` originally (a)
+  added the op-pp preset, and (b) folded three fixes into the snapshot tool so a
+  RESTORED OP-Stack L2 actually finalizes (all preserved in this regen):
     1. **op-batcher captured** — discover/extract/generate-compose/generate-summary
        now capture the per-chain `op-batcher` (image `op-batcher:v1.16.9`, the
        funded `--private-key`, `--data-availability-type=calldata`), replaying
@@ -54,6 +64,33 @@ This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
   `eth_getBlockByNumber("finalized")` matched op-node exactly; op-batcher stayed
   healthy and posted calldata batches throughout (0 chronic op-node engine
   resets).
+- **Certificates settle + L2->L1 claimable (proven, single-signer regen).**
+  Restored this dir via the loader (`E2E_ENV=op-pp`, all 8 services healthy) and
+  ran the post-test L1<->L2 bridge health-check.
+    - **No quorum stall:** `aggkit-001` logs show **0** `validatorPoller threshold
+      not reached` / `threshold not reached` lines (the only "threshold" mention
+      is the never-incremented `multisig_threshold_not_reached` Prometheus metric
+      registration); the aggsender runs the ASAP trigger and `sendCertificateWith
+      Retries` succeeds (1/1 self-validation).
+    - **Cert header before -> after:**
+      `interop_getLatestKnownCertificateHeader([1])` returned `result: null`
+      before any bridge activity (no cert had ever settled — the old multisig
+      failure mode). After driving an L2 bridge exit it returned a real
+      certificate with `"status":"Settled"`, a populated `settlement_tx_hash`
+      (e.g. `0xad5bc207...`) and a non-zero `new_local_exit_root` (e.g.
+      `0x669ba3b9...`). (The PP `height` of the first settled cert is `0` — height
+      is the per-network cert sequence index, so the *first* settled cert is
+      always index 0; the load-bearing advance here is `null` -> a `Settled` cert
+      with a real settlement tx and exit root.)
+    - **L2->L1 bridge claimable (the exact broken path):** an L2->L1 ERC20 bridge
+      exit was picked up by the bridge service (`deposit_count=0`) and then the
+      bridge service `GET /l1-info-tree-index?network_id=1&deposit_count=0`
+      returned **`l1InfoTreeIndex=2`** (rollup-exit-root / VerifyBatches landed on
+      L1), the claim proof was fetched, and the L1 `claimAsset` tx was submitted
+      and mined successfully (`L2->L1 flow completed successfully`,
+      `[POSTTEST] Bridge flows post-test check succeeded`). A claim is only
+      provable against a settled rollup-exit-root on L1, so this is end-to-end
+      proof the single-signer cert settled.
 
 ## op-fep
 

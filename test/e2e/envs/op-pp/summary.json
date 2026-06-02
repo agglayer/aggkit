@@ -1,15 +1,15 @@
 {
-  "snapshot_name": "op-pp-20260602-155034",
+  "snapshot_name": "op-pp-20260602-214519",
   "enclave": "op-pp",
-  "created_at": "2026-06-02T15:51:44Z",
+  "created_at": "2026-06-02T21:46:00Z",
   "networks": {
     "l1": {
       "chain_id": "271828",
       "snapshot_block": {
-        "number": "147",
-        "hash": "0x4da260c85cd1ac6f5c012f7cdd8c2d23c775fdf154638b625460f585327784f1"
+        "number": "330",
+        "hash": "0xca33ed9f3fdbc834e6cc4d834f50186e10b9fd000a56144ff873f419c2e1dbc6"
       },
-      "genesis_hash": "0x62a173d6835e000d9e49f81673cde9af5803c62ff589965436d4000919ef0257",
+      "genesis_hash": "0xb6ba05ff23c9acc3d6cf1f1543f9c38a867b5a837738e2c6c27a178f093924f9",
       "contracts": {
         "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
         "global_exit_root_v2": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",
