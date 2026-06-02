@@ -37,16 +37,14 @@ func TestRunStepF_WithBearerToken(t *testing.T) {
 	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.False(t, result.Skipped)
 }
 
-func TestRunStepF_Skipped(t *testing.T) {
+func TestRunStepF_MissingAdminURL_Error(t *testing.T) {
 	t.Parallel()
 
-	result, err := RunStepF(context.Background(), &Config{}, &agglayertypes.Certificate{}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.True(t, result.Skipped)
+	_, err := RunStepF(context.Background(), &Config{}, &agglayertypes.Certificate{}, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "agglayerAdminURL")
 }
 
 func TestRunStepF_AllMatch(t *testing.T) {

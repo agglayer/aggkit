@@ -126,7 +126,7 @@ func collectResults[R any](
 				log.Warnf("%s job failed: %v req: %+v", label, r.err, r.val)
 			} else {
 				collect(r.val)
-				if processed%logInterval == 0 || processed == total {
+				if label != "" && (processed%logInterval == 0 || processed == total) {
 					pct := float64(processed) / float64(total) * percentMultiplier
 					log.Infof("  %s: %d/%d [%.0f%%]", label, processed, total, pct)
 				}
