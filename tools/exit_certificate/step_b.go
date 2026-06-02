@@ -22,11 +22,41 @@ const (
 	abiWordSize = 32
 )
 
-// RunStepB classifies addresses as EOA vs contract, then collects ETH and wrapped
-// token balances at targetBlock for all EOAs.
+// RunStepB runs Step B1, B2, and B3 and returns the combined result.
+// B1 classifies addresses and collects balances; B2 detects ERC-20 contracts;
+// B3 fetches holder breakdowns for the contracts listed in ExtraERC20Contracts.
 func RunStepB(ctx context.Context, cfg *Config, targetBlock uint64, stepA *StepAResult) (*StepBResult, error) {
+	b1Result, err := RunStepB1(ctx, cfg, targetBlock, stepA)
+	if err != nil {
+		return nil, err
+	}
+	eoaAddrs := filterEOAs(stepA.Addresses, b1Result.ContractAddresses)
+	b2Result, err := RunStepB2(ctx, cfg, targetBlock, b1Result.ContractAddresses, eoaAddrs, stepA.WrappedTokens)
+	if err != nil {
+		return nil, err
+	}
+	b3Result, err := RunStepB3(ctx, cfg, targetBlock, eoaAddrs, b2Result)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("STEP B complete: %d EOAs, %d token accumulations, %d ERC-20 detected, %d ERC-20 holder breakdowns",
+		len(b1Result.EOABalances), len(b1Result.Accumulated),
+		len(b2Result.DetectedERC20s), len(b3Result.Breakdowns))
+	return &StepBResult{
+		EOABalances:           b1Result.EOABalances,
+		Accumulated:           b1Result.Accumulated,
+		ContractAddresses:     b1Result.ContractAddresses,
+		DetectedERC20s:        b2Result.DetectedERC20s,
+		DiscardedERC20s:       b2Result.DiscardedERC20s,
+		ERC20HolderBreakdowns: b3Result.Breakdowns,
+	}, nil
+}
+
+// RunStepB1 classifies addresses as EOA vs contract, then collects ETH and wrapped
+// token balances at targetBlock for all EOAs.
+func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *StepAResult) (*StepB1Result, error) {
 	log.Info("═══════════════════════════════════════════")
-	log.Info(" STEP B — EOA balance checking")
+	log.Info(" STEP B1 — EOA balance checking")
 	log.Info("═══════════════════════════════════════════")
 
 	rpcURL := cfg.L2RPCURL
@@ -69,14 +99,29 @@ func RunStepB(ctx context.Context, cfg *Config, targetBlock uint64, stepA *StepA
 		log.Warnf("Genesis balance check failed (abortOnGenesisBalance=false, continuing): %v", err)
 	}
 
-	log.Infof("STEP B complete: %d EOAs with balances, %d token accumulations",
+	log.Infof("STEP B1 complete: %d EOAs with balances, %d token accumulations",
 		len(eoaBalances), len(accumulated))
 
-	return &StepBResult{
+	return &StepB1Result{
 		EOABalances:       eoaBalances,
 		Accumulated:       accumulated,
 		ContractAddresses: contractAddrs,
 	}, nil
+}
+
+// filterEOAs returns all addresses in addrs that do not appear in contracts.
+func filterEOAs(addrs, contracts []common.Address) []common.Address {
+	contractSet := make(map[common.Address]struct{}, len(contracts))
+	for _, c := range contracts {
+		contractSet[c] = struct{}{}
+	}
+	eoas := make([]common.Address, 0, len(addrs)-len(contracts))
+	for _, a := range addrs {
+		if _, isContract := contractSet[a]; !isContract {
+			eoas = append(eoas, a)
+		}
+	}
+	return eoas
 }
 
 func padLeft(s string, length int) string {
