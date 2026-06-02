@@ -8,7 +8,7 @@ This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
 (`ecdsa-multisig` consensus, native ETH gas) on one L1 + agglayer.
 
 - Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit
-  `df96c41e` ("aggkit-e2e: add op-pp preset + make snapshot capture op-geth EL,
+  `59f26eff` ("aggkit-e2e: add op-pp preset + make snapshot capture op-geth EL,
   op-batcher & finalize on restore"). That commit (a) adds the op-pp preset, and
   (b) folds three fixes into the snapshot tool so a RESTORED OP-Stack L2 actually
   finalizes:
@@ -61,7 +61,7 @@ This network has a single OP network running in FEP (Full Execution Proof) mode
 with an op-succinct **mock** prover and agglayer integration.
 
 - Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, regenerated at
-  commit `fc745b2e` (the FEP finality regen: op-batcher capture + op-node
+  commit `297a5d76` (the FEP finality regen: op-batcher capture + op-node
   finality flags + op-reth `miner` API). Earlier FEP snapshot tooling: commits
   `0fe7bf4b` + `5f06bd83` (per-topology capture), `05f04196` (op-reth EL
   entrypoint), `b3e13ba9` (op-reth healthcheck JSON-RPC POST, op-succinct
@@ -196,7 +196,7 @@ AggOracle is governed by an on-chain `AggOracleCommittee` proxy with a **2-of-3*
 quorum (`use_agg_oracle_committee: true`, `agg_oracle_committee_quorum: 2`,
 `agg_oracle_committee_total_members: 3`).
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `c8740844`
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `e70c04d0`
   (regenerated 2026-06-02; supersedes `d71f4265`). It inherits all the op-fep
   op-reth/Teku/proposer bootability fixes (`b3e13ba9`) and the committee-capture
   path (`d71f4265`): the extra AggOracle committee member services (kurtosis
@@ -209,7 +209,7 @@ quorum (`use_agg_oracle_committee: true`, `agg_oracle_committee_quorum: 2`,
   full chain head to disk before capture (a short grace produced a committee
   snapshot whose restored geth lagged its rollup L1-origin, so op-reth could
   never reach the origin block).
-- **Finality fix set (regenerated 2026-06-02, fc745b2e — proven on
+- **Finality fix set (regenerated 2026-06-02, 297a5d76 — proven on
   op-pp/op-pp-2chains/op-fep).** The previous committee env restored but its L2
   never finalized: it had no `op-batcher` and op-node finalization was wedged.
   This regeneration folds in the full fix set, so the **restored** L2 finalizes:
@@ -325,7 +325,7 @@ two chains:
 - chain `002`: `l2_chain_id 20202`, `l2_network_id 2` — reuses the L1 + agglayer
   (`deploy_l1: false` / `deploy_agglayer: false`), `deployment_suffix "-002"`.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `aa58f6c9`
+- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `c9205b9f`
   ("aggkit-e2e: pin op-geth EL + op-node finality flags + miner API on both
   op-pp-2chains chains"; snapshotted 2026-06-02; snapshot name
   `op-pp-2c-20260602-162655`). This regeneration folds in the **same complete set
