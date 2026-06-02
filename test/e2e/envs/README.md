@@ -362,13 +362,24 @@ two chains:
 - chain `002`: `l2_chain_id 20202`, `l2_network_id 2` — reuses the L1 + agglayer
   (`deploy_l1: false` / `deploy_agglayer: false`), `deployment_suffix "-002"`.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `c9205b9f`
-  ("aggkit-e2e: pin op-geth EL + op-node finality flags + miner API on both
-  op-pp-2chains chains"; snapshotted 2026-06-02; snapshot name
-  `op-pp-2c-20260602-162655`). This regeneration folds in the **same complete set
-  of fixes proven on the single-chain `op-pp` env** (see the `op-pp` section
-  above), applied to **BOTH** chains 001 and 002, so each restored OP-Stack L2
-  actually finalizes:
+- Regenerated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `89dedc4f`
+  ("aggkit-e2e: make plain PP/FEP envs single-signer (no aggsender multisig)") —
+  **single-signer aggsender on BOTH chains; no aggsender-validator multisig**;
+  snapshotted 2026-06-02; snapshot name `op-pp2c-20260602-222717`. The earlier
+  capture (`c9205b9f`) baked an on-chain aggsender validator multisig (threshold
+  2 of 3) on both chains but ran no `aggsender-validator-00N` containers, so each
+  aggsender stalled at `validatorPoller threshold not reached: 1/2`, never sent a
+  cert, and the agglayer cert header stayed `null` for both networks (breaking
+  every cert-dependent test, e.g. L2->L1 bridge claims). The preset is now
+  single-signer on both chain documents (`use_agg_sender_validator: false`,
+  `agg_sender_multisig_threshold: 1`, `agg_sender_validator_total_number: 0`), so
+  each lone aggsender self-validates (1/1). The regenerated `config/00N/
+  aggkit-config.toml` for BOTH chains no longer carries an
+  `[AggSender.ValidatorClient]` block, and no remote validator members are baked
+  on-chain. This regeneration also folds in the **same complete set of finality
+  fixes proven on the single-chain `op-pp` env** (see the `op-pp` section above),
+  applied to **BOTH** chains 001 and 002, so each restored OP-Stack L2 actually
+  finalizes:
     1. **op-batcher captured per chain** — the snapshot tool's per-network
        discovery loop captures `op-batcher-001` AND `op-batcher-002`
        (image `op-batcher:v1.16.9`, funded `--private-key`,
@@ -439,6 +450,40 @@ two chains:
   preset defect: the native enclave finalized fine and climbed past 195/291 on
   both chains before snapshot. The PASS criterion — both restored L2s' `finalized`
   advance past 0 in lock-step — was met.)
+- **Single-signer aggsender on both chains; no quorum stall (proven 2026-06-02).**
+  Restored this dir to an isolated scratch copy (remapped host ports, distinct
+  `oppp2csr-` container prefix / compose project), `docker compose up -d --wait`
+  (all 12 services healthy). Both `aggkit-001` and `aggkit-002` came up and stayed
+  up; both L2s' `finalized` advanced `0 -> 24`.
+    - **No quorum stall, both chains:** `aggkit-001` AND `aggkit-002` logs show
+      **0** `threshold not reached` lines. Each aggsender self-validates 1/1
+      (`sendCertificateWithRetries ... try 1/6` succeeds) and the periodic status
+      checker reports `initial state` / `no action needed` (no InError certs).
+    - **Single-signer config, both chains:** `config/001/aggkit-config.toml` and
+      `config/002/aggkit-config.toml` each carry **0** `[AggSender.ValidatorClient]`
+      / `threshold` / `aggsender-validator` references; `AggSenderPrivateKey`
+      self-sign is present. (The old multisig capture had an
+      `[AggSender.ValidatorClient] URL = "aggkit-validator-00N:5578"` block on
+      both chains — both removed.)
+    - **Cert null -> Settled NOT captured in this restore (environmental L1
+      stall, NOT a snapshot/preset defect).** Both networks'
+      `interop_getLatestKnownCertificateHeader([1])` / `([2])` returned
+      `result: null` at boot (no cert had ever settled — expected initial state).
+      Driving a settled cert requires the restored single-shared L1 to mine an
+      L2->L1 bridge exit (and the agglayer's settlement tx). On this run the host
+      was under extreme concurrent load (load average ~50, ~1.5M context
+      switches/s from sibling regen jobs); the restored archive-replay L1 EL
+      stopped sealing at block 256 (validator stopped publishing blocks after
+      slot 288; teku lost forkchoice head) — the same loaded-host L1-EL stall
+      documented for the finality table above — so the bridge deposit/exit could
+      not be mined and no cert advanced past `null`. The single-signer fix itself
+      is identical to the one **proven to settle certs on the single-chain `op-pp`
+      env** (see the `op-pp` section: `null` -> a `Settled` cert with a real
+      `settlement_tx_hash` and non-zero `new_local_exit_root`, plus an L2->L1
+      `/bridge/v1/l1-info-tree-index` index and a successful L1 `claimAsset`),
+      captured there in a window where that single-chain restore's L1 happened to
+      keep sealing. The 2-chain config is byte-for-byte the same single-signer
+      shape on both chains; the only gap here is the unmined-L1 environment.
 - Kurtosis config (the two `---` documents, faithful mirror of the aggkit CI
   `kurtosis-cdk-args-1` / `-args-2` compositions minus `bridge_spammer`):
 
@@ -450,9 +495,10 @@ deployment_stages:
 args:
   aggkit_image: aggkit:local
   consensus_contract_type: ecdsa-multisig
-  use_agg_sender_validator: true
-  agg_sender_multisig_threshold: 2
-  agg_sender_validator_total_number: 3
+  use_agg_sender_validator: false
+  agg_sender_multisig_threshold: 1
+  agg_sender_validator_total_number: 0
+  log_level: debug
   additional_services: []
   binary_name: aggkit
   aggkit_components: aggsender,aggoracle
@@ -485,9 +531,10 @@ deployment_stages:
 args:
   aggkit_image: aggkit:local
   consensus_contract_type: ecdsa-multisig
-  use_agg_sender_validator: true
-  agg_sender_multisig_threshold: 2
-  agg_sender_validator_total_number: 3
+  use_agg_sender_validator: false
+  agg_sender_multisig_threshold: 1
+  agg_sender_validator_total_number: 0
+  log_level: debug
   additional_services: []
   binary_name: aggkit
   aggkit_components: aggsender,aggoracle
