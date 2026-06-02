@@ -50,7 +50,11 @@ func TestMain(m *testing.M) {
 	// Post-test bridge health-check
 	if code == 0 {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
-		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		// The L2->L1 leg only becomes claimable after a PP certificate covering its exit settles and
+		// the rollup exit root propagates into a new GER / L1 Info Tree leaf, which spans several
+		// agglayer epochs. Allow a generous budget so this health check is not flaky on a slow
+		// settlement; BridgeL2ToL1 returns as soon as the exit is claimable, so the happy path is fast.
+		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 25*time.Minute)
 
 		l2Opts := env.L2.Transactor
 

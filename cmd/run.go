@@ -584,6 +584,26 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	return false
 }
 
+// shouldAutoStartL2ClaimSync reports whether the L2 claim syncer should auto-start its main sync
+// loop from InitialBlockNum. It must NOT auto-start when an aggsender-family component is present:
+// those components bootstrap the claim syncer's starting block via SetClaimSyncerNextRequiredBlock,
+// and auto-starting the main loop in parallel would race that bootstrap on the genesis block insert
+// (UNIQUE constraint on block.num), wedging the aggsender during startup so it never settles a
+// certificate. With auto-start disabled, the main loop waits until the aggsender bootstrap has set
+// the starting block, then resumes from there.
+func shouldAutoStartL2ClaimSync(components []string) bool {
+	bootstrappedByAggsender := isNeeded([]string{
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.AGGCHAINPROOFGEN,
+	}, components)
+	if bootstrappedByAggsender {
+		return false
+	}
+
+	return isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components)
+}
+
 func l1InfoTreeMustRun(components []string) bool {
 	return isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
@@ -968,7 +988,7 @@ func runClaimSyncL2IfNeeded(
 		return nil
 	}
 
-	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components))
+	cfg.AutoStart.Resolve(shouldAutoStartL2ClaimSync(components))
 
 	res, err := claimsync.NewStandaloneClaimSync(
 		ctx,

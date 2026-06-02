@@ -459,17 +459,25 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	log.Debugf("L2->L1 bridge found in bridge service: deposit_count=%d", bridge.DepositCount)
 	depositCount := bridge.DepositCount
 	log.Debugf("waiting for L2->L1 bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
+	// An L2->L1 bridge becomes claimable only once a PP certificate covering its exit settles and the
+	// resulting rollup exit root propagates into a new GER / L1 Info Tree leaf — a multi-epoch async
+	// process. Poll until the bridge service resolves the L1 Info Tree index or the caller's context
+	// deadline is reached (the caller owns the timeout budget), rather than a fixed iteration count.
+	// GetL1InfoTreeIndex returns an error while the index is not yet available; once it succeeds the
+	// index is valid (including a legitimate index 0 for the first leaf), so success is keyed off err.
 	var l1InfoTreeIndex uint32
-	for i := 0; i < 120; i++ {
+	for {
 		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, int(l2NetworkID), int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
 		}
-		time.Sleep(5 * time.Second)
-	}
-	if l1InfoTreeIndex == 0 {
-		return errors.New("bridge not included in L1 Info Tree (L2->L1)")
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("bridge not included in L1 Info Tree (L2->L1) deposit_count=%d: %w",
+				depositCount, ctx.Err())
+		case <-time.After(5 * time.Second):
+		}
 	}
 	log.Debugf("L2->L1 bridge included in L1 Info Tree: deposit_count=%d l1InfoTreeIndex=%d", depositCount, l1InfoTreeIndex)
 	log.Debugf("fetching L2->L1 claim proof: networkID=%d l1InfoTreeIndex=%d depositCount=%d", l2NetworkID, l1InfoTreeIndex, depositCount)

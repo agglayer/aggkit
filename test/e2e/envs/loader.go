@@ -526,6 +526,16 @@ func (e *Env) Stop(ctx context.Context) error {
 
 const aggkitServiceName = "aggkit-001"
 
+// aggsenderValidatorServiceName is the compose service name of the OPTIONAL, on-demand committee
+// validator used only by TestCommitteeUpdates (P10). It lives behind the "committee" compose
+// profile (see docker-compose.yml), so the default `up -d` in ensureDockerComposeRunning never
+// starts it and waitForServices never waits on it.
+const aggsenderValidatorServiceName = "aggsender-validator-004"
+
+// committeeProfile is the compose profile guarding aggsenderValidatorServiceName. The validator
+// service only starts when this profile is explicitly activated by StartAggsenderValidator.
+const committeeProfile = "committee"
+
 func dockerComposeUserEnv(ctx context.Context) (string, string) {
 	cmd := exec.CommandContext(ctx, "docker", "info", "--format", "{{json .SecurityOptions}}")
 	out, err := cmd.Output()
@@ -576,6 +586,42 @@ func (e *Env) StartAggkit(ctx context.Context) error {
 	}
 	if err := waitForBridgeService(ctx, e.bridgeServiceURL); err != nil {
 		return fmt.Errorf("wait for bridge service after start: %w", err)
+	}
+	return nil
+}
+
+// StartAggsenderValidator starts the OPTIONAL, on-demand committee validator container
+// (aggsender-validator-004) by activating the "committee" compose profile. It is used only by
+// TestCommitteeUpdates: the container joins the op-pp_default network at hostname
+// aggkit-001-aggsender-validator-004 and serves the validator gRPC on :5578, which is the on-chain
+// committee member Url the test adds. It does NOT touch any other service and is never part of the
+// default `up -d` or waitForServices, so the shared env is unaffected for the other tests.
+func (e *Env) StartAggsenderValidator(ctx context.Context) error {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir,
+		"--profile", committeeProfile, "up", "-d", aggsenderValidatorServiceName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose up %s: %w\nOutput:\n%s", aggsenderValidatorServiceName, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose up %s output:\n%s\n", aggsenderValidatorServiceName, string(output))
+	}
+	return nil
+}
+
+// StopAggsenderValidator stops AND removes the on-demand committee validator container so the
+// shared env is left exactly as before (mirrors the legacy bats teardown_file, which does
+// `docker stop` + `docker rm` of aggkit-001-aggsender-validator-004). It is safe to call even if
+// the container was never started or already removed; `rm -sf` is idempotent.
+func (e *Env) StopAggsenderValidator(ctx context.Context) error {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir,
+		"--profile", committeeProfile, "rm", "-sf", aggsenderValidatorServiceName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose rm %s: %w\nOutput:\n%s", aggsenderValidatorServiceName, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose rm %s output:\n%s\n", aggsenderValidatorServiceName, string(output))
 	}
 	return nil
 }

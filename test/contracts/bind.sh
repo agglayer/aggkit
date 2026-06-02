@@ -14,3 +14,5 @@ gen claimmockcaller
 gen claimmocktest
 gen logemitter
 gen mintableerc20
+gen bridgemessagereceivermock
+gen internalclaims

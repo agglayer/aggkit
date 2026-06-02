@@ -1,0 +1,88 @@
+# ==============================================================================
+# AggSender Validator (committee member 004) config for the op-pp E2E env.
+#
+# This config is consumed ONLY by the on-demand `aggsender-validator-004` service
+# (compose profile "committee", started by the loader's StartAggsenderValidator
+# helper for TestCommitteeUpdates). It runs `aggkit run --components=aggsender-validator`
+# and serves the validator gRPC on :5578.
+#
+# It is adapted from envs/op-pp/config/001/aggkit-config.toml: all URLs point at the
+# op-pp compose hostnames (geth, op-geth-001, op-node-001, agglayer) rather than the
+# Kurtosis hostnames used by the upstream scenario config. The single behavioural
+# difference from aggkit-001 is the [Validator].Signer, which uses the committee
+# validator keystore (aggsendervalidator-4.keystore, address
+# 0x77A21F79994876973BeF5bbcbbd617a5B32B2f57) so that the signatures it returns
+# recover to the committee member added on-chain by the test.
+# ==============================================================================
+
+PathRWData = "/tmp"
+L1URL = "http://geth:8545"
+L2URL = "http://op-geth-001:8545"
+OpNodeURL = "http://op-node-001:8547"
+
+AggLayerURL = "http://agglayer:4443"
+
+AggchainProofURL = "aggkit-prover-001:4446"
+SequencerPrivateKeyPath = "/etc/aggkit/aggsendervalidator-4.keystore"
+SequencerPrivateKeyPassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
+RPCURL = "http://op-geth-001:8545"
+
+rollupCreationBlockNumber = "37"
+rollupManagerCreationBlockNumber = "37"
+genesisBlockNumber = "37"
+
+[L1Config]
+URL = "http://geth:8545"
+chainId = "271828"
+polygonZkEVMGlobalExitRootAddress = "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674"
+polygonRollupManagerAddress = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+polTokenAddress = "0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E"
+polygonZkEVMAddress = "0x414e9E227e4b589aF92200508aF5399576530E4e"
+BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
+
+[L2Config]
+GlobalExitRootAddr = "0xa40d5f56745a118d0906a34e69aec8c0db1cb8fa"
+BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
+
+[Log]
+Environment = "development"
+Level = "info"
+Outputs = ["stderr"]
+
+[RPC]
+Port = "5576"
+
+[REST]
+Port = "5577"
+
+# ==============================================================================
+# Validator component configuration.
+# This is the only behavioural difference from aggkit-001: the Signer uses the
+# committee validator keystore so the recovered signature address matches the
+# committee member added on-chain by TestCommitteeUpdates.
+# ==============================================================================
+[Validator]
+EnableRPC = true
+Signer = { Method = "local", Path = "/etc/aggkit/aggsendervalidator-4.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m" }
+# PessimisticProof or AggchainProof
+Mode = "PessimisticProof"
+
+[Validator.ServerConfig]
+Host = "0.0.0.0"
+Port = 5578
+MaxDecodingMessageSize = 1073741824  # 1GB
+
+[Validator.LerQuerierConfig]
+RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+RollupCreationBlockL1 = "37"
+
+[Validator.AgglayerClient]
+Cached = true
+
+[Validator.AgglayerClient.ConfigurationCache]
+TTL = "15m"
+Capacity = 100
+
+[Validator.AgglayerClient.GRPC]
+URL = "http://agglayer:4443"
+UseTLS = false
