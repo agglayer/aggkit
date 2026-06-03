@@ -2,6 +2,7 @@ package envs
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -19,6 +20,12 @@ import (
 // is native (MintableERC20 deployed). The cdk-erigon EL RPC wiring is exercised
 // implicitly via clientForNetwork / the L2 client dial.
 func TestP10_CDKErigon3Chains_LoadAndProbe(t *testing.T) {
+	// Boots the cdk-erigon-3chains env via LoadEnv; gate it to its own CI leg so it never boots
+	// concurrently with the main e2e suite's env under `go test ./test/e2e/...` and collides on host
+	// ports. See the equivalent note in zz_p9_probe_test.go.
+	if got := os.Getenv("E2E_ENV"); got != string(EnvCDKErigon3Chains) {
+		t.Skipf("P10 probe runs only in the %q env leg; E2E_ENV=%q", EnvCDKErigon3Chains, got)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 

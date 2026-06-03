@@ -2,6 +2,7 @@ package envs
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -14,6 +15,13 @@ import (
 // OP-PP L2 networks, that CheckEnv validates both, and that each chain answers a
 // minimal per-chain health probe (chainID + advancing block + non-zero balance).
 func TestP9_OpPP2Chains_LoadAndProbe(t *testing.T) {
+	// This probe boots the op-pp-2chains env via LoadEnv. It lives in the same package as the other
+	// probes and has no TestMain, so under `go test ./test/e2e/...` it would boot concurrently with the
+	// main e2e suite's env (TestMain) and collide on host ports (e.g. :8545). Gate it to its own CI
+	// leg (E2E_ENV=op-pp-2chains) so it never runs alongside the op-pp suite.
+	if got := os.Getenv("E2E_ENV"); got != string(EnvOpPP2Chains) {
+		t.Skipf("P9 probe runs only in the %q env leg; E2E_ENV=%q", EnvOpPP2Chains, got)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 
