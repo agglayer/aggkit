@@ -97,9 +97,23 @@ This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
 This network has a single OP network running in FEP (Full Execution Proof) mode
 with an op-succinct **mock** prover and agglayer integration.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, regenerated at
-  commit `297a5d76` (the FEP finality regen: op-batcher capture + op-node
-  finality flags + op-reth `miner` API). Earlier FEP snapshot tooling: commits
+- **Single-signer (no aggsender multisig).** Regenerated from kurtosis-cdk
+  branch `feat/aggkit-e2e-envs`, commit `89dedc4f` ("aggkit-e2e: make plain
+  PP/FEP envs single-signer") with the preset's `use_agg_sender_validator:
+  false` / `agg_sender_multisig_threshold: 1` / `agg_sender_validator_total_number:
+  0`. The capture ran on kurtosis-cdk tool commit `48a0a00b` ("snapshot: harden
+  L1 container stop to graceful serial docker stop (no docker kill)"), which
+  drains the L1 geth/beacon/validator with a graceful serial `docker stop`
+  (bounded by a wall-clock `timeout`, NO `docker kill` fallback) so capture no
+  longer wedges the containerd-shim under host I/O pressure. **This supersedes
+  the prior multisig snapshot** whose restored `aggkit-config.toml` carried an
+  `[AggSender.ValidatorClient] URL = "aggkit-validator-001:5578"` block: that
+  made the aggsender stall on a phantom validator quorum
+  (`validatorPoller threshold not reached`). The new capture has NO
+  `[AggSender.ValidatorClient]` block — the aggsender self-validates 1/1
+  in-process and reaches `sendCertificateWithRetries`.
+- Inherits the FEP finality regen (commit `297a5d76`: op-batcher capture +
+  op-node finality flags + op-reth `miner` API). Earlier FEP snapshot tooling: commits
   `0fe7bf4b` + `5f06bd83` (per-topology capture), `05f04196` (op-reth EL
   entrypoint), `b3e13ba9` (op-reth healthcheck JSON-RPC POST, op-succinct
   proposer hostname rewrite + writable `/app/configs`, Fulu-spec genesis.ssz
@@ -140,16 +154,20 @@ with an op-succinct **mock** prover and agglayer integration.
   not settled at snapshot time). The L2 EL is op-reth (`op-reth:v2.2.5`) run
   with `op-reth-entrypoint.sh`; the summary logical service key stays `op-geth`
   for loader compatibility.
-- **Finality proof.** Native (live enclave) op-node `optimism_syncStatus`:
-  L2 `finalized` advanced **0 → 76 → 100 → 124** (climbing), L1 finalized
-  climbing in lock-step (136 → 160), op-batcher posting calldata batches, zero
-  op-node derivation resets, op-reth EL stable. This proves the op-batcher +
-  finality-flag + miner-API fix set makes the FEP L2 finalize. (An isolated
-  post-restore boot was attempted but the op-reth EL `init` wedged on host I/O
-  on a critically overloaded shared host — load avg ~40-48 — at "Verifying
-  storage consistency"; this is the documented op-reth loaded-host flakiness, not
-  a snapshot/preset defect. op-pp/op-pp-2chains avoid it by using op-geth, which
-  op-succinct/FEP does not permit.)
+- **No-quorum-stall + finality proof (single-signer regen run).** On the live
+  enclave the aggsender reached `certificate_stage` and `sendCertificateWithRetries`
+  with **zero** `threshold not reached` / `validatorPoller threshold` log lines —
+  it self-validates 1/1 (the multisig stall of the old snapshot is gone) and
+  then hits the documented FEP op-succinct proof step (`aggchainProverFlow -
+  error fetching aggchain proof ... Proposer service returned an error` →
+  `settled: false`). Native op-node `optimism_syncStatus` showed L2 `finalized`
+  well past 0 and climbing (e.g. 97 → 109 across the capture, unsafe 162 → 258),
+  op-batcher posting calldata batches, op-reth EL stable. The capture itself ran
+  cleanly: the hardened graceful stop drained the previously-wedging
+  `vc-1-geth-lighthouse` validator in ~2s with no `docker kill` and no "did not
+  receive an exit event", and the enclave resumed (finality kept advancing).
+  (op-pp/op-pp-2chains avoid op-reth by using op-geth, which op-succinct/FEP does
+  not permit; this env requires op-reth.)
 - **FEP settlement observation.** Even with op-batcher now posting L2 batch data
   to L1, the op-succinct proposer still cannot complete L2→L1 settlement on a
   restored snapshot (`settled: false`): it enforces an on-chain L2OO
@@ -186,9 +204,9 @@ deployment_stages:
 args:
   aggkit_image: aggkit:local
   consensus_contract_type: fep
-  use_agg_sender_validator: true
-  agg_sender_multisig_threshold: 2
-  agg_sender_validator_total_number: 3
+  use_agg_sender_validator: false
+  agg_sender_multisig_threshold: 1
+  agg_sender_validator_total_number: 0
   # Override additional_services to exclude bridge_spammer (snapshot-clean)
   additional_services: []
   binary_name: aggkit
@@ -217,12 +235,14 @@ optimism_package:
 - Regenerate with:
 
 ```
-cd kurtosis-cdk   # branch feat/aggkit-e2e-envs
+cd kurtosis-cdk   # branch feat/aggkit-e2e-envs (tool commit 48a0a00b: hardened L1 stop)
 kurtosis run --enclave op-fep --args-file .github/tests/aggkit-e2e-envs/op-fep.yml .
-./snapshot/snapshot.sh op-fep
-./snapshot/verify.sh snapshot/snapshots/op-fep-<TIMESTAMP>/
-# then copy snapshot/snapshots/op-fep-<TIMESTAMP>/ contents into
-# aggkit test/e2e/envs/op-fep/ (strip the timestamped wrapper dir).
+./snapshot/snapshot.sh op-fep --skip-verify
+# then copy config/, docker-compose.yml, summary.json from
+# snapshot/snapshots/op-fep-<TIMESTAMP>/ into aggkit test/e2e/envs/op-fep/
+# (the baked snapshot-{geth,beacon,validator}:<TAG> images stay in the local
+# docker daemon; verify with an isolated restore: a DISTINCT compose project +
+# remapped ports + `up -d --wait`).
 ```
 
 ## op-fep-committee
