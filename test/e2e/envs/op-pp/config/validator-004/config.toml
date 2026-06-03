@@ -27,9 +27,9 @@ SequencerPrivateKeyPath = "/etc/aggkit/aggsendervalidator-4.keystore"
 SequencerPrivateKeyPassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 RPCURL = "http://op-geth-001:8545"
 
-rollupCreationBlockNumber = "37"
-rollupManagerCreationBlockNumber = "37"
-genesisBlockNumber = "37"
+rollupCreationBlockNumber = "36"
+rollupManagerCreationBlockNumber = "36"
+genesisBlockNumber = "36"
 
 [L1Config]
 URL = "http://geth:8545"
@@ -74,7 +74,7 @@ MaxDecodingMessageSize = 1073741824  # 1GB
 
 [Validator.LerQuerierConfig]
 RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
-RollupCreationBlockL1 = "37"
+RollupCreationBlockL1 = "36"
 
 [Validator.AgglayerClient]
 Cached = true

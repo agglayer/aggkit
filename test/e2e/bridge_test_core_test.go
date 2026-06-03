@@ -290,7 +290,7 @@ func testBridgeCoreNativeL1ToL2(t *testing.T) {
 	// this OP-Stack L2 those fees are L2 execution gas plus an L1 data fee that the go-ethereum receipt
 	// does not surface, so an exact delta is not assertable. Instead require that the balance strictly
 	// increased, the increase did not exceed the bridged amount, and the fee shortfall is a tiny
-	// fraction of the amount (< amount/1000).
+	// fraction of the amount (< amount/50).
 	increase := new(big.Int).Sub(balanceAfterClaim, initialBalance)
 	require.Equal(t, 1, increase.Sign(),
 		"L2 recipient balance must strictly increase after the native claim: got delta %s (amount=%s)",
@@ -299,7 +299,12 @@ func testBridgeCoreNativeL1ToL2(t *testing.T) {
 		"L2 recipient balance increase must not exceed the bridged amount: got delta %s want <= %s",
 		increase.String(), bridgeCoreNativeAmount.String())
 	feeShortfall := new(big.Int).Sub(bridgeCoreNativeAmount, increase)
-	feeTolerance := new(big.Int).Div(bridgeCoreNativeAmount, big.NewInt(1000))
+	// The real claim cost on this OP-Stack L2 is L2 execution gas plus an L1 data fee that the
+	// go-ethereum receipt does not surface; measured at ~5.7e11 on a 1e14 amount (~0.57%), so the prior
+	// 0.1% (amount/1000) bound was simply too tight. Use a realistic 2% (amount/50) bound that comfortably
+	// covers real fees while still catching a gross accounting error. delta>0 and delta<=amount are
+	// asserted above, so this only bounds how much fee may be consumed.
+	feeTolerance := new(big.Int).Div(bridgeCoreNativeAmount, big.NewInt(50))
 	require.Equal(t, -1, feeShortfall.Cmp(feeTolerance),
 		"native claim fee shortfall must be a tiny fraction of the amount: shortfall %s want < %s "+
 			"(amount=%s delta=%s)",
@@ -341,7 +346,10 @@ func testBridgeCoreNativeL1ToL2(t *testing.T) {
 		"L2 recipient balance must not increase after a rejected duplicate claim: got %s want <= %s",
 		balanceAfterDuplicate.String(), balanceAfterClaim.String())
 	dupShortfall := new(big.Int).Sub(balanceAfterClaim, balanceAfterDuplicate)
-	dupTolerance := new(big.Int).Div(bridgeCoreNativeAmount, big.NewInt(1000))
+	// Same realistic OP-Stack fee bound as the successful-claim assertion above (2% = amount/50): a
+	// mined-but-failed duplicate still pays L2 gas plus an unsurfaced L1 data fee, so the prior 0.1% bound
+	// was too tight here as well.
+	dupTolerance := new(big.Int).Div(bridgeCoreNativeAmount, big.NewInt(50))
 	require.Equal(t, -1, dupShortfall.Cmp(dupTolerance),
 		"rejected duplicate claim must only consume a tiny fraction in fees: shortfall %s want < %s "+
 			"(balanceAfterClaim=%s balanceAfterDuplicate=%s)",

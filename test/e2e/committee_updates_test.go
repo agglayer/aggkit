@@ -121,7 +121,10 @@ func TestCommitteeUpdates(t *testing.T) {
 	})
 
 	t.Run("Add single validator to committee", func(t *testing.T) {
-		// 1. Wait until the old committee settles at least one certificate (bats ensure_non_null_cert).
+		// 1. Drive a bridge so the (old) committee has new L2 blocks to certify, then wait until it
+		//    settles at least one certificate (bats ensure_non_null_cert). On op-pp's EpochBased
+		//    aggsender an idle env produces no certificate, so activity must be driven first.
+		driveBridgeForCommitteeCert(ctx, t, env, "Add-baseline")
 		baselineHeight := waitForAgglayerSettledCertificate(ctx, t, readRPCURL, env.L2.NetworkID,
 			certSettlementTarget, committeeUpdatesEnsureCertTimeout)
 		log.Infof("[Add] old committee settled at baseline height %d", baselineHeight)
@@ -151,6 +154,13 @@ func TestCommitteeUpdates(t *testing.T) {
 		//    the added member Url and signs as the added member.
 		require.NoError(t, env.StartAggsenderValidator(ctx), "start aggsender validator container")
 
+		// 5b. Drive a small L1->L2 bridge to create new L2 blocks AFTER the committee change. Under
+		//     op-pp's EpochBased mode the aggsender only builds a certificate when there are new blocks
+		//     to certify; without this the height never advances past the baseline and the wait below
+		//     times out. The driven activity forces a fresh cert that, at threshold=2, can only settle
+		//     with the added validator's signature -- so the height advance proves the 2-of-2 committee.
+		driveBridgeForCommitteeCert(ctx, t, env, "Add")
+
 		// 6. Assert the certificate height strictly advances under the 2-of-2 committee (bats
 		//    check_height_increase). A height beyond the pre-update baseline can only be produced by
 		//    the new committee, since the threshold now requires the added validator's signature too.
@@ -160,7 +170,9 @@ func TestCommitteeUpdates(t *testing.T) {
 	})
 
 	t.Run("Remove single validator from committee", func(t *testing.T) {
-		// Record a baseline height to assert advancement after the removal.
+		// Drive a bridge first so an idle EpochBased aggsender has new L2 blocks to certify, then
+		// record a baseline height to assert advancement after the removal.
+		driveBridgeForCommitteeCert(ctx, t, env, "Remove-baseline")
 		baselineHeight := waitForAgglayerSettledCertificate(ctx, t, readRPCURL, env.L2.NetworkID,
 			certSettlementTarget, committeeUpdatesEnsureCertTimeout)
 
@@ -195,12 +207,42 @@ func TestCommitteeUpdates(t *testing.T) {
 		// Stop+remove it now (cleanup is still idempotent if this is skipped on failure).
 		require.NoError(t, env.StopAggsenderValidator(ctx), "stop aggsender validator container")
 
+		// 4b. Drive a small L1->L2 bridge to create new L2 blocks AFTER the committee restoration. As
+		//     in the Add case, EpochBased settlement needs new blocks to certify; the driven activity
+		//     forces a fresh cert that the restored single-signer committee must settle on its own,
+		//     proving the removal took effect.
+		driveBridgeForCommitteeCert(ctx, t, env, "Remove")
+
 		// 5. Assert the certificate height strictly advances again under the restored single-signer
 		//    committee (bats check_height_increase).
 		newHeight := waitForCertificateHeightAbove(ctx, t, readRPCURL, env.L2.NetworkID,
 			baselineHeight, committeeUpdatesHeightTimeout)
 		log.Infof("[Remove] restored committee advanced height %d -> %d", baselineHeight, newHeight)
 	})
+}
+
+// committeeBridgeAmount is the small ETH amount bridged L1->L2 after a committee change to create new
+// L2 activity so the aggsender builds a fresh certificate the changed committee can settle. It matches
+// the cert-settlement test's small "keep the network warm" amount.
+var committeeBridgeAmount = big.NewInt(1000000000000000) // 0.001 ETH
+
+// driveBridgeForCommitteeCert performs one small L1->L2 ETH bridge-and-claim with pooled keys. Under
+// op-pp's EpochBased mode the aggsender only emits a certificate when there are new L2 blocks to
+// certify, so after a committee change the settled height stays at the baseline until fresh activity
+// is driven. Calling this between the committee change and waitForCertificateHeightAbove guarantees a
+// new cert is built that the changed committee must settle, which is what the height-advance asserts.
+func driveBridgeForCommitteeCert(ctx context.Context, t *testing.T, env *envs.Env, phase string) {
+	t.Helper()
+	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
+	require.NoError(t, err, "[%s] checkout L1 key", phase)
+	defer env.Keys.L1Keys.Return(l1Key)
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err, "[%s] checkout L2 key", phase)
+	defer env.Keys.L2Keys.Return(l2Key)
+
+	result := bridgeETHL1ToL2AndClaim(ctx, t, env, l1Opts, l2Opts, committeeBridgeAmount)
+	log.Infof("[%s] drove L1->L2 bridge to create new L2 activity: deposit_count=%d global_index=%s",
+		phase, result.DepositCount, result.GlobalIndex.String())
 }
 
 // updateSignersAndThreshold sends an updateSignersAndThreshold transaction signed by the sovereign

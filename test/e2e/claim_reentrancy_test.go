@@ -9,7 +9,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/bridgemessagereceivermock"
-	"github.com/agglayer/aggkit/test/contracts/mintableerc20"
 	"github.com/agglayer/aggkit/test/e2e/envs"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -30,10 +29,16 @@ const claimReentrancyTimeout = 12 * time.Minute
 var (
 	reentrancyReceiver1 = common.HexToAddress("0x15E13226E42ebB16fAD9E9A42B149954c5bD00e0")
 	reentrancyReceiver2 = common.HexToAddress("0xBA002167c3a9Ee959EF4c2A62f7Fb026326479DD")
-	// internalBridgeAssetReceiver / Network mirror the bats testClaim internal bridgeAsset target
-	// (destinationNetwork=2, a fixed EOA). The 0.0004 ETH internal bridgeAsset is sent with the call.
+	// internalBridgeAssetReceiver / Network mirror the bats testClaim internal bridgeAsset target (a fixed
+	// EOA). The legacy bats used destinationNetwork=2, which is valid on its multi-rollup topology but does
+	// NOT exist on op-pp: op-pp is a SINGLE L2 (networkID=1) attached to L1 (networkID=0). A bridgeAsset
+	// from the L2 cannot target its own network (1) and there is no network 2, so the only valid
+	// cross-network destination from this L2 is L1 (networkID=0). Bridging the internal asset to network 0
+	// emits exactly one L2 BridgeEvent with destinationNetwork=0 — which assertInternalBridgeAssetEvent
+	// matches against this same constant, keeping the bridgeAsset call and the expected event consistent.
+	// The 0.0004 ETH internal bridgeAsset is sent with the call.
 	internalBridgeAssetReceiver = common.HexToAddress("0xa9bAE041CE268C90c54F588db794ab9f18686BBD")
-	internalBridgeAssetNetwork  = uint32(2)
+	internalBridgeAssetNetwork  = uint32(0)
 	internalBridgeAssetAmount   = big.NewInt(4e14) // 0.0004 ETH
 )
 
@@ -92,19 +97,22 @@ func TestClaimReentrancy(t *testing.T) {
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, deployReceipt.Status, "mock deploy failed")
 	log.Infof("[TestClaimReentrancy] deployed BridgeMessageReceiverMock at %s", mockAddr.Hex())
 
-	// Resolve the L2 WETH token (the wrapped representation of bridged native ETH). All balance
-	// assertions below read this ERC20, matching the bats weth_token_addr = L2Bridge.WETHToken().
-	wethAddr, err := env.L2.Contracts.L2Bridge.WETHToken(&bind.CallOpts{Context: ctx})
-	require.NoError(t, err, "read L2 WETH token address")
-	require.NotEqual(t, common.Address{}, wethAddr, "WETH token address must not be zero")
-	weth, err := mintableerc20.NewMintableerc20(wethAddr, env.Clients.L2)
-	require.NoError(t, err, "bind L2 WETH token")
+	// NOTE on the asset under test: the mock claims via bridge.claimMessage (see
+	// BridgeMessageReceiverMock.onMessageReceived / testClaim), which delivers the bridged message's
+	// native value to the destination as native ETH. The legacy bats read these deltas on
+	// L2Bridge.WETHToken(), but op-pp is a native-ETH-gas L2 with NO WETH token (WETHToken() == zero
+	// address), and a claimMessage credits native balance, not an ERC20. There is no ERC20 in a
+	// claimMessage flow to swap in, so per WETH_FIX.md's native-asset fallback, all balance assertions
+	// below read the recipient's/contract's NATIVE L2 balance instead of a WETH ERC20. The fixed
+	// receiver EOAs pay no gas, so their native delta equals the claimed amount exactly; the contract is
+	// the claim destination (it pays no gas either) and, in subtest 2, forwards msg.value through its
+	// internal bridgeAsset, so its net native delta is exactly the claim amount credited to it.
 
 	t.Run("PreventDoubleClaim", func(t *testing.T) {
-		testClaimReentrancyPreventDoubleClaim(ctx, t, env, mockAddr, mock, weth)
+		testClaimReentrancyPreventDoubleClaim(ctx, t, env, mockAddr, mock)
 	})
 	t.Run("TestClaimInternalReentrancyAndBridgeAsset", func(t *testing.T) {
-		testClaimReentrancyInternalAndBridgeAsset(ctx, t, env, mockAddr, mock, weth)
+		testClaimReentrancyInternalAndBridgeAsset(ctx, t, env, mockAddr, mock)
 	})
 
 	// After both subtests, assert the shared env is still healthy so a leak surfaces here rather than
@@ -121,7 +129,7 @@ func TestClaimReentrancy(t *testing.T) {
 //   - STEP 1-2  -> bridge asset #1 L1->L2 to a fixed EOA (reentrancyReceiver1) and capture params #1.
 //   - STEP 3-4  -> bridge asset #2 L1->L2 to the mock contract and capture params #2.
 //   - STEP 5    -> updateParameters(asset #1) arms the contract to reentrantly claim asset #1.
-//   - STEP 6    -> record initial WETH balances of receiver and contract.
+//   - STEP 6    -> record initial NATIVE L2 balances of receiver and contract.
 //   - STEP 7    -> claim asset #2 (destination=contract); succeeds and fires onMessageReceived, which
 //     reentrantly claims the (still-unclaimed) asset #1, crediting the EOA receiver.
 //   - STEP 8    -> LOAD-BEARING: a direct duplicate ClaimMessage of asset #1 (now settled via the
@@ -132,7 +140,7 @@ func TestClaimReentrancy(t *testing.T) {
 //   - STEP 11   -> IsClaimed(depositCount, originNetwork) == true for both deposits.
 func testClaimReentrancyPreventDoubleClaim(
 	ctx context.Context, t *testing.T, env *envs.Env, mockAddr common.Address,
-	mock *bridgemessagereceivermock.Bridgemessagereceivermock, weth *mintableerc20.Mintableerc20,
+	mock *bridgemessagereceivermock.Bridgemessagereceivermock,
 ) {
 	t.Helper()
 	amount1 := big.NewInt(1e14) // 0.0001 ETH
@@ -144,8 +152,6 @@ func testClaimReentrancyPreventDoubleClaim(
 	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
 	require.NoError(t, err, "checkout L2 key")
 	defer env.Keys.L2Keys.Return(l2Key)
-
-	callOpts := &bind.CallOpts{Context: ctx}
 
 	// STEP 1-2: bridge asset #1 L1->L2 to a fixed EOA and capture its claim params (do NOT claim yet).
 	params1 := bridgeMessageL1ToL2GetParams(ctx, t, env, l1Opts, reentrancyReceiver1, amount1)
@@ -162,11 +168,11 @@ func testClaimReentrancyPreventDoubleClaim(
 	require.NoError(t, err, "wait for updateParameters")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, armReceipt.Status, "updateParameters failed")
 
-	// STEP 6: record initial WETH balances.
-	initialReceiverBal, err := weth.BalanceOf(callOpts, reentrancyReceiver1)
-	require.NoError(t, err, "initial receiver WETH balance")
-	initialContractBal, err := weth.BalanceOf(callOpts, mockAddr)
-	require.NoError(t, err, "initial contract WETH balance")
+	// STEP 6: record initial NATIVE L2 balances (claimMessage credits native ETH, not a WETH ERC20).
+	initialReceiverBal, err := env.Clients.L2.BalanceAt(ctx, reentrancyReceiver1, nil)
+	require.NoError(t, err, "initial receiver native balance")
+	initialContractBal, err := env.Clients.L2.BalanceAt(ctx, mockAddr, nil)
+	require.NoError(t, err, "initial contract native balance")
 
 	// STEP 7: claim asset #2 (destination=contract). The bridge delivers the message to the mock, which
 	// fires onMessageReceived; that hook reentrantly calls claimMessage with the armed asset #1 params.
@@ -180,19 +186,20 @@ func testClaimReentrancyPreventDoubleClaim(
 	// the reentrancy/double-claim protection under test (bats check_claim_revert_code AlreadyClaimed).
 	assertDuplicateClaimMessageRejected(ctx, t, env, l2Opts, params1)
 
-	// STEP 10: balance deltas.
-	finalReceiverBal, err := weth.BalanceOf(callOpts, reentrancyReceiver1)
-	require.NoError(t, err, "final receiver WETH balance")
-	finalContractBal, err := weth.BalanceOf(callOpts, mockAddr)
-	require.NoError(t, err, "final contract WETH balance")
+	// STEP 10: balance deltas (native L2 balances; the receiver EOA and the contract pay no gas, so each
+	// delta is exactly the claimed amount credited to it by claimMessage).
+	finalReceiverBal, err := env.Clients.L2.BalanceAt(ctx, reentrancyReceiver1, nil)
+	require.NoError(t, err, "final receiver native balance")
+	finalContractBal, err := env.Clients.L2.BalanceAt(ctx, mockAddr, nil)
+	require.NoError(t, err, "final contract native balance")
 
 	receiverDelta := new(big.Int).Sub(finalReceiverBal, initialReceiverBal)
 	require.Equal(t, 0, receiverDelta.Cmp(amount1),
-		"receiver WETH balance must increase by exactly amount_1: got %s want %s",
+		"receiver native balance must increase by exactly amount_1: got %s want %s",
 		receiverDelta.String(), amount1.String())
 	contractDelta := new(big.Int).Sub(finalContractBal, initialContractBal)
 	require.Equal(t, 0, contractDelta.Cmp(amount2),
-		"contract WETH balance must increase by exactly amount_2: got %s want %s",
+		"contract native balance must increase by exactly amount_2: got %s want %s",
 		contractDelta.String(), amount2.String())
 
 	// STEP 11: IsClaimed must be true for both deposits.
@@ -209,7 +216,7 @@ func testClaimReentrancyPreventDoubleClaim(
 //   - STEP 3     -> bridge asset #3 L1->L2 to the same EOA (0.03 ETH), params #3.
 //   - STEP 4     -> updateParameters(asset #2) (arms the contract; the bats does this though @test 2's
 //     success path does not rely on onMessageReceived firing for #2 — it is faithfully replicated).
-//   - STEP 5     -> record initial WETH balances.
+//   - STEP 5     -> record initial NATIVE L2 balances.
 //   - STEP 6     -> ABI-encode claimData1 (#1 tuple), bridgeAsset tuple, claimData2 (#3 tuple).
 //   - STEP 7     -> contract.testClaim(claimData1, bridgeAsset, claimData2) with value=0.0004 ETH must
 //     SUCCEED (two valid claimMessage calls + internal invalid destinationNetwork=1000 call that the
@@ -220,7 +227,7 @@ func testClaimReentrancyPreventDoubleClaim(
 //   - STEP 13    -> internal bridgeAsset observed (see deviation note below).
 func testClaimReentrancyInternalAndBridgeAsset(
 	ctx context.Context, t *testing.T, env *envs.Env, mockAddr common.Address,
-	mock *bridgemessagereceivermock.Bridgemessagereceivermock, weth *mintableerc20.Mintableerc20,
+	mock *bridgemessagereceivermock.Bridgemessagereceivermock,
 ) {
 	t.Helper()
 	amount1 := big.NewInt(3e16) // 0.03 ETH
@@ -233,8 +240,6 @@ func testClaimReentrancyInternalAndBridgeAsset(
 	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
 	require.NoError(t, err, "checkout L2 key")
 	defer env.Keys.L2Keys.Return(l2Key)
-
-	callOpts := &bind.CallOpts{Context: ctx}
 
 	// STEP 1-3: bridge the three assets and capture their claim params (none claimed yet — testClaim
 	// performs the claims itself).
@@ -253,17 +258,18 @@ func testClaimReentrancyInternalAndBridgeAsset(
 	require.NoError(t, err, "wait for updateParameters")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, armReceipt.Status, "updateParameters failed")
 
-	// STEP 5: record initial WETH balances.
-	initialReceiverBal, err := weth.BalanceOf(callOpts, reentrancyReceiver2)
-	require.NoError(t, err, "initial receiver WETH balance")
-	initialContractBal, err := weth.BalanceOf(callOpts, mockAddr)
-	require.NoError(t, err, "initial contract WETH balance")
+	// STEP 5: record initial NATIVE L2 balances (claimMessage credits native ETH, not a WETH ERC20).
+	initialReceiverBal, err := env.Clients.L2.BalanceAt(ctx, reentrancyReceiver2, nil)
+	require.NoError(t, err, "initial receiver native balance")
+	initialContractBal, err := env.Clients.L2.BalanceAt(ctx, mockAddr, nil)
+	require.NoError(t, err, "initial contract native balance")
 
 	// STEP 6: ABI-encode the three arguments to testClaim.
 	claimData1 := encodeClaimDataTuple(t, params1)
 	claimData2 := encodeClaimDataTuple(t, params3)
-	// The internal bridgeAsset uses the L2 WETH/native token. On L2 the native token is bridged with
-	// token=zero-address (native), matching the bats native_token_addr for the L2->L2 bridgeAsset.
+	// The internal bridgeAsset uses the native token (token=zero-address), matching the bats
+	// native_token_addr for the L2->L2 bridgeAsset; its value comes from the msg.value forwarded to
+	// testClaim below.
 	bridgeAssetData := encodeBridgeAssetTuple(
 		t, internalBridgeAssetNetwork, internalBridgeAssetReceiver, internalBridgeAssetAmount,
 		common.Address{}, true, []byte{})
@@ -280,20 +286,23 @@ func testClaimReentrancyInternalAndBridgeAsset(
 		testClaimTx.Hash().Hex())
 	log.Infof("[TestClaimReentrancy/Internal] testClaim succeeded: tx=%s", testClaimTx.Hash().Hex())
 
-	// STEP 8-9: balance deltas. contract += amount_1; receiver += amount_2 + amount_3.
-	finalReceiverBal, err := weth.BalanceOf(callOpts, reentrancyReceiver2)
-	require.NoError(t, err, "final receiver WETH balance")
-	finalContractBal, err := weth.BalanceOf(callOpts, mockAddr)
-	require.NoError(t, err, "final contract WETH balance")
+	// STEP 8-9: balance deltas (native L2 balances). contract += amount_1; receiver += amount_2 + amount_3.
+	// The receiver EOA pays no gas. The contract is the destination of claim #1 (credited amount_1) and
+	// forwards exactly msg.value (internalBridgeAssetAmount) out via its internal bridgeAsset, so its net
+	// native delta is amount_1; it pays no gas (l2Opts is the tx payer).
+	finalReceiverBal, err := env.Clients.L2.BalanceAt(ctx, reentrancyReceiver2, nil)
+	require.NoError(t, err, "final receiver native balance")
+	finalContractBal, err := env.Clients.L2.BalanceAt(ctx, mockAddr, nil)
+	require.NoError(t, err, "final contract native balance")
 
 	contractDelta := new(big.Int).Sub(finalContractBal, initialContractBal)
 	require.Equal(t, 0, contractDelta.Cmp(amount1),
-		"contract WETH balance must increase by exactly amount_1: got %s want %s",
+		"contract native balance must increase by exactly amount_1: got %s want %s",
 		contractDelta.String(), amount1.String())
 	expectedReceiverDelta := new(big.Int).Add(amount2, amount3)
 	receiverDelta := new(big.Int).Sub(finalReceiverBal, initialReceiverBal)
 	require.Equal(t, 0, receiverDelta.Cmp(expectedReceiverDelta),
-		"receiver WETH balance must increase by amount_2 + amount_3: got %s want %s",
+		"receiver native balance must increase by amount_2 + amount_3: got %s want %s",
 		receiverDelta.String(), expectedReceiverDelta.String())
 
 	// STEP 12: IsClaimed must be true for all three deposits.
@@ -307,9 +316,9 @@ func testClaimReentrancyInternalAndBridgeAsset(
 	// is awkward to assert without modifying helpers (out of scope). Instead, the internal bridgeAsset
 	// is asserted directly from on-chain evidence: the L2 bridge emits a BridgeEvent log from the mock's
 	// bridgeAsset call inside the SAME testClaim receipt. We verify exactly one such bridge event was
-	// emitted by the L2 bridge with destinationNetwork=2, destinationAddress=internalBridgeAssetReceiver,
-	// amount=internalBridgeAssetAmount, originating from the mock contract.
-	assertInternalBridgeAssetEvent(ctx, t, env, testClaimReceipt, mockAddr)
+	// emitted by the L2 bridge with destinationNetwork=0 (L1, the only valid cross-network destination on
+	// single-L2 op-pp), destinationAddress=internalBridgeAssetReceiver, amount=internalBridgeAssetAmount.
+	assertInternalBridgeAssetEvent(ctx, t, env, testClaimReceipt)
 }
 
 // bridgeMessageL1ToL2GetParams bridges a native-value message L1->L2 to the given destination and
@@ -483,14 +492,25 @@ func bridgeAssetTupleArgs() abi.Arguments {
 	}
 }
 
+// leafTypeAsset is the BridgeEvent leafType for an asset bridge (0); message bridges use 1. The
+// internal bridgeAsset emits an asset-type BridgeEvent, distinguishing it from the claimMessage legs.
+const leafTypeAsset = uint8(0)
+
 // assertInternalBridgeAssetEvent verifies the internal bridgeAsset performed inside the mock's
 // testClaim by inspecting the testClaim transaction receipt for a BridgeEvent emitted by the L2 bridge.
-// It requires that exactly one such event targets internalBridgeAssetReceiver on
-// internalBridgeAssetNetwork for internalBridgeAssetAmount and originates from the mock contract
-// (originAddress == mockAddr). This replaces the bats STEP 13 bridge-service get_bridge assertion with
-// a direct on-chain check (see the deviation note in the calling subtest).
+// It requires exactly one asset-type BridgeEvent targeting internalBridgeAssetReceiver on
+// internalBridgeAssetNetwork for internalBridgeAssetAmount. This replaces the bats STEP 13
+// bridge-service get_bridge assertion with a direct on-chain check (see the deviation note in the
+// calling subtest).
+//
+// Note on origin fields: the mock bridges the NATIVE asset (token=0x0). On this native-ETH gas L2
+// (gasTokenAddress==0), the bridge records the native asset's canonical origin — originNetwork=0 (L1)
+// and originAddress=0x0 (ether) — NOT the calling mock contract. (Verified live: a native bridgeAsset
+// emits a BridgeEvent with originNetwork=0/originAddress=0x0; the earlier originAddress==mockAddr
+// predicate matched 0 events.) We therefore match on the load-bearing, contract-truthful fields
+// (leafType=asset, destination network/address, amount) rather than the caller address.
 func assertInternalBridgeAssetEvent(
-	ctx context.Context, t *testing.T, env *envs.Env, receipt *ethtypes.Receipt, mockAddr common.Address,
+	ctx context.Context, t *testing.T, env *envs.Env, receipt *ethtypes.Receipt,
 ) {
 	t.Helper()
 	_ = ctx
@@ -506,16 +526,16 @@ func assertInternalBridgeAssetEvent(
 		if err != nil {
 			continue // not a BridgeEvent log
 		}
-		if ev.DestinationNetwork == internalBridgeAssetNetwork &&
+		if ev.LeafType == leafTypeAsset &&
+			ev.DestinationNetwork == internalBridgeAssetNetwork &&
 			ev.DestinationAddress == internalBridgeAssetReceiver &&
-			ev.Amount.Cmp(internalBridgeAssetAmount) == 0 &&
-			ev.OriginAddress == mockAddr {
+			ev.Amount.Cmp(internalBridgeAssetAmount) == 0 {
 			matches++
 		}
 	}
 	require.Equal(t, 1, matches,
 		"testClaim receipt must contain exactly one internal bridgeAsset BridgeEvent "+
-			"(destNetwork=%d destination=%s amount=%s origin=%s)",
+			"(leafType=asset destNetwork=%d destination=%s amount=%s)",
 		internalBridgeAssetNetwork, internalBridgeAssetReceiver.Hex(),
-		internalBridgeAssetAmount.String(), mockAddr.Hex())
+		internalBridgeAssetAmount.String())
 }

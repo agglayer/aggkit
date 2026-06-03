@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/binary"
 	"math/big"
 	"testing"
 	"time"
@@ -47,19 +48,36 @@ func testSovereignTokenAddressMapping(t *testing.T, env *envs.Env) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// originTokenAddress models the bats l1_erc20_addr (origin network 0) and sovereignTokenAddress
-	// models the freshly deployed L2 sovereign token. The load-bearing assertion is the decoded event
-	// fields, so existing env-available L2 addresses are used (see deliverable for the rationale): the
-	// env L2-native MintableERC20 as the origin token and the L2 bridge address as the sovereign token.
+	// originNetwork models the bats origin network (0 = L1). The bats maps an L1-origin token to a
+	// freshly deployed L2 sovereign token, then removes the *legacy* sovereign token. The L2
+	// BridgeL2SovereignChain contract's removeLegacySovereignTokenAddress only accepts a token that is a
+	// genuine legacy entry — i.e. wrappedTokenToTokenInfo[token] is set AND the forward map
+	// tokenInfoToWrappedToken[keccak(originNetwork,originToken)] points to a DIFFERENT (newer) token
+	// (otherwise it reverts TokenNotRemapped, verified live). A single setMultipleSovereignTokenAddress
+	// therefore cannot be removed (it is the current token, not a legacy one). To produce a removable
+	// legacy token we map the same origin twice: origin->legacyToken, then origin->currentToken (the
+	// second call overwrites the forward map to currentToken while leaving legacyToken's reverse entry
+	// in place), which makes legacyToken a removable legacy token.
+	//
+	// Addresses are synthetic and unique per run (derived from a nanosecond nonce) so the mutating
+	// mapping state never collides across re-runs on the shared env (setMultipleSovereignTokenAddress
+	// reverts TokenAlreadyMapped if the sovereign token already has a reverse entry). They are
+	// non-zero and not the L2 networkID-owned origin, which is all the contract requires.
 	originNetwork := uint32(0)
-	originTokenAddress := env.L2.Contracts.MintableERC20Address
-	sovereignTokenAddress := env.L2.Contracts.L2BridgeAddress
+	nonce := uint64(time.Now().UnixNano())
+	originTokenAddress := syntheticTokenAddr(nonce, 0x01)
+	legacyTokenAddress := syntheticTokenAddr(nonce, 0x02)  // the token we will remove
+	currentTokenAddress := syntheticTokenAddr(nonce, 0x03) // the newer token that supersedes it
 
 	withCleanEmergencyState(ctx, t, env, func() {
 		opts, err := bind.NewKeyedTransactorWithChainID(env.Keys.SovereignAdmin, env.L2.ChainID)
 		require.NoError(t, err, "build sovereign admin transactor")
 
-		// Defer-restore: best-effort remove the legacy mapping we set so no mapping state leaks.
+		// Defer-restore: best-effort remove the legacy mapping we set so no mapping state leaks. Removing
+		// legacyTokenAddress is the main-flow assertion below; here it is a no-op safety net for early
+		// failures (errors are logged, not fatal). currentTokenAddress is intentionally left mapped: it
+		// is the current token for a synthetic, run-unique origin, so it cannot be removed (it would
+		// revert TokenNotRemapped) and cannot collide with a future run.
 		defer func() {
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 			defer cleanupCancel()
@@ -68,7 +86,7 @@ func testSovereignTokenAddressMapping(t *testing.T, env *envs.Env) {
 				log.Warnf("[sovereign-mapping] could not build cleanup transactor: %v", cerr)
 				return
 			}
-			tx, cerr := env.L2.Contracts.L2Bridge.RemoveLegacySovereignTokenAddress(cleanupOpts, originTokenAddress)
+			tx, cerr := env.L2.Contracts.L2Bridge.RemoveLegacySovereignTokenAddress(cleanupOpts, legacyTokenAddress)
 			if cerr != nil {
 				log.Warnf("[sovereign-mapping] best-effort cleanup RemoveLegacySovereignTokenAddress failed: %v", cerr)
 				return
@@ -78,16 +96,16 @@ func testSovereignTokenAddressMapping(t *testing.T, env *envs.Env) {
 			}
 		}()
 
-		// --- SetMultipleSovereignTokenAddress (SovereignAdmin key) ---
+		// --- SetMultipleSovereignTokenAddress: origin -> legacyToken (SovereignAdmin key) ---
 		// bats: cast send setMultipleSovereignTokenAddress([0],[l1_erc20],[l2_sovereign],[false]).
 		setTx, err := env.L2.Contracts.L2Bridge.SetMultipleSovereignTokenAddress(
 			opts,
 			[]uint32{originNetwork},
 			[]common.Address{originTokenAddress},
-			[]common.Address{sovereignTokenAddress},
+			[]common.Address{legacyTokenAddress},
 			[]bool{false},
 		)
-		require.NoError(t, err, "SetMultipleSovereignTokenAddress")
+		require.NoError(t, err, "SetMultipleSovereignTokenAddress (legacy token)")
 		setReceipt, err := bind.WaitMined(ctx, env.Clients.L2, setTx)
 		require.NoError(t, err, "wait for SetMultipleSovereignTokenAddress receipt")
 		require.Equal(t, ethtypes.ReceiptStatusSuccessful, setReceipt.Status,
@@ -100,16 +118,31 @@ func testSovereignTokenAddressMapping(t *testing.T, env *envs.Env) {
 		// bats: assert_equal "${l1_erc20_addr,,}" "${origin_token_addr,,}".
 		require.Equal(t, originTokenAddress, setEvent.OriginTokenAddress, "event OriginTokenAddress")
 		// bats: assert_equal "${l2_token_addr_sovereign,,}" "${sov_token_addr,,}".
-		require.Equal(t, sovereignTokenAddress, setEvent.SovereignTokenAddress, "event SovereignTokenAddress")
+		require.Equal(t, legacyTokenAddress, setEvent.SovereignTokenAddress, "event SovereignTokenAddress")
 		// bats: assert_equal "false" "$is_not_mintable".
 		require.False(t, setEvent.IsNotMintable, "event IsNotMintable")
 		log.Info("[sovereign-mapping] SetSovereignTokenAddress event verified")
 
-		// --- RemoveLegacySovereignTokenAddress (SovereignAdmin key) ---
-		// bats: cast send removeLegacySovereignTokenAddress(l2_token_addr_legacy).
-		// The bats legacy token is the L1-bridged wrapped token; here we remove the origin token we
-		// just mapped so the event carries a deterministic, decodable address.
-		removeTx, err := env.L2.Contracts.L2Bridge.RemoveLegacySovereignTokenAddress(opts, originTokenAddress)
+		// Map the SAME origin to a newer currentToken. This overwrites tokenInfoToWrappedToken for that
+		// origin to currentToken while leaving legacyToken's reverse entry intact, which is exactly the
+		// state removeLegacySovereignTokenAddress requires (forward map points to a different token).
+		supersedeTx, err := env.L2.Contracts.L2Bridge.SetMultipleSovereignTokenAddress(
+			opts,
+			[]uint32{originNetwork},
+			[]common.Address{originTokenAddress},
+			[]common.Address{currentTokenAddress},
+			[]bool{false},
+		)
+		require.NoError(t, err, "SetMultipleSovereignTokenAddress (current token)")
+		supersedeReceipt, err := bind.WaitMined(ctx, env.Clients.L2, supersedeTx)
+		require.NoError(t, err, "wait for superseding SetMultipleSovereignTokenAddress receipt")
+		require.Equal(t, ethtypes.ReceiptStatusSuccessful, supersedeReceipt.Status,
+			"superseding SetMultipleSovereignTokenAddress tx failed")
+
+		// --- RemoveLegacySovereignTokenAddress(legacyToken) (SovereignAdmin key) ---
+		// bats: cast send removeLegacySovereignTokenAddress(l2_token_addr_legacy). legacyToken is now a
+		// genuine legacy entry (superseded by currentToken), so the call succeeds and emits the event.
+		removeTx, err := env.L2.Contracts.L2Bridge.RemoveLegacySovereignTokenAddress(opts, legacyTokenAddress)
 		require.NoError(t, err, "RemoveLegacySovereignTokenAddress")
 		removeReceipt, err := bind.WaitMined(ctx, env.Clients.L2, removeTx)
 		require.NoError(t, err, "wait for RemoveLegacySovereignTokenAddress receipt")
@@ -119,9 +152,21 @@ func testSovereignTokenAddressMapping(t *testing.T, env *envs.Env) {
 		// Decode the RemoveLegacySovereignTokenAddress event.
 		removeEvent := decodeRemoveLegacySovereignTokenAddressEvent(t, env, removeReceipt)
 		// bats: assert_equal "${l2_token_addr_legacy,,}" "${...sovereignTokenAddress,,}".
-		require.Equal(t, originTokenAddress, removeEvent.SovereignTokenAddress, "event SovereignTokenAddress")
+		require.Equal(t, legacyTokenAddress, removeEvent.SovereignTokenAddress, "event SovereignTokenAddress")
 		log.Info("[sovereign-mapping] RemoveLegacySovereignTokenAddress event verified")
 	})
+}
+
+// syntheticTokenAddr derives a deterministic, run-unique, non-zero 20-byte address from a nonce and a
+// small tag byte. It is used to mint synthetic origin/sovereign token addresses for the mapping flow so
+// the mutating sovereign-token mappings never collide across re-runs on the shared env. The layout is:
+// bytes[0]=tag, bytes[12..20]=big-endian nonce (the rest zero), which keeps the three tagged addresses
+// distinct and far from any real env contract address.
+func syntheticTokenAddr(nonce uint64, tag byte) common.Address {
+	var a common.Address
+	a[0] = tag
+	binary.BigEndian.PutUint64(a[12:20], nonce)
+	return a
 }
 
 // decodeSetSovereignTokenAddressEvent finds and decodes the SetSovereignTokenAddress event from the

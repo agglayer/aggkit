@@ -183,7 +183,7 @@ CheckStatusCertificateInterval = "1s"
 # ASAP: this mode try to generate a new certificate after a successful settled certificate
 # NewBridge: Each time that a new bridge is done in L2 it generate a certificate (if it's possible) (experimental)
 # ------------------------------------------------------------------------------
-TriggerCertMode = "ASAP"
+TriggerCertMode = "EpochBased"
 
 # # Encouraged to use the default values - the parameters are left commented out for reference
 #
