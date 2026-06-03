@@ -488,11 +488,30 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	preWipeConfig, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		// Phase 8: Restore the pre-wipe aggkit config.
+		// Phase 8: Restore the pre-wipe aggkit config AND wipe the stale aggsender DB so the
+		// network is left OPERATIONAL for any test that runs next (tests must be order-independent).
+		// This test advances agglayer (malicious cert + recovery) while the local aggsender DB stays
+		// behind, so simply restoring the original config points the aggsender back at a DB whose
+		// latest settled cert is many heights behind agglayer. On startup that hits
+		// statuschecker CASE 4 ("Local certificate ... is different from agglayer ... Manual recovery
+		// required: wipe the aggsender DB") and the aggsender wedges forever, poisoning every later
+		// settlement-dependent test. Wiping the DB instead makes the aggsender re-bootstrap cleanly
+		// from agglayer (CASE 2: no local cert -> insert agglayer's latest settled cert) and resume
+		// settling, leaving the network healthy. aggkit is stopped while editFn runs, so removing the
+		// sqlite files here is safe.
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), bflRestartTimeout)
 		defer cleanupCancel()
 		if restoreErr := testEnv.RestartAggkitWithConfig(cleanupCtx, func(cfgPath string) error {
-			return os.WriteFile(cfgPath, preWipeConfig, 0o600)
+			if werr := os.WriteFile(cfgPath, preWipeConfig, 0o600); werr != nil {
+				return werr
+			}
+			dbPath := testEnv.GetAggsenderDBPath()
+			for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+				if rerr := os.Remove(p); rerr != nil && !os.IsNotExist(rerr) {
+					return fmt.Errorf("wipe stale aggsender DB %s: %w", p, rerr)
+				}
+			}
+			return nil
 		}); restoreErr != nil {
 			t.Logf("WARNING: failed to restore aggkit config after DB wipe: %v", restoreErr)
 		} else {
