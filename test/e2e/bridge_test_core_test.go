@@ -35,8 +35,13 @@ const (
 // bridgeCoreMessageAmount is the small ETH value bridged with the "Transfer message" case.
 var bridgeCoreMessageAmount = big.NewInt(1e14) // 0.0001 ETH
 
-// bridgeCoreNativeAmount is the small ETH value bridged with the "Native token transfer" case.
-var bridgeCoreNativeAmount = big.NewInt(1e14) // 0.0001 ETH
+// bridgeCoreNativeAmount is the ETH value bridged with the "Native token transfer" case. It is large
+// relative to the claim fee on purpose: the recipient is also the claim-tx gas payer, and the claim
+// fee (L2 execution gas + an unsurfaced L1 data fee) is roughly FIXED regardless of amount, so a small
+// amount made the fee a large, gas-price-dependent fraction (observed up to ~33% on 1e14 during gas
+// spikes) that broke the "fee is a tiny fraction of the amount" assertion below. 0.1 ETH keeps the
+// fixed fee well under the amount/50 tolerance with ample margin.
+var bridgeCoreNativeAmount = big.NewInt(1e17) // 0.1 ETH
 
 // bridgeCoreERC20Amount is the ERC20 amount bridged with the "ERC20 token deposit" cases.
 var bridgeCoreERC20Amount = big.NewInt(1e17) // 0.1 token (18 decimals)
