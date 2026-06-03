@@ -43,6 +43,12 @@ const (
 	// Same epoch-based reasoning as bflCertSettleTimeout; using a larger margin in case
 	// the cert is submitted early in an epoch and the epoch is longer than expected.
 	bflNoPendingTimeout = 10 * time.Minute
+	// bflFirstSettleTimeout bounds the wait for the real aggsender to settle its FIRST legit
+	// certificate on the regenerated op-pp env (op-batcher finality + EpochBased trigger). On a
+	// cold env the aggsender stays "waiting for trigger" until network activity exists AND an
+	// epoch crosses its 50% threshold, so the first settle can take several epochs (~minutes).
+	// This mirrors the 15-min budget proven by TestCertificateSettlement (the P2 migration).
+	bflFirstSettleTimeout = 15 * time.Minute
 	// nilStr is the display value used for nil pointer fields in debug log messages.
 	nilStr = "nil"
 )
@@ -53,6 +59,17 @@ const (
 // prevents a stale agglayer "InError" cert from a previous run blocking the
 // current run, since the agglayer deduplicates certs by their CertificateID.
 var bflRunNonce = big.NewInt(time.Now().UnixNano()).Bytes()
+
+// bflInjectedExits records the bridge exits of every malicious certificate injected during this
+// test binary run, keyed by certificate height. On the regenerated op-pp env the malicious cert
+// settles quickly, so the live aggsender's startup/periodic recovery reconciles the injected
+// height against the agglayer's settled state and rewrites the local DB row with an AggLayer-source
+// placeholder (statuschecker.updateLocalStorageWithSettledAggLayerCert). After that the aggsender
+// RPC GetCertificateBridgeExits returns NotFound for the injected height, so Diagnose's
+// findDivergencePoint flags it as a missing cert (AggsenderAPIFailed=true) and returns NoDivergence.
+// Diagnosing through the documented --cert-exits-file fallback restores the injected exits; this map
+// is the source for the auto-generated override file (see writeBFLInjectedExitsOverride).
+var bflInjectedExits = map[uint64][]*agglayertypes.BridgeExit{}
 
 // summaryForBFLToolConfig is a minimal struct for reading summary.json to build the bfl tool config.
 type summaryForBFLToolConfig struct {
@@ -120,7 +137,7 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
 	// Build bfl tool environment.
@@ -148,7 +165,7 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 
 	// Re-build toolEnv with fresh state.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfigWithInjectedExits(t, testEnv.AggsenderRPCURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -187,7 +204,7 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
 
 	// Build bfl tool environment.
@@ -213,7 +230,7 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 
 	// Re-build toolEnv.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfigWithInjectedExits(t, testEnv.AggsenderRPCURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -284,7 +301,7 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfigWithInjectedExits(t, testEnv.AggsenderRPCURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -367,7 +384,7 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfigWithInjectedExits(t, testEnv.AggsenderRPCURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -415,7 +432,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
 
 	// Phase 1: Setup — same structure as TestBackwardForwardLET_Case2.
@@ -543,18 +560,37 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 		Description: "extracted by E2E test from agglayer admin API",
 		Heights:     make(map[string][]*agglayertypes.BridgeExit),
 	}
-	// Some cert IDs may not be auto-resolved (only the latest settled height is guaranteed).
-	// For unresolved IDs, use the pre-collected cert IDs from before the DB wipe.
+	// Resolve the bridge exits for every missing height, in priority order:
+	//  1. bflInjectedExits — heights we injected this run. On the regenerated env the live
+	//     aggsender reconciles the injected cert to an AggLayer-source placeholder before the
+	//     wipe, so its CertificateID is dropped from the DB snapshot (preCertIDs) and it is not
+	//     auto-resolved unless it is the latest settled height. The injected exits are the
+	//     authoritative source for these heights, so use them directly (no admin call needed).
+	//  2. auto-resolved / pre-collected cert ID — fetch the real exits via admin_getCertificate.
+	//  3. otherwise — a legit cert the aggsender produced (e.g. the warm-up L1->L2 cert at
+	//     height 0) that was AggLayer-reconciled before the wipe, so we have neither its ID nor
+	//     its content. Such certs carry no L2 bridge exits (the warm-up is an L1->L2 claim, not an
+	//     L2 exit), so supplying an empty exit list is correct: it contributes no leaves to the
+	//     local exit tree and findDivergencePoint simply skips it instead of flagging it missing.
 	for _, mc := range diagnosis.MissingCerts {
+		if injected, ok := bflInjectedExits[mc.Height]; ok {
+			of.Heights[strconv.FormatUint(mc.Height, 10)] = injected
+			continue
+		}
 		certID := mc.CertID
-		if !mc.CertIDResolved {
-			preID, ok := preCertIDs[mc.Height]
-			if !ok {
-				require.Failf(t, "no pre-collected cert ID",
-					"[AggsenderFallback] no cert ID for height %d: not auto-resolved and not in pre-collected DB snapshot",
-					mc.Height)
+		resolved := mc.CertIDResolved
+		if !resolved {
+			if preID, ok := preCertIDs[mc.Height]; ok {
+				certID = preID
+				resolved = true
 			}
-			certID = preID
+		}
+		if !resolved {
+			// Legit, AggLayer-reconciled cert with no recorded ID and no L2 exits.
+			t.Logf("[AggsenderFallback] height %d has no resolvable cert ID (legit AggLayer-reconciled "+
+				"cert with no L2 exits); supplying empty exit list", mc.Height)
+			of.Heights[strconv.FormatUint(mc.Height, 10)] = []*agglayertypes.BridgeExit{}
+			continue
 		}
 		adminCert := callAgglayerAdminGetCertificate(t, adminURL, certID)
 		require.NotNil(t, adminCert, "admin_getCertificate returned nil cert for height %d", mc.Height)
@@ -628,6 +664,15 @@ func sendMaliciousCertificateViaTool(
 ) *agglayertypes.Certificate {
 	t.Helper()
 
+	// On the regenerated op-pp env (op-batcher finality + EpochBased trigger) the real
+	// aggsender takes longer to settle its FIRST legit certificate. If we inject before
+	// any cert has settled, the agglayer reports SettledHeight=nil, so buildMaliciousCert
+	// builds the malicious cert at height 0 — but the aggsender DB already holds a Pending
+	// height-0 cert row, and RunSendCert's DB insert then fails with a UNIQUE constraint on
+	// certificate_info.height. Wait for the agglayer to settle at least one legit cert first
+	// so the injection builds at SettledHeight+1 (a brand-new height) and never collides.
+	ensureAgglayerHasSettledCert(ctx, t, toolEnv)
+
 	// Stop aggkit first so the aggsender cannot submit new certs while we prepare
 	// the injection. With aggkit stopped, any in-flight cert will settle and then
 	// LatestPendingHeight will become nil (no new submissions possible).
@@ -658,6 +703,10 @@ func sendMaliciousCertificateViaTool(
 	cliCtx := buildSendCertCLIContext(ctx, t, cfgPath, certFile, dbPath)
 	require.NoError(t, bfl.RunSendCert(cliCtx), "send-cert tool failed for cert height=%d", cert.Height)
 	log.Infof("[sendMaliciousCertificateViaTool] sent cert height=%d", cert.Height)
+
+	// Record the injected exits so the diagnosis can fall back to them via --cert-exits-file
+	// once the live aggsender reconciles this height to an AggLayer-source placeholder.
+	bflInjectedExits[cert.Height] = fakeBridgeExits
 
 	// RunSendCert stores the SignedCertificate as a file reference ("@<host-path>").
 	// The container aggkit resolves file references using container-side paths, so it
@@ -830,6 +879,52 @@ func waitForCertificateToSettle(
 	require.NoError(t, err, "timeout waiting for certificate at height=%d to settle", expectedHeight)
 }
 
+// ensureAgglayerHasSettledCert makes sure the agglayer reports at least one settled certificate
+// (SettledHeight != nil) for our L2 network before a malicious cert is injected. It is a no-op
+// when a settled cert already exists. Otherwise — the cold-env case — the real aggsender is
+// "waiting for trigger" with nothing to certify, so this first drives a light L1->L2
+// bridge-and-claim to give the aggsender network activity (the same warm-up TestCertificateSettlement
+// uses), then waits up to bflFirstSettleTimeout for the EpochBased trigger to produce and settle the
+// first legit cert. Establishing SettledHeight >= 0 guarantees the subsequent injection builds at
+// SettledHeight+1 and does not collide with the aggsender's bootstrap height-0 cert row.
+func ensureAgglayerHasSettledCert(ctx context.Context, t *testing.T, toolEnv *bfl.Env) {
+	t.Helper()
+
+	if info, err := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID); err == nil &&
+		info.SettledHeight != nil {
+		log.Infof("[ensureAgglayerHasSettledCert] agglayer already has settled cert at height %d", *info.SettledHeight)
+		return
+	}
+
+	// Cold env: warm the network so the aggsender has activity to certify.
+	log.Infof("[ensureAgglayerHasSettledCert] no settled cert yet; driving a warm-up L1->L2 bridge")
+	l1Opts, l1Key, err := testEnv.Keys.L1Keys.Checkout()
+	require.NoError(t, err, "checkout L1 key for warm-up bridge")
+	defer testEnv.Keys.L1Keys.Return(l1Key)
+	l2Opts, l2Key, err := testEnv.Keys.L2Keys.Checkout()
+	require.NoError(t, err, "checkout L2 key for warm-up bridge")
+	defer testEnv.Keys.L2Keys.Return(l2Key)
+	bridgeETHL1ToL2AndClaim(ctx, t, testEnv, l1Opts, l2Opts, big.NewInt(1000000000000000)) // 0.001 ETH
+
+	log.Infof("[ensureAgglayerHasSettledCert] waiting for agglayer to settle its first legit cert")
+	err = pollWithBackoff(ctx, bflFirstSettleTimeout, backoffInitial, backoffMax, "first-settled-cert",
+		func() (bool, error) {
+			info, pollErr := toolEnv.AgglayerClient.GetNetworkInfo(ctx, toolEnv.L2NetworkID)
+			if pollErr != nil {
+				// UNKNOWN_NETWORK_TYPE / transient: the network has not settled anything yet.
+				log.Debugf("[ensureAgglayerHasSettledCert] GetNetworkInfo error (retrying): %v", pollErr)
+				return false, nil
+			}
+			if info.SettledHeight == nil {
+				return false, nil
+			}
+			log.Debugf("[ensureAgglayerHasSettledCert] agglayer settled height=%d", *info.SettledHeight)
+			return true, nil
+		})
+	require.NoError(t, err, "timeout waiting for agglayer to settle its first certificate")
+	log.Infof("[ensureAgglayerHasSettledCert] agglayer has at least one settled cert")
+}
+
 // loadCertSignerKey loads the sequencer keystore (the agglayer proof signer for PP networks).
 func loadCertSignerKey(t *testing.T) *ecdsa.PrivateKey {
 	t.Helper()
@@ -980,6 +1075,18 @@ func buildMaliciousCert(
 	if infoErr == nil && info.SettledHeight != nil {
 		existingHashes = make([]common.Hash, 0, existingLeafCount)
 		for h := uint64(0); h <= *info.SettledHeight; h++ {
+			// A previously injected malicious cert is reconciled by the live aggsender to an
+			// AggLayer-source placeholder once the agglayer settles it (see bflInjectedExits doc).
+			// Its real bridge exits are then no longer in the DB row, so for multi-cert cases
+			// (Case3/Case4) we must take the injected exits from bflInjectedExits to reconstruct
+			// the correct leaf order; otherwise the next cert's NewLocalExitRoot would be computed
+			// against the wrong leaf count and the agglayer would reject it.
+			if injected, ok := bflInjectedExits[h]; ok {
+				for _, be := range injected {
+					existingHashes = append(existingHashes, bfl.BridgeExitLeafHash(be))
+				}
+				continue
+			}
 			cert, certErr := certStore.GetCertificateByHeight(h)
 			require.NoError(t, certErr, "GetCertificateByHeight height=%d", h)
 			if cert == nil || cert.SignedCertificate == nil {
@@ -1179,6 +1286,45 @@ func prepareBFLToolConfig(t *testing.T, aggsenderRPCURL string) *bfl.Config {
 func prepareBFLToolConfigWithOverride(t *testing.T, aggsenderRPCURL, certExitsFile string) *bfl.Config {
 	t.Helper()
 	return buildBFLToolConfig(t, aggsenderRPCURL, certExitsFile)
+}
+
+// prepareBFLToolConfigWithInjectedExits builds a tool config that includes a --cert-exits-file
+// override generated from the malicious certs injected so far this run (bflInjectedExits). The
+// Case1-4 tests use this for their diagnosis step so Diagnose can read the injected bridge exits
+// even after the live aggsender has reconciled those heights to AggLayer-source placeholders
+// (which makes the aggsender RPC return NotFound for them). When no certs have been injected yet it
+// is equivalent to prepareBFLToolConfig.
+func prepareBFLToolConfigWithInjectedExits(t *testing.T, aggsenderRPCURL string) *bfl.Config {
+	t.Helper()
+	if len(bflInjectedExits) == 0 {
+		return buildBFLToolConfig(t, aggsenderRPCURL, "")
+	}
+	overridePath := writeBFLInjectedExitsOverride(t)
+	return buildBFLToolConfig(t, aggsenderRPCURL, overridePath)
+}
+
+// writeBFLInjectedExitsOverride serializes bflInjectedExits into the tool's --cert-exits-file JSON
+// format (network_id + heights map) and returns the path to the written file.
+func writeBFLInjectedExitsOverride(t *testing.T) string {
+	t.Helper()
+	type overrideFileFormat struct {
+		NetworkID   uint32                                 `json:"network_id"`
+		Description string                                 `json:"description"`
+		Heights     map[string][]*agglayertypes.BridgeExit `json:"heights"`
+	}
+	of := overrideFileFormat{
+		NetworkID:   testEnv.L2.NetworkID,
+		Description: "injected malicious-cert bridge exits captured by the E2E test",
+		Heights:     make(map[string][]*agglayertypes.BridgeExit, len(bflInjectedExits)),
+	}
+	for h, exits := range bflInjectedExits {
+		of.Heights[strconv.FormatUint(h, 10)] = exits
+	}
+	data, err := json.Marshal(of)
+	require.NoError(t, err, "marshal injected-exits override")
+	path := filepath.Join(t.TempDir(), "injected-exits-override.json")
+	require.NoError(t, os.WriteFile(path, data, 0o600))
+	return path
 }
 
 // buildBFLToolConfig is the shared implementation for prepareBFLToolConfig and
