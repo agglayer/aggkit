@@ -235,95 +235,17 @@ func executeDummyClaimWithOpts(ctx context.Context, t *testing.T, env *envs.Env,
 }
 
 // Bats-style dummy claim data for Category A (from agglayer/e2e latest-n-injected-ger.bats).
-// GER1 and exit roots + local merkle proof are hardcoded so the L2 bridge accepts the claim.
-var (
-	// batsGER1 is the injected invalid GER used in the bats test (hashes from mainnetExitRootBats + rollupExitRootBats).
-	batsGER1 = common.HexToHash("0xeddc1e373486f80fe4ee28eecdb1cc92f0ec309c931712d546041817599e0bea")
-	// mainnetExitRootBats and rollupExitRootBats are the exit roots that hash to batsGER1; contract verifies proofs against these.
-	mainnetExitRootBats = common.HexToHash("0xb13e35a3b4655ae13db68adab3c173d468bfd60da795045be46809691cb6de1b")
-	rollupExitRootBats  = common.Hash{} // all zeros
-	// batsLocalExitRootProof is the 32-element merkle proof for the local exit root (from bats in_merkle_proof_ger1).
-	batsLocalExitRootProof = mustParseBatsLocalProof()
-	// batsGlobalIndexCategoryA is global index for dummy claim (mainnet, deposit_count=2); from bats in_global_index_ger1.
-	batsGlobalIndexCategoryA = mustSetBigInt("18446744073709551618")
-	batsAmountCategoryA      = new(big.Int).SetUint64(30000005400000000)
-)
+// batsAmountCategoryA is the fabricated dummy-claim amount for the Category A test (kept from the
+// legacy bats fixture; the value itself is arbitrary for a fabricated claim).
+var batsAmountCategoryA = new(big.Int).SetUint64(30000005400000000)
 
-func mustSetBigInt(s string) *big.Int {
-	z := new(big.Int)
-	_, ok := z.SetString(s, 10)
-	if !ok {
-		panic("invalid big.Int string: " + s)
-	}
-	return z
-}
-
-func mustParseBatsLocalProof() (p [32][32]byte) {
-	hexHashes := []string{
-		"0x0000000000000000000000000000000000000000000000000000000000000000",
-		"0x62c61f81d725c13627a7916a8091bb259a539b5117262fceef227b1d72b8d5df",
-		"0xb4c11951957c6f8f642c4af61cd6b24640fec6dc7fc607ee8206a99e92410d30",
-		"0x21ddb9a356815c3fac1026b6dec5df3124afbadb485c9ba5a3e3398a04b7ba85",
-		"0xe58769b32a1beaf1ea27375a44095a0d1fb664ce2dd358e7fcbfb78c26a19344",
-		"0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d",
-		"0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968",
-		"0xffd70157e48063fc33c97a050f7f640233bf646cc98d9524c6b92bcf3ab56f83",
-		"0x9867cc5f7f196b93bae1e27e6320742445d290f2263827498b54fec539f756af",
-		"0xcefad4e508c098b9a7e1d8feb19955fb02ba9675585078710969d3440f5054e0",
-		"0xf9dc3e7fe016e050eff260334f18a5d4fe391d82092319f5964f2e2eb7c1c3a5",
-		"0xf8b13a49e282f609c317a833fb8d976d11517c571d1221a265d25af778ecf892",
-		"0x3490c6ceeb450aecdc82e28293031d10c7d73bf85e57bf041a97360aa2c5d99c",
-		"0xc1df82d9c4b87413eae2ef048f94b4d3554cea73d92b0f7af96e0271c691e2bb",
-		"0x5c67add7c6caf302256adedf7ab114da0acfe870d449a3a489f781d659e8becc",
-		"0xda7bce9f4e8618b6bd2f4132ce798cdc7a60e7e1460a7299e3c6342a579626d2",
-		"0x2733e50f526ec2fa19a22b31e8ed50f23cd1fdf94c9154ed3a7609a2f1ff981f",
-		"0xe1d3b5c807b281e4683cc6d6315cf95b9ade8641defcb32372f1c126e398ef7a",
-		"0x5a2dce0a8a7f68bb74560f8f71837c2c2ebbcbf7fffb42ae1896f13f7c7479a0",
-		"0xb46a28b6f55540f89444f63de0378e3d121be09e06cc9ded1c20e65876d36aa0",
-		"0xc65e9645644786b620e2dd2ad648ddfcbf4a7e5b1a3a4ecfe7f64667a3f0b7e2",
-		"0xf4418588ed35a2458cffeb39b93d26f18d2ab13bdce6aee58e7b99359ec2dfd9",
-		"0x5a9c16dc00d6ef18b7933a6f8dc65ccb55667138776f7dea101070dc8796e377",
-		"0x4df84f40ae0c8229d0d6069e5c8f39a7c299677a09d367fc7b05e3bc380ee652",
-		"0xcdc72595f74c7b1043d0e1ffbab734648c838dfb0527d971b602bc216c9619ef",
-		"0x0abf5ac974a1ed57f4050aa510dd9c74f508277b39d7973bb2dfccc5eeb0618d",
-		"0xb8cd74046ff337f0a7bf2c8e03e10f642c1886798d71806ab1e888d9e5ee87d0",
-		"0x838c5655cb21c6cb83313b5a631175dff4963772cce9108188b34ac87c81c41e",
-		"0x662ee4dd2dd7b2bc707961b1e646c4047669dcb6584f0d8d770daf5d7e7deb2e",
-		"0x388ab20e2573d171a88108e79d820e98f26c0b84aa8b2f4aa4968dbb818ea322",
-		"0x93237c50ba75ee485f4c22adf2f741400bdf8d6a9cc7df7ecae576221665d735",
-		"0x8448818bb4ae4562849e949e17ac16e0be16688e156b5cf15e098c627c0056a9",
-	}
-	for i, h := range hexHashes {
-		p[i] = common.HexToHash(h)
-	}
-	return p
-}
-
-// Bats exact destination for the dummy claim (in_dest_net_ger1=1, in_dest_addr_ger1). The contract
-// hashes claim params to compute the leaf; we must match these exactly or the merkle proof fails.
+// The CategoryA dummy claim's destination is the L2 network so the claim targets it. (The legacy
+// bats fixture hardcoded a fixed GER + merkle proof at deposit_count=2; that collided with prior
+// tests' sequential claims, so CategoryA now builds its proof dynamically at a fresh index — see
+// buildDynamicClaimProof / dummyCategoryADepositCount.)
 const batsDestinationNetworkCategoryA = 1
 
 var batsDestinationAddressCategoryA = common.HexToAddress("0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6")
-
-// batsCategoryADummyClaimParams returns dummy claim params with exact bats values so the contract
-// computes the same leaf and the hardcoded merkle proof verifies. Uses fixed destination network 1
-// and bats destination address (not env-dependent).
-func batsCategoryADummyClaimParams() dummyClaimParams {
-	var proofRollup [32][32]byte
-	return dummyClaimParams{
-		GlobalIndex:         new(big.Int).Set(batsGlobalIndexCategoryA),
-		MainnetExitRoot:     mainnetExitRootBats,
-		RollupExitRoot:      rollupExitRootBats,
-		OriginNetwork:       0,
-		DestinationNetwork:  batsDestinationNetworkCategoryA,
-		OriginAddress:       common.Address{},
-		DestinationAddress:  batsDestinationAddressCategoryA,
-		Amount:              new(big.Int).Set(batsAmountCategoryA),
-		Metadata:            []byte{}, // 0x in bats; use empty slice so ABI encodes as 0x
-		ProofLocalExitRoot:  batsLocalExitRootProof,
-		ProofRollupExitRoot: proofRollup,
-	}
-}
 
 // performBridgeL1NoClaim performs a real L1->L2 bridge with the given amount and waits for it to be
 // indexed by the bridge service, but does NOT claim on L2.
@@ -378,7 +300,16 @@ func buildB1ClaimProof(t *testing.T, bridge *types.BridgeResponse, depositCount 
 		Amount:             bridge.Amount.ToBigInt(),
 		Metadata:           common.Hex2Bytes(bridge.Metadata),
 	}
-	leafHash := b.Hash()
+	return buildDynamicClaimProof(b, depositCount)
+}
+
+// buildDynamicClaimProof builds a single-leaf (otherwise-empty tree) claim proof and the resulting
+// invalid GER for the given bridge-exit leaf placed at depositCount. The leaf sits in an otherwise
+// empty exit tree, so the local proof is just the precomputed zero hashes. Used to craft
+// order-independent problematic claims at a FRESH, never-claimed deposit count (the legacy bats
+// fixtures hardcoded low deposit counts that collide with prior tests' sequential claims).
+func buildDynamicClaimProof(leaf *bridgesync.Bridge, depositCount uint32) *b1ClaimProof {
+	leafHash := leaf.Hash()
 	zeroHashes := generateZeroHashesForProof(treetypes.DefaultHeight)
 	var proof treetypes.Proof
 	for h := uint8(0); h < treetypes.DefaultHeight; h++ {
@@ -400,6 +331,18 @@ func buildB1ClaimProof(t *testing.T, bridge *types.BridgeResponse, depositCount 
 		ProofRollup:     proofRollup,
 	}
 }
+
+// mainnetGlobalIndex encodes a mainnet (L1->L2) global index for the given deposit count: the
+// mainnet flag is bit 64 and the deposit count occupies the low bits (e.g. count 2 -> 2^64 + 2).
+// depositCount < 2^32 never overlaps the flag bit.
+func mainnetGlobalIndex(depositCount uint32) *big.Int {
+	return new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(int64(depositCount)))
+}
+
+// dummyCategoryADepositCount is a high, never-reached deposit count for CategoryA's fabricated claim
+// so it cannot collide with the sequential deposit counts (0,1,2,...) that real L1->L2 claims in
+// other tests consume. It is well below the 2^32 exit-tree capacity.
+const dummyCategoryADepositCount uint32 = 0x7F000000
 
 // executeB1Claim runs ClaimAsset on the L2 bridge with the real bridge data but the given (invalid) exit roots and proofs.
 func executeB1Claim(ctx context.Context, t *testing.T, env *envs.Env, result *bridgeResult, proof *b1ClaimProof) *ethtypes.Receipt {
@@ -801,20 +744,41 @@ func testRemoveGER_CategoryA(t *testing.T) {
 		_, _ = env.L2.Contracts.L2Bridge.DeactivateEmergencyState(opts)
 	}()
 
-	// --- Setup: inject bats-style GER and execute bats-style dummy claim ---
-	// Crafted like agglayer/e2e latest-n-injected-ger.bats: fixed GER (batsGER1), exit roots that hash to it,
-	// hardcoded local merkle proof (batsLocalExitRootProof), and all-zero rollup proof. The claim is sent with
-	// AggOracle key to match the bats test. If ClaimAsset reverts, the bats proof may be for a different
-	// CDK/bridge deployment (e.g. Kurtosis env) and may need to be regenerated for this op-pp snapshot.
-	injectedGER := batsGER1
-	require.Equal(t, injectedGER, l1infotreesync.CalculateGER(mainnetExitRootBats, rollupExitRootBats),
-		"bats GER must equal keccak256(mainnetExitRootBats, rollupExitRootBats)")
+	// --- Setup: inject an invalid GER and execute a fabricated "Category A" dummy claim ---
+	// ORDER-INDEPENDENT: place the fabricated claim at a fresh, never-claimed deposit count and build
+	// its proof + GER dynamically (single-leaf otherwise-empty tree), rather than the legacy bats
+	// fixture's hardcoded mainnet deposit_count=2, which prior tests' sequential L1->L2 claims consume
+	// (so the dummy ClaimAsset would revert "already claimed"). The leaf has no matching real bridge,
+	// so the tool still classifies it as Category A. The destination is the L2 so the claim targets it.
+	dummyLeaf := &bridgesync.Bridge{
+		LeafType:           0,
+		OriginNetwork:      0,
+		OriginAddress:      common.Address{},
+		DestinationNetwork: batsDestinationNetworkCategoryA,
+		DestinationAddress: batsDestinationAddressCategoryA,
+		Amount:             new(big.Int).Set(batsAmountCategoryA),
+		Metadata:           []byte{},
+	}
+	claimProof := buildDynamicClaimProof(dummyLeaf, dummyCategoryADepositCount)
+	injectedGER := claimProof.InvalidGER
+	globalIndex := mainnetGlobalIndex(dummyCategoryADepositCount)
+	params := dummyClaimParams{
+		GlobalIndex:         globalIndex,
+		MainnetExitRoot:     claimProof.MainnetExitRoot,
+		RollupExitRoot:      claimProof.RollupExitRoot,
+		OriginNetwork:       0,
+		DestinationNetwork:  batsDestinationNetworkCategoryA,
+		OriginAddress:       common.Address{},
+		DestinationAddress:  batsDestinationAddressCategoryA,
+		Amount:              new(big.Int).Set(batsAmountCategoryA),
+		Metadata:            []byte{},
+		ProofLocalExitRoot:  claimProof.ProofLocal,
+		ProofRollupExitRoot: claimProof.ProofRollup,
+	}
 
 	require.NoError(t, env.StopAggkit(ctx))
 	injectInvalidGER(ctx, t, env, injectedGER)
 	assertGERExistsOnL2(ctx, t, env, injectedGER)
-	globalIndex := batsGlobalIndexCategoryA
-	params := batsCategoryADummyClaimParams() // exact bats params so leaf hashes match and proof verifies
 	// Bats test uses aggoracle key to send the dummy claim tx (latest-n-injected-ger.bats).
 	aggoracleOpts, err := bind.NewKeyedTransactorWithChainID(env.Keys.AggOracle, env.L2.ChainID)
 	require.NoError(t, err)
