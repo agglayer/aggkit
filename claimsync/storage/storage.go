@@ -22,12 +22,6 @@ import (
 
 var _ claimsynctypes.ClaimStorager = (*claimStorage)(nil)
 
-// blockRecord is the meddler-tagged struct for the block table.
-type blockRecord struct {
-	Num  uint64 `meddler:"num"`
-	Hash string `meddler:"hash"`
-}
-
 const (
 	// claimColumnsSQL is the list of all claim columns
 	claimColumnsSQL = `block_num,
@@ -146,11 +140,17 @@ func (s *claimStorage) getQuerier(tx dbtypes.Querier) dbtypes.Querier {
 	return s.database
 }
 
-// InsertBlock inserts a block row using meddler.
+// InsertBlock inserts a block row idempotently (upsert), mirroring bridgesync's block insert.
+// The claim syncer's bootstrap (SetClaimSyncerNextRequiredBlock -> SyncNextBlock) can race the main
+// Sync loop on the genesis block, and a restart re-processes the configured starting block; a plain
+// INSERT then hits a UNIQUE constraint on block.num and wedges the driver's infinite retry loop, so
+// the aggsender never starts and no certificate ever settles. ON CONFLICT DO UPDATE makes a duplicate
+// insert of the same block a harmless no-op instead.
 func (s *claimStorage) InsertBlock(
 	_ context.Context, tx dbtypes.Querier, blockNum uint64, blockHash common.Hash,
 ) error {
-	if err := meddler.Insert(s.getQuerier(tx), "block", &blockRecord{Num: blockNum, Hash: blockHash.Hex()}); err != nil {
+	const query = `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
+	if _, err := s.getQuerier(tx).Exec(query, blockNum, blockHash.Hex()); err != nil {
 		return fmt.Errorf("InsertBlock %d: %w", blockNum, err)
 	}
 	return nil

@@ -62,6 +62,32 @@ func insertBlockAndClaim(t *testing.T, ctx context.Context, s claimsynctypes.Cla
 	require.NoError(t, tx.Commit())
 }
 
+// TestInsertBlock_Idempotent verifies that re-inserting the same block is a harmless no-op rather
+// than a UNIQUE-constraint error. This happens when the claim syncer's bootstrap races the main Sync
+// loop on the genesis block, or when the configured starting block is re-processed after a restart;
+// without idempotency the driver's infinite retry loop wedges and the aggsender never starts.
+func TestInsertBlock_Idempotent(t *testing.T) {
+	s, _ := newTestStorage(t)
+	ctx := context.Background()
+	hash := common.HexToHash("0x1234")
+
+	insert := func() error {
+		tx, err := s.NewTx(ctx)
+		require.NoError(t, err)
+		require.NoError(t, s.InsertBlock(ctx, tx, 0, hash))
+		return tx.Commit()
+	}
+
+	require.NoError(t, insert())
+	// Re-inserting the same block must not error (idempotent upsert).
+	require.NoError(t, insert())
+
+	last, found, err := s.GetLastProcessedBlock(ctx, nil)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, uint64(0), last)
+}
+
 func TestInsertAndGetClaim(t *testing.T) {
 	s, _ := newTestStorage(t)
 	ctx := context.Background()
