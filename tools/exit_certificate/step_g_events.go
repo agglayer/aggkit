@@ -2,65 +2,146 @@ package exit_certificate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sort"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tools/exit_certificate/bridgesyncerlite"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// rpcEventLog is the JSON representation of a log entry in an eth_getLogs response. Unlike rpcLog
-// it also carries blockNumber, used to record the bridge's shadow-fork block.
-type rpcEventLog struct {
-	Address     string   `json:"address"`
-	Topics      []string `json:"topics"`
-	Data        string   `json:"data"`
-	BlockNumber string   `json:"blockNumber"`
+// buildLiteTreeFromCertificate computes the NewLocalExitRoot off-chain (no Anvil). It converts the
+// certificate's bridge exits into lite leaves — in their given order, continuing the deposit counts
+// after Step G1's genesis→fork bridges — and builds the whole exit tree from that full set,
+// returning the tree root and the per-exit metadata (each exit's own Metadata, in the same order).
+//
+// The leaf encoding mirrors what the bridge contract emits: a native exit (no token info / gas
+// token) uses the gas token as origin; an ERC-20 exit uses its TokenInfo origin. Metadata is taken
+// verbatim from each BridgeExit (empty unless a prior step populated it) — this is the value the
+// shadow-fork path would otherwise verify against the chain.
+func buildLiteTreeFromCertificate(
+	ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate,
+	forkBlock uint64, gasTokenNetwork uint32, gasTokenAddress common.Address,
+) (common.Hash, [][]byte, error) {
+	nextDepositCount, err := liteForkNextDepositCount(ctx, cfg)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
+
+	exits := certificate.BridgeExits
+	leaves := make([]bridgesyncerlite.BridgeLeaf, len(exits))
+	metadatas := make([][]byte, len(exits))
+	for i, be := range exits {
+		originNetwork, originAddr := gasTokenNetwork, gasTokenAddress
+		if be.TokenInfo != nil && be.TokenInfo.OriginTokenAddress != (common.Address{}) {
+			originNetwork = be.TokenInfo.OriginNetwork
+			originAddr = be.TokenInfo.OriginTokenAddress
+		}
+		leaves[i] = bridgesyncerlite.BridgeLeaf{
+			// Synthetic block position: the leaves do not exist on a chain here. BlockNum/BlockPos do
+			// not affect the tree root (only leaf hash and deposit-count order do); they just need to be
+			// present and distinct, so we place them all in the block right after the fork.
+			BlockNum:           forkBlock + 1,
+			BlockPos:           uint64(i),
+			LeafType:           uint8(be.LeafType),
+			OriginNetwork:      originNetwork,
+			OriginAddress:      originAddr,
+			DestinationNetwork: be.DestinationNetwork,
+			DestinationAddress: be.DestinationAddress,
+			Amount:             be.Amount,
+			Metadata:           be.Metadata,
+			DepositCount:       nextDepositCount + uint32(i),
+		}
+		metadatas[i] = be.Metadata
+	}
+
+	ler, err := buildLiteTreeWithReplayed(ctx, cfg, leaves)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
+	log.Infof("NewLocalExitRoot computed off-chain from %d certificate exits: %s", len(exits), ler.Hex())
+	return ler, metadatas, nil
 }
 
-// readShadowForkBridges recovers the replayed bridge exits by reading BridgeEvent logs directly
-// from the shadow-fork, starting at fromBlock (the first block containing replayed exits). It only
-// queries the fork's own blocks — it does not sync the full L2 history. The returned bridges are
-// ordered by DepositCount, which is the canonical exit-tree order.
-func readShadowForkBridges(
-	ctx context.Context, anvilURL string, bridgeAddr common.Address, fromBlock uint64,
-) ([]shadowForkBridge, error) {
-	filter := map[string]any{
-		"fromBlock": toBlockTag(fromBlock),
-		"toBlock":   "latest",
-		"address":   bridgeAddr.Hex(),
-		"topics":    []any{bridgeEventTopicHash.Hex()},
+// liteForkNextDepositCount returns the deposit count the first certificate exit should get: one past
+// the highest deposit count Step G1 synced into the lite DB (i.e. the number of genesis→fork
+// bridges). It opens the G1 lite DB read-only (no chain access).
+func liteForkNextDepositCount(ctx context.Context, cfg *Config) (uint32, error) {
+	dbPath := g1LiteDBPath(cfg)
+	if !fileExists(dbPath) {
+		return 0, fmt.Errorf("lite syncer DB %s not found (run Step G1 first)", dbPath)
 	}
-	raw, err := singleRPC(ctx, anvilURL, "eth_getLogs", []any{filter}, defaultRetries)
+	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: dbPath},
+		log.WithFields("module", "exit-cert-bridgesyncerlite"))
 	if err != nil {
-		return nil, fmt.Errorf("eth_getLogs for BridgeEvent: %w", err)
+		return 0, fmt.Errorf("open lite syncer DB: %w", err)
 	}
-	var logs []rpcEventLog
-	if err := json.Unmarshal(raw, &logs); err != nil {
-		return nil, fmt.Errorf("parse eth_getLogs result: %w", err)
+	defer func() {
+		if cerr := syncer.Close(); cerr != nil {
+			log.Warnf("error closing lite bridge syncer: %v", cerr)
+		}
+	}()
+	bridges, err := syncer.GetBridges(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read genesis→fork bridges: %w", err)
+	}
+	if len(bridges) == 0 {
+		return 0, nil
+	}
+	return bridges[len(bridges)-1].DepositCount + 1, nil
+}
+
+// buildLiteTreeWithReplayed builds the full exit tree for Step G2 and returns its root.
+//
+// Step G1 persisted the L2 bridges from genesis up to the shadow-fork block (no tree yet) into the
+// G1 lite DB. Here we copy that DB to the G2 lite DB (so G1's DB stays intact and reusable across G2
+// re-runs) and, on the copy, **insert the replayed bridges directly** — they were already captured
+// from the replay's BridgeEvents, so no second pass over Anvil is needed (the syncer runs DB-only,
+// it never touches the chain). We then build the whole exit tree once from the full set
+// (genesis→fork plus replayed); the resulting root is what RunStepG2 cross-checks against the forked
+// contract's getRoot().
+func buildLiteTreeWithReplayed(
+	ctx context.Context, cfg *Config, replayedLeaves []bridgesyncerlite.BridgeLeaf,
+) (common.Hash, error) {
+	srcPath := g1LiteDBPath(cfg)
+	if !fileExists(srcPath) {
+		return common.Hash{}, fmt.Errorf("lite syncer DB %s not found (run Step G1 first)", srcPath)
 	}
 
-	bridges := make([]shadowForkBridge, 0, len(logs))
-	for _, l := range logs {
-		event, matched, err := parseBridgeEventLog(l.Topics, l.Data)
-		if err != nil {
-			return nil, err
-		}
-		if !matched {
-			continue
-		}
-		bridges = append(bridges, shadowForkBridge{
-			BlockNum:           hexToUint64(l.BlockNumber),
-			OriginNetwork:      event.OriginNetwork,
-			OriginAddress:      event.OriginAddress,
-			DestinationNetwork: event.DestinationNetwork,
-			DestinationAddress: event.DestinationAddress,
-			Amount:             event.Amount,
-			DepositCount:       event.DepositCount,
-		})
+	// Work on a copy so Step G1's DB (genesis→fork bridges) is left untouched and a G2 re-run starts
+	// from a clean copy rather than a tree already built/appended by a previous run.
+	dbPath := g2LiteDBPath(cfg)
+	if err := copyLiteDB(srcPath, dbPath); err != nil {
+		return common.Hash{}, fmt.Errorf("copy lite syncer DB for Step G2: %w", err)
 	}
-	sort.Slice(bridges, func(i, j int) bool { return bridges[i].DepositCount < bridges[j].DepositCount })
-	log.Infof("Read %d BridgeEvent logs from shadow-fork (from block %d)", len(bridges), fromBlock)
-	return bridges, nil
+	log.Infof("Copied lite syncer DB %s → %s for Step G2", srcPath, dbPath)
+
+	// DB-only syncer (no RPCURL): we only persist the already-collected bridges and build the tree,
+	// so it must not make any Anvil calls.
+	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{
+		DBPath: dbPath,
+	}, log.WithFields("module", "exit-cert-bridgesyncerlite"))
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("reopen lite syncer DB: %w", err)
+	}
+	defer func() {
+		if cerr := syncer.Close(); cerr != nil {
+			log.Warnf("error closing lite bridge syncer: %v", cerr)
+		}
+	}()
+
+	// Persist the replayed bridges alongside the genesis→fork ones Step G1 stored (StoreBridges sorts
+	// them by deposit count, so their order here does not matter).
+	if err := syncer.StoreBridges(ctx, replayedLeaves); err != nil {
+		return common.Hash{}, fmt.Errorf("store replayed bridges: %w", err)
+	}
+
+	// Build the whole exit tree once, now that every bridge is persisted.
+	ler, err := syncer.BuildTree(ctx)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("build lite exit tree: %w", err)
+	}
+	log.Infof("Built lite exit tree with %d replayed bridges; local exit root = %s",
+		len(replayedLeaves), ler.Hex())
+	return ler, nil
 }

@@ -34,16 +34,17 @@ type Options struct {
 	// --audiences=<AUDIENCE> --include-email
 	AgglayerAdminToken string                `json:"agglayerAdminToken"`
 	AgglayerClient     agglayer.ClientConfig `json:"agglayerClient"`
-	// AbortOnGenesisBalance aborts the run if any EOA or contract has a non-zero ETH balance
-	// at block 0, which indicates a genesis preload that would inflate the exit certificate totals.
-	// Defaults to true; set to false only for Kurtosis or test environments.
-	AbortOnGenesisBalance bool `json:"abortOnGenesisBalance"`
-	// ContinueOnTraceError skips transactions whose debug_traceTransaction call fails instead of
+	// IgnoreGenesisBalance, when true, suppresses the abort that fires when any EOA or contract has a
+	// non-zero ETH balance at block 0 (a genesis preload that would inflate the exit certificate
+	// totals): the check still runs and warns, but the run continues. Defaults to false (abort); set
+	// to true only for Kurtosis or test environments.
+	IgnoreGenesisBalance bool `json:"ignoreGenesisBalance"`
+	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
-	ContinueOnTraceError bool `json:"continueOnTraceError"`
-	// ContinueIfBalanceMismatch suppresses the error returned by Step F when token balances
+	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
+	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
-	ContinueIfBalanceMismatch bool `json:"continueIfBalanceMismatch"`
+	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
 	// IgnoreUnclaimed skips adding unclaimed L1→L2 deposits to the certificate in Step E.
 	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
 	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
@@ -59,10 +60,19 @@ type Options struct {
 	BridgeServiceURL string `json:"bridgeServiceURL"`
 	// BridgeServiceType selects the bridge service API flavour: "aggkit" (default) or "zkevm".
 	BridgeServiceType string `json:"bridgeServiceType"`
-	// DepositOrderSource selects how Step G recovers the canonical bridge deposit order from the
-	// shadow-fork after the parallel replay: "events" (default — reads BridgeEvent logs directly
-	// from the fork) or "bridgesync" (reuses the bridgesync component, syncing all L2 bridges).
-	DepositOrderSource string `json:"depositOrderSource"`
+	// IgnoreUnsupportedL2Events, when true, makes the Step G lite syncer log a warning
+	// and continue instead of aborting when it sees an L2 event that would invalidate a
+	// BridgeEvent-only reconstruction (SetSovereignTokenAddress, MigrateLegacyToken,
+	// RemoveLegacySovereignTokenAddress, BackwardLET, ForwardLET). The computed NewLocalExitRoot may
+	// then be incorrect; enable only to inspect such a chain knowingly. Defaults to false.
+	IgnoreUnsupportedL2Events bool `json:"ignoreUnsupportedL2Events"`
+	// VerifyNewLocalExitRootUsingShadowFork, when true (the default), makes Step G2 spin up the Anvil
+	// shadow-fork, replay every bridge exit against the real bridge contract, and verify the computed
+	// NewLocalExitRoot against the contract's getRoot(). When false, Step G2 computes the
+	// NewLocalExitRoot purely off-chain from the lite exit tree (Step G1's genesis→fork bridges plus
+	// the certificate's bridge exits) without launching Anvil — much faster, but it trusts the
+	// off-chain leaf encoding (notably each exit's metadata) rather than verifying it on-chain.
+	VerifyNewLocalExitRootUsingShadowFork bool `json:"verifyNewLocalExitRootUsingShadowFork"`
 }
 
 // Config holds all parameters required by the exit certificate tool.
@@ -91,16 +101,16 @@ const (
 )
 
 var defaultOptions = Options{
-	BlockRange:            defaultBlockRange,
-	StepAWindowSize:       defaultStepAWindowSize,
-	ConcurrencyLimit:      defaultConcurrencyLimit,
-	RPCBatchSize:          defaultRPCBatchSize,
-	RPCDelayMs:            0,
-	OutputDir:             "output",
-	L1StartBlock:          0,
-	L2StartBlock:          0,
-	AbortOnGenesisBalance: true,
-	DepositOrderSource:    DefaultDepositOrderSource,
+	BlockRange:                            defaultBlockRange,
+	StepAWindowSize:                       defaultStepAWindowSize,
+	ConcurrencyLimit:                      defaultConcurrencyLimit,
+	RPCBatchSize:                          defaultRPCBatchSize,
+	RPCDelayMs:                            0,
+	OutputDir:                             "output",
+	L1StartBlock:                          0,
+	L2StartBlock:                          0,
+	VerifyNewLocalExitRootUsingShadowFork: true,
+	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 
 // LoadConfig reads and validates the JSON config file.
@@ -152,12 +162,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	cfg.Options = mergeOptions(raw.Options, configDir)
-	switch cfg.Options.DepositOrderSource {
-	case DepositOrderEvents, DepositOrderBridgesync:
-	default:
-		return nil, fmt.Errorf("invalid depositOrderSource %q (expected %q or %q)",
-			cfg.Options.DepositOrderSource, DepositOrderEvents, DepositOrderBridgesync)
-	}
 	if len(raw.SignerConfig) > 0 {
 		signerCfg, err := parseSignerConfig(raw.SignerConfig, configDir)
 		if err != nil {
@@ -282,14 +286,14 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 		clientCfg.GRPC = grpcDefaults
 		opts.AgglayerClient = clientCfg
 	}
-	if raw.AbortOnGenesisBalance != nil {
-		opts.AbortOnGenesisBalance = *raw.AbortOnGenesisBalance
+	if raw.IgnoreGenesisBalance != nil {
+		opts.IgnoreGenesisBalance = *raw.IgnoreGenesisBalance
 	}
-	if raw.ContinueOnTraceError != nil {
-		opts.ContinueOnTraceError = *raw.ContinueOnTraceError
+	if raw.IgnoreOnTraceError != nil {
+		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
 	}
-	if raw.ContinueIfBalanceMismatch != nil {
-		opts.ContinueIfBalanceMismatch = *raw.ContinueIfBalanceMismatch
+	if raw.IgnoreBalanceMismatch != nil {
+		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
 	}
 	if raw.IgnoreUnclaimed != nil {
 		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
@@ -307,8 +311,11 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.BridgeServiceType != "" {
 		opts.BridgeServiceType = raw.BridgeServiceType
 	}
-	if raw.DepositOrderSource != "" {
-		opts.DepositOrderSource = raw.DepositOrderSource
+	if raw.IgnoreUnsupportedL2Events != nil {
+		opts.IgnoreUnsupportedL2Events = *raw.IgnoreUnsupportedL2Events
+	}
+	if raw.VerifyNewLocalExitRootUsingShadowFork != nil {
+		opts.VerifyNewLocalExitRootUsingShadowFork = *raw.VerifyNewLocalExitRootUsingShadowFork
 	}
 	return opts
 }
@@ -330,25 +337,26 @@ type rawConfig struct {
 }
 
 type rawOpts struct {
-	BlockRange                int                    `json:"blockRange"`
-	StepAWindowSize           int                    `json:"stepAWindowSize"`
-	ConcurrencyLimit          int                    `json:"concurrencyLimit"`
-	RPCBatchSize              int                    `json:"rpcBatchSize"`
-	RPCDelayMs                int                    `json:"rpcDelayMs"`
-	OutputDir                 string                 `json:"outputDir"`
-	L1StartBlock              uint64                 `json:"l1StartBlock"`
-	L2StartBlock              uint64                 `json:"l2StartBlock"`
-	AgglayerAdminURL          string                 `json:"agglayerAdminURL"`
-	AgglayerAdminToken        string                 `json:"agglayerAdminToken"`
-	AgglayerClient            *agglayer.ClientConfig `json:"agglayerClient"`
-	AbortOnGenesisBalance     *bool                  `json:"abortOnGenesisBalance"`
-	ContinueOnTraceError      *bool                  `json:"continueOnTraceError"`
-	ContinueIfBalanceMismatch *bool                  `json:"continueIfBalanceMismatch"`
-	IgnoreUnclaimed           *bool                  `json:"ignoreUnclaimed"`
-	ExtraERC20Contracts       []string               `json:"extraErc20Contracts"`
-	BridgeServiceURL          string                 `json:"bridgeServiceURL"`
-	BridgeServiceType         string                 `json:"bridgeServiceType"`
-	DepositOrderSource        string                 `json:"depositOrderSource"`
+	BlockRange                            int                    `json:"blockRange"`
+	StepAWindowSize                       int                    `json:"stepAWindowSize"`
+	ConcurrencyLimit                      int                    `json:"concurrencyLimit"`
+	RPCBatchSize                          int                    `json:"rpcBatchSize"`
+	RPCDelayMs                            int                    `json:"rpcDelayMs"`
+	OutputDir                             string                 `json:"outputDir"`
+	L1StartBlock                          uint64                 `json:"l1StartBlock"`
+	L2StartBlock                          uint64                 `json:"l2StartBlock"`
+	AgglayerAdminURL                      string                 `json:"agglayerAdminURL"`
+	AgglayerAdminToken                    string                 `json:"agglayerAdminToken"`
+	AgglayerClient                        *agglayer.ClientConfig `json:"agglayerClient"`
+	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
+	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
+	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
+	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
+	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`
+	BridgeServiceURL                      string                 `json:"bridgeServiceURL"`
+	BridgeServiceType                     string                 `json:"bridgeServiceType"`
+	IgnoreUnsupportedL2Events             *bool                  `json:"ignoreUnsupportedL2Events"`
+	VerifyNewLocalExitRootUsingShadowFork *bool                  `json:"verifyNewLocalExitRootUsingShadowFork"`
 }
 
 // --- LBT file parsing ---

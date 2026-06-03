@@ -93,10 +93,10 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 	if err := checkGenesisBalances(
 		ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency,
 	); err != nil {
-		if cfg.Options.AbortOnGenesisBalance {
+		if !cfg.Options.IgnoreGenesisBalance {
 			return nil, err
 		}
-		log.Warnf("Genesis balance check failed (abortOnGenesisBalance=false, continuing): %v", err)
+		log.Warnf("Genesis balance check failed (ignoreGenesisBalance=true, continuing): %v", err)
 	}
 
 	log.Infof("STEP B1 complete: %d EOAs with balances, %d token accumulations",

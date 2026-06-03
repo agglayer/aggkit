@@ -22,10 +22,10 @@
         "rpcDelayMs": 10,
         "outputDir": "./output-mainnet",
         "l1StartBlock": 22431675,
-        "continueOnTraceError": false,
-        "abortOnGenesisBalance": true,
+        "ignoreOnTraceError": false,
+        "ignoreGenesisBalance": false,
         "ignoreUnclaimed": false,
-        "continueIfBalanceMismatch": false,
+        "ignoreBalanceMismatch": false,
         "extraErc20Contracts": ["0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9"],
         "agglayerClient": {
             "GRPC": {

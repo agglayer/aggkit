@@ -80,9 +80,9 @@ cp parameters.json.example parameters.json
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
 | `agglayerAdminToken` | `""` | Bearer token for authenticating requests to `agglayerAdminURL`. Required when the admin endpoint is protected by Google Cloud IAP. See [Authenticating with IAP](#authenticating-with-iap) for how to obtain it. |
 | `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
-| `abortOnGenesisBalance` | `true` | When `true`, Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `false` only for Kurtosis or test environments. |
-| `continueOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
-| `continueIfBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
+| `ignoreGenesisBalance` | `false` | When `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis or test environments. |
+| `ignoreOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
+| `ignoreBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
 | `ignoreUnclaimed` | `false` | When `true`, Step E detects and logs unclaimed deposits but leaves the certificate unchanged. When `false` (default), any unclaimed asset deposit causes the pipeline to error. |
 | `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
@@ -175,8 +175,8 @@ Some options let you continue past conditions that would otherwise abort the pip
 
 | Option | Default | When to change |
 | ------ | ------- | -------------- |
-| `continueOnTraceError` | `false` | Set to `true` if some transactions fail `debug_traceTransaction` (e.g. the node does not have full archive traces for old blocks). Failed hashes are saved to `step-a-failed-traces.json` — review them to confirm the missing value is acceptable. |
-| `abortOnGenesisBalance` | `true` | Set to `false` only for Kurtosis or test environments where addresses are pre-funded at genesis. In production, a non-zero genesis balance indicates a misconfiguration. |
+| `ignoreOnTraceError` | `false` | Set to `true` if some transactions fail `debug_traceTransaction` (e.g. the node does not have full archive traces for old blocks). Failed hashes are saved to `step-a-failed-traces.json` — review them to confirm the missing value is acceptable. |
+| `ignoreGenesisBalance` | `false` | Set to `true` only for Kurtosis or test environments where addresses are pre-funded at genesis. In production, a non-zero genesis balance indicates a misconfiguration, so leave it `false` to abort. |
 | `ignoreUnclaimed` | `false` | Set to `true` to proceed even when unclaimed L1→L2 asset deposits are detected. The deposits are logged with a warning but the certificate is left unchanged. Only safe if you have independently verified the unclaimed deposits are negligible or already handled. |
 
 ## Commands
@@ -198,7 +198,7 @@ Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F →
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
 | D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
 | E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2. Message deposits (`leaf_type=1`) are saved to `step-e-unclaimed-messages.json` and never added to the certificate. Asset deposits (`leaf_type=0`): if none are found the certificate is passed through unchanged; if any are found and `ignoreUnclaimed=true` they are logged but the certificate remains unchanged; if found and `ignoreUnclaimed=false` the pipeline errors (Merkle proof support not yet implemented). Optionally cross-checks against a bridge service. |
-| F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `continueIfBalanceMismatch=true` produces a proportionally capped certificate. |
+| F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `ignoreBalanceMismatch=true` produces a proportionally capped certificate. |
 | G | NewLocalExitRoot | Shadow-forks L2 at `targetBlock` via Anvil, replays all bridge exits, and reads the resulting `localExitRoot` from the forked bridge contract. |
 | H | PreviousLocalExitRoot | Fetches `settled_ler` from the agglayer gRPC to obtain the previous LER and the next certificate height. |
 | I | Assemble final cert | Applies `NewLocalExitRoot` (G), `PreviousLocalExitRoot` + height (H), bridge exit metadata, and `L1InfoTreeLeafCount` (from the latest `UpdateL1InfoTreeV2` event on L1). |
@@ -242,7 +242,7 @@ Runs automatically as the first step of the full pipeline. Can also be run indiv
 
 All checks run regardless of individual failures; a combined error lists every failed check.
 
-1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
+1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
 3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
 4. **`sovereignRollupAddr` is set** — required; fails if zero address.
@@ -371,7 +371,7 @@ All three values must be equal. Each token is logged with ✅ or ❌:
 **If mismatches are found:**
 
 - By default Step F **aborts the pipeline** with an error.
-- Set `options.continueIfBalanceMismatch: true` to continue instead. In that case the step produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. Subsequent steps in the pipeline (G, H, I) automatically use this capped certificate.
+- Set `options.ignoreBalanceMismatch: true` to continue instead. In that case the step produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. Subsequent steps in the pipeline (G, H, I) automatically use this capped certificate.
 
 When running Step G individually it also prefers `step-f-capped-certificate.json` over `step-e-exit-certificate.json` if the capped file exists (logged with ⚠️).
 
@@ -381,15 +381,15 @@ Skipped automatically when `agglayerAdminURL` is not set in options.
 
 **Reads:** `step-d-exit-certificate.json`, `step-0-lbt.json`
 
-**Output:** `step-f-token-balances.json`, `step-f-checks.json`, `step-f-capped-certificate.json` *(only when mismatches exist and `continueIfBalanceMismatch=true`)*
+**Output:** `step-f-token-balances.json`, `step-f-checks.json`, `step-f-capped-certificate.json` *(only when mismatches exist and `ignoreBalanceMismatch=true`)*
 
-### Step G — Compute NewLocalExitRoot (shadow-fork)
+### Step G — Compute NewLocalExitRoot
 
-Computes the correct `new_local_exit_root` by replaying every `bridge_exit` from the certificate against a shadow-fork of the L2 chain via [Anvil](https://getfoundry.sh), then reading the resulting `localExitRoot` slot from the forked bridge contract.
+Split into **G1** (sync the L2 bridge history from genesis up to the target block into a lite DB, resolving the shadow-fork block) and **G2** (compute the `new_local_exit_root`). By default (`options.verifyNewLocalExitRootUsingShadowFork=true`) G2 replays every `bridge_exit` against a shadow-fork of the L2 chain via [Anvil](https://getfoundry.sh), reorders the certificate to the on-chain deposit order, and verifies the lite exit tree root against the forked contract's `getRoot()`. Set the option to `false` to instead compute the root **off-chain** from the lite exit tree (G1's bridges + the certificate's exits, in order) without Anvil — faster, but it trusts the off-chain leaf encoding/metadata.
 
-**Anvil is a required external dependency** (`anvil` binary in `$PATH`). If missing, the step fails with a clear error. When the certificate has no bridge exits, Anvil is skipped and the canonical empty LER is used.
+**Anvil is required in the default shadow-fork mode** (`anvil` binary in `$PATH`); the off-chain mode (`verifyNewLocalExitRootUsingShadowFork=false`) needs no Anvil. When the certificate has no bridge exits, the canonical empty LER is used.
 
-**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `continueIfBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`.
+**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `ignoreBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`.
 
 **Output:** `step-g-new-local-exit-root.json`
 
@@ -409,7 +409,7 @@ Reads the certificate from Step E and applies:
 - `PreviousLocalExitRoot` and certificate height from Step H
 - `L1InfoTreeLeafCount` — scans L1 backwards from the latest L1 block for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 
-**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `continueIfBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`; plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
+**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `ignoreBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`; plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
 
 **Output:** `exit-certificate-final.json`
 

@@ -19,6 +19,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tools/exit_certificate/bridgesyncerlite"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -111,9 +112,11 @@ type tokenOriginKey struct {
 
 // rpcLog is the JSON representation of a log entry in an eth_getTransactionReceipt response.
 type rpcLog struct {
-	Address string   `json:"address"`
-	Topics  []string `json:"topics"`
-	Data    string   `json:"data"`
+	Address     string   `json:"address"`
+	Topics      []string `json:"topics"`
+	Data        string   `json:"data"`
+	BlockNumber string   `json:"blockNumber"`
+	LogIndex    string   `json:"logIndex"`
 }
 
 type bridgeEventLog struct {
@@ -170,15 +173,22 @@ func isTransientForkError(err error) bool {
 	return false
 }
 
-// RunStepG computes Certificate.NewLocalExitRoot by replaying all bridge exits
-// against an Anvil shadow-fork of the L2 chain at targetBlock.
-// lbtEntries is the output of Step 0; when non-nil it is used as a lookup table for
-// wrapped token addresses so that getTokenWrappedAddress RPC calls are avoided.
-func RunStepG(
-	ctx context.Context, cfg *Config, targetBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+// RunStepG2 computes Certificate.NewLocalExitRoot and the per-exit metadata.
+//
+// By default it does so purely off-chain: it builds the lite exit tree from Step G1's genesis→fork
+// bridges plus the certificate's bridge exits (in their given order, with each exit's own metadata)
+// and takes the tree root as the NewLocalExitRoot — no Anvil. When
+// options.verifyNewLocalExitRootUsingShadowFork is set it instead spins up the Anvil shadow-fork,
+// replays every exit against the real bridge contract, recovers the on-chain deposit order and
+// metadata, and verifies the lite tree root against the contract's getRoot().
+//
+// forkBlock is the block resolved by Step G1. lbtEntries (Step 0 output) is used only by the
+// shadow-fork path as a wrapped-token lookup so getTokenWrappedAddress RPC calls are avoided.
+func RunStepG2(
+	ctx context.Context, cfg *Config, forkBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (*StepGResult, error) {
 	log.Info("═══════════════════════════════════════════")
-	log.Info(" STEP G - Calculate NewLocalExitRoot")
+	log.Info(" STEP G2 - Calculate NewLocalExitRoot")
 	log.Info("═══════════════════════════════════════════")
 
 	if certificate == nil {
@@ -187,7 +197,7 @@ func RunStepG(
 
 	if len(certificate.BridgeExits) == 0 {
 		log.Info("No bridge exits — using EmptyLER")
-		initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(targetBlock))
+		initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(forkBlock))
 		if err != nil {
 			log.Warnf("Could not read initial LocalExitRoot: %v", err)
 		}
@@ -199,39 +209,70 @@ func RunStepG(
 		}, nil
 	}
 
+	if !cfg.Options.VerifyNewLocalExitRootUsingShadowFork {
+		return runStepG2LiteOnly(ctx, cfg, forkBlock, certificate)
+	}
+	return runStepG2ShadowFork(ctx, cfg, forkBlock, certificate, lbtEntries)
+}
+
+// runStepG2LiteOnly computes the NewLocalExitRoot off-chain (no Anvil): it appends the certificate's
+// bridge exits — in their given order, each with its own metadata — onto Step G1's genesis→fork
+// lite tree and takes the resulting root. It trusts the off-chain leaf encoding rather than
+// verifying it against the contract; use the shadow-fork path to verify.
+func runStepG2LiteOnly(
+	ctx context.Context, cfg *Config, forkBlock uint64, certificate *agglayertypes.Certificate,
+) (*StepGResult, error) {
+	log.Info("Computing NewLocalExitRoot off-chain from the lite exit tree (shadow-fork verification disabled)")
+
+	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+
+	// InitialLocalExitRoot (the LER at the fork block) is informational here; read it from the real L2.
+	initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(forkBlock))
+	if err != nil {
+		log.Warnf("Could not read initial LocalExitRoot: %v", err)
+	}
+	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
+
+	ler, metadatas, err := buildLiteTreeFromCertificate(ctx, cfg, certificate, forkBlock, gasTokenNetwork, gasTokenAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &StepGResult{
+		InitialLocalExitRoot: initialLER,
+		NewLocalExitRoot:     ler,
+		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
+		BridgeExitMetadata:   metadatas,
+	}
+	log.Infof("Bridge exits processed: %d", result.BridgeExitCount)
+	log.Infof("NewLocalExitRoot: %s", result.NewLocalExitRoot.Hex())
+	log.Info("STEP G complete")
+	return result, nil
+}
+
+// runStepG2ShadowFork computes the NewLocalExitRoot by replaying every bridge exit against an Anvil
+// shadow-fork of the L2 chain at forkBlock, then verifies the lite exit tree (rebuilt from the
+// replayed bridges on top of Step G1's genesis→fork bridges) against the contract's getRoot().
+func runStepG2ShadowFork(
+	ctx context.Context, cfg *Config, forkBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) (*StepGResult, error) {
 	if err := checkAnvilAvailable(); err != nil {
 		return nil, err
 	}
 
-	anvilURL, cleanup, err := startAnvil(ctx, cfg.L2RPCURL, targetBlock)
+	anvilURL, cleanup, err := startAnvil(ctx, cfg.L2RPCURL, forkBlock)
 	if err != nil {
 		return nil, fmt.Errorf("start anvil: %w", err)
 	}
 	defer cleanup()
 
-	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress)
-	if err != nil {
-		log.Warnf("Failed to fetch gas token info (assuming standard ETH): %v", err)
-		gasTokenNetwork = 0
-		gasTokenAddress = common.Address{}
-	}
+	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
 
 	initialLER, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
 	if err != nil {
 		return nil, fmt.Errorf("read initial local exit root: %w", err)
 	}
 	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
-
-	// Record the first shadow-fork block that will contain the replayed bridge exits, before
-	// any transaction is sent. The parallel replay below emits BridgeEvents in a non-deterministic
-	// order, so a later step scans the logs from this block to recover the correct ordering by
-	// depositCount. eth_call (used by resolveTokenAddresses) does not mine blocks, so head+1 stays valid.
-	forkHead, err := readAnvilBlockNumber(ctx, anvilURL)
-	if err != nil {
-		return nil, fmt.Errorf("read shadow-fork block number: %w", err)
-	}
-	shadowForkFirstBlock := forkHead + 1
-	log.Infof("Shadow-fork first block (for bridge event ordering): %d", shadowForkFirstBlock)
 
 	lbtMap := buildLBTTokenMap(lbtEntries)
 	l2Tokens, err := resolveTokenAddresses(
@@ -248,38 +289,57 @@ func RunStepG(
 	// Anvil mines on its own --block-time interval (see anvilBlockTimeSeconds); workers just send and
 	// poll for receipts. By the time replayBridgeExits returns, every tx has been waited on and mined,
 	// so getRoot below reflects all replayed exits.
-	metadatas, err := replayBridgeExits(
+	leaves, err := replayBridgeExits(
 		ctx, cfg, anvilURL, certificate.BridgeExits, l2Tokens, gasTokenNetwork, gasTokenAddress,
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	// The bridge contract's getRoot() after replaying every exit is the authoritative NewLocalExitRoot.
 	ler, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
 	if err != nil {
 		return nil, fmt.Errorf("read local exit root: %w", err)
 	}
 
-	// The parallel replay produced a non-deterministic deposit order, so recover the canonical
-	// order from the shadow-fork (via the mechanism selected in options.depositOrderSource) and
-	// reorder the certificate's bridge exits to match. This keeps Certificate.BridgeExits consistent
-	// with the NewLocalExitRoot just computed.
-	replayed, err := recoverShadowForkDepositOrder(ctx, cfg, anvilURL, shadowForkFirstBlock)
-	if err != nil {
-		return nil, fmt.Errorf("recover shadow-fork deposit order: %w", err)
-	}
-	metadatas, err = reorderCertificateExits(certificate, metadatas, replayed, gasTokenNetwork, gasTokenAddress)
+	// Reorder the certificate to the canonical exit-tree order. The parallel replay assigned
+	// depositCounts non-deterministically across exits; each replayed BridgeEvent carries the
+	// depositCount the contract gave it, so sorting the exits by it aligns Certificate.BridgeExits with
+	// the leaf order agglayer rebuilds the LER from. The reordered metadatas come from the same leaves.
+	metadatas, err := reorderCertificateByDepositCount(certificate, leaves)
 	if err != nil {
 		return nil, fmt.Errorf("reorder certificate by deposit order: %w", err)
 	}
-	log.Infof("Reordered %d bridge exits to match shadow-fork deposit order", len(replayed))
+	log.Infof("Reordered %d bridge exits to match the replay deposit order", len(certificate.BridgeExits))
+
+	// Insert the replayed bridges into the lite DB directly (no further Anvil calls), on top of the
+	// genesis→fork bridges Step G1 stored, build the whole exit tree once, and verify its root equals
+	// the contract's getRoot — i.e. our BridgeEvent-only reconstruction matches the real exit tree. A
+	// mismatch means the certificate would carry a wrong LER, so abort — except when
+	// ignoreUnsupportedL2Events=true, where the lite syncer deliberately skipped events the contract
+	// processed, so divergence is accepted (warn only).
+	treeRoot, err := buildLiteTreeWithReplayed(ctx, cfg, leaves)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case treeRoot == ler:
+		log.Infof("✅ lite exit tree root matches contract getRoot: %s", ler.Hex())
+	case cfg.Options.IgnoreUnsupportedL2Events:
+		log.Warnf("lite exit tree root %s does not match contract getRoot %s "+
+			"(expected: ignoreUnsupportedL2Events=true skipped events the contract processed)",
+			treeRoot.Hex(), ler.Hex())
+	default:
+		return nil, fmt.Errorf("lite exit tree root %s does not match contract getRoot %s: "+
+			"the BridgeEvent-only reconstruction diverged from the on-chain exit tree",
+			treeRoot.Hex(), ler.Hex())
+	}
 
 	result := &StepGResult{
 		InitialLocalExitRoot: initialLER,
 		NewLocalExitRoot:     ler,
 		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
 		BridgeExitMetadata:   metadatas,
-		ShadowForkFirstBlock: shadowForkFirstBlock,
 	}
 	log.Infof("Bridge exits processed: %d", result.BridgeExitCount)
 	log.Infof("NewLocalExitRoot: %s", result.NewLocalExitRoot.Hex())
@@ -287,17 +347,15 @@ func RunStepG(
 	return result, nil
 }
 
-// readAnvilBlockNumber returns the current head block number of the Anvil shadow-fork.
-func readAnvilBlockNumber(ctx context.Context, anvilURL string) (uint64, error) {
-	raw, err := singleRPC(ctx, anvilURL, "eth_blockNumber", nil, defaultRetries)
+// fetchGasTokenInfoOrDefault returns the L2 gas token (network, address), falling back to standard
+// ETH (network 0, zero address) with a warning if the lookup fails.
+func fetchGasTokenInfoOrDefault(ctx context.Context, cfg *Config) (uint32, common.Address) {
+	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress)
 	if err != nil {
-		return 0, err
+		log.Warnf("Failed to fetch gas token info (assuming standard ETH): %v", err)
+		return 0, common.Address{}
 	}
-	var hexStr string
-	if err := json.Unmarshal(raw, &hexStr); err != nil {
-		return 0, fmt.Errorf("parse eth_blockNumber: %w", err)
-	}
-	return hexToUint64(hexStr), nil
+	return gasTokenNetwork, gasTokenAddress
 }
 
 // exitJob bundles a bridge exit with its index in Certificate.BridgeExits and the
@@ -338,8 +396,12 @@ func replayBridgeExits(
 	ctx context.Context, cfg *Config, anvilURL string,
 	exits []*agglayertypes.BridgeExit, l2Tokens map[tokenOriginKey]common.Address,
 	gasTokenNetwork uint32, gasTokenAddress common.Address,
-) ([][]byte, error) {
-	metadatas := make([][]byte, len(exits))
+) ([]bridgesyncerlite.BridgeLeaf, error) {
+	// leaves[i] holds the full BridgeEvent (leaf content + depositCount + block position) emitted by
+	// the replay of exits[i]. The depositCount gives the canonical exit-tree order (used to reorder
+	// the certificate), and the leaf is inserted into the lite DB directly — no second pass over the
+	// fork is needed to recover either.
+	leaves := make([]bridgesyncerlite.BridgeLeaf, len(exits))
 
 	groupsBySender := make(map[common.Address][]exitJob)
 	for i, bridge := range exits {
@@ -422,12 +484,12 @@ func replayBridgeExits(
 					}
 					continue
 				}
-				event, err := parseBridgeEventFromLogs(logs)
+				leaf, err := replayedLeafFromReceipt(logs, s.hash)
 				if err != nil {
 					failFast(s.job, fmt.Errorf("parse BridgeEvent for exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
 					continue
 				}
-				metadatas[s.index] = event.Metadata
+				leaves[s.index] = leaf
 				maybeLogProgress()
 			}
 		}()
@@ -485,7 +547,7 @@ func replayBridgeExits(
 		return nil, sendErr
 	}
 
-	return metadatas, nil
+	return leaves, nil
 }
 
 // saveFailedExit writes the bridge exit whose replay aborted Step G to step-g-failed-exit.json in
@@ -1008,17 +1070,35 @@ func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) ([
 	return nil, fmt.Errorf("timeout waiting for receipt of %s", txHash.Hex())
 }
 
-func parseBridgeEventFromLogs(logs []rpcLog) (*bridgeEventLog, error) {
+// replayedLeafFromReceipt finds the BridgeEvent log in a replayed bridgeAsset's receipt logs and
+// builds the bridgesyncerlite.BridgeLeaf for it, carrying the on-chain depositCount (the canonical
+// exit-tree position), the leaf content, the metadata, and the block position. txHash is the
+// replaying transaction. The leaf is both inserted into the lite DB (no second fork pass) and used
+// to reorder the certificate by depositCount.
+func replayedLeafFromReceipt(logs []rpcLog, txHash common.Hash) (bridgesyncerlite.BridgeLeaf, error) {
 	for _, l := range logs {
 		event, matched, err := parseBridgeEventLog(l.Topics, l.Data)
 		if err != nil {
-			return nil, err
+			return bridgesyncerlite.BridgeLeaf{}, err
 		}
-		if matched {
-			return event, nil
+		if !matched {
+			continue
 		}
+		return bridgesyncerlite.BridgeLeaf{
+			BlockNum:           hexToUint64(l.BlockNumber),
+			BlockPos:           hexToUint64(l.LogIndex),
+			LeafType:           event.LeafType,
+			OriginNetwork:      event.OriginNetwork,
+			OriginAddress:      event.OriginAddress,
+			DestinationNetwork: event.DestinationNetwork,
+			DestinationAddress: event.DestinationAddress,
+			Amount:             event.Amount,
+			Metadata:           event.Metadata,
+			DepositCount:       event.DepositCount,
+			TxHash:             txHash,
+		}, nil
 	}
-	return nil, fmt.Errorf("BridgeEvent not found in receipt logs")
+	return bridgesyncerlite.BridgeLeaf{}, fmt.Errorf("BridgeEvent not found in receipt logs")
 }
 
 // parseBridgeEventLog decodes a single log's topics/data into a bridgeEventLog. It returns

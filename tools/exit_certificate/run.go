@@ -66,7 +66,7 @@ func Run(c *cli.Context) error {
 // orderedSteps is the canonical pipeline order used for range expansion.
 // "a" and "b" are aliases for their sub-steps and are handled in parseStepList; not listed here.
 var orderedSteps = []string{
-	"check", "0", "a1", "a2", "b1", "b2", "b3", "c", "d", "e", "f", "g", "h", "i", "sign", "submit", "wait",
+	"check", "0", "a1", "a2", "b1", "b2", "b3", "c", "d", "e", "f", "g1", "g2", "h", "i", "sign", "submit", "wait",
 }
 
 // lastAutoStep is the implicit end for open ranges (X-).
@@ -79,6 +79,7 @@ const lastAutoStep = "sign"
 // "h, i, sign" → ["h", "i", "sign"]
 // "a"    → ["a1", "a2"] (alias for both sub-steps)
 // "b"    → ["b1", "b2", "b3"] (alias for all three sub-steps)
+// "g"    → ["g1", "g2"] (alias for both sub-steps)
 // "a-b"  → ["a1", "a2", "b1", "b2", "b3"] ("a"→"a1" start, "b"→"b3" end)
 // "0-a"  → ["0", "a1", "a2"] ("a" expands to "a2" as range end)
 func parseStepList(raw string) ([]string, error) {
@@ -89,35 +90,46 @@ func parseStepList(raw string) ([]string, error) {
 			continue
 		}
 		if strings.Contains(token, "-") {
-			// Map "a"/"b" to their sub-step boundaries before expanding ranges.
+			// Map "a"/"b"/"g" to their sub-step boundaries before expanding ranges.
 			parts := strings.SplitN(token, "-", splitInTwo)
 			from, to := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			if from == "a" {
-				from = "a1"
-			}
-			if to == "a" {
-				to = "a2"
-			}
-			if from == "b" {
-				from = "b1"
-			}
-			if to == "b" {
-				to = "b3"
-			}
+			from = aliasRangeStart(from)
+			to = aliasRangeEnd(to)
 			expanded, err := expandStepRange(from + "-" + to)
 			if err != nil {
 				return nil, err
 			}
 			steps = append(steps, expanded...)
-		} else if token == "a" {
-			steps = append(steps, "a1", "a2")
-		} else if token == "b" {
-			steps = append(steps, "b1", "b2", "b3")
+		} else if sub, ok := stepAliases[token]; ok {
+			steps = append(steps, sub...)
 		} else {
 			steps = append(steps, token)
 		}
 	}
 	return steps, nil
+}
+
+// stepAliases maps a step alias to the ordered sub-steps it expands to.
+var stepAliases = map[string][]string{
+	"a": {"a1", "a2"},
+	"b": {"b1", "b2", "b3"},
+	"g": {"g1", "g2"},
+}
+
+// aliasRangeStart maps an alias used as a range start to its first sub-step.
+func aliasRangeStart(s string) string {
+	if sub, ok := stepAliases[s]; ok {
+		return sub[0]
+	}
+	return s
+}
+
+// aliasRangeEnd maps an alias used as a range end to its last sub-step.
+func aliasRangeEnd(s string) string {
+	if sub, ok := stepAliases[s]; ok {
+		return sub[len(sub)-1]
+	}
+	return s
 }
 
 func expandStepRange(token string) ([]string, error) {
@@ -350,12 +362,18 @@ func runAllStepG(
 	ctx context.Context, cfg *Config, dir string, targetBlock uint64,
 	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (*StepGResult, error) {
-	result, err := RunStepG(ctx, cfg, targetBlock, certificate, lbtEntries)
+	g1Result, err := RunStepG1(ctx, cfg, targetBlock)
 	if err != nil {
-		return nil, fmt.Errorf("step G: %w", err)
+		return nil, fmt.Errorf("step G1: %w", err)
+	}
+	saveJSON(dir, "step-g1-shadow-fork-block.json", g1Result)
+
+	result, err := RunStepG2(ctx, cfg, g1Result.ShadowForkBlock, certificate, lbtEntries)
+	if err != nil {
+		return nil, fmt.Errorf("step G2: %w", err)
 	}
 	saveJSON(dir, "step-g-new-local-exit-root.json", result)
-	// RunStepG reorders certificate.BridgeExits to the shadow-fork deposit order; persist the
+	// RunStepG2 reorders certificate.BridgeExits to the shadow-fork deposit order; persist the
 	// reordered certificate for inspection and parity with single-step mode.
 	saveJSON(dir, "step-g-reordered-certificate.json", certificate)
 	return result, nil
@@ -487,6 +505,10 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleF(ctx, cfg, dir)
 	case "g":
 		return runSingleG(ctx, cfg, dir)
+	case "g1":
+		return runSingleG1(ctx, cfg, dir)
+	case "g2":
+		return runSingleG2(ctx, cfg, dir)
 	case "h":
 		return runSingleH(ctx, cfg, dir)
 	case "i":
@@ -499,7 +521,7 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleWait(ctx, cfg, dir)
 	default:
 		return fmt.Errorf(
-			"unknown step: %s (use check, 0, a, a1, a2, b, b1, b2, b3, c, d, e, f, g, h, i, sign, submit, wait, or all)",
+			"unknown step: %s (use check, 0, a, a1, a2, b, b1, b2, b3, c, d, e, f, g, g1, g2, h, i, sign, submit, wait, or all)",
 			step,
 		)
 	}
@@ -836,7 +858,37 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// runSingleG runs G1 then G2, producing the step-g1 and step-g output files.
 func runSingleG(ctx context.Context, cfg *Config, dir string) error {
+	if err := runSingleG1(ctx, cfg, dir); err != nil {
+		return err
+	}
+	return runSingleG2(ctx, cfg, dir)
+}
+
+// runSingleG1 runs Step G1 and writes step-g1-shadow-fork-block.json (the block Step G2 forks at).
+func runSingleG1(ctx context.Context, cfg *Config, dir string) error {
+	targetBlock, err := loadTargetBlock(dir)
+	if err != nil {
+		return err
+	}
+	result, err := RunStepG1(ctx, cfg, targetBlock)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, "step-g1-shadow-fork-block.json", result)
+	return nil
+}
+
+// runSingleG2 runs Step G2: it loads the shadow-fork block from G1, the certificate (capped from F
+// or from E), and the LBT entries, then writes step-g-new-local-exit-root.json and the reordered
+// step-g-reordered-certificate.json.
+func runSingleG2(ctx context.Context, cfg *Config, dir string) error {
+	var g1Result StepG1Result
+	if err := loadJSON(dir, "step-g1-shadow-fork-block.json", &g1Result); err != nil {
+		return fmt.Errorf("load step G1 result (run step g1 first): %w", err)
+	}
+
 	var cert certificateJSON
 	cappedPath := filepath.Join(dir, "step-f-capped-certificate.json")
 	if _, err := os.Stat(cappedPath); err == nil {
@@ -855,22 +907,18 @@ func runSingleG(ctx context.Context, cfg *Config, dir string) error {
 	var lbtEntries []LBTEntry
 	if entries, err := LoadLBTEntries(lbtPath); err == nil {
 		lbtEntries = entries
-		log.Infof("STEP G: loaded %d LBT entries for token resolution", len(lbtEntries))
+		log.Infof("STEP G2: loaded %d LBT entries for token resolution", len(lbtEntries))
 	} else {
-		log.Warnf("STEP G: LBT not available, falling back to getTokenWrappedAddress: %v", err)
+		log.Warnf("STEP G2: LBT not available, falling back to getTokenWrappedAddress: %v", err)
 	}
 
-	targetBlock, err := loadTargetBlock(dir)
-	if err != nil {
-		return err
-	}
 	aggCert := cert.toAgglayerCertificate()
-	result, err := RunStepG(ctx, cfg, targetBlock, aggCert, lbtEntries)
+	result, err := RunStepG2(ctx, cfg, g1Result.ShadowForkBlock, aggCert, lbtEntries)
 	if err != nil {
 		return err
 	}
 	saveJSON(dir, "step-g-new-local-exit-root.json", result)
-	// RunStepG reorders aggCert.BridgeExits to the shadow-fork deposit order. Persist it so the
+	// RunStepG2 reorders aggCert.BridgeExits to the shadow-fork deposit order. Persist it so the
 	// single-step Step I picks up the reordered exits instead of the pre-G ordering.
 	saveJSON(dir, "step-g-reordered-certificate.json", aggCert)
 	return nil

@@ -203,7 +203,7 @@ func TestTraceTransactions_AbortOnError(t *testing.T) {
 }
 
 // TestRunStepA_AbortOnTraceError verifies that RunStepA returns an error (and does not
-// silently continue) when a debug_traceTransaction call fails and ContinueOnTraceError=false.
+// silently continue) when a debug_traceTransaction call fails and IgnoreOnTraceError=false.
 //
 // Before the fix, collectResults drained every result from the worker pool before
 // returning the error — i.e. all remaining transactions in the window were still traced.
@@ -259,11 +259,11 @@ func TestRunStepA_AbortOnTraceError(t *testing.T) {
 	cfg := &Config{
 		L2RPCURL: server.URL,
 		Options: Options{
-			L2StartBlock:         0,
-			StepAWindowSize:      1,
-			RPCBatchSize:         1,
-			ConcurrencyLimit:     1,
-			ContinueOnTraceError: false,
+			L2StartBlock:       0,
+			StepAWindowSize:    1,
+			RPCBatchSize:       1,
+			ConcurrencyLimit:   1,
+			IgnoreOnTraceError: false,
 		},
 	}
 
