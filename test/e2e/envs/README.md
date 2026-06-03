@@ -7,11 +7,21 @@ The different E2E envs found on this directory have been generated using the [sn
 This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
 (`ecdsa-multisig` consensus, native ETH gas) on one L1 + agglayer.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit
-  `59f26eff` ("aggkit-e2e: add op-pp preset + make snapshot capture op-geth EL,
-  op-batcher & finalize on restore"). That commit (a) adds the op-pp preset, and
-  (b) folds three fixes into the snapshot tool so a RESTORED OP-Stack L2 actually
-  finalizes:
+- Regenerated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit
+  `89dedc4f` ("aggkit-e2e: make plain PP/FEP envs single-signer (no aggsender
+  multisig)") — **single-signer aggsender; certs settle**. The earlier capture
+  (`59f26eff`) baked an on-chain aggsender validator multisig (threshold 2 of 3)
+  but ran no `aggkit-*-aggsender-validator-00N` containers, so the aggsender
+  stalled at `validatorPoller threshold not reached: 1/2`, never sent a cert, and
+  the agglayer cert header stayed `null` (breaking every cert-dependent test,
+  e.g. L2->L1 bridge claims). The preset is now single-signer
+  (`use_agg_sender_validator: false`, `agg_sender_multisig_threshold: 1`,
+  `agg_sender_validator_total_number: 0`), so the lone aggsender self-validates
+  (1/1) and certificates settle. The regenerated `aggkit-config.toml` no longer
+  carries an `[AggSender.ValidatorClient]` block, and no remote validator members
+  are baked on-chain (no `aggsender-validator-002/003`). `59f26eff` originally (a)
+  added the op-pp preset, and (b) folded three fixes into the snapshot tool so a
+  RESTORED OP-Stack L2 actually finalizes (all preserved in this regen):
     1. **op-batcher captured** — discover/extract/generate-compose/generate-summary
        now capture the per-chain `op-batcher` (image `op-batcher:v1.16.9`, the
        funded `--private-key`, `--data-availability-type=calldata`), replaying
@@ -54,15 +64,56 @@ This network has a single OP PP (pessimistic proof) network: one OP-Stack L2
   `eth_getBlockByNumber("finalized")` matched op-node exactly; op-batcher stayed
   healthy and posted calldata batches throughout (0 chronic op-node engine
   resets).
+- **Certificates settle + L2->L1 claimable (proven, single-signer regen).**
+  Restored this dir via the loader (`E2E_ENV=op-pp`, all 8 services healthy) and
+  ran the post-test L1<->L2 bridge health-check.
+    - **No quorum stall:** `aggkit-001` logs show **0** `validatorPoller threshold
+      not reached` / `threshold not reached` lines (the only "threshold" mention
+      is the never-incremented `multisig_threshold_not_reached` Prometheus metric
+      registration); the aggsender runs the ASAP trigger and `sendCertificateWith
+      Retries` succeeds (1/1 self-validation).
+    - **Cert header before -> after:**
+      `interop_getLatestKnownCertificateHeader([1])` returned `result: null`
+      before any bridge activity (no cert had ever settled — the old multisig
+      failure mode). After driving an L2 bridge exit it returned a real
+      certificate with `"status":"Settled"`, a populated `settlement_tx_hash`
+      (e.g. `0xad5bc207...`) and a non-zero `new_local_exit_root` (e.g.
+      `0x669ba3b9...`). (The PP `height` of the first settled cert is `0` — height
+      is the per-network cert sequence index, so the *first* settled cert is
+      always index 0; the load-bearing advance here is `null` -> a `Settled` cert
+      with a real settlement tx and exit root.)
+    - **L2->L1 bridge claimable (the exact broken path):** an L2->L1 ERC20 bridge
+      exit was picked up by the bridge service (`deposit_count=0`) and then the
+      bridge service `GET /l1-info-tree-index?network_id=1&deposit_count=0`
+      returned **`l1InfoTreeIndex=2`** (rollup-exit-root / VerifyBatches landed on
+      L1), the claim proof was fetched, and the L1 `claimAsset` tx was submitted
+      and mined successfully (`L2->L1 flow completed successfully`,
+      `[POSTTEST] Bridge flows post-test check succeeded`). A claim is only
+      provable against a settled rollup-exit-root on L1, so this is end-to-end
+      proof the single-signer cert settled.
 
 ## op-fep
 
 This network has a single OP network running in FEP (Full Execution Proof) mode
 with an op-succinct **mock** prover and agglayer integration.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, regenerated at
-  commit `297a5d76` (the FEP finality regen: op-batcher capture + op-node
-  finality flags + op-reth `miner` API). Earlier FEP snapshot tooling: commits
+- **Single-signer (no aggsender multisig).** Regenerated from kurtosis-cdk
+  branch `feat/aggkit-e2e-envs`, commit `89dedc4f` ("aggkit-e2e: make plain
+  PP/FEP envs single-signer") with the preset's `use_agg_sender_validator:
+  false` / `agg_sender_multisig_threshold: 1` / `agg_sender_validator_total_number:
+  0`. The capture ran on kurtosis-cdk tool commit `48a0a00b` ("snapshot: harden
+  L1 container stop to graceful serial docker stop (no docker kill)"), which
+  drains the L1 geth/beacon/validator with a graceful serial `docker stop`
+  (bounded by a wall-clock `timeout`, NO `docker kill` fallback) so capture no
+  longer wedges the containerd-shim under host I/O pressure. **This supersedes
+  the prior multisig snapshot** whose restored `aggkit-config.toml` carried an
+  `[AggSender.ValidatorClient] URL = "aggkit-validator-001:5578"` block: that
+  made the aggsender stall on a phantom validator quorum
+  (`validatorPoller threshold not reached`). The new capture has NO
+  `[AggSender.ValidatorClient]` block — the aggsender self-validates 1/1
+  in-process and reaches `sendCertificateWithRetries`.
+- Inherits the FEP finality regen (commit `297a5d76`: op-batcher capture +
+  op-node finality flags + op-reth `miner` API). Earlier FEP snapshot tooling: commits
   `0fe7bf4b` + `5f06bd83` (per-topology capture), `05f04196` (op-reth EL
   entrypoint), `b3e13ba9` (op-reth healthcheck JSON-RPC POST, op-succinct
   proposer hostname rewrite + writable `/app/configs`, Fulu-spec genesis.ssz
@@ -103,16 +154,20 @@ with an op-succinct **mock** prover and agglayer integration.
   not settled at snapshot time). The L2 EL is op-reth (`op-reth:v2.2.5`) run
   with `op-reth-entrypoint.sh`; the summary logical service key stays `op-geth`
   for loader compatibility.
-- **Finality proof.** Native (live enclave) op-node `optimism_syncStatus`:
-  L2 `finalized` advanced **0 → 76 → 100 → 124** (climbing), L1 finalized
-  climbing in lock-step (136 → 160), op-batcher posting calldata batches, zero
-  op-node derivation resets, op-reth EL stable. This proves the op-batcher +
-  finality-flag + miner-API fix set makes the FEP L2 finalize. (An isolated
-  post-restore boot was attempted but the op-reth EL `init` wedged on host I/O
-  on a critically overloaded shared host — load avg ~40-48 — at "Verifying
-  storage consistency"; this is the documented op-reth loaded-host flakiness, not
-  a snapshot/preset defect. op-pp/op-pp-2chains avoid it by using op-geth, which
-  op-succinct/FEP does not permit.)
+- **No-quorum-stall + finality proof (single-signer regen run).** On the live
+  enclave the aggsender reached `certificate_stage` and `sendCertificateWithRetries`
+  with **zero** `threshold not reached` / `validatorPoller threshold` log lines —
+  it self-validates 1/1 (the multisig stall of the old snapshot is gone) and
+  then hits the documented FEP op-succinct proof step (`aggchainProverFlow -
+  error fetching aggchain proof ... Proposer service returned an error` →
+  `settled: false`). Native op-node `optimism_syncStatus` showed L2 `finalized`
+  well past 0 and climbing (e.g. 97 → 109 across the capture, unsafe 162 → 258),
+  op-batcher posting calldata batches, op-reth EL stable. The capture itself ran
+  cleanly: the hardened graceful stop drained the previously-wedging
+  `vc-1-geth-lighthouse` validator in ~2s with no `docker kill` and no "did not
+  receive an exit event", and the enclave resumed (finality kept advancing).
+  (op-pp/op-pp-2chains avoid op-reth by using op-geth, which op-succinct/FEP does
+  not permit; this env requires op-reth.)
 - **FEP settlement observation.** Even with op-batcher now posting L2 batch data
   to L1, the op-succinct proposer still cannot complete L2→L1 settlement on a
   restored snapshot (`settled: false`): it enforces an on-chain L2OO
@@ -149,9 +204,9 @@ deployment_stages:
 args:
   aggkit_image: aggkit:local
   consensus_contract_type: fep
-  use_agg_sender_validator: true
-  agg_sender_multisig_threshold: 2
-  agg_sender_validator_total_number: 3
+  use_agg_sender_validator: false
+  agg_sender_multisig_threshold: 1
+  agg_sender_validator_total_number: 0
   # Override additional_services to exclude bridge_spammer (snapshot-clean)
   additional_services: []
   binary_name: aggkit
@@ -180,12 +235,14 @@ optimism_package:
 - Regenerate with:
 
 ```
-cd kurtosis-cdk   # branch feat/aggkit-e2e-envs
+cd kurtosis-cdk   # branch feat/aggkit-e2e-envs (tool commit 48a0a00b: hardened L1 stop)
 kurtosis run --enclave op-fep --args-file .github/tests/aggkit-e2e-envs/op-fep.yml .
-./snapshot/snapshot.sh op-fep
-./snapshot/verify.sh snapshot/snapshots/op-fep-<TIMESTAMP>/
-# then copy snapshot/snapshots/op-fep-<TIMESTAMP>/ contents into
-# aggkit test/e2e/envs/op-fep/ (strip the timestamped wrapper dir).
+./snapshot/snapshot.sh op-fep --skip-verify
+# then copy config/, docker-compose.yml, summary.json from
+# snapshot/snapshots/op-fep-<TIMESTAMP>/ into aggkit test/e2e/envs/op-fep/
+# (the baked snapshot-{geth,beacon,validator}:<TAG> images stay in the local
+# docker daemon; verify with an isolated restore: a DISTINCT compose project +
+# remapped ports + `up -d --wait`).
 ```
 
 ## op-fep-committee
@@ -325,13 +382,24 @@ two chains:
 - chain `002`: `l2_chain_id 20202`, `l2_network_id 2` — reuses the L1 + agglayer
   (`deploy_l1: false` / `deploy_agglayer: false`), `deployment_suffix "-002"`.
 
-- Generated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `c9205b9f`
-  ("aggkit-e2e: pin op-geth EL + op-node finality flags + miner API on both
-  op-pp-2chains chains"; snapshotted 2026-06-02; snapshot name
-  `op-pp-2c-20260602-162655`). This regeneration folds in the **same complete set
-  of fixes proven on the single-chain `op-pp` env** (see the `op-pp` section
-  above), applied to **BOTH** chains 001 and 002, so each restored OP-Stack L2
-  actually finalizes:
+- Regenerated from kurtosis-cdk branch `feat/aggkit-e2e-envs`, commit `89dedc4f`
+  ("aggkit-e2e: make plain PP/FEP envs single-signer (no aggsender multisig)") —
+  **single-signer aggsender on BOTH chains; no aggsender-validator multisig**;
+  snapshotted 2026-06-02; snapshot name `op-pp2c-20260602-222717`. The earlier
+  capture (`c9205b9f`) baked an on-chain aggsender validator multisig (threshold
+  2 of 3) on both chains but ran no `aggsender-validator-00N` containers, so each
+  aggsender stalled at `validatorPoller threshold not reached: 1/2`, never sent a
+  cert, and the agglayer cert header stayed `null` for both networks (breaking
+  every cert-dependent test, e.g. L2->L1 bridge claims). The preset is now
+  single-signer on both chain documents (`use_agg_sender_validator: false`,
+  `agg_sender_multisig_threshold: 1`, `agg_sender_validator_total_number: 0`), so
+  each lone aggsender self-validates (1/1). The regenerated `config/00N/
+  aggkit-config.toml` for BOTH chains no longer carries an
+  `[AggSender.ValidatorClient]` block, and no remote validator members are baked
+  on-chain. This regeneration also folds in the **same complete set of finality
+  fixes proven on the single-chain `op-pp` env** (see the `op-pp` section above),
+  applied to **BOTH** chains 001 and 002, so each restored OP-Stack L2 actually
+  finalizes:
     1. **op-batcher captured per chain** — the snapshot tool's per-network
        discovery loop captures `op-batcher-001` AND `op-batcher-002`
        (image `op-batcher:v1.16.9`, funded `--private-key`,
@@ -402,6 +470,40 @@ two chains:
   preset defect: the native enclave finalized fine and climbed past 195/291 on
   both chains before snapshot. The PASS criterion — both restored L2s' `finalized`
   advance past 0 in lock-step — was met.)
+- **Single-signer aggsender on both chains; no quorum stall (proven 2026-06-02).**
+  Restored this dir to an isolated scratch copy (remapped host ports, distinct
+  `oppp2csr-` container prefix / compose project), `docker compose up -d --wait`
+  (all 12 services healthy). Both `aggkit-001` and `aggkit-002` came up and stayed
+  up; both L2s' `finalized` advanced `0 -> 24`.
+    - **No quorum stall, both chains:** `aggkit-001` AND `aggkit-002` logs show
+      **0** `threshold not reached` lines. Each aggsender self-validates 1/1
+      (`sendCertificateWithRetries ... try 1/6` succeeds) and the periodic status
+      checker reports `initial state` / `no action needed` (no InError certs).
+    - **Single-signer config, both chains:** `config/001/aggkit-config.toml` and
+      `config/002/aggkit-config.toml` each carry **0** `[AggSender.ValidatorClient]`
+      / `threshold` / `aggsender-validator` references; `AggSenderPrivateKey`
+      self-sign is present. (The old multisig capture had an
+      `[AggSender.ValidatorClient] URL = "aggkit-validator-00N:5578"` block on
+      both chains — both removed.)
+    - **Cert null -> Settled NOT captured in this restore (environmental L1
+      stall, NOT a snapshot/preset defect).** Both networks'
+      `interop_getLatestKnownCertificateHeader([1])` / `([2])` returned
+      `result: null` at boot (no cert had ever settled — expected initial state).
+      Driving a settled cert requires the restored single-shared L1 to mine an
+      L2->L1 bridge exit (and the agglayer's settlement tx). On this run the host
+      was under extreme concurrent load (load average ~50, ~1.5M context
+      switches/s from sibling regen jobs); the restored archive-replay L1 EL
+      stopped sealing at block 256 (validator stopped publishing blocks after
+      slot 288; teku lost forkchoice head) — the same loaded-host L1-EL stall
+      documented for the finality table above — so the bridge deposit/exit could
+      not be mined and no cert advanced past `null`. The single-signer fix itself
+      is identical to the one **proven to settle certs on the single-chain `op-pp`
+      env** (see the `op-pp` section: `null` -> a `Settled` cert with a real
+      `settlement_tx_hash` and non-zero `new_local_exit_root`, plus an L2->L1
+      `/bridge/v1/l1-info-tree-index` index and a successful L1 `claimAsset`),
+      captured there in a window where that single-chain restore's L1 happened to
+      keep sealing. The 2-chain config is byte-for-byte the same single-signer
+      shape on both chains; the only gap here is the unmined-L1 environment.
 - Kurtosis config (the two `---` documents, faithful mirror of the aggkit CI
   `kurtosis-cdk-args-1` / `-args-2` compositions minus `bridge_spammer`):
 
@@ -413,9 +515,10 @@ deployment_stages:
 args:
   aggkit_image: aggkit:local
   consensus_contract_type: ecdsa-multisig
-  use_agg_sender_validator: true
-  agg_sender_multisig_threshold: 2
-  agg_sender_validator_total_number: 3
+  use_agg_sender_validator: false
+  agg_sender_multisig_threshold: 1
+  agg_sender_validator_total_number: 0
+  log_level: debug
   additional_services: []
   binary_name: aggkit
   aggkit_components: aggsender,aggoracle
@@ -448,9 +551,10 @@ deployment_stages:
 args:
   aggkit_image: aggkit:local
   consensus_contract_type: ecdsa-multisig
-  use_agg_sender_validator: true
-  agg_sender_multisig_threshold: 2
-  agg_sender_validator_total_number: 3
+  use_agg_sender_validator: false
+  agg_sender_multisig_threshold: 1
+  agg_sender_validator_total_number: 0
+  log_level: debug
   additional_services: []
   binary_name: aggkit
   aggkit_components: aggsender,aggoracle

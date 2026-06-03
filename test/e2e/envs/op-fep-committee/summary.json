@@ -1,15 +1,15 @@
 {
-  "snapshot_name": "op-fep-committee-20260602-182055",
+  "snapshot_name": "op-fep-committee-20260603-031042",
   "enclave": "op-fep-committee",
-  "created_at": "2026-06-02T18:37:52Z",
+  "created_at": "2026-06-03T03:18:48Z",
   "networks": {
     "l1": {
       "chain_id": "271828",
       "snapshot_block": {
-        "number": "212",
-        "hash": "0xb97b8eb4f4fb5778d4e208b86bfcdb82470077d889c4bff09edb2f64a4087fbe"
+        "number": "164",
+        "hash": "0x208b992cc4da45d754caa5a5aa1cdbedb81db4eb8c8a91a460d2c88df745f776"
       },
-      "genesis_hash": "0xbcf487e1dd6223b8a4a3dcc13f841345634ddae7bbb3421948117e38a8ede665",
+      "genesis_hash": "0xcc0f61c3e9467b0696a02d499dfbabd9f690640283006a20b99d07d07152917e",
       "contracts": {
         "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
         "global_exit_root_v2": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",
@@ -271,6 +271,18 @@
             "rpc": {
               "internal": "http://aggkit-001-aggoracle-committee-001:5576",
               "external": "http://localhost:11601"
+            }
+          },
+          "aggsender-validator-000": {
+            "grpc": {
+              "internal": "http://aggkit-001-aggsender-validator-002:5578",
+              "external": "http://localhost:11700"
+            }
+          },
+          "aggsender-validator-001": {
+            "grpc": {
+              "internal": "http://aggkit-001-aggsender-validator-003:5578",
+              "external": "http://localhost:11701"
             }
           }
         },

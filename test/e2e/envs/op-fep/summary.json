@@ -1,15 +1,15 @@
 {
-  "snapshot_name": "op-fep-20260602-165149",
+  "snapshot_name": "op-fep-20260603-001746",
   "enclave": "op-fep",
-  "created_at": "2026-06-02T16:59:52Z",
+  "created_at": "2026-06-03T00:43:40Z",
   "networks": {
     "l1": {
       "chain_id": "271828",
       "snapshot_block": {
-        "number": "195",
-        "hash": "0x06c130bd4e80abb443aebae03cc712e8400db30c0b878d7f9d2f89dc6c4a6650"
+        "number": "177",
+        "hash": "0xdee954a69a44acbbe77f48189610208090cd501ccd83e35863344ca5289b6832"
       },
-      "genesis_hash": "0xadf184d0aeb36d786ca65bb47541064e248f3d4cfb3ca98f3bd3c1d5a9faf3a0",
+      "genesis_hash": "0x5db5e3c972816a3c649b0889a84fe60301edc6945f5cd81b2c9dfb4c2750740b",
       "contracts": {
         "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
         "global_exit_root_v2": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",

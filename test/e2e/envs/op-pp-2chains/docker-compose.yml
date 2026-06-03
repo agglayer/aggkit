@@ -1,12 +1,12 @@
 # Ethereum L1 Snapshot Environment
-# Enclave: op-pp-2c
-# Tag: op-pp-2c-20260602-162746
-# Genesis: 0xcc4ec2e4b3fb297a3b39320349f270395b15dc995c29a4ad383f99eaa534ce4b
+# Enclave: op-pp2c
+# Tag: op-pp2c-20260602-222805
+# Genesis: 0x55b8a098eae2d7e0bf967fb179fd1d5d73ac30a0f754b9527aea40a5bfc873cb
 
 services:
   geth:
-    image: snapshot-geth:op-pp-2c-20260602-162746
-    container_name: op-pp-2c-20260602-162655-geth
+    image: snapshot-geth:op-pp2c-20260602-222805
+    container_name: op-pp2c-20260602-222717-geth
     hostname: geth
     # Alias the restored L1 EL under its original kurtosis service name so
     # components that hardcode the kurtosis L1 RPC hostname keep resolving it.
@@ -60,8 +60,8 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:op-pp-2c-20260602-162746
-    container_name: op-pp-2c-20260602-162655-beacon
+    image: snapshot-beacon:op-pp2c-20260602-222805
+    container_name: op-pp2c-20260602-222717-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -81,8 +81,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:op-pp-2c-20260602-162746
-    container_name: op-pp-2c-20260602-162655-validator
+    image: snapshot-validator:op-pp2c-20260602-222805
+    container_name: op-pp2c-20260602-222717-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -98,7 +98,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: op-pp-2c-20260602-162655-agglayer
+    container_name: op-pp2c-20260602-222717-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -128,7 +128,7 @@ services:
 
   op-geth-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
-    container_name: op-pp-2c-20260602-162655-op-geth-001
+    container_name: op-pp2c-20260602-222717-op-geth-001
     hostname: op-geth-001
     entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
@@ -154,7 +154,7 @@ services:
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-pp-2c-20260602-162655-op-node-001
+    container_name: op-pp2c-20260602-222717-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -185,7 +185,7 @@ services:
 
   op-batcher-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
-    container_name: op-pp-2c-20260602-162655-op-batcher-001
+    container_name: op-pp2c-20260602-222717-op-batcher-001
     hostname: op-batcher-001
     command:
       - "op-batcher"
@@ -220,7 +220,7 @@ services:
 
   aggkit-001:
     image: aggkit:local
-    container_name: op-pp-2c-20260602-162655-aggkit-001
+    container_name: op-pp2c-20260602-222717-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
@@ -250,7 +250,7 @@ services:
 
   op-geth-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
-    container_name: op-pp-2c-20260602-162655-op-geth-002
+    container_name: op-pp2c-20260602-222717-op-geth-002
     hostname: op-geth-002
     entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
@@ -276,7 +276,7 @@ services:
 
   op-node-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-pp-2c-20260602-162655-op-node-002
+    container_name: op-pp2c-20260602-222717-op-node-002
     hostname: op-node-002
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -307,7 +307,7 @@ services:
 
   op-batcher-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
-    container_name: op-pp-2c-20260602-162655-op-batcher-002
+    container_name: op-pp2c-20260602-222717-op-batcher-002
     hostname: op-batcher-002
     command:
       - "op-batcher"
@@ -342,7 +342,7 @@ services:
 
   aggkit-002:
     image: aggkit:local
-    container_name: op-pp-2c-20260602-162655-aggkit-002
+    container_name: op-pp2c-20260602-222717-aggkit-002
     hostname: aggkit-002
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
