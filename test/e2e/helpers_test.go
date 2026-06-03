@@ -149,21 +149,31 @@ func waitForBridgeByTxHash(ctx context.Context, t *testing.T, env *envs.Env, net
 	pollCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	err := pollWithBackoff(pollCtx, 2*time.Minute, backoffInitial, backoffMax, "bridge in bridge service", func() (bool, error) {
+		// Paginate across ALL pages, not just the first 100. In the shared env a prior test may have
+		// created >100 bridges, so a fixed first-page scan can miss the target regardless of ordering
+		// (the cause of the suite-ordering flakiness). Count gives the stop condition.
 		pageSize := uint32(100)
-		res, err := env.Clients.BridgeService.GetBridges(pollCtx, client.GetBridgesParams{NetworkID: networkID, PageSize: &pageSize})
-		if err != nil {
-			return false, nil //nolint:nilerr // transient; keep polling until timeout
-		}
-		if res == nil {
-			return false, nil
-		}
-		for _, b := range res.Bridges {
-			if string(b.TxHash) == txHash.Hex() {
-				found = b
-				return true, nil
+		for page := uint32(1); ; page++ {
+			pageNum := page
+			res, err := env.Clients.BridgeService.GetBridges(pollCtx, client.GetBridgesParams{
+				NetworkID: networkID, PageSize: &pageSize, PageNumber: &pageNum,
+			})
+			if err != nil {
+				return false, nil //nolint:nilerr // transient; keep polling until timeout
+			}
+			if res == nil || len(res.Bridges) == 0 {
+				return false, nil
+			}
+			for _, b := range res.Bridges {
+				if string(b.TxHash) == txHash.Hex() {
+					found = b
+					return true, nil
+				}
+			}
+			if uint64(page)*uint64(pageSize) >= uint64(res.Count) {
+				return false, nil // scanned every page this round; not present yet, keep polling
 			}
 		}
-		return false, nil
 	})
 	require.NoError(t, err, "wait for bridge %s in bridge service", txHash.Hex())
 	require.NotNil(t, found, "bridge not found in bridge service")

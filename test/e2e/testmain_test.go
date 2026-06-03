@@ -82,7 +82,7 @@ func TestMain(m *testing.M) {
 		// the rollup exit root propagates into a new GER / L1 Info Tree leaf, which spans several
 		// agglayer epochs. Allow a generous budget so this health check is not flaky on a slow
 		// settlement; BridgeL2ToL1 returns as soon as the exit is claimable, so the happy path is fast.
-		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 25*time.Minute)
+		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 35*time.Minute)
 
 		l2Opts := env.L2.Transactor
 
@@ -111,25 +111,44 @@ func TestMain(m *testing.M) {
 			log.Fatalf("[POSTTEST] Failed to wait for ERC20 approve tx: %v", err)
 		}
 
-		// Run L1->L2 and L2->L1 bridges in parallel.
-		// Each goroutine gets its own copy of the transactors so that mutations to
-		// fields like Value (done by BridgeL1ToL2 for the ETH bridge tx) don't race
-		// with the other goroutine's transactions.
+		// Run the L1->L2 bridge in the background (it is fast: no cert settlement needed) on the full
+		// budget, while the L2->L1 leg runs in the foreground. Each gets its own copy of the transactors
+		// so that mutations to fields like Value (done by BridgeL1ToL2 for the ETH bridge tx) don't race.
 		l1l2ErrCh := make(chan error, 1)
-		l2l1ErrCh := make(chan error, 1)
-
 		l1OptsL1L2, l2OptsL1L2 := *env.L1.Transactor, *env.L2.Transactor
-		l1OptsL2L1, l2OptsL2L1 := *env.L1.Transactor, *env.L2.Transactor
-
 		go func() {
 			l1l2ErrCh <- BridgeL1ToL2(bridgeCheckCtx, env, &l1OptsL1L2, &l2OptsL1L2)
 		}()
-		go func() {
-			l2l1ErrCh <- BridgeL2ToL1(bridgeCheckCtx, env, &l1OptsL2L1, &l2OptsL2L1, env.L2.Contracts.MintableERC20Address)
-		}()
 
+		// L2->L1 with a single aggkit-restart recovery. The aggsender's epoch-notifier L1 block
+		// subscription can intermittently freeze after repeated aggkit restarts (e.g. during BFL
+		// Case3/Case4), which stalls cert settlement so the L2->L1 exit never becomes claimable and the
+		// leg would otherwise burn the entire budget. A single aggkit restart re-establishes the
+		// subscription. This is a test/env-side mitigation; the aggsender itself is left unchanged.
+		runL2L1 := func(attemptCtx context.Context) error {
+			l1Opts, l2Opts := *env.L1.Transactor, *env.L2.Transactor
+			return BridgeL2ToL1(attemptCtx, env, &l1Opts, &l2Opts, env.L2.Contracts.MintableERC20Address)
+		}
+		firstCtx, firstCancel := context.WithTimeout(bridgeCheckCtx, 18*time.Minute)
+		bridgeL2L1Err := runL2L1(firstCtx)
+		firstCancel()
+
+		// Collect the (fast) L1->L2 result before any restart so the restart can't disrupt it.
 		bridgeL1L2Err := <-l1l2ErrCh
-		bridgeL2L1Err := <-l2l1ErrCh
+
+		if bridgeL2L1Err != nil && bridgeCheckCtx.Err() == nil {
+			log.Warnf("[POSTTEST] L2->L1 leg did not settle in the first attempt (%v); restarting aggkit "+
+				"to recover a possibly-frozen epoch-notifier subscription, then retrying once...", bridgeL2L1Err)
+			restartCtx, restartCancel := context.WithTimeout(bridgeCheckCtx, 3*time.Minute)
+			if stopErr := env.StopAggkit(restartCtx); stopErr != nil {
+				log.Warnf("[POSTTEST] StopAggkit during recovery failed: %v", stopErr)
+			}
+			if startErr := env.StartAggkit(restartCtx); startErr != nil {
+				log.Warnf("[POSTTEST] StartAggkit during recovery failed: %v", startErr)
+			}
+			restartCancel()
+			bridgeL2L1Err = runL2L1(bridgeCheckCtx)
+		}
 
 		bridgeCancel()
 

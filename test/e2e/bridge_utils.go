@@ -50,11 +50,19 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	if receipt.Status != ethtypes.ReceiptStatusSuccessful {
 		return errors.New("bridge transaction failed")
 	}
-	log.Debugf("waiting for bridge to appear in bridge service: tx=%s", tx.Hash().Hex())
+	// Resolve the deposit_count from the bridge event so the bridge-service lookup is filtered
+	// (page-independent) instead of scanning only the first 100 bridges, which can miss the target
+	// once a prior test has created >100 bridges in the shared env.
+	bridgeEvent, err := env.L1.Contracts.Bridge.ParseBridgeEvent(*receipt.Logs[0])
+	if err != nil {
+		return fmt.Errorf("failed to parse L1 bridge event: %w", err)
+	}
+	depositCount := uint64(bridgeEvent.DepositCount)
+	log.Debugf("waiting for bridge to appear in bridge service: tx=%s deposit_count=%d", tx.Hash().Hex(), depositCount)
 	var bridge *types.BridgeResponse
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
-		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize}
+		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize, DepositCount: &depositCount}
 		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
@@ -73,7 +81,6 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		return errors.New("bridge not found in bridge service")
 	}
 	log.Debugf("bridge found in bridge service: deposit_count=%d", bridge.DepositCount)
-	depositCount := bridge.DepositCount
 	log.Debugf("waiting for bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 60; i++ {
@@ -103,7 +110,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	}
 	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d l1InfoTreeIndex=%d", l2NetworkID, l1InfoTreeIndex)
 	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", l1InfoTreeIndex, depositCount)
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, l1InfoTreeIndex, depositCount)
+	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, l1InfoTreeIndex, uint32(depositCount))
 	if err != nil || claimProof == nil {
 		return fmt.Errorf("failed to get claim proof: %w", err)
 	}
@@ -434,11 +441,26 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	if receipt.Status != ethtypes.ReceiptStatusSuccessful {
 		return errors.New("L2->L1 bridge transaction failed")
 	}
-	log.Debugf("waiting for L2->L1 bridge to appear in bridge service: tx=%s", bridgeTx.Hash().Hex())
+	// Resolve the deposit_count from the L2 bridge event so the bridge-service lookup is filtered
+	// (page-independent) rather than scanning only the first 100 bridges of the shared env.
+	var eventDepositCount uint64
+	foundEvent := false
+	for _, lg := range receipt.Logs {
+		if ev, perr := env.L2.Contracts.L2Bridge.ParseBridgeEvent(*lg); perr == nil {
+			eventDepositCount = uint64(ev.DepositCount)
+			foundEvent = true
+			break
+		}
+	}
+	if !foundEvent {
+		return errors.New("L2->L1 bridge event not found in receipt logs")
+	}
+	log.Debugf("waiting for L2->L1 bridge to appear in bridge service: tx=%s deposit_count=%d",
+		bridgeTx.Hash().Hex(), eventDepositCount)
 	var bridge *types.BridgeResponse
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
-		params := client.GetBridgesParams{NetworkID: l2NetworkID, PageSize: &pageSize}
+		params := client.GetBridgesParams{NetworkID: l2NetworkID, PageSize: &pageSize, DepositCount: &eventDepositCount}
 		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
