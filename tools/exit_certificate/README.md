@@ -399,7 +399,10 @@ Split into **G1** (sync the L2 bridge history from genesis up to the target bloc
 
 **Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `ignoreBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`.
 
-**Output:** `step-g-new-local-exit-root.json`
+**Output:**
+
+- **G1:** `step-g1-shadow-fork-block.json` (resolved shadow-fork block) and the lite syncer DB `output/step-g1-l2bridgesyncerlite.sqlite`.
+- **G2:** `step-g-new-local-exit-root.json`, `step-g-reordered-certificate.json` (the deposit-order certificate Step I consumes) and `step-g-l2bridgesyncerlite.sqlite` (working copy of the G1 DB with the tree built); in shadow-fork mode also `step-g-failed-exit.json` *(only on replay failure)*.
 
 ### Step H — Fetch PreviousLocalExitRoot
 
@@ -411,13 +414,13 @@ Requires `agglayerClient.GRPC.URL` in options.
 
 ### Step I — Assemble final certificate
 
-Reads the certificate from Step E and applies:
+Takes the deposit-order certificate produced by Step G and applies:
 
 - `NewLocalExitRoot` from Step G
 - `PreviousLocalExitRoot` and certificate height from Step H
 - `L1InfoTreeLeafCount` — scans L1 backwards from the latest L1 block for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 
-**Reads:** `step-f-capped-certificate.json` if it exists (produced by Step F when `ignoreBalanceMismatch=true`), otherwise `step-e-exit-certificate.json`; plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
+**Reads:** `step-g-reordered-certificate.json` (run Step G first — there is no fallback to the Step E / Step F certificates, so the final certificate always matches the computed `NewLocalExitRoot`); plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
 
 **Output:** `exit-certificate-final.json`
 

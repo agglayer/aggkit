@@ -145,6 +145,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	if raw.ExitAddress == "" {
 		return nil, fmt.Errorf("missing required parameter: exitAddress")
 	}
+	// Validate the hex format explicitly: common.HexToAddress silently returns the zero address on
+	// any malformed input, so without this check a typo would surface as the (misleading) zero-address
+	// error below instead of pointing at the real problem.
+	if !common.IsHexAddress(raw.ExitAddress) {
+		return nil, fmt.Errorf("invalid exitAddress %q: not a valid hex address", raw.ExitAddress)
+	}
 	if common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
 		return nil, fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")

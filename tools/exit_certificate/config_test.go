@@ -88,6 +88,24 @@ func TestLoadConfig_ZeroExitAddress(t *testing.T) {
 	require.Contains(t, err.Error(), "zero address")
 }
 
+func TestLoadConfig_InvalidExitAddress(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "invalid.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "not-an-address",
+		"targetBlock": "100"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+	require.Contains(t, err.Error(), "not a valid hex address")
+}
+
 func TestLoadConfig_MinimalValid(t *testing.T) {
 	t.Parallel()
 
