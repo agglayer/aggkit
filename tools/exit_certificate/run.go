@@ -938,28 +938,14 @@ func runSingleH(ctx context.Context, cfg *Config, dir string) error {
 }
 
 func runSingleI(ctx context.Context, cfg *Config, dir string) error {
+	// Step I always builds on the Step G reordered certificate: Step G2 reorders the bridge exits
+	// to the shadow-fork deposit order (the authoritative ordering that matches the computed
+	// NewLocalExitRoot) and always writes step-g-reordered-certificate.json. Run Step G first.
 	var cert certificateJSON
-	reorderedPath := filepath.Join(dir, "step-g-reordered-certificate.json")
-	cappedPath := filepath.Join(dir, "step-f-capped-certificate.json")
-	switch {
-	case fileExists(reorderedPath):
-		// Step G reorders the bridge exits to the shadow-fork deposit order; this is the
-		// authoritative ordering that matches the computed NewLocalExitRoot.
-		if err := loadJSON(dir, "step-g-reordered-certificate.json", &cert); err != nil {
-			return fmt.Errorf("load step G reordered certificate: %w", err)
-		}
-		log.Info("Using reordered certificate from step G (step-g-reordered-certificate.json)")
-	case fileExists(cappedPath):
-		if err := loadJSON(dir, "step-f-capped-certificate.json", &cert); err != nil {
-			return fmt.Errorf("load step F capped certificate: %w", err)
-		}
-		log.Warn("⚠️  Using capped certificate from step F (step-f-capped-certificate.json)")
-	default:
-		if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
-			return fmt.Errorf("load step E certificate: %w", err)
-		}
-		log.Info("Using certificate from step E (step-e-exit-certificate.json)")
+	if err := loadJSON(dir, "step-g-reordered-certificate.json", &cert); err != nil {
+		return fmt.Errorf("load step G reordered certificate (run step g first): %w", err)
 	}
+	log.Info("Using reordered certificate from step G (step-g-reordered-certificate.json)")
 	var gResult StepGResult
 	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
 		return fmt.Errorf("load step G result: %w", err)

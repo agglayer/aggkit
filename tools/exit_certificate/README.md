@@ -39,13 +39,21 @@ go build -o exit-certificate ./cmd
 
 ## Config file
 
-The tool uses a standalone JSON config file. Copy the example and fill in your values:
+The tool uses a standalone config file in **JSON or TOML** format — the format is selected by the
+file extension (`.toml` is parsed as TOML, anything else as JSON). Copy the example and fill in your
+values:
 
 ```bash
+# JSON
 cp parameters.json.example parameters.json
+
+# or TOML
+cp parameters.toml.example parameters.toml
 ```
 
-> **Note:** `parameters.json` and the `output/` directory are git-ignored — they are not committed to the repository.
+The field names are identical in both formats. Pass whichever you created with `--config`.
+
+> **Note:** `parameters.json`, `parameters.toml` and the `output/` directory are git-ignored — they are not committed to the repository.
 
 ### Config fields
 

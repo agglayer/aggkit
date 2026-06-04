@@ -12,6 +12,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // Options holds tuning parameters for RPC parallelism and output.
@@ -113,11 +114,21 @@ var defaultOptions = Options{
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 
-// LoadConfig reads and validates the JSON config file.
+// LoadConfig reads and validates the config file. The format is selected by file extension:
+// ".toml" is parsed as TOML, anything else (".json" or no extension) as JSON.
 func LoadConfig(configPath string) (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("read config file %s: %w", configPath, err)
+	}
+
+	// TOML configs are normalized to JSON so a single code path handles both formats (including the
+	// signerConfig json.RawMessage and agglayerClient custom JSON unmarshalling).
+	if strings.EqualFold(filepath.Ext(configPath), ".toml") {
+		data, err = tomlToJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("parse config TOML %s: %w", configPath, err)
+		}
 	}
 
 	var raw rawConfig
@@ -171,6 +182,20 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// tomlToJSON decodes TOML into a generic map and re-encodes it as JSON, so the existing JSON
+// unmarshalling (rawConfig) can handle both formats from one code path.
+func tomlToJSON(data []byte) ([]byte, error) {
+	var raw map[string]any
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("unmarshal TOML: %w", err)
+	}
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode config as JSON: %w", err)
+	}
+	return out, nil
 }
 
 // parseTargetBlock converts the raw JSON string to a BlockNumberFinality.

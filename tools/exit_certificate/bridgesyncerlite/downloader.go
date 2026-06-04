@@ -111,29 +111,67 @@ func (s *BridgeSyncerLite) fetchBridges(ctx context.Context, fromBlock, toBlock 
 	return all, nil
 }
 
+// etaRateWindow is the trailing time horizon over which reportFetchProgress measures throughput to
+// estimate the ETA. The rate is computed purely from samples within this window, so it always
+// reflects the recent completion rate of the dense high-block tail rather than the much faster start.
+const etaRateWindow = 30 * time.Second
+
+// progressSample is a point-in-time observation of how many windows had completed.
+type progressSample struct {
+	t    time.Time
+	done int64
+}
+
 // reportFetchProgress periodically logs how many block windows have been fetched and an ETA for the
-// rest, extrapolating from the average time per completed window. It returns when ctx is cancelled
-// (fetchBridges cancels it once g.Wait returns). It stays quiet until at least one window completes
-// and never logs once everything is done (the caller logs the final summary).
+// rest. The ETA extrapolates from throughput measured over a trailing window (etaRateWindow) rather
+// than the lifetime average. Low-block windows are typically empty and complete far faster than the
+// dense high-block tail — often the bulk finishes within the first interval — so any estimate
+// anchored to the start (a lifetime average, an EWMA seeded from it, or a window whose baseline is
+// the initial done=0) reports a wildly optimistic ETA. This deliberately does NOT seed a zero
+// baseline: the first tick becomes the baseline (absorbing the initial burst) and the rate is only
+// measured between later, post-burst samples. It returns when ctx is cancelled (fetchBridges cancels
+// it once g.Wait returns), stays quiet until at least one window completes, and never logs once
+// everything is done (the caller logs the final summary).
 func (s *BridgeSyncerLite) reportFetchProgress(
 	ctx context.Context, start time.Time, completed *atomic.Int64, total int64, fromBlock, toBlock uint64,
 ) {
 	ticker := time.NewTicker(progressLogInterval)
 	defer ticker.Stop()
+
+	var samples []progressSample
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			done := completed.Load()
+			now := time.Now()
+
+			// Record this observation and drop samples older than the trailing window, but always keep
+			// at least one so there is a baseline to measure the next tick against. The first tick has
+			// no prior sample, so it serves purely as the baseline (absorbing the initial burst).
+			samples = append(samples, progressSample{t: now, done: done})
+			cutoff := now.Add(-etaRateWindow)
+			for len(samples) > 1 && samples[0].t.Before(cutoff) {
+				samples = samples[1:]
+			}
+
 			if done == 0 || done >= total {
 				continue
 			}
-			elapsed := time.Since(start)
-			eta := time.Duration(float64(elapsed) / float64(done) * float64(total-done))
+
+			// Rate over the retained window, measured against the oldest sample (never a synthetic
+			// done=0 at start). Unknown until we have a post-baseline sample with forward progress.
+			oldest := samples[0]
+			etaStr := "unknown"
+			if dt := now.Sub(oldest.t).Seconds(); dt > 0 && done > oldest.done {
+				rate := float64(done-oldest.done) / dt // windows/second
+				eta := time.Duration(float64(total-done) / rate * float64(time.Second))
+				etaStr = eta.Truncate(time.Second).String()
+			}
 			s.log.Infof("fetching BridgeEvent logs [%d..%d]: %d/%d windows (%.1f%%), elapsed %s, ETA %s",
 				fromBlock, toBlock, done, total, float64(done)/float64(total)*percentMultiplier,
-				elapsed.Truncate(time.Second), eta.Truncate(time.Second))
+				time.Since(start).Truncate(time.Second), etaStr)
 		}
 	}
 }

@@ -249,9 +249,10 @@ divergence risk, and verifies the off-chain reconstruction against it.
 canonical `bridgesynctypes.EmptyLER` (no Anvil, no tree).
 
 **Reordered certificate output:** the orchestrator saves the (shadow-fork-reordered, or
-default-order) certificate as `step-g-reordered-certificate.json`. In `runAll` the in-memory
-certificate flows to Step I; in single-step mode Step I prefers `step-g-reordered-certificate.json`
-over the capped/Step-E certificates so the final certificate matches the computed LER.
+default-order) certificate as `step-g-reordered-certificate.json` — written in both G2 modes. In
+`runAll` the in-memory certificate flows to Step I; in single-step mode Step I **always** reads
+`step-g-reordered-certificate.json` (no fallback to the capped/Step-E certificates) so the final
+certificate matches the computed LER.
 
 - **Output (G1):** `step-g1-shadow-fork-block.json` (`StepG1Result`) and the lite syncer DB `output/step-g1-l2bridgesyncerlite.sqlite`.
 - **Output (G2):** `step-g-new-local-exit-root.json` (`StepGResult`), `step-g-reordered-certificate.json`, `step-g-l2bridgesyncerlite.sqlite` (working copy of the G1 lite DB with the certificate's/replayed bridges + built tree); in shadow-fork mode also `step-g-failed-exit.json` *(only on replay failure)*
@@ -265,9 +266,10 @@ over the capped/Step-E certificates so the final certificate matches the compute
 
 ### Step I — Assemble final certificate
 
-- Reads the base certificate (single-step priority: `step-g-reordered-certificate.json` >
-  `step-f-capped-certificate.json` > `step-e-exit-certificate.json`), `step-g-new-local-exit-root.json`,
-  and `step-h-previous-local-exit-root.json` (optional).
+- Reads the base certificate. In single-step mode it **always** loads
+  `step-g-reordered-certificate.json` (run Step G first — there is no fallback to the capped/Step-E
+  certificates); in `runAll` the in-memory reordered certificate flows directly from Step G. Also
+  reads `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json` (optional).
 - Sets `Certificate.NewLocalExitRoot` from G and `Certificate.PrevLocalExitRoot` from H.
 - **Fetches `L1InfoTreeLeafCount`** — scans L1 backwards from the latest L1 block for the most
   recent `UpdateL1InfoTreeV2` event emitted by `l1GlobalExitRootAddress` and sets
@@ -317,6 +319,12 @@ over the capped/Step-E certificates so the final certificate matches the compute
 
 ## Config fields (`config.go`)
 
+**File format:** `LoadConfig` accepts both **JSON** and **TOML**, selected by file extension — a
+`.toml` path is parsed as TOML, anything else (`.json` or no extension) as JSON. TOML is normalized
+to JSON internally (`tomlToJSON`: decode to a map, re-encode as JSON) so both formats share one
+parsing/validation path, including `signerConfig` and `agglayerClient`. Field names are identical in
+both formats (camelCase keys, e.g. `l2RpcUrl`; `signerConfig` uses PascalCase `Method`/`Path`/`Password`).
+
 Required: `l2RpcUrl`, `l2BridgeAddress`, `targetBlock`.
 
 `targetBlock` accepts: a finality keyword (`LatestBlock`, `FinalizedBlock`, `SafeBlock`, `PendingBlock`), an optional negative offset appended with `/` (e.g. `LatestBlock/-10`), a decimal block number (`"21000000"`), or a hex block number (`"0x1406f40"`). An empty string defaults to `LatestBlock`. The keyword is resolved to a concrete `uint64` at the start of Step 0 and written to `step-0-l2_target_block.json`; all subsequent steps (A, B, G) read that fixed number. The old lowercase aliases (`latest`, `finalized`, `safe`, `pending`) are **not** accepted — use the PascalCase keywords.
@@ -353,7 +361,7 @@ Defaults applied by `LoadConfig`:
 
 - **Output dir:** All intermediate files land in `options.outputDir` (default `./output` relative to the config file). The dir is created automatically.
 - **`parameters.json` and `output/` are git-ignored** — never commit them.
-- **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step I → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
+- **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step G2 → `step-g-reordered-certificate.json` (deposit-order exits); Step I reads `step-g-reordered-certificate.json` → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
 - **LBT resolution:** `resolveOrGenerateLBT` always runs Step 0 and saves `step-0-lbt.json`.
 - **Step F reads from `step-d-exit-certificate.json`** for the balance check (not the final certificate), so the comparison reflects pure L2 exits before Step E additions. When capping is triggered, the caps are also applied to the final (Step E) certificate's `BridgeExits` in `runAll`, and saved as `step-f-capped-certificate.json`.
 - **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.

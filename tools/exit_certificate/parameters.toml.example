@@ -1,0 +1,121 @@
+# exit_certificate — example TOML config.
+# Copy to parameters.toml and fill in your values. Field names match the JSON config exactly.
+# The format is selected by file extension: .toml is parsed as TOML, anything else as JSON.
+
+# L2 RPC endpoint. REQUIRED. Must expose debug_traceTransaction (archive node) for Step A.
+l2RpcUrl = "https://your-l2-rpc.example.com"
+
+# L1 RPC endpoint. Optional, but REQUIRED by Step E (unclaimed deposits), Step I
+# (L1InfoTreeLeafCount) and Step CHECK. Steps that need it are skipped/fail without it.
+l1RpcUrl = "https://your-l1-rpc.example.com"
+
+# L2 bridge contract address. REQUIRED.
+l2BridgeAddress = "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
+
+# L1 bridge contract address. Optional. Default: same as l2BridgeAddress.
+l1BridgeAddress = "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
+
+# L2 network ID, validated against the bridge contract in Step CHECK. Default: 1.
+l2NetworkId = 1
+
+# Block up to which L2 state is scanned. REQUIRED.
+# Accepts a finality keyword (LatestBlock, FinalizedBlock, SafeBlock, PendingBlock) with an optional
+# negative offset (e.g. "LatestBlock/-10"), a decimal ("21000000") or hex ("0x1406f40") block number.
+# Empty string defaults to LatestBlock. Resolved to a concrete number at the start of Step 0.
+targetBlock = "LatestBlock"
+
+# Destination address on destinationNetwork for SC-locked value (tokens not held by any EOA).
+exitAddress = "0x0000000000000000000000000000000000000001"
+
+# Destination network ID for the generated bridge exits. Default: 0 (L1/mainnet).
+destinationNetwork = 0
+
+# Address of the aggchainbase contract on L1. REQUIRED by Step CHECK (network-type, threshold and
+# gas-token checks). Step CHECK fails if unset.
+sovereignRollupAddr = "<SOVEREIGN_ROLLUP_ADDR>"
+
+# Address of the PolygonZkEVMGlobalExitRootV2 contract on L1. REQUIRED by Step I to read the
+# L1InfoTreeLeafCount from UpdateL1InfoTreeV2 events. Step I fails if unset.
+l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
+
+[options]
+# Number of blocks per log query (e.g. BridgeEvent scans). Default: 5000.
+blockRange = 10000
+
+# Blocks loaded into memory at once during Step A (debug_traceTransaction). Default: 150000.
+stepAWindowSize = 150000
+
+# Max concurrent RPC batches / worker count. Default: 20.
+concurrencyLimit = 200
+
+# Number of calls per JSON-RPC batch. Default: 200.
+rpcBatchSize = 200
+
+# Sleep in milliseconds inserted between RPC batches (rate-limiting). Default: 0 (no delay).
+rpcDelayMs = 10
+
+# Directory for intermediate and final output files. Relative paths resolve from the config file
+# directory. Default: "output".
+outputDir = "./output"
+
+# First L1 block to scan in Step E. Default: 0 (genesis).
+l1StartBlock = 0
+
+# First L2 block to scan. Default: 0 (genesis).
+l2StartBlock = 0
+
+# Skip a transaction whose debug_traceTransaction fails in Step A instead of aborting (failed hashes
+# are saved to step-a-failed-traces.json). Default: false.
+ignoreOnTraceError = false
+
+# Downgrade the genesis-balance guard (non-zero ETH balance at block 0) from an abort to a warning.
+# Enable only for Kurtosis/test environments. Default: false.
+ignoreGenesisBalance = false
+
+# Skip adding unclaimed L1->L2 deposits to the certificate in Step E (still detected and warned).
+# Default: false.
+ignoreUnclaimed = false
+
+# Do not abort Step F on token balance mismatches; instead produce step-f-capped-certificate.json
+# with mismatched exits scaled down to min(agglayer, lbt). Default: false.
+ignoreBalanceMismatch = false
+
+# Make the Step G lite syncer warn and continue (instead of aborting) on L2 events that would
+# invalidate a BridgeEvent-only reconstruction. The computed NewLocalExitRoot may then be incorrect.
+# Default: false.
+ignoreUnsupportedL2Events = false
+
+# When true (default), Step G2 spins up an Anvil shadow-fork, replays every exit against the real
+# bridge contract and verifies the NewLocalExitRoot against getRoot() (requires anvil in $PATH).
+# When false, the NewLocalExitRoot is computed off-chain (faster, no Anvil, trusts leaf encoding).
+# Default: true.
+verifyNewLocalExitRootUsingShadowFork = true
+
+# Optional list of extra ERC-20 contract addresses whose holders are decomposed in Step B3.
+# Default: [] (empty).
+extraErc20Contracts = []
+
+# Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and
+# errors on discrepancies. Default: "" (disabled).
+bridgeServiceURL = ""
+
+# Bridge service API flavour for the cross-check: "aggkit" or "zkevm". Default: "aggkit".
+bridgeServiceType = "aggkit"
+
+# Agglayer admin RPC URL. REQUIRED by Step F (admin_getTokenBalance); Step F is skipped if unset.
+agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"
+
+# Optional Bearer token for agglayerAdminURL (e.g. when protected by Google Cloud IAP). Default: "".
+agglayerAdminToken = "<JWT>"
+
+# Agglayer gRPC client config. REQUIRED by Steps H, SUBMIT and WAIT.
+[options.agglayerClient.GRPC]
+URL = "<AGGLAYER_GRPC_URL>"
+UseTLS = false
+
+# Certificate signer (same format as aggsender's AggsenderPrivateKey). Used by Step SIGN.
+# In "all" mode Step SIGN is skipped when Method is unset; in single-step mode it errors.
+[signerConfig]
+Method = "local"
+Path = "/path/to/keystore.json"
+Password = "<PASSWORD>"
