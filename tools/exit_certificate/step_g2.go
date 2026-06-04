@@ -31,8 +31,10 @@ const (
 	// receiptPollTimeout is how long a collector waits for one tx's receipt. With interval mining a
 	// tx's receipt only appears once its whole block is mined, which — for a block batching many
 	// cold-state txs against a remote fork — can take a while, so this is generous to avoid false
-	// timeouts. A tx that truly never mines still fails after this bound.
-	receiptPollTimeout = 120 * time.Second
+	// timeouts. A tx that exceeds this bound is not aborted immediately: its exit is deferred and
+	// retried after the main send/collect phase (see retryDeferredExit), and only a retry failure is
+	// terminal.
+	receiptPollTimeout = 300 * time.Second
 	// receiptPollInterval is how long a worker waits between receipt polls. With --no-mining the tx
 	// is mined by the background miner (see backgroundMineInterval), not synchronously on send, so
 	// the first poll always misses; keep this small so that miss costs ~tens of ms, not a fixed 200ms
@@ -91,6 +93,11 @@ var (
 	// maxUint256 is 2^256-1, used as the patched ERC-20 balance and approve amount so a sender can
 	// bridge a token any number of times without underflowing its balance/allowance.
 	maxUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+
+	// errReceiptTimeout marks a receipt poll that exhausted receiptPollTimeout without the tx mining,
+	// as opposed to a revert or a hard RPC error. Collectors defer these exits for a retry pass rather
+	// than aborting the replay (a revert is deterministic and still aborts immediately).
+	errReceiptTimeout = errors.New("timeout waiting for receipt")
 )
 
 func init() {
@@ -470,6 +477,14 @@ func replayBridgeExits(
 	// the number of unconfirmed txs in Anvil's mempool.
 	pending := make(chan sentTx, replayInFlightWindow)
 
+	// deferred collects exits whose receipt timed out in the main phase (Anvil could not mine their
+	// block within receiptPollTimeout, typically a slow remote fork backend under load). Rather than
+	// abort, they are retried after the send/collect phase drains (see retryDeferredExit).
+	var (
+		deferred   []sentTx
+		deferredMu sync.Mutex
+	)
+
 	// Collectors: fetch each sent tx's receipt, detect reverts, and record its BridgeEvent metadata.
 	var collectWg sync.WaitGroup
 	for c := 0; c < concurrency; c++ {
@@ -479,7 +494,15 @@ func replayBridgeExits(
 			for s := range pending {
 				logs, err := waitForReceipt(ctx, anvilURL, s.hash)
 				if err != nil {
-					if !isContextCanceled(err) {
+					switch {
+					case isContextCanceled(err):
+						// Replay already aborting; stop quietly.
+					case errors.Is(err, errReceiptTimeout):
+						// Block did not mine in time; defer for the retry pass instead of aborting.
+						deferredMu.Lock()
+						deferred = append(deferred, s)
+						deferredMu.Unlock()
+					default:
 						failFast(s.job, fmt.Errorf("get receipt %s for exit %d: %w", s.hash.Hex(), s.index+1, err))
 					}
 					continue
@@ -538,6 +561,22 @@ func replayBridgeExits(
 	close(pending)
 	collectWg.Wait()
 
+	// Retry exits whose receipt timed out. By now all sends are done and Anvil is draining its
+	// backlog, so the original blocks have likely mined; recovering them here keeps every exit's leaf
+	// at its original index without re-sending a tx that actually mined (see retryDeferredExit).
+	if replayErr == nil && sendErr == nil && len(deferred) > 0 {
+		log.Warnf("Retrying %d bridge exit(s) whose receipt timed out...", len(deferred))
+		for _, s := range deferred {
+			leaf, err := retryDeferredExit(ctx, anvilURL, cfg.L2BridgeAddress, s)
+			if err != nil {
+				failFast(s.job, fmt.Errorf("retry exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
+				break
+			}
+			leaves[s.index] = leaf
+			maybeLogProgress()
+		}
+	}
+
 	if replayErr != nil {
 		log.Errorf("Replay failed: %v", replayErr)
 		return nil, replayErr
@@ -548,6 +587,44 @@ func replayBridgeExits(
 	}
 
 	return leaves, nil
+}
+
+// retryDeferredExit recovers one exit whose receipt timed out during the main send/collect phase.
+//
+// It runs after all sends are done and Anvil is idle, and retries **unbounded** until the exit mines:
+// each iteration re-polls the current tx (under a slow remote fork backend a block can take longer
+// than receiptPollTimeout to mine, so the receipt has very likely appeared by now — waitForReceipt
+// returns as soon as it does, accounting for the block interval). Only if the receipt is *still*
+// absent after that full poll window — meaning the tx never landed in Anvil's mempool — is the
+// bridgeAsset re-sent, and the next iteration polls the new hash. A slow backend is therefore never
+// abandoned; the only exits are success, a revert, or context cancellation.
+//
+// This re-poll-before-resend ordering is what keeps the exit tree correct: a bridgeAsset that did
+// mine adds a leaf and bumps depositCount, so re-sending one that already mined would double-count
+// the exit and diverge the reconstructed tree from the contract's getRoot(). A revert (or any
+// non-timeout error, including context cancellation) is returned as-is and is terminal — re-sending
+// a reverting tx would not help, and a canceled context must break the loop.
+func retryDeferredExit(
+	ctx context.Context, anvilURL string, bridgeAddr common.Address, s sentTx,
+) (bridgesyncerlite.BridgeLeaf, error) {
+	hash := s.hash
+	for attempt := 1; ; attempt++ {
+		logs, err := waitForReceipt(ctx, anvilURL, hash)
+		if err == nil {
+			return replayedLeafFromReceipt(logs, hash)
+		}
+		if !errors.Is(err, errReceiptTimeout) {
+			return bridgesyncerlite.BridgeLeaf{}, err
+		}
+
+		log.Warnf("exit %d (%s) still has no receipt after attempt %d; re-sending bridgeAsset",
+			s.index+1, hash.Hex(), attempt)
+		newHash, err := sendBridgeAssetTx(ctx, anvilURL, bridgeAddr, s.job.bridge, s.job.isNative, s.job.l2TokenAddr)
+		if err != nil {
+			return bridgesyncerlite.BridgeLeaf{}, fmt.Errorf("re-send bridge asset: %w", err)
+		}
+		hash = newHash
+	}
 }
 
 // saveFailedExit writes the bridge exit whose replay aborted Step G to step-g-failed-exit.json in
@@ -1067,7 +1144,7 @@ func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) ([
 		}
 		return receipt.Logs, nil
 	}
-	return nil, fmt.Errorf("timeout waiting for receipt of %s", txHash.Hex())
+	return nil, fmt.Errorf("%w of %s", errReceiptTimeout, txHash.Hex())
 }
 
 // replayedLeafFromReceipt finds the BridgeEvent log in a replayed bridgeAsset's receipt logs and

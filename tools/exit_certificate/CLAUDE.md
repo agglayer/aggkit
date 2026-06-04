@@ -230,9 +230,20 @@ divergence risk, and verifies the off-chain reconstruction against it.
    `getRoot()`. A mismatch aborts Step G2 — except when `options.ignoreUnsupportedL2Events=true`,
    where divergence is expected (the syncer skipped events the contract processed) and is only logged.
 
-   The replay is **fail-fast**: the first `approve`/`bridgeAsset` failure cancels the shared context,
-   aborts with the real error (not `context.Canceled`), kills Anvil via `defer cleanup()`, and
-   persists the offending exit to `step-g-failed-exit.json` (`FailedBridgeExit`).
+   The replay is **fail-fast on hard errors**: the first `approve`/`bridgeAsset` send failure or
+   on-chain revert cancels the shared context, aborts with the real error (not `context.Canceled`),
+   kills Anvil via `defer cleanup()`, and persists the offending exit to `step-g-failed-exit.json`
+   (`FailedBridgeExit`).
+
+   A **receipt timeout** (`receiptPollTimeout`, 300s — the block did not mine in time, typically a
+   slow remote fork backend) is **not** fatal: the exit is deferred and retried after the
+   send/collect phase drains (`retryDeferredExit`). The retry loops **unbounded** until the exit
+   mines: each iteration **re-polls the current tx** (Anvil has usually mined its block by then) and,
+   only if the receipt is still absent — i.e. the tx never landed — **re-sends** the `bridgeAsset`
+   and polls the new hash next. Re-polling before each re-send is what keeps the tree correct: a tx
+   that did mine is never sent twice (which would double-count the exit's leaf). The retry exits only
+   on success, a **revert**, or **context cancellation** — those (and a re-send send failure) are
+   terminal and abort as above. A slow fork backend is never abandoned.
 
 **Empty bridge exits:** if the certificate has no `bridge_exits`, both modes skip straight to the
 canonical `bridgesynctypes.EmptyLER` (no Anvil, no tree).
