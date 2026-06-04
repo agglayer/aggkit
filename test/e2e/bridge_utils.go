@@ -9,12 +9,34 @@ import (
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/e2e/envs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
+
+// waitForGERPresentOnL2 polls the L2 GlobalExitRoot contract until the given GER is present
+// (globalExitRootMap timestamp > 0). An L1->L2 claim verifies its GER against this contract, but the
+// bridge service can report the L1-info-tree leaf "injected" slightly before aggoracle has actually
+// set the GER on the L2 contract (the lag grows deep in a busy suite), so claiming immediately races
+// that and ClaimAsset reverts at gas estimation ("GER not found"). Gating on the L2 contract state
+// makes the claim robust regardless of run order. Bounded by ctx.
+func waitForGERPresentOnL2(ctx context.Context, env *envs.Env, mainnetExitRoot, rollupExitRoot common.Hash) error {
+	ger := l1infotreesync.CalculateGER(mainnetExitRoot, rollupExitRoot)
+	for {
+		ts, err := env.L2.Contracts.GlobalExitRoot.GlobalExitRootMap(&bind.CallOpts{Context: ctx}, ger)
+		if err == nil && ts != nil && ts.Sign() > 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("GER %s not present on L2 GlobalExitRoot before claim: %w", ger.Hex(), ctx.Err())
+		case <-time.After(3 * time.Second):
+		}
+	}
+}
 
 // BridgeL1ToL2 runs the L1 -> L2 bridge flow using the given environment and transactors.
 // Performs the full deposit and claim flows. Returns error for any non-successful operation.
@@ -133,6 +155,9 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
+	if err := waitForGERPresentOnL2(ctx, env, mainnetExitRoot, rollupExitRoot); err != nil {
+		return fmt.Errorf("wait for GER on L2 before claim: %w", err)
+	}
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
@@ -275,6 +300,9 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
+	if err := waitForGERPresentOnL2(ctx, env, mainnetExitRoot, rollupExitRoot); err != nil {
+		return nil, fmt.Errorf("wait for GER on L2 before claim: %w", err)
+	}
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,

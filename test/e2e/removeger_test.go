@@ -963,7 +963,13 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	// --- Step 1: Do a real L1 bridge (NO claim on L2) ---
 	log.Info("[B2] step: perform real L1 bridge (no claim)")
 
-	bridge1 := performBridgeL1NoClaim(ctx, t, env, big.NewInt(200000000000000), "B2-1") // 0.0002 ETH
+	// Use a distinctive, unique bridge amount so this bridge's leaf content (origin/dest/amount/metadata)
+	// does not collide with any other test's bridge. The removeGER tool resolves the "CorrectBridge" for
+	// the fake claim by matching leaf CONTENT; deep in a shared-env suite many bridges accumulate, and a
+	// round amount (e.g. 0.0002 ETH) to the same pooled destination collides, so the tool resolves a
+	// different bridge (wrong deposit_count) and the CorrectBridge assertion fails. An odd, distinctive
+	// amount keeps the content unique and the resolution unambiguous regardless of run order.
+	bridge1 := performBridgeL1NoClaim(ctx, t, env, big.NewInt(200000000000777), "B2-1") // ~0.0002 ETH, unique
 	log.Infof("[B2] bridge done: deposit_count=%d, global_index=%s",
 		bridge1.DepositCount, bridge1.GlobalIndex.String())
 

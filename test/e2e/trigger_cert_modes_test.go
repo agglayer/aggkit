@@ -20,8 +20,10 @@ const triggerCertModesTestTimeout = 20 * time.Minute
 
 // triggerCertModesObserveTimeout bounds the wait while observing certificate-height advancement.
 // Cert cadence on op-pp is multi-minute (empirically ~1 cert per couple of minutes when there is
-// L2 activity), so a generous 15m window is used to stay non-flaky, matching certSettlementWaitTimeout.
-const triggerCertModesObserveTimeout = 15 * time.Minute
+// L2 activity). Deep in a long shared-env suite the aggsender is busier and the per-epoch settlement
+// cadence under load can exceed a tight window, so use a generous 25m budget to stay non-flaky (the
+// test stops early as soon as it observes one height advance; this only caps the worst case).
+const triggerCertModesObserveTimeout = 25 * time.Minute
 
 // triggerCertModesBridgeAmount is the small ETH amount bridged L1->L2 to keep the network warm so
 // the aggsender has activity to certify. EpochBased still needs bridge/network activity to produce a

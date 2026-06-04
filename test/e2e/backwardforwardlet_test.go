@@ -42,8 +42,8 @@ const (
 	// after a restart the bridge service can take its full readiness window to re-sync (more so deep in
 	// a busy suite); a tighter budget made the restart intermittently "fail" with "wait for bridge
 	// service after start: context deadline exceeded" and cascade into later tests.
-	bflRestartTimeout    = 5 * time.Minute
-	bflBridgeIndexWait   = 2 * time.Minute
+	bflRestartTimeout  = 5 * time.Minute
+	bflBridgeIndexWait = 2 * time.Minute
 	// bflNoPendingTimeout is used when waiting for the agglayer to have no in-flight certs.
 	// Same epoch-based reasoning as bflCertSettleTimeout; using a larger margin in case
 	// the cert is submitted early in an epoch and the epoch is longer than expected.
