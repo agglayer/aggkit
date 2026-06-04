@@ -1,14 +1,31 @@
+# Example config for Polygon zkEVM Cardona (testnet). Copy to a .toml file and fill in the fields
+# marked below. Field names are identical in the JSON format; format is chosen by file extension.
+# See ./README.md and ../README.md for a full description of every field.
+
+# REQUIRED — L1 JSON-RPC endpoint (Steps E and I). Use a *Sepolia* RPC for Cardona. Without it
+# Step E is silently skipped and Step I fails, so the certificate will be incomplete.
 l1RpcUrl = "<YOUR_L1_RPC_URL>"
+
+# REQUIRED — L2 JSON-RPC endpoint. Must expose debug_traceTransaction (archive node) for Step A.
 l2RpcUrl = "https://rpc-debug.cardona.zkevm-rpc.com/"
+
+# Optional — L1 bridge contract address. Defaults to l2BridgeAddress when unset.
 l1BridgeAddress = "0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582"
+
+# REQUIRED — L2 bridge contract address.
 l2BridgeAddress = "0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582"
 l2NetworkId = 1
 targetBlock = "LatestBlock"
+
+# REQUIRED — address that receives SC-locked value (tokens held in smart contracts). Use an address
+# whose private key you control; settled funds can only be recovered by signing from it.
 exitAddress = "0x0000000000000000000000000000000000001234"
 sovereignRollupAddr = "0xA13Ddb14437A8F34897131367ad3ca78416d6bCa"
 l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
 destinationNetwork = 0
 
+# REQUIRED to sign — signer for Step SIGN (same format as aggsender's AggsenderPrivateKey). Other
+# backends (GCP KMS, AWS KMS, …) are supported; see the go_signer repo.
 [signerConfig]
 Method = "local"
 Path = "signer.keystore"
@@ -22,6 +39,7 @@ rpcBatchSize = 99
 rpcDelayMs = 10
 outputDir = "./output-cardona"
 l1StartBlock = 5157692
+l2StartBlock = 0
 ignoreOnTraceError = false
 ignoreGenesisBalance = false
 ignoreUnclaimed = false
@@ -29,8 +47,15 @@ ignoreBalanceMismatch = false
 extraErc20Contracts = []
 bridgeServiceURL = "https://bridge-api.cardona.zkevm-rpc.com"
 bridgeServiceType = "zkevm"
+
+# REQUIRED for Step F — agglayer admin RPC endpoint (admin_getTokenBalance). If omitted, Step F is skipped.
 agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"
+# REQUIRED for Step F when the admin endpoint is behind Google Cloud IAP — Bearer token for
+# agglayerAdminURL (see the "Authenticating with IAP" section of the README).
 agglayerAdminToken = "<JWT>"
 
+# REQUIRED for Steps H, SUBMIT and WAIT — agglayer gRPC client config (same as aggsender's
+# agglayer.ClientConfig). Set at least GRPC.URL (e.g. "agglayer.example.com:50051").
 [options.agglayerClient.GRPC]
 URL = "<AGGLAYER_GRPC_URL>"
+UseTLS = true

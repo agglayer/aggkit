@@ -142,6 +142,13 @@ func LoadConfig(configPath string) (*Config, error) {
 	if raw.L2BridgeAddress == "" {
 		return nil, fmt.Errorf("missing required parameter: l2BridgeAddress")
 	}
+	if raw.ExitAddress == "" {
+		return nil, fmt.Errorf("missing required parameter: exitAddress")
+	}
+	if common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
+		return nil, fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
+			"set an address whose private key you control so the SC-locked funds can be recovered")
+	}
 
 	configDir := filepath.Dir(configPath)
 

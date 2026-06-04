@@ -54,6 +54,40 @@ func TestLoadConfig_MissingL2BridgeAddress(t *testing.T) {
 	require.Contains(t, err.Error(), "l2BridgeAddress")
 }
 
+func TestLoadConfig_MissingExitAddress(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "missing.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+}
+
+func TestLoadConfig_ZeroExitAddress(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "zero.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000000",
+		"targetBlock": "100"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+	require.Contains(t, err.Error(), "zero address")
+}
+
 func TestLoadConfig_MinimalValid(t *testing.T) {
 	t.Parallel()
 
@@ -61,6 +95,7 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100"
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -69,6 +104,7 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://localhost:8545", cfg.L2RPCURL)
 	require.Equal(t, common.HexToAddress("0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"), cfg.L2BridgeAddress)
+	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), cfg.ExitAddress)
 	require.Equal(t, *aggkittypes.NewBlockNumber(100), cfg.TargetBlock)
 	require.Equal(t, uint32(1), cfg.L2NetworkID)
 	require.Equal(t, cfg.L2BridgeAddress, cfg.L1BridgeAddress)
@@ -178,6 +214,7 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100"
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -202,6 +239,7 @@ func TestLoadConfig_StepAWindowSize(t *testing.T) {
 		data := `{
 			"l2RpcUrl": "http://localhost:8545",
 			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+			"exitAddress": "0x0000000000000000000000000000000000000001",
 			"targetBlock": "100",
 			"options": {
 				"stepAWindowSize": 2000
@@ -221,6 +259,7 @@ func TestLoadConfig_StepAWindowSize(t *testing.T) {
 		data := `{
 			"l2RpcUrl": "http://localhost:8545",
 			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+			"exitAddress": "0x0000000000000000000000000000000000000001",
 			"targetBlock": "100"
 		}`
 		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -239,6 +278,7 @@ func TestLoadConfig_RelativeOutputDir(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"outputDir": "./output"
@@ -309,6 +349,7 @@ func TestLoadConfig_AgglayerAdminToken(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"agglayerAdminURL": "https://admin.example.com",
@@ -349,6 +390,7 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"ignoreGenesisBalance": true,
@@ -374,6 +416,7 @@ func TestLoadConfig_AgglayerClient(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"agglayerClient": {
@@ -400,6 +443,7 @@ func TestMergeOptions_BridgeService(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"bridgeServiceURL": "http://bridge:8080",
@@ -487,6 +531,7 @@ func TestLoadConfig_InvalidTargetBlock(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "FinalizedBock"
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))

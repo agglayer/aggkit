@@ -65,7 +65,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
 | `targetBlock` | No | Target block for state capture. Accepts a decimal number (`"21000000"`), hex (`"0x1406f40"`), or a finality keyword: `"LatestBlock"`, `"FinalizedBlock"`, `"SafeBlock"`, `"PendingBlock"`. An optional negative offset can be appended (e.g. `"LatestBlock/-10"` = ten blocks before latest). Omitting the field or setting it to `""` defaults to `"LatestBlock"`. The keyword is resolved to a concrete block number at the start of Step 0 and saved to `step-0-l2_target_block.json`. All subsequent steps use that fixed number. |
-| `exitAddress` | No | Address that receives SC-locked value exits. Defaults to zero address. |
+| `exitAddress` | Yes | Address that receives SC-locked value exits on `destinationNetwork`. **Must be an address whose private key you control**, and **must not be the zero address** (`0x00…00`) — `LoadConfig` rejects both an empty value and the zero address, since these funds can only be recovered by signing from this address. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
 | `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
 | `l1GlobalExitRootAddress` | Yes* | Address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. |
@@ -102,9 +102,9 @@ The field names are identical in both formats. Pass whichever you created with `
 
 Although marked optional, `l1RpcUrl` is needed for Step E (unclaimed deposit detection) and Step I (`L1InfoTreeLeafCount`). In a real exit scenario you should always set it. Without it, Step E is silently skipped and the certificate may be missing unclaimed L1→L2 deposits.
 
-**`exitAddress` — keep the private key**
+**`exitAddress` — required, keep the private key**
 
-SC-locked value (tokens held in smart contracts) is bridged to `exitAddress` on the destination network. Use an address **whose private key you control** — once the certificate is settled, those funds can only be recovered by signing transactions from that address. If the key is lost, the value is permanently inaccessible.
+SC-locked value (tokens held in smart contracts) is bridged to `exitAddress` on the destination network. The field is **mandatory**: `LoadConfig` errors if it is missing or set to the zero address (`0x00…00`). Use an address **whose private key you control** — once the certificate is settled, those funds can only be recovered by signing transactions from that address. If the key is lost, the value is permanently inaccessible.
 
 **`agglayerClient` — required for Steps H, SUBMIT, and WAIT**
 

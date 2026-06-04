@@ -25,6 +25,8 @@ l2NetworkId = 1
 targetBlock = "LatestBlock"
 
 # Destination address on destinationNetwork for SC-locked value (tokens not held by any EOA).
+# REQUIRED. Must be an address whose private key you control and must NOT be the zero address
+# (0x00..00) — these funds can only be recovered by signing from it. LoadConfig rejects both.
 exitAddress = "0x0000000000000000000000000000000000000001"
 
 # Destination network ID for the generated bridge exits. Default: 0 (L1/mainnet).

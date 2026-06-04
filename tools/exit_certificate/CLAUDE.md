@@ -325,7 +325,12 @@ to JSON internally (`tomlToJSON`: decode to a map, re-encode as JSON) so both fo
 parsing/validation path, including `signerConfig` and `agglayerClient`. Field names are identical in
 both formats (camelCase keys, e.g. `l2RpcUrl`; `signerConfig` uses PascalCase `Method`/`Path`/`Password`).
 
-Required: `l2RpcUrl`, `l2BridgeAddress`, `targetBlock`.
+Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress`, `targetBlock`.
+
+`exitAddress` is validated by `LoadConfig`: it must be present **and** must not be the zero address
+(`0x00…00`) — both cases return an error. SC-locked value is bridged to this address on
+`destinationNetwork`, so it must be an address whose private key the operator controls (the funds can
+only be recovered by signing from it).
 
 `targetBlock` accepts: a finality keyword (`LatestBlock`, `FinalizedBlock`, `SafeBlock`, `PendingBlock`), an optional negative offset appended with `/` (e.g. `LatestBlock/-10`), a decimal block number (`"21000000"`), or a hex block number (`"0x1406f40"`). An empty string defaults to `LatestBlock`. The keyword is resolved to a concrete `uint64` at the start of Step 0 and written to `step-0-l2_target_block.json`; all subsequent steps (A, B, G) read that fixed number. The old lowercase aliases (`latest`, `finalized`, `safe`, `pending`) are **not** accepted — use the PascalCase keywords.
 
