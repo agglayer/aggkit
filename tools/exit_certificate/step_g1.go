@@ -90,12 +90,12 @@ func syncLiteToBlock(ctx context.Context, cfg *Config, targetBlock uint64) error
 		return err
 	}
 
-	bridges, err := syncer.GetBridges(ctx)
+	bridgeCount, err := syncer.CountBridges(ctx)
 	if err != nil {
 		return err
 	}
 	log.Infof("Lite-synced %d L2 bridges up to block %d into %s (exit tree deferred to Step G2)",
-		len(bridges), targetBlock, dbPath)
+		bridgeCount, targetBlock, dbPath)
 	return nil
 }
 

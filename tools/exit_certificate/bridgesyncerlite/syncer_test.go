@@ -177,6 +177,24 @@ func TestNextDepositCount(t *testing.T) {
 	require.Equal(t, uint32(5), next)
 }
 
+func TestCountBridges(t *testing.T) {
+	s := newTestSyncer(t)
+	ctx := context.Background()
+
+	// empty DB → 0
+	count, err := s.CountBridges(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	// store 5 leaves → 5
+	require.NoError(t, s.StoreBridges(ctx, []BridgeLeaf{
+		newTestLeaf(0), newTestLeaf(1), newTestLeaf(2), newTestLeaf(3), newTestLeaf(4),
+	}))
+	count, err = s.CountBridges(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 5, count)
+}
+
 func TestBuildTreeNonContiguousFails(t *testing.T) {
 	s := newTestSyncer(t)
 	// missing deposit count 1 → tree build must fail with invalid index

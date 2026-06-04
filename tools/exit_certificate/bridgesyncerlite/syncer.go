@@ -301,6 +301,20 @@ func (s *BridgeSyncerLite) LocalExitRoot() (common.Hash, error) {
 	return root.Hash, nil
 }
 
+// CountBridges returns the number of persisted bridge leaves. It runs a single COUNT(*) aggregate
+// query rather than loading every bridge into memory, so it stays O(1) on mainnet-scale histories.
+func (s *BridgeSyncerLite) CountBridges(ctx context.Context) (int, error) {
+	if s.db == nil {
+		return 0, errors.New("CountBridges requires a DB-backed syncer (set Config.DBPath)")
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT COUNT(*) FROM %s", bridgeTableName)).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count bridges: %w", err)
+	}
+	return count, nil
+}
+
 // NextDepositCount returns the deposit count the next inserted bridge should get: one past the
 // highest deposit count currently persisted, or 0 when the DB is empty. It runs a single aggregate
 // query (MAX(deposit_count)) rather than loading every bridge into memory, so it stays O(1) on
