@@ -878,21 +878,21 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 		index := uint32(r.L1InfoTreeIndex.Int64)
 		request.L1InfoTreeIndex = &index
 	}
-	if r.ProofJSON != nil {
+	if hasOptionalJSONValue(r.ProofJSON) {
 		var proof autoclaimtypes.ClaimProof
 		if err := json.Unmarshal(r.ProofJSON, &proof); err != nil {
 			return nil, fmt.Errorf("unmarshal autoclaim proof %s: %w", r.RequestKey, err)
 		}
 		request.Proof = &proof
 	}
-	if r.PolicyDecisionJSON != nil {
+	if hasOptionalJSONValue(r.PolicyDecisionJSON) {
 		var decision autoclaimtypes.PolicyDecision
 		if err := json.Unmarshal(r.PolicyDecisionJSON, &decision); err != nil {
 			return nil, fmt.Errorf("unmarshal autoclaim decision %s: %w", r.RequestKey, err)
 		}
 		request.PolicyDecision = &decision
 	}
-	if r.ManualDecisionJSON != nil {
+	if hasOptionalJSONValue(r.ManualDecisionJSON) {
 		var decision autoclaimtypes.PolicyDecision
 		if err := json.Unmarshal(r.ManualDecisionJSON, &decision); err != nil {
 			return nil, fmt.Errorf("unmarshal autoclaim manual decision %s: %w", r.RequestKey, err)
@@ -1001,6 +1001,10 @@ func marshalOptional(value any) ([]byte, error) {
 		return nil, nil
 	}
 	return json.Marshal(value)
+}
+
+func hasOptionalJSONValue(value []byte) bool {
+	return len(value) > 0 && string(value) != "null"
 }
 
 func nullBytes(value []byte) any {

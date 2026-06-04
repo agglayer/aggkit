@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -39,6 +40,7 @@ type autoClaimRequestResponse struct {
 	BridgeTxHash       string  `json:"bridge_tx_hash"`
 	ClaimTxHash        *string `json:"claim_tx_hash"`
 	PolicyStatus       string  `json:"policy_status"`
+	LastError          string  `json:"last_error"`
 }
 
 func TestAutoClaimL1ToL2AllowAll(t *testing.T) {
@@ -54,12 +56,10 @@ func testAutoClaimL1ToL2(t *testing.T, policyName string, approveThroughAPI bool
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
-	env := testEnv
-	require.NotNil(t, env, "testEnv must be set by TestMain")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
+	env := loadAutoClaimTestEnv(t, ctx)
 	enableAutoClaimForTest(t, ctx, env, policyName)
 	waitForBridgeServiceSynced(ctx, t)
 
@@ -96,6 +96,21 @@ func testAutoClaimL1ToL2(t *testing.T, policyName string, approveThroughAPI bool
 	finalBalance, err := env.Clients.L2.BalanceAt(ctx, result.DestinationAddr, nil)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, new(big.Int).Sub(finalBalance, initialBalance).Cmp(bridgeAmount), 0)
+}
+
+func loadAutoClaimTestEnv(t *testing.T, ctx context.Context) *envs.Env {
+	t.Helper()
+	loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer loadCancel()
+	env, err := envs.LoadEnv(loadCtx, envs.EnvOpPP)
+	require.NoError(t, err)
+
+	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer checkCancel()
+	require.NoError(t, env.CheckEnv(checkCtx))
+
+	testEnv = env
+	return env
 }
 
 func enableAutoClaimForTest(t *testing.T, ctx context.Context, env *envs.Env, policyName string) {
@@ -151,9 +166,22 @@ func waitForAutoClaimStatus(
 			case expected.String():
 				return true, nil
 			case autoclaimtypes.RequestStatusFailed.String(), autoclaimtypes.RequestStatusPolicyRejected.String():
-				return false, fmt.Errorf("autoclaim request %s reached terminal status %s", key, request.Status)
+				return false, fmt.Errorf(
+					"autoclaim request %s reached terminal status %s: last_error=%q claim_tx_hash=%v",
+					key,
+					request.Status,
+					request.LastError,
+					request.ClaimTxHash,
+				)
 			default:
-				log.Infof("waiting for Auto Claim request %s status %s, current=%s", key, expected, request.Status)
+				log.Infof(
+					"waiting for Auto Claim request %s status %s, current=%s, last_error=%q, claim_tx_hash=%v",
+					key,
+					expected,
+					request.Status,
+					request.LastError,
+					request.ClaimTxHash,
+				)
 				return false, nil
 			}
 		},
@@ -184,7 +212,13 @@ func getAutoClaimRequest(
 		return autoClaimRequestResponse{}, false, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return autoClaimRequestResponse{}, false, fmt.Errorf("GET Auto Claim request %s returned %s", key, resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return autoClaimRequestResponse{}, false, fmt.Errorf(
+			"GET Auto Claim request %s returned %s: %s",
+			key,
+			resp.Status,
+			strings.TrimSpace(string(body)),
+		)
 	}
 
 	var request autoClaimRequestResponse
@@ -209,7 +243,16 @@ func approveAutoClaimRequest(ctx context.Context, t *testing.T, key autoclaimtyp
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "approve Auto Claim request %s", key)
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		http.StatusOK,
+		resp.StatusCode,
+		"approve Auto Claim request %s response body: %s",
+		key,
+		strings.TrimSpace(string(respBody)),
+	)
 }
 
 func patchAutoClaimConfig(baseConfig, autoClaimSection string) string {
@@ -240,6 +283,7 @@ Enabled = true
 PollInterval = "2s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxWatchdog]
 Enabled = false
@@ -254,6 +298,8 @@ BridgeAddr = %q
 PolicyName = %q
 GasOffset = 100000
 WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
 
 [AutoClaim.Claimers.Policy]
 AllowMessageClaims = false

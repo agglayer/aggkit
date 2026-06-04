@@ -20,6 +20,7 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -69,6 +70,13 @@ func TestStartEnabledAutoClaimMissingDependencies(t *testing.T) {
 		L1InfoTreeSync: typedNilL1InfoTreeSync,
 	}, Factories{})
 	require.ErrorContains(t, err, "AutoClaim requires l1infotreesync")
+
+	_, err = Start(context.Background(), Dependencies{
+		Config:         cfg,
+		L1BridgeSync:   fakeL1BridgeSync{},
+		L1InfoTreeSync: fakeL1InfoTreeSync{},
+	}, Factories{})
+	require.ErrorContains(t, err, "AutoClaim L1-to-L2 watchdog requires l2gersync")
 }
 
 func TestStartRejectsInvalidClaimerConfig(t *testing.T) {
@@ -105,6 +113,7 @@ func TestStartBuildsAndStartsOneTransactionManagerPerEnabledClaimer(t *testing.T
 		Config:         cfg,
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
+		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		newRPCClient: func(_ context.Context, _ aggkitcommon.Logger, cfg ethermanconfig.RPCClientConfig) (
 			aggkittypes.EthClienter, error,
@@ -161,6 +170,10 @@ func TestStartBuildsAndStartsOneTransactionManagerPerEnabledClaimer(t *testing.T
 		claimerTargets[0].DestinationNetwork,
 		claimerTargets[1].DestinationNetwork,
 	})
+	for _, target := range claimerTargets {
+		require.Equal(t, 2*time.Second, target.RetryAfter)
+		require.Equal(t, uint64(3), target.MaxRetries)
+	}
 	require.Zero(t, apiCreated)
 }
 
@@ -174,6 +187,7 @@ func TestStartStopsBackgroundWorkOnContextCancellation(t *testing.T) {
 		Config:         validConfig(),
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
+		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		startEthTxManager: func(ctx context.Context, _ EthTxManager) {
 			<-ctx.Done()
@@ -206,6 +220,7 @@ func TestStartDoesNotCreateAPIWhenDisabled(t *testing.T) {
 		Config:         cfg,
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
+		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		newAPI: func() {
 			apiCreated = true
@@ -261,6 +276,8 @@ func validClaimer(id string, networkID uint32, enabled bool) autoclaimcfg.Claime
 		BridgeAddr:  common.HexToAddress("0x1000000000000000000000000000000000000001"),
 		PolicyName:  autoclaimcfg.PolicyNameAllowAll,
 		WaitPeriod:  cfgtypes.Duration{Duration: time.Second},
+		RetryAfter:  cfgtypes.Duration{Duration: 2 * time.Second},
+		MaxRetries:  3,
 		EthTxManager: ethtxmanager.Config{
 			StoragePath: "/tmp/ethtx-" + id + ".sqlite",
 		},
@@ -410,6 +427,15 @@ func (fakeL1InfoTreeSync) GetFirstInfo() (*l1infotreesync.L1InfoTreeLeaf, error)
 
 func (fakeL1InfoTreeSync) GetFirstInfoAfterBlock(uint64) (*l1infotreesync.L1InfoTreeLeaf, error) {
 	return nil, nil
+}
+
+type fakeL2GERSync struct{}
+
+func (fakeL2GERSync) GetFirstGERAfterL1InfoTreeIndex(
+	_ context.Context,
+	atOrAfterL1InfoTreeIndex uint32,
+) (l2gersync.GlobalExitRootInfo, error) {
+	return l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: atOrAfterL1InfoTreeIndex}, nil
 }
 
 type fakeStorage struct{}

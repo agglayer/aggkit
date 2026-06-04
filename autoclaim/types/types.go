@@ -16,6 +16,8 @@ import (
 const (
 	// L1OriginNetwork is the origin network used by first-scope L1-to-L2 Auto Claim requests.
 	L1OriginNetwork uint32 = 0
+	// LegacyZkEVMRollupNetwork is the legacy zkEVM rollup network ID used for pre-Etrog global indexes.
+	LegacyZkEVMRollupNetwork uint32 = 1
 )
 
 // RequestKey uniquely identifies an Auto Claim request across origin, destination, and deposit count.
@@ -170,6 +172,8 @@ type BridgeExit struct {
 	Source             bridgesync.BridgeSource
 	ToAddress          common.Address
 	GlobalIndex        *big.Int
+	L1InfoTreeIndex    *uint32
+	PreEtrog           bool
 }
 
 // PolicyDecision records the policy or manual decision that controls whether a request may be claimed.
@@ -300,6 +304,17 @@ func DeriveGlobalIndex(originNetwork, depositCount uint32) *big.Int {
 
 // NewBridgeExitFromSync converts a bridge sync record into an Auto Claim bridge exit.
 func NewBridgeExitFromSync(bridge bridgesync.Bridge) BridgeExit {
+	return NewBridgeExitFromSyncWithEtrog(bridge, 0)
+}
+
+// NewBridgeExitFromSyncWithEtrog converts a bridge sync record using Etrog-upgrade awareness.
+func NewBridgeExitFromSyncWithEtrog(bridge bridgesync.Bridge, etrogL1UpgradeBlock uint64) BridgeExit {
+	preEtrog := isPreEtrogBridge(bridge, etrogL1UpgradeBlock)
+	globalIndex := DeriveGlobalIndex(bridge.OriginNetwork, bridge.DepositCount)
+	if preEtrog {
+		globalIndex = new(big.Int).SetUint64(uint64(bridge.DepositCount))
+	}
+
 	return BridgeExit{
 		BlockNum:           bridge.BlockNum,
 		BlockPos:           bridge.BlockPos,
@@ -317,8 +332,15 @@ func NewBridgeExitFromSync(bridge bridgesync.Bridge) BridgeExit {
 		TxnSender:          bridge.TxnSender,
 		Source:             bridge.Source,
 		ToAddress:          bridge.ToAddress,
-		GlobalIndex:        DeriveGlobalIndex(bridge.OriginNetwork, bridge.DepositCount),
+		GlobalIndex:        globalIndex,
+		PreEtrog:           preEtrog,
 	}
+}
+
+func isPreEtrogBridge(bridge bridgesync.Bridge, etrogL1UpgradeBlock uint64) bool {
+	return etrogL1UpgradeBlock > 0 &&
+		bridge.DestinationNetwork == LegacyZkEVMRollupNetwork &&
+		bridge.BlockNum <= etrogL1UpgradeBlock
 }
 
 // NewRequestFromBridgeExit builds a detected Auto Claim request from a discovered bridge exit.
@@ -328,14 +350,20 @@ func NewRequestFromBridgeExit(bridge BridgeExit, now time.Time) AutoClaimRequest
 	if globalIndex == nil {
 		globalIndex = DeriveGlobalIndex(bridge.OriginNetwork, bridge.DepositCount)
 	}
+	var l1InfoTreeIndex *uint32
+	if bridge.L1InfoTreeIndex != nil {
+		index := *bridge.L1InfoTreeIndex
+		l1InfoTreeIndex = &index
+	}
 
 	return AutoClaimRequest{
-		Key:         key,
-		Status:      RequestStatusDetected,
-		Bridge:      bridge,
-		GlobalIndex: globalIndex,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		Key:             key,
+		Status:          RequestStatusDetected,
+		Bridge:          bridge,
+		GlobalIndex:     globalIndex,
+		L1InfoTreeIndex: l1InfoTreeIndex,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 }
 

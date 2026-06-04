@@ -13,7 +13,9 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 )
 
@@ -42,6 +44,64 @@ func TestPreparePendingWhenBridgeNotYetIncludedOnL1InfoTree(t *testing.T) {
 	proof, err := preparer.PrepareProof(ctx, testRequest(depositCount))
 	require.NoError(t, err)
 	require.Nil(t, proof)
+}
+
+func TestPreparePendingWhenL1InfoTreeSyncIsBehindBridgeBlock(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(42)
+	lastInfo := testL1InfoTreeLeaf(100, depositCount, "0x100")
+	request := testRequest(depositCount)
+	request.Bridge.BlockNum = lastInfo.BlockNumber + 1
+
+	preparer := NewPreparer(
+		&fakeL1BridgeSyncer{
+			rootsByLER: map[common.Hash]*treetypes.Root{
+				lastInfo.MainnetExitRoot: {Index: depositCount},
+			},
+		},
+		&fakeL1InfoTreeSyncer{
+			lastInfo: lastInfo,
+		},
+	)
+
+	result, err := preparer.Prepare(ctx, request)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Ready)
+	require.Nil(t, result.Proof)
+}
+
+func TestPreparePendingWhenL1InfoTreeLeafHasZeroExitRoots(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(42)
+	emptyInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     100,
+		L1InfoTreeIndex: depositCount,
+	}
+
+	preparer := NewPreparer(
+		&fakeL1BridgeSyncer{
+			rootsByLER: map[common.Hash]*treetypes.Root{
+				emptyInfo.MainnetExitRoot: {Index: depositCount},
+			},
+		},
+		&fakeL1InfoTreeSyncer{
+			firstInfo: emptyInfo,
+			lastInfo:  emptyInfo,
+			infoAfterBlock: map[uint64]*l1infotreesync.L1InfoTreeLeaf{
+				emptyInfo.BlockNumber: emptyInfo,
+			},
+			infoByIndex: map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+				depositCount: emptyInfo,
+			},
+		},
+	)
+
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Ready)
+	require.Nil(t, result.Proof)
 }
 
 func TestPrepareReturnsProofLookupFailures(t *testing.T) {
@@ -141,6 +201,88 @@ func TestPrepareBuildsSuccessfulL1OriginClaimProof(t *testing.T) {
 	}}, l1InfoTree.rollupProofCalls)
 }
 
+func TestPrepareUsesPresetL1InfoTreeIndex(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	selectedIndex := uint32(44)
+	selectedInfo := testL1InfoTreeLeaf(44, selectedIndex, "0x4400")
+	bridge := &fakeL1BridgeSyncer{
+		proof: testProof("0x1"),
+	}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		infoByIndex: map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+			selectedIndex: selectedInfo,
+		},
+		rollupProof: testProof("0x2"),
+	}
+	request := testRequest(depositCount)
+	request.Bridge.L1InfoTreeIndex = &selectedIndex
+
+	preparer := NewPreparer(bridge, l1InfoTree)
+	result, err := preparer.Prepare(ctx, request)
+	require.NoError(t, err)
+	require.True(t, result.Ready)
+	require.Equal(t, selectedIndex, result.Proof.L1InfoTreeIndex)
+	require.Equal(t, selectedInfo.MainnetExitRoot, bridge.proofCalls[0].localExitRoot)
+}
+
+func TestPreparePendingWhenPresetL1InfoTreeIndexLeafNotSynced(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	selectedIndex := uint32(44)
+	bridge := &fakeL1BridgeSyncer{
+		proof: testProof("0x1"),
+	}
+	request := testRequest(depositCount)
+	request.Bridge.L1InfoTreeIndex = &selectedIndex
+
+	preparer := NewPreparer(bridge, &fakeL1InfoTreeSyncer{
+		infoByIndexErr: db.ErrNotFound,
+	})
+	result, err := preparer.Prepare(ctx, request)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Ready)
+	require.Empty(t, bridge.proofCalls)
+}
+
+func TestPreparePendingUntilDestinationGERInjected(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	bridge := &fakeL1BridgeSyncer{}
+	l1InfoTree := &fakeL1InfoTreeSyncer{}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeInjectedGERSyncer{err: db.ErrNotFound})
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.False(t, result.Ready)
+	require.Empty(t, bridge.proofCalls)
+}
+
+func TestPrepareUsesDestinationInjectedGERIndex(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	injectedIndex := uint32(20)
+	injectedInfo := testL1InfoTreeLeaf(40, injectedIndex, "0x4000")
+	bridge := &fakeL1BridgeSyncer{}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		rollupProof: testProof("0x2"),
+	}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+	l1InfoTree.infoByIndex[injectedIndex] = injectedInfo
+
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeInjectedGERSyncer{
+		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: injectedIndex},
+	})
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.True(t, result.Ready)
+	require.Equal(t, injectedIndex, result.Proof.L1InfoTreeIndex)
+	require.Equal(t, injectedInfo.MainnetExitRoot, bridge.proofCalls[0].localExitRoot)
+}
+
 func TestProofToABIProofPreservesExpectedShape(t *testing.T) {
 	proof := testProof("0x1", "0x2", "0x3")
 
@@ -194,6 +336,7 @@ func testRequest(depositCount uint32) autoclaimtypes.AutoClaimRequest {
 			depositCount,
 		),
 		Bridge: autoclaimtypes.BridgeExit{
+			BlockNum:           20,
 			OriginNetwork:      autoclaimtypes.L1OriginNetwork,
 			DestinationNetwork: 1101,
 			DepositCount:       depositCount,
@@ -292,6 +435,7 @@ func (f *fakeL1BridgeSyncer) GetLastRoot(_ context.Context) (*treetypes.Root, er
 
 type fakeL1InfoTreeSyncer struct {
 	infoByIndex      map[uint32]*l1infotreesync.L1InfoTreeLeaf
+	infoByIndexErr   error
 	rollupProof      treetypes.Proof
 	rollupProofErr   error
 	lastInfo         *l1infotreesync.L1InfoTreeLeaf
@@ -300,10 +444,31 @@ type fakeL1InfoTreeSyncer struct {
 	rollupProofCalls []rollupProofCall
 }
 
+type fakeInjectedGERSyncer struct {
+	info l2gersync.GlobalExitRootInfo
+	err  error
+}
+
+func (f *fakeInjectedGERSyncer) GetFirstGERAfterL1InfoTreeIndex(
+	_ context.Context,
+	atOrAfterL1InfoTreeIndex uint32,
+) (l2gersync.GlobalExitRootInfo, error) {
+	if f.err != nil {
+		return l2gersync.GlobalExitRootInfo{}, f.err
+	}
+	if f.info.L1InfoTreeIndex == 0 {
+		f.info.L1InfoTreeIndex = atOrAfterL1InfoTreeIndex
+	}
+	return f.info, nil
+}
+
 func (f *fakeL1InfoTreeSyncer) GetInfoByIndex(
 	_ context.Context,
 	index uint32,
 ) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	if f.infoByIndexErr != nil {
+		return nil, f.infoByIndexErr
+	}
 	info, ok := f.infoByIndex[index]
 	if !ok {
 		return nil, errors.New("info not found")

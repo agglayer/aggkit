@@ -44,6 +44,7 @@ type Dependencies struct {
 		proof.L1BridgeSyncer
 	}
 	L1InfoTreeSync proof.L1InfoTreeSyncer
+	L2GERSync      proof.InjectedGERSyncer
 	Logger         aggkitcommon.Logger
 }
 
@@ -236,6 +237,9 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 	if isNil(deps.L1InfoTreeSync) {
 		return nil, fmt.Errorf("AutoClaim requires l1infotreesync / L1 info tree sync when enabled")
 	}
+	if cfg.L1ToL2Watchdog.Enabled && isNil(deps.L2GERSync) {
+		return nil, fmt.Errorf("AutoClaim L1-to-L2 watchdog requires l2gersync / destination injected GER sync when enabled")
+	}
 
 	factories = withDefaultFactories(factories, deps.LogConfig)
 	logger := deps.Logger
@@ -252,7 +256,7 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		return nil, fmt.Errorf("open AutoClaim storage: %w", err)
 	}
 
-	proofPreparer := proof.NewPreparer(deps.L1BridgeSync, deps.L1InfoTreeSync)
+	proofPreparer := proof.NewPreparer(deps.L1BridgeSync, deps.L1InfoTreeSync, deps.L2GERSync)
 	runtime := &Runtime{Storage: storage}
 	claimers := make([]autoclaimtypes.Claimer, 0, len(cfg.Claimers))
 	for _, claimerCfg := range cfg.Claimers {
@@ -284,6 +288,8 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		registry,
 		watchdog.WithEnabled(cfg.L1ToL2Watchdog.Enabled),
 		watchdog.WithPollPeriod(cfg.L1ToL2Watchdog.PollInterval.Duration),
+		watchdog.WithEtrogL1UpgradeBlock(cfg.L1ToL2Watchdog.EtrogL1UpgradeBlock),
+		watchdog.WithClaimAnchorSelector(proofPreparer),
 		watchdog.WithLogger(logger),
 	)
 	if err != nil {
@@ -444,6 +450,10 @@ func isNil(value any) bool {
 }
 
 func targetFromConfig(cfg autoclaimcfg.ClaimerConfig) autoclaimtypes.ClaimerTarget {
+	retryAfter := cfg.RetryAfter.Duration
+	if retryAfter <= 0 {
+		retryAfter = cfg.WaitPeriod.Duration
+	}
 	return autoclaimtypes.ClaimerTarget{
 		ID:                 cfg.ID,
 		DestinationNetwork: cfg.NetworkID,
@@ -451,7 +461,8 @@ func targetFromConfig(cfg autoclaimcfg.ClaimerConfig) autoclaimtypes.ClaimerTarg
 		BridgeAddr:         cfg.BridgeAddr,
 		GasOffset:          cfg.GasOffset,
 		WaitPeriod:         cfg.WaitPeriod.Duration,
-		RetryAfter:         cfg.WaitPeriod.Duration,
+		RetryAfter:         retryAfter,
+		MaxRetries:         cfg.MaxRetries,
 	}
 }
 
@@ -465,10 +476,10 @@ func autoClaimAPIConfig(cfg autoclaimcfg.APIConfig, restCfg aggkitcommon.RESTCon
 }
 
 type targetClaimReader struct {
-	bridge isClaimedContract
+	bridge targetBridgeContract
 }
 
-type isClaimedContract interface {
+type targetBridgeContract interface {
 	IsClaimed(opts *bind.CallOpts, leafIndex uint32, sourceBridgeNetwork uint32) (bool, error)
 }
 

@@ -22,6 +22,11 @@ type CursorStore interface {
 	SaveBridgeCursor(ctx context.Context, name string, cursor autoclaimtypes.BridgeCursor, now time.Time) error
 }
 
+// ClaimAnchorSelector chooses the destination-injected L1 info tree leaf to anchor a claim request.
+type ClaimAnchorSelector interface {
+	SelectL1InfoTreeIndex(ctx context.Context, exit autoclaimtypes.BridgeExit) (uint32, bool, error)
+}
+
 // Option configures an L1ToL2 watchdog.
 type Option func(*L1ToL2)
 
@@ -73,6 +78,20 @@ func WithEnabled(enabled bool) Option {
 	}
 }
 
+// WithEtrogL1UpgradeBlock configures the L1 block where Etrog global indexes become active.
+func WithEtrogL1UpgradeBlock(block uint64) Option {
+	return func(w *L1ToL2) {
+		w.etrogL1UpgradeBlock = block
+	}
+}
+
+// WithClaimAnchorSelector configures the selector used to wait for destination-injected GERs.
+func WithClaimAnchorSelector(selector ClaimAnchorSelector) Option {
+	return func(w *L1ToL2) {
+		w.claimAnchorSelector = selector
+	}
+}
+
 // WithNow configures the clock used for cursor timestamps.
 func WithNow(now func() time.Time) Option {
 	return func(w *L1ToL2) {
@@ -99,22 +118,25 @@ type PollResult struct {
 	EnqueuedBridgeCount int
 	IgnoredBridgeCount  int
 	SkippedBridgeCount  int
+	PendingBridgeCount  int
 	CursorAdvanced      bool
 }
 
 // L1ToL2 discovers L1-origin bridge exits and routes them to destination claimers.
 type L1ToL2 struct {
-	bridgeSource  autoclaimtypes.BridgeSource
-	cursorStore   CursorStore
-	registry      autoclaimtypes.ClaimerRegistry
-	cursorName    string
-	blockWindow   uint64
-	overlapBlocks uint64
-	startBlock    uint64
-	pollPeriod    time.Duration
-	enabled       bool
-	now           func() time.Time
-	log           aggkitcommon.Logger
+	bridgeSource        autoclaimtypes.BridgeSource
+	cursorStore         CursorStore
+	registry            autoclaimtypes.ClaimerRegistry
+	cursorName          string
+	blockWindow         uint64
+	overlapBlocks       uint64
+	startBlock          uint64
+	pollPeriod          time.Duration
+	enabled             bool
+	etrogL1UpgradeBlock uint64
+	claimAnchorSelector ClaimAnchorSelector
+	now                 func() time.Time
+	log                 aggkitcommon.Logger
 }
 
 // NewL1ToL2 creates an L1-to-L2 Auto Claim watchdog.
@@ -214,6 +236,7 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	result.BridgeCount = len(bridges)
 
 	seen := make(map[autoclaimtypes.RequestKey]struct{}, len(bridges))
+	holdCursor := false
 	nextCursor := autoclaimtypes.BridgeCursor{
 		FromBlock: fromBlock,
 		ToBlock:   toBlock,
@@ -221,7 +244,7 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		BlockPos:  0,
 	}
 	for _, bridge := range bridges {
-		exit := autoclaimtypes.NewBridgeExitFromSync(bridge)
+		exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
 		nextCursor = maxCursorPosition(nextCursor, exit.BlockNum, exit.BlockPos)
 		if cursorFound && cursor != nil && atOrBeforeCursor(exit, *cursor) {
 			result.SkippedBridgeCount++
@@ -253,10 +276,26 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		}
 
 		result.MatchedBridgeCount++
+		if w.claimAnchorSelector != nil {
+			l1InfoTreeIndex, ready, err := w.claimAnchorSelector.SelectL1InfoTreeIndex(ctx, exit)
+			if err != nil {
+				return result, fmt.Errorf("select L1 info tree index for l1 bridge %s: %w", key, err)
+			}
+			if !ready {
+				result.PendingBridgeCount++
+				holdCursor = true
+				break
+			}
+			exit.L1InfoTreeIndex = &l1InfoTreeIndex
+		}
 		if err := claimer.Enqueue(ctx, exit); err != nil {
 			return result, fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w", key, claimer.Target().ID, err)
 		}
 		result.EnqueuedBridgeCount++
+	}
+
+	if holdCursor {
+		return result, nil
 	}
 
 	if err := w.cursorStore.SaveBridgeCursor(ctx, w.cursorName, nextCursor, w.now()); err != nil {

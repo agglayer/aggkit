@@ -139,6 +139,13 @@ func TestClaimerConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 			wantError: "WaitPeriod must be greater than 0",
 		},
 		{
+			name: "invalid retry period",
+			mutate: func(cfg *ClaimerConfig) {
+				cfg.RetryAfter.Duration = -time.Second
+			},
+			wantError: "RetryAfter must be greater than or equal to 0",
+		},
+		{
 			name: "missing ethtxmanager storage path",
 			mutate: func(cfg *ClaimerConfig) {
 				cfg.EthTxManager.StoragePath = ""
@@ -181,6 +188,8 @@ func validClaimerConfig(id string, networkID uint32) ClaimerConfig {
 		BridgeAddr:  common.HexToAddress("0x1000000000000000000000000000000000000000"),
 		PolicyName:  PolicyNameAllowAll,
 		WaitPeriod:  cfgtypes.NewDuration(time.Second),
+		RetryAfter:  cfgtypes.NewDuration(2 * time.Second),
+		MaxRetries:  3,
 		EthTxManager: ethtxmanager.Config{
 			StoragePath: "/tmp/autoclaim-ethtxmanager.sqlite",
 		},

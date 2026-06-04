@@ -166,6 +166,107 @@ func TestEnqueueCallsGoToCorrectClaimer(t *testing.T) {
 	require.Equal(t, uint32(2), claimer11.enqueued[0].DepositCount)
 }
 
+func TestPollOnceMarksPreEtrogBridgeBeforeConfiguredUpgradeBlock(t *testing.T) {
+	ctx := context.Background()
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 10,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 0, to: 10}: {
+				makeSyncBridge(
+					7,
+					autoclaimtypes.L1OriginNetwork,
+					autoclaimtypes.LegacyZkEVMRollupNetwork,
+					10,
+					0,
+				),
+			},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{
+		target: autoclaimtypes.ClaimerTarget{
+			ID:                 "claimer-1",
+			DestinationNetwork: autoclaimtypes.LegacyZkEVMRollupNetwork,
+		},
+	}
+	watchdog := newTestWatchdog(
+		t,
+		source,
+		store,
+		newFakeRegistry(claimer),
+		WithBlockWindow(11),
+		WithEtrogL1UpgradeBlock(10),
+	)
+
+	result, err := watchdog.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.EnqueuedBridgeCount)
+	require.Len(t, claimer.enqueued, 1)
+	require.True(t, claimer.enqueued[0].PreEtrog)
+	require.Equal(t, uint64(7), claimer.enqueued[0].GlobalIndex.Uint64())
+}
+
+func TestPollOnceWaitsForClaimAnchorWithoutAdvancingCursor(t *testing.T) {
+	ctx := context.Background()
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 10,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 0, to: 10}: {makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 10, 1, 0)},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	watchdog := newTestWatchdog(
+		t,
+		source,
+		store,
+		newFakeRegistry(claimer),
+		WithBlockWindow(11),
+		WithClaimAnchorSelector(&fakeClaimAnchorSelector{ready: false}),
+	)
+
+	result, err := watchdog.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.MatchedBridgeCount)
+	require.Equal(t, 1, result.PendingBridgeCount)
+	require.Equal(t, 0, result.EnqueuedBridgeCount)
+	require.False(t, result.CursorAdvanced)
+	require.Empty(t, store.cursors)
+	require.Empty(t, claimer.enqueued)
+}
+
+func TestPollOnceAttachesSelectedClaimAnchor(t *testing.T) {
+	ctx := context.Background()
+	selectedIndex := uint32(77)
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 10,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 0, to: 10}: {makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 10, 1, 0)},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	watchdog := newTestWatchdog(
+		t,
+		source,
+		store,
+		newFakeRegistry(claimer),
+		WithBlockWindow(11),
+		WithClaimAnchorSelector(&fakeClaimAnchorSelector{index: selectedIndex, ready: true}),
+	)
+
+	result, err := watchdog.PollOnce(ctx)
+	require.NoError(t, err)
+	require.True(t, result.CursorAdvanced)
+	require.Equal(t, 1, result.EnqueuedBridgeCount)
+	require.Len(t, claimer.enqueued, 1)
+	require.NotNil(t, claimer.enqueued[0].L1InfoTreeIndex)
+	require.Equal(t, selectedIndex, *claimer.enqueued[0].L1InfoTreeIndex)
+}
+
 func TestClaimerErrorDoesNotAdvanceCursor(t *testing.T) {
 	ctx := context.Background()
 	enqueueErr := errors.New("enqueue failed")
@@ -340,4 +441,17 @@ func (c *fakeClaimer) Enqueue(_ context.Context, bridge autoclaimtypes.BridgeExi
 
 func (c *fakeClaimer) Advance(_ context.Context, key autoclaimtypes.RequestKey) error {
 	return fmt.Errorf("unexpected advance for %s", key)
+}
+
+type fakeClaimAnchorSelector struct {
+	index uint32
+	ready bool
+	err   error
+}
+
+func (s *fakeClaimAnchorSelector) SelectL1InfoTreeIndex(
+	_ context.Context,
+	_ autoclaimtypes.BridgeExit,
+) (uint32, bool, error) {
+	return s.index, s.ready, s.err
 }

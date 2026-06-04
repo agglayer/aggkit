@@ -78,17 +78,48 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 		blockNumber := uint64(100)
 		blockHash := common.HexToHash("0x1234")
+		canonicalBlock := &aggkittypes.BlockHeader{
+			Number: blockNumber,
+			Hash:   common.HexToHash("0x5678"),
+		}
 
 		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
 			Return(nil, mdrtypes.NotFinalized, nil).Once()
 		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
 			Return(uint64(0), false, nil).Once()
+		testData.mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(blockNumber)).
+			Return(canonicalBlock, nil).Once()
 
 		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found in storage or blocks_reorged")
 		require.False(t, isValid)
+		require.Equal(t, uint64(0), reorgID)
+	})
+
+	t.Run("returns true when block is not stored but matches canonical RPC header", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, true)
+		blockNumber := uint64(100)
+		blockHash := common.HexToHash("0x1234")
+		canonicalBlock := &aggkittypes.BlockHeader{
+			Number: blockNumber,
+			Hash:   blockHash,
+		}
+
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
+			Return(nil, mdrtypes.NotFinalized, nil).Once()
+		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
+			Return(uint64(0), false, nil).Once()
+		testData.mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(blockNumber)).
+			Return(canonicalBlock, nil).Once()
+
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+
+		require.NoError(t, err)
+		require.True(t, isValid)
 		require.Equal(t, uint64(0), reorgID)
 	})
 

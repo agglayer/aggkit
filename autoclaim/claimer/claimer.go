@@ -8,6 +8,7 @@ import (
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -311,11 +312,11 @@ func (c *Claimer) advanceManualDecision(
 	ctx context.Context,
 	request autoclaimtypes.AutoClaimRequest,
 ) (*autoclaimtypes.AutoClaimRequest, error) {
-	if request.PolicyDecision == nil {
+	if request.ManualDecision == nil {
 		return &request, nil
 	}
 
-	switch request.PolicyDecision.Result {
+	switch request.ManualDecision.Result {
 	case autoclaimtypes.PolicyResultApproved:
 		return c.transition(ctx, request, autoclaimtypes.RequestStatusPolicyApproved)
 	case autoclaimtypes.PolicyResultRejected:
@@ -350,6 +351,12 @@ func (c *Claimer) sendWhenReady(ctx context.Context, request autoclaimtypes.Auto
 			}
 			return err
 		}
+		if !proofReadyForRequest(*proof, *current) {
+			if current.Status == autoclaimtypes.RequestStatusSending {
+				_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
+			}
+			return err
+		}
 		if err := c.storage.SaveProof(ctx, current.Key, *proof); err != nil {
 			return fmt.Errorf("save proof for autoclaim request %s: %w", current.Key, err)
 		}
@@ -360,8 +367,12 @@ func (c *Claimer) sendWhenReady(ctx context.Context, request autoclaimtypes.Auto
 		return nil
 	}
 
-	if failErr := c.failIfRetriesExhausted(ctx, current.Key, err); failErr != nil {
+	retryScheduled, failErr := c.failIfRetriesExhausted(ctx, current.Key, err)
+	if failErr != nil {
 		return failErr
+	}
+	if retryScheduled {
+		return nil
 	}
 	return fmt.Errorf("submit claim for autoclaim request %s: %w", current.Key, err)
 }
@@ -370,13 +381,13 @@ func (c *Claimer) failIfRetriesExhausted(
 	ctx context.Context,
 	key autoclaimtypes.RequestKey,
 	sendErr error,
-) error {
+) (bool, error) {
 	latest, err := c.storage.GetRequest(ctx, key)
 	if err != nil {
-		return fmt.Errorf("get autoclaim request after send error %s: %w", key, err)
+		return false, fmt.Errorf("get autoclaim request after send error %s: %w", key, err)
 	}
 	if latest.Status.IsTerminal() {
-		return nil
+		return false, nil
 	}
 	maxRetries := latest.MaxRetries
 	if maxRetries == 0 {
@@ -384,19 +395,39 @@ func (c *Claimer) failIfRetriesExhausted(
 	}
 	if latest.RetryCount < maxRetries {
 		if updateErr := c.storage.UpdateLastError(ctx, key, sendErr.Error(), c.now()); updateErr != nil {
-			return fmt.Errorf("record send error for autoclaim request %s: %w", key, updateErr)
+			return false, fmt.Errorf("record send error for autoclaim request %s: %w", key, updateErr)
 		}
-		return nil
+		if latest.Status == autoclaimtypes.RequestStatusSending {
+			if _, err := c.transition(ctx, *latest, autoclaimtypes.RequestStatusQueued); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
 	}
 	if latest.Status.CanTransitionTo(autoclaimtypes.RequestStatusFailed) {
 		if _, err := c.transition(ctx, *latest, autoclaimtypes.RequestStatusFailed); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if updateErr := c.storage.UpdateLastError(ctx, key, sendErr.Error(), c.now()); updateErr != nil {
-		return fmt.Errorf("record send error for autoclaim request %s: %w", key, updateErr)
+		return false, fmt.Errorf("record send error for autoclaim request %s: %w", key, updateErr)
 	}
-	return nil
+	return false, nil
+}
+
+func proofReadyForRequest(
+	proof autoclaimtypes.ClaimProof,
+	request autoclaimtypes.AutoClaimRequest,
+) bool {
+	if request.Bridge.BlockNum == 0 {
+		return proof.MainnetExitRoot != (common.Hash{}) && proof.GlobalExitRoot != (common.Hash{})
+	}
+	if proof.L1InfoTreeLeaf == nil {
+		return false
+	}
+	return proof.MainnetExitRoot != (common.Hash{}) &&
+		proof.GlobalExitRoot != (common.Hash{}) &&
+		proof.L1InfoTreeLeaf.BlockNumber >= request.Bridge.BlockNum
 }
 
 func (c *Claimer) transition(

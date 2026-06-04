@@ -15,6 +15,7 @@ import (
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -94,6 +95,33 @@ func TestManualFlowStaysIdleUntilApproved(t *testing.T) {
 	require.Equal(t, 1, sender.submitCalls)
 }
 
+func TestManualFlowUsesManualDecisionToAdvance(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	claimer := newTestClaimer(t, storage, manualPolicy(), readyProof(), sender)
+	bridge := makeBridge(44, 10)
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusManualApprovalRequired, request.Status)
+
+	require.NoError(t, storage.RecordManualDecision(ctx, request.Key, autoclaimtypes.PolicyDecision{
+		PolicyName: "manual",
+		Result:     autoclaimtypes.PolicyResultApproved,
+		Reason:     "approved by test",
+	}))
+	require.NoError(t, claimer.Advance(ctx, request.Key))
+
+	request = storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusConfirmed, request.Status)
+	require.NotNil(t, request.PolicyDecision)
+	require.Equal(t, autoclaimtypes.PolicyResultManual, request.PolicyDecision.Result)
+	require.NotNil(t, request.ManualDecision)
+	require.Equal(t, autoclaimtypes.PolicyResultApproved, request.ManualDecision.Result)
+	require.Equal(t, 1, sender.submitCalls)
+}
+
 func TestProofNotReadyLeavesRequestQueued(t *testing.T) {
 	ctx := context.Background()
 	storage := newMemoryStorage()
@@ -106,6 +134,48 @@ func TestProofNotReadyLeavesRequestQueued(t *testing.T) {
 	request := storage.mustRequest(t, bridge)
 	require.Equal(t, autoclaimtypes.RequestStatusQueued, request.Status)
 	require.Nil(t, request.Proof)
+	require.Equal(t, 0, sender.submitCalls)
+}
+
+func TestStaleProofLeavesRequestQueuedWithoutSending(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	proof := autoclaimtypes.ClaimProof{
+		L1InfoTreeIndex: 1,
+		L1InfoTreeLeaf:  &l1infotreesync.L1InfoTreeLeaf{BlockNumber: 100},
+		PreparedAt:      testNow,
+	}
+	claimer := newTestClaimer(t, storage, approvedPolicy(), fakeProofPreparer{proof: &proof}, sender)
+	bridge := makeBridge(50, 10)
+	bridge.BlockNum = proof.L1InfoTreeLeaf.BlockNumber + 1
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusQueued, request.Status)
+	require.Nil(t, request.Proof)
+	require.Equal(t, uint64(0), request.RetryCount)
+	require.Equal(t, 0, sender.submitCalls)
+}
+
+func TestProofWithoutL1InfoTreeLeafLeavesRequestQueuedWithoutSending(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	proof := autoclaimtypes.ClaimProof{
+		L1InfoTreeIndex: 1,
+		PreparedAt:      testNow,
+	}
+	claimer := newTestClaimer(t, storage, approvedPolicy(), fakeProofPreparer{proof: &proof}, sender)
+	bridge := makeBridge(51, 10)
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusQueued, request.Status)
+	require.Nil(t, request.Proof)
+	require.Equal(t, uint64(0), request.RetryCount)
 	require.Equal(t, 0, sender.submitCalls)
 }
 
@@ -145,12 +215,48 @@ func TestRetryExhaustionFailsRequest(t *testing.T) {
 	require.Equal(t, 1, sender.submitCalls)
 }
 
+func TestRetryableSendErrorLeavesRequestQueued(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sendErr := errors.New("global exit root not injected")
+	sender := &fakeSender{
+		storage: storage,
+		err:     sendErr,
+		onSubmit: func(ctx context.Context, request autoclaimtypes.AutoClaimRequest) {
+			attempt := autoclaimtypes.TransactionAttempt{
+				RequestKey:    request.Key,
+				ClaimerID:     "claimer-10",
+				AttemptNumber: 1,
+				RetryCount:    1,
+				MaxRetries:    3,
+				Status:        ethtxtypes.MonitoredTxStatusFailed,
+				LastError:     sendErr.Error(),
+				CreatedAt:     testNow,
+				UpdatedAt:     testNow,
+			}
+			require.NoError(t, storage.RecordTransactionAttempt(ctx, request.Key, attempt))
+		},
+	}
+	target := makeTarget(10)
+	target.MaxRetries = 3
+	claimer := newTestClaimerForTarget(t, target, storage, approvedPolicy(), readyProof(), sender)
+	bridge := makeBridge(7, 10)
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusQueued, request.Status)
+	require.Equal(t, uint64(1), request.RetryCount)
+	require.Equal(t, sendErr.Error(), request.LastError)
+	require.Equal(t, 1, sender.submitCalls)
+}
+
 func TestRestartRecoveryResumesRecoverableRequests(t *testing.T) {
 	ctx := context.Background()
 	storage := newMemoryStorage()
 	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
 	claimer := newTestClaimer(t, storage, approvedPolicy(), readyProof(), sender)
-	bridge := makeBridge(7, 10)
+	bridge := makeBridge(8, 10)
 	request := autoclaimtypes.NewRequestFromBridgeExit(bridge, testNow)
 	request.Status = autoclaimtypes.RequestStatusPolicyApproved
 	request.MaxRetries = 2
@@ -388,7 +494,13 @@ func (p fakePolicy) Evaluate(
 }
 
 func readyProof() autoclaimtypes.ProofPreparer {
-	return fakeProofPreparer{proof: &autoclaimtypes.ClaimProof{L1InfoTreeIndex: 1, PreparedAt: testNow}}
+	return fakeProofPreparer{proof: &autoclaimtypes.ClaimProof{
+		L1InfoTreeIndex: 1,
+		L1InfoTreeLeaf:  &l1infotreesync.L1InfoTreeLeaf{BlockNumber: 1_000_000},
+		MainnetExitRoot: common.HexToHash("0x100"),
+		GlobalExitRoot:  common.HexToHash("0x102"),
+		PreparedAt:      testNow,
+	}}
 }
 
 func pendingProof() autoclaimtypes.ProofPreparer {
@@ -580,7 +692,7 @@ func (s *memoryStorage) RecordManualDecision(
 	decision autoclaimtypes.PolicyDecision,
 ) error {
 	return s.update(key, func(request *autoclaimtypes.AutoClaimRequest) {
-		request.PolicyDecision = &decision
+		request.ManualDecision = &decision
 	})
 }
 
@@ -681,12 +793,24 @@ func copyRequest(request autoclaimtypes.AutoClaimRequest) *autoclaimtypes.AutoCl
 	if request.GlobalIndex != nil {
 		copied.GlobalIndex = new(big.Int).Set(request.GlobalIndex)
 	}
+	if request.L1InfoTreeIndex != nil {
+		index := *request.L1InfoTreeIndex
+		copied.L1InfoTreeIndex = &index
+	}
 	if request.Bridge.GlobalIndex != nil {
 		copied.Bridge.GlobalIndex = new(big.Int).Set(request.Bridge.GlobalIndex)
+	}
+	if request.Bridge.L1InfoTreeIndex != nil {
+		index := *request.Bridge.L1InfoTreeIndex
+		copied.Bridge.L1InfoTreeIndex = &index
 	}
 	if request.PolicyDecision != nil {
 		decision := *request.PolicyDecision
 		copied.PolicyDecision = &decision
+	}
+	if request.ManualDecision != nil {
+		decision := *request.ManualDecision
+		copied.ManualDecision = &decision
 	}
 	if request.Proof != nil {
 		proof := *request.Proof

@@ -1,9 +1,12 @@
 package types
 
 import (
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,4 +63,53 @@ func TestDeriveRequestKey(t *testing.T) {
 	key := DeriveRequestKey(0, 1101, 42)
 
 	require.Equal(t, RequestKey("0:1101:42"), key)
+}
+
+func TestNewBridgeExitFromSyncWithEtrogMarksLegacyZkEVMBridge(t *testing.T) {
+	bridge := bridgesync.Bridge{
+		BlockNum:           100,
+		TxHash:             common.HexToHash("0xabc"),
+		OriginNetwork:      L1OriginNetwork,
+		DestinationNetwork: LegacyZkEVMRollupNetwork,
+		DepositCount:       42,
+		Amount:             big.NewInt(1),
+	}
+
+	exit := NewBridgeExitFromSyncWithEtrog(bridge, 100)
+
+	require.True(t, exit.PreEtrog)
+	require.Equal(t, uint64(42), exit.GlobalIndex.Uint64())
+}
+
+func TestNewBridgeExitFromSyncWithEtrogKeepsEtrogGlobalIndexAfterUpgrade(t *testing.T) {
+	bridge := bridgesync.Bridge{
+		BlockNum:           101,
+		TxHash:             common.HexToHash("0xabc"),
+		OriginNetwork:      L1OriginNetwork,
+		DestinationNetwork: LegacyZkEVMRollupNetwork,
+		DepositCount:       42,
+		Amount:             big.NewInt(1),
+	}
+
+	exit := NewBridgeExitFromSyncWithEtrog(bridge, 100)
+
+	require.False(t, exit.PreEtrog)
+	require.Equal(t, 0, DeriveL1GlobalIndex(42).Cmp(exit.GlobalIndex))
+}
+
+func TestNewRequestFromBridgeExitCopiesSelectedL1InfoTreeIndex(t *testing.T) {
+	index := uint32(77)
+	bridge := BridgeExit{
+		OriginNetwork:      L1OriginNetwork,
+		DestinationNetwork: 1101,
+		DepositCount:       42,
+		GlobalIndex:        DeriveL1GlobalIndex(42),
+		L1InfoTreeIndex:    &index,
+	}
+
+	request := NewRequestFromBridgeExit(bridge, time.Unix(1, 0))
+
+	require.NotNil(t, request.L1InfoTreeIndex)
+	require.Equal(t, index, *request.L1InfoTreeIndex)
+	require.NotSame(t, bridge.L1InfoTreeIndex, request.L1InfoTreeIndex)
 }

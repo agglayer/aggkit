@@ -333,6 +333,36 @@ func TestRecordTransactionAttemptAndTimestampUpdates(t *testing.T) {
 	require.Equal(t, later.Add(time.Minute), stored.UpdatedAt)
 }
 
+func TestGetRequestTreatsJSONNullOptionalFieldsAsNil(t *testing.T) {
+	storage, database := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+
+	request := makeRequest(11, 1, autoclaimtypes.RequestStatusQueued)
+	stored, inserted, err := storage.EnqueueRequest(ctx, request)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.Nil(t, stored.Proof)
+	require.Nil(t, stored.PolicyDecision)
+	require.Nil(t, stored.ManualDecision)
+
+	_, err = database.ExecContext(ctx, `
+		UPDATE autoclaim_request
+		SET proof_json = 'null',
+			policy_decision_json = 'null',
+			manual_decision_json = 'null'
+		WHERE request_key = ?`,
+		request.Key,
+	)
+	require.NoError(t, err)
+
+	stored, err = storage.GetRequest(ctx, request.Key)
+	require.NoError(t, err)
+	require.Nil(t, stored.Proof)
+	require.Nil(t, stored.PolicyDecision)
+	require.Nil(t, stored.ManualDecision)
+}
+
 func TestListRecoverableRequests(t *testing.T) {
 	storage, _ := newTestStorage(t)
 	defer storage.Close()

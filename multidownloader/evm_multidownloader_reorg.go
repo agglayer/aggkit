@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -35,6 +36,18 @@ func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber u
 		dh.log.Infof("EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s found in blocks_reorged (reorgID=%d)",
 			blockNumber, blockHash.Hex(), reorgID)
 		return false, reorgID, nil
+	}
+	canonicalBlock, err := dh.ethClient.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
+	if err != nil {
+		return false, 0, fmt.Errorf(
+			"EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s not found in storage or blocks_reorged, "+
+				"and cannot validate against RPC: %w",
+			blockNumber, blockHash.Hex(), err)
+	}
+	if canonicalBlock != nil && canonicalBlock.Hash == blockHash {
+		dh.log.Debugf("EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s not found in storage, "+
+			"but matches RPC canonical header", blockNumber, blockHash.Hex())
+		return true, 0, nil
 	}
 	// Not found anywhere, consider invalid
 	return false, 0, fmt.Errorf(

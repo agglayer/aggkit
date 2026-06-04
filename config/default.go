@@ -396,6 +396,7 @@ Enabled = true
 PollInterval = "3s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxWatchdog]
 Enabled = false

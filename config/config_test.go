@@ -91,6 +91,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.Empty(t, cfg.AutoClaim.Claimers)
 	require.True(t, cfg.AutoClaim.L1ToL2Watchdog.Enabled)
+	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock)
 	require.False(t, cfg.AutoClaim.L2ToLxWatchdog.Enabled)
 }
 
@@ -193,6 +194,7 @@ func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
 	require.True(t, cfg.AutoClaim.Enabled)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.True(t, cfg.AutoClaim.API.Enabled)
+	require.Equal(t, uint64(1000000), cfg.AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock)
 	require.Len(t, cfg.AutoClaim.Claimers, 1)
 
 	claimer := cfg.AutoClaim.Claimers[0]
@@ -206,6 +208,8 @@ func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
 	require.Equal(t, uint64(500000), claimer.Policy.MaxGas)
 	require.Equal(t, uint64(100000), claimer.GasOffset)
 	require.Equal(t, 2*time.Second, claimer.WaitPeriod.Duration)
+	require.Equal(t, 3*time.Second, claimer.RetryAfter.Duration)
+	require.Equal(t, uint64(4), claimer.MaxRetries)
 	require.Equal(t, "/tmp/aggkit/ethtxmanager-autoclaim-l2-claim.sqlite", claimer.EthTxManager.StoragePath)
 	require.Len(t, claimer.EthTxManager.PrivateKeys, 1)
 	require.Equal(t, "local", claimer.EthTxManager.PrivateKeys[0].Method.String())
@@ -349,6 +353,7 @@ Enabled = true
 PollInterval = "3s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 1000000
 
 [AutoClaim.L2ToLxWatchdog]
 Enabled = false
@@ -363,6 +368,8 @@ BridgeAddr = "0x000000000000000000000000000000000000bEEF"
 PolicyName = "allow-all"
 GasOffset = 100000
 WaitPeriod = "2s"
+RetryAfter = "3s"
+MaxRetries = 4
 
 [AutoClaim.Claimers.Policy]
 AllowMessageClaims = false

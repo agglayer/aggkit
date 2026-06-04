@@ -62,6 +62,31 @@ func TestPackClaimCalldataForMessage(t *testing.T) {
 	requireClaimInputs(t, inputs, request, proof)
 }
 
+func TestPackClaimCalldataForPreEtrogAssetUsesRawIndexWithCurrentABI(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	request.Bridge.DestinationNetwork = autoclaimtypes.LegacyZkEVMRollupNetwork
+	request.Bridge.PreEtrog = true
+	request.Bridge.GlobalIndex = new(big.Int).SetUint64(uint64(request.Bridge.DepositCount))
+	request.GlobalIndex = new(big.Int).Set(request.Bridge.GlobalIndex)
+	sender := newTestSender(
+		t,
+		newFakeStorage(request),
+		&fakeEthTxManager{},
+		&fakeClaimReader{},
+	)
+	proof := makeProof()
+
+	data, err := sender.packClaim(request, proof, claimGlobalIndex(request))
+	require.NoError(t, err)
+
+	bridgeABI, err := claimmock.ClaimmockMetaData.GetAbi()
+	require.NoError(t, err)
+	require.Equal(t, bridgeABI.Methods[claimAssetMethod].ID, data[:4])
+	inputs, err := bridgeABI.Methods[claimAssetMethod].Inputs.Unpack(data[4:])
+	require.NoError(t, err)
+	requireClaimInputs(t, inputs, request, proof)
+}
+
 func TestSubmitClaimAddsTransactionAndConfirmsMinedResult(t *testing.T) {
 	request := makeRequest(bridgesynctypes.LeafTypeAsset)
 	storage := newFakeStorage(request)
@@ -323,6 +348,7 @@ func makeProof() autoclaimtypes.ClaimProof {
 	proof := autoclaimtypes.ClaimProof{
 		MainnetExitRoot: common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 		RollupExitRoot:  common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+		GlobalExitRoot:  common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
 		PreparedAt:      fixedNow,
 	}
 	proof.ABILocalExitRoot[0] = common.HexToHash("0x01")

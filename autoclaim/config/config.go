@@ -55,6 +55,7 @@ type L1ToL2Watchdog struct {
 	PollInterval               cfgtypes.Duration `mapstructure:"PollInterval"`
 	RetryAfterErrorPeriod      cfgtypes.Duration `mapstructure:"RetryAfterErrorPeriod"`
 	MaxRetryAttemptsAfterError int               `mapstructure:"MaxRetryAttemptsAfterError"`
+	EtrogL1UpgradeBlock        uint64            `mapstructure:"EtrogL1UpgradeBlock"`
 }
 
 // DisabledWatchdog reserves config for disabled watchdog directions.
@@ -74,6 +75,8 @@ type ClaimerConfig struct {
 	Policy       PolicyConfig        `mapstructure:"Policy"`
 	GasOffset    uint64              `mapstructure:"GasOffset"`
 	WaitPeriod   cfgtypes.Duration   `mapstructure:"WaitPeriod"`
+	RetryAfter   cfgtypes.Duration   `mapstructure:"RetryAfter"`
+	MaxRetries   uint64              `mapstructure:"MaxRetries"`
 	EthTxManager ethtxmanager.Config `mapstructure:"EthTxManager"`
 }
 
@@ -140,6 +143,9 @@ func (c ClaimerConfig) Validate() error {
 	}
 	if c.WaitPeriod.Duration <= 0 {
 		return fmt.Errorf("WaitPeriod must be greater than 0")
+	}
+	if c.RetryAfter.Duration < 0 {
+		return fmt.Errorf("RetryAfter must be greater than or equal to 0")
 	}
 	if strings.TrimSpace(c.EthTxManager.StoragePath) == "" {
 		return fmt.Errorf("EthTxManager.StoragePath is required")

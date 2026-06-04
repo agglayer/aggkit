@@ -656,6 +656,66 @@ func TestExecuteLogQuery_PartiallyAvailable(t *testing.T) {
 	require.Equal(t, uint64(105), result.Data[1].Num) // Last block is from partial response range
 }
 
+func TestExecuteLogQuery_EmptyFinalizedMarkerUsesRealHeader(t *testing.T) {
+	ctx := context.Background()
+	mockMdr := mdrsynctypesmocks.NewMultidownloaderInterface(t)
+	logger := log.WithFields("module", "test")
+	rh := &sync.RetryHandler{
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+		MaxRetryAttemptsAfterError: 3,
+	}
+
+	download := &EVMDownloader{
+		multidownloader:                    mockMdr,
+		logger:                             logger,
+		rh:                                 rh,
+		appender:                           sync.LogAppenderMap{},
+		waitPeriodToCatchUpMaximumLogRange: time.Second,
+		pullingPeriod:                      100 * time.Millisecond,
+	}
+
+	logQuery := mdrtypes.NewLogQuery(100, 110, []common.Address{common.HexToAddress("0x123")})
+	syncerConfig := aggkittypes.SyncerConfig{
+		FromBlock:         50,
+		ContractAddresses: []common.Address{common.HexToAddress("0x123")},
+	}
+	expectedParentHash := common.HexToHash("0x109")
+	expectedHeader := &aggkittypes.BlockHeader{
+		Number:     110,
+		Hash:       common.HexToHash("0x110"),
+		Time:       2100,
+		ParentHash: &expectedParentHash,
+	}
+	require.NotEqual(t, common.Hash{}, expectedParentHash)
+	require.NotEqual(t, common.Hash{}, expectedHeader.Hash)
+
+	mockMdr.EXPECT().IsAvailable(logQuery).Return(true)
+	mockMdr.EXPECT().LogQuery(ctx, logQuery).Return(mdrtypes.LogQueryResponse{
+		ResponseRange: aggkitcommon.BlockRange{FromBlock: 100, ToBlock: 110},
+		UnsafeRange:   aggkitcommon.BlockRange{FromBlock: 111, ToBlock: 110},
+	}, nil)
+	mockMdr.EXPECT().
+		StorageHeaderByNumber(ctx, mock.Anything).
+		Return(nil, mdrtypes.Finalized, nil)
+	mockMdr.EXPECT().
+		HeaderByNumber(ctx, mock.MatchedBy(func(number *aggkittypes.BlockNumberFinality) bool {
+			return number != nil && number.Block == aggkittypes.Constant && number.Specific == expectedHeader.Number
+		})).
+		Return(expectedHeader, nil)
+	mockMdr.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(expectedHeader, nil).Maybe()
+
+	result, err := download.executeLogQuery(ctx, logQuery, syncerConfig)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Data, 1)
+	require.Equal(t, expectedHeader.Number, result.Data[0].Num)
+	require.Equal(t, expectedHeader.Hash, result.Data[0].Hash)
+	require.Equal(t, expectedHeader.Time, result.Data[0].Timestamp)
+	require.Equal(t, expectedParentHash, result.Data[0].ParentHash)
+	require.Empty(t, result.Data[0].Events)
+}
+
 func TestExecuteLogQuery_NotAvailable(t *testing.T) {
 	ctx := context.Background()
 	mockMdr := mdrsynctypesmocks.NewMultidownloaderInterface(t)
