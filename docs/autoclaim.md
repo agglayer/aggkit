@@ -1,384 +1,256 @@
 # Auto Claim Service
 
-The Auto Claim service sends claim transactions that complete bridge interactions.
+The Auto Claim service automates L1 to L2 bridge claims for the configured L2 destination networks. It discovers
+eligible L1 bridge exits from `l1bridgesync`, stores each request in a local database, evaluates the configured policy,
+prepares the L1 claim proof, submits the destination-chain claim transaction through `EthTxManager`, and records the
+request through confirmation or failure.
 
-It tracks bridge requests, applies a configurable policy before sending each claim transaction, stores request status,
-and allows manual approval when the optional API is enabled.
+Auto Claim is disabled by default. The first supported scope is L1 to L2 only, where `origin_network` is `0`. L2 to Lx
+Auto Claim is not implemented and must remain disabled.
 
-## Goals
+## Runtime Requirements
 
-- Claim eligible bridges on any configured destination network.
-- Persist every tracked bridge and claim request in a local DB.
-- Persist status for each request. Expose it through REST only when the API is enabled.
-- Allow a policy function to approve, reject, or require manual approval before a transaction is sent.
-- Support multiple destination networks by instantiating one claimer per configured network.
-- Use `l1bridgesync` as the only required syncer. Future L2 to Lx discovery comes from Agglayer APIs.
+Run Aggkit with the `autoclaim` component selected and set `[AutoClaim].Enabled = true`. Auto Claim startup requires
+both `l1bridgesync` and `l1infotreesync` to be available because the L1 to L2 watchdog reads L1 bridge exits and the
+claimer prepares L1 info tree proofs in-process.
 
-## Components
+Auto Claim does not require the optional API to submit claims. Enable the API only when operators need request
+inspection or manual approval.
 
-```mermaid
-flowchart LR
-    L1BridgeSync[L1 Bridge Sync] --> L1L2Watchdog[L1 to L2 Watchdog]
-    Agglayer[Agglayer API] -. future .-> L2LxWatchdog[L2 to Lx Watchdog]
+## Configuration
 
-    L1L2Watchdog --> ClaimerA[Claimer: network A]
-    L1L2Watchdog --> ClaimerB[Claimer: network B]
-    L2LxWatchdog -. future .-> ClaimerL1[Claimer: L1]
-    L2LxWatchdog -. future .-> ClaimerA
-    L2LxWatchdog -. future .-> ClaimerB
+Minimal L1 to L2 configuration:
 
-    REST[REST API optional] --> DB[(Auto Claim DB)]
-    ClaimerL1 --> DB
-    ClaimerA --> DB
-    ClaimerB --> DB
+```toml
+[AutoClaim]
+Enabled = true
+StoragePath = "/var/lib/aggkit/autoclaim.sqlite"
 
-    ClaimerL1 --> L1[L1 RPC]
-    ClaimerA --> NetworkA[Network A RPC]
-    ClaimerB --> NetworkB[Network B RPC]
+[AutoClaim.API]
+Enabled = true
+Host = "0.0.0.0"
+Port = 5579
+
+[AutoClaim.L1ToL2Watchdog]
+Enabled = true
+PollInterval = "3s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+
+[AutoClaim.L2ToLxWatchdog]
+Enabled = false
+
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "l2-primary"
+NetworkType = "EVM"
+NetworkID = 1
+URLRPC = "http://l2-rpc:8545"
+BridgeAddr = "0x0000000000000000000000000000000000000000"
+PolicyName = "api-approve"
+GasOffset = 100000
+WaitPeriod = "1s"
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [0]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+    { Method = "local", Path = "/etc/aggkit/autoclaim.keystore", Password = "change-me" },
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/var/lib/aggkit/ethtxmanager-autoclaim-l2-primary.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = "http://l2-rpc:8545"
+MultiGasProvider = false
+L1ChainID = 2151908
+HTTPHeaders = {}
 ```
 
-### Claimer
+Replace `BridgeAddr`, `NetworkID`, `URLRPC`, `L1ChainID`, storage paths, and signer settings with values for the target
+L2. Use the existing `EthTxManager` configuration style for private keys; do not put secrets in logs or checked-in
+configuration.
 
-Receives requests to claim bridges on one configured network. The network can be L1 or an L2.
+### Top-Level Keys
 
-Aggkit must support multiple claimers in one process. Each claimer tracks exactly one network.
+| Key | Default | Required when enabled | Description |
+| --- | --- | --- | --- |
+| `AutoClaim.Enabled` | `false` | Yes | Enables Auto Claim runtime startup. The `autoclaim` component must also be selected. |
+| `AutoClaim.StoragePath` | `{{PathRWData}}/autoclaim.sqlite` | Yes | SQLite database for requests, cursors, decisions, proofs, and transaction attempts. |
+| `AutoClaim.API.Enabled` | `false` | No | Starts the optional REST API for inspection and manual decisions. |
+| `AutoClaim.API.Host` | `0.0.0.0` | When API enabled | API listen host. |
+| `AutoClaim.API.Port` | `5579` | When API enabled | API listen port. |
+| `AutoClaim.L1ToL2Watchdog.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
+| `AutoClaim.L1ToL2Watchdog.PollInterval` | `3s` | Yes | How often the watchdog polls `l1bridgesync`. |
+| `AutoClaim.L1ToL2Watchdog.RetryAfterErrorPeriod` | `1s` | Yes | Reserved retry delay for watchdog errors. |
+| `AutoClaim.L1ToL2Watchdog.MaxRetryAttemptsAfterError` | `-1` | No | Reserved retry limit. `-1` means unlimited. |
+| `AutoClaim.L2ToLxWatchdog.Enabled` | `false` | Must stay `false` | Reserved for future L2 to Lx support. This direction is not implemented. |
 
-Responsibilities:
+### Claimer Keys
 
-- Store requests in the DB.
-- Execute the policy function before sending a transaction.
-- Queue approved requests for sending.
-- Submit `claimAsset` or `claimMessage` transactions on the target network.
-- Track transaction hash, confirmations, failures, retries, and final status.
-- Persist request status. Expose it through the REST API when enabled.
+Each enabled `[[AutoClaim.Claimers]]` entry owns one destination network.
 
-Each claimer has independent config:
+| Key | Required | Description |
+| --- | --- | --- |
+| `Enabled` | Yes | Disabled claimers are ignored. |
+| `ID` | Yes | Unique operator-readable claimer ID. Duplicate enabled IDs are rejected. |
+| `NetworkType` | Yes | Must be `EVM`. |
+| `NetworkID` | Yes | Destination network ID. Duplicate enabled network IDs are rejected. |
+| `URLRPC` | Yes | Destination-chain JSON-RPC URL used for claim state checks and transaction submission. |
+| `BridgeAddr` | Yes | Destination bridge contract address. |
+| `PolicyName` | Yes | One of `allow-all`, `api-approve`, `no-message`, or `basic-filter`. |
+| `Policy` | Policy-dependent | Static policy configuration. |
+| `GasOffset` | No | Extra gas passed to `EthTxManager.Add` for claim transactions. |
+| `WaitPeriod` | Yes | Claimer poll period and transaction-result polling interval. Must be greater than zero. |
+| `EthTxManager` | Yes | Independent transaction-manager configuration and storage path for this claimer. |
 
-- `network_id`
-- network type: L1 or L2
-- RPC URL
-- bridge contract address
-- `EVMSender.EthTxManager` with per-network private key config
-- DB namespace or claimer ID
-- selected policy name
-- transaction retry configuration
+## Policies
 
-### L1 to L2 Watchdog
+| Policy | Behavior |
+| --- | --- |
+| `allow-all` | Approves every eligible L1 to L2 request automatically. |
+| `api-approve` | Stores the request as `manual-approval-required`; an operator must approve or reject through the API. |
+| `no-message` | Rejects message bridge leaves and approves asset bridge leaves. |
+| `basic-filter` | Uses target-chain simulation when available. It rejects claims whose simulated gas exceeds `MaxGas`, rejects detected nested bridge calls, approves when checks pass, and falls back to manual review when simulation or nested-call inspection is unavailable. |
 
-Polls `l1bridgesync` for bridges from L1 to configured L2 networks.
+`Policy.AllowMessageClaims`, `Policy.AllowedOrigins`, `Policy.AllowedTokens`, `Policy.ManualFallback`, and
+`Policy.MaxGas` are policy configuration inputs. The current runtime wires the named policies directly; operators
+should verify policy-specific behavior before relying on filters beyond the table above.
 
-When a new bridge is detected, it builds a claim request and submits it to the claimer that tracks the destination L2.
+## Request Lifecycle
 
-This is the only watchdog that is fully in scope for the first implementation.
+Auto Claim stores requests using `origin_network + destination_network + deposit_count` as the unique key. For the
+current L1 to L2 scope, `origin_network` is always `0`.
 
-### L2 to Lx Watchdog
+The normal lifecycle is:
 
-Detects bridges from any L2 to the networks tracked by configured claimers. A destination network can be L1 or an L2.
+1. The L1 to L2 watchdog polls `l1bridgesync` and filters bridge exits with `origin_network = 0`.
+2. A matching enabled claimer stores the request as `detected`.
+3. The claimer evaluates the configured policy and moves the request to `policy-approved`, `policy-rejected`, or
+   `manual-approval-required`.
+4. Approved requests move to `queued` and then `sending`.
+5. The claimer prepares proofs from `l1infotreesync` and the L1 bridge sync data. If proof data is not ready, the
+   request returns to `queued` and is retried later.
+6. The sender checks whether the target bridge already marks the global index as claimed. If it is already claimed,
+   the request becomes `confirmed` without submitting a duplicate transaction.
+7. The sender packs `claimAsset` for asset leaves or `claimMessage` for message leaves, submits the transaction through
+   `EthTxManager`, and records each transaction attempt.
+8. Transaction-manager statuses `Created` and `Sent` keep the request in flight, while `Mined`, `Safe`, or `Finalized`
+   mark it `confirmed`. `Failed` and `Evicted` move the request back to `queued` while retry budget remains, otherwise
+   the request becomes `failed`.
 
-This watchdog depends on Agglayer exposing the required bridge discovery API. That API does not exist yet,
-so this section is intentionally limited to the expected integration point.
+Terminal statuses are `policy-rejected`, `confirmed`, and `failed`.
 
-When available, the watchdog will:
+## API
 
-- Build the destination network set from configured claimers.
-- Query Agglayer for bridge exits headed to those destination networks, regardless of origin L2.
-- Submit claim requests to the claimer that tracks the destination network.
-- Deduplicate requests against the Auto Claim DB.
+The optional API uses the `/autoclaim/v1` prefix and is independent from the bridge service `/bridge/v1` prefix.
 
-### REST API
+| Method and path | Purpose |
+| --- | --- |
+| `GET /autoclaim/v1/bridges` | List tracked requests. |
+| `GET /autoclaim/v1/bridges/{id}` | Inspect one request by Auto Claim request ID. |
+| `POST /autoclaim/v1/bridges/{id}/approve` | Approve a request currently in `manual-approval-required`. |
+| `POST /autoclaim/v1/bridges/{id}/reject` | Reject a request currently in `manual-approval-required`. |
 
-Optional service that exposes tracked bridges and their claim status.
-
-The Auto Claim service must work without this API. When disabled, claimers and watchdogs keep running and status remains
-available in the DB.
-
-Endpoints when enabled:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/bridges` | List tracked bridges with filters. |
-| `GET` | `/bridges/{id}` | Get one tracked bridge and claim request status. |
-| `POST` | `/bridges/{id}/approve` | Manually approve a bridge waiting for approval. |
-| `POST` | `/bridges/{id}/reject` | Manually reject a bridge waiting for approval. |
-
-Useful filters for `GET /bridges`:
+List filters:
 
 - `origin_network`
 - `destination_network`
 - `status`
-- `policy_status`
+- `policy_status` or `policy_result`
 - `bridge_tx_hash`
 - `claim_tx_hash`
 - `from_block`
 - `to_block`
+- `page_number`
+- `page_size`
 
-## Policy Function
+Supported request statuses are `detected`, `policy-approved`, `policy-rejected`, `manual-approval-required`, `queued`,
+`sending`, `sent`, `confirmed`, and `failed`. Supported policy statuses are `approved`, `rejected`, and `manual`.
 
-Each claimer executes its selected policy function before sending a queued claim transaction.
+Manual approval and rejection bodies are optional JSON objects:
 
-Policy functions are implemented in Aggkit code and registered by name. Configuration selects one policy per claimer.
-Different claimers can use different policies.
-
-Inputs should include:
-
-- bridge leaf data
-- origin network
-- destination network
-- bridge transaction hash
-- receiver
-- token address
-- amount
-- metadata hash
-- detected source
-- current request status
-- target network RPC access
-
-Outputs:
-
-| Result | Meaning |
-|--------|---------|
-| `approved` | Queue the claim transaction for sending. |
-| `rejected` | Mark the request rejected. Do not send a transaction. |
-| `manual` | Keep the request pending until operator approval or rejection. |
-
-The policy decision must be stored with the request.
-
-Initial policy registry:
-
-| Name | Behavior |
-|------|----------|
-| `allow-all` | Approves every request. Useful for development. |
-| `api-approve` | Marks every request as manual approval required through the REST API. |
-| `no-message` | Rejects `bridgeMessage` claims. Approves only `bridgeAsset` claims. |
-| `basic-filter` | Rejects claims that exceed a configured gas limit or create another bridge. |
-
-Policy functions have access to the target network RPC. They can simulate claim execution and query the network before
-returning `approved`, `rejected`, or `manual`.
-
-## Request State
-
-```mermaid
-stateDiagram-v2
-    [*] --> Detected
-    Detected --> PolicyApproved: policy approved
-    Detected --> PolicyRejected: policy rejected
-    Detected --> ManualApprovalRequired: policy manual
-
-    ManualApprovalRequired --> PolicyApproved: manual approve
-    ManualApprovalRequired --> PolicyRejected: manual reject
-
-    PolicyApproved --> Queued
-    Queued --> Sending
-    Sending --> Sent: tx accepted
-    Sending --> Failed: send failed, retries exhausted
-    Sent --> Confirmed: tx confirmed
-    Sent --> Failed: tx reverted
-
-    PolicyRejected --> [*]
-    Confirmed --> [*]
-    Failed --> [*]
+```json
+{
+  "reason": "approved by operator",
+  "metadata": {
+    "ticket": "OPS-123"
+  },
+  "decider": "operator",
+  "decider_id": "alice"
+}
 ```
 
-Status fields:
+The API returns request fields including `id`, `status`, bridge identifiers, `global_index`, `bridge_tx_hash`,
+`claim_tx_hash`, `tx_manager_id`, `l1_info_tree_index`, retry counters, policy decision metadata, manual decision
+metadata, timestamps, and `last_error`.
 
-| Field | Description |
-|-------|-------------|
-| `status` | Request lifecycle state. |
-| `policy_status` | `approved`, `rejected`, or `manual`. |
-| `policy_reason` | Short reason returned by the policy. |
-| `claim_tx_hash` | Claim transaction hash when available. |
-| `last_error` | Latest send or confirmation error. |
-| `retry_count` | Number of send attempts. |
-| `created_at` | Request creation time. |
-| `updated_at` | Last request update time. |
+Example workflow for `api-approve`:
 
-## L1 to L2 Flow
-
-```mermaid
-sequenceDiagram
-    participant Watchdog as L1 to L2 Watchdog
-    participant L1BridgeSync as l1bridgesync
-    participant Claimer as Destination Claimer
-    participant Policy as Policy Function
-    participant DB as Auto Claim DB
-    participant Network as Destination RPC
-    participant API as REST API
-
-    loop poll interval
-        Watchdog->>L1BridgeSync: fetch new L1 bridges
-        L1BridgeSync-->>Watchdog: bridge exits
-        Watchdog->>Claimer: enqueue claim request
-        Claimer->>DB: upsert request
-        Claimer->>Policy: evaluate request
-        Policy-->>Claimer: approved / rejected / manual
-        Claimer->>DB: store policy decision
-        alt approved
-            Claimer->>Network: send claim transaction
-            Network-->>Claimer: tx hash
-            Claimer->>DB: store tx status
-        else manual
-            API->>Claimer: approve request
-            Claimer->>DB: mark approved
-            Claimer->>Network: send claim transaction
-        else rejected
-            Claimer->>DB: mark rejected
-        end
-    end
+```bash
+curl "http://localhost:5579/autoclaim/v1/bridges?status=manual-approval-required"
+curl "http://localhost:5579/autoclaim/v1/bridges/0:1:42"
+curl -X POST "http://localhost:5579/autoclaim/v1/bridges/0:1:42/approve" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"approved after bridge review","decider":"operator","decider_id":"alice"}'
 ```
 
-## L2 to Lx Flow
+Approving or rejecting any status other than `manual-approval-required` returns a conflict response.
 
-```mermaid
-sequenceDiagram
-    participant Watchdog as L2 to Lx Watchdog
-    participant Agglayer as Agglayer API
-    participant Claimer as Destination Claimer
-    participant DB as Auto Claim DB
+## Operational Notes
 
-    Note over Watchdog,Agglayer: Future flow. Required Agglayer API is not available yet.
-    Watchdog->>Watchdog: read destination networks from configured claimers
-    Watchdog->>Agglayer: fetch bridge exits headed to destination networks
-    Agglayer-->>Watchdog: bridge exits
-    Watchdog->>DB: deduplicate bridge exits
-    Watchdog->>Claimer: enqueue claim request for destination network
+- Disable Auto Claim by setting `[AutoClaim].Enabled = false` or by not selecting the `autoclaim` component.
+- Disable the API independently with `[AutoClaim.API].Enabled = false`; automatic claiming continues for non-manual
+  policies.
+- Use separate `StoragePath` values for Auto Claim storage and each claimer's `EthTxManager.StoragePath`.
+- The watchdog uses a durable cursor and overlap-safe polling. Duplicate bridge exits are deduplicated by
+  `origin_network + destination_network + deposit_count`.
+- Auto Claim logs startup, API startup, watchdog polling errors, claimer recovery errors, and per-request errors through
+  the existing Aggkit logger. Request-level error details are also stored in `last_error` and exposed by the API.
+- Failed or evicted transaction-manager results are retried while retry budget remains. Exhausted requests become
+  `failed` and require operator investigation.
+- Use `api-approve` when an operator must explicitly inspect each request before claim submission. Expose the API only
+  on trusted networks or behind access controls; it can approve or reject pending manual requests.
+- `basic-filter` is conservative when target simulation is unavailable and returns manual review instead of automatic
+  approval.
+
+## Validation
+
+Run the standard validation before merging Auto Claim changes:
+
+```bash
+make build
+make lint
+make test-unit
+go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e2e
 ```
 
-## Storage
+The e2e command requires the existing dockerized e2e environment. If the host kills `docker compose up` before tests
+start, record the command and the `signal: killed` evidence as an environment blocker rather than a test failure.
 
-The DB must be the source of truth for:
+## Execution Status
 
-- detected bridges
-- claim requests
-- policy decisions
-- manual approval decisions
-- transaction attempts
-- final claim status
+- P1-P13 status: completed.
+- P14 status: blocked.
 
-Recommended unique key:
+### P14 Blocked rationale
 
-```text
-origin_network + destination_network + deposit_count
-```
-
-The storage layer must make enqueue idempotent. Watchdogs can safely resubmit the same bridge after restarts or polling
-overlap.
-
-## Claim Sending
-
-Claimers should use the existing transaction manager patterns where possible.
-
-Sending rules:
-
-- Only `approved` requests can be sent.
-- A request with an existing confirmed claim must not be sent again.
-- Retry transient RPC and transaction manager errors.
-- Store each send attempt.
-- Treat reverted transactions as failed unless retry policy explicitly allows another attempt.
-- Confirmation depth must be configurable per target network.
-
-## Configuration
-
-Suggested top-level shape:
-
-```toml
-[AutoClaim]
-    Enabled = true
-    StoragePath = "autoclaim.sqlite"
-
-    [AutoClaim.API]
-        Enabled = false
-        RESTAddr = "0.0.0.0:8080"
-
-    [[AutoClaim.Claimers]]
-        Enabled = true
-        ID = "l1"
-        NetworkType = "L1"
-        NetworkID = 0
-        URLRPC = "..."
-        BridgeAddr = "..."
-        PolicyName = "api-approve"
-        [AutoClaim.Claimers.EVMSender]
-            GasOffset = 0
-            WaitPeriodMonitorTx = "1s"
-            [AutoClaim.Claimers.EVMSender.EthTxManager]
-                FrequencyToMonitorTxs = "1s"
-                WaitTxToBeMined = "2s"
-                GetReceiptMaxTime = "250ms"
-                GetReceiptWaitInterval = "1s"
-                PrivateKeys = [
-                    {Method = "local", Path = "/app/keystore/autoclaim-l1.keystore", Password = "testonly"},
-                ]
-                StoragePath = "ethtxmanager-autoclaim-l1.sqlite"
-                [AutoClaim.Claimers.EVMSender.EthTxManager.Etherman]
-                    URL = "..."
-                    L1ChainID = 0
-
-    [[AutoClaim.Claimers]]
-        Enabled = true
-        ID = "l2-1"
-        NetworkType = "L2"
-        NetworkID = 1
-        URLRPC = "..."
-        BridgeAddr = "..."
-        PolicyName = "basic-filter"
-        [AutoClaim.Claimers.Policy]
-            MaxGas = 500000
-        [AutoClaim.Claimers.EVMSender]
-            GasOffset = 0
-            WaitPeriodMonitorTx = "1s"
-            [AutoClaim.Claimers.EVMSender.EthTxManager]
-                FrequencyToMonitorTxs = "1s"
-                WaitTxToBeMined = "2s"
-                GetReceiptMaxTime = "250ms"
-                GetReceiptWaitInterval = "1s"
-                PrivateKeys = [
-                    {Method = "local", Path = "/app/keystore/autoclaim-l2-1.keystore", Password = "testonly"},
-                ]
-                StoragePath = "ethtxmanager-autoclaim-l2-1.sqlite"
-                [AutoClaim.Claimers.EVMSender.EthTxManager.Etherman]
-                    URL = "..."
-                    L1ChainID = 0
-
-    [AutoClaim.L1ToL2Watchdog]
-        Enabled = true
-        PollInterval = "5s"
-
-    [AutoClaim.L2ToLxWatchdog]
-        Enabled = false
-```
-
-Key settings:
-
-| Name | Description |
-|------|-------------|
-| `Enabled` | Enables the Auto Claim service. |
-| `StoragePath` | Auto Claim DB path. |
-| `API.Enabled` | Enables the optional REST API. Claiming must work when this is false. |
-| `API.RESTAddr` | REST API bind address. |
-| `Claimers` | List of claimer instances. Each one tracks one L1 or L2 network. |
-| `Claimers.NetworkType` | `L1` or `L2`. |
-| `Claimers.NetworkID` | Network ID tracked by the claimer. |
-| `Claimers.URLRPC` | RPC URL for the tracked network. |
-| `Claimers.PolicyName` | Name of the Aggkit policy function selected for this claimer. |
-| `Claimers.Policy` | Policy-specific config. Example: `MaxGas` for `basic-filter`. |
-| `EVMSender.EthTxManager` | Transaction manager config for the claimer target network. |
-| `EVMSender.EthTxManager.PrivateKeys` | Per-network signer config, using the existing private key config style. |
-| `L1ToL2Watchdog` | Polling config for `l1bridgesync`. |
-| `L2ToLxWatchdog` | Future Agglayer based watchdog config. Uses configured claimers as destinations. |
-
-## Initial Scope
-
-In scope:
-
-- Multiple claimer instances, each tracking one L1 or L2 network.
-- L1 to L2 watchdog using `l1bridgesync`.
-- DB-backed queue and status tracking.
-- Per-claimer policy function selection.
-- Optional REST API for listing, inspecting, approving, and rejecting requests.
-
-Out of scope:
-
-- Full L2 to Lx watchdog implementation.
-- New syncers besides `l1bridgesync`.
-- Bridge discovery from L2 syncers.
-- Policy language design beyond the claimer policy interface.
+P14 exhausted the maximum three validation change requests. `make build` passed and `make test-unit` passed on a clean
+rerun, but `make lint` still fails with non-external source/test lint findings, and the focused Auto Claim e2e command
+fails after the stack starts because the allow-all request reaches `failed` and the API approval path returns HTTP 500.
+See `docs/autoclaim/P14_LOG.md` for the full validation log and commands.

@@ -28,6 +28,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
+	autoclaimruntime "github.com/agglayer/aggkit/autoclaim/runtime"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
@@ -215,6 +216,18 @@ func start(cliCtx *cli.Context) error {
 	if l1InfoTreeSync != nil {
 		log.Info("starting L1 Info Tree Syncer...")
 		go l1InfoTreeSync.Start(ctx)
+	}
+	if shouldRunAutoClaim(components, cfg.AutoClaim.Enabled) {
+		if _, err := autoclaimruntime.Start(ctx, autoclaimruntime.Dependencies{
+			Config:         cfg.AutoClaim,
+			LogConfig:      cfg.Log,
+			DBQueryTimeout: cfg.BridgeL1Sync.DBQueryTimeout.Duration,
+			RESTConfig:     cfg.REST,
+			L1BridgeSync:   l1BridgeSync,
+			L1InfoTreeSync: l1InfoTreeSync,
+		}, autoclaimruntime.Factories{}); err != nil {
+			return err
+		}
 	}
 
 	for _, component := range components {
@@ -584,11 +597,15 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	return false
 }
 
+func shouldRunAutoClaim(components []string, enabled bool) bool {
+	return enabled && isNeeded([]string{aggkitcommon.AUTOCLAIM}, components)
+}
+
 func l1InfoTreeMustRun(components []string) bool {
 	return isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components)
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.AUTOCLAIM}, components)
 }
 
 func runL1InfoTreeSyncerIfNeeded(
@@ -677,7 +694,7 @@ func runReorgDetectorL1IfNeeded(
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN},
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.AUTOCLAIM},
 		components) {
 		return nil, nil
 	}
@@ -827,7 +844,7 @@ func runBridgeSyncL1IfNeeded(
 	rollupID uint32,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.AUTOCLAIM}, components) {
 		return nil
 	}
 

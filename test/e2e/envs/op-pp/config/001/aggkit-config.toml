@@ -628,3 +628,22 @@ Capacity = 100
 [Validator.AgglayerClient.GRPC]
 URL = "http://agglayer:4443"
 UseTLS = false
+
+[AutoClaim]
+Enabled = false
+StoragePath = "/tmp/autoclaim.sqlite"
+Claimers = []
+
+[AutoClaim.API]
+Enabled = false
+Host = "0.0.0.0"
+Port = 5579
+
+[AutoClaim.L1ToL2Watchdog]
+Enabled = true
+PollInterval = "3s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+
+[AutoClaim.L2ToLxWatchdog]
+Enabled = false

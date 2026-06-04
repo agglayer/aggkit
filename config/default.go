@@ -381,6 +381,25 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 
+[AutoClaim]
+Enabled = false
+StoragePath = "{{PathRWData}}/autoclaim.sqlite"
+Claimers = []
+
+[AutoClaim.API]
+Enabled = false
+Host = "0.0.0.0"
+Port = 5579
+
+[AutoClaim.L1ToL2Watchdog]
+Enabled = true
+PollInterval = "3s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+
+[AutoClaim.L2ToLxWatchdog]
+Enabled = false
+
 [L1Multidownloader]
 	Enabled = true
 	DeveloperMode = false

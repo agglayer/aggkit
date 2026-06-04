@@ -1,0 +1,350 @@
+package proof
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+
+	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/agglayer/aggkit/bridgeservice"
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
+)
+
+func TestPreparePendingWhenBridgeNotYetIncludedOnL1InfoTree(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(42)
+	lastInfo := testL1InfoTreeLeaf(10, 100, "0x100")
+
+	preparer := NewPreparer(
+		&fakeL1BridgeSyncer{
+			rootsByLER: map[common.Hash]*treetypes.Root{
+				lastInfo.MainnetExitRoot: {Index: depositCount - 1},
+			},
+		},
+		&fakeL1InfoTreeSyncer{
+			lastInfo: lastInfo,
+		},
+	)
+
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Ready)
+	require.Nil(t, result.Proof)
+
+	proof, err := preparer.PrepareProof(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.Nil(t, proof)
+}
+
+func TestPrepareReturnsProofLookupFailures(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	localProofErr := errors.New("local proof failed")
+	rollupProofErr := errors.New("rollup proof failed")
+
+	testCases := []struct {
+		name          string
+		bridge        *fakeL1BridgeSyncer
+		l1InfoTree    *fakeL1InfoTreeSyncer
+		expectedErr   string
+		expectedCalls int
+	}{
+		{
+			name: "local exit root proof lookup failure",
+			bridge: &fakeL1BridgeSyncer{
+				proofErr: localProofErr,
+			},
+			l1InfoTree: &fakeL1InfoTreeSyncer{},
+			expectedErr: "get L1 local exit root proof: " +
+				localProofErr.Error(),
+			expectedCalls: 0,
+		},
+		{
+			name: "rollup exit root proof lookup failure",
+			bridge: &fakeL1BridgeSyncer{
+				proof: testProof("0x1"),
+			},
+			l1InfoTree: &fakeL1InfoTreeSyncer{
+				rollupProofErr: rollupProofErr,
+			},
+			expectedErr: "get rollup exit root proof: " +
+				rollupProofErr.Error(),
+			expectedCalls: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			configureSuccessfulIndexLookup(t, depositCount, tc.bridge, tc.l1InfoTree)
+
+			preparer := NewPreparer(tc.bridge, tc.l1InfoTree)
+			result, err := preparer.Prepare(ctx, testRequest(depositCount))
+
+			require.Nil(t, result)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErr)
+			require.Len(t, tc.l1InfoTree.rollupProofCalls, tc.expectedCalls)
+		})
+	}
+}
+
+func TestPrepareBuildsSuccessfulL1OriginClaimProof(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	preparedAt := time.Unix(100, 0).UTC()
+	localProof := testProof("0x11", "0x12", "0x13")
+	rollupProof := testProof("0x21", "0x22")
+	bridge := &fakeL1BridgeSyncer{
+		proof: localProof,
+	}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		rollupProof: rollupProof,
+	}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+
+	preparer := NewPreparer(bridge, l1InfoTree)
+	preparer.now = func() time.Time { return preparedAt }
+
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Ready)
+	require.NotNil(t, result.Proof)
+
+	proof := result.Proof
+	require.Equal(t, depositCount, proof.L1InfoTreeIndex)
+	require.Equal(t, l1InfoTree.infoByIndex[depositCount], proof.L1InfoTreeLeaf)
+	require.Equal(t, l1InfoTree.infoByIndex[depositCount].MainnetExitRoot, proof.MainnetExitRoot)
+	require.Equal(t, l1InfoTree.infoByIndex[depositCount].RollupExitRoot, proof.RollupExitRoot)
+	require.Equal(t, l1InfoTree.infoByIndex[depositCount].GlobalExitRoot, proof.GlobalExitRoot)
+	require.Equal(t, localProof, proof.ProofLocalExitRoot)
+	require.Equal(t, rollupProof, proof.ProofRollupExitRoot)
+	require.Equal(t, autoclaimtypes.ProofToABIProof(localProof), proof.ABILocalExitRoot)
+	require.Equal(t, autoclaimtypes.ProofToABIProof(rollupProof), proof.ABIRollupExitRoot)
+	require.Equal(t, preparedAt, proof.PreparedAt)
+
+	require.Equal(t, []getProofCall{{
+		depositCount:  depositCount,
+		localExitRoot: l1InfoTree.infoByIndex[depositCount].MainnetExitRoot,
+	}}, bridge.proofCalls)
+	require.Equal(t, []rollupProofCall{{
+		networkID: autoclaimtypes.L1OriginNetwork,
+		root:      l1InfoTree.infoByIndex[depositCount].RollupExitRoot,
+	}}, l1InfoTree.rollupProofCalls)
+}
+
+func TestProofToABIProofPreservesExpectedShape(t *testing.T) {
+	proof := testProof("0x1", "0x2", "0x3")
+
+	abiProof := autoclaimtypes.ProofToABIProof(proof)
+
+	require.Len(t, abiProof, int(treetypes.DefaultHeight))
+	require.Equal(t, common.HexToHash("0x1"), common.Hash(abiProof[0]))
+	require.Equal(t, common.HexToHash("0x2"), common.Hash(abiProof[1]))
+	require.Equal(t, common.HexToHash("0x3"), common.Hash(abiProof[2]))
+	require.Equal(t, common.Hash{}, common.Hash(abiProof[3]))
+	require.Equal(t, common.Hash{}, common.Hash(abiProof[treetypes.DefaultHeight-1]))
+}
+
+func TestPrepareMatchesBridgeServiceL1ClaimProofFields(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	localProof := testProof("0xf", "0xd", "0xc", "0xb")
+	rollupProof := testProof("0x1", "0x2")
+	bridge := &fakeL1BridgeSyncer{
+		proof: localProof,
+	}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		rollupProof: rollupProof,
+	}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+
+	preparer := NewPreparer(bridge, l1InfoTree)
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.True(t, result.Ready)
+
+	expectedBridgeServiceProof := bridgetypes.ClaimProof{
+		ProofLocalExitRoot:  bridgetypes.ConvertToProofResponse(localProof),
+		ProofRollupExitRoot: bridgetypes.ConvertToProofResponse(rollupProof),
+		L1InfoTreeLeaf:      *bridgeservice.NewL1InfoTreeLeafResponse(l1InfoTree.infoByIndex[depositCount]),
+	}
+	actualBridgeServiceProof := bridgetypes.ClaimProof{
+		ProofLocalExitRoot:  bridgetypes.ConvertToProofResponse(result.Proof.ProofLocalExitRoot),
+		ProofRollupExitRoot: bridgetypes.ConvertToProofResponse(result.Proof.ProofRollupExitRoot),
+		L1InfoTreeLeaf:      *bridgeservice.NewL1InfoTreeLeafResponse(result.Proof.L1InfoTreeLeaf),
+	}
+
+	require.Equal(t, expectedBridgeServiceProof, actualBridgeServiceProof)
+}
+
+func testRequest(depositCount uint32) autoclaimtypes.AutoClaimRequest {
+	return autoclaimtypes.AutoClaimRequest{
+		Key: autoclaimtypes.DeriveRequestKey(
+			autoclaimtypes.L1OriginNetwork,
+			1101,
+			depositCount,
+		),
+		Bridge: autoclaimtypes.BridgeExit{
+			OriginNetwork:      autoclaimtypes.L1OriginNetwork,
+			DestinationNetwork: 1101,
+			DepositCount:       depositCount,
+			GlobalIndex:        autoclaimtypes.DeriveL1GlobalIndex(depositCount),
+		},
+		GlobalIndex: autoclaimtypes.DeriveL1GlobalIndex(depositCount),
+	}
+}
+
+func configureSuccessfulIndexLookup(
+	t *testing.T,
+	depositCount uint32,
+	bridge *fakeL1BridgeSyncer,
+	l1InfoTree *fakeL1InfoTreeSyncer,
+) {
+	t.Helper()
+
+	firstInfo := testL1InfoTreeLeaf(10, 10, "0x10")
+	targetInfo := testL1InfoTreeLeaf(20, depositCount, "0x20")
+	lastInfo := testL1InfoTreeLeaf(30, 30, "0x30")
+
+	bridge.rootsByLER = map[common.Hash]*treetypes.Root{
+		firstInfo.MainnetExitRoot:  {Index: 10},
+		targetInfo.MainnetExitRoot: {Index: depositCount},
+		lastInfo.MainnetExitRoot:   {Index: 30},
+	}
+	if bridge.proof == (treetypes.Proof{}) && bridge.proofErr == nil {
+		bridge.proof = testProof("0xaa")
+	}
+
+	l1InfoTree.firstInfo = firstInfo
+	l1InfoTree.lastInfo = lastInfo
+	l1InfoTree.infoAfterBlock = map[uint64]*l1infotreesync.L1InfoTreeLeaf{
+		20: targetInfo,
+	}
+	l1InfoTree.infoByIndex = map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+		depositCount: targetInfo,
+	}
+}
+
+func testL1InfoTreeLeaf(blockNumber uint64, index uint32, root string) *l1infotreesync.L1InfoTreeLeaf {
+	return &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     blockNumber,
+		L1InfoTreeIndex: index,
+		MainnetExitRoot: common.HexToHash(root),
+		RollupExitRoot:  common.HexToHash(fmt.Sprintf("%s01", root)),
+		GlobalExitRoot:  common.HexToHash(fmt.Sprintf("%s02", root)),
+		Hash:            common.HexToHash(fmt.Sprintf("%s03", root)),
+	}
+}
+
+func testProof(values ...string) treetypes.Proof {
+	var proof treetypes.Proof
+	for i, value := range values {
+		proof[i] = common.HexToHash(value)
+	}
+	return proof
+}
+
+type fakeL1BridgeSyncer struct {
+	rootsByLER map[common.Hash]*treetypes.Root
+	rootErrs   map[common.Hash]error
+	lastRoot   *treetypes.Root
+	lastErr    error
+	proof      treetypes.Proof
+	proofErr   error
+	proofCalls []getProofCall
+}
+
+func (f *fakeL1BridgeSyncer) GetProof(
+	_ context.Context,
+	depositCount uint32,
+	localExitRoot common.Hash,
+) (treetypes.Proof, error) {
+	f.proofCalls = append(f.proofCalls, getProofCall{
+		depositCount:  depositCount,
+		localExitRoot: localExitRoot,
+	})
+	return f.proof, f.proofErr
+}
+
+func (f *fakeL1BridgeSyncer) GetRootByLER(_ context.Context, ler common.Hash) (*treetypes.Root, error) {
+	if err := f.rootErrs[ler]; err != nil {
+		return nil, err
+	}
+	root, ok := f.rootsByLER[ler]
+	if !ok {
+		return nil, errors.New("root not found")
+	}
+	return root, nil
+}
+
+func (f *fakeL1BridgeSyncer) GetLastRoot(_ context.Context) (*treetypes.Root, error) {
+	return f.lastRoot, f.lastErr
+}
+
+type fakeL1InfoTreeSyncer struct {
+	infoByIndex      map[uint32]*l1infotreesync.L1InfoTreeLeaf
+	rollupProof      treetypes.Proof
+	rollupProofErr   error
+	lastInfo         *l1infotreesync.L1InfoTreeLeaf
+	firstInfo        *l1infotreesync.L1InfoTreeLeaf
+	infoAfterBlock   map[uint64]*l1infotreesync.L1InfoTreeLeaf
+	rollupProofCalls []rollupProofCall
+}
+
+func (f *fakeL1InfoTreeSyncer) GetInfoByIndex(
+	_ context.Context,
+	index uint32,
+) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	info, ok := f.infoByIndex[index]
+	if !ok {
+		return nil, errors.New("info not found")
+	}
+	return info, nil
+}
+
+func (f *fakeL1InfoTreeSyncer) GetRollupExitTreeMerkleProof(
+	_ context.Context,
+	networkID uint32,
+	root common.Hash,
+) (treetypes.Proof, error) {
+	f.rollupProofCalls = append(f.rollupProofCalls, rollupProofCall{
+		networkID: networkID,
+		root:      root,
+	})
+	return f.rollupProof, f.rollupProofErr
+}
+
+func (f *fakeL1InfoTreeSyncer) GetLastInfo() (*l1infotreesync.L1InfoTreeLeaf, error) {
+	return f.lastInfo, nil
+}
+
+func (f *fakeL1InfoTreeSyncer) GetFirstInfo() (*l1infotreesync.L1InfoTreeLeaf, error) {
+	return f.firstInfo, nil
+}
+
+func (f *fakeL1InfoTreeSyncer) GetFirstInfoAfterBlock(blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	info, ok := f.infoAfterBlock[blockNum]
+	if !ok {
+		return nil, fmt.Errorf("info after block %d not found", blockNum)
+	}
+	return info, nil
+}
+
+type getProofCall struct {
+	depositCount  uint32
+	localExitRoot common.Hash
+}
+
+type rollupProofCall struct {
+	networkID uint32
+	root      common.Hash
+}

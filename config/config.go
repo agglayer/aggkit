@@ -13,6 +13,7 @@ import (
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	validator "github.com/agglayer/aggkit/aggsender/validator"
+	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/common"
@@ -308,6 +309,9 @@ type Config struct {
 	// Validator is the configuration of the aggsender validator service
 	Validator validator.Config
 
+	// AutoClaim is the configuration of the auto claim service.
+	AutoClaim autoclaimcfg.Config
+
 	// L1Multidownloader is the configuration of the multidownloader service for L1
 	L1Multidownloader multidownloader.Config
 
@@ -460,6 +464,9 @@ func loadString(cfg *Config, configData string, configType string,
 	configKeys := viper.AllKeys()
 	err = checkDeprecatedFields(configKeys)
 	if err != nil {
+		return err
+	}
+	if err := cfg.AutoClaim.Validate(); err != nil {
 		return err
 	}
 

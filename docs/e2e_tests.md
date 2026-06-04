@@ -33,6 +33,23 @@ Bridges and claims native token on L2 network, that is pre-deployed and mapped t
 
 It deploys the ERC20 token on the L1 and bridges and claims it to the L2. In this process of claiming the bridge, a token representation of given ERC20 token is automatically deployed on the L2.
 
+### Auto Claim L1 -> L2
+
+Validates the L1 to L2 Auto Claim service with the existing e2e environment. The focused Go e2e command is:
+
+```bash
+go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e2e
+```
+
+`TestAutoClaimL1ToL2AllowAll` enables Auto Claim with the `allow-all` policy and waits for the request to reach
+`confirmed` without a manual claim. `TestAutoClaimL1ToL2APIApprove` enables the API, waits for
+`manual-approval-required`, approves the request through `POST /autoclaim/v1/bridges/{id}/approve`, and then waits for
+`confirmed`.
+
+The e2e environment must be able to start the docker compose stack. If the host kills `docker compose up` with
+`signal: killed` before the tests start, record that as an environment blocker and rerun the command on a host with
+enough resources.
+
 ## Two L2 networks
 
 It involves two L2 networks (and single L1 network), that are attached to the same agglayer.
