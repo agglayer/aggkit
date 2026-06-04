@@ -81,14 +81,11 @@ func liteForkNextDepositCount(ctx context.Context, cfg *Config) (uint32, error) 
 			log.Warnf("error closing lite bridge syncer: %v", cerr)
 		}
 	}()
-	bridges, err := syncer.GetBridges(ctx)
+	nextDepositCount, err := syncer.NextDepositCount(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("read genesis→fork bridges: %w", err)
+		return 0, fmt.Errorf("read genesis→fork next deposit count: %w", err)
 	}
-	if len(bridges) == 0 {
-		return 0, nil
-	}
-	return bridges[len(bridges)-1].DepositCount + 1, nil
+	return nextDepositCount, nil
 }
 
 // buildLiteTreeWithReplayed builds the full exit tree for Step G2 and returns its root.

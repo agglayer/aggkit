@@ -301,6 +301,25 @@ func (s *BridgeSyncerLite) LocalExitRoot() (common.Hash, error) {
 	return root.Hash, nil
 }
 
+// NextDepositCount returns the deposit count the next inserted bridge should get: one past the
+// highest deposit count currently persisted, or 0 when the DB is empty. It runs a single aggregate
+// query (MAX(deposit_count)) rather than loading every bridge into memory, so it stays O(1) on
+// mainnet-scale histories.
+func (s *BridgeSyncerLite) NextDepositCount(ctx context.Context) (uint32, error) {
+	if s.db == nil {
+		return 0, errors.New("NextDepositCount requires a DB-backed syncer (set Config.DBPath)")
+	}
+	var maxDepositCount sql.NullInt64
+	if err := s.db.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT MAX(deposit_count) FROM %s", bridgeTableName)).Scan(&maxDepositCount); err != nil {
+		return 0, fmt.Errorf("query max deposit count: %w", err)
+	}
+	if !maxDepositCount.Valid {
+		return 0, nil
+	}
+	return uint32(maxDepositCount.Int64) + 1, nil
+}
+
 // GetBridges returns all persisted bridge leaves ordered by deposit count.
 func (s *BridgeSyncerLite) GetBridges(ctx context.Context) ([]BridgeLeaf, error) {
 	if s.db == nil {
