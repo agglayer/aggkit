@@ -138,7 +138,7 @@ func copyLiteDB(srcPath, dstPath string) error {
 
 // copyFile copies the contents of src to dst (truncating dst), streaming so large DBs are not held
 // in memory.
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -148,9 +148,14 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
+	// Surface the close error (e.g. a deferred flush failing on a full disk) when the copy itself
+	// succeeded; if the copy already failed, that error takes precedence and the close error is
+	// dropped intentionally.
+	defer func() {
+		if cerr := out.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+	_, err = io.Copy(out, in)
+	return err
 }
