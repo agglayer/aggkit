@@ -487,37 +487,33 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	configPath := testEnv.GetAggkitConfigPath()
 	preWipeConfig, err := os.ReadFile(configPath)
 	require.NoError(t, err)
+	// Fresh, empty aggsender StoragePath for the cleanup restart (see the t.Cleanup rationale below).
+	cleanupFreshPath := fmt.Sprintf("/tmp/aggsender-cleanup-%d.sqlite", time.Now().UnixNano())
 	t.Cleanup(func() {
-		// Phase 8: Restore the pre-wipe aggkit config AND wipe the stale aggsender DB so the
-		// network is left OPERATIONAL for any test that runs next (tests must be order-independent).
-		// This test advances agglayer (malicious cert + recovery) while the local aggsender DB stays
-		// behind, so simply restoring the original config points the aggsender back at a DB whose
-		// latest settled cert is many heights behind agglayer. On startup that hits
-		// statuschecker CASE 4 ("Local certificate ... is different from agglayer ... Manual recovery
-		// required: wipe the aggsender DB") and the aggsender wedges forever, poisoning every later
-		// settlement-dependent test. Wiping the DB instead makes the aggsender re-bootstrap cleanly
-		// from agglayer (CASE 2: no local cert -> insert agglayer's latest settled cert) and resume
-		// settling, leaving the network healthy. aggkit is stopped while editFn runs, so removing the
-		// sqlite files here is safe.
+		// Phase 8: leave the network OPERATIONAL for whatever test runs next (tests must be
+		// order-independent). This test advances agglayer (malicious cert + recovery) while the local
+		// aggsender DB falls many heights behind agglayer; restoring the ORIGINAL config points the
+		// aggsender back at that stale DB, and on its next restart CheckInitialStatus hits CASE 4
+		// ("Local certificate ... is different from agglayer ... Manual recovery required: wipe the
+		// aggsender DB") and the aggsender wedges forever, poisoning every later settlement-dependent
+		// test. The aggsender DB is container-internal in op-pp (no host /tmp bind-mount), so it cannot
+		// be deleted from the host. Instead, restart on a FRESH empty StoragePath: with no local cert,
+		// CheckInitialStatus takes CASE 2 and inserts agglayer's latest settled cert AT its agglayer
+		// height, so local stays aligned with agglayer (subsequent restarts hit CASE 5, never CASE 4),
+		// and the aggsender resumes settling — network healthy.
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), bflRestartTimeout)
 		defer cleanupCancel()
 		if restoreErr := testEnv.RestartAggkitWithConfig(cleanupCtx, func(cfgPath string) error {
-			if werr := os.WriteFile(cfgPath, preWipeConfig, 0o600); werr != nil {
-				return werr
-			}
-			dbPath := testEnv.GetAggsenderDBPath()
-			for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
-				if rerr := os.Remove(p); rerr != nil && !os.IsNotExist(rerr) {
-					return fmt.Errorf("wipe stale aggsender DB %s: %w", p, rerr)
-				}
-			}
-			return nil
+			patched := strings.Replace(
+				string(preWipeConfig), "[AggSender]",
+				"[AggSender]\nStoragePath = \""+cleanupFreshPath+"\"", 1,
+			)
+			return os.WriteFile(cfgPath, []byte(patched), 0o600)
 		}); restoreErr != nil {
-			t.Logf("WARNING: failed to restore aggkit config after DB wipe: %v", restoreErr)
+			t.Logf("WARNING: failed to restart aggkit on fresh storage after DB wipe: %v", restoreErr)
 		} else {
-			// Wait for bridge service to re-sync after config restore. This ensures
-			// l1infotreesync has processed any pending reorgs before the post-test
-			// bridge health check runs.
+			// Wait for bridge service to re-sync after the restart so l1infotreesync has processed any
+			// pending reorgs before a following test (or the post-test health check) runs.
 			waitForBridgeServiceSynced(cleanupCtx, t)
 		}
 	})
