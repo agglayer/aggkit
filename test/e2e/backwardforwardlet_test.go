@@ -37,7 +37,12 @@ const (
 	// The test environment uses a PoS beacon chain with 12s L1 blocks and 15-block epochs (~3 min/epoch).
 	// A cert may take up to one full epoch to settle, so 5 minutes provides comfortable margin.
 	bflCertSettleTimeout = 5 * time.Minute
-	bflRestartTimeout    = 2 * time.Minute
+	// bflRestartTimeout bounds a StopAggkit+StartAggkit restart, including the StartAggkit wait for the
+	// bridge service to become ready again. It must be >= the env's own serviceReadyTimeout (4m) because
+	// after a restart the bridge service can take its full readiness window to re-sync (more so deep in
+	// a busy suite); a tighter budget made the restart intermittently "fail" with "wait for bridge
+	// service after start: context deadline exceeded" and cascade into later tests.
+	bflRestartTimeout    = 5 * time.Minute
 	bflBridgeIndexWait   = 2 * time.Minute
 	// bflNoPendingTimeout is used when waiting for the agglayer to have no in-flight certs.
 	// Same epoch-based reasoning as bflCertSettleTimeout; using a larger margin in case
