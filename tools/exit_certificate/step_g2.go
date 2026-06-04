@@ -185,12 +185,13 @@ func isTransientForkError(err error) bool {
 
 // RunStepG2 computes Certificate.NewLocalExitRoot and the per-exit metadata.
 //
-// By default it does so purely off-chain: it builds the lite exit tree from Step G1's genesis→fork
-// bridges plus the certificate's bridge exits (in their given order, with each exit's own metadata)
-// and takes the tree root as the NewLocalExitRoot — no Anvil. When
-// options.verifyNewLocalExitRootUsingShadowFork is set it instead spins up the Anvil shadow-fork,
-// replays every exit against the real bridge contract, recovers the on-chain deposit order and
-// metadata, and verifies the lite tree root against the contract's getRoot().
+// By default (options.verifyNewLocalExitRootUsingShadowFork is true — see defaultOptions) it spins
+// up the Anvil shadow-fork, replays every exit against the real bridge contract, recovers the
+// on-chain deposit order and metadata, and verifies the lite tree root against the contract's
+// getRoot(). When the option is set to false it instead computes the root purely off-chain: it
+// builds the lite exit tree from Step G1's genesis→fork bridges plus the certificate's bridge exits
+// (in their given order, with each exit's own metadata) and takes the tree root as the
+// NewLocalExitRoot — no Anvil.
 //
 // forkBlock is the block resolved by Step G1. lbtEntries (Step 0 output) is used only by the
 // shadow-fork path as a wrapped-token lookup so getTokenWrappedAddress RPC calls are avoided.
