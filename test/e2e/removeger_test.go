@@ -248,8 +248,12 @@ const batsDestinationNetworkCategoryA = 1
 var batsDestinationAddressCategoryA = common.HexToAddress("0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6")
 
 // performBridgeL1NoClaim performs a real L1->L2 bridge with the given amount and waits for it to be
-// indexed by the bridge service, but does NOT claim on L2.
-func performBridgeL1NoClaim(ctx context.Context, t *testing.T, env *envs.Env, bridgeAmount *big.Int, label string) *bridgeResult {
+// indexed by the bridge service, but does NOT claim on L2. dest is the L2 destination; pass the zero
+// address to default to the pooled L2 key, or a distinct/fresh address when the bridge's leaf CONTENT
+// must be unique among the suite's bridges (e.g. CategoryB2's content-based CorrectBridge resolution).
+func performBridgeL1NoClaim(
+	ctx context.Context, t *testing.T, env *envs.Env, bridgeAmount *big.Int, dest common.Address, label string,
+) *bridgeResult {
 	t.Helper()
 	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
 	require.NoError(t, err)
@@ -261,7 +265,7 @@ func performBridgeL1NoClaim(ctx context.Context, t *testing.T, env *envs.Env, br
 	balance, err := env.Clients.L1.BalanceAt(ctx, l1Opts.From, nil)
 	require.NoError(t, err)
 	require.Equal(t, balance.Cmp(bridgeAmount), 1, "addr does not have enough balance")
-	result, err := BridgeL1NoClaim(ctx, env, l1Opts, l2Opts, bridgeAmount, label)
+	result, err := BridgeL1NoClaim(ctx, env, l1Opts, l2Opts, bridgeAmount, dest, label)
 	require.NoError(t, err)
 	return result
 }
@@ -860,7 +864,7 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 
 	// --- Setup: real bridge (no claim), then inject invalid GER and claim with invalid GER but correct bridge data ---
 	log.Info("[B1] step: performBridgeL1NoClaim")
-	bridgeResult := performBridgeL1NoClaim(ctx, t, env, big.NewInt(100000000000000), "B1")
+	bridgeResult := performBridgeL1NoClaim(ctx, t, env, big.NewInt(100000000000000), common.Address{}, "B1")
 	log.Info("[B1] step: buildB1ClaimProof, injectInvalidGER, executeB1Claim")
 	proof := buildB1ClaimProof(t, bridgeResult.Bridge, bridgeResult.DepositCount)
 	require.NoError(t, env.StopAggkit(ctx))
@@ -969,7 +973,12 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	// round amount (e.g. 0.0002 ETH) to the same pooled destination collides, so the tool resolves a
 	// different bridge (wrong deposit_count) and the CorrectBridge assertion fails. An odd, distinctive
 	// amount keeps the content unique and the resolution unambiguous regardless of run order.
-	bridge1 := performBridgeL1NoClaim(ctx, t, env, big.NewInt(200000000000777), "B2-1") // ~0.0002 ETH, unique
+	// Bridge to a FRESH unique recipient (not the reused pooled L2 key) so this bridge's leaf content is
+	// unique among the suite's bridges and the tool's content-based CorrectBridge resolution is
+	// unambiguous (a unique amount alone was insufficient — another same-amount/same-pooled-dest bridge
+	// could still collide). The deferred-claim flow uses bridge1.DestinationAddr, so the fresh dest
+	// flows through consistently.
+	bridge1 := performBridgeL1NoClaim(ctx, t, env, big.NewInt(200000000000777), freshRecipient(t), "B2-1")
 	log.Infof("[B2] bridge done: deposit_count=%d, global_index=%s",
 		bridge1.DepositCount, bridge1.GlobalIndex.String())
 

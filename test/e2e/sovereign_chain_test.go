@@ -222,7 +222,7 @@ func testInvalidGEROnL2BridgesValid(t *testing.T, env *envs.Env) {
 	withCleanEmergencyState(ctx, t, env, func() {
 		// bats: bridge_asset L1->L2, then claim with invalid GER. Real bridge, indexed but not claimed.
 		log.Info("[invalid-ger] step: performBridgeL1NoClaim")
-		bridge := performBridgeL1NoClaim(ctx, t, env, big.NewInt(100000000000000), "sovereign-invalid-ger")
+		bridge := performBridgeL1NoClaim(ctx, t, env, big.NewInt(100000000000000), common.Address{}, "sovereign-invalid-ger")
 
 		// Build the invalid GER (and exit roots/proofs) from the real bridge leaf.
 		proof := buildB1ClaimProof(t, bridge.Bridge, bridge.DepositCount)

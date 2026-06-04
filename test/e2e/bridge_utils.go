@@ -334,14 +334,19 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 }
 
 // BridgeL1NoClaim performs a real L1->L2 bridge and waits for it to be fully indexed but does not claim.
-// label is used in log messages to identify the caller context (e.g. "B1", "B2-1").
-func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, bridgeAmount *big.Int, label string) (*bridgeResult, error) {
+// label is used in log messages to identify the caller context (e.g. "B1", "B2-1"). If dest is the zero
+// address the destination defaults to l2Opts.From; pass a distinct address when the caller needs the
+// bridge's leaf CONTENT (origin/dest/amount/metadata) to be unique among the suite's bridges.
+func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, bridgeAmount *big.Int, dest common.Address, label string) (*bridgeResult, error) {
 	callOpts := &bind.CallOpts{Context: ctx}
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get L2 network ID: %w", err)
 	}
-	destinationAddress := l2Opts.From
+	destinationAddress := dest
+	if destinationAddress == (common.Address{}) {
+		destinationAddress = l2Opts.From
+	}
 	forceUpdateGlobalExitRoot := true
 	l1Opts.Value = bridgeAmount
 	defer func() { l1Opts.Value = nil }()
