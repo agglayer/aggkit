@@ -18,8 +18,9 @@ l2NetworkId = 1
 targetBlock = "LatestBlock"
 
 # REQUIRED — address that receives SC-locked value (tokens held in smart contracts). Use an address
-# whose private key you control; settled funds can only be recovered by signing from it.
-exitAddress = "<PUBLIC_ADDRESS_TO_RECEIVE_SC_EXIT>"
+# whose private key you control; settled funds can only be recovered by signing from it. Must not be
+# the zero address. Uncomment and set your own address before running.
+#exitAddress = "<PUBLIC_ADDRESS_TO_RECEIVE_SC_EXIT>"
 sovereignRollupAddr = "0x519E42c24163192Dca44CD3fBDCEBF6be9130987"
 l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
 destinationNetwork = 0
