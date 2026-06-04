@@ -46,6 +46,9 @@ const (
 
 	abiFuncSelectorSize = 4 // bytes in an ABI function selector
 
+	// uint256Bits is the bit width of an EVM uint256, used to build maxUint256 (2^256-1).
+	uint256Bits = 256
+
 	// replayProgressSteps is how many progress lines replayBridgeExits aims to emit over the full
 	// replay (one roughly every 1% of exits), instead of one line per individual bridge.
 	replayProgressSteps = 100
@@ -92,7 +95,7 @@ var (
 
 	// maxUint256 is 2^256-1, used as the patched ERC-20 balance and approve amount so a sender can
 	// bridge a token any number of times without underflowing its balance/allowance.
-	maxUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	maxUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint256Bits), big.NewInt(1))
 
 	// errReceiptTimeout marks a receipt poll that exhausted receiptPollTimeout without the tx mining,
 	// as opposed to a revert or a hard RPC error. Collectors defer these exits for a retry pass rather
@@ -292,7 +295,8 @@ func runStepG2ShadowFork(
 	for k, v := range l2Tokens {
 		log.Debugf("token map: origin(network=%d addr=%s) -> L2 wrapped %s", k.network, k.addr.Hex(), v.Hex())
 	}
-	log.Infof("Replaying %d bridge exits on Anvil with concurrency %d...", len(certificate.BridgeExits), max(cfg.Options.ConcurrencyLimit, 1))
+	log.Infof("Replaying %d bridge exits on Anvil with concurrency %d...",
+		len(certificate.BridgeExits), max(cfg.Options.ConcurrencyLimit, 1))
 	// Anvil mines on its own --block-time interval (see anvilBlockTimeSeconds); workers just send and
 	// poll for receipts. By the time replayBridgeExits returns, every tx has been waited on and mined,
 	// so getRoot below reflects all replayed exits.
@@ -503,13 +507,13 @@ func replayBridgeExits(
 						deferred = append(deferred, s)
 						deferredMu.Unlock()
 					default:
-						failFast(s.job, fmt.Errorf("get receipt %s for exit %d: %w", s.hash.Hex(), s.index+1, err))
+						_ = failFast(s.job, fmt.Errorf("get receipt %s for exit %d: %w", s.hash.Hex(), s.index+1, err))
 					}
 					continue
 				}
 				leaf, err := replayedLeafFromReceipt(logs, s.hash)
 				if err != nil {
-					failFast(s.job, fmt.Errorf("parse BridgeEvent for exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
+					_ = failFast(s.job, fmt.Errorf("parse BridgeEvent for exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
 					continue
 				}
 				leaves[s.index] = leaf
@@ -569,7 +573,7 @@ func replayBridgeExits(
 		for _, s := range deferred {
 			leaf, err := retryDeferredExit(ctx, anvilURL, cfg.L2BridgeAddress, s)
 			if err != nil {
-				failFast(s.job, fmt.Errorf("retry exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
+				_ = failFast(s.job, fmt.Errorf("retry exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
 				break
 			}
 			leaves[s.index] = leaf
