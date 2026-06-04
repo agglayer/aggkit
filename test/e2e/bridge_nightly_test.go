@@ -97,7 +97,9 @@ func TestBridgeNightly(t *testing.T) {
 // claim-asset, then claim-message.
 func testBridgeNightryMessageAssetClaimAssetMessage(t *testing.T) {
 	env := testEnv
-	ctx, cancel := context.WithTimeout(context.Background(), bridgeNightlyL1ToL2Timeout)
+	// Deferred combo: both assets bridge before any claim; use the larger DeferTimeout so the
+	// re-fetch at claim time (waitForL1InfoTreeIndex + waitForInjectedL1InfoLeaf) has budget.
+	ctx, cancel := context.WithTimeout(context.Background(), bridgeNightlyL1ToL2DeferTimeout)
 	defer cancel()
 
 	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
@@ -128,7 +130,8 @@ func testBridgeNightryMessageAssetClaimAssetMessage(t *testing.T) {
 // Combo 2 — "Bridge message A → Bridge asset B → Claim message A → Claim asset B"
 func testBridgeNightryMessageAssetClaimMessageAsset(t *testing.T) {
 	env := testEnv
-	ctx, cancel := context.WithTimeout(context.Background(), bridgeNightlyL1ToL2Timeout)
+	// Deferred combo: both assets bridge before any claim; use the larger DeferTimeout.
+	ctx, cancel := context.WithTimeout(context.Background(), bridgeNightlyL1ToL2DeferTimeout)
 	defer cancel()
 
 	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
@@ -356,7 +359,15 @@ func claimERC20L1ToL2(ctx context.Context, t *testing.T, env *envs.Env, l2Opts *
 	// Re-read the bridge record by deposit count to recover the exact claim parameters.
 	bridge := waitForBridgeByDepositCount(ctx, t, env, 0, b.depositCount)
 
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, b.l1InfoIndex, b.depositCount)
+	// Re-fetch the L1-info-tree index at claim time (not at bridge time). The stale index captured
+	// at bridge time may reference a GER that aggoracle later skips or that a reorg invalidates, so
+	// the proof built from it would pass when the GER is injected but fail ("execution reverted") when
+	// it is not yet on the L2 GlobalExitRoot contract at the moment of claiming. Re-fetching here
+	// guarantees the proof is built against a currently-valid, stably-injected index.
+	claimL1InfoIndex := waitForL1InfoTreeIndex(ctx, t, env, 0, b.depositCount)
+	waitForInjectedL1InfoLeaf(ctx, t, env, b.l2NetworkID, claimL1InfoIndex)
+
+	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, claimL1InfoIndex, b.depositCount)
 	require.NoError(t, err, "get claim proof (deposit=%d)", b.depositCount)
 	require.NotNil(t, claimProof, "claim proof must not be nil")
 	proofLocal, proofRollup := claimProofToContractProofs(claimProof)
@@ -364,6 +375,15 @@ func claimERC20L1ToL2(ctx context.Context, t *testing.T, env *envs.Env, l2Opts *
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
+
+	// waitForInjectedL1InfoLeaf confirms the bridge service sees the leaf, but aggoracle can lag
+	// slightly writing the GER to the L2 GlobalExitRoot contract. Apply a short bounded wait (2m) so
+	// ClaimAsset does not race that final aggoracle write. This is safe because we re-fetched a fresh,
+	// currently-injected index above — the GER arrives quickly after injection.
+	gerCtx, gerCancel := context.WithTimeout(ctx, 2*time.Minute)
+	gerErr := waitForGERPresentOnL2(gerCtx, env, mainnetExitRoot, rollupExitRoot)
+	gerCancel()
+	require.NoError(t, gerErr, "GER not on L2 for ClaimAsset (deposit=%d)", b.depositCount)
 
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, proofLocal, proofRollup, bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
@@ -429,18 +449,44 @@ func claimMessageL1ToL2(ctx context.Context, t *testing.T, env *envs.Env, l2Opts
 
 	bridge := waitForBridgeByDepositCount(ctx, t, env, 0, b.depositCount)
 
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, b.l1InfoIndex, b.depositCount)
-	require.NoError(t, err, "get claim proof for message (deposit=%d)", b.depositCount)
-	require.NotNil(t, claimProof, "claim proof must not be nil")
-	proofLocal, proofRollup := claimProofToContractProofs(claimProof)
+	// Re-fetch the L1-info-tree index at claim time — same reasoning as claimERC20L1ToL2: the stale
+	// captured index may reference a GER that aggoracle skipped or that was invalidated by a reorg.
+	claimL1InfoIndex := waitForL1InfoTreeIndex(ctx, t, env, 0, b.depositCount)
+	waitForInjectedL1InfoLeaf(ctx, t, env, b.l2NetworkID, claimL1InfoIndex)
 
-	claimTx, err := env.L2.Contracts.L2Bridge.ClaimMessage(
-		l2Opts, proofLocal, proofRollup, bridge.GlobalIndex,
-		common.HexToHash(string(claimProof.L1InfoTreeLeaf.MainnetExitRoot)),
-		common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot)),
-		bridge.OriginNetwork, common.HexToAddress(string(bridge.OriginAddress)),
-		bridge.DestinationNetwork, b.destination, b.amount, common.FromHex(bridge.Metadata))
-	require.NoError(t, err, "ClaimMessage on L2")
+	// Retry ClaimMessage with progressively fresher L1-info-tree indexes. In PP mode the claim verifies
+	// the mainnet exit root + rollup exit root pair against the L2 bridge's current accumulated state
+	// (the PP cert must have settled with a root that encompasses this deposit's leaf). A stale index
+	// captured at bridge time may have already been superseded by subsequent cert rounds, so the proof
+	// built from it is no longer valid. Re-fetching the latest injected index at each retry advances
+	// the proof to cover the current on-chain state. Bounded to 6 attempts × 10s to stay within the
+	// deferred subtest budget.
+	var claimTx *ethtypes.Transaction
+	for attempt := 1; ; attempt++ {
+		freshIndex := waitForL1InfoTreeIndex(ctx, t, env, 0, b.depositCount)
+		waitForInjectedL1InfoLeaf(ctx, t, env, b.l2NetworkID, freshIndex)
+		cp, cpErr := env.Clients.BridgeService.GetClaimProof(ctx, 0, freshIndex, b.depositCount)
+		require.NoError(t, cpErr, "get claim proof for message attempt=%d (deposit=%d)", attempt, b.depositCount)
+		require.NotNil(t, cp)
+		pl, pr := claimProofToContractProofs(cp)
+		tx, txErr := env.L2.Contracts.L2Bridge.ClaimMessage(
+			l2Opts, pl, pr, bridge.GlobalIndex,
+			common.HexToHash(string(cp.L1InfoTreeLeaf.MainnetExitRoot)),
+			common.HexToHash(string(cp.L1InfoTreeLeaf.RollupExitRoot)),
+			bridge.OriginNetwork, common.HexToAddress(string(bridge.OriginAddress)),
+			bridge.DestinationNetwork, b.destination, b.amount, common.FromHex(bridge.Metadata))
+		if txErr == nil {
+			claimTx = tx
+			break
+		}
+		require.Less(t, attempt, 7, "ClaimMessage still failing after 6 attempts (deposit=%d): %v", b.depositCount, txErr)
+		select {
+		case <-ctx.Done():
+			require.NoError(t, ctx.Err(), "ClaimMessage: context expired (deposit=%d)", b.depositCount)
+		case <-time.After(10 * time.Second):
+		}
+	}
+	require.NotNil(t, claimTx, "ClaimMessage tx must not be nil")
 	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
 	require.NoError(t, err, "wait for ClaimMessage tx")
 	require.Equal(t, ethtypes.ReceiptStatusSuccessful, claimReceipt.Status, "ClaimMessage tx failed")
