@@ -105,9 +105,10 @@ jobs:
   test-go-e2e:
     name: Run Go E2E Tests (${{ matrix.env_name }})
     runs-on: ubuntu-latest
-    # Raised from 45 to 90 to accommodate heavier multi-container envs (kept consistent with
-    # the go test -timeout in the Makefile's test-e2e target).
-    timeout-minutes: 90
+    # 120 min: the go test -timeout is 90m (make test-e2e), leaving 30m for runner setup,
+    # docker image loading, and the artifact-upload step so GH Actions never kills the job
+    # before go test exits cleanly and logs are collected.
+    timeout-minutes: 120
     needs: [setup-matrix, build-docker-image, pull-docker-images]
     strategy:
       fail-fast: false
@@ -129,10 +130,13 @@ jobs:
         with:
           go-version: 1.25.7
 
-      - name: Install Docker Compose
+      - name: Verify Docker Compose plugin
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
+          # The test code uses `docker compose` (v2 plugin syntax via exec.Command("docker", "compose", ...)).
+          # Ubuntu runners ship with the v2 plugin pre-installed; this step verifies it is available
+          # and does NOT install the legacy v1 docker-compose standalone binary (which would shadow the
+          # plugin and break the compose commands in loader.go).
+          docker compose version
 
       - name: Download aggkit Docker image
         uses: actions/download-artifact@v4
