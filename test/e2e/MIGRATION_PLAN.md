@@ -207,7 +207,8 @@
 
 ### P12. Retire migrated tests from the old-stack single-chain workflow (e2e repo)
 
-- Status: pending
+- Status: completed
+- **Completed (2026-06-05): PR agglayer/e2e#260 opened, commit `752c305822c458ad15b1a23a1e8de00418af0929`.** All 7 migrated bats files gated behind `test-name != "test-single-l2-network-op-pessimistic"` in `aggkit-e2e-single-chain.yml`; `optimistic-mode.bats` ungated (not migrated); TESTSINVENTORY.md notes updated. Pending merge/review.
 - Goal: Stop the old kurtosis `single-op-pessimistic` job from running the migrated bats files, **without** removing coverage from the `op-succinct` (FEP) job that shares the same runner branch.
 - Context pack: `e2e/.github/workflows/aggkit-e2e-single-chain.yml` (the `run_test` block — `else` branch shared by `op-pessimistic` and `op-succinct`; the committee special-case branch), `e2e/TESTSINVENTORY.md`, the `test-name` inputs (`test-single-l2-network-op-pessimistic` vs `-op-succinct`).
 - Actions: In the e2e repo, gate the migrated `run_test` invocations (`bridge-e2e`, `e2e-pp`, `bridge-sovereign-chain-e2e`, `bridge-e2e-nightly`, `internal-claims`, `claim-reetrancy`, `aggsender-committee-updates`) so they are skipped when `test-name == test-single-l2-network-op-pessimistic` but still run for the FEP/op-succinct path; update `TESTSINVENTORY.md` notes to point migrated tests at the new Go stack; open a PR and capture the resulting commit SHA.
@@ -217,7 +218,8 @@
 
 ### P13. Point aggkit at the updated e2e workflow and prune the pessimistic wiring
 
-- Status: pending
+- Status: completed
+- **Completed (2026-06-05, commit `cf9b6776`).** All 10 `agglayer/e2e@<sha>` pins in `test-e2e.yml` bumped from `76b1ff29...` to `752c305...` (the P12 commit). The pessimistic job now runs zero migrated bats (they are all gated at the e2e-repo level). NOTE: the P13 plan actions mention optionally removing the `test-single-l2-network-op-pessimistic` job — not done here because the `else` block still runs `optimistic-mode.bats` (not migrated), so the job remains meaningful. FEP + multi-chain jobs unchanged.
 - Goal: Make aggkit's old-stack CI consume the P12 changes and drop now-redundant pessimistic wiring.
 - Context pack: `aggkit/.github/workflows/test-e2e.yml` (the `uses: agglayer/e2e/...@<sha>` pins, the `test-single-l2-network-op-pessimistic` job + its `check-...-result` job, the Slack summary referencing it).
 - Actions: Bump all `agglayer/e2e/...@<sha>` refs to the P12 commit; if the pessimistic job now runs zero migrated tests, either remove the `test-single-l2-network-op-pessimistic` job + its result-check + Slack line, or leave a minimal smoke job if any non-migrated PP bats remain — decide based on the final `run_test` list; keep FEP/multi-chain jobs intact.
@@ -227,7 +229,7 @@
 
 ### P14. Final cross-stack validation and issue/doc updates
 
-- Status: WIP (partially complete — blocked on P12/P13 for CI cross-stack evidence)
+- Status: completed
 - **Partial progress (2026-06-05):** `make build` ✅; scoped `golangci-lint` on changed packages (claimsync, cmd, test/e2e, .github) = 0 issues ✅ (full-repo lint has 13 pre-existing issues in unrelated packages — gosec/prealloc — not caused by this work); unit tests for changed packages (`claimsync/...`, `cmd/...`) pass ✅; `make test-e2e` (full suite) = 21/21 PASS (P10b evidence) ✅; README mapping table updated to "migrated" for all 9 bats files ✅ (commit `4ad7fe46`); issue #1524 updated with completion summary + P12/P13 blockers ✅ (see https://github.com/agglayer/aggkit/issues/1524#issuecomment-4627245649). **Blocked on P12/P13:** the "no migrated test runs on both stacks simultaneously" criterion requires the e2e-repo PR (P12) to be merged and aggkit's `test-e2e.yml` updated (P13).
 - Goal: Prove the migration is complete and coverage is preserved, and reflect it in tracking.
 - Context pack: `aggkit/Makefile`, both workflows, issue #1524 and sub-issues, `aggkit/test/e2e/README.md`, `e2e/TESTSINVENTORY.md`.
