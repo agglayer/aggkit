@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	agglayerbridgel2 "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -463,18 +462,26 @@ func replayBridgeExits(
 	// least every replayLogMaxGap, so there is always early and periodic feedback.
 	start := time.Now()
 	logInterval := max(total/replayProgressSteps, 1)
-	var completed, lastLogNanos int64
+	// maybeLogProgress is called once per collected receipt from multiple goroutines. A single mutex
+	// guards the counter and the last-log timestamp together, so the decision and the timestamp update
+	// are atomic as a unit — no interleaving can emit a duplicate line. The lock is uncontended in
+	// practice (the work between calls is a receipt fetch), so it is not on a hot path.
+	var (
+		progressMu sync.Mutex
+		completed  int
+		lastLog    time.Time
+	)
 	maybeLogProgress := func() {
-		done := atomic.AddInt64(&completed, 1)
-		now := time.Now().UnixNano()
-		if done == 1 || done%int64(logInterval) == 0 || int(done) == total {
-			atomic.StoreInt64(&lastLogNanos, now)
-			logReplayProgress(int(done), total, start)
-			return
-		}
-		last := atomic.LoadInt64(&lastLogNanos)
-		if now-last >= int64(replayLogMaxGap) && atomic.CompareAndSwapInt64(&lastLogNanos, last, now) {
-			logReplayProgress(int(done), total, start)
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		completed++
+		now := time.Now()
+		// Log on the first receipt, every logInterval, the last receipt, or after replayLogMaxGap
+		// elapsed without a line — whichever comes first.
+		if completed == 1 || completed%logInterval == 0 || completed == total ||
+			now.Sub(lastLog) >= replayLogMaxGap {
+			lastLog = now
+			logReplayProgress(completed, total, start)
 		}
 	}
 
