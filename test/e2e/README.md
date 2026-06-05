@@ -48,15 +48,17 @@ Migrated from the legacy `agglayer/e2e` suite (`e2e/tests/aggkit/`) onto the sin
 
 | Legacy bats file | Planned Go test file | Top-level test | Status |
 |---|---|---|---|
-| `e2e-pp.bats` | `cert_settlement_test.go` | `TestCertificateSettlement` | pending — P2 |
-| `bridge-e2e.bats` | `bridge_core_test.go` | `TestBridge` | pending — P3 |
-| `bridge-sovereign-chain-e2e.bats` | `sovereign_chain_test.go` | `TestSovereign` | pending — P4 |
-| `claim-reetrancy.bats` | `claim_reentrancy_test.go` | `TestClaimReentrancy` | pending — P5 |
-| `internal-claims.bats` | `internal_claims_test.go` | `TestInternalClaims` | pending — P6 |
-| `bridge-e2e-nightly.bats` | `bridge_nightly_test.go` | `TestBridgeNightly` | pending — P7 |
-| `latest-n-injected-ger.bats` (PP B2 case only) | `injected_ger_pp_test.go` | `TestInvalidGERInjectionB2_PP` | pending — P8 (FEP + `skip`-ped cases out of scope) |
-| `trigger-cert-modes.bats` | `trigger_cert_modes_test.go` | `TestTriggerCertModes` | pending — P9 |
-| `aggsender-committee-updates.bats` | `committee_updates_test.go` | `TestCommitteeUpdates` | pending — P10 (needs an extra `aggsender-validator` container/config) |
+| `e2e-pp.bats` | `cert_settlement_test.go` | `TestCertificateSettlement` | **migrated** — P2 ✓ |
+| `bridge-e2e.bats` | `bridge_core_test.go` | `TestBridgeCore` | **migrated** — P3 ✓ |
+| `bridge-sovereign-chain-e2e.bats` | `sovereign_chain_test.go` | `TestSovereignChain` | **migrated** — P4 ✓ |
+| `claim-reetrancy.bats` | `claim_reentrancy_test.go` | `TestClaimReentrancy` | **migrated** — P5 ✓ |
+| `internal-claims.bats` | `internal_claims_test.go` | `TestInternalClaims` | **migrated** — P6 ✓ |
+| `bridge-e2e-nightly.bats` | `bridge_nightly_test.go` | `TestBridgeNightly` | **migrated** — P7 ✓ |
+| `latest-n-injected-ger.bats` (PP B2 case only) | `injected_ger_pp_test.go` | `TestInvalidGERInjectionB2_PP` | **migrated** — P8 ✓ (FEP + `skip`-ped cases out of scope) |
+| `trigger-cert-modes.bats` | `trigger_cert_modes_test.go` | `TestTriggerCertModes` | **migrated** — P9 ✓ |
+| `aggsender-committee-updates.bats` | `committee_updates_test.go` | `TestCommitteeUpdates` | **migrated** — P10 ✓ |
+
+All 9 bats files migrated to Go (P2–P10). The full suite passes green in a single in-order shared-env run (P10b, 2026-06-05, branch `feat/migrate-e2e`, commit `d9ad908e`). CI wired in `test-go-e2e.yml` (P11). Retirement of bats from the old-stack kurtosis workflow pending P12/P13.
 
 The remove-GER tool and a basic L1↔L2 / L2↔L1 bridge are already covered by `removeger_test.go` and the `TestMain` post-suite check — dedupe against these when migrating P3/P8.
 
