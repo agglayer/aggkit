@@ -227,7 +227,8 @@
 
 ### P14. Final cross-stack validation and issue/doc updates
 
-- Status: pending
+- Status: WIP (partially complete — blocked on P12/P13 for CI cross-stack evidence)
+- **Partial progress (2026-06-05):** `make build` ✅; scoped `golangci-lint` on changed packages (claimsync, cmd, test/e2e, .github) = 0 issues ✅ (full-repo lint has 13 pre-existing issues in unrelated packages — gosec/prealloc — not caused by this work); unit tests for changed packages (`claimsync/...`, `cmd/...`) pass ✅; `make test-e2e` (full suite) = 21/21 PASS (P10b evidence) ✅; README mapping table updated to "migrated" for all 9 bats files ✅ (commit `4ad7fe46`); issue #1524 updated with completion summary + P12/P13 blockers ✅ (see https://github.com/agglayer/aggkit/issues/1524#issuecomment-4627245649). **Blocked on P12/P13:** the "no migrated test runs on both stacks simultaneously" criterion requires the e2e-repo PR (P12) to be merged and aggkit's `test-e2e.yml` updated (P13).
 - Goal: Prove the migration is complete and coverage is preserved, and reflect it in tracking.
 - Context pack: `aggkit/Makefile`, both workflows, issue #1524 and sub-issues, `aggkit/test/e2e/README.md`, `e2e/TESTSINVENTORY.md`.
 - Actions: Run the full new suite locally (`make build && make lint && make test-unit && make test-e2e`) and confirm green incl. the `TestMain` post-suite health-check; on a PR, confirm `test-go-e2e.yml` green and `test-e2e.yml` pessimistic job no longer runs migrated tests while FEP/multi-chain still do; update README mapping table to "migrated"; check off the corresponding #1524 sub-issues and note what remains blocked (custom-gas, multi-chain, FEP, optimistic-mode) and why.
