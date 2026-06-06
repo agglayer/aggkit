@@ -241,6 +241,54 @@ func TestEVMMultidownloader_CheckValidBlock_LegacyCheckpointAfterUpgrade(t *test
 		require.False(t, isValid)
 		require.Equal(t, uint64(0), reorgID)
 	})
+
+	t.Run("finalized block lookup fails -> error (assumed valid for retry)", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, mock.Anything).Return(uint64(0), fmt.Errorf("rpc down")).Once()
+
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(
+			context.Background(), legacyCheckpointBlock, legacyCheckpointHash)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get finalized block number")
+		require.True(t, isValid)
+		require.Equal(t, uint64(0), reorgID)
+	})
+
+	t.Run("canonical header lookup fails -> error (assumed valid for retry)", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, mock.Anything).Return(finalizedBlock, nil).Once()
+		testData.mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(legacyCheckpointBlock)).
+			Return(nil, fmt.Errorf("rpc down")).Once()
+
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(
+			context.Background(), legacyCheckpointBlock, legacyCheckpointHash)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot get canonical header from L1")
+		require.True(t, isValid)
+		require.Equal(t, uint64(0), reorgID)
+	})
+
+	t.Run("canonical header is nil -> error (assumed valid for retry)", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mockBlockNotifierManager.EXPECT().
+			GetCurrentBlockNumber(mock.Anything, mock.Anything).Return(finalizedBlock, nil).Once()
+		testData.mockEthClient.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(legacyCheckpointBlock)).
+			Return(nil, nil).Once()
+
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(
+			context.Background(), legacyCheckpointBlock, legacyCheckpointHash)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "got nil canonical header from L1")
+		require.True(t, isValid)
+		require.Equal(t, uint64(0), reorgID)
+	})
 }
 
 func TestEVMMultidownloader_GetReorgedDataByReorgID(t *testing.T) {
