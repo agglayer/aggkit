@@ -95,6 +95,33 @@ func TestEVMMultidownloader_CheckValidBlock(t *testing.T) {
 		require.Equal(t, uint64(0), reorgID)
 	})
 
+	t.Run("returns error (no L1 fallback) when a different block is stored and not in blocks_reorged", func(t *testing.T) {
+		// A different block is stored at this height and the requested hash is not recorded as
+		// reorged: this is a real/undetected reorg or inconsistent DB. It must NOT be validated
+		// against L1 (no finalized/RPC lookup) and must surface as an error so it is repaired.
+		testData := newEVMMultidownloaderTestData(t, true)
+		blockNumber := uint64(100)
+		blockHash := common.HexToHash("0x1234")
+
+		storedBlock := &aggkittypes.BlockHeader{
+			Number: blockNumber,
+			Hash:   common.HexToHash("0x5678"), // Different hash
+		}
+
+		testData.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, blockNumber).
+			Return(storedBlock, mdrtypes.Finalized, nil).Once()
+		testData.mockStorage.EXPECT().GetBlockReorgedReorgID(mock.Anything, blockNumber, blockHash).
+			Return(uint64(0), false, nil).Once()
+		// No GetCurrentBlockNumber / CustomHeaderByNumber expectations: the L1 fallback must not run.
+
+		isValid, reorgID, err := testData.mdr.CheckValidBlock(context.Background(), blockNumber, blockHash)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "a different block is stored at this height")
+		require.False(t, isValid)
+		require.Equal(t, uint64(0), reorgID)
+	})
+
 	t.Run("returns false with reorgID when stored block hash does not match", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, true)
 		blockNumber := uint64(100)

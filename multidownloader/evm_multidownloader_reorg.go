@@ -37,7 +37,17 @@ func (dh *EVMMultidownloader) CheckValidBlock(ctx context.Context, blockNumber u
 			blockNumber, blockHash.Hex(), reorgID)
 		return false, reorgID, nil
 	}
-	// The block is neither stored nor recorded as reorged. This is the expected situation
+	if storedBlock != nil {
+		// We have a *different* block stored at this height and the requested hash is not recorded
+		// in blocks_reorged: this is a real (possibly undetected) reorg / inconsistent downloader DB.
+		// We must not validate it against L1 and accept it, otherwise we would mask a reorg without
+		// producing reorg data or stopping for repair.
+		return false, 0, fmt.Errorf(
+			"EVMMultidownloader.CheckValidBlock: blockNumber=%d, blockHash=%s not found in storage or blocks_reorged "+
+				"(a different block is stored at this height: %s)",
+			blockNumber, blockHash.Hex(), storedBlock.Hash.Hex())
+	}
+	// The block is absent from storage and not recorded as reorged. This is the expected situation
 	// after upgrading from the legacy syncer (issue #1638): the processor reports a checkpoint
 	// block that the legacy syncer downloaded and that this multidownloader storage never
 	// contained. Before treating it as an inconsistency, check against L1: if the block is at or
