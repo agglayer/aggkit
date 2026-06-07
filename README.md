@@ -75,3 +75,7 @@ at your option.
 
 The SPDX license identifier for this project is `MIT OR Apache-2.0`.
 
+
+## Community Resources
+
+For additional community resources and documentation, see the [AggLayer Developer Portal](https://build.agglayer.dev/).
