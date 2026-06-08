@@ -157,6 +157,62 @@ func TestString(t *testing.T) {
 	require.Contains(t, leaf.String(), "Amount: nil")
 }
 
+// TestRecordProgressTick exercises every branch of the per-tick logic that the `case <-ticker.C:`
+// arm of reportFetchProgress runs, without waiting for a real 5s ticker.
+func TestRecordProgressTick(t *testing.T) {
+	s := &BridgeSyncerLite{log: log.WithFields("module", "bridgesyncerlite-test")}
+	start := time.Now()
+
+	t.Run("first tick is recorded as baseline", func(t *testing.T) {
+		now := start.Add(5 * time.Second)
+		got := s.recordProgressTick(nil, now, start, 3, 10, 0, 100)
+		require.Len(t, got, 1)
+		require.Equal(t, int64(3), got[0].done)
+		require.Equal(t, now, got[0].t)
+	})
+
+	t.Run("done==0 still records the sample but logs nothing", func(t *testing.T) {
+		now := start.Add(5 * time.Second)
+		got := s.recordProgressTick(nil, now, start, 0, 10, 0, 100)
+		require.Len(t, got, 1)
+		require.Equal(t, int64(0), got[0].done)
+	})
+
+	t.Run("done>=total records the sample but logs nothing", func(t *testing.T) {
+		now := start.Add(5 * time.Second)
+		got := s.recordProgressTick(nil, now, start, 10, 10, 0, 100)
+		require.Len(t, got, 1)
+	})
+
+	t.Run("ETA computed once a post-baseline sample shows progress", func(t *testing.T) {
+		baseline := progressSample{t: start, done: 2}
+		now := start.Add(10 * time.Second)
+		// 8 windows done in 10s vs baseline of 2 → rate 0.6/s, 2 remaining → ~3s ETA.
+		got := s.recordProgressTick([]progressSample{baseline}, now, start, 8, 10, 0, 100)
+		require.Len(t, got, 2)
+		require.Equal(t, baseline, got[0])
+		require.Equal(t, int64(8), got[1].done)
+	})
+
+	t.Run("ETA unknown when there is no forward progress vs the oldest sample", func(t *testing.T) {
+		baseline := progressSample{t: start, done: 5}
+		now := start.Add(5 * time.Second)
+		got := s.recordProgressTick([]progressSample{baseline}, now, start, 5, 10, 0, 100)
+		require.Len(t, got, 2)
+	})
+
+	t.Run("samples older than the trailing window are dropped, keeping a baseline", func(t *testing.T) {
+		old := progressSample{t: start, done: 1}
+		recent := progressSample{t: start.Add(etaRateWindow), done: 4}
+		// now is well past the window, so `old` falls outside the cutoff and is trimmed.
+		now := start.Add(2 * etaRateWindow)
+		got := s.recordProgressTick([]progressSample{old, recent}, now, start, 7, 10, 0, 100)
+		require.Len(t, got, 2)
+		require.Equal(t, recent, got[0])
+		require.Equal(t, int64(7), got[1].done)
+	})
+}
+
 func TestReportFetchProgressReturnsOnCancel(t *testing.T) {
 	s := &BridgeSyncerLite{log: log.WithFields("module", "bridgesyncerlite-test")}
 	ctx, cancel := context.WithCancel(context.Background())

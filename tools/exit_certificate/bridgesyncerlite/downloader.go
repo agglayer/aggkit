@@ -144,36 +144,45 @@ func (s *BridgeSyncerLite) reportFetchProgress(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			done := completed.Load()
-			now := time.Now()
-
-			// Record this observation and drop samples older than the trailing window, but always keep
-			// at least one so there is a baseline to measure the next tick against. The first tick has
-			// no prior sample, so it serves purely as the baseline (absorbing the initial burst).
-			samples = append(samples, progressSample{t: now, done: done})
-			cutoff := now.Add(-etaRateWindow)
-			for len(samples) > 1 && samples[0].t.Before(cutoff) {
-				samples = samples[1:]
-			}
-
-			if done == 0 || done >= total {
-				continue
-			}
-
-			// Rate over the retained window, measured against the oldest sample (never a synthetic
-			// done=0 at start). Unknown until we have a post-baseline sample with forward progress.
-			oldest := samples[0]
-			etaStr := "unknown"
-			if dt := now.Sub(oldest.t).Seconds(); dt > 0 && done > oldest.done {
-				rate := float64(done-oldest.done) / dt // windows/second
-				eta := time.Duration(float64(total-done) / rate * float64(time.Second))
-				etaStr = eta.Truncate(time.Second).String()
-			}
-			s.log.Infof("fetching BridgeEvent logs [%d..%d]: %d/%d windows (%.1f%%), elapsed %s, ETA %s",
-				fromBlock, toBlock, done, total, float64(done)/float64(total)*percentMultiplier,
-				time.Since(start).Truncate(time.Second), etaStr)
+			samples = s.recordProgressTick(samples, time.Now(), start, completed.Load(), total, fromBlock, toBlock)
 		}
 	}
+}
+
+// recordProgressTick handles a single progress tick: it appends the latest observation to samples,
+// drops samples older than the trailing window (always keeping at least one as a baseline), and logs
+// progress with an ETA extrapolated from the rate over the retained window. It returns the updated
+// samples slice so the caller can carry it to the next tick. Nothing is logged until at least one
+// window has completed, and once everything is done logging stops (the caller logs the final summary).
+func (s *BridgeSyncerLite) recordProgressTick(
+	samples []progressSample, now, start time.Time, done, total int64, fromBlock, toBlock uint64,
+) []progressSample {
+	// Record this observation and drop samples older than the trailing window, but always keep
+	// at least one so there is a baseline to measure the next tick against. The first tick has
+	// no prior sample, so it serves purely as the baseline (absorbing the initial burst).
+	samples = append(samples, progressSample{t: now, done: done})
+	cutoff := now.Add(-etaRateWindow)
+	for len(samples) > 1 && samples[0].t.Before(cutoff) {
+		samples = samples[1:]
+	}
+
+	if done == 0 || done >= total {
+		return samples
+	}
+
+	// Rate over the retained window, measured against the oldest sample (never a synthetic
+	// done=0 at start). Unknown until we have a post-baseline sample with forward progress.
+	oldest := samples[0]
+	etaStr := "unknown"
+	if dt := now.Sub(oldest.t).Seconds(); dt > 0 && done > oldest.done {
+		rate := float64(done-oldest.done) / dt // windows/second
+		eta := time.Duration(float64(total-done) / rate * float64(time.Second))
+		etaStr = eta.Truncate(time.Second).String()
+	}
+	s.log.Infof("fetching BridgeEvent logs [%d..%d]: %d/%d windows (%.1f%%), elapsed %s, ETA %s",
+		fromBlock, toBlock, done, total, float64(done)/float64(total)*percentMultiplier,
+		time.Since(start).Truncate(time.Second), etaStr)
+	return samples
 }
 
 // fetchWindow reads all logs the bridge contract emitted in [from, to] (no topic filter, so a
