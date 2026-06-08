@@ -1,6 +1,7 @@
 package exit_certificate
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"math/big"
@@ -133,28 +134,36 @@ func TestBuildAccumulated(t *testing.T) {
 
 // --- RPC fan-out functions via a batch JSON-RPC stub ---------------------------------------------
 
-// newBatchRPCServer answers batched JSON-RPC requests. resultFor maps a single (method, params) to
-// the JSON result value to return.
+// newBatchRPCServer answers JSON-RPC requests, batched (array) or single (object), dispatching each
+// to resultFor(method, params) for the result value. This covers both concurrentBatchRPC (arrays)
+// and singleRPC (single objects).
 func newBatchRPCServer(t *testing.T, resultFor func(method string, params []json.RawMessage) any) string {
 	t.Helper()
+	type rpcReq struct {
+		ID     json.RawMessage   `json:"id"`
+		Method string            `json:"method"`
+		Params []json.RawMessage `json:"params"`
+	}
+	respOf := func(req rpcReq) map[string]any {
+		return map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": resultFor(req.Method, req.Params)}
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		var reqs []struct {
-			ID     int               `json:"id"`
-			Method string            `json:"method"`
-			Params []json.RawMessage `json:"params"`
-		}
-		require.NoError(t, json.Unmarshal(body, &reqs))
-		resps := make([]map[string]any, len(reqs))
-		for i, req := range reqs {
-			resps[i] = map[string]any{
-				"jsonrpc": "2.0",
-				"id":      req.ID,
-				"result":  resultFor(req.Method, req.Params),
-			}
-		}
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(resps))
+		trimmed := bytes.TrimSpace(body)
+		if len(trimmed) > 0 && trimmed[0] == '[' {
+			var reqs []rpcReq
+			require.NoError(t, json.Unmarshal(trimmed, &reqs))
+			resps := make([]map[string]any, len(reqs))
+			for i, req := range reqs {
+				resps[i] = respOf(req)
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(resps))
+			return
+		}
+		var req rpcReq
+		require.NoError(t, json.Unmarshal(trimmed, &req))
+		require.NoError(t, json.NewEncoder(w).Encode(respOf(req)))
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL
