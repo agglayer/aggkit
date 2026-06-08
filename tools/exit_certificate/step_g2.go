@@ -222,7 +222,7 @@ func RunStepG2(
 	if !cfg.Options.VerifyNewLocalExitRootUsingShadowFork {
 		return runStepG2LiteOnly(ctx, cfg, forkBlock, certificate)
 	}
-	return runStepG2ShadowFork(ctx, cfg, forkBlock, certificate, lbtEntries)
+	return runStepG2ShadowFork(ctx, cfg, anvilLauncher{}, forkBlock, certificate, lbtEntries)
 }
 
 // runStepG2LiteOnly computes the NewLocalExitRoot off-chain (no Anvil): it appends the certificate's
@@ -264,21 +264,18 @@ func runStepG2LiteOnly(
 // shadow-fork of the L2 chain at forkBlock, then verifies the lite exit tree (rebuilt from the
 // replayed bridges on top of Step G1's genesis→fork bridges) against the contract's getRoot().
 func runStepG2ShadowFork(
-	ctx context.Context, cfg *Config, forkBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+	ctx context.Context, cfg *Config, launcher forkLauncher,
+	forkBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (*StepGResult, error) {
-	if err := checkAnvilAvailable(); err != nil {
-		return nil, err
-	}
-
-	anvilURL, cleanup, err := startAnvil(ctx, cfg.L2RPCURL, forkBlock)
+	backend, cleanup, err := launcher.Start(ctx, cfg.L2RPCURL, forkBlock, cfg.L2BridgeAddress)
 	if err != nil {
-		return nil, fmt.Errorf("start anvil: %w", err)
+		return nil, err
 	}
 	defer cleanup()
 
 	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
 
-	initialLER, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
+	initialLER, err := backend.LocalExitRoot(ctx, "latest")
 	if err != nil {
 		return nil, fmt.Errorf("read initial local exit root: %w", err)
 	}
@@ -286,7 +283,7 @@ func runStepG2ShadowFork(
 
 	lbtMap := buildLBTTokenMap(lbtEntries)
 	l2Tokens, err := resolveTokenAddresses(
-		ctx, anvilURL, cfg.L2BridgeAddress, certificate.BridgeExits,
+		ctx, backend, certificate.BridgeExits,
 		cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress, lbtMap,
 	)
 	if err != nil {
@@ -301,14 +298,14 @@ func runStepG2ShadowFork(
 	// poll for receipts. By the time replayBridgeExits returns, every tx has been waited on and mined,
 	// so getRoot below reflects all replayed exits.
 	leaves, err := replayBridgeExits(
-		ctx, cfg, anvilURL, certificate.BridgeExits, l2Tokens, gasTokenNetwork, gasTokenAddress,
+		ctx, cfg, backend, certificate.BridgeExits, l2Tokens, gasTokenNetwork, gasTokenAddress,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	// The bridge contract's getRoot() after replaying every exit is the authoritative NewLocalExitRoot.
-	ler, err := readLocalExitRoot(ctx, anvilURL, cfg.L2BridgeAddress, "latest")
+	ler, err := backend.LocalExitRoot(ctx, "latest")
 	if err != nil {
 		return nil, fmt.Errorf("read local exit root: %w", err)
 	}
@@ -369,6 +366,91 @@ func fetchGasTokenInfoOrDefault(ctx context.Context, cfg *Config) (uint32, commo
 	return gasTokenNetwork, gasTokenAddress
 }
 
+// forkBackend abstracts every side-effecting interaction Step G2's shadow-fork replay has with the
+// Anvil fork: reading contract state, patching balances/allowances, sending bridgeAsset txs and
+// polling their receipts. The production implementation (anvilForkBackend) talks JSON-RPC to the
+// Anvil process; tests substitute a mock to drive the replay orchestration (replayBridgeExits,
+// retryDeferredExit, resolveTokenAddresses, runStepG2ShadowFork) without Anvil or a live node.
+type forkBackend interface {
+	// LocalExitRoot returns the bridge contract's getRoot() at blockTag.
+	LocalExitRoot(ctx context.Context, blockTag string) (common.Hash, error)
+	// TokenWrappedAddress resolves an origin token to its L2 wrapped ERC-20 address via the bridge.
+	TokenWrappedAddress(ctx context.Context, originNetwork uint32, originTokenAddr common.Address) (common.Address, error)
+	// SetSenderBalance funds a sender so its bridgeAsset calls never fail on insufficient funds.
+	SetSenderBalance(ctx context.Context, sender common.Address) error
+	// PrepareERC20Token patches a large balance for sender and approves the bridge for l2TokenAddr.
+	PrepareERC20Token(ctx context.Context, sender, l2TokenAddr common.Address) error
+	// SendBridgeAssetTx sends a bridgeAsset replaying bridgeExit, returning the tx hash (no wait).
+	SendBridgeAssetTx(
+		ctx context.Context, bridgeExit *agglayertypes.BridgeExit, isNative bool, l2TokenAddr common.Address,
+	) (common.Hash, error)
+	// WaitForReceipt polls for txHash's receipt, returning its logs or errReceiptTimeout/revert error.
+	WaitForReceipt(ctx context.Context, txHash common.Hash) ([]rpcLog, error)
+}
+
+// anvilForkBackend is the production forkBackend: it issues JSON-RPC calls to the Anvil fork at url,
+// delegating to the package's RPC helper functions. bridgeAddr is the L2 bridge contract address,
+// constant for the whole replay.
+type anvilForkBackend struct {
+	url        string
+	bridgeAddr common.Address
+}
+
+func (b *anvilForkBackend) LocalExitRoot(ctx context.Context, blockTag string) (common.Hash, error) {
+	return readLocalExitRoot(ctx, b.url, b.bridgeAddr, blockTag)
+}
+
+func (b *anvilForkBackend) TokenWrappedAddress(
+	ctx context.Context, originNetwork uint32, originTokenAddr common.Address,
+) (common.Address, error) {
+	return callGetTokenWrappedAddress(ctx, b.url, b.bridgeAddr, originNetwork, originTokenAddr)
+}
+
+func (b *anvilForkBackend) SetSenderBalance(ctx context.Context, sender common.Address) error {
+	return setSenderBalance(ctx, b.url, sender)
+}
+
+func (b *anvilForkBackend) PrepareERC20Token(ctx context.Context, sender, l2TokenAddr common.Address) error {
+	return prepareERC20Token(ctx, b.url, b.bridgeAddr, sender, l2TokenAddr)
+}
+
+func (b *anvilForkBackend) SendBridgeAssetTx(
+	ctx context.Context, bridgeExit *agglayertypes.BridgeExit, isNative bool, l2TokenAddr common.Address,
+) (common.Hash, error) {
+	return sendBridgeAssetTx(ctx, b.url, b.bridgeAddr, bridgeExit, isNative, l2TokenAddr)
+}
+
+func (b *anvilForkBackend) WaitForReceipt(ctx context.Context, txHash common.Hash) ([]rpcLog, error) {
+	return waitForReceipt(ctx, b.url, txHash)
+}
+
+// forkLauncher starts a fork backend Step G2 replays against. The production implementation
+// (anvilLauncher) verifies Anvil is installed and spawns the forked Anvil process; tests use a mock
+// that returns a mock forkBackend without launching anything.
+type forkLauncher interface {
+	// Start brings up a fork of l2RPCURL at forkBlock and returns a backend bound to bridgeAddr plus a
+	// cleanup function the caller must defer.
+	Start(
+		ctx context.Context, l2RPCURL string, forkBlock uint64, bridgeAddr common.Address,
+	) (forkBackend, func(), error)
+}
+
+// anvilLauncher is the production forkLauncher: it checks for the anvil binary and spawns the fork.
+type anvilLauncher struct{}
+
+func (anvilLauncher) Start(
+	ctx context.Context, l2RPCURL string, forkBlock uint64, bridgeAddr common.Address,
+) (forkBackend, func(), error) {
+	if err := checkAnvilAvailable(); err != nil {
+		return nil, nil, err
+	}
+	anvilURL, cleanup, err := startAnvil(ctx, l2RPCURL, forkBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("start anvil: %w", err)
+	}
+	return &anvilForkBackend{url: anvilURL, bridgeAddr: bridgeAddr}, cleanup, nil
+}
+
 // exitJob bundles a bridge exit with its index in Certificate.BridgeExits and the
 // replay parameters resolved up front (native flag and L2 token address).
 type exitJob struct {
@@ -404,7 +486,7 @@ type sentTx struct {
 // per token) up front, so multiple exits from the same sender never underflow regardless of the
 // order in which the batched block executes them.
 func replayBridgeExits(
-	ctx context.Context, cfg *Config, anvilURL string,
+	ctx context.Context, cfg *Config, backend forkBackend,
 	exits []*agglayertypes.BridgeExit, l2Tokens map[tokenOriginKey]common.Address,
 	gasTokenNetwork uint32, gasTokenAddress common.Address,
 ) ([]bridgesyncerlite.BridgeLeaf, error) {
@@ -504,7 +586,7 @@ func replayBridgeExits(
 		go func() {
 			defer collectWg.Done()
 			for s := range pending {
-				logs, err := waitForReceipt(ctx, anvilURL, s.hash)
+				logs, err := backend.WaitForReceipt(ctx, s.hash)
 				if err != nil {
 					switch {
 					case isContextCanceled(err):
@@ -537,7 +619,7 @@ func replayBridgeExits(
 			return struct{}{}, nil
 		}
 		sender := group[0].bridge.DestinationAddress
-		if err := setSenderBalance(ctx, anvilURL, sender); err != nil {
+		if err := backend.SetSenderBalance(ctx, sender); err != nil {
 			return struct{}{}, failFast(group[0], fmt.Errorf("set balance for %s: %w", sender.Hex(), err))
 		}
 		approved := make(map[common.Address]bool)
@@ -546,7 +628,7 @@ func replayBridgeExits(
 				continue
 			}
 			approved[job.l2TokenAddr] = true
-			if err := prepareERC20Token(ctx, anvilURL, cfg.L2BridgeAddress, sender, job.l2TokenAddr); err != nil {
+			if err := backend.PrepareERC20Token(ctx, sender, job.l2TokenAddr); err != nil {
 				return struct{}{}, failFast(job, fmt.Errorf("prepare ERC20 token %s: %w", job.l2TokenAddr.Hex(), err))
 			}
 		}
@@ -554,7 +636,7 @@ func replayBridgeExits(
 			log.Debugf("[exit %d/%d] send bridgeAsset [%d/%s] -> %s amount=%s isNative=%t",
 				job.index+1, total, job.bridge.TokenInfo.OriginNetwork, job.bridge.TokenInfo.OriginTokenAddress.Hex(),
 				job.bridge.DestinationAddress.Hex(), job.bridge.Amount.String(), job.isNative)
-			hash, err := sendBridgeAssetTx(ctx, anvilURL, cfg.L2BridgeAddress, job.bridge, job.isNative, job.l2TokenAddr)
+			hash, err := backend.SendBridgeAssetTx(ctx, job.bridge, job.isNative, job.l2TokenAddr)
 			if err != nil {
 				return struct{}{}, failFast(job, fmt.Errorf("send bridge asset for exit %d: %w", job.index+1, err))
 			}
@@ -579,7 +661,7 @@ func replayBridgeExits(
 	if replayErr == nil && sendErr == nil && len(deferred) > 0 {
 		log.Warnf("Retrying %d bridge exit(s) whose receipt timed out...", len(deferred))
 		for _, s := range deferred {
-			leaf, err := retryDeferredExit(ctx, anvilURL, cfg.L2BridgeAddress, s)
+			leaf, err := retryDeferredExit(ctx, backend, s)
 			if err != nil {
 				_ = failFast(s.job, fmt.Errorf("retry exit %d (%s): %w", s.index+1, s.hash.Hex(), err))
 				break
@@ -617,11 +699,11 @@ func replayBridgeExits(
 // non-timeout error, including context cancellation) is returned as-is and is terminal — re-sending
 // a reverting tx would not help, and a canceled context must break the loop.
 func retryDeferredExit(
-	ctx context.Context, anvilURL string, bridgeAddr common.Address, s sentTx,
+	ctx context.Context, backend forkBackend, s sentTx,
 ) (bridgesyncerlite.BridgeLeaf, error) {
 	hash := s.hash
 	for attempt := 1; ; attempt++ {
-		logs, err := waitForReceipt(ctx, anvilURL, hash)
+		logs, err := backend.WaitForReceipt(ctx, hash)
 		if err == nil {
 			return replayedLeafFromReceipt(logs, hash)
 		}
@@ -631,7 +713,7 @@ func retryDeferredExit(
 
 		log.Warnf("exit %d (%s) still has no receipt after attempt %d; re-sending bridgeAsset",
 			s.index+1, hash.Hex(), attempt)
-		newHash, err := sendBridgeAssetTx(ctx, anvilURL, bridgeAddr, s.job.bridge, s.job.isNative, s.job.l2TokenAddr)
+		newHash, err := backend.SendBridgeAssetTx(ctx, s.job.bridge, s.job.isNative, s.job.l2TokenAddr)
 		if err != nil {
 			return bridgesyncerlite.BridgeLeaf{}, fmt.Errorf("re-send bridge asset: %w", err)
 		}
@@ -875,7 +957,7 @@ func buildLBTTokenMap(entries []LBTEntry) map[tokenOriginKey]common.Address {
 // resolved first from lbtMap (Step 0 output) and fall back to getTokenWrappedAddress on the
 // bridge contract when not present.
 func resolveTokenAddresses(
-	ctx context.Context, anvilURL string, bridgeAddr common.Address,
+	ctx context.Context, backend forkBackend,
 	exits []*agglayertypes.BridgeExit, l2NetworkID uint32,
 	gasTokenNetwork uint32, gasTokenAddress common.Address,
 	lbtMap map[tokenOriginKey]common.Address,
@@ -905,7 +987,7 @@ func resolveTokenAddresses(
 			result[key] = wrapped
 			continue
 		}
-		wrapped, err := callGetTokenWrappedAddress(ctx, anvilURL, bridgeAddr, ti.OriginNetwork, ti.OriginTokenAddress)
+		wrapped, err := backend.TokenWrappedAddress(ctx, ti.OriginNetwork, ti.OriginTokenAddress)
 		if err != nil {
 			return nil, fmt.Errorf("getTokenWrappedAddress(net=%d addr=%s): %w",
 				ti.OriginNetwork, ti.OriginTokenAddress.Hex(), err)
