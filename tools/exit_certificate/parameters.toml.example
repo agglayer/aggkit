@@ -27,6 +27,7 @@ targetBlock = "LatestBlock"
 # Destination address on destinationNetwork for SC-locked value (tokens not held by any EOA).
 # REQUIRED. Must be an address whose private key you control and must NOT be the zero address
 # (0x00..00) — these funds can only be recovered by signing from it. LoadConfig rejects both.
+# A multisig (e.g. a Gnosis Safe) is strongly recommended over a single EOA for better security.
 exitAddress = "0x0000000000000000000000000000000000000001"
 
 # Destination network ID for the generated bridge exits. Default: 0 (L1/mainnet).

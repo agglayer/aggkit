@@ -65,7 +65,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
 | `targetBlock` | No | Target block for state capture. Accepts a decimal number (`"21000000"`), hex (`"0x1406f40"`), or a finality keyword: `"LatestBlock"`, `"FinalizedBlock"`, `"SafeBlock"`, `"PendingBlock"`. An optional negative offset can be appended (e.g. `"LatestBlock/-10"` = ten blocks before latest). Omitting the field or setting it to `""` defaults to `"LatestBlock"`. The keyword is resolved to a concrete block number at the start of Step 0 and saved to `step-0-l2_target_block.json`. All subsequent steps use that fixed number. |
-| `exitAddress` | Yes | Address that receives SC-locked value exits on `destinationNetwork`. **Must be an address whose private key you control**, and **must not be the zero address** (`0x00…00`) — `LoadConfig` rejects both an empty value and the zero address, since these funds can only be recovered by signing from this address. |
+| `exitAddress` | Yes | Address that receives SC-locked value exits on `destinationNetwork`. **Must be an address whose private key you control**, and **must not be the zero address** (`0x00…00`) — `LoadConfig` rejects both an empty value and the zero address, since these funds can only be recovered by signing from this address. **A multisig (e.g. a Gnosis Safe) is strongly recommended** over a single EOA, so that recovering these funds does not depend on a single private key. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
 | `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
 | `l1GlobalExitRootAddress` | Yes* | Address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. |
@@ -105,6 +105,8 @@ Although marked optional, `l1RpcUrl` is needed for Step E (unclaimed deposit det
 **`exitAddress` — required, keep the private key**
 
 SC-locked value (tokens held in smart contracts) is bridged to `exitAddress` on the destination network. The field is **mandatory**: `LoadConfig` errors if it is missing or set to the zero address (`0x00…00`). Use an address **whose private key you control** — once the certificate is settled, those funds can only be recovered by signing transactions from that address. If the key is lost, the value is permanently inaccessible.
+
+For this reason, **a multisig wallet (e.g. a [Gnosis Safe](https://safe.global/)) is strongly recommended** over a single EOA. Because these funds can only ever be recovered by signing from `exitAddress`, spreading control across several signers removes the single point of failure: no single lost or compromised key can lock up or steal the exited value.
 
 **`agglayerClient` — required for Steps H, SUBMIT, and WAIT**
 
