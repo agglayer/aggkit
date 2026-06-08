@@ -202,7 +202,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("step CHECK: %w", err)
 	}
-	saveJSON(dir, "step-check-result.json", checkResult)
+	saveJSON(dir, fileStepCheckResult, checkResult)
 
 	lbtEntries, wrappedTokens, targetBlock, err := resolveOrGenerateLBT(ctx, cfg, dir)
 	if err != nil {
@@ -258,7 +258,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		if err != nil {
 			return fmt.Errorf("step SIGN: %w", err)
 		}
-		saveJSON(dir, "exit-certificate-signed.json", signedCert)
+		saveJSON(dir, fileSignedCertificate, signedCert)
 	}
 
 	log.Info("")
@@ -279,19 +279,19 @@ func runAllStepA(
 	if err != nil {
 		return nil, fmt.Errorf("step A1: %w", err)
 	}
-	saveJSON(dir, "step-a1-addresses.json", a1Result.Addresses)
-	saveJSON(dir, "step-a1-failed-traces.json", a1Result.FailedTraces)
+	saveJSON(dir, fileStepA1Addresses, a1Result.Addresses)
+	saveJSON(dir, fileStepA1FailedTrace, a1Result.FailedTraces)
 
 	a2Result, err := RunStepA2(ctx, cfg, a1Result.FailedTraces)
 	if err != nil {
 		return nil, fmt.Errorf("step A2: %w", err)
 	}
-	saveJSON(dir, "step-a2-addresses.json", a2Result.Addresses)
+	saveJSON(dir, fileStepA2Addresses, a2Result.Addresses)
 
 	combined := mergeAddresses(a1Result.Addresses, a2Result.Addresses)
 	log.Infof("STEP A complete: %d addresses (A1: %d, A2 new: %d)",
 		len(combined), len(a1Result.Addresses), len(combined)-len(a1Result.Addresses))
-	saveJSON(dir, "step-a-addresses.json", combined)
+	saveJSON(dir, fileStepAAddresses, combined)
 
 	result := &StepAResult{
 		Addresses:     combined,
@@ -311,12 +311,12 @@ func runAllStepB(
 	if err != nil {
 		return nil, fmt.Errorf("step B: %w", err)
 	}
-	saveJSON(dir, "step-b-eoa-balances.json", stepBResult.EOABalances)
-	saveJSON(dir, "step-b-accumulated.json", stepBResult.Accumulated)
-	saveJSON(dir, "step-b-contract-addresses.json", stepBResult.ContractAddresses)
-	saveJSON(dir, "step-b2-detected-erc20s.json", stepBResult.DetectedERC20s)
-	saveJSON(dir, "step-b2-discarded-erc20s.json", stepBResult.DiscardedERC20s)
-	saveJSON(dir, "step-b3-erc20-holders.json", stepBResult.ERC20HolderBreakdowns)
+	saveJSON(dir, fileStepBEOABalances, stepBResult.EOABalances)
+	saveJSON(dir, fileStepBAccumulated, stepBResult.Accumulated)
+	saveJSON(dir, fileStepBContractAddresses, stepBResult.ContractAddresses)
+	saveJSON(dir, fileStepB2DetectedERC20s, stepBResult.DetectedERC20s)
+	saveJSON(dir, fileStepB2DiscardedERC20s, stepBResult.DiscardedERC20s)
+	saveJSON(dir, fileStepB3ERC20Holders, stepBResult.ERC20HolderBreakdowns)
 	return stepBResult, nil
 }
 
@@ -329,8 +329,8 @@ func runAllStepC(dir string, lbtEntries []LBTEntry, stepBResult *StepBResult) (*
 	if err != nil {
 		return nil, fmt.Errorf("step C: %w", err)
 	}
-	saveJSON(dir, "step-c-sc-locked-values.json", stepCResult.SCLockedValues)
-	saveJSON(dir, "step-c-holder-bridges.json", stepCResult.HolderBridges)
+	saveJSON(dir, fileStepCSCLockedValues, stepCResult.SCLockedValues)
+	saveJSON(dir, fileStepCHolderBridges, stepCResult.HolderBridges)
 	return stepCResult, nil
 }
 
@@ -344,13 +344,13 @@ func runAllStepF(
 	if err != nil {
 		return nil, fmt.Errorf("step F: %w", err)
 	}
-	saveJSON(dir, "step-f-token-balances.json", result.TokenBalances)
-	saveJSON(dir, "step-f-checks.json", result.Checks)
+	saveJSON(dir, fileStepFTokenBalances, result.TokenBalances)
+	saveJSON(dir, fileStepFChecks, result.Checks)
 	if result.CappedCertificate != nil {
 		// Apply the same per-token caps to the final certificate (which may include step E exits).
 		cappedFinal := *finalCert
 		cappedFinal.BridgeExits = capCertificateExits(finalCert.BridgeExits, result.Checks)
-		saveJSON(dir, "step-f-capped-certificate.json", &cappedFinal)
+		saveJSON(dir, fileStepFCappedCertificate, &cappedFinal)
 		log.Infof("🔧 Capped final certificate saved (%d → %d bridge exits)",
 			len(finalCert.BridgeExits), len(cappedFinal.BridgeExits))
 		return &cappedFinal, nil
@@ -366,16 +366,16 @@ func runAllStepG(
 	if err != nil {
 		return nil, fmt.Errorf("step G1: %w", err)
 	}
-	saveJSON(dir, "step-g1-shadow-fork-block.json", g1Result)
+	saveJSON(dir, fileStepG1ShadowForkBlock, g1Result)
 
 	result, err := RunStepG2(ctx, cfg, g1Result.ShadowForkBlock, certificate, lbtEntries)
 	if err != nil {
 		return nil, fmt.Errorf("step G2: %w", err)
 	}
-	saveJSON(dir, "step-g-new-local-exit-root.json", result)
+	saveJSON(dir, fileStepGNewLocalExitRoot, result)
 	// RunStepG2 reorders certificate.BridgeExits to the shadow-fork deposit order; persist the
 	// reordered certificate for inspection and parity with single-step mode.
-	saveJSON(dir, "step-g-reordered-certificate.json", certificate)
+	saveJSON(dir, fileStepGReorderedCertificate, certificate)
 	return result, nil
 }
 
@@ -384,7 +384,7 @@ func runAllStepH(ctx context.Context, cfg *Config, dir string, gResult *StepGRes
 	if err != nil {
 		return nil, fmt.Errorf("step H: %w", err)
 	}
-	saveJSON(dir, "step-h-previous-local-exit-root.json", result)
+	saveJSON(dir, fileStepHPreviousLocalExitRoot, result)
 	return result, nil
 }
 
@@ -395,7 +395,7 @@ func runAllStepI(
 	if err := RunStepI(ctx, cfg, certificate, gResult, hResult); err != nil {
 		return fmt.Errorf("step I: %w", err)
 	}
-	saveJSON(dir, "exit-certificate-final.json", certificate)
+	saveJSON(dir, fileFinalCertificate, certificate)
 	return nil
 }
 
@@ -404,7 +404,7 @@ func runAllStepD(cfg *Config, dir string, stepBResult *StepBResult, stepCResult 
 	if err != nil {
 		return nil, fmt.Errorf("step D: %w", err)
 	}
-	saveJSON(dir, "step-d-exit-certificate.json", stepDResult.Certificate)
+	saveJSON(dir, fileStepDCertificate, stepDResult.Certificate)
 	return stepDResult, nil
 }
 
@@ -414,10 +414,10 @@ func saveStepEFiles(dir string, result *StepEResult) {
 	if result == nil {
 		return
 	}
-	saveJSON(dir, "step-e-unclaimed-bridges.json", result.UnclaimedBridges)
-	saveJSON(dir, "step-e-unclaimed-messages.json", result.UnclaimedMessages)
+	saveJSON(dir, fileStepEUnclaimedBridges, result.UnclaimedBridges)
+	saveJSON(dir, fileStepEUnclaimedMsgs, result.UnclaimedMessages)
 	if result.FinalCertificate != nil {
-		saveJSON(dir, "step-e-exit-certificate.json", result.FinalCertificate)
+		saveJSON(dir, fileStepECertificate, result.FinalCertificate)
 	}
 }
 
@@ -532,7 +532,7 @@ func runSingleCheck(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-check-result.json", result)
+	saveJSON(dir, fileStepCheckResult, result)
 	return nil
 }
 
@@ -541,8 +541,8 @@ func runSingle0(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-0-l2_target_block.json", result.TargetBlock)
-	saveJSON(dir, "step-0-lbt.json", result.Entries)
+	saveJSON(dir, fileStep0TargetBlock, result.TargetBlock)
+	saveJSON(dir, fileStep0LBT, result.Entries)
 	return nil
 }
 
@@ -564,8 +564,8 @@ func runSingleA1(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-a1-addresses.json", result.Addresses)
-	saveJSON(dir, "step-a1-failed-traces.json", result.FailedTraces)
+	saveJSON(dir, fileStepA1Addresses, result.Addresses)
+	saveJSON(dir, fileStepA1FailedTrace, result.FailedTraces)
 	return nil
 }
 
@@ -574,7 +574,7 @@ func runSingleA1(ctx context.Context, cfg *Config, dir string) error {
 // already be in the correct location by the time this function is called.
 func runSingleA2(ctx context.Context, cfg *Config, dir string) error {
 	var failedTraces []FailedTrace
-	if err := loadJSON(dir, "step-a1-failed-traces.json", &failedTraces); err != nil {
+	if err := loadJSON(dir, fileStepA1FailedTrace, &failedTraces); err != nil {
 		return fmt.Errorf("load step A1 failed traces (run step a1 first): %w", err)
 	}
 
@@ -582,17 +582,17 @@ func runSingleA2(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-a2-addresses.json", a2Result.Addresses)
+	saveJSON(dir, fileStepA2Addresses, a2Result.Addresses)
 
 	var a1Addresses []common.Address
-	if err := loadJSON(dir, "step-a1-addresses.json", &a1Addresses); err != nil {
+	if err := loadJSON(dir, fileStepA1Addresses, &a1Addresses); err != nil {
 		return fmt.Errorf("load step A1 addresses: %w", err)
 	}
 	log.Debugf("STEP A2 merging %d A2 addresses with %d A1 addresses", len(a2Result.Addresses), len(a1Addresses))
 	combined := mergeAddresses(a1Addresses, a2Result.Addresses)
 	log.Infof("STEP A complete: %d addresses (A1: %d, A2 new: %d)",
 		len(combined), len(a1Addresses), len(combined)-len(a1Addresses))
-	saveJSON(dir, "step-a-addresses.json", combined)
+	saveJSON(dir, fileStepAAddresses, combined)
 	return nil
 }
 
@@ -614,10 +614,10 @@ func migrateStepAToA1(dir string) error {
 		}
 		return nil
 	}
-	if err := rename("step-a-addresses.json", "step-a1-addresses.json"); err != nil {
+	if err := rename(fileStepAAddresses, fileStepA1Addresses); err != nil {
 		return err
 	}
-	return rename("step-a-failed-traces.json", "step-a1-failed-traces.json")
+	return rename(fileStepAFailedTraces, fileStepA1FailedTrace)
 }
 
 // runSingleB runs B1 then B2 then B3, producing all step-b* output files.
@@ -635,7 +635,7 @@ func runSingleB(ctx context.Context, cfg *Config, dir string) error {
 // step-b-accumulated.json, and step-b-contract-addresses.json.
 func runSingleB1(ctx context.Context, cfg *Config, dir string) error {
 	var addresses []common.Address
-	if err := loadJSON(dir, "step-a-addresses.json", &addresses); err != nil {
+	if err := loadJSON(dir, fileStepAAddresses, &addresses); err != nil {
 		return fmt.Errorf("load step A output: %w", err)
 	}
 	wrappedTokens, err := loadWrappedTokensFromLBT(dir)
@@ -655,9 +655,9 @@ func runSingleB1(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-b-eoa-balances.json", result.EOABalances)
-	saveJSON(dir, "step-b-accumulated.json", result.Accumulated)
-	saveJSON(dir, "step-b-contract-addresses.json", result.ContractAddresses)
+	saveJSON(dir, fileStepBEOABalances, result.EOABalances)
+	saveJSON(dir, fileStepBAccumulated, result.Accumulated)
+	saveJSON(dir, fileStepBContractAddresses, result.ContractAddresses)
 	return nil
 }
 
@@ -666,11 +666,11 @@ func runSingleB1(ctx context.Context, cfg *Config, dir string) error {
 // Requires step-b-contract-addresses.json from B1, step-a-addresses.json, and step-0-lbt.json.
 func runSingleB2(ctx context.Context, cfg *Config, dir string) error {
 	var contractAddrs []common.Address
-	if err := loadJSON(dir, "step-b-contract-addresses.json", &contractAddrs); err != nil {
+	if err := loadJSON(dir, fileStepBContractAddresses, &contractAddrs); err != nil {
 		return fmt.Errorf("load step B1 contract addresses (run step b1 first): %w", err)
 	}
 	var allAddresses []common.Address
-	if err := loadJSON(dir, "step-a-addresses.json", &allAddresses); err != nil {
+	if err := loadJSON(dir, fileStepAAddresses, &allAddresses); err != nil {
 		return fmt.Errorf("load step A addresses: %w", err)
 	}
 	eoaAddrs := filterEOAs(allAddresses, contractAddrs)
@@ -688,8 +688,8 @@ func runSingleB2(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-b2-detected-erc20s.json", result.DetectedERC20s)
-	saveJSON(dir, "step-b2-discarded-erc20s.json", result.DiscardedERC20s)
+	saveJSON(dir, fileStepB2DetectedERC20s, result.DetectedERC20s)
+	saveJSON(dir, fileStepB2DiscardedERC20s, result.DiscardedERC20s)
 	return nil
 }
 
@@ -698,17 +698,17 @@ func runSingleB2(ctx context.Context, cfg *Config, dir string) error {
 // step-a-addresses.json, and step-0-l2_target_block.json.
 func runSingleB3(ctx context.Context, cfg *Config, dir string) error {
 	var contractAddrs []common.Address
-	if err := loadJSON(dir, "step-b-contract-addresses.json", &contractAddrs); err != nil {
+	if err := loadJSON(dir, fileStepBContractAddresses, &contractAddrs); err != nil {
 		return fmt.Errorf("load step B1 contract addresses (run step b1 first): %w", err)
 	}
 	var allAddresses []common.Address
-	if err := loadJSON(dir, "step-a-addresses.json", &allAddresses); err != nil {
+	if err := loadJSON(dir, fileStepAAddresses, &allAddresses); err != nil {
 		return fmt.Errorf("load step A addresses: %w", err)
 	}
 	eoaAddrs := filterEOAs(allAddresses, contractAddrs)
 
 	var detectedERC20s []DetectedERC20
-	if err := loadJSON(dir, "step-b2-detected-erc20s.json", &detectedERC20s); err != nil {
+	if err := loadJSON(dir, fileStepB2DetectedERC20s, &detectedERC20s); err != nil {
 		return fmt.Errorf("load step B2 detected ERC-20s (run step b2 first): %w", err)
 	}
 	b2Result := &StepB2Result{DetectedERC20s: detectedERC20s}
@@ -721,22 +721,22 @@ func runSingleB3(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-b3-erc20-holders.json", result.Breakdowns)
+	saveJSON(dir, fileStepB3ERC20Holders, result.Breakdowns)
 	return nil
 }
 
 func runSingleC(dir string) error {
 	var accumulated []AccumulatedBalance
-	if err := loadJSON(dir, "step-b-accumulated.json", &accumulated); err != nil {
+	if err := loadJSON(dir, fileStepBAccumulated, &accumulated); err != nil {
 		return fmt.Errorf("load step B output: %w", err)
 	}
 	var lbtEntries []LBTEntry
-	if err := loadJSON(dir, "step-0-lbt.json", &lbtEntries); err != nil {
+	if err := loadJSON(dir, fileStep0LBT, &lbtEntries); err != nil {
 		return fmt.Errorf("load LBT data (step 0): %w", err)
 	}
 	// Load holder breakdowns from B3 if available; absence is not an error.
 	var breakdowns []ERC20HolderBreakdown
-	_ = loadJSON(dir, "step-b3-erc20-holders.json", &breakdowns)
+	_ = loadJSON(dir, fileStepB3ERC20Holders, &breakdowns)
 
 	result, err := RunStepC(lbtEntries, &StepBResult{
 		Accumulated:           accumulated,
@@ -745,22 +745,22 @@ func runSingleC(dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-c-sc-locked-values.json", result.SCLockedValues)
-	saveJSON(dir, "step-c-holder-bridges.json", result.HolderBridges)
+	saveJSON(dir, fileStepCSCLockedValues, result.SCLockedValues)
+	saveJSON(dir, fileStepCHolderBridges, result.HolderBridges)
 	return nil
 }
 
 func runSingleD(cfg *Config, dir string) error {
 	var eoaBalances []EOABalance
-	if err := loadJSON(dir, "step-b-eoa-balances.json", &eoaBalances); err != nil {
+	if err := loadJSON(dir, fileStepBEOABalances, &eoaBalances); err != nil {
 		return fmt.Errorf("load step B output: %w", err)
 	}
 	var scLockedValues []SCLockedValue
-	if err := loadJSON(dir, "step-c-sc-locked-values.json", &scLockedValues); err != nil {
+	if err := loadJSON(dir, fileStepCSCLockedValues, &scLockedValues); err != nil {
 		return fmt.Errorf("load step C output: %w", err)
 	}
 	var holderBridges []HolderBridge
-	_ = loadJSON(dir, "step-c-holder-bridges.json", &holderBridges)
+	_ = loadJSON(dir, fileStepCHolderBridges, &holderBridges)
 
 	result, err := RunStepD(cfg, &StepBResult{EOABalances: eoaBalances}, &StepCResult{
 		SCLockedValues: scLockedValues,
@@ -769,7 +769,7 @@ func runSingleD(cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-d-exit-certificate.json", result.Certificate)
+	saveJSON(dir, fileStepDCertificate, result.Certificate)
 	return nil
 }
 
@@ -778,7 +778,7 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 		return fmt.Errorf("step E requires l1RpcUrl in parameters")
 	}
 	var cert certificateJSON
-	if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
+	if err := loadJSON(dir, fileStepDCertificate, &cert); err != nil {
 		return fmt.Errorf("load step D output: %w", err)
 	}
 	result, err := RunStepE(ctx, cfg, cert.toAgglayerCertificate())
@@ -788,52 +788,52 @@ func runSingleE(ctx context.Context, cfg *Config, dir string) error {
 
 func runSingleSign(ctx context.Context, cfg *Config, dir string) error {
 	var cert agglayertypes.Certificate
-	if err := loadJSON(dir, "exit-certificate-final.json", &cert); err != nil {
+	if err := loadJSON(dir, fileFinalCertificate, &cert); err != nil {
 		return fmt.Errorf("load final certificate: %w", err)
 	}
 	signed, err := RunStepSign(ctx, cfg, &cert)
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "exit-certificate-signed.json", signed)
+	saveJSON(dir, fileSignedCertificate, signed)
 	return nil
 }
 
 func runSingleSubmit(ctx context.Context, cfg *Config, dir string) error {
 	var cert agglayertypes.Certificate
-	if err := loadJSON(dir, "exit-certificate-signed.json", &cert); err != nil {
+	if err := loadJSON(dir, fileSignedCertificate, &cert); err != nil {
 		return fmt.Errorf("load signed certificate: %w", err)
 	}
 	result, err := RunStepSubmit(ctx, cfg, &cert)
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-submit-result.json", result)
+	saveJSON(dir, fileStepSubmitResult, result)
 	return nil
 }
 
 func runSingleWait(ctx context.Context, cfg *Config, dir string) error {
 	var submitResult StepSubmitResult
-	if err := loadJSON(dir, "step-submit-result.json", &submitResult); err != nil {
+	if err := loadJSON(dir, fileStepSubmitResult, &submitResult); err != nil {
 		return fmt.Errorf("load step submit result: %w", err)
 	}
 	result, err := RunStepWait(ctx, cfg, submitResult.CertificateHash)
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-wait-result.json", result)
+	saveJSON(dir, fileStepWaitResult, result)
 	return nil
 }
 
 func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 	var cert certificateJSON
-	if err := loadJSON(dir, "step-d-exit-certificate.json", &cert); err != nil {
+	if err := loadJSON(dir, fileStepDCertificate, &cert); err != nil {
 		return fmt.Errorf("load step D certificate: %w", err)
 	}
 
 	// Try to load LBT entries for three-way comparison; nil disables LBT check.
 	var lbtEntries []LBTEntry
-	lbtPath := filepath.Join(dir, "step-0-lbt.json")
+	lbtPath := filepath.Join(dir, fileStep0LBT)
 	if entries, err := LoadLBTEntries(lbtPath); err == nil {
 		lbtEntries = entries
 	} else {
@@ -844,10 +844,10 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-f-token-balances.json", result.TokenBalances)
-	saveJSON(dir, "step-f-checks.json", result.Checks)
+	saveJSON(dir, fileStepFTokenBalances, result.TokenBalances)
+	saveJSON(dir, fileStepFChecks, result.Checks)
 	if result.CappedCertificate != nil {
-		saveJSON(dir, "step-f-capped-certificate.json", result.CappedCertificate)
+		saveJSON(dir, fileStepFCappedCertificate, result.CappedCertificate)
 	}
 	return nil
 }
@@ -876,7 +876,7 @@ func runSingleG1(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-g1-shadow-fork-block.json", result)
+	saveJSON(dir, fileStepG1ShadowForkBlock, result)
 	return nil
 }
 
@@ -885,25 +885,25 @@ func runSingleG1(ctx context.Context, cfg *Config, dir string) error {
 // step-g-reordered-certificate.json.
 func runSingleG2(ctx context.Context, cfg *Config, dir string) error {
 	var g1Result StepG1Result
-	if err := loadJSON(dir, "step-g1-shadow-fork-block.json", &g1Result); err != nil {
+	if err := loadJSON(dir, fileStepG1ShadowForkBlock, &g1Result); err != nil {
 		return fmt.Errorf("load step G1 result (run step g1 first): %w", err)
 	}
 
 	var cert certificateJSON
-	cappedPath := filepath.Join(dir, "step-f-capped-certificate.json")
+	cappedPath := filepath.Join(dir, fileStepFCappedCertificate)
 	if _, err := os.Stat(cappedPath); err == nil {
-		if err := loadJSON(dir, "step-f-capped-certificate.json", &cert); err != nil {
+		if err := loadJSON(dir, fileStepFCappedCertificate, &cert); err != nil {
 			return fmt.Errorf("load step F capped certificate: %w", err)
 		}
 		log.Warn("⚠️  Using capped certificate from step F (step-f-capped-certificate.json)")
 	} else {
-		if err := loadJSON(dir, "step-e-exit-certificate.json", &cert); err != nil {
+		if err := loadJSON(dir, fileStepECertificate, &cert); err != nil {
 			return fmt.Errorf("load step E certificate: %w", err)
 		}
 		log.Info("Using certificate from step E (step-e-exit-certificate.json)")
 	}
 
-	lbtPath := filepath.Join(dir, "step-0-lbt.json")
+	lbtPath := filepath.Join(dir, fileStep0LBT)
 	var lbtEntries []LBTEntry
 	if entries, err := LoadLBTEntries(lbtPath); err == nil {
 		lbtEntries = entries
@@ -917,23 +917,23 @@ func runSingleG2(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-g-new-local-exit-root.json", result)
+	saveJSON(dir, fileStepGNewLocalExitRoot, result)
 	// RunStepG2 reorders aggCert.BridgeExits to the shadow-fork deposit order. Persist it so the
 	// single-step Step I picks up the reordered exits instead of the pre-G ordering.
-	saveJSON(dir, "step-g-reordered-certificate.json", aggCert)
+	saveJSON(dir, fileStepGReorderedCertificate, aggCert)
 	return nil
 }
 
 func runSingleH(ctx context.Context, cfg *Config, dir string) error {
 	var gResult StepGResult
-	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
+	if err := loadJSON(dir, fileStepGNewLocalExitRoot, &gResult); err != nil {
 		return fmt.Errorf("load step G result: %w", err)
 	}
 	result, err := RunStepH(ctx, cfg, &gResult)
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, "step-h-previous-local-exit-root.json", result)
+	saveJSON(dir, fileStepHPreviousLocalExitRoot, result)
 	return nil
 }
 
@@ -942,23 +942,23 @@ func runSingleI(ctx context.Context, cfg *Config, dir string) error {
 	// to the shadow-fork deposit order (the authoritative ordering that matches the computed
 	// NewLocalExitRoot) and always writes step-g-reordered-certificate.json. Run Step G first.
 	var cert certificateJSON
-	if err := loadJSON(dir, "step-g-reordered-certificate.json", &cert); err != nil {
+	if err := loadJSON(dir, fileStepGReorderedCertificate, &cert); err != nil {
 		return fmt.Errorf("load step G reordered certificate (run step g first): %w", err)
 	}
 	log.Info("Using reordered certificate from step G (step-g-reordered-certificate.json)")
 	var gResult StepGResult
-	if err := loadJSON(dir, "step-g-new-local-exit-root.json", &gResult); err != nil {
+	if err := loadJSON(dir, fileStepGNewLocalExitRoot, &gResult); err != nil {
 		return fmt.Errorf("load step G result: %w", err)
 	}
 	var hResult StepHResult
-	if err := loadJSON(dir, "step-h-previous-local-exit-root.json", &hResult); err != nil {
+	if err := loadJSON(dir, fileStepHPreviousLocalExitRoot, &hResult); err != nil {
 		return fmt.Errorf("load step H result: %w", err)
 	}
 	aggCert := cert.toAgglayerCertificate()
 	if err := RunStepI(ctx, cfg, aggCert, &gResult, &hResult); err != nil {
 		return err
 	}
-	saveJSON(dir, "exit-certificate-final.json", aggCert)
+	saveJSON(dir, fileFinalCertificate, aggCert)
 	return nil
 }
 
@@ -970,15 +970,15 @@ func resolveOrGenerateLBT(ctx context.Context, cfg *Config, dir string) ([]LBTEn
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	saveJSON(dir, "step-0-l2_target_block.json", result.TargetBlock)
-	saveJSON(dir, "step-0-lbt.json", result.Entries)
+	saveJSON(dir, fileStep0TargetBlock, result.TargetBlock)
+	saveJSON(dir, fileStep0LBT, result.Entries)
 	return result.Entries, LBTEntriesToWrappedTokens(result.Entries), result.TargetBlock, nil
 }
 
 // loadTargetBlock reads the resolved L2 target block number saved by Step 0.
 func loadTargetBlock(dir string) (uint64, error) {
 	var n uint64
-	if err := loadJSON(dir, "step-0-l2_target_block.json", &n); err != nil {
+	if err := loadJSON(dir, fileStep0TargetBlock, &n); err != nil {
 		return 0, fmt.Errorf("load target block (run step 0 first): %w", err)
 	}
 	return n, nil
@@ -986,7 +986,7 @@ func loadTargetBlock(dir string) (uint64, error) {
 
 // loadWrappedTokensFromLBT loads tokens from the step-0 output.
 func loadWrappedTokensFromLBT(dir string) ([]WrappedToken, error) {
-	tokens, err := LoadLBTWrappedTokens(filepath.Join(dir, "step-0-lbt.json"))
+	tokens, err := LoadLBTWrappedTokens(filepath.Join(dir, fileStep0LBT))
 	if err != nil {
 		return nil, fmt.Errorf("no LBT data available: run step 0 first")
 	}

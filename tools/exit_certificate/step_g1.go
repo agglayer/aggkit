@@ -19,14 +19,14 @@ var liteDBSuffixes = []string{"", "-wal", "-shm"}
 // bridges. It lives directly in the output dir (alongside the other step files). Step G2 copies it
 // to g2LiteDBPath and works on that copy, leaving this one untouched.
 func g1LiteDBPath(cfg *Config) string {
-	return filepath.Join(cfg.Options.OutputDir, "step-g1-l2bridgesyncerlite.sqlite")
+	return filepath.Join(cfg.Options.OutputDir, fileStepG1LiteDB)
 }
 
 // g2LiteDBPath returns the lite syncer sqlite file Step G2 works on: a copy of g1LiteDBPath onto
 // which G2 appends the replayed bridges and builds the exit tree, so Step G1's DB stays intact and
 // reusable across G2 re-runs.
 func g2LiteDBPath(cfg *Config) string {
-	return filepath.Join(cfg.Options.OutputDir, "step-g-l2bridgesyncerlite.sqlite")
+	return filepath.Join(cfg.Options.OutputDir, fileStepGLiteDB)
 }
 
 // RunStepG1 persists the L2 bridge history Step G2 needs and resolves the block Step G2 forks at.

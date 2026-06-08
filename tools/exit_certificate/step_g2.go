@@ -650,7 +650,10 @@ func replayBridgeExits(
 	}
 
 	log.Infof("Sending bridge exits (in-flight window %d) and collecting receipts...", replayInFlightWindow)
-	sendErr := runWorkerPool(ctx, groups, concurrency, sendGroup, func(struct{}) {}, "")
+	sendErr := runWorkerPool(ctx, groups, concurrency, sendGroup, func(struct{}) {
+		// No-op collector: sendGroup forwards each sent tx to the `pending` channel itself, so the
+		// worker pool's struct{} result carries nothing to collect here.
+	}, "")
 	// All sends finished (or aborted): close pending so collectors drain and exit.
 	close(pending)
 	collectWg.Wait()
@@ -738,7 +741,7 @@ func saveFailedExit(dir string, job exitJob, replayErr error) {
 		fe.OriginNetwork = job.bridge.TokenInfo.OriginNetwork
 		fe.OriginTokenAddress = job.bridge.TokenInfo.OriginTokenAddress.Hex()
 	}
-	saveJSON(dir, "step-g-failed-exit.json", fe)
+	saveJSON(dir, fileStepGFailedExit, fe)
 }
 
 // logReplayProgress logs the replay completion percentage, throughput, and ETA. start is the

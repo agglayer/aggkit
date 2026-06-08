@@ -85,43 +85,17 @@ func New(ctx context.Context, cfg Config, logger *log.Logger) (*BridgeSyncerLite
 		logger = log.WithFields("module", "bridgesyncerlite")
 	}
 
-	var (
-		database *sql.DB
-		exitTree treetypes.FullTreer
-	)
-	if cfg.DBPath != "" {
-		if err := runMigrations(cfg.DBPath); err != nil {
-			return nil, fmt.Errorf("run migrations on %s: %w", cfg.DBPath, err)
-		}
-		var err error
-		database, err = db.NewSQLiteDB(cfg.DBPath)
-		if err != nil {
-			return nil, fmt.Errorf("open sqlite DB %s: %w", cfg.DBPath, err)
-		}
-		exitTree = tree.NewAppendOnlyTree(database, "")
+	database, exitTree, err := openDatabase(cfg.DBPath)
+	if err != nil {
+		return nil, err
 	}
 
-	var (
-		client   *ethclient.Client
-		contract *agglayerbridge.Agglayerbridge
-	)
-	if cfg.RPCURL != "" {
-		var err error
-		client, err = ethclient.DialContext(ctx, cfg.RPCURL)
-		if err != nil {
-			if database != nil {
-				_ = database.Close()
-			}
-			return nil, fmt.Errorf("dial RPC %s: %w", cfg.RPCURL, err)
+	client, contract, err := dialBridge(ctx, cfg)
+	if err != nil {
+		if database != nil {
+			_ = database.Close()
 		}
-		contract, err = agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, client)
-		if err != nil {
-			client.Close()
-			if database != nil {
-				_ = database.Close()
-			}
-			return nil, fmt.Errorf("instantiate bridge contract binding: %w", err)
-		}
+		return nil, err
 	}
 
 	return &BridgeSyncerLite{
@@ -132,6 +106,43 @@ func New(ctx context.Context, cfg Config, logger *log.Logger) (*BridgeSyncerLite
 		contract: contract,
 		exitTree: exitTree,
 	}, nil
+}
+
+// openDatabase migrates and opens the sqlite DB at dbPath and creates the append-only exit tree.
+// Returns (nil, nil, nil) when dbPath is empty (fetch-only mode, no DB or tree).
+func openDatabase(dbPath string) (*sql.DB, treetypes.FullTreer, error) {
+	if dbPath == "" {
+		return nil, nil, nil
+	}
+	if err := runMigrations(dbPath); err != nil {
+		return nil, nil, fmt.Errorf("run migrations on %s: %w", dbPath, err)
+	}
+	database, err := db.NewSQLiteDB(dbPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open sqlite DB %s: %w", dbPath, err)
+	}
+	return database, tree.NewAppendOnlyTree(database, ""), nil
+}
+
+// dialBridge dials cfg.RPCURL and instantiates the bridge contract binding. Returns (nil, nil, nil)
+// when cfg.RPCURL is empty (DB-only mode). On binding failure it closes the client it opened; the
+// caller owns any other resources.
+func dialBridge(
+	ctx context.Context, cfg Config,
+) (*ethclient.Client, *agglayerbridge.Agglayerbridge, error) {
+	if cfg.RPCURL == "" {
+		return nil, nil, nil
+	}
+	client, err := ethclient.DialContext(ctx, cfg.RPCURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial RPC %s: %w", cfg.RPCURL, err)
+	}
+	contract, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, client)
+	if err != nil {
+		client.Close()
+		return nil, nil, fmt.Errorf("instantiate bridge contract binding: %w", err)
+	}
+	return client, contract, nil
 }
 
 // Close releases the RPC client (if any) and DB connection (if any).

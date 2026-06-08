@@ -117,13 +117,25 @@ var defaultOptions = Options{
 // LoadConfig reads and validates the config file. The format is selected by file extension:
 // ".toml" is parsed as TOML, anything else (".json" or no extension) as JSON.
 func LoadConfig(configPath string) (*Config, error) {
+	raw, err := readRawConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRawConfig(raw); err != nil {
+		return nil, err
+	}
+	return buildConfig(raw, filepath.Dir(configPath))
+}
+
+// readRawConfig reads the config file at configPath, normalizing TOML to JSON so a single code path
+// handles both formats (including the signerConfig json.RawMessage and agglayerClient custom JSON
+// unmarshalling), then unmarshals it into a rawConfig.
+func readRawConfig(configPath string) (*rawConfig, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("read config file %s: %w", configPath, err)
 	}
 
-	// TOML configs are normalized to JSON so a single code path handles both formats (including the
-	// signerConfig json.RawMessage and agglayerClient custom JSON unmarshalling).
 	if strings.EqualFold(filepath.Ext(configPath), ".toml") {
 		data, err = tomlToJSON(data)
 		if err != nil {
@@ -135,29 +147,36 @@ func LoadConfig(configPath string) (*Config, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parse config JSON: %w", err)
 	}
+	return &raw, nil
+}
 
+// validateRawConfig checks the required parameters and the exitAddress format/value.
+func validateRawConfig(raw *rawConfig) error {
 	if raw.L2RPCURL == "" {
-		return nil, fmt.Errorf("missing required parameter: l2RpcUrl")
+		return fmt.Errorf("missing required parameter: l2RpcUrl")
 	}
 	if raw.L2BridgeAddress == "" {
-		return nil, fmt.Errorf("missing required parameter: l2BridgeAddress")
+		return fmt.Errorf("missing required parameter: l2BridgeAddress")
 	}
 	if raw.ExitAddress == "" {
-		return nil, fmt.Errorf("missing required parameter: exitAddress")
+		return fmt.Errorf("missing required parameter: exitAddress")
 	}
 	// Validate the hex format explicitly: common.HexToAddress silently returns the zero address on
 	// any malformed input, so without this check a typo would surface as the (misleading) zero-address
 	// error below instead of pointing at the real problem.
 	if !common.IsHexAddress(raw.ExitAddress) {
-		return nil, fmt.Errorf("invalid exitAddress %q: not a valid hex address", raw.ExitAddress)
+		return fmt.Errorf("invalid exitAddress %q: not a valid hex address", raw.ExitAddress)
 	}
 	if common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
-		return nil, fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
+		return fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")
 	}
+	return nil
+}
 
-	configDir := filepath.Dir(configPath)
-
+// buildConfig assembles a *Config from an already-validated rawConfig, applying defaults
+// (l1BridgeAddress, l2NetworkId) and parsing the targetBlock, options and signerConfig.
+func buildConfig(raw *rawConfig, configDir string) (*Config, error) {
 	targetBlock, err := parseTargetBlock(raw.TargetBlock)
 	if err != nil {
 		return nil, fmt.Errorf("invalid targetBlock %q: %w", raw.TargetBlock, err)
@@ -271,6 +290,16 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw == nil {
 		return opts
 	}
+	mergeScalarOptions(&opts, raw, configDir)
+	mergeFlagOptions(&opts, raw)
+	if raw.AgglayerClient != nil {
+		opts.AgglayerClient = mergeAgglayerClient(raw.AgglayerClient)
+	}
+	return opts
+}
+
+// mergeScalarOptions overrides the non-boolean option fields with any non-zero raw values.
+func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.BlockRange > 0 {
 		opts.BlockRange = raw.BlockRange
 	}
@@ -301,41 +330,6 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.AgglayerAdminToken != "" {
 		opts.AgglayerAdminToken = raw.AgglayerAdminToken
 	}
-	if raw.AgglayerClient != nil {
-		clientCfg := *raw.AgglayerClient
-		grpcDefaults := aggkitgrpc.DefaultConfig()
-		if clientCfg.GRPC != nil {
-			if clientCfg.GRPC.URL != "" {
-				grpcDefaults.URL = clientCfg.GRPC.URL
-			}
-			if clientCfg.GRPC.MinConnectTimeout.Duration != 0 {
-				grpcDefaults.MinConnectTimeout = clientCfg.GRPC.MinConnectTimeout
-			}
-			if clientCfg.GRPC.RequestTimeout.Duration != 0 {
-				grpcDefaults.RequestTimeout = clientCfg.GRPC.RequestTimeout
-			}
-			if clientCfg.GRPC.UseTLS {
-				grpcDefaults.UseTLS = clientCfg.GRPC.UseTLS
-			}
-			if clientCfg.GRPC.Retry != nil {
-				grpcDefaults.Retry = clientCfg.GRPC.Retry
-			}
-		}
-		clientCfg.GRPC = grpcDefaults
-		opts.AgglayerClient = clientCfg
-	}
-	if raw.IgnoreGenesisBalance != nil {
-		opts.IgnoreGenesisBalance = *raw.IgnoreGenesisBalance
-	}
-	if raw.IgnoreOnTraceError != nil {
-		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
-	}
-	if raw.IgnoreBalanceMismatch != nil {
-		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
-	}
-	if raw.IgnoreUnclaimed != nil {
-		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
-	}
 	if len(raw.ExtraERC20Contracts) > 0 {
 		addrs := make([]common.Address, 0, len(raw.ExtraERC20Contracts))
 		for _, s := range raw.ExtraERC20Contracts {
@@ -349,13 +343,54 @@ func mergeOptions(raw *rawOpts, configDir string) Options {
 	if raw.BridgeServiceType != "" {
 		opts.BridgeServiceType = raw.BridgeServiceType
 	}
+}
+
+// mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
+func mergeFlagOptions(opts *Options, raw *rawOpts) {
+	if raw.IgnoreGenesisBalance != nil {
+		opts.IgnoreGenesisBalance = *raw.IgnoreGenesisBalance
+	}
+	if raw.IgnoreOnTraceError != nil {
+		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
+	}
+	if raw.IgnoreBalanceMismatch != nil {
+		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
+	}
+	if raw.IgnoreUnclaimed != nil {
+		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
+	}
 	if raw.IgnoreUnsupportedL2Events != nil {
 		opts.IgnoreUnsupportedL2Events = *raw.IgnoreUnsupportedL2Events
 	}
 	if raw.VerifyNewLocalExitRootUsingShadowFork != nil {
 		opts.VerifyNewLocalExitRootUsingShadowFork = *raw.VerifyNewLocalExitRootUsingShadowFork
 	}
-	return opts
+}
+
+// mergeAgglayerClient overlays the raw agglayer client config onto the gRPC defaults, keeping each
+// default when its corresponding raw field is unset.
+func mergeAgglayerClient(raw *agglayer.ClientConfig) agglayer.ClientConfig {
+	clientCfg := *raw
+	grpcDefaults := aggkitgrpc.DefaultConfig()
+	if g := clientCfg.GRPC; g != nil {
+		if g.URL != "" {
+			grpcDefaults.URL = g.URL
+		}
+		if g.MinConnectTimeout.Duration != 0 {
+			grpcDefaults.MinConnectTimeout = g.MinConnectTimeout
+		}
+		if g.RequestTimeout.Duration != 0 {
+			grpcDefaults.RequestTimeout = g.RequestTimeout
+		}
+		if g.UseTLS {
+			grpcDefaults.UseTLS = g.UseTLS
+		}
+		if g.Retry != nil {
+			grpcDefaults.Retry = g.Retry
+		}
+	}
+	clientCfg.GRPC = grpcDefaults
+	return clientCfg
 }
 
 // rawConfig mirrors the JSON structure with string addresses.
