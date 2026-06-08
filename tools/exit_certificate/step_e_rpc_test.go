@@ -40,7 +40,7 @@ func TestSplitByLeafType(t *testing.T) {
 func TestResolveL1LatestBlock(t *testing.T) {
 	t.Parallel()
 	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		require.Equal(t, "eth_blockNumber", method)
+		require.Equal(t, rpcMethodEthBlockNumber, method)
 		return "0x1a4" // 420
 	})
 	cfg := &Config{L1RPCURL: url}
@@ -54,7 +54,7 @@ func TestCheckClaimedBatch(t *testing.T) {
 	deposits := []L1Deposit{{DepositCount: 0}, {DepositCount: 1}, {DepositCount: 2}}
 	// claim only deposit 1: decode the leafIndex from the isClaimed call data (bytes [4:36]).
 	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
-		require.Equal(t, "eth_call", method)
+		require.Equal(t, rpcMethodEthCall, method)
 		var call struct {
 			Data string `json:"data"`
 		}
@@ -156,7 +156,7 @@ func abiEncodeString(s string) string {
 func TestFetchTokenNameAndDecimals(t *testing.T) {
 	t.Parallel()
 	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
-		require.Equal(t, "eth_call", method)
+		require.Equal(t, rpcMethodEthCall, method)
 		var call struct {
 			Data string `json:"data"`
 		}
