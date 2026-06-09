@@ -20,6 +20,14 @@ import (
 
 const bridgeTableName = "bridge"
 
+// Read queries. Built once as compile-time constant expressions (no runtime string formatting) so the
+// only interpolated token is the trusted bridgeTableName constant — never user input.
+const (
+	queryCountBridges    = "SELECT COUNT(*) FROM " + bridgeTableName
+	queryMaxDepositCount = "SELECT MAX(deposit_count) FROM " + bridgeTableName
+	queryAllBridges      = "SELECT * FROM " + bridgeTableName + " ORDER BY deposit_count ASC"
+)
+
 // buildProgressLogInterval is how often StoreBridges/BuildTree report persist/tree-build progress
 // with an ETA.
 const buildProgressLogInterval = 15 * time.Second
@@ -319,8 +327,7 @@ func (s *BridgeSyncerLite) CountBridges(ctx context.Context) (int, error) {
 		return 0, errors.New("CountBridges requires a DB-backed syncer (set Config.DBPath)")
 	}
 	var count int
-	if err := s.db.QueryRowContext(ctx,
-		fmt.Sprintf("SELECT COUNT(*) FROM %s", bridgeTableName)).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, queryCountBridges).Scan(&count); err != nil {
 		return 0, fmt.Errorf("count bridges: %w", err)
 	}
 	return count, nil
@@ -335,8 +342,7 @@ func (s *BridgeSyncerLite) NextDepositCount(ctx context.Context) (uint32, error)
 		return 0, errors.New("NextDepositCount requires a DB-backed syncer (set Config.DBPath)")
 	}
 	var maxDepositCount sql.NullInt64
-	if err := s.db.QueryRowContext(ctx,
-		fmt.Sprintf("SELECT MAX(deposit_count) FROM %s", bridgeTableName)).Scan(&maxDepositCount); err != nil {
+	if err := s.db.QueryRowContext(ctx, queryMaxDepositCount).Scan(&maxDepositCount); err != nil {
 		return 0, fmt.Errorf("query max deposit count: %w", err)
 	}
 	if !maxDepositCount.Valid {
@@ -351,8 +357,7 @@ func (s *BridgeSyncerLite) GetBridges(ctx context.Context) ([]BridgeLeaf, error)
 		return nil, errors.New("GetBridges requires a DB-backed syncer (set Config.DBPath)")
 	}
 	var ptrs []*BridgeLeaf
-	if err := meddler.QueryAll(s.db, &ptrs,
-		fmt.Sprintf("SELECT * FROM %s ORDER BY deposit_count ASC", bridgeTableName)); err != nil {
+	if err := meddler.QueryAll(s.db, &ptrs, queryAllBridges); err != nil {
 		return nil, fmt.Errorf("query bridges: %w", err)
 	}
 	bridges := make([]BridgeLeaf, len(ptrs))
