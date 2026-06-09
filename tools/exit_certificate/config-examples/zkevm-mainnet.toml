@@ -1,0 +1,63 @@
+# Example config for Polygon zkEVM mainnet. Copy to a .toml file and fill in the fields marked
+# below. Field names are identical in the JSON format; format is chosen by file extension.
+# See ./README.md and ../README.md for a full description of every field.
+
+# REQUIRED — L1 JSON-RPC endpoint (Steps E and I). Use an *Ethereum mainnet* RPC. Without it
+# Step E is silently skipped and Step I fails, so the certificate will be incomplete.
+l1RpcUrl = "<YOUR_L1_RPC_URL>"
+
+# REQUIRED — L2 JSON-RPC endpoint. Must expose debug_traceTransaction (archive node) for Step A.
+l2RpcUrl = "https://zkevm-rpc.com/"
+
+# Optional — L1 bridge contract address. Defaults to l2BridgeAddress when unset.
+l1BridgeAddress = "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
+
+# REQUIRED — L2 bridge contract address.
+l2BridgeAddress = "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
+l2NetworkId = 1
+targetBlock = "LatestBlock"
+
+# REQUIRED — address that receives SC-locked value (tokens held in smart contracts). Use an address
+# whose private key you control; settled funds can only be recovered by signing from it. Must not be
+# the zero address. A multisig (e.g. a Gnosis Safe) is strongly recommended over a single EOA for
+# better security. Uncomment and set your own address before running.
+#exitAddress = "<PUBLIC_ADDRESS_TO_RECEIVE_SC_EXIT>"
+sovereignRollupAddr = "0x519E42c24163192Dca44CD3fBDCEBF6be9130987"
+l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
+destinationNetwork = 0
+
+# REQUIRED to sign — signer for Step SIGN (same format as aggsender's AggsenderPrivateKey). Other
+# backends (GCP KMS, AWS KMS, …) are supported; see the go_signer repo.
+[signerConfig]
+Method = "local"
+Path = "signer.keystore"
+Password = "<PASSWORD>"
+
+[options]
+blockRange = 10000
+stepAWindowSize = 20000
+concurrencyLimit = 200
+rpcBatchSize = 99
+rpcDelayMs = 10
+outputDir = "./output-mainnet"
+l1StartBlock = 22431675
+l2StartBlock = 0
+ignoreOnTraceError = false
+ignoreGenesisBalance = false
+ignoreUnclaimed = false
+ignoreBalanceMismatch = false
+extraErc20Contracts = ["0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9"]
+bridgeServiceURL = ""
+bridgeServiceType = "zkevm"
+
+# REQUIRED for Step F — agglayer admin RPC endpoint (admin_getTokenBalance). If omitted, Step F is skipped.
+agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"
+# REQUIRED for Step F when the admin endpoint is behind Google Cloud IAP — Bearer token for
+# agglayerAdminURL (see the "Authenticating with IAP" section of the README).
+agglayerAdminToken = "<JWT>"
+
+# REQUIRED for Steps H, SUBMIT and WAIT — agglayer gRPC client config (same as aggsender's
+# agglayer.ClientConfig). Set at least GRPC.URL (e.g. "agglayer.example.com:50051").
+[options.agglayerClient.GRPC]
+URL = "<AGGLAYER_GRPC_URL>"
+UseTLS = true

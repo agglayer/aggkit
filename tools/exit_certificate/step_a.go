@@ -70,7 +70,7 @@ func RunStepA1(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResu
 		}
 
 		addrs, failed, err := traceTransactions(ctx, cfg.L2RPCURL, hashes,
-			cfg.Options.ConcurrencyLimit, cfg.Options.ContinueOnTraceError)
+			cfg.Options.ConcurrencyLimit, cfg.Options.IgnoreOnTraceError)
 		if err != nil {
 			return nil, fmt.Errorf("trace transactions [%d-%d]: %w", start, end, err)
 		}

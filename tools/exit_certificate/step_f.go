@@ -112,8 +112,8 @@ func RunStepF(
 		Checks:        checks,
 	}
 	if !allMatch {
-		if cfg.Options.ContinueIfBalanceMismatch {
-			log.Warn("Balance mismatches detected — continuing anyway (continueIfBalanceMismatch=true)")
+		if cfg.Options.IgnoreBalanceMismatch {
+			log.Warn("Balance mismatches detected — continuing anyway (ignoreBalanceMismatch=true)")
 			for _, c := range checks {
 				if !c.Match {
 					log.Debugf("  ⚠️ check: network=%d addr=%s lbt=%s certificate=%s agglayer=%s match=%v",
@@ -127,7 +127,7 @@ func RunStepF(
 			log.Infof("🔧 Capped certificate: %d → %d bridge exits",
 				len(certificate.BridgeExits), len(capped.BridgeExits))
 		} else {
-			return result, fmt.Errorf("token balance mismatches detected (set options.continueIfBalanceMismatch=true to ignore)")
+			return result, fmt.Errorf("token balance mismatches detected (set options.ignoreBalanceMismatch=true to ignore)")
 		}
 	}
 	return result, nil

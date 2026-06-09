@@ -59,7 +59,7 @@ the output files from previous steps must already exist in the output directory.
 		&cli.StringFlag{
 			Name:    "config",
 			Aliases: []string{"c"},
-			Usage:   "Path to parameters.json config file",
+			Usage:   "Path to the config file (JSON or TOML; format selected by .json/.toml extension)",
 			Value:   "parameters.json",
 		},
 		&cli.StringFlag{
