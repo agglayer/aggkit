@@ -82,7 +82,7 @@ func TestReadLocalExitRoot(t *testing.T) {
 		out, err := bridgeABI.Methods["getRoot"].Outputs.Pack([32]byte(want))
 		require.NoError(t, err)
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
-			require.Equal(t, "eth_call", method)
+			require.Equal(t, rpcMethodEthCall, method)
 			call, ok := params[0].(map[string]any)
 			require.True(t, ok)
 			require.Equal(t, bridge.Hex(), call["to"])
@@ -128,7 +128,7 @@ func TestCallGetTokenWrappedAddress(t *testing.T) {
 		out, err := bridgeABI.Methods["getTokenWrappedAddress"].Outputs.Pack(want)
 		require.NoError(t, err)
 		srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
-			require.Equal(t, "eth_call", method)
+			require.Equal(t, rpcMethodEthCall, method)
 			return hexResult(out), nil
 		})
 		backend := &anvilForkBackend{url: srv.URL, bridgeAddr: bridge}
@@ -191,7 +191,7 @@ func TestAnvilForkBackendWrappers(t *testing.T) {
 
 	srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
-		case "eth_call": // balanceOf for PrepareERC20Token (already funded)
+		case rpcMethodEthCall: // balanceOf for PrepareERC20Token (already funded)
 			return quoted("0x" + maxHex), nil
 		case "eth_getTransactionReceipt":
 			return json.RawMessage(`{"status":"0x1","blockNumber":"0x1","logs":[]}`), nil
@@ -231,7 +231,8 @@ func TestSendBridgeAssetTx(t *testing.T) {
 	t.Run("native sets value", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(_ string, params []any) (json.RawMessage, *jsonRPCError) {
-			tx := params[0].(map[string]any)
+			tx, ok := params[0].(map[string]any)
+			require.True(t, ok)
 			require.Equal(t, dest.Hex(), tx["from"])
 			require.Equal(t, bridge.Hex(), tx["to"])
 			require.Equal(t, "0x1f4", tx["value"]) // native exit forwards 500
@@ -245,7 +246,8 @@ func TestSendBridgeAssetTx(t *testing.T) {
 	t.Run("erc20 leaves value unset", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(_ string, params []any) (json.RawMessage, *jsonRPCError) {
-			tx := params[0].(map[string]any)
+			tx, ok := params[0].(map[string]any)
+			require.True(t, ok)
 			_, hasValue := tx["value"]
 			require.False(t, hasValue) // non-native: no ETH value attached
 			return quoted(wantHash), nil
@@ -285,7 +287,7 @@ func TestWaitForReceipt(t *testing.T) {
 				return json.RawMessage(`{"status":"0x0","blockNumber":"0x5","logs":[]}`), nil
 			case "eth_getTransactionByHash":
 				return json.RawMessage(`{"from":"0x01","to":"0x02","input":"0x","value":"0x0"}`), nil
-			case "eth_call":
+			case rpcMethodEthCall:
 				return nil, nil // call succeeds → "no revert reason available"
 			default:
 				return quoted("0x1"), nil
@@ -343,7 +345,7 @@ func TestEnsureERC20Balance(t *testing.T) {
 	t.Run("sufficient balance skips patch", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
-			require.Equal(t, "eth_call", method) // never patches
+			require.Equal(t, rpcMethodEthCall, method) // never patches
 			return quoted("0x" + maxHex), nil
 		})
 		require.NoError(t, ensureERC20Balance(context.Background(), srv.URL, token, account, maxUint256))
@@ -354,7 +356,7 @@ func TestEnsureERC20Balance(t *testing.T) {
 		patched := false
 		srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 			switch method {
-			case "eth_call":
+			case rpcMethodEthCall:
 				if patched {
 					return quoted("0x" + maxHex), nil
 				}
@@ -373,7 +375,7 @@ func TestEnsureERC20Balance(t *testing.T) {
 	t.Run("no layout matches errors", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
-			if method == "eth_call" {
+			if method == rpcMethodEthCall {
 				return quoted("0x0"), nil // balance never reaches required
 			}
 			return quoted("0x1"), nil
@@ -403,10 +405,11 @@ func TestPrepareERC20Token(t *testing.T) {
 		sentApprove := false
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
 			switch method {
-			case "eth_call":
+			case rpcMethodEthCall:
 				return quoted("0x" + maxHex), nil // already funded
 			case "eth_sendTransaction":
-				tx := params[0].(map[string]any)
+				tx, ok := params[0].(map[string]any)
+				require.True(t, ok)
 				require.Equal(t, sender.Hex(), tx["from"])
 				require.Equal(t, token.Hex(), tx["to"]) // approve goes to the token
 				sentApprove = true
