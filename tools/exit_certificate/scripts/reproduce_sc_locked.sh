@@ -434,7 +434,7 @@ run_pipeline() {
         "outputDir":            "$OUTPUT_DIR/output",
         "l1StartBlock":         0,
         "agglayerClient":       { "GRPC": { "URL": "$agglayer_grpc" } },
-        "abortOnGenesisBalance": false
+        "ignoreGenesisBalance": true
     }
 }
 EOF
@@ -514,7 +514,7 @@ PYEOF
         grep -E "ERC-20 balance insufficient|ensure ERC-20 balance|patching via storage" \
             "$OUTPUT_DIR/step-g-output.log" | head -10 || true
         log_info ""
-        log_info "Root cause (step_g.go:ensureERC20Balance):"
+        log_info "Root cause (step_g2.go:ensureERC20Balance):"
         log_info "  The function sees exitAddress has 0 wTTK balance and returns an error."
         log_info "  It should instead call hardhat_setStorageAt to patch the ERC-20 storage slot."
     else
