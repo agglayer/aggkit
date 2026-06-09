@@ -77,7 +77,7 @@ build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
-build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate ## Builds the tools
+build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer ## Builds the tools
 
 
 .PHONY: $(GOBIN)/aggsender_find_imported_bridge
@@ -92,6 +92,10 @@ $(GOBIN)/remove_ger: ## Build remove_ger tool
 .PHONY: $(GOBIN)/exit_certificate
 $(GOBIN)/exit_certificate: ## Build exit_certificate tool
 	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate ./tools/exit_certificate/cmd
+
+.PHONY: $(GOBIN)/exit_certificate_claimer
+$(GOBIN)/exit_certificate_claimer: ## Build exit_certificate_claimer backend tool
+	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate_claimer ./tools/exit_certificate_claimer/backend/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary

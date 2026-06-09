@@ -1,0 +1,29 @@
+# exit_certificate_claimer backend configuration (TOML).
+# Relative paths are resolved against the directory containing this file.
+
+# HTTP server bind host/IP (without port) and port.
+address = "0.0.0.0"
+port = 8080
+readTimeoutSeconds = 30
+writeTimeoutSeconds = 30
+
+# Outputs of the exit_certificate tool.
+signedCertificatePath = "../../exit_certificate/output/exit-certificate-signed.json"
+localExitTreeDBPath   = "../../exit_certificate/output/step-g-l2bridgesyncerlite.sqlite"
+
+# L1 Info Tree SQLite database (queried for mainnet/rollup exit roots and the rollup proof).
+l1InfoTreeDBPath = "./l1infotree.sqlite"
+
+# Source network of the exits. Leave 0 to default to the certificate's network_id.
+networkId = 0
+
+# Optional background synchronization of the L1 Info Tree from L1.
+# When enabled = false the l1InfoTreeDBPath database is opened read-only.
+[l1Sync]
+enabled = false
+rpcUrl = "http://localhost:8545"
+globalExitRootAddr = "0x0000000000000000000000000000000000000000"
+rollupManagerAddr = "0x0000000000000000000000000000000000000000"
+initialBlock = 0
+syncBlockChunkSize = 5000
+blockFinality = "FinalizedBlock"
