@@ -261,7 +261,7 @@ type StepFResult struct {
 	AllMatch      bool                `json:"allMatch,omitempty"`
 	TokenBalances json.RawMessage     `json:"tokenBalances,omitempty"`
 	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
-	// CappedCertificate is set when mismatches were found and continueIfBalanceMismatch=true.
+	// CappedCertificate is set when mismatches were found and ignoreBalanceMismatch=true.
 	// Bridge exits are proportionally scaled down to min(agglayer, lbt) per token.
 	CappedCertificate *agglayertypes.Certificate `json:"cappedCertificate,omitempty"`
 }
@@ -277,6 +277,15 @@ type StepCheckResult struct {
 	GasTokenAddress string   `json:"gasTokenAddress,omitempty"`
 	GasTokenNetwork uint32   `json:"gasTokenNetwork,omitempty"`
 	WETHToken       string   `json:"wethToken,omitempty"`
+}
+
+// StepG1Result holds the output of Step G1: the L2 block at which Step G2 spins up its Anvil
+// shadow-fork. Step G1 lite-syncs the L2 bridge history from genesis up to that block into the lite
+// DB Step G2 reuses.
+type StepG1Result struct {
+	// ShadowForkBlock is the L2 block Step G2 forks at — the resolved targetBlock up to which Step G1
+	// lite-synced the bridge history.
+	ShadowForkBlock uint64 `json:"shadowForkBlock"`
 }
 
 // StepGResult holds the output of Step G (NewLocalExitRoot calculation).

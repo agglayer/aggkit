@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	aggkittypes "github.com/agglayer/aggkit/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -53,6 +54,58 @@ func TestLoadConfig_MissingL2BridgeAddress(t *testing.T) {
 	require.Contains(t, err.Error(), "l2BridgeAddress")
 }
 
+func TestLoadConfig_MissingExitAddress(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "missing.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"targetBlock": "100"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+}
+
+func TestLoadConfig_ZeroExitAddress(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "zero.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000000",
+		"targetBlock": "100"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+	require.Contains(t, err.Error(), "zero address")
+}
+
+func TestLoadConfig_InvalidExitAddress(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "invalid.json")
+	data := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "not-an-address",
+		"targetBlock": "100"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+	require.Contains(t, err.Error(), "not a valid hex address")
+}
+
 func TestLoadConfig_MinimalValid(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +113,7 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100"
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -68,6 +122,7 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://localhost:8545", cfg.L2RPCURL)
 	require.Equal(t, common.HexToAddress("0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"), cfg.L2BridgeAddress)
+	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), cfg.ExitAddress)
 	require.Equal(t, *aggkittypes.NewBlockNumber(100), cfg.TargetBlock)
 	require.Equal(t, uint32(1), cfg.L2NetworkID)
 	require.Equal(t, cfg.L2BridgeAddress, cfg.L1BridgeAddress)
@@ -111,6 +166,65 @@ func TestLoadConfig_FullConfig(t *testing.T) {
 	require.Equal(t, uint64(1000), cfg.Options.L1StartBlock)
 }
 
+func TestLoadConfig_FullConfigTOML(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "full.toml")
+	data := `
+l2RpcUrl = "http://l2:8545"
+l1RpcUrl = "http://l1:8545"
+l2BridgeAddress = "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
+l1BridgeAddress = "0x1111111111111111111111111111111111111111"
+l2NetworkId = 5
+targetBlock = "LatestBlock"
+exitAddress = "0x0000000000000000000000000000000000000001"
+destinationNetwork = 0
+
+[options]
+blockRange = 10000
+concurrencyLimit = 200
+rpcBatchSize = 200
+rpcDelayMs = 10
+l1StartBlock = 1000
+
+[signerConfig]
+Method = "local"
+Path = "keystore.json"
+Password = "pass"
+`
+	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, "http://l2:8545", cfg.L2RPCURL)
+	require.Equal(t, "http://l1:8545", cfg.L1RPCURL)
+	require.Equal(t, uint32(5), cfg.L2NetworkID)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.TargetBlock)
+	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000000001"), cfg.ExitAddress)
+	require.Equal(t, common.HexToAddress("0x1111111111111111111111111111111111111111"), cfg.L1BridgeAddress)
+	require.Equal(t, 10000, cfg.Options.BlockRange)
+	require.Equal(t, 200, cfg.Options.ConcurrencyLimit)
+	require.Equal(t, 200, cfg.Options.RPCBatchSize)
+	require.Equal(t, 10, cfg.Options.RPCDelayMs)
+	require.Equal(t, uint64(1000), cfg.Options.L1StartBlock)
+	// signerConfig round-trips through TOML: Method is preserved and Path is resolved relative
+	// to the config dir, mirroring the JSON behaviour.
+	require.Equal(t, signertypes.SignMethod("local"), cfg.SignerConfig.Method)
+	require.Equal(t, filepath.Join(filepath.Dir(path), "keystore.json"), cfg.SignerConfig.Config["path"])
+	require.Equal(t, "pass", cfg.SignerConfig.Config["password"])
+}
+
+func TestLoadConfig_InvalidTOML(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bad.toml")
+	require.NoError(t, os.WriteFile(path, []byte("this is = not = valid = toml"), 0o600))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "TOML")
+}
+
 func TestLoadConfig_DefaultOptions(t *testing.T) {
 	t.Parallel()
 
@@ -118,6 +232,7 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100"
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -142,6 +257,7 @@ func TestLoadConfig_StepAWindowSize(t *testing.T) {
 		data := `{
 			"l2RpcUrl": "http://localhost:8545",
 			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+			"exitAddress": "0x0000000000000000000000000000000000000001",
 			"targetBlock": "100",
 			"options": {
 				"stepAWindowSize": 2000
@@ -161,6 +277,7 @@ func TestLoadConfig_StepAWindowSize(t *testing.T) {
 		data := `{
 			"l2RpcUrl": "http://localhost:8545",
 			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+			"exitAddress": "0x0000000000000000000000000000000000000001",
 			"targetBlock": "100"
 		}`
 		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -179,6 +296,7 @@ func TestLoadConfig_RelativeOutputDir(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"outputDir": "./output"
@@ -249,6 +367,7 @@ func TestLoadConfig_AgglayerAdminToken(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"agglayerAdminURL": "https://admin.example.com",
@@ -289,11 +408,12 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
-			"abortOnGenesisBalance": false,
-			"continueOnTraceError": true,
-			"continueIfBalanceMismatch": true,
+			"ignoreGenesisBalance": true,
+			"ignoreOnTraceError": true,
+			"ignoreBalanceMismatch": true,
 			"ignoreUnclaimed": true
 		}
 	}`
@@ -301,9 +421,9 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 
 	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
-	require.False(t, cfg.Options.AbortOnGenesisBalance)
-	require.True(t, cfg.Options.ContinueOnTraceError)
-	require.True(t, cfg.Options.ContinueIfBalanceMismatch)
+	require.True(t, cfg.Options.IgnoreGenesisBalance)
+	require.True(t, cfg.Options.IgnoreOnTraceError)
+	require.True(t, cfg.Options.IgnoreBalanceMismatch)
 	require.True(t, cfg.Options.IgnoreUnclaimed)
 }
 
@@ -314,6 +434,7 @@ func TestLoadConfig_AgglayerClient(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"agglayerClient": {
@@ -340,6 +461,7 @@ func TestMergeOptions_BridgeService(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
 			"bridgeServiceURL": "http://bridge:8080",
@@ -427,6 +549,7 @@ func TestLoadConfig_InvalidTargetBlock(t *testing.T) {
 	data := `{
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "FinalizedBock"
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
