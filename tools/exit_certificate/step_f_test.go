@@ -134,8 +134,8 @@ func TestRunStepF_MismatchContinues(t *testing.T) {
 	cfg := &Config{
 		L2NetworkID: 0,
 		Options: Options{
-			AgglayerAdminURL:          server.URL,
-			ContinueIfBalanceMismatch: true,
+			AgglayerAdminURL:      server.URL,
+			IgnoreBalanceMismatch: true,
 		},
 	}
 	result, err := RunStepF(context.Background(), cfg, cert, nil)

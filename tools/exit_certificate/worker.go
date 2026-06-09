@@ -2,6 +2,7 @@ package exit_certificate
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/agglayer/aggkit/log"
@@ -123,7 +124,11 @@ func collectResults[R any](
 				if firstErr == nil {
 					firstErr = r.err
 				}
-				log.Warnf("%s job failed: %v req: %+v", label, r.err, r.val)
+				// Skip context.Canceled: it's the expected fallout of cancelling the pool after a
+				// real failure (the root-cause error is kept in firstErr), not noise worth logging.
+				if !errors.Is(r.err, context.Canceled) {
+					log.Warnf("%s job failed: %v req: %+v", label, r.err, r.val)
+				}
 			} else {
 				collect(r.val)
 				if label != "" && (processed%logInterval == 0 || processed == total) {

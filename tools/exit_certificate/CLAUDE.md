@@ -25,7 +25,8 @@ tools/exit_certificate/
 ├── step_d.go            — build agglayer Certificate
 ├── step_e.go            — unclaimed L1→L2 deposits
 ├── step_f.go            — agglayer token balance verification
-├── step_g.go            — NewLocalExitRoot computation
+├── step_g1.go           — resolve shadow-fork block (real-L2 bridgesync pre-sync)
+├── step_g2.go           — NewLocalExitRoot computation (Step G2)
 ├── step_h.go            — fetch PreviousLocalExitRoot from agglayer
 ├── step_i.go            — assemble final certificate (LER, prev LER, L1InfoTreeLeafCount)
 ├── step_check.go        — prerequisite checks (Anvil, L1 RPC, network type, threshold, gas token)
@@ -50,7 +51,7 @@ Runs automatically as the first step of the full pipeline, and can also be trigg
 
 All checks run regardless of individual failures. A combined error lists every failed check.
 
-1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
+1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
 3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
 4. **`sovereignRollupAddr` is set** — required; fails if zero address.
@@ -70,7 +71,7 @@ All checks run regardless of individual failures. A combined error lists every f
 
 - **RPC:** `eth_getBlockByNumber` (headers, `false`) → tx hashes; then `debug_traceTransaction` with `prestateTracer`+`diffMode` per hash.
 - **Output:** `step-a-addresses.json` (`[]common.Address`), `step-a-failed-traces.json` (`[]common.Hash`)
-- **Option:** `continueOnTraceError=true` skips failed traces instead of aborting.
+- **Option:** `ignoreOnTraceError=true` skips failed traces instead of aborting.
 
 ### Step B — EOA balance checking + ERC-20 detection
 
@@ -132,52 +133,129 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 - Calls `admin_getTokenBalance` on the agglayer admin RPC and performs a **three-way comparison** per token: `LBT (Step 0) == agglayer == certificate sum`. Each token is logged with ✅ or ❌.
 - **LBT data:** loaded from `step-0-lbt.json`. If unavailable, falls back to two-way comparison (certificate vs agglayer).
 - **On mismatch:** aborts the pipeline with an error by default.
-- **`continueIfBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
+- **`ignoreBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
 - `buildCapMap` / `capBridgeExits` are the internal helpers for computing and applying the caps. Proportional scaling preserves the exact capped total by adding any integer-division remainder to the last exit of each group.
-- **Output:** `step-f-token-balances.json`, `step-f-checks.json` (`[]TokenBalanceCheck`), `step-f-capped-certificate.json` *(only when `continueIfBalanceMismatch=true` and mismatches exist)*
+- **Output:** `step-f-token-balances.json`, `step-f-checks.json` (`[]TokenBalanceCheck`), `step-f-capped-certificate.json` *(only when `ignoreBalanceMismatch=true` and mismatches exist)*
 
 ### Step G — Compute NewLocalExitRoot (shadow-fork)
 
-> **Input priority (single-step mode):** uses `step-f-capped-certificate.json` if it exists (logged with ⚠️), otherwise falls back to `step-e-exit-certificate.json`. In `runAll` the in-memory certificate already reflects any capping done by Step F.
+Two sub-steps: G1, G2. Running `--step g` executes both; `g1`/`g2` run them individually, and `g`
+expands to `g1,g2` in ranges (e.g. `f-g` → `f,g1,g2`).
 
-Computes the correct `NewLocalExitRoot` by replaying every `bridge_exit` from the certificate
-against a shadow-fork of the L2 chain, then reading the resulting `localExitRoot` storage slot
-directly from the forked bridge contract.
+#### Step G1 — Sync the L2 bridge history and resolve the shadow-fork block
 
-**Why shadow-fork instead of local Merkle math:**
-The `AgglayerBridge` contract maintains its own Local Exit Tree internally. Recomputing it
-off-chain requires matching the exact leaf encoding and tree implementation. Driving the actual
-contract on a fork eliminates that divergence risk.
+**Persists** every L2 bridge from genesis up to `targetBlock` using the **lite bridge syncer**
+(`tools/exit_certificate/bridgesyncerlite`), reading `BridgeEvent` logs from the **real L2**
+(`l2RpcUrl`) in parallel into the DB at `output/step-g1-l2bridgesyncerlite.sqlite`. It does **not**
+build the exit tree here — that is deferred to Step G2, which assembles the whole tree once from the
+full set (genesis→fork plus replayed). The shadow-fork block is exactly the resolved `targetBlock`
+(the lite syncer fetches that range), so Anvil forks there aligned to the contract's state at that
+block. Running the full-history scan against the *fast* real L2 is the point of the G1/G2 split: G2
+never re-scans the chain.
 
-**Approach:**
+The lite syncer aborts if the chain emitted any event that would invalidate a BridgeEvent-only
+reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`,
+`RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`) — unless
+`options.ignoreUnsupportedL2Events=true`, which downgrades the abort to a warning and skips the event
+(the resulting LER may then be incorrect). `NewWrappedToken` is ignored (it is neither indexed nor
+processed).
 
-1. **Fork L2 at `targetBlock`** — spin up an Anvil instance (`anvil --fork-url <l2RpcUrl>
-   --fork-block-number <targetBlock>`). Anvil is a required external dependency for this step.
-2. **Impersonate a funded sender** — use `anvil_impersonateAccount` + `anvil_setBalance` so
-   `bridgeAsset` calls can be sent without a real private key.
-3. **Replay bridge exits** — for each `BridgeExit` in the certificate (`bridge_exits` list),
-   send an `eth_sendTransaction` calling
-   [`bridgeAsset`](https://github.com/agglayer/agglayer-contracts/blob/v12.2.3/contracts/AgglayerBridge.sol)
-   on the L2 bridge contract with the same parameters:
-   - `destinationNetwork` — from the `BridgeExit`
-   - `destinationAddress` — from the `BridgeExit`
-   - `amount` — from the `BridgeExit`
-   - `token` — derived from `TokenInfo.OriginTokenAddress` / `OriginNetwork`
-   - `forceUpdateGlobalExitRoot = false`
-   - `permitData = ""`
-4. **Read `localExitRoot`** — after all calls, call the `localExitRootManager().localExitRoot()`
-   view function (or read the storage slot directly) on the bridge contract.
-5. **Return result** — assign the result to `Certificate.NewLocalExitRoot` and return it to the
-   caller. Saving `step-g-new-local-exit-root.json` is the orchestrator's responsibility, not Step G's.
+- **Output:** `step-g1-shadow-fork-block.json` (`StepG1Result`: `shadowForkBlock`) and the lite DB
+  `output/step-g1-l2bridgesyncerlite.sqlite`.
 
-**Anvil dependency:** the tool shells out to `anvil` (from the Foundry toolchain). If `anvil`
-is not in `$PATH`, Step G must fail with a clear error message pointing to
-`https://getfoundry.sh`.
+#### Step G2 — Compute NewLocalExitRoot
 
-**Empty bridge exits:** if the certificate has no `bridge_exits`, skip the fork entirely and
-use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
+> **Input priority (single-step mode):** loads the shadow-fork block from `step-g1-shadow-fork-block.json` (run G1 first); uses `step-f-capped-certificate.json` if it exists (logged with ⚠️), otherwise falls back to `step-e-exit-certificate.json`. In `runAll` the in-memory certificate already reflects any capping done by Step F.
 
-- **Output:** `step-g-new-local-exit-root.json` (`StepGResult`)
+Step G2 has two modes, selected by `options.verifyNewLocalExitRootUsingShadowFork` (default `true`,
+i.e. the shadow-fork mode below).
+
+##### Off-chain lite exit tree (no Anvil) — `options.verifyNewLocalExitRootUsingShadowFork=false`
+
+`runStepG2LiteOnly` → `buildLiteTreeFromCertificate` (`step_g_events.go`): **copies** the lite DB
+Step G1 populated (`output/step-g1-l2bridgesyncerlite.sqlite` → `output/step-g-l2bridgesyncerlite.sqlite`,
+so G1's DB stays intact), converts the certificate's `bridge_exits` into lite leaves **in their
+given order** — continuing the deposit counts after the genesis→fork bridges — and **builds the
+whole exit tree once**. The tree root is the `NewLocalExitRoot`. No reorder, no Anvil.
+
+Each leaf is encoded as the bridge contract would: a native exit (nil/zero token info, or the gas
+token) takes the gas token as origin; an ERC-20 exit takes its `TokenInfo` origin. **Metadata is
+taken verbatim from each `BridgeExit`** (empty unless a prior step populated it). This is the one
+value not verified against the chain in this mode — if an exit needs non-empty metadata (e.g. an
+L2-native token bridged out, where the contract encodes name/symbol/decimals), the off-chain LER
+would diverge from the real one. Use the shadow-fork mode to verify.
+
+##### Anvil shadow-fork (default — `options.verifyNewLocalExitRootUsingShadowFork=true`)
+
+`runStepG2ShadowFork` drives the **actual** bridge contract on a fork, eliminating any leaf-encoding
+divergence risk, and verifies the off-chain reconstruction against it.
+
+1. **Fork L2 at the Step G1 block** — spin up an Anvil instance (`anvil --fork-url <l2RpcUrl>
+   --fork-block-number <g1ShadowForkBlock> --block-time <anvilBlockTimeSeconds> --disable-block-gas-limit
+   --auto-impersonate --no-rate-limit`). Anvil is a required external dependency for this mode.
+   **Interval mining** (`--block-time`) is used instead of auto-mine: with auto-mine each `bridgeAsset`
+   would produce its own block, so a mainnet replay (hundreds of thousands of exits) accumulates that
+   many blocks and Anvil degrades until receipt polling times out. Anvil instead mines a block every
+   interval, batching all pending txs into it; `--disable-block-gas-limit` lets one block hold every
+   pending tx. `--auto-impersonate` drops the per-tx `anvil_impersonateAccount` calls (balance is set
+   once per sender). `--no-rate-limit` disables Anvil's internal ~330 CUPS throttle to the fork
+   backend, which otherwise caps cold-state fetches to a few exits/s regardless of concurrency.
+
+   > **Fork backend is the bottleneck.** Replaying against a *remote* `l2RpcUrl` means every cold
+   > storage slot is a network round-trip; throughput is bound by the upstream RPC's latency and rate
+   > limits. Transient fork errors are retried (`isTransientForkError`,
+   > `--retries`/`--fork-retry-backoff`). For a large replay, fork against a **local archive node**.
+2. **Fund the senders** — Anvil runs with `--auto-impersonate`, so any account can send txs; each
+   sender's ETH balance is set once with `anvil_setBalance`. For ERC-20 exits, the sender's token
+   balance is patched to `MaxUint256` via storage and a single `approve(bridge, MaxUint256)` is sent
+   per (sender, token).
+3. **Replay bridge exits via a send/collect pipeline** — for each `BridgeExit`, send `bridgeAsset`
+   (`forceUpdateGlobalExitRoot=false`, empty `permitData`). `replayBridgeExits` does **not** wait for
+   each tx's receipt before sending the next; sender workers (one per sender group,
+   `concurrency = options.concurrencyLimit`) fire all of a sender's txs onto a bounded channel
+   (`replayInFlightWindow`) while collector workers pull them and fetch receipts in parallel.
+   **Exits are grouped by sender (`DestinationAddress`)**: same-sender txs are sent sequentially so
+   Anvil assigns nonces in order (approve before bridge). As each receipt is collected its
+   `BridgeEvent` is parsed into a `bridgesyncerlite.BridgeLeaf` — the on-chain `depositCount`, leaf
+   content, metadata and block position — and stored at the exit's original index
+   (`replayBridgeExits` returns `[]BridgeLeaf`).
+4. **Read `getRoot()`** on the forked contract after every exit is replayed — the authoritative
+   on-chain LER, which becomes `Certificate.NewLocalExitRoot`.
+5. **Reorder the certificate by deposit count** — `reorderCertificateByDepositCount` (`step_g_order.go`)
+   sorts the exits (and the metadata slice) by the captured `DepositCount`, aligning the certificate
+   with the on-chain exit-tree leaf order (agglayer rebuilds the LER by inserting `bridge_exits` in
+   order). The metadata also comes from the replayed leaves (the real on-chain metadata).
+6. **Verify** — `buildLiteTreeWithReplayed` inserts the replayed leaves into the copied lite DB on
+   top of the genesis→fork bridges and builds the tree; its root **must** equal the contract's
+   `getRoot()`. A mismatch aborts Step G2 — except when `options.ignoreUnsupportedL2Events=true`,
+   where divergence is expected (the syncer skipped events the contract processed) and is only logged.
+
+   The replay is **fail-fast on hard errors**: the first `approve`/`bridgeAsset` send failure or
+   on-chain revert cancels the shared context, aborts with the real error (not `context.Canceled`),
+   kills Anvil via `defer cleanup()`, and persists the offending exit to `step-g-failed-exit.json`
+   (`FailedBridgeExit`).
+
+   A **receipt timeout** (`receiptPollTimeout`, 300s — the block did not mine in time, typically a
+   slow remote fork backend) is **not** fatal: the exit is deferred and retried after the
+   send/collect phase drains (`retryDeferredExit`). The retry loops **unbounded** until the exit
+   mines: each iteration **re-polls the current tx** (Anvil has usually mined its block by then) and,
+   only if the receipt is still absent — i.e. the tx never landed — **re-sends** the `bridgeAsset`
+   and polls the new hash next. Re-polling before each re-send is what keeps the tree correct: a tx
+   that did mine is never sent twice (which would double-count the exit's leaf). The retry exits only
+   on success, a **revert**, or **context cancellation** — those (and a re-send send failure) are
+   terminal and abort as above. A slow fork backend is never abandoned.
+
+**Empty bridge exits:** if the certificate has no `bridge_exits`, both modes skip straight to the
+canonical `bridgesynctypes.EmptyLER` (no Anvil, no tree).
+
+**Reordered certificate output:** the orchestrator saves the (shadow-fork-reordered, or
+default-order) certificate as `step-g-reordered-certificate.json` — written in both G2 modes. In
+`runAll` the in-memory certificate flows to Step I; in single-step mode Step I **always** reads
+`step-g-reordered-certificate.json` (no fallback to the capped/Step-E certificates) so the final
+certificate matches the computed LER.
+
+- **Output (G1):** `step-g1-shadow-fork-block.json` (`StepG1Result`) and the lite syncer DB `output/step-g1-l2bridgesyncerlite.sqlite`.
+- **Output (G2):** `step-g-new-local-exit-root.json` (`StepGResult`), `step-g-reordered-certificate.json`, `step-g-l2bridgesyncerlite.sqlite` (working copy of the G1 lite DB with the certificate's/replayed bridges + built tree); in shadow-fork mode also `step-g-failed-exit.json` *(only on replay failure)*
 
 ### Step H — Fetch PreviousLocalExitRoot
 
@@ -188,8 +266,10 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 
 ### Step I — Assemble final certificate
 
-- Reads `step-e-exit-certificate.json` (base from E), `step-g-new-local-exit-root.json`, and
-  `step-h-previous-local-exit-root.json` (optional).
+- Reads the base certificate. In single-step mode it **always** loads
+  `step-g-reordered-certificate.json` (run Step G first — there is no fallback to the capped/Step-E
+  certificates); in `runAll` the in-memory reordered certificate flows directly from Step G. Also
+  reads `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json` (optional).
 - Sets `Certificate.NewLocalExitRoot` from G and `Certificate.PrevLocalExitRoot` from H.
 - **Fetches `L1InfoTreeLeafCount`** — scans L1 backwards from the latest L1 block for the most
   recent `UpdateL1InfoTreeV2` event emitted by `l1GlobalExitRootAddress` and sets
@@ -231,14 +311,26 @@ use the canonical `bridgesynctypes.EmptyLER` value (no Anvil needed).
 | `SCLockedValue` | LBT total − EOA accumulated, per token |
 | `L1Deposit` | Parsed `BridgeEvent` log from L1 |
 | `TokenBalanceCheck` | Step F three-way comparison: `LBTAmount` (Step 0), `CertificateAmount` (sum of exits), `AgglayerAmount`. `LBTAmount` is empty when LBT data was unavailable (two-way fallback). |
-| `StepGResult` | `NewLocalExitRoot` hash + bridge exit count |
+| `StepG1Result` | `ShadowForkBlock` (the L2 block Step G2 forks at; the resolved targetBlock up to which G1 lite-synced the bridge history) |
+| `StepGResult` | `NewLocalExitRoot` hash + bridge exit count + `BridgeExitMetadata` (per-exit BridgeEvent metadata, in deposit order) |
 | `StepHResult` | `PreviousLocalExitRoot` + next certificate height from agglayer |
 | `StepSubmitResult` | `certificateHash` returned by the agglayer after submission |
 | `StepWaitResult` | `certificateHash`, `finalStatus`, optional `settlementTxHash`, `elapsedSeconds`, optional `pendingCertWaited` |
 
 ## Config fields (`config.go`)
 
-Required: `l2RpcUrl`, `l2BridgeAddress`, `targetBlock`.
+**File format:** `LoadConfig` accepts both **JSON** and **TOML**, selected by file extension — a
+`.toml` path is parsed as TOML, anything else (`.json` or no extension) as JSON. TOML is normalized
+to JSON internally (`tomlToJSON`: decode to a map, re-encode as JSON) so both formats share one
+parsing/validation path, including `signerConfig` and `agglayerClient`. Field names are identical in
+both formats (camelCase keys, e.g. `l2RpcUrl`; `signerConfig` uses PascalCase `Method`/`Path`/`Password`).
+
+Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress`, `targetBlock`.
+
+`exitAddress` is validated by `LoadConfig`: it must be present **and** must not be the zero address
+(`0x00…00`) — both cases return an error. SC-locked value is bridged to this address on
+`destinationNetwork`, so it must be an address whose private key the operator controls (the funds can
+only be recovered by signing from it).
 
 `targetBlock` accepts: a finality keyword (`LatestBlock`, `FinalizedBlock`, `SafeBlock`, `PendingBlock`), an optional negative offset appended with `/` (e.g. `LatestBlock/-10`), a decimal block number (`"21000000"`), or a hex block number (`"0x1406f40"`). An empty string defaults to `LatestBlock`. The keyword is resolved to a concrete `uint64` at the start of Step 0 and written to `step-0-l2_target_block.json`; all subsequent steps (A, B, G) read that fixed number. The old lowercase aliases (`latest`, `finalized`, `safe`, `pending`) are **not** accepted — use the PascalCase keywords.
 
@@ -248,14 +340,16 @@ Notable optional fields:
 - `l1GlobalExitRootAddress` — address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. Without it Step I fails.
 - `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
+- `options.ignoreUnsupportedL2Events` — `false` (default). When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it encounters an event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to inspect such a chain knowingly.
+- `options.verifyNewLocalExitRootUsingShadowFork` — `true` (default). When `true`, Step G2 spins up the Anvil shadow-fork, replays every exit against the real bridge contract, reorders the certificate to the on-chain deposit order with the on-chain metadata, and verifies the lite tree root against the contract's `getRoot()` (requires Anvil). When `false`, Step G2 computes the `NewLocalExitRoot` off-chain from the lite exit tree (G1's genesis→fork bridges + the certificate's exits) — fast, no Anvil, but it trusts the off-chain leaf encoding/metadata.
 
 Defaults applied by `LoadConfig`:
 
 - `l1BridgeAddress` defaults to `l2BridgeAddress`
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
-- `options.abortOnGenesisBalance` = `true` — abort if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `false` only for Kurtosis/test environments.
-- `options.continueIfBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
+- `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.
+- `options.ignoreBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
 - Relative paths in `options.outputDir` and `signerConfig.Path` resolve from the directory containing the config file.
 
 `signerConfig` uses `signertypes.SignerConfig` (same type as aggsender's `AggsenderPrivateKey`). The JSON format is flat — `Method`, `Path`, `Password` are top-level keys (matching the TOML inline table style). Parsed by `parseSignerConfig` which splits `Method` out and puts the rest into `Config map[string]any`.
@@ -272,14 +366,14 @@ Defaults applied by `LoadConfig`:
 
 - **Output dir:** All intermediate files land in `options.outputDir` (default `./output` relative to the config file). The dir is created automatically.
 - **`parameters.json` and `output/` are git-ignored** — never commit them.
-- **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step I → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
+- **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step G2 → `step-g-reordered-certificate.json` (deposit-order exits); Step I reads `step-g-reordered-certificate.json` → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
 - **LBT resolution:** `resolveOrGenerateLBT` always runs Step 0 and saves `step-0-lbt.json`.
 - **Step F reads from `step-d-exit-certificate.json`** for the balance check (not the final certificate), so the comparison reflects pure L2 exits before Step E additions. When capping is triggered, the caps are also applied to the final (Step E) certificate's `BridgeExits` in `runAll`, and saved as `step-f-capped-certificate.json`.
-- **File chain with capping:** when `continueIfBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
+- **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
 - **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
-- **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — `abortOnGenesisBalance=true` catches this early.
+- **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — the genesis-balance guard (`ignoreGenesisBalance=false`, the default) catches this early.
 - **`debug_traceTransaction` must be available** on the L2 RPC (Step A). Archive node required.
-- **Step G requires Anvil** (`anvil` binary in `$PATH`, from the Foundry toolchain). The step fails fast with a clear error if it is missing.
+- **Step G2 requires Anvil only in shadow-fork mode** (`options.verifyNewLocalExitRootUsingShadowFork=true`; `anvil` binary in `$PATH`, from the Foundry toolchain). The default off-chain mode needs no Anvil.
 - **FEP chains are not supported.** Only Pessimistic Proof certificates are generated.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not handled** — value from those flows may be missing.
 
