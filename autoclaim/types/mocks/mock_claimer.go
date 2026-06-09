@@ -116,6 +116,63 @@ func (_c *Claimer_Enqueue_Call) RunAndReturn(run func(context.Context, types.Bri
 	return _c
 }
 
+// IsClaimed provides a mock function with given fields: ctx, bridge
+func (_m *Claimer) IsClaimed(ctx context.Context, bridge types.BridgeExit) (bool, error) {
+	ret := _m.Called(ctx, bridge)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsClaimed")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.BridgeExit) (bool, error)); ok {
+		return rf(ctx, bridge)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, types.BridgeExit) bool); ok {
+		r0 = rf(ctx, bridge)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, types.BridgeExit) error); ok {
+		r1 = rf(ctx, bridge)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Claimer_IsClaimed_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsClaimed'
+type Claimer_IsClaimed_Call struct {
+	*mock.Call
+}
+
+// IsClaimed is a helper method to define mock.On call
+//   - ctx context.Context
+//   - bridge types.BridgeExit
+func (_e *Claimer_Expecter) IsClaimed(ctx interface{}, bridge interface{}) *Claimer_IsClaimed_Call {
+	return &Claimer_IsClaimed_Call{Call: _e.mock.On("IsClaimed", ctx, bridge)}
+}
+
+func (_c *Claimer_IsClaimed_Call) Run(run func(ctx context.Context, bridge types.BridgeExit)) *Claimer_IsClaimed_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.BridgeExit))
+	})
+	return _c
+}
+
+func (_c *Claimer_IsClaimed_Call) Return(_a0 bool, _a1 error) *Claimer_IsClaimed_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Claimer_IsClaimed_Call) RunAndReturn(run func(context.Context, types.BridgeExit) (bool, error)) *Claimer_IsClaimed_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Target provides a mock function with no fields
 func (_m *Claimer) Target() types.ClaimerTarget {
 	ret := _m.Called()

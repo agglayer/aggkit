@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
@@ -21,46 +21,6 @@ const (
 	claimAssetMethod   = "claimAsset"
 	claimMessageMethod = "claimMessage"
 	defaultPollPeriod  = time.Second
-	bridgeABIJSON      = `[
-		{
-			"inputs": [
-				{"internalType": "bytes32[32]", "name": "smtProofLocalExitRoot", "type": "bytes32[32]"},
-				{"internalType": "bytes32[32]", "name": "smtProofRollupExitRoot", "type": "bytes32[32]"},
-				{"internalType": "uint256", "name": "globalIndex", "type": "uint256"},
-				{"internalType": "bytes32", "name": "mainnetExitRoot", "type": "bytes32"},
-				{"internalType": "bytes32", "name": "rollupExitRoot", "type": "bytes32"},
-				{"internalType": "uint32", "name": "originNetwork", "type": "uint32"},
-				{"internalType": "address", "name": "originTokenAddress", "type": "address"},
-				{"internalType": "uint32", "name": "destinationNetwork", "type": "uint32"},
-				{"internalType": "address", "name": "destinationAddress", "type": "address"},
-				{"internalType": "uint256", "name": "amount", "type": "uint256"},
-				{"internalType": "bytes", "name": "metadata", "type": "bytes"}
-			],
-			"name": "claimAsset",
-			"outputs": [],
-			"stateMutability": "nonpayable",
-			"type": "function"
-		},
-		{
-			"inputs": [
-				{"internalType": "bytes32[32]", "name": "smtProofLocalExitRoot", "type": "bytes32[32]"},
-				{"internalType": "bytes32[32]", "name": "smtProofRollupExitRoot", "type": "bytes32[32]"},
-				{"internalType": "uint256", "name": "globalIndex", "type": "uint256"},
-				{"internalType": "bytes32", "name": "mainnetExitRoot", "type": "bytes32"},
-				{"internalType": "bytes32", "name": "rollupExitRoot", "type": "bytes32"},
-				{"internalType": "uint32", "name": "originNetwork", "type": "uint32"},
-				{"internalType": "address", "name": "originAddress", "type": "address"},
-				{"internalType": "uint32", "name": "destinationNetwork", "type": "uint32"},
-				{"internalType": "address", "name": "destinationAddress", "type": "address"},
-				{"internalType": "uint256", "name": "amount", "type": "uint256"},
-				{"internalType": "bytes", "name": "metadata", "type": "bytes"}
-			],
-			"name": "claimMessage",
-			"outputs": [],
-			"stateMutability": "nonpayable",
-			"type": "function"
-		}
-	]`
 )
 
 var (
@@ -122,16 +82,16 @@ func New(
 		return nil, fmt.Errorf("autoclaim sender target claim reader is nil")
 	}
 
-	bridgeABI, err := abi.JSON(strings.NewReader(bridgeABIJSON))
+	bridgeABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
 	if err != nil {
-		return nil, fmt.Errorf("parse polygon bridge ABI: %w", err)
+		return nil, fmt.Errorf("retrieve AgglayerBridgeL2 ABI: %w", err)
 	}
 
 	sender := &Sender{
 		storage:           storage,
 		ethTxManager:      ethTxManager,
 		targetClaimReader: targetClaimReader,
-		bridgeABI:         &bridgeABI,
+		bridgeABI:         bridgeABI,
 		pollPeriod:        defaultPollPeriod,
 		now: func() time.Time {
 			return time.Now().UTC()

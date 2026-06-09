@@ -3,6 +3,7 @@ package claimer
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 )
@@ -43,4 +44,24 @@ func (r *Registry) ClaimerForDestination(
 	}
 	claimer, ok := r.byDestination[destinationNetwork]
 	return claimer, ok, nil
+}
+
+// Claimers returns all registered claimers in destination-network order.
+func (r *Registry) Claimers(_ context.Context) ([]autoclaimtypes.Claimer, error) {
+	if r == nil {
+		return nil, nil
+	}
+	destinations := make([]uint32, 0, len(r.byDestination))
+	for destination := range r.byDestination {
+		destinations = append(destinations, destination)
+	}
+	sort.Slice(destinations, func(i, j int) bool {
+		return destinations[i] < destinations[j]
+	})
+
+	claimers := make([]autoclaimtypes.Claimer, 0, len(destinations))
+	for _, destination := range destinations {
+		claimers = append(claimers, r.byDestination[destination])
+	}
+	return claimers, nil
 }

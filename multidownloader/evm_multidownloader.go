@@ -515,16 +515,6 @@ func getBlockNumbers(logs []types.Log) []uint64 {
 	}
 	return result
 }
-
-func appendBlockNumberIfMissing(blockNumbers []uint64, blockNumber uint64) []uint64 {
-	for _, existing := range blockNumbers {
-		if existing == blockNumber {
-			return blockNumbers
-		}
-	}
-	return append(blockNumbers, blockNumber)
-}
-
 func (dh *EVMMultidownloader) IsInitialized() bool {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
@@ -706,7 +696,6 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	dh.log.Debugf("Safe/Step: logs (%d) for blockRange=%s, addrs=%v", len(logs),
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
-	blocks = appendBlockNumberIfMissing(blocks, logQueryData.BlockRange.ToBlock)
 	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks", len(blocks))
 	var blockHeaders []*aggkittypes.BlockHeader
 	if len(blocks) > 0 {

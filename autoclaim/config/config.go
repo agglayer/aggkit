@@ -52,6 +52,7 @@ type APIConfig struct {
 // L1ToL2Watchdog configures L1-to-L2 bridge exit discovery.
 type L1ToL2Watchdog struct {
 	Enabled                    bool              `mapstructure:"Enabled"`
+	StartBlock                 uint64            `mapstructure:"StartBlock"`
 	PollInterval               cfgtypes.Duration `mapstructure:"PollInterval"`
 	RetryAfterErrorPeriod      cfgtypes.Duration `mapstructure:"RetryAfterErrorPeriod"`
 	MaxRetryAttemptsAfterError int               `mapstructure:"MaxRetryAttemptsAfterError"`

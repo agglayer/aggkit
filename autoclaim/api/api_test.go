@@ -232,6 +232,29 @@ func TestResponseJSONFields(t *testing.T) {
 	require.Equal(t, "last problem", result.LastError)
 }
 
+func TestSwaggerRoutes(t *testing.T) {
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+
+	response := performRequest(t, api, http.MethodGet, Prefix+"/swagger", nil)
+	require.Equal(t, http.StatusFound, response.Code)
+	require.Equal(t, Prefix+"/swagger/index.html", response.Header().Get("Location"))
+
+	response = performRequest(t, api, http.MethodGet, Prefix+"/swagger/doc.json", nil)
+	require.Equal(t, http.StatusOK, response.Code)
+
+	var doc struct {
+		BasePath string                    `json:"basePath"`
+		Paths    map[string]map[string]any `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &doc))
+	require.Equal(t, Prefix, doc.BasePath)
+	require.Contains(t, doc.Paths, "/bridges")
+	require.Contains(t, doc.Paths, "/bridges/{id}")
+	require.Contains(t, doc.Paths, "/bridges/{id}/approve")
+	require.Contains(t, doc.Paths, "/bridges/{id}/reject")
+}
+
 func TestClaimingPathIsIndependentWhenAPIDisabled(t *testing.T) {
 	api, err := New(Config{Enabled: false}, nil, nil)
 	require.NoError(t, err)
@@ -375,6 +398,10 @@ func (r *fakeRegistry) ClaimerForDestination(
 	return r.claimer, true, nil
 }
 
+func (r *fakeRegistry) Claimers(context.Context) ([]autoclaimtypes.Claimer, error) {
+	return []autoclaimtypes.Claimer{r.claimer}, nil
+}
+
 type fakeClaimer struct {
 	target   autoclaimtypes.ClaimerTarget
 	advanced []autoclaimtypes.RequestKey
@@ -382,6 +409,10 @@ type fakeClaimer struct {
 
 func (c *fakeClaimer) Target() autoclaimtypes.ClaimerTarget {
 	return c.target
+}
+
+func (c *fakeClaimer) IsClaimed(context.Context, autoclaimtypes.BridgeExit) (bool, error) {
+	return false, nil
 }
 
 func (c *fakeClaimer) Enqueue(context.Context, autoclaimtypes.BridgeExit) error {

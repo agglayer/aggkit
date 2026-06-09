@@ -38,6 +38,7 @@ Port = 5579
 
 [AutoClaim.L1ToL2Watchdog]
 Enabled = true
+StartBlock = 0
 PollInterval = "3s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
@@ -104,6 +105,7 @@ configuration.
 | `AutoClaim.API.Host` | `0.0.0.0` | When API enabled | API listen host. |
 | `AutoClaim.API.Port` | `5579` | When API enabled | API listen port. |
 | `AutoClaim.L1ToL2Watchdog.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
+| `AutoClaim.L1ToL2Watchdog.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
 | `AutoClaim.L1ToL2Watchdog.PollInterval` | `3s` | Yes | How often the watchdog polls `l1bridgesync`. |
 | `AutoClaim.L1ToL2Watchdog.RetryAfterErrorPeriod` | `1s` | Yes | Reserved retry delay for watchdog errors. |
 | `AutoClaim.L1ToL2Watchdog.MaxRetryAttemptsAfterError` | `-1` | No | Reserved retry limit. `-1` means unlimited. |
@@ -137,7 +139,7 @@ Each enabled `[[AutoClaim.Claimers]]` entry owns one destination network.
 | `allow-all` | Approves every eligible L1 to L2 request automatically. |
 | `api-approve` | Stores the request as `manual-approval-required`; an operator must approve or reject through the API. |
 | `no-message` | Rejects message bridge leaves and approves asset bridge leaves. |
-| `basic-filter` | Uses target-chain simulation when available. It rejects claims whose simulated gas exceeds `MaxGas`, rejects detected nested bridge calls, approves when checks pass, and falls back to manual review when simulation or nested-call inspection is unavailable. |
+| `basic-filter` | Uses target-chain simulation. It rejects claims whose simulated gas exceeds `MaxGas`, rejects detected nested bridge calls, approves when checks pass, and returns a policy error when simulation or nested-call inspection is unavailable. |
 
 `Policy.AllowMessageClaims`, `Policy.AllowedOrigins`, `Policy.AllowedTokens`, `Policy.ManualFallback`, and
 `Policy.MaxGas` are policy configuration inputs. The current runtime wires the named policies directly; operators
@@ -218,6 +220,12 @@ The API returns request fields including `id`, `status`, bridge identifiers, `gl
 `claim_tx_hash`, `tx_manager_id`, `l1_info_tree_index`, retry counters, policy decision metadata, manual decision
 metadata, timestamps, and `last_error`.
 
+### API Documentation
+
+<iframe src="assets/swagger/autoclaim/index.html"
+  style="width: 100%; height: 90vh; border: none;"
+  loading="lazy"></iframe>
+
 Example workflow for `api-approve`:
 
 ```bash
@@ -249,8 +257,8 @@ Approving or rejecting any status other than `manual-approval-required` returns 
   `failed` and require operator investigation.
 - Use `api-approve` when an operator must explicitly inspect each request before claim submission. Expose the API only
   on trusted networks or behind access controls; it can approve or reject pending manual requests.
-- `basic-filter` is conservative when target simulation is unavailable and returns manual review instead of automatic
-  approval.
+- `basic-filter` is conservative when target simulation is unavailable and leaves the request blocked with
+  `last_error` instead of moving it to manual review or automatic approval.
 
 ## Validation
 

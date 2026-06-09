@@ -88,6 +88,64 @@ func (_c *ClaimerRegistry_ClaimerForDestination_Call) RunAndReturn(run func(cont
 	return _c
 }
 
+// Claimers provides a mock function with given fields: ctx
+func (_m *ClaimerRegistry) Claimers(ctx context.Context) ([]types.Claimer, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Claimers")
+	}
+
+	var r0 []types.Claimer
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]types.Claimer, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []types.Claimer); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]types.Claimer)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ClaimerRegistry_Claimers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Claimers'
+type ClaimerRegistry_Claimers_Call struct {
+	*mock.Call
+}
+
+// Claimers is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *ClaimerRegistry_Expecter) Claimers(ctx interface{}) *ClaimerRegistry_Claimers_Call {
+	return &ClaimerRegistry_Claimers_Call{Call: _e.mock.On("Claimers", ctx)}
+}
+
+func (_c *ClaimerRegistry_Claimers_Call) Run(run func(ctx context.Context)) *ClaimerRegistry_Claimers_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *ClaimerRegistry_Claimers_Call) Return(_a0 []types.Claimer, _a1 error) *ClaimerRegistry_Claimers_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ClaimerRegistry_Claimers_Call) RunAndReturn(run func(context.Context) ([]types.Claimer, error)) *ClaimerRegistry_Claimers_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewClaimerRegistry creates a new instance of ClaimerRegistry. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewClaimerRegistry(t interface {

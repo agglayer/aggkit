@@ -579,6 +579,10 @@ func (c fakeClaimer) Target() autoclaimtypes.ClaimerTarget {
 	return c.target
 }
 
+func (fakeClaimer) IsClaimed(context.Context, autoclaimtypes.BridgeExit) (bool, error) {
+	return false, nil
+}
+
 func (fakeClaimer) Enqueue(context.Context, autoclaimtypes.BridgeExit) error {
 	return nil
 }

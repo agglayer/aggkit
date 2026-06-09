@@ -287,6 +287,7 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		cursorStore,
 		registry,
 		watchdog.WithEnabled(cfg.L1ToL2Watchdog.Enabled),
+		watchdog.WithStartBlock(cfg.L1ToL2Watchdog.StartBlock),
 		watchdog.WithPollPeriod(cfg.L1ToL2Watchdog.PollInterval.Duration),
 		watchdog.WithEtrogL1UpgradeBlock(cfg.L1ToL2Watchdog.EtrogL1UpgradeBlock),
 		watchdog.WithClaimAnchorSelector(proofPreparer),
@@ -369,6 +370,7 @@ func createClaimer(
 		claimPolicy,
 		proofPreparer,
 		claimSender,
+		claimer.WithTargetClaimReader(claimReader),
 		claimer.WithPollPeriod(cfg.WaitPeriod.Duration),
 		claimer.WithLogger(logger),
 	)

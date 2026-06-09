@@ -2,6 +2,8 @@ package policy
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strconv"
 
 	autoclaimconfig "github.com/agglayer/aggkit/autoclaim/config"
@@ -64,22 +66,15 @@ func (p basicFilterPolicy) Evaluate(
 	request autoclaimtypes.AutoClaimRequest,
 ) (*autoclaimtypes.PolicyDecision, error) {
 	if p.targetSimulator == nil {
-		return newDecision(
-			autoclaimconfig.PolicyNameBasicFilter,
-			autoclaimtypes.PolicyResultManual,
-			ReasonTargetSimulationUnavailable,
-			nil,
-		), nil
+		return nil, errors.New(ReasonTargetSimulationUnavailable)
 	}
 
 	result, err := p.targetSimulator.SimulateClaim(ctx, request)
-	if err != nil || result == nil {
-		return newDecision(
-			autoclaimconfig.PolicyNameBasicFilter,
-			autoclaimtypes.PolicyResultManual,
-			ReasonTargetSimulationUnavailable,
-			nil,
-		), nil
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ReasonTargetSimulationUnavailable, err)
+	}
+	if result == nil {
+		return nil, fmt.Errorf("%s: empty simulation result", ReasonTargetSimulationUnavailable)
 	}
 
 	metadata := map[string]string{
@@ -111,11 +106,6 @@ func (p basicFilterPolicy) Evaluate(
 			metadata,
 		), nil
 	default:
-		return newDecision(
-			autoclaimconfig.PolicyNameBasicFilter,
-			autoclaimtypes.PolicyResultManual,
-			ReasonNestedBridgeInspectionUnsafe,
-			metadata,
-		), nil
+		return nil, fmt.Errorf("%s: %s", ReasonNestedBridgeInspectionUnsafe, result.NestedBridgeCall)
 	}
 }

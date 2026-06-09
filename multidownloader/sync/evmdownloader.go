@@ -202,15 +202,19 @@ func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 	}
 	isFinalizedBlock := !unsafeRange.ContainsBlockNumber(lastBlockNumber)
 	if hdr == nil {
-		hdr, err = d.multidownloader.HeaderByNumber(ctx, aggkittypes.NewBlockNumber(lastBlockNumber))
-		if err != nil || hdr == nil {
+		// Check that we are not in the unsafe zone. Because in that case we can't fake the Hash and it's an error
+		// because the block must in in storage
+		if !isFinalizedBlock {
 			err := fmt.Errorf("Multidownloader_EVMDownloader: "+
-				"cannot get block header for block number %d", lastBlockNumber)
-			if !isFinalizedBlock {
-				err = fmt.Errorf("%w in unsafe zone", err)
-			}
+				"cannot get block header for block number %d in unsafe zone", lastBlockNumber)
 			d.logger.Error(err)
 			return err
+		}
+		hdr = &aggkittypes.BlockHeader{
+			Number:     lastBlockNumber,
+			Hash:       aggkitcommon.ZeroHash,
+			Time:       0,
+			ParentHash: nil,
 		}
 	}
 	// Add empty block

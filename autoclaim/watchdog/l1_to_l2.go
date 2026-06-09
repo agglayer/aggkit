@@ -3,6 +3,7 @@ package watchdog
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
@@ -139,6 +140,17 @@ type L1ToL2 struct {
 	log                 aggkitcommon.Logger
 }
 
+type destinationCursorState struct {
+	claimer      autoclaimtypes.Claimer
+	cursorName   string
+	cursor       *autoclaimtypes.BridgeCursor
+	cursorFound  bool
+	fromBlock    uint64
+	nextCursor   autoclaimtypes.BridgeCursor
+	holdCursor   bool
+	eligiblePoll bool
+}
+
 // NewL1ToL2 creates an L1-to-L2 Auto Claim watchdog.
 func NewL1ToL2(
 	bridgeSource autoclaimtypes.BridgeSource,
@@ -215,19 +227,34 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		return &PollResult{}, nil
 	}
 
-	cursor, cursorFound, err := w.cursorStore.GetBridgeCursor(ctx, w.cursorName)
+	states, err := w.destinationCursorStates(ctx, lastProcessedBlock)
 	if err != nil {
-		return nil, fmt.Errorf("get autoclaim l1-to-l2 cursor: %w", err)
+		return nil, err
 	}
-
-	fromBlock := w.nextFromBlock(cursor, cursorFound, lastProcessedBlock)
-	result := &PollResult{FromBlock: fromBlock, LastProcessedBlock: lastProcessedBlock}
-	if fromBlock > lastProcessedBlock {
+	result := &PollResult{LastProcessedBlock: lastProcessedBlock}
+	if len(states) == 0 {
 		return result, nil
 	}
 
+	fromBlock := lowestFromBlock(states)
+	result.FromBlock = fromBlock
+	if fromBlock > lastProcessedBlock {
+		return result, nil
+	}
 	toBlock := minUint64(lastProcessedBlock, fromBlock+w.blockWindow-1)
 	result.ToBlock = toBlock
+	for _, state := range states {
+		state.eligiblePoll = state.fromBlock <= toBlock
+		if !state.eligiblePoll {
+			continue
+		}
+		state.nextCursor = autoclaimtypes.BridgeCursor{
+			FromBlock: state.fromBlock,
+			ToBlock:   toBlock,
+			BlockNum:  toBlock,
+			BlockPos:  0,
+		}
+	}
 
 	bridges, err := w.bridgeSource.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
@@ -236,22 +263,26 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	result.BridgeCount = len(bridges)
 
 	seen := make(map[autoclaimtypes.RequestKey]struct{}, len(bridges))
-	holdCursor := false
-	nextCursor := autoclaimtypes.BridgeCursor{
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		BlockNum:  toBlock,
-		BlockPos:  0,
-	}
 	for _, bridge := range bridges {
 		exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
-		nextCursor = maxCursorPosition(nextCursor, exit.BlockNum, exit.BlockPos)
-		if cursorFound && cursor != nil && atOrBeforeCursor(exit, *cursor) {
+		if exit.OriginNetwork != autoclaimtypes.L1OriginNetwork {
+			result.IgnoredBridgeCount++
+			continue
+		}
+
+		state, ok := states[exit.DestinationNetwork]
+		if !ok || !state.eligiblePoll {
+			result.IgnoredBridgeCount++
+			continue
+		}
+		if exit.BlockNum < state.fromBlock ||
+			state.cursorFound && state.cursor != nil && atOrBeforeCursor(exit, *state.cursor) {
 			result.SkippedBridgeCount++
 			continue
 		}
-		if exit.OriginNetwork != autoclaimtypes.L1OriginNetwork {
-			result.IgnoredBridgeCount++
+		state.nextCursor = maxCursorPosition(state.nextCursor, exit.BlockNum, exit.BlockPos)
+		if state.holdCursor {
+			result.PendingBridgeCount++
 			continue
 		}
 
@@ -266,11 +297,11 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		}
 		seen[key] = struct{}{}
 
-		claimer, ok, err := w.registry.ClaimerForDestination(ctx, exit.DestinationNetwork)
+		claimed, err := state.claimer.IsClaimed(ctx, exit)
 		if err != nil {
-			return result, fmt.Errorf("resolve claimer for destination %d: %w", exit.DestinationNetwork, err)
+			return result, fmt.Errorf("check l1 bridge %s target claim state: %w", key, err)
 		}
-		if !ok {
+		if claimed {
 			result.IgnoredBridgeCount++
 			continue
 		}
@@ -283,27 +314,91 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 			}
 			if !ready {
 				result.PendingBridgeCount++
-				holdCursor = true
-				break
+				state.holdCursor = true
+				continue
 			}
 			exit.L1InfoTreeIndex = &l1InfoTreeIndex
 		}
-		if err := claimer.Enqueue(ctx, exit); err != nil {
-			return result, fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w", key, claimer.Target().ID, err)
+		if err := state.claimer.Enqueue(ctx, exit); err != nil {
+			return result, fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w",
+				key, state.claimer.Target().ID, err)
 		}
 		result.EnqueuedBridgeCount++
 	}
 
-	if holdCursor {
-		return result, nil
+	for _, state := range orderedStates(states) {
+		if !state.eligiblePoll || state.holdCursor {
+			continue
+		}
+		if err := w.cursorStore.SaveBridgeCursor(ctx, state.cursorName, state.nextCursor, w.now()); err != nil {
+			return result, fmt.Errorf("save autoclaim l1-to-l2 cursor %s: %w", state.cursorName, err)
+		}
+		result.CursorAdvanced = true
 	}
-
-	if err := w.cursorStore.SaveBridgeCursor(ctx, w.cursorName, nextCursor, w.now()); err != nil {
-		return result, fmt.Errorf("save autoclaim l1-to-l2 cursor: %w", err)
-	}
-	result.CursorAdvanced = true
 
 	return result, nil
+}
+
+func (w *L1ToL2) destinationCursorStates(
+	ctx context.Context,
+	lastProcessedBlock uint64,
+) (map[uint32]*destinationCursorState, error) {
+	claimers, err := w.registry.Claimers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list autoclaim l1-to-l2 claimers: %w", err)
+	}
+	states := make(map[uint32]*destinationCursorState, len(claimers))
+	for _, runtimeClaimer := range claimers {
+		if runtimeClaimer == nil {
+			return nil, fmt.Errorf("autoclaim l1-to-l2 registry returned nil claimer")
+		}
+		target := runtimeClaimer.Target()
+		cursorName := w.cursorNameForDestination(target.DestinationNetwork)
+		cursor, cursorFound, err := w.cursorStore.GetBridgeCursor(ctx, cursorName)
+		if err != nil {
+			return nil, fmt.Errorf("get autoclaim l1-to-l2 cursor %s: %w", cursorName, err)
+		}
+		states[target.DestinationNetwork] = &destinationCursorState{
+			claimer:     runtimeClaimer,
+			cursorName:  cursorName,
+			cursor:      cursor,
+			cursorFound: cursorFound,
+			fromBlock:   w.nextFromBlock(cursor, cursorFound, lastProcessedBlock),
+		}
+	}
+	return states, nil
+}
+
+func (w *L1ToL2) cursorNameForDestination(destinationNetwork uint32) string {
+	return fmt.Sprintf("%s:%d", w.cursorName, destinationNetwork)
+}
+
+func lowestFromBlock(states map[uint32]*destinationCursorState) uint64 {
+	var lowest uint64
+	found := false
+	for _, state := range states {
+		if !found || state.fromBlock < lowest {
+			lowest = state.fromBlock
+			found = true
+		}
+	}
+	return lowest
+}
+
+func orderedStates(states map[uint32]*destinationCursorState) []*destinationCursorState {
+	destinations := make([]uint32, 0, len(states))
+	for destination := range states {
+		destinations = append(destinations, destination)
+	}
+	sort.Slice(destinations, func(i, j int) bool {
+		return destinations[i] < destinations[j]
+	})
+
+	ordered := make([]*destinationCursorState, 0, len(destinations))
+	for _, destination := range destinations {
+		ordered = append(ordered, states[destination])
+	}
+	return ordered
 }
 
 func (w *L1ToL2) nextFromBlock(

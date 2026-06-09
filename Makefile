@@ -116,10 +116,14 @@ lint: ## Runs the linter
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
-	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs
+	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim
+	@swag init -g api.go -d autoclaim/api -o autoclaim/api/docs --instanceName autoclaim
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
+	@mkdir -p docs/assets/swagger/autoclaim
+	@cp autoclaim/api/docs/autoclaim_swagger.json docs/assets/swagger/autoclaim/swagger.json
+	@echo "Copied autoclaim_swagger.json to docs/assets/swagger/autoclaim/"
 
 .PHONY: vulncheck
 vulncheck: ## Runs the vulnerability checker tool

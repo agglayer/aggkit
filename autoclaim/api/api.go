@@ -1,3 +1,15 @@
+// @title Auto Claim API
+// @version 1.0
+// @description API documentation for the Auto Claim service
+
+// @contact.name API Support
+// @contact.url https://polygon.technology/
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @BasePath /autoclaim/v1
+
 package api
 
 import (
@@ -15,7 +27,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 
+	_ "github.com/agglayer/aggkit/autoclaim/api/docs"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -25,6 +40,8 @@ import (
 const (
 	// Prefix is the non-colliding REST prefix for the Auto Claim API.
 	Prefix = "/autoclaim/v1"
+
+	swaggerInstanceName = "autoclaim"
 
 	defaultPageSize = uint32(100)
 	manualPolicy    = "manual"
@@ -143,6 +160,14 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 		group.GET("/bridges/:id", a.getBridge)
 		group.POST("/bridges/:id/approve", a.approveBridge)
 		group.POST("/bridges/:id/reject", a.rejectBridge)
+
+		group.GET("/swagger/*any", ginswagger.WrapHandler(
+			swaggerfiles.Handler,
+			ginswagger.InstanceName(swaggerInstanceName),
+		))
+		group.GET("/swagger", func(ctx *gin.Context) {
+			ctx.Redirect(http.StatusFound, Prefix+"/swagger/index.html")
+		})
 	}
 }
 
@@ -174,6 +199,27 @@ func (a *API) Start(ctx context.Context) error {
 	return nil
 }
 
+// listBridges retrieves paginated Auto Claim bridge requests.
+//
+// @Summary List Auto Claim bridge requests
+// @Description Returns tracked Auto Claim requests with optional filters and pagination.
+// @Tags autoclaim
+// @Param origin_network query uint32 false "Filter by origin network ID"
+// @Param destination_network query uint32 false "Filter by destination network ID"
+// @Param status query string false "Filter by request status"
+// @Param policy_status query string false "Filter by policy result"
+// @Param policy_result query string false "Alias for policy_status"
+// @Param bridge_tx_hash query string false "Filter by 0x-prefixed bridge transaction hash"
+// @Param claim_tx_hash query string false "Filter by 0x-prefixed claim transaction hash"
+// @Param from_block query uint64 false "Filter by minimum bridge block number"
+// @Param to_block query uint64 false "Filter by maximum bridge block number"
+// @Param page_number query uint32 false "Page number (default 0)"
+// @Param page_size query uint32 false "Page size (default 100)"
+// @Produce json
+// @Success 200 {object} ListResponse
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /bridges [get]
 func (a *API) listBridges(c *gin.Context) {
 	filter, err := parseRequestFilter(c)
 	if err != nil {
@@ -202,6 +248,17 @@ func (a *API) listBridges(c *gin.Context) {
 	})
 }
 
+// getBridge retrieves one Auto Claim bridge request.
+//
+// @Summary Get Auto Claim bridge request
+// @Description Returns one tracked Auto Claim request by request ID.
+// @Tags autoclaim
+// @Param id path string true "Auto Claim request ID"
+// @Produce json
+// @Success 200 {object} RequestResponse
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /bridges/{id} [get]
 func (a *API) getBridge(c *gin.Context) {
 	request, ok := a.requestByID(c)
 	if !ok {
@@ -210,10 +267,40 @@ func (a *API) getBridge(c *gin.Context) {
 	c.JSON(http.StatusOK, newRequestResponse(*request))
 }
 
+// approveBridge approves a request waiting for manual approval.
+//
+// @Summary Approve Auto Claim bridge request
+// @Description Approves a request currently in manual-approval-required and advances the matching claimer when present.
+// @Tags autoclaim
+// @Param id path string true "Auto Claim request ID"
+// @Param decision body DecisionRequest false "Manual approval metadata"
+// @Accept json
+// @Produce json
+// @Success 200 {object} RequestResponse
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 409 {object} ErrorResponse "Conflict"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /bridges/{id}/approve [post]
 func (a *API) approveBridge(c *gin.Context) {
 	a.manualDecision(c, autoclaimtypes.PolicyResultApproved)
 }
 
+// rejectBridge rejects a request waiting for manual approval.
+//
+// @Summary Reject Auto Claim bridge request
+// @Description Rejects a request currently in manual-approval-required and advances the matching claimer when present.
+// @Tags autoclaim
+// @Param id path string true "Auto Claim request ID"
+// @Param decision body DecisionRequest false "Manual rejection metadata"
+// @Accept json
+// @Produce json
+// @Success 200 {object} RequestResponse
+// @Failure 400 {object} ErrorResponse "Bad Request"
+// @Failure 404 {object} ErrorResponse "Not Found"
+// @Failure 409 {object} ErrorResponse "Conflict"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /bridges/{id}/reject [post]
 func (a *API) rejectBridge(c *gin.Context) {
 	a.manualDecision(c, autoclaimtypes.PolicyResultRejected)
 }
@@ -435,15 +522,8 @@ func isHexHash(value string) bool {
 	return err == nil
 }
 
-type decisionRequest struct {
-	Reason    string            `json:"reason"`
-	Metadata  map[string]string `json:"metadata"`
-	Decider   string            `json:"decider"`
-	DeciderID string            `json:"decider_id"`
-}
-
-func readDecisionRequest(reader io.Reader) (decisionRequest, error) {
-	var request decisionRequest
+func readDecisionRequest(reader io.Reader) (DecisionRequest, error) {
+	var request DecisionRequest
 	if reader == nil {
 		return request, nil
 	}

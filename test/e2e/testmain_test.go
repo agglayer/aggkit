@@ -2,12 +2,14 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/e2e/envs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -51,6 +53,7 @@ func TestMain(m *testing.M) {
 	if code == 0 {
 		if !l1HeadAdvances(env) {
 			log.Infof("[POSTTEST] Skipping bridge flows post-test check: L1 head is not advancing")
+			code = 1
 		} else {
 			log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 			runPostTestBridgeCheck(env)
@@ -136,7 +139,12 @@ func runPostTestBridgeCheck(env *envs.Env) {
 	l1OptsL1L2, l2OptsL1L2 := *env.L1.Transactor, *env.L2.Transactor
 	l1OptsL2L1, l2OptsL2L1 := *env.L1.Transactor, *env.L2.Transactor
 
+	l1l2UsesAutoClaim := autoClaimEnabled(env)
 	go func() {
+		if l1l2UsesAutoClaim {
+			l1l2ErrCh <- BridgeL1ToL2WithAutoClaim(bridgeCheckCtx, env, &l1OptsL1L2, &l2OptsL1L2)
+			return
+		}
 		l1l2ErrCh <- BridgeL1ToL2(bridgeCheckCtx, env, &l1OptsL1L2, &l2OptsL1L2)
 	}()
 	go func() {
@@ -153,4 +161,84 @@ func runPostTestBridgeCheck(env *envs.Env) {
 			Note that test env will not be cleaned for further debugging`, bridgeL1L2Err, bridgeL2L1Err)
 	}
 	log.Infof("[POSTTEST] Bridge flows post-test check succeeded.")
+}
+
+func BridgeL1ToL2WithAutoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts) error {
+	log.Info("Starting L1->L2 bridge flow using Auto Claim (helper)")
+	bridgeAmount := big.NewInt(1e14)
+	result, err := BridgeL1NoClaim(ctx, env, l1Opts, l2Opts, bridgeAmount, "posttest-autoclaim")
+	if err != nil {
+		return err
+	}
+	requestKey := autoclaimtypes.DeriveRequestKey(
+		result.Bridge.OriginNetwork,
+		result.Bridge.DestinationNetwork,
+		result.DepositCount,
+	)
+	confirmed, err := waitForAutoClaimStatusResult(ctx, requestKey, autoclaimtypes.RequestStatusConfirmed)
+	if err != nil {
+		return err
+	}
+	if confirmed.ClaimTxHash == nil {
+		return fmt.Errorf("Auto Claim request %s confirmed without claim tx hash", requestKey)
+	}
+	if err := requireClaimedOnL2(ctx, env, result.GlobalIndex); err != nil {
+		return err
+	}
+	log.Infof("L1->L2 flow completed successfully through Auto Claim (helper)")
+	return nil
+}
+
+func requireClaimedOnL2(ctx context.Context, env *envs.Env, globalIndex *big.Int) error {
+	depositCount, originNetwork, err := globalIndexToDepositCountAndOrigin(globalIndex)
+	if err != nil {
+		return fmt.Errorf("decode global index %s: %w", globalIndex.String(), err)
+	}
+	claimed, err := env.L2.Contracts.L2Bridge.IsClaimed(&bind.CallOpts{Context: ctx}, depositCount, originNetwork)
+	if err != nil {
+		return fmt.Errorf("check L2 claim state for global index %s: %w", globalIndex.String(), err)
+	}
+	if !claimed {
+		return fmt.Errorf("claim is not marked claimed on L2 for global index %s", globalIndex.String())
+	}
+	return nil
+}
+
+func autoClaimEnabled(env *envs.Env) bool {
+	config, err := os.ReadFile(env.GetAggkitConfigPath())
+	if err != nil {
+		log.Infof("[POSTTEST] Auto Claim config check failed, using manual L1->L2 claim path: %v", err)
+		return false
+	}
+	enabled, found := parseAutoClaimEnabled(string(config))
+	if !found {
+		return false
+	}
+	if enabled {
+		log.Infof("[POSTTEST] Auto Claim is enabled; L1->L2 bridge health check will wait for Auto Claim confirmation")
+	}
+	return enabled
+}
+
+func parseAutoClaimEnabled(config string) (bool, bool) {
+	inAutoClaimSection := false
+	for _, rawLine := range strings.Split(config, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			inAutoClaimSection = line == "[AutoClaim]"
+			continue
+		}
+		if !inAutoClaimSection || !strings.HasPrefix(line, "Enabled") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			return false, false
+		}
+		return strings.EqualFold(strings.TrimSpace(parts[1]), "true"), true
+	}
+	return false, false
 }

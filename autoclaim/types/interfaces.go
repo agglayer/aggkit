@@ -65,6 +65,7 @@ type Storage interface {
 // Claimer accepts discovered requests for one target network and advances them through the claim lifecycle.
 type Claimer interface {
 	Target() ClaimerTarget
+	IsClaimed(ctx context.Context, bridge BridgeExit) (bool, error)
 	Enqueue(ctx context.Context, bridge BridgeExit) error
 	Advance(ctx context.Context, key RequestKey) error
 }
@@ -72,6 +73,7 @@ type Claimer interface {
 // ClaimerRegistry resolves destination-network claimers for watchdog routing.
 type ClaimerRegistry interface {
 	ClaimerForDestination(ctx context.Context, destinationNetwork uint32) (Claimer, bool, error)
+	Claimers(ctx context.Context) ([]Claimer, error)
 }
 
 // TransactionManagerFactory constructs transaction managers for configured claimer targets.

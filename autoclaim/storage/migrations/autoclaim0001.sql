@@ -1,4 +1,5 @@
 -- +migrate Down
+DROP TABLE IF EXISTS autoclaim_bridge_cursor;
 DROP TABLE IF EXISTS autoclaim_transaction_attempt;
 DROP TABLE IF EXISTS autoclaim_request;
 -- +migrate Up
@@ -63,3 +64,12 @@ CREATE TABLE autoclaim_transaction_attempt (
 CREATE INDEX idx_autoclaim_attempt_request ON autoclaim_transaction_attempt(request_key);
 CREATE INDEX idx_autoclaim_attempt_tx_manager ON autoclaim_transaction_attempt(tx_manager_id);
 CREATE INDEX idx_autoclaim_attempt_claim_tx_hash ON autoclaim_transaction_attempt(claim_tx_hash);
+
+CREATE TABLE autoclaim_bridge_cursor (
+    cursor_name                  TEXT PRIMARY KEY,
+    from_block                   INTEGER NOT NULL,
+    to_block                     INTEGER NOT NULL,
+    block_num                    INTEGER NOT NULL,
+    block_pos                    INTEGER NOT NULL,
+    updated_at                   TIMESTAMP NOT NULL
+);

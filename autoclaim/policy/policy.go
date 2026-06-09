@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	autoclaimconfig "github.com/agglayer/aggkit/autoclaim/config"
@@ -55,21 +56,24 @@ func (p noMessagePolicy) Evaluate(
 	_ context.Context,
 	request autoclaimtypes.AutoClaimRequest,
 ) (*autoclaimtypes.PolicyDecision, error) {
-	if request.Bridge.LeafType == bridgesynctypes.LeafTypeMessage {
+	switch request.Bridge.LeafType {
+	case bridgesynctypes.LeafTypeMessage:
 		return newDecision(
 			autoclaimconfig.PolicyNameNoMessage,
 			autoclaimtypes.PolicyResultRejected,
 			ReasonMessageClaimsRejected,
 			nil,
 		), nil
+	case bridgesynctypes.LeafTypeAsset:
+		return newDecision(
+			autoclaimconfig.PolicyNameNoMessage,
+			autoclaimtypes.PolicyResultApproved,
+			ReasonAssetClaimApproved,
+			nil,
+		), nil
+	default:
+		return nil, fmt.Errorf("no-message policy unsupported bridge leaf type: %d", request.Bridge.LeafType)
 	}
-
-	return newDecision(
-		autoclaimconfig.PolicyNameNoMessage,
-		autoclaimtypes.PolicyResultApproved,
-		ReasonAssetClaimApproved,
-		nil,
-	), nil
 }
 
 func newDecision(

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"testing"
 	"time"
 
@@ -21,7 +22,8 @@ func TestPollOnceConstructsPollingWindows(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 25, found: true}
 	store := newMemoryCursorStore()
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(), WithStartBlock(5), WithBlockWindow(10))
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithStartBlock(5), WithBlockWindow(10))
 
 	result, err := watchdog.PollOnce(ctx)
 	require.NoError(t, err)
@@ -40,13 +42,14 @@ func TestPollOncePersistsCursorAfterSuccess(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 20, found: true}
 	store := newMemoryCursorStore()
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(), WithBlockWindow(7))
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(7))
 
 	result, err := watchdog.PollOnce(ctx)
 	require.NoError(t, err)
 	require.True(t, result.CursorAdvanced)
 
-	cursor, ok := store.cursors[defaultCursorName]
+	cursor, ok := store.cursors[watchdog.cursorNameForDestination(10)]
 	require.True(t, ok)
 	require.Equal(t, uint64(0), cursor.FromBlock)
 	require.Equal(t, uint64(6), cursor.ToBlock)
@@ -119,7 +122,8 @@ func TestBridgeSyncErrorDoesNotAdvanceCursor(t *testing.T) {
 	sourceErr := errors.New("bridge sync unavailable")
 	source := &fakeBridgeSource{lastProcessedBlock: 12, found: true, getBridgesErr: sourceErr}
 	store := newMemoryCursorStore()
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(), WithBlockWindow(13))
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(13))
 
 	_, err := watchdog.PollOnce(ctx)
 	require.ErrorIs(t, err, sourceErr)
@@ -130,14 +134,56 @@ func TestRestartFromPersistedCursor(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 60, found: true}
 	store := newMemoryCursorStore()
-	store.cursors[defaultCursorName] = autoclaimtypes.BridgeCursor{FromBlock: 40, ToBlock: 50, BlockNum: 50}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(), WithBlockWindow(20), WithOverlapBlocks(2))
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(20), WithOverlapBlocks(2))
+	store.cursors[watchdog.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
+		FromBlock: 40,
+		ToBlock:   50,
+		BlockNum:  50,
+	}
 
 	result, err := watchdog.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(49), result.FromBlock)
 	require.Equal(t, uint64(60), result.ToBlock)
 	require.Equal(t, []blockRange{{from: 49, to: 60}}, source.ranges)
+}
+
+func TestNewDestinationStartsFromConfiguredStartBlock(t *testing.T) {
+	ctx := context.Background()
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 60,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 5, to: 14}: {makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 11, 6, 0)},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
+	watchdog := newTestWatchdog(
+		t,
+		source,
+		store,
+		newFakeRegistry(claimer10, claimer11),
+		WithStartBlock(5),
+		WithBlockWindow(10),
+		WithOverlapBlocks(2),
+	)
+	store.cursors[watchdog.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
+		FromBlock: 40,
+		ToBlock:   50,
+		BlockNum:  50,
+	}
+
+	result, err := watchdog.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), result.FromBlock)
+	require.Equal(t, uint64(14), result.ToBlock)
+	require.Equal(t, []blockRange{{from: 5, to: 14}}, source.ranges)
+	require.Len(t, claimer11.enqueued, 1)
+	_, ok := store.cursors[watchdog.cursorNameForDestination(11)]
+	require.True(t, ok)
 }
 
 func TestEnqueueCallsGoToCorrectClaimer(t *testing.T) {
@@ -265,6 +311,31 @@ func TestPollOnceAttachesSelectedClaimAnchor(t *testing.T) {
 	require.Len(t, claimer.enqueued, 1)
 	require.NotNil(t, claimer.enqueued[0].L1InfoTreeIndex)
 	require.Equal(t, selectedIndex, *claimer.enqueued[0].L1InfoTreeIndex)
+}
+
+func TestPollOnceIgnoresAlreadyClaimedBridgeBeforeEnqueue(t *testing.T) {
+	ctx := context.Background()
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 10,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 0, to: 10}: {makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 10, 1, 0)},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{
+		target:  autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10},
+		claimed: true,
+	}
+	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
+
+	result, err := watchdog.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, result.EnqueuedBridgeCount)
+	require.Equal(t, 1, result.IgnoredBridgeCount)
+	require.True(t, result.CursorAdvanced)
+	require.Empty(t, claimer.enqueued)
+	require.Len(t, claimer.claimChecks, 1)
 }
 
 func TestClaimerErrorDoesNotAdvanceCursor(t *testing.T) {
@@ -412,15 +483,44 @@ func (r *fakeRegistry) ClaimerForDestination(
 	return claimer, ok, nil
 }
 
+func (r *fakeRegistry) Claimers(_ context.Context) ([]autoclaimtypes.Claimer, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	destinations := make([]uint32, 0, len(r.claimers))
+	for destination := range r.claimers {
+		destinations = append(destinations, destination)
+	}
+	sort.Slice(destinations, func(i, j int) bool {
+		return destinations[i] < destinations[j]
+	})
+	claimers := make([]autoclaimtypes.Claimer, 0, len(destinations))
+	for _, destination := range destinations {
+		claimers = append(claimers, r.claimers[destination])
+	}
+	return claimers, nil
+}
+
 type fakeClaimer struct {
-	target   autoclaimtypes.ClaimerTarget
-	err      error
-	enqueued []autoclaimtypes.BridgeExit
-	seen     map[autoclaimtypes.RequestKey]struct{}
+	target      autoclaimtypes.ClaimerTarget
+	err         error
+	claimErr    error
+	claimed     bool
+	claimChecks []autoclaimtypes.BridgeExit
+	enqueued    []autoclaimtypes.BridgeExit
+	seen        map[autoclaimtypes.RequestKey]struct{}
 }
 
 func (c *fakeClaimer) Target() autoclaimtypes.ClaimerTarget {
 	return c.target
+}
+
+func (c *fakeClaimer) IsClaimed(_ context.Context, bridge autoclaimtypes.BridgeExit) (bool, error) {
+	c.claimChecks = append(c.claimChecks, bridge)
+	if c.claimErr != nil {
+		return false, c.claimErr
+	}
+	return c.claimed, nil
 }
 
 func (c *fakeClaimer) Enqueue(_ context.Context, bridge autoclaimtypes.BridgeExit) error {

@@ -351,27 +351,12 @@ func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
 		Return(uint64(150), nil).Maybe()
 	testData.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Maybe()
-	markerHeader := &aggkittypes.BlockHeader{
-		Number: 150,
-		Hash:   common.HexToHash("0x150"),
-		Time:   1500,
-	}
-	headerResult := aggkittypes.NewBlockHeadersResult()
-	headerResult.AddHeader(markerHeader.Number, markerHeader)
-	testData.mockEthClient.EXPECT().
-		RetrieveBlockHeaders(mock.Anything, []uint64{markerHeader.Number}, testData.mdr.cfg.MaxParallelBlockHeaderRetrieval).
-		Return(headerResult, nil).
-		Once()
 	err = testData.mdr.Initialize(t.Context())
 	require.NoError(t, err)
 
 	finished, err := testData.mdr.StepSafe(t.Context())
 	require.NoError(t, err)
 	require.True(t, finished)
-	storedHeader, isFinal, err := testData.realStorage.GetBlockHeaderByNumber(nil, markerHeader.Number)
-	require.NoError(t, err)
-	require.True(t, isFinal)
-	require.Equal(t, markerHeader.Hash, storedHeader.Hash)
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	cancel()
@@ -402,9 +387,8 @@ func TestEVMMultidownloader_StepSafe_TotalHeaderFailure(t *testing.T) {
 	// All headers fail — no partial success
 	rpcResult := aggkittypes.NewBlockHeadersResult()
 	rpcResult.AddError(120, fmt.Errorf("rpc error"))
-	rpcResult.AddError(200, fmt.Errorf("rpc error"))
 	data.mockEthClient.EXPECT().
-		RetrieveBlockHeaders(mock.Anything, []uint64{120, 200}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
+		RetrieveBlockHeaders(mock.Anything, []uint64{120}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
 		Return(rpcResult, nil).Once()
 
 	_, err = data.mdr.StepSafe(t.Context())

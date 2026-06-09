@@ -634,7 +634,7 @@ URL = "http://agglayer:4443"
 UseTLS = false
 
 [AutoClaim]
-Enabled = true
+Enabled = false
 StoragePath = "/tmp/autoclaim-e2e-allow_all.sqlite"
 
 [AutoClaim.API]

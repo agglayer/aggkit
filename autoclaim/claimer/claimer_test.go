@@ -69,6 +69,37 @@ func TestPolicyRejectedFlowDoesNotSend(t *testing.T) {
 	require.Equal(t, 0, sender.submitCalls)
 }
 
+func TestPolicyErrorBlocksRequestUntilRecoveryRetrySucceeds(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	policyErr := errors.New("target simulation unavailable")
+	policy := &blockingPolicy{
+		result: autoclaimtypes.PolicyResultApproved,
+		err:    policyErr,
+	}
+	claimer := newTestClaimer(t, storage, policy, readyProof(), sender)
+	bridge := makeBridge(33, 10)
+
+	err := claimer.Enqueue(ctx, bridge)
+	require.ErrorIs(t, err, policyErr)
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusDetected, request.Status)
+	require.Nil(t, request.PolicyDecision)
+	require.Equal(t, policyErr.Error(), request.LastError)
+	require.Equal(t, 0, sender.submitCalls)
+
+	policy.err = nil
+	require.NoError(t, claimer.Recover(ctx))
+
+	request = storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusConfirmed, request.Status)
+	require.NotNil(t, request.PolicyDecision)
+	require.Equal(t, autoclaimtypes.PolicyResultApproved, request.PolicyDecision.Result)
+	require.Equal(t, 1, sender.submitCalls)
+}
+
 func TestManualFlowStaysIdleUntilApproved(t *testing.T) {
 	ctx := context.Background()
 	storage := newMemoryStorage()
@@ -486,6 +517,27 @@ func (p fakePolicy) Evaluate(
 	}
 	return &autoclaimtypes.PolicyDecision{
 		PolicyName: "test-policy",
+		Result:     p.result,
+		Reason:     p.result.String(),
+		CreatedAt:  testNow,
+		UpdatedAt:  testNow,
+	}, nil
+}
+
+type blockingPolicy struct {
+	result autoclaimtypes.PolicyResult
+	err    error
+}
+
+func (p *blockingPolicy) Evaluate(
+	_ context.Context,
+	_ autoclaimtypes.AutoClaimRequest,
+) (*autoclaimtypes.PolicyDecision, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	return &autoclaimtypes.PolicyDecision{
+		PolicyName: "blocking-policy",
 		Result:     p.result,
 		Reason:     p.result.String(),
 		CreatedAt:  testNow,

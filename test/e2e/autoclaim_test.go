@@ -144,6 +144,16 @@ func waitForAutoClaimStatus(
 	expected autoclaimtypes.RequestStatus,
 ) autoClaimRequestResponse {
 	t.Helper()
+	latest, err := waitForAutoClaimStatusResult(ctx, key, expected)
+	require.NoError(t, err, "wait for Auto Claim request %s status %s", key, expected)
+	return latest
+}
+
+func waitForAutoClaimStatusResult(
+	ctx context.Context,
+	key autoclaimtypes.RequestKey,
+	expected autoclaimtypes.RequestStatus,
+) (autoClaimRequestResponse, error) {
 	var latest autoClaimRequestResponse
 	pollCtx, cancel := context.WithTimeout(ctx, autoClaimRequestWait)
 	defer cancel()
@@ -186,8 +196,10 @@ func waitForAutoClaimStatus(
 			}
 		},
 	)
-	require.NoError(t, err, "wait for Auto Claim request %s status %s", key, expected)
-	return latest
+	if err != nil {
+		return latest, fmt.Errorf("wait for Auto Claim request %s status %s: %w", key, expected, err)
+	}
+	return latest, nil
 }
 
 func getAutoClaimRequest(

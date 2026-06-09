@@ -15,6 +15,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 )
 
 const (
@@ -38,30 +39,39 @@ type Storage struct {
 }
 
 type requestRow struct {
-	RequestKey           string
-	OriginNetwork        uint32
-	DestinationNetwork   uint32
-	DepositCount         uint32
-	Status               string
-	PolicyResult         sql.NullString
-	BridgeTxHash         string
-	ClaimTxHash          sql.NullString
-	TxManagerID          sql.NullString
-	BlockNum             uint64
-	BlockPos             uint64
-	GlobalIndex          sql.NullString
-	L1InfoTreeIndex      sql.NullInt64
-	RetryCount           uint64
-	MaxRetries           uint64
-	LastObservedSendAt   sql.NullTime
-	LastObservedResultAt sql.NullTime
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	LastError            string
-	BridgeJSON           []byte
-	ProofJSON            []byte
-	PolicyDecisionJSON   []byte
-	ManualDecisionJSON   []byte
+	RequestKey           string         `meddler:"request_key"`
+	OriginNetwork        uint32         `meddler:"origin_network"`
+	DestinationNetwork   uint32         `meddler:"destination_network"`
+	DepositCount         uint32         `meddler:"deposit_count"`
+	Status               string         `meddler:"status"`
+	PolicyResult         sql.NullString `meddler:"policy_result"`
+	BridgeTxHash         string         `meddler:"bridge_tx_hash"`
+	ClaimTxHash          sql.NullString `meddler:"claim_tx_hash"`
+	TxManagerID          sql.NullString `meddler:"tx_manager_id"`
+	BlockNum             uint64         `meddler:"block_num"`
+	BlockPos             uint64         `meddler:"block_pos"`
+	GlobalIndex          sql.NullString `meddler:"global_index"`
+	L1InfoTreeIndex      sql.NullInt64  `meddler:"l1_info_tree_index"`
+	RetryCount           uint64         `meddler:"retry_count"`
+	MaxRetries           uint64         `meddler:"max_retries"`
+	LastObservedSendAt   sql.NullTime   `meddler:"last_observed_send_at"`
+	LastObservedResultAt sql.NullTime   `meddler:"last_observed_result_at"`
+	CreatedAt            time.Time      `meddler:"created_at"`
+	UpdatedAt            time.Time      `meddler:"updated_at"`
+	LastError            string         `meddler:"last_error"`
+	BridgeJSON           []byte         `meddler:"bridge_json"`
+	ProofJSON            []byte         `meddler:"proof_json"`
+	PolicyDecisionJSON   []byte         `meddler:"policy_decision_json"`
+	ManualDecisionJSON   []byte         `meddler:"manual_decision_json"`
+}
+
+type bridgeCursorRow struct {
+	Name      string    `meddler:"cursor_name"`
+	FromBlock uint64    `meddler:"from_block"`
+	ToBlock   uint64    `meddler:"to_block"`
+	BlockNum  uint64    `meddler:"block_num"`
+	BlockPos  uint64    `meddler:"block_pos"`
+	UpdatedAt time.Time `meddler:"updated_at"`
 }
 
 // NewStandalone opens a SQLite database, runs Auto Claim migrations, and returns storage.
@@ -105,18 +115,29 @@ func (s *Storage) GetBridgeCursor(
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	var cursor autoclaimtypes.BridgeCursor
-	err := s.database.QueryRowContext(dbCtx, `
-		SELECT from_block, to_block, block_num, block_pos
+	rows, err := s.database.QueryContext(dbCtx, `
+		SELECT cursor_name, from_block, to_block, block_num, block_pos, updated_at
 		FROM autoclaim_bridge_cursor
 		WHERE cursor_name = ?`,
 		name,
-	).Scan(&cursor.FromBlock, &cursor.ToBlock, &cursor.BlockNum, &cursor.BlockPos)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
-	}
+	)
 	if err != nil {
 		return nil, false, fmt.Errorf("get autoclaim bridge cursor %s: %w", name, err)
+	}
+
+	row := &bridgeCursorRow{}
+	if err := meddler.ScanRow(rows, row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("get autoclaim bridge cursor %s: %w", name, err)
+	}
+
+	cursor := autoclaimtypes.BridgeCursor{
+		FromBlock: row.FromBlock,
+		ToBlock:   row.ToBlock,
+		BlockNum:  row.BlockNum,
+		BlockPos:  row.BlockPos,
 	}
 
 	return &cursor, true, nil
@@ -284,12 +305,25 @@ func (s *Storage) GetRequest(
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	row, err := scanRequest(s.database.QueryRowContext(dbCtx, selectRequestSQL()+" WHERE request_key = ?", key))
+	rows, err := s.database.QueryContext(dbCtx, selectRequestSQL()+" WHERE request_key = ?", key)
 	if err != nil {
 		return nil, fmt.Errorf("get autoclaim request %s: %w", key, err)
 	}
 
-	return row.toRequest()
+	row := &requestRow{}
+	if err := meddler.ScanRow(rows, row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("get autoclaim request %s: %w", key, db.ErrNotFound)
+		}
+		return nil, fmt.Errorf("get autoclaim request %s: %w", key, err)
+	}
+
+	request, err := row.toRequest()
+	if err != nil {
+		return nil, fmt.Errorf("get autoclaim request %s: %w", key, err)
+	}
+
+	return request, nil
 }
 
 // ListRequests returns a filtered, paginated request list ordered by newest bridge block first.
@@ -725,22 +759,19 @@ func (s *Storage) listRequests(
 	if err != nil {
 		return nil, fmt.Errorf("list autoclaim requests: %w", err)
 	}
-	defer rows.Close()
 
-	requests := make([]*autoclaimtypes.AutoClaimRequest, 0, pageSize)
-	for rows.Next() {
-		row, err := scanRequestRows(rows)
-		if err != nil {
-			return nil, err
-		}
+	requestRows := make([]*requestRow, 0, pageSize)
+	if err := meddler.ScanAll(rows, &requestRows); err != nil {
+		return nil, fmt.Errorf("scan autoclaim request rows: %w", err)
+	}
+
+	requests := make([]*autoclaimtypes.AutoClaimRequest, 0, len(requestRows))
+	for _, row := range requestRows {
 		request, err := row.toRequest()
 		if err != nil {
 			return nil, err
 		}
 		requests = append(requests, request)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list autoclaim request rows: %w", err)
 	}
 
 	return &autoclaimtypes.RequestPage{Requests: requests, Count: count}, nil
@@ -944,56 +975,6 @@ func selectRequestSQL() string {
 		policy_decision_json,
 		manual_decision_json
 	FROM autoclaim_request`
-}
-
-type rowScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanRequest(scanner rowScanner) (*requestRow, error) {
-	row := &requestRow{}
-	err := scanner.Scan(
-		&row.RequestKey,
-		&row.OriginNetwork,
-		&row.DestinationNetwork,
-		&row.DepositCount,
-		&row.Status,
-		&row.PolicyResult,
-		&row.BridgeTxHash,
-		&row.ClaimTxHash,
-		&row.TxManagerID,
-		&row.BlockNum,
-		&row.BlockPos,
-		&row.GlobalIndex,
-		&row.L1InfoTreeIndex,
-		&row.RetryCount,
-		&row.MaxRetries,
-		&row.LastObservedSendAt,
-		&row.LastObservedResultAt,
-		&row.CreatedAt,
-		&row.UpdatedAt,
-		&row.LastError,
-		&row.BridgeJSON,
-		&row.ProofJSON,
-		&row.PolicyDecisionJSON,
-		&row.ManualDecisionJSON,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, db.ErrNotFound
-		}
-		return nil, err
-	}
-
-	return row, nil
-}
-
-func scanRequestRows(rows *sql.Rows) (*requestRow, error) {
-	row, err := scanRequest(rows)
-	if err != nil {
-		return nil, fmt.Errorf("scan autoclaim request row: %w", err)
-	}
-	return row, nil
 }
 
 func marshalOptional(value any) ([]byte, error) {

@@ -13,19 +13,12 @@ import (
 //go:embed autoclaim0001.sql
 var autoClaim0001 string
 
-//go:embed autoclaim0002.sql
-var autoClaim0002 string
-
 // GetAutoClaimMigrations returns Auto Claim storage migrations.
 func GetAutoClaimMigrations() []types.Migration {
 	return []types.Migration{
 		{
 			ID:  "autoclaim0001",
 			SQL: autoClaim0001,
-		},
-		{
-			ID:  "autoclaim0002",
-			SQL: autoClaim0002,
 		},
 	}
 }

@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
-	"github.com/agglayer/aggkit/test/contracts/claimmock"
 	"github.com/ethereum/go-ethereum/common"
 	coretypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -33,7 +33,7 @@ func TestPackClaimCalldataForAsset(t *testing.T) {
 	data, err := sender.packClaim(request, proof, claimGlobalIndex(request))
 	require.NoError(t, err)
 
-	bridgeABI, err := claimmock.ClaimmockMetaData.GetAbi()
+	bridgeABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
 	require.NoError(t, err)
 	require.Equal(t, bridgeABI.Methods[claimAssetMethod].ID, data[:4])
 	inputs, err := bridgeABI.Methods[claimAssetMethod].Inputs.Unpack(data[4:])
@@ -54,7 +54,7 @@ func TestPackClaimCalldataForMessage(t *testing.T) {
 	data, err := sender.packClaim(request, proof, claimGlobalIndex(request))
 	require.NoError(t, err)
 
-	bridgeABI, err := claimmock.ClaimmockMetaData.GetAbi()
+	bridgeABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
 	require.NoError(t, err)
 	require.Equal(t, bridgeABI.Methods[claimMessageMethod].ID, data[:4])
 	inputs, err := bridgeABI.Methods[claimMessageMethod].Inputs.Unpack(data[4:])
@@ -79,7 +79,7 @@ func TestPackClaimCalldataForPreEtrogAssetUsesRawIndexWithCurrentABI(t *testing.
 	data, err := sender.packClaim(request, proof, claimGlobalIndex(request))
 	require.NoError(t, err)
 
-	bridgeABI, err := claimmock.ClaimmockMetaData.GetAbi()
+	bridgeABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
 	require.NoError(t, err)
 	require.Equal(t, bridgeABI.Methods[claimAssetMethod].ID, data[:4])
 	inputs, err := bridgeABI.Methods[claimAssetMethod].Inputs.Unpack(data[4:])

@@ -91,6 +91,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.Empty(t, cfg.AutoClaim.Claimers)
 	require.True(t, cfg.AutoClaim.L1ToL2Watchdog.Enabled)
+	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2Watchdog.StartBlock)
 	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock)
 	require.False(t, cfg.AutoClaim.L2ToLxWatchdog.Enabled)
 }
@@ -194,6 +195,7 @@ func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
 	require.True(t, cfg.AutoClaim.Enabled)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.True(t, cfg.AutoClaim.API.Enabled)
+	require.Equal(t, uint64(1234), cfg.AutoClaim.L1ToL2Watchdog.StartBlock)
 	require.Equal(t, uint64(1000000), cfg.AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock)
 	require.Len(t, cfg.AutoClaim.Claimers, 1)
 
@@ -348,9 +350,10 @@ Enabled = true
 Host = "127.0.0.1"
 Port = 5579
 
-[AutoClaim.L1ToL2Watchdog]
-Enabled = true
-PollInterval = "3s"
+	[AutoClaim.L1ToL2Watchdog]
+	Enabled = true
+	StartBlock = 1234
+	PollInterval = "3s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 1000000

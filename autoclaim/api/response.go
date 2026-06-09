@@ -7,6 +7,11 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 )
 
+// ErrorResponse is returned when the Auto Claim API cannot complete a request.
+type ErrorResponse struct {
+	Error string `json:"error" example:"request 0:1:42 not found"`
+}
+
 // ListResponse is returned by GET /autoclaim/v1/bridges.
 type ListResponse struct {
 	Bridges    []RequestResponse `json:"bridges"`
@@ -59,6 +64,14 @@ type DecisionResponse struct {
 	DeciderID  string            `json:"decider_id,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
 	UpdatedAt  time.Time         `json:"updated_at"`
+}
+
+// DecisionRequest is accepted by manual approval and rejection routes.
+type DecisionRequest struct {
+	Reason    string            `json:"reason" example:"approved by operator"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	Decider   string            `json:"decider,omitempty" example:"operator"`
+	DeciderID string            `json:"decider_id,omitempty" example:"alice"`
 }
 
 func newRequestResponse(request autoclaimtypes.AutoClaimRequest) RequestResponse {

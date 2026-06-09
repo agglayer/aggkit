@@ -62,6 +62,13 @@ func WithNow(now func() time.Time) Option {
 	}
 }
 
+// WithTargetClaimReader configures the target bridge reader used for already-claimed pre-checks.
+func WithTargetClaimReader(targetClaimReader autoclaimtypes.TargetClaimReader) Option {
+	return func(claimer *Claimer) {
+		claimer.targetClaimReader = targetClaimReader
+	}
+}
+
 // WithLogger configures optional background processing logs.
 func WithLogger(log aggkitcommon.Logger) Option {
 	return func(claimer *Claimer) {
@@ -71,16 +78,17 @@ func WithLogger(log aggkitcommon.Logger) Option {
 
 // Claimer orchestrates Auto Claim requests for one destination network.
 type Claimer struct {
-	target          autoclaimtypes.ClaimerTarget
-	storage         autoclaimtypes.Storage
-	policy          autoclaimtypes.Policy
-	proofPreparer   autoclaimtypes.ProofPreparer
-	sender          autoclaimtypes.ClaimSender
-	enabled         bool
-	pollPeriod      time.Duration
-	recoverPageSize uint32
-	now             func() time.Time
-	log             aggkitcommon.Logger
+	target            autoclaimtypes.ClaimerTarget
+	storage           autoclaimtypes.Storage
+	policy            autoclaimtypes.Policy
+	proofPreparer     autoclaimtypes.ProofPreparer
+	sender            autoclaimtypes.ClaimSender
+	targetClaimReader autoclaimtypes.TargetClaimReader
+	enabled           bool
+	pollPeriod        time.Duration
+	recoverPageSize   uint32
+	now               func() time.Time
+	log               aggkitcommon.Logger
 }
 
 // New creates one claimer for one configured destination network.
@@ -131,6 +139,22 @@ func New(
 // Target returns the destination network and transaction settings owned by the claimer.
 func (c *Claimer) Target() autoclaimtypes.ClaimerTarget {
 	return c.target
+}
+
+// IsClaimed checks whether the destination bridge already marks a bridge exit as claimed.
+func (c *Claimer) IsClaimed(ctx context.Context, bridge autoclaimtypes.BridgeExit) (bool, error) {
+	if c.targetClaimReader == nil {
+		return false, fmt.Errorf("autoclaim claimer %s target claim reader is nil", c.target.ID)
+	}
+	globalIndex := bridge.GlobalIndex
+	if globalIndex == nil {
+		globalIndex = autoclaimtypes.DeriveGlobalIndex(bridge.OriginNetwork, bridge.DepositCount)
+	}
+	claimed, err := c.targetClaimReader.IsClaimed(ctx, globalIndex)
+	if err != nil {
+		return false, fmt.Errorf("check target claim state for %s: %w", globalIndex, err)
+	}
+	return claimed, nil
 }
 
 // Start runs restart recovery and then periodically resumes recoverable requests until ctx is cancelled.
@@ -243,6 +267,7 @@ func (c *Claimer) Recover(ctx context.Context) error {
 func (c *Claimer) recoverableKeys(ctx context.Context) ([]autoclaimtypes.RequestKey, error) {
 	destinationNetwork := c.target.DestinationNetwork
 	statuses := []autoclaimtypes.RequestStatus{
+		autoclaimtypes.RequestStatusDetected,
 		autoclaimtypes.RequestStatusPolicyApproved,
 		autoclaimtypes.RequestStatusQueued,
 		autoclaimtypes.RequestStatusSending,

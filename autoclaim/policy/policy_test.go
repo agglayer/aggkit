@@ -73,6 +73,15 @@ func TestNoMessageApprovesAssetClaims(t *testing.T) {
 	require.Equal(t, ReasonAssetClaimApproved, decision.Reason)
 }
 
+func TestNoMessageReturnsErrorForUnsupportedLeafType(t *testing.T) {
+	policy, err := NewPolicy(autoclaimconfig.PolicyNameNoMessage, autoclaimconfig.PolicyConfig{})
+	require.NoError(t, err)
+
+	_, err = policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafType(99)))
+
+	require.ErrorContains(t, err, "unsupported bridge leaf type")
+}
+
 func TestBasicFilterRejectsGasOverMaxGas(t *testing.T) {
 	policy, err := NewPolicy(
 		autoclaimconfig.PolicyNameBasicFilter,
@@ -130,18 +139,17 @@ func TestBasicFilterRejectsDetectedNestedBridgeCalls(t *testing.T) {
 	require.Equal(t, ReasonNestedBridgeCallRejected, decision.Reason)
 }
 
-func TestBasicFilterReturnsManualWhenTargetSimulationUnavailable(t *testing.T) {
+func TestBasicFilterReturnsErrorWhenTargetSimulationUnavailable(t *testing.T) {
 	policy, err := NewPolicy(autoclaimconfig.PolicyNameBasicFilter, autoclaimconfig.PolicyConfig{MaxGas: 100})
 	require.NoError(t, err)
 
 	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeAsset))
-	require.NoError(t, err)
 
-	require.Equal(t, autoclaimtypes.PolicyResultManual, decision.Result)
-	require.Equal(t, ReasonTargetSimulationUnavailable, decision.Reason)
+	require.Nil(t, decision)
+	require.ErrorContains(t, err, ReasonTargetSimulationUnavailable)
 }
 
-func TestBasicFilterReturnsManualWhenTargetSimulationFails(t *testing.T) {
+func TestBasicFilterReturnsErrorWhenTargetSimulationFails(t *testing.T) {
 	policy, err := NewPolicy(
 		autoclaimconfig.PolicyNameBasicFilter,
 		autoclaimconfig.PolicyConfig{MaxGas: 100},
@@ -150,13 +158,28 @@ func TestBasicFilterReturnsManualWhenTargetSimulationFails(t *testing.T) {
 	require.NoError(t, err)
 
 	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeAsset))
-	require.NoError(t, err)
 
-	require.Equal(t, autoclaimtypes.PolicyResultManual, decision.Result)
-	require.Equal(t, ReasonTargetSimulationUnavailable, decision.Reason)
+	require.Nil(t, decision)
+	require.ErrorContains(t, err, ReasonTargetSimulationUnavailable)
+	require.ErrorContains(t, err, "rpc unavailable")
 }
 
-func TestBasicFilterReturnsManualWhenNestedBridgeInspectionIsUnsafe(t *testing.T) {
+func TestBasicFilterReturnsErrorWhenTargetSimulationReturnsNil(t *testing.T) {
+	policy, err := NewPolicy(
+		autoclaimconfig.PolicyNameBasicFilter,
+		autoclaimconfig.PolicyConfig{MaxGas: 100},
+		WithTargetSimulator(nilSimulator{}),
+	)
+	require.NoError(t, err)
+
+	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeAsset))
+
+	require.Nil(t, decision)
+	require.ErrorContains(t, err, ReasonTargetSimulationUnavailable)
+	require.ErrorContains(t, err, "empty simulation result")
+}
+
+func TestBasicFilterReturnsErrorWhenNestedBridgeInspectionIsUnsafe(t *testing.T) {
 	policy, err := NewPolicy(
 		autoclaimconfig.PolicyNameBasicFilter,
 		autoclaimconfig.PolicyConfig{MaxGas: 100},
@@ -168,10 +191,10 @@ func TestBasicFilterReturnsManualWhenNestedBridgeInspectionIsUnsafe(t *testing.T
 	require.NoError(t, err)
 
 	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeAsset))
-	require.NoError(t, err)
 
-	require.Equal(t, autoclaimtypes.PolicyResultManual, decision.Result)
-	require.Equal(t, ReasonNestedBridgeInspectionUnsafe, decision.Reason)
+	require.Nil(t, decision)
+	require.ErrorContains(t, err, ReasonNestedBridgeInspectionUnsafe)
+	require.ErrorContains(t, err, string(NestedBridgeCallUnknown))
 }
 
 func makeRequest(leafType bridgesynctypes.LeafType) autoclaimtypes.AutoClaimRequest {
@@ -200,6 +223,15 @@ func (s staticSimulator) SimulateClaim(
 ) (*SimulationResult, error) {
 	result := SimulationResult(s)
 	return &result, nil
+}
+
+type nilSimulator struct{}
+
+func (nilSimulator) SimulateClaim(
+	_ context.Context,
+	_ autoclaimtypes.AutoClaimRequest,
+) (*SimulationResult, error) {
+	return nil, nil
 }
 
 type errorSimulator struct {
