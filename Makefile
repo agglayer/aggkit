@@ -80,21 +80,33 @@ build-aggkit: ## Builds aggkit binary
 build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer ## Builds the tools
 
 
+.PHONY: build-aggsender_find_imported_bridge
+build-aggsender_find_imported_bridge: $(GOBIN)/aggsender_find_imported_bridge ## Build aggsender_find_imported_bridge tool
+
+.PHONY: build-remove_ger
+build-remove_ger: $(GOBIN)/remove_ger ## Build remove_ger tool
+
+.PHONY: build-exit_certificate
+build-exit_certificate: $(GOBIN)/exit_certificate ## Build exit_certificate tool
+
+.PHONY: build-exit_certificate_claimer
+build-exit_certificate_claimer: $(GOBIN)/exit_certificate_claimer ## Build exit_certificate_claimer backend tool
+
 .PHONY: $(GOBIN)/aggsender_find_imported_bridge
-$(GOBIN)/aggsender_find_imported_bridge: ## Build aggsender_find_imported_bridge tool
+$(GOBIN)/aggsender_find_imported_bridge:
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
 
 .PHONY: $(GOBIN)/remove_ger
-$(GOBIN)/remove_ger: ## Build remove_ger tool
+$(GOBIN)/remove_ger:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
 
 .PHONY: $(GOBIN)/exit_certificate
-$(GOBIN)/exit_certificate: ## Build exit_certificate tool
+$(GOBIN)/exit_certificate:
 	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate ./tools/exit_certificate/cmd
 
 .PHONY: $(GOBIN)/exit_certificate_claimer
-$(GOBIN)/exit_certificate_claimer: ## Build exit_certificate_claimer backend tool
+$(GOBIN)/exit_certificate_claimer:
 	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate_claimer ./tools/exit_certificate_claimer/backend/cmd
 
 .PHONY: build-docker
