@@ -69,7 +69,7 @@ func buildTestClaimer(t *testing.T, settledRoot common.Hash) (*Claimer, common.A
 		localRoot: settledRoot,
 	}
 
-	claimer := NewClaimer(log.GetDefaultLogger(), cert, localTree, l1, 0)
+	claimer := NewClaimer(log.GetDefaultLogger(), cert, localTree, l1, 0, nil)
 	return claimer, cert.Leaves[0].DestinationAddress
 }
 

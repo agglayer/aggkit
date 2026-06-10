@@ -80,6 +80,7 @@ func DeriveFromExitCertificate(ctx context.Context, ec *exitcertificate.Config) 
 		SignedCertificatePath: filepath.Join(outputDir, "exit-certificate-signed.json"),
 		LocalExitTreeDBPath:   filepath.Join(outputDir, "step-g-l2bridgesyncerlite.sqlite"),
 		L1InfoTreeDBPath:      filepath.Join(outputDir, "L1InfoTreeSync.sqlite"),
+		StepWaitResultPath:    filepath.Join(outputDir, "step-wait-result.json"),
 		NetworkID:             ec.L2NetworkID,
 		L1Sync: L1SyncConfig{
 			Enabled:            true,

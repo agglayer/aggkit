@@ -8,7 +8,7 @@ on L1.
 
 ```
 tools/exit_certificate_claimer/
-├── backend/      Go HTTP service (this document)
+├── service/      Go HTTP service (this document)
 └── frontend/     (not implemented yet)
 ```
 
@@ -35,7 +35,7 @@ exit tree database.
 
 ## Configuration
 
-JSON or TOML, selected by file extension. See [config.toml.example](backend/config.toml.example).
+JSON or TOML, selected by file extension. See [config.toml.example](service/config.toml.example).
 Relative paths resolve against the directory containing the config file.
 
 | Field | Required | Description |
@@ -45,9 +45,18 @@ Relative paths resolve against the directory containing the config file.
 | `signedCertificatePath` | yes | path to `exit-certificate-signed.json` |
 | `localExitTreeDBPath` | yes | path to `step-g-l2bridgesyncerlite.sqlite` |
 | `l1InfoTreeDBPath` | yes | path to the l1infotreesync SQLite DB |
+| `stepWaitResultPath` | yes | path to `step-wait-result.json` (the WAIT step's L1 settlement record) |
 | `networkId` | no | source network; defaults to the certificate's `network_id` |
 | `l1Sync.enabled` | no | when `false` the L1 Info Tree DB is opened read-only; when `true` it is kept in sync from L1 |
 | `l1Sync.rpcUrl`, `l1Sync.globalExitRootAddr`, `l1Sync.rollupManagerAddr`, … | when `l1Sync.enabled` | L1 sync parameters |
+
+> **Settlement GER check on startup.** From the WAIT step's `updateL1InfoTree` event the claimer
+> derives the certificate's settlement Global Exit Root (`keccak256(mainnetExitRoot, rollupExitRoot)`)
+> and checks whether it is already indexed in `l1InfoTreeDBPath`. If it is, the DB is caught up to
+> settlement and no L1 sync is started (regardless of `l1Sync.enabled`). If it is **not** indexed it
+> must be synced from L1: with `l1Sync.enabled=true` the claimer syncs from L1 **only until the
+> settlement GER is indexed**, then stops the sync and serves from that state; with sync disabled it
+> **fails fast** with an error pointing at `l1Sync`.
 
 ### Deriving the config from the exit_certificate tool
 
@@ -61,6 +70,7 @@ L1 RPC, contracts and tuning, and enables L1 sync so it keeps its own L1 Info Tr
 | `signedCertificatePath` | `options.outputDir` + `/exit-certificate-signed.json` |
 | `localExitTreeDBPath` | `options.outputDir` + `/step-g-l2bridgesyncerlite.sqlite` |
 | `l1InfoTreeDBPath` | `options.outputDir` + `/L1InfoTreeSync.sqlite` |
+| `stepWaitResultPath` | `options.outputDir` + `/step-wait-result.json` |
 | `networkId` | `l2NetworkId` |
 | `l1Sync.enabled` | always `true` |
 | `l1Sync.rpcUrl` | `l1RpcUrl` |
@@ -89,9 +99,9 @@ make -C ../../.. $(go env GOPATH 2>/dev/null)/dev/null  # (or use the repo Makef
 # from the repo root:
 make build-tools                       # builds all tools, including exit_certificate_claimer
 # or directly:
-CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_claimer/backend/cmd
+CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_claimer/service/cmd
 
-./exit-certificate-claimer --config tools/exit_certificate_claimer/backend/config.toml
+./exit-certificate-claimer --config tools/exit_certificate_claimer/service/config.toml
 
 # derive the config from an exit_certificate config instead:
 ./exit-certificate-claimer --exit-certificate-config tools/exit_certificate/parameters.toml

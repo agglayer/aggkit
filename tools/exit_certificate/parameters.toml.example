@@ -111,10 +111,13 @@ bridgeServiceURL = ""
 # Bridge service API flavour for the cross-check: "aggkit" or "zkevm". Default: "aggkit".
 bridgeServiceType = "aggkit"
 
-# When true (default), Step F runs the agglayer admin balance check. Set false to skip Step F entirely.
+# When true (default), Step F runs the agglayer admin balance check (three-way: LBT == agglayer ==
+# certificate). When false, it skips the agglayer query and compares LBT (step 0) vs certificate sums
+# offline (no agglayerAdminURL needed; skipped only if no LBT data exists).
 useAgglayerAdminToStepFCheck = true
 
-# Agglayer admin RPC URL. REQUIRED by Step F (admin_getTokenBalance); Step F is skipped if unset.
+# Agglayer admin RPC URL. REQUIRED by Step F in agglayer mode (admin_getTokenBalance). Not needed when
+# useAgglayerAdminToStepFCheck = false.
 agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"
 
 # Optional Bearer token for agglayerAdminURL (e.g. when protected by Google Cloud IAP). Default: "".

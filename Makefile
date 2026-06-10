@@ -107,7 +107,7 @@ $(GOBIN)/exit_certificate:
 
 .PHONY: $(GOBIN)/exit_certificate_claimer
 $(GOBIN)/exit_certificate_claimer:
-	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate_claimer ./tools/exit_certificate_claimer/backend/cmd
+	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate_claimer ./tools/exit_certificate_claimer/service/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary

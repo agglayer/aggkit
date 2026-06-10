@@ -129,10 +129,10 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 ### Step F — Agglayer balance verification
 
-- **Gated by:** `options.useAgglayerAdminToStepFCheck` (default `true`). When `false`, Step F is skipped entirely (both `runAll` and `--step f` log a warning and return) — no agglayer admin query, no balance check.
-- **Requires:** `agglayerAdminURL` in options (errors if Step F runs without it). Set `useAgglayerAdminToStepFCheck=false` to skip the step when no admin endpoint is available.
-- Calls `admin_getTokenBalance` on the agglayer admin RPC and performs a **three-way comparison** per token: `LBT (Step 0) == agglayer == certificate sum`. Each token is logged with ✅ or ❌.
-- **LBT data:** loaded from `step-0-lbt.json`. If unavailable, falls back to two-way comparison (certificate vs agglayer).
+- **Mode:** `options.useAgglayerAdminToStepFCheck` (default `true`) selects the comparison source:
+  - **`true` (agglayer mode):** calls `admin_getTokenBalance` on the agglayer admin RPC and performs a **three-way comparison** per token: `LBT (Step 0) == agglayer == certificate sum`. Requires `agglayerAdminURL` (errors without it). When LBT is unavailable, falls back to two-way (certificate vs agglayer).
+  - **`false` (offline mode, `runStepFOfflineLBT`):** **no agglayer query** — performs a two-way **LBT (Step 0) vs certificate sum** comparison per token. No `agglayerAdminURL` needed. When no LBT data is available there is nothing to compare and the step is skipped with a benign all-match result. `AgglayerAmount` is empty in the checks and `step-f-token-balances.json` is not written.
+- Each token is logged with ✅ or ❌. The shared `finalizeStepFResult` applies the `ignoreBalanceMismatch` policy in both modes.
 - **On mismatch:** aborts the pipeline with an error by default.
 - **`ignoreBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
 - `buildCapMap` / `capBridgeExits` are the internal helpers for computing and applying the caps. Proportional scaling preserves the exact capped total by adding any integer-division remainder to the last exit of each group.
@@ -344,7 +344,7 @@ Notable optional fields:
 - `rollupManagerAddress` — **optional** address of the `PolygonRollupManager` (AgglayerManager) contract on L1. Used by Step WAIT to confirm the certificate's L1 settlement via the `VerifyBatchesTrustedAggregator` event. When unset it is resolved on-chain from `sovereignRollupAddr.rollupManager()` (PolygonConsensusBase). Step WAIT errors if neither `rollupManagerAddress` nor `sovereignRollupAddr` is set.
 - `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
-- `options.useAgglayerAdminToStepFCheck` — `true` (default). When `true`, Step F runs the agglayer admin balance check (`admin_getTokenBalance`, three-way comparison). When `false`, Step F is skipped entirely. Set to `false` when no agglayer admin endpoint is available.
+- `options.useAgglayerAdminToStepFCheck` — `true` (default). When `true`, Step F runs the agglayer admin balance check (`admin_getTokenBalance`, three-way comparison; requires `agglayerAdminURL`). When `false`, Step F skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). Set to `false` when no agglayer admin endpoint is available.
 - `options.ignoreUnsupportedL2Events` — `false` (default). When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it encounters an event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to inspect such a chain knowingly.
 - `options.verifyNewLocalExitRootUsingShadowFork` — `true` (default). When `true`, Step G2 spins up the Anvil shadow-fork, replays every exit against the real bridge contract, reorders the certificate to the on-chain deposit order with the on-chain metadata, and verifies the lite tree root against the contract's `getRoot()` (requires Anvil). When `false`, Step G2 computes the `NewLocalExitRoot` off-chain from the lite exit tree (G1's genesis→fork bridges + the certificate's exits) — fast, no Anvil, but it trusts the off-chain leaf encoding/metadata.
 
@@ -355,7 +355,7 @@ Defaults applied by `LoadConfig`:
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.
 - `options.ignoreBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
-- `options.useAgglayerAdminToStepFCheck` = `true` — when `false`, Step F (agglayer admin balance check) is skipped entirely.
+- `options.useAgglayerAdminToStepFCheck` = `true` — when `false`, Step F skips the agglayer admin query and compares LBT (Step 0) vs certificate sums offline instead.
 - Relative paths in `options.outputDir` and `signerConfig.Path` resolve from the directory containing the config file.
 
 `signerConfig` uses `signertypes.SignerConfig` (same type as aggsender's `AggsenderPrivateKey`). The JSON format is flat — `Method`, `Path`, `Password` are top-level keys (matching the TOML inline table style). Parsed by `parseSignerConfig` which splits `Method` out and puts the rest into `Config map[string]any`.

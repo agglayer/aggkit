@@ -35,6 +35,10 @@ type Config struct {
 	LocalExitTreeDBPath string `json:"localExitTreeDBPath"`
 	// L1InfoTreeDBPath is the path to the l1infotreesync SQLite database.
 	L1InfoTreeDBPath string `json:"l1InfoTreeDBPath"`
+	// StepWaitResultPath is the path to step-wait-result.json produced by the exit_certificate WAIT
+	// step. It records the certificate's L1 settlement (the VerifyBatchesTrustedAggregator event and
+	// the accompanying L1 Info Tree update), identifying the L1 info tree leaf it settled at.
+	StepWaitResultPath string `json:"stepWaitResultPath"`
 
 	// NetworkID is the source network of the exits. Defaults to the certificate's network_id when 0.
 	NetworkID uint32 `json:"networkId"`
@@ -109,6 +113,7 @@ func (c *Config) resolvePaths(baseDir string) {
 	c.SignedCertificatePath = resolvePath(baseDir, c.SignedCertificatePath)
 	c.LocalExitTreeDBPath = resolvePath(baseDir, c.LocalExitTreeDBPath)
 	c.L1InfoTreeDBPath = resolvePath(baseDir, c.L1InfoTreeDBPath)
+	c.StepWaitResultPath = resolvePath(baseDir, c.StepWaitResultPath)
 }
 
 func (c *Config) validate() error {
@@ -120,6 +125,9 @@ func (c *Config) validate() error {
 	}
 	if c.L1InfoTreeDBPath == "" {
 		return fmt.Errorf("l1InfoTreeDBPath is required")
+	}
+	if c.StepWaitResultPath == "" {
+		return fmt.Errorf("stepWaitResultPath is required")
 	}
 	if c.L1Sync.Enabled {
 		if c.L1Sync.RPCURL == "" {

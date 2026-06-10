@@ -155,6 +155,11 @@ func expandStepRange(token string) ([]string, error) {
 			break
 		}
 	}
+	// When the range starts at or after submit/wait (i.e. past lastAutoStep), the user has
+	// explicitly opted into those steps, so an open range extends to the last step instead.
+	if fromIdx > toIdx {
+		toIdx = len(orderedSteps) - 1
+	}
 	if to != "" {
 		toIdx = -1
 		for i, s := range orderedSteps {

@@ -10,6 +10,8 @@ writeTimeoutSeconds = 30
 # Outputs of the exit_certificate tool.
 signedCertificatePath = "../../exit_certificate/output/exit-certificate-signed.json"
 localExitTreeDBPath   = "../../exit_certificate/output/step-g-l2bridgesyncerlite.sqlite"
+# WAIT step result: records the certificate's L1 settlement (the L1 info tree leaf it settled at).
+stepWaitResultPath    = "../../exit_certificate/output/step-wait-result.json"
 
 # L1 Info Tree SQLite database (queried for mainnet/rollup exit roots and the rollup proof).
 l1InfoTreeDBPath = "./l1infotree.sqlite"

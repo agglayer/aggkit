@@ -40,6 +40,18 @@ func Run(c *cli.Context) error {
 	logger.Infof("loaded certificate: network %d, %d bridge exits, new local exit root %s",
 		cert.NetworkID, len(cert.Leaves), cert.NewLocalExitRoot.Hex())
 
+	waitResult, err := LoadStepWaitResult(cfg.StepWaitResultPath)
+	if err != nil {
+		return err
+	}
+	logger.Infof("loaded wait result: certificate %s settled (status %s)",
+		waitResult.CertificateHash.Hex(), waitResult.FinalStatus)
+
+	settlementGER, err := SettlementGER(waitResult)
+	if err != nil {
+		return err
+	}
+
 	localTree, err := OpenLocalExitTree(ctx, cfg.LocalExitTreeDBPath, logger)
 	if err != nil {
 		return err
@@ -50,12 +62,15 @@ func Run(c *cli.Context) error {
 		}
 	}()
 
-	l1, err := OpenL1InfoTree(ctx, cfg.L1Sync, cfg.L1InfoTreeDBPath, logger)
+	l1, err := OpenL1InfoTree(ctx, cfg.L1Sync, cfg.L1InfoTreeDBPath, settlementGER, logger)
 	if err != nil {
 		return err
 	}
 
-	claimer := NewClaimer(logger, cert, localTree, l1, cfg.NetworkID)
+	claimer := NewClaimer(logger, cert, localTree, l1, cfg.NetworkID, waitResult)
+	if err := claimer.Check(ctx); err != nil {
+		return fmt.Errorf("claimer check: %w", err)
+	}
 	server := NewServer(cfg, claimer, logger)
 
 	if err := server.Start(ctx); err != nil {

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	aggkit "github.com/agglayer/aggkit"
-	claimer "github.com/agglayer/aggkit/tools/exit_certificate_claimer/backend"
+	claimer "github.com/agglayer/aggkit/tools/exit_certificate_claimer/service"
 	"github.com/urfave/cli/v2"
 )
 
