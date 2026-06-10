@@ -1495,6 +1495,9 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL2.GetRootByLER(ctx, lastVerified.ExitRoot)
 	if err != nil {
+		if !errors.Is(err, db.ErrNotFound) {
+			return 0, fmt.Errorf("failed to get root by LER for L2: %w", err)
+		}
 		b.logger.Infof(
 			"failed to get root by LER for L2: %v, lastVerified ExitRoot: %v, using fallback mechanism",
 			err,
@@ -1503,10 +1506,6 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		root, err = b.bridgeL2.GetLastRoot(ctx)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get last root for L2: %w", err)
-		}
-		lastVerified, err = b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, root.BlockNum)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", err, root.BlockNum)
 		}
 	}
 	if root.Index < depositCount {
@@ -1521,27 +1520,18 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	// Binary search between the first and last blocks where batches were verified.
 	// Find the smallest deposit count that is greater than depositCount and matches with
 	// a LER that is verified
-	bestResult := lastVerified
-	lowerLimit := firstVerified.BlockNumber
-	upperLimit := lastVerified.BlockNumber
-	for lowerLimit <= upperLimit {
-		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
-		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
+	bestResult, missingLER, err := b.getFirstVerifiedBatchesForL2DepositCountBinary(
+		ctx, firstVerified, lastVerified, depositCount,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if missingLER {
+		bestResult, err = b.getFirstVerifiedBatchesForL2DepositCountLinear(
+			ctx, firstVerified.BlockNumber, lastVerified.BlockNumber, depositCount,
+		)
 		if err != nil {
 			return 0, err
-		}
-		root, err = b.bridgeL2.GetRootByLER(ctx, targetVerified.ExitRoot)
-		if err != nil {
-			return 0, err
-		}
-		if root.Index < depositCount {
-			lowerLimit = targetBlock + 1
-		} else if root.Index == depositCount {
-			bestResult = targetVerified
-			break
-		} else {
-			bestResult = targetVerified
-			upperLimit = targetBlock - 1
 		}
 	}
 
@@ -1550,6 +1540,98 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		return 0, err
 	}
 	return info.L1InfoTreeIndex, nil
+}
+
+func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountBinary(
+	ctx context.Context,
+	firstVerified *l1infotreesync.VerifyBatches,
+	lastVerified *l1infotreesync.VerifyBatches,
+	depositCount uint32,
+) (*l1infotreesync.VerifyBatches, bool, error) {
+	bestResult := lastVerified
+	lowerLimit := firstVerified.BlockNumber
+	upperLimit := lastVerified.BlockNumber
+
+	for lowerLimit <= upperLimit {
+		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
+		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
+		if err != nil {
+			return nil, false, err
+		}
+		if targetVerified.BlockNumber > upperLimit {
+			if targetBlock == 0 {
+				break
+			}
+			upperLimit = targetBlock - 1
+			continue
+		}
+
+		root, err := b.bridgeL2.GetRootByLER(ctx, targetVerified.ExitRoot)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Debugf(
+					"getFirstL1InfoTreeIndexForL2Bridge: LER not found for verified batch at L1 block %d"+
+						" (ExitRoot: %s), falling back to linear scan",
+					targetVerified.BlockNumber, targetVerified.ExitRoot,
+				)
+				return nil, true, nil
+			}
+			return nil, false, err
+		}
+
+		if root.Index < depositCount {
+			lowerLimit = targetVerified.BlockNumber + 1
+		} else if root.Index == depositCount {
+			bestResult = targetVerified
+			break
+		} else {
+			bestResult = targetVerified
+			if targetVerified.BlockNumber == 0 {
+				break
+			}
+			upperLimit = targetVerified.BlockNumber - 1
+		}
+	}
+
+	return bestResult, false, nil
+}
+
+func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountLinear(
+	ctx context.Context,
+	firstBlock uint64,
+	lastBlock uint64,
+	depositCount uint32,
+) (*l1infotreesync.VerifyBatches, error) {
+	for nextBlock := firstBlock; nextBlock <= lastBlock; {
+		verified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, nextBlock)
+		if err != nil {
+			return nil, err
+		}
+		if verified.BlockNumber > lastBlock {
+			break
+		}
+
+		root, err := b.bridgeL2.GetRootByLER(ctx, verified.ExitRoot)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Debugf(
+					"getFirstL1InfoTreeIndexForL2Bridge: skipping verified batch at L1 block %d"+
+						" because its LER is not in the L2 exit tree (ExitRoot: %s)",
+					verified.BlockNumber, verified.ExitRoot,
+				)
+				nextBlock = verified.BlockNumber + 1
+				continue
+			}
+			return nil, err
+		}
+
+		if root.Index >= depositCount {
+			return verified, nil
+		}
+		nextBlock = verified.BlockNumber + 1
+	}
+
+	return nil, ErrNotOnL1Info
 }
 
 // setupRequest parses the pagination parameters from the request context

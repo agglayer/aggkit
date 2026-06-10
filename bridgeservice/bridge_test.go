@@ -357,41 +357,35 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			expectedErr:   fooErr,
 		},
 		{
-			description: "error on first GetRootByLER",
+			description: "non not found error on first GetRootByLER",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
-					Return(&tree.Root{}, fooErr).
-					Once()
-				b.bridgeL2.EXPECT().GetLastRoot(ctx).
 					Return(&tree.Root{}, fooErr).
 					Once()
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fmt.Errorf("failed to get last root for L2: %w", fooErr),
+			expectedErr:   fmt.Errorf("failed to get root by LER for L2: %w", fooErr),
 		},
 		{
-			description: "error on first GetLastRoot",
+			description: "latest verified LER missing and last local L2 root is behind deposit",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
-					Return(&tree.Root{}, fooErr).
+					Return(&tree.Root{}, db.ErrNotFound).
 					Once()
 				b.bridgeL2.EXPECT().GetLastRoot(ctx).
 					Return(&tree.Root{}, nil).
 					Once()
-				b.l1InfoTree.EXPECT().GetFirstVerifiedBatchesAfterBlock(networkID, mock.Anything).
-					Return(nil, fooErr).
-					Once()
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", fooErr, 0),
+			expectedErr:   ErrNotOnL1Info,
 		},
 		{
 			description: "not included yet",
@@ -520,6 +514,70 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		require.Equal(t, tc.expectedErr, err)
 		require.Equal(t, tc.expectedIndex, actualIndex)
 	}
+}
+
+func TestGetFirstL1InfoTreeIndexForL2Bridge_MissingLatestLERDoesNotUseL2BlockAsL1Block(t *testing.T) {
+	ctx := context.Background()
+	networkID := uint32(2)
+	b := newBridgeWithMocks(t, networkID)
+
+	validExitRoot := common.HexToHash("0x1000")
+	validRollupExitRoot := common.HexToHash("0x2000")
+	missingExitRoot := common.HexToHash("0x3000")
+	missingRollupExitRoot := common.HexToHash("0x4000")
+
+	firstVerified := &l1infotreesync.VerifyBatches{
+		BlockNumber:    10,
+		ExitRoot:       validExitRoot,
+		RollupExitRoot: validRollupExitRoot,
+	}
+	lastVerified := &l1infotreesync.VerifyBatches{
+		BlockNumber:    100,
+		ExitRoot:       missingExitRoot,
+		RollupExitRoot: missingRollupExitRoot,
+	}
+
+	b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
+		Return(lastVerified, nil).
+		Once()
+	b.bridgeL2.EXPECT().GetRootByLER(ctx, missingExitRoot).
+		Return(&tree.Root{}, db.ErrNotFound).
+		Once()
+	b.bridgeL2.EXPECT().GetLastRoot(ctx).
+		Return(&tree.Root{Index: 10, BlockNum: 1_000_000}, nil).
+		Once()
+	b.l1InfoTree.EXPECT().GetFirstVerifiedBatches(networkID).
+		Return(firstVerified, nil).
+		Once()
+
+	verifiedAfterBlock := &l1infotreesync.VerifyBatches{}
+	b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", networkID, mock.Anything).
+		Run(func(args mock.Arguments) {
+			blockNum, ok := args.Get(1).(uint64)
+			require.True(t, ok)
+			require.LessOrEqual(t, blockNum, lastVerified.BlockNumber)
+			if blockNum <= firstVerified.BlockNumber {
+				*verifiedAfterBlock = *firstVerified
+			} else {
+				*verifiedAfterBlock = *lastVerified
+			}
+		}).
+		Return(verifiedAfterBlock, nil)
+
+	b.bridgeL2.EXPECT().GetRootByLER(ctx, validExitRoot).
+		Return(&tree.Root{Index: 10}, nil).
+		Once()
+	b.bridgeL2.On("GetRootByLER", ctx, missingExitRoot).
+		Return(&tree.Root{}, db.ErrNotFound)
+
+	expectedInfo := &l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 77}
+	b.l1InfoTree.EXPECT().GetFirstL1InfoWithRollupExitRoot(validRollupExitRoot).
+		Return(expectedInfo, nil).
+		Once()
+
+	actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL2Bridge(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, expectedInfo.L1InfoTreeIndex, actualIndex)
 }
 
 func TestGetBridgesHandler(t *testing.T) {
