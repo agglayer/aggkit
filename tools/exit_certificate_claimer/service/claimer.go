@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
+	exitcertificate "github.com/agglayer/aggkit/tools/exit_certificate"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -26,35 +27,44 @@ var ErrLocalExitRootNotSettled = errors.New("certificate new local exit root not
 // Claimer assembles claimAsset parameters for the bridge exits of a settled exit certificate,
 // combining the signed certificate, the L2 local exit tree, and the L1 Info Tree.
 type Claimer struct {
-	logger    *log.Logger
-	networkID uint32
-	cert      *Certificate
-	localTree LocalExitTreeReader
-	l1        L1InfoTreeQuerier
+	logger     *log.Logger
+	networkID  uint32
+	cert       *Certificate
+	localTree  LocalExitTreeReader
+	l1         L1InfoTreeQuerier
+	waitResult *exitcertificate.StepWaitResult
 }
 
-// NewClaimer wires the three data sources. networkID defaults to the certificate's network when 0.
+// NewClaimer wires the data sources. networkID defaults to the certificate's network when 0.
+// waitResult is the exit_certificate WAIT step output recording the certificate's L1 settlement.
 func NewClaimer(
 	logger *log.Logger,
 	cert *Certificate,
 	localTree LocalExitTreeReader,
 	l1 L1InfoTreeQuerier,
 	networkID uint32,
+	waitResult *exitcertificate.StepWaitResult,
 ) *Claimer {
 	if networkID == 0 {
 		networkID = cert.NetworkID
 	}
 	return &Claimer{
-		logger:    logger,
-		networkID: networkID,
-		cert:      cert,
-		localTree: localTree,
-		l1:        l1,
+		logger:     logger,
+		networkID:  networkID,
+		cert:       cert,
+		localTree:  localTree,
+		l1:         l1,
+		waitResult: waitResult,
 	}
 }
 
 // NetworkID returns the source network the claimer serves.
 func (c *Claimer) NetworkID() uint32 { return c.networkID }
+
+// SettlementWaitResult returns the exit_certificate WAIT step output recording where on L1 the
+// certificate settled (the VerifyBatchesTrustedAggregator event and the accompanying L1 Info Tree
+// update). It may be nil if no wait result was loaded.
+func (c *Claimer) SettlementWaitResult() *exitcertificate.StepWaitResult { return c.waitResult }
 
 // ListBridges returns the certificate bridge exits destined to destAddr, enriched with the deposit
 // count resolved from the local exit tree.
@@ -67,7 +77,7 @@ func (c *Claimer) ListBridges(destAddr common.Address) ([]BridgeExitView, error)
 		}
 		depositCount, ok := c.localTree.DepositCount(leaf.Hash())
 		if !ok {
-			return nil, fmt.Errorf("bridge exit %d (leaf %s) not found in local exit tree",
+			return nil, fmt.Errorf("error: bridge exit[%d]  (leaf %s) not found in local exit tree",
 				i, leaf.Hash().Hex())
 		}
 		views = append(views, leaf.view(depositCount))
@@ -148,4 +158,31 @@ func (c *Claimer) BuildClaimParams(
 	}
 
 	return claims, nil
+}
+
+// Check verifies the claimer's data sources are consistent with the certificate's recorded L1
+// settlement. It looks up, in the L1 info tree, the local exit root settled for this network in the
+// rollup exit tree captured by the WAIT step (waitResult.UpdateL1InfoTree.RollupExitRoot) and
+// confirms it equals the certificate's NewLocalExitRoot. It returns ErrLocalExitRootNotSettled when
+// they differ — the certificate has not been settled on L1 (or the recorded settlement is stale).
+func (c *Claimer) Check(ctx context.Context) error {
+	if c.waitResult == nil || c.waitResult.UpdateL1InfoTree == nil {
+		return errors.New("wait result has no updateL1InfoTree event; cannot verify L1 settlement")
+	}
+	rollupExitRoot := c.waitResult.UpdateL1InfoTree.RollupExitRoot
+
+	settledLER, err := c.l1.GetLocalExitRoot(ctx, c.networkID, rollupExitRoot)
+	if err != nil {
+		return fmt.Errorf("reading local exit root for network %d at settlement rollup exit root %s: %w",
+			c.networkID, rollupExitRoot.Hex(), err)
+	}
+	if settledLER != c.cert.NewLocalExitRoot {
+		return fmt.Errorf("%w: network %d settlement rollup exit root %s has local exit root %s, certificate has %s",
+			ErrLocalExitRootNotSettled, c.networkID, rollupExitRoot.Hex(),
+			settledLER.Hex(), c.cert.NewLocalExitRoot.Hex())
+	}
+
+	c.logger.Infof("settlement check OK: network %d new local exit root %s settled in rollup exit root %s",
+		c.networkID, c.cert.NewLocalExitRoot.Hex(), rollupExitRoot.Hex())
+	return nil
 }
