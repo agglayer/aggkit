@@ -41,6 +41,12 @@ sovereignRollupAddr = "<SOVEREIGN_ROLLUP_ADDR>"
 # L1InfoTreeLeafCount from UpdateL1InfoTreeV2 events. Step I fails if unset.
 l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
 
+# OPTIONAL — address of the PolygonRollupManager (AgglayerManager) contract on L1. Used by Step WAIT
+# to confirm the certificate's L1 settlement via the VerifyBatchesTrustedAggregator event. If unset
+# it is resolved on-chain from sovereignRollupAddr.rollupManager(); Step WAIT errors when neither this
+# nor sovereignRollupAddr is set.
+rollupManagerAddress = "<ROLLUP_MANAGER_ADDRESS>"
+
 [options]
 # Number of blocks per log query (e.g. BridgeEvent scans). Default: 5000.
 blockRange = 10000
@@ -104,6 +110,9 @@ bridgeServiceURL = ""
 
 # Bridge service API flavour for the cross-check: "aggkit" or "zkevm". Default: "aggkit".
 bridgeServiceType = "aggkit"
+
+# When true (default), Step F runs the agglayer admin balance check. Set false to skip Step F entirely.
+useAgglayerAdminToStepFCheck = true
 
 # Agglayer admin RPC URL. REQUIRED by Step F (admin_getTokenBalance); Step F is skipped if unset.
 agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"

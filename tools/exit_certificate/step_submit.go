@@ -13,6 +13,11 @@ import (
 // StepSubmitResult holds the output of the SUBMIT step.
 type StepSubmitResult struct {
 	CertificateHash common.Hash `json:"certificateHash"`
+	// L1LatestBlockBeforeSubmittingCertificate is the latest L1 block number
+	// captured right before the certificate was sent to the agglayer. It marks
+	// the L1 starting point from which to look for the block where the agglayer
+	// settles this certificate on L1 (e.g. for the exit certificate claimer).
+	L1LatestBlockBeforeSubmittingCertificate uint64 `json:"l1LatestBlockBeforeSubmittingCertificate"`
 }
 
 // RunStepSubmit sends the signed certificate to the agglayer via gRPC and
@@ -52,6 +57,15 @@ func RunStepSubmit(ctx context.Context, cfg *Config, cert *agglayertypes.Certifi
 		log.Info("No pending certificate found, proceeding with submission")
 	}
 
+	if cfg.L1RPCURL == "" {
+		return nil, fmt.Errorf("l1RpcUrl is required for step submit to capture the latest L1 block")
+	}
+	l1LatestBlock, err := resolveLatestBlock(ctx, cfg.L1RPCURL)
+	if err != nil {
+		return nil, fmt.Errorf("capture latest L1 block before submission: %w", err)
+	}
+	log.Infof("Captured latest L1 block before submission: %d", l1LatestBlock)
+
 	certHash, err := client.SendCertificate(ctx, cert)
 	if err != nil {
 		return nil, fmt.Errorf("send certificate to agglayer: %w", err)
@@ -59,5 +73,8 @@ func RunStepSubmit(ctx context.Context, cfg *Config, cert *agglayertypes.Certifi
 
 	log.Infof("Certificate accepted by agglayer. Hash: %s", certHash.Hex())
 	log.Info("STEP SUBMIT complete")
-	return &StepSubmitResult{CertificateHash: certHash}, nil
+	return &StepSubmitResult{
+		CertificateHash:                          certHash,
+		L1LatestBlockBeforeSubmittingCertificate: l1LatestBlock,
+	}, nil
 }
