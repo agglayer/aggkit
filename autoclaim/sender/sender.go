@@ -7,13 +7,11 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
+	"github.com/agglayer/aggkit/autoclaim/claimtx"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
-	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -60,7 +58,6 @@ type Sender struct {
 	storage           autoclaimtypes.Storage
 	ethTxManager      aggoracletypes.EthTxManager
 	targetClaimReader autoclaimtypes.TargetClaimReader
-	bridgeABI         *abi.ABI
 	pollPeriod        time.Duration
 	now               func() time.Time
 }
@@ -82,16 +79,10 @@ func New(
 		return nil, fmt.Errorf("autoclaim sender target claim reader is nil")
 	}
 
-	bridgeABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
-	if err != nil {
-		return nil, fmt.Errorf("retrieve AgglayerBridgeL2 ABI: %w", err)
-	}
-
 	sender := &Sender{
 		storage:           storage,
 		ethTxManager:      ethTxManager,
 		targetClaimReader: targetClaimReader,
-		bridgeABI:         bridgeABI,
 		pollPeriod:        defaultPollPeriod,
 		now: func() time.Time {
 			return time.Now().UTC()
@@ -181,39 +172,10 @@ func (s *Sender) packClaim(
 	proof autoclaimtypes.ClaimProof,
 	globalIndex *big.Int,
 ) ([]byte, error) {
-	method := claimAssetMethod
-	if request.Bridge.LeafType == bridgesynctypes.LeafTypeMessage {
-		method = claimMessageMethod
+	if globalIndex != nil {
+		request.GlobalIndex = new(big.Int).Set(globalIndex)
 	}
-	if request.Bridge.LeafType != bridgesynctypes.LeafTypeAsset &&
-		request.Bridge.LeafType != bridgesynctypes.LeafTypeMessage {
-		return nil, fmt.Errorf("unsupported bridge leaf type %d", request.Bridge.LeafType.Uint8())
-	}
-
-	amount := request.Bridge.Amount
-	if amount == nil {
-		amount = common.Big0
-	}
-
-	data, err := s.bridgeABI.Pack(
-		method,
-		proof.ABILocalExitRoot,
-		proof.ABIRollupExitRoot,
-		globalIndex,
-		proof.MainnetExitRoot,
-		proof.RollupExitRoot,
-		request.Bridge.OriginNetwork,
-		request.Bridge.OriginAddress,
-		request.Bridge.DestinationNetwork,
-		request.Bridge.DestinationAddress,
-		amount,
-		request.Bridge.Metadata,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("pack %s claim calldata: %w", method, err)
-	}
-
-	return data, nil
+	return claimtx.PackClaim(request, proof)
 }
 
 func (s *Sender) newAttempt(
@@ -397,13 +359,7 @@ func waitForNextPoll(ctx context.Context, pollPeriod time.Duration) error {
 }
 
 func claimGlobalIndex(request autoclaimtypes.AutoClaimRequest) *big.Int {
-	if request.GlobalIndex != nil {
-		return new(big.Int).Set(request.GlobalIndex)
-	}
-	if request.Bridge.GlobalIndex != nil {
-		return new(big.Int).Set(request.Bridge.GlobalIndex)
-	}
-	return autoclaimtypes.DeriveGlobalIndex(request.Bridge.OriginNetwork, request.Bridge.DepositCount)
+	return claimtx.GlobalIndex(request)
 }
 
 func noOpAttempt(

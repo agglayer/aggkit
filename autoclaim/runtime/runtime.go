@@ -18,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/policy"
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/sender"
+	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/autoclaim/watchdog"
@@ -87,11 +88,21 @@ type Factories struct {
 	NewRPCClient func(context.Context, aggkitcommon.Logger, ethermanconfig.RPCClientConfig) (
 		aggkittypes.EthClienter, error,
 	)
-	NewEthTxManager      func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error)
-	StartEthTxManager    func(context.Context, EthTxManager)
-	NewPolicy            func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig) (autoclaimtypes.Policy, error)
+	NewEthTxManager   func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error)
+	StartEthTxManager func(context.Context, EthTxManager)
+	NewPolicy         func(
+		autoclaimcfg.PolicyName,
+		autoclaimcfg.PolicyConfig,
+		...policy.RegistryOption,
+	) (autoclaimtypes.Policy, error)
 	NewTargetClaimReader func(common.Address, aggkittypes.BaseEthereumClienter) (autoclaimtypes.TargetClaimReader, error)
-	NewSender            func(
+	NewTargetSimulator   func(
+		simulator.Client,
+		autoclaimtypes.ProofPreparer,
+		autoclaimtypes.ClaimerTarget,
+		common.Address,
+	) (policy.TargetSimulator, error)
+	NewSender func(
 		autoclaimtypes.Storage,
 		EthTxManager,
 		autoclaimtypes.TargetClaimReader,
@@ -126,11 +137,7 @@ func DefaultFactories(logConfig log.Config) Factories {
 		) {
 			return autoclaimstorage.NewStandalone(logger, dbPath, dbQueryTimeout)
 		},
-		NewRPCClient: func(ctx context.Context, logger aggkitcommon.Logger, cfg ethermanconfig.RPCClientConfig) (
-			aggkittypes.EthClienter, error,
-		) {
-			return etherman.NewRPCClient(ctx, logger, cfg)
-		},
+		NewRPCClient: etherman.NewRPCClient,
 		NewEthTxManager: func(_ context.Context, cfg autoclaimcfg.ClaimerConfig) (EthTxManager, error) {
 			ethTxManagerConfig := cfg.EthTxManager
 			ethTxManagerConfig.Log = ethtxlog.Config{
@@ -158,10 +165,16 @@ func DefaultFactories(logConfig log.Config) Factories {
 			txManager.Stop()
 			<-done
 		},
-		NewPolicy: func(name autoclaimcfg.PolicyName, cfg autoclaimcfg.PolicyConfig) (autoclaimtypes.Policy, error) {
-			return policy.NewPolicy(name, cfg)
-		},
+		NewPolicy:            policy.NewPolicy,
 		NewTargetClaimReader: newTargetClaimReader,
+		NewTargetSimulator: func(
+			client simulator.Client,
+			proofPreparer autoclaimtypes.ProofPreparer,
+			target autoclaimtypes.ClaimerTarget,
+			from common.Address,
+		) (policy.TargetSimulator, error) {
+			return simulator.New(client, proofPreparer, target, from)
+		},
 		NewSender: func(
 			storage autoclaimtypes.Storage,
 			txManager EthTxManager,
@@ -192,25 +205,11 @@ func DefaultFactories(logConfig log.Config) Factories {
 		NewRegistry: func(claimers ...autoclaimtypes.Claimer) (autoclaimtypes.ClaimerRegistry, error) {
 			return claimer.NewRegistry(claimers...)
 		},
-		NewWatchdog: func(
-			bridgeSource autoclaimtypes.BridgeSource,
-			cursorStore watchdog.CursorStore,
-			registry autoclaimtypes.ClaimerRegistry,
-			options ...watchdog.Option,
-		) (*watchdog.L1ToL2, error) {
-			return watchdog.NewL1ToL2(bridgeSource, cursorStore, registry, options...)
-		},
+		NewWatchdog: watchdog.NewL1ToL2,
 		StartWatchdog: func(ctx context.Context, watchdogRunner *watchdog.L1ToL2) {
 			watchdogRunner.Start(ctx)
 		},
-		NewAPI: func(
-			cfg api.Config,
-			storage api.Storage,
-			registry autoclaimtypes.ClaimerRegistry,
-			options ...api.Option,
-		) (*api.API, error) {
-			return api.New(cfg, storage, registry, options...)
-		},
+		NewAPI: api.New,
 		StartAPI: func(ctx context.Context, apiServer *api.API) {
 			if err := apiServer.Start(ctx); err != nil {
 				log.Errorf("Auto Claim API stopped with error: %v", err)
@@ -356,13 +355,13 @@ func createClaimer(
 	if err != nil {
 		return nil, nil, fmt.Errorf("create AutoClaim target claim reader for claimer %s: %w", cfg.ID, err)
 	}
-	claimPolicy, err := factories.NewPolicy(cfg.PolicyName, cfg.Policy)
-	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim policy for claimer %s: %w", cfg.ID, err)
-	}
 	claimSender, err := factories.NewSender(storage, txManager, claimReader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create AutoClaim sender for claimer %s: %w", cfg.ID, err)
+	}
+	claimPolicy, err := newRuntimePolicy(ctx, cfg, rpcClient, proofPreparer, target, claimSender, factories)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create AutoClaim policy for claimer %s: %w", cfg.ID, err)
 	}
 	targetClaimer, err := factories.NewClaimer(
 		target,
@@ -401,6 +400,9 @@ func withDefaultFactories(factories Factories, logConfig log.Config) Factories {
 	if factories.NewTargetClaimReader == nil {
 		factories.NewTargetClaimReader = defaults.NewTargetClaimReader
 	}
+	if factories.NewTargetSimulator == nil {
+		factories.NewTargetSimulator = defaults.NewTargetSimulator
+	}
 	if factories.NewSender == nil {
 		factories.NewSender = defaults.NewSender
 	}
@@ -429,6 +431,34 @@ func withDefaultFactories(factories Factories, logConfig log.Config) Factories {
 		factories.Go = defaults.Go
 	}
 	return factories
+}
+
+func newRuntimePolicy(
+	_ context.Context,
+	cfg autoclaimcfg.ClaimerConfig,
+	rpcClient aggkittypes.EthClienter,
+	proofPreparer autoclaimtypes.ProofPreparer,
+	target autoclaimtypes.ClaimerTarget,
+	claimSender autoclaimtypes.ClaimSender,
+	factories Factories,
+) (autoclaimtypes.Policy, error) {
+	if cfg.PolicyName != autoclaimcfg.PolicyNameBasicFilter {
+		return factories.NewPolicy(cfg.PolicyName, cfg.Policy)
+	}
+
+	if claimSender.EthTxManager() == nil {
+		return nil, fmt.Errorf("basic-filter simulator requires sender EthTxManager")
+	}
+	targetSimulator, err := factories.NewTargetSimulator(
+		rpcClient,
+		proofPreparer,
+		target,
+		claimSender.EthTxManager().From(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create basic-filter target simulator: %w", err)
+	}
+	return factories.NewPolicy(cfg.PolicyName, cfg.Policy, policy.WithTargetSimulator(targetSimulator))
 }
 
 func targetRPCClientConfig(url string) ethermanconfig.RPCClientConfig {

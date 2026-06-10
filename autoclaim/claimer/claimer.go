@@ -21,6 +21,8 @@ var (
 	ErrDisabled = errors.New("autoclaim claimer is disabled")
 	// ErrDestinationMismatch is returned when a request targets another destination network.
 	ErrDestinationMismatch = errors.New("autoclaim request destination does not match claimer")
+	// ErrPolicyBlocked is returned when policy evaluation hits an operational error that requires intervention.
+	ErrPolicyBlocked = errors.New("autoclaim policy blocked")
 )
 
 var _ autoclaimtypes.Claimer = (*Claimer)(nil)
@@ -89,6 +91,10 @@ type Claimer struct {
 	recoverPageSize   uint32
 	now               func() time.Time
 	log               aggkitcommon.Logger
+}
+
+type preparedProofPolicy interface {
+	RequiresPreparedProof() bool
 }
 
 // New creates one claimer for one configured destination network.
@@ -165,6 +171,9 @@ func (c *Claimer) Start(ctx context.Context) {
 
 	if err := c.Recover(ctx); err != nil {
 		c.logErrorf("autoclaim claimer %s recovery failed: %v", c.target.ID, err)
+		if errors.Is(err, ErrPolicyBlocked) {
+			return
+		}
 	}
 
 	ticker := time.NewTicker(c.pollPeriod)
@@ -176,6 +185,9 @@ func (c *Claimer) Start(ctx context.Context) {
 		case <-ticker.C:
 			if err := c.Recover(ctx); err != nil {
 				c.logErrorf("autoclaim claimer %s recovery failed: %v", c.target.ID, err)
+				if errors.Is(err, ErrPolicyBlocked) {
+					return
+				}
 			}
 		}
 	}
@@ -222,7 +234,14 @@ func (c *Claimer) Advance(ctx context.Context, key autoclaimtypes.RequestKey) er
 	for {
 		switch request.Status {
 		case autoclaimtypes.RequestStatusDetected:
-			request, err = c.evaluatePolicy(ctx, *request)
+			next, advanceErr := c.evaluatePolicy(ctx, *request)
+			if advanceErr != nil {
+				return advanceErr
+			}
+			if next.Status == request.Status {
+				return nil
+			}
+			request = next
 		case autoclaimtypes.RequestStatusManualApprovalRequired:
 			next, advanceErr := c.advanceManualDecision(ctx, *request)
 			if advanceErr != nil {
@@ -258,6 +277,9 @@ func (c *Claimer) Recover(ctx context.Context) error {
 	for _, key := range keys {
 		if err := c.Advance(ctx, key); err != nil {
 			c.logErrorf("advance recoverable autoclaim request %s: %v", key, err)
+			if errors.Is(err, ErrPolicyBlocked) {
+				return err
+			}
 		}
 	}
 
@@ -307,15 +329,27 @@ func (c *Claimer) evaluatePolicy(
 	ctx context.Context,
 	request autoclaimtypes.AutoClaimRequest,
 ) (*autoclaimtypes.AutoClaimRequest, error) {
+	proofPolicy, needsPreparedProof := c.policy.(preparedProofPolicy)
+	if needsPreparedProof && proofPolicy.RequiresPreparedProof() && request.Proof == nil {
+		prepared, err := c.preparePolicyProof(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		if prepared == nil {
+			return &request, nil
+		}
+		request = *prepared
+	}
+
 	decision, err := c.policy.Evaluate(ctx, request)
 	if err != nil {
 		if updateErr := c.storage.UpdateLastError(ctx, request.Key, err.Error(), c.now()); updateErr != nil {
 			return nil, fmt.Errorf("record policy error for autoclaim request %s: %w", request.Key, updateErr)
 		}
-		return nil, fmt.Errorf("evaluate policy for autoclaim request %s: %w", request.Key, err)
+		return nil, fmt.Errorf("%w: evaluate policy for autoclaim request %s: %w", ErrPolicyBlocked, request.Key, err)
 	}
 	if decision == nil {
-		return nil, fmt.Errorf("evaluate policy for autoclaim request %s: empty decision", request.Key)
+		return &request, nil
 	}
 	if err := c.storage.RecordPolicyDecision(ctx, request.Key, *decision); err != nil {
 		return nil, fmt.Errorf("record policy decision for autoclaim request %s: %w", request.Key, err)
@@ -331,6 +365,30 @@ func (c *Claimer) evaluatePolicy(
 	default:
 		return nil, fmt.Errorf("unknown policy decision for autoclaim request %s: %s", request.Key, decision.Result)
 	}
+}
+
+func (c *Claimer) preparePolicyProof(
+	ctx context.Context,
+	request autoclaimtypes.AutoClaimRequest,
+) (*autoclaimtypes.AutoClaimRequest, error) {
+	proof, err := c.proofPreparer.PrepareProof(ctx, request)
+	if err != nil {
+		if updateErr := c.storage.UpdateLastError(ctx, request.Key, err.Error(), c.now()); updateErr != nil {
+			return nil, fmt.Errorf("record proof error for autoclaim request %s: %w", request.Key, updateErr)
+		}
+		return nil, fmt.Errorf("%w: prepare proof for autoclaim request %s: %w", ErrPolicyBlocked, request.Key, err)
+	}
+	if proof == nil || !proofReadyForRequest(*proof, request) {
+		return nil, nil
+	}
+	if err := c.storage.SaveProof(ctx, request.Key, *proof); err != nil {
+		return nil, fmt.Errorf("save proof for autoclaim request %s: %w", request.Key, err)
+	}
+
+	prepared := request
+	prepared.Proof = proof
+	prepared.L1InfoTreeIndex = &proof.L1InfoTreeIndex
+	return &prepared, nil
 }
 
 func (c *Claimer) advanceManualDecision(

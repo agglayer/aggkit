@@ -139,11 +139,11 @@ Each enabled `[[AutoClaim.Claimers]]` entry owns one destination network.
 | `allow-all` | Approves every eligible L1 to L2 request automatically. |
 | `api-approve` | Stores the request as `manual-approval-required`; an operator must approve or reject through the API. |
 | `no-message` | Rejects message bridge leaves and approves asset bridge leaves. |
-| `basic-filter` | Uses target-chain simulation. It rejects claims whose simulated gas exceeds `MaxGas`, rejects detected nested bridge calls, approves when checks pass, and returns a policy error when simulation or nested-call inspection is unavailable. |
+| `basic-filter` | Uses normal destination JSON-RPC gas simulation for asset claims and, when `AllowMessageClaims = true`, message claims. It rejects claims whose simulated gas exceeds `MaxGas`, rejects disallowed origins or asset tokens, and returns a blocking policy error when proof preparation, calldata packing, or simulation fails. Nested bridge-call detection is skipped in this implementation. |
 
 `Policy.AllowMessageClaims`, `Policy.AllowedOrigins`, `Policy.AllowedTokens`, `Policy.ManualFallback`, and
-`Policy.MaxGas` are policy configuration inputs. The current runtime wires the named policies directly; operators
-should verify policy-specific behavior before relying on filters beyond the table above.
+`Policy.MaxGas` are policy configuration inputs. `basic-filter` does not honor `ManualFallback`; operational errors
+remain blocked with `last_error` instead of becoming manual-review requests.
 
 ## Request Lifecycle
 
@@ -162,7 +162,9 @@ The normal lifecycle is:
    the bridge to the matching claimer.
 5. The matching enabled claimer stores the request as `detected`.
 6. The claimer evaluates the configured policy and moves the request to `policy-approved`, `policy-rejected`, or
-   `manual-approval-required`.
+   `manual-approval-required`. For `basic-filter`, the claimer prepares and stores the exact claim proof before policy
+   evaluation so simulation uses the same calldata as the later sender path. If proof data is not ready, the request
+   remains `detected` and is retried later.
 7. Approved requests move to `queued` and then `sending`.
 8. The claimer prepares proofs from `l1infotreesync` and the L1 bridge sync data using the watchdog-selected L1 info
    tree index. If proof data is not ready, the request returns to `queued` and is retried later.
@@ -257,8 +259,13 @@ Approving or rejecting any status other than `manual-approval-required` returns 
   `failed` and require operator investigation.
 - Use `api-approve` when an operator must explicitly inspect each request before claim submission. Expose the API only
   on trusted networks or behind access controls; it can approve or reject pending manual requests.
-- `basic-filter` is conservative when target simulation is unavailable and leaves the request blocked with
-  `last_error` instead of moving it to manual review or automatic approval.
+- `basic-filter` uses only normal JSON-RPC `eth_estimateGas` against latest target state. It does not require archive
+  nodes, `debug_*`, `trace_*`, `debug_traceTransaction`, historical state replay, or internal call traces.
+- `basic-filter` does not inspect direct or indirect nested bridge calls yet. Approved simulation metadata includes
+  `nested_bridge_detection = "skipped"` so operators do not mistake the result for real nested-call inspection.
+- `basic-filter` is conservative when proof preparation, calldata packing, target simulation, or unsupported leaf-type
+  handling fails. The request remains blocked with `last_error`, and claimer recovery stops until the process is
+  restarted after the underlying issue is fixed.
 
 ## Validation
 

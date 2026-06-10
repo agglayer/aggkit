@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"sync"
 	"testing"
@@ -13,6 +14,8 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/api"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
+	"github.com/agglayer/aggkit/autoclaim/policy"
+	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/autoclaim/watchdog"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -235,6 +238,62 @@ func TestStartDoesNotCreateAPIWhenDisabled(t *testing.T) {
 	require.False(t, apiStarted)
 }
 
+func TestStartCreatesTargetSimulatorOnlyForBasicFilter(t *testing.T) {
+	cfg := validConfig()
+	cfg.Claimers = []autoclaimcfg.ClaimerConfig{
+		validClaimer("allow-all", 1, true),
+		validClaimer("basic-filter", 2, true),
+	}
+	cfg.Claimers[1].PolicyName = autoclaimcfg.PolicyNameBasicFilter
+	simulatorTargets := make([]autoclaimtypes.ClaimerTarget, 0)
+	policyOptions := make([]int, 0)
+
+	_, err := Start(context.Background(), Dependencies{
+		Config:         cfg,
+		L1BridgeSync:   fakeL1BridgeSync{},
+		L1InfoTreeSync: fakeL1InfoTreeSync{},
+		L2GERSync:      fakeL2GERSync{},
+	}, testFactories(&factoryHooks{
+		newTargetSimulator: func(
+			_ simulator.Client,
+			_ autoclaimtypes.ProofPreparer,
+			target autoclaimtypes.ClaimerTarget,
+			_ common.Address,
+		) {
+			simulatorTargets = append(simulatorTargets, target)
+		},
+		newPolicy: func(
+			_ autoclaimcfg.PolicyName,
+			_ autoclaimcfg.PolicyConfig,
+			options ...policy.RegistryOption,
+		) {
+			policyOptions = append(policyOptions, len(options))
+		},
+	}))
+
+	require.NoError(t, err)
+	require.Len(t, simulatorTargets, 1)
+	require.Equal(t, uint32(2), simulatorTargets[0].DestinationNetwork)
+	require.ElementsMatch(t, []int{0, 1}, policyOptions)
+}
+
+func TestStartFailsWhenBasicFilterSimulatorConstructionFails(t *testing.T) {
+	cfg := validConfig()
+	cfg.Claimers[0].PolicyName = autoclaimcfg.PolicyNameBasicFilter
+
+	_, err := Start(context.Background(), Dependencies{
+		Config:         cfg,
+		L1BridgeSync:   fakeL1BridgeSync{},
+		L1InfoTreeSync: fakeL1InfoTreeSync{},
+		L2GERSync:      fakeL2GERSync{},
+	}, testFactories(&factoryHooks{
+		targetSimulatorErr: errors.New("simulator unavailable"),
+	}))
+
+	require.ErrorContains(t, err, "create basic-filter target simulator")
+	require.ErrorContains(t, err, "simulator unavailable")
+}
+
 func requireClosed(t *testing.T, ch <-chan struct{}) {
 	t.Helper()
 	require.Eventually(t, func() bool {
@@ -288,13 +347,21 @@ type factoryHooks struct {
 	newRPCClient func(context.Context, aggkitcommon.Logger, ethermanconfig.RPCClientConfig) (
 		aggkittypes.EthClienter, error,
 	)
-	newEthTxManager   func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error)
-	startEthTxManager func(context.Context, EthTxManager)
-	startClaimer      func(context.Context, autoclaimtypes.Claimer)
-	startWatchdog     func(context.Context, *watchdog.L1ToL2)
-	newClaimer        func(autoclaimtypes.ClaimerTarget)
-	newAPI            func()
-	startAPI          func(context.Context)
+	newEthTxManager    func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error)
+	startEthTxManager  func(context.Context, EthTxManager)
+	startClaimer       func(context.Context, autoclaimtypes.Claimer)
+	startWatchdog      func(context.Context, *watchdog.L1ToL2)
+	newClaimer         func(autoclaimtypes.ClaimerTarget)
+	newPolicy          func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig, ...policy.RegistryOption)
+	newTargetSimulator func(
+		simulator.Client,
+		autoclaimtypes.ProofPreparer,
+		autoclaimtypes.ClaimerTarget,
+		common.Address,
+	)
+	targetSimulatorErr error
+	newAPI             func()
+	startAPI           func(context.Context)
 }
 
 func testFactories(hooks *factoryHooks) Factories {
@@ -324,13 +391,34 @@ func testFactories(hooks *factoryHooks) Factories {
 				hooks.startEthTxManager(ctx, txManager)
 			}
 		},
-		NewPolicy: func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig) (autoclaimtypes.Policy, error) {
+		NewPolicy: func(
+			name autoclaimcfg.PolicyName,
+			cfg autoclaimcfg.PolicyConfig,
+			options ...policy.RegistryOption,
+		) (autoclaimtypes.Policy, error) {
+			if hooks.newPolicy != nil {
+				hooks.newPolicy(name, cfg, options...)
+			}
 			return fakePolicy{}, nil
 		},
 		NewTargetClaimReader: func(common.Address, aggkittypes.BaseEthereumClienter) (
 			autoclaimtypes.TargetClaimReader, error,
 		) {
 			return fakeTargetClaimReader{}, nil
+		},
+		NewTargetSimulator: func(
+			client simulator.Client,
+			proofPreparer autoclaimtypes.ProofPreparer,
+			target autoclaimtypes.ClaimerTarget,
+			from common.Address,
+		) (policy.TargetSimulator, error) {
+			if hooks.newTargetSimulator != nil {
+				hooks.newTargetSimulator(client, proofPreparer, target, from)
+			}
+			if hooks.targetSimulatorErr != nil {
+				return nil, hooks.targetSimulatorErr
+			}
+			return fakeTargetSimulator{}, nil
 		},
 		NewSender: func(
 			autoclaimtypes.Storage,
@@ -554,6 +642,18 @@ type fakeTargetClaimReader struct{}
 
 func (fakeTargetClaimReader) IsClaimed(context.Context, *big.Int) (bool, error) {
 	return false, nil
+}
+
+type fakeTargetSimulator struct{}
+
+func (fakeTargetSimulator) SimulateClaim(
+	context.Context,
+	autoclaimtypes.AutoClaimRequest,
+) (*policy.SimulationResult, error) {
+	return &policy.SimulationResult{
+		GasUsed:          1,
+		NestedBridgeCall: policy.NestedBridgeCallNotDetected,
+	}, nil
 }
 
 type fakeSender struct{}

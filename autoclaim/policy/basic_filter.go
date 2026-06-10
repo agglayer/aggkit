@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	autoclaimconfig "github.com/agglayer/aggkit/autoclaim/config"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 )
 
 // NestedBridgeCallStatus identifies whether target simulation found a nested bridge call.
@@ -23,6 +25,8 @@ const (
 )
 
 const (
+	simulationMetadataCapacity = 4
+
 	// ReasonBasicFilterApproved is used when all basic-filter checks pass.
 	ReasonBasicFilterApproved = "basic filter approved"
 	// ReasonTargetSimulationUnavailable is used when target-chain simulation cannot be performed.
@@ -33,6 +37,10 @@ const (
 	ReasonNestedBridgeCallRejected = "nested bridge call detected"
 	// ReasonNestedBridgeInspectionUnsafe is used when nested bridge-call inspection is unavailable or unsafe.
 	ReasonNestedBridgeInspectionUnsafe = "nested bridge inspection unavailable"
+	// ReasonOriginRejected is used when a request origin network is not allowed.
+	ReasonOriginRejected = "origin network is not allowed"
+	// ReasonTokenRejected is used when an asset origin token is not allowed.
+	ReasonTokenRejected = "origin token is not allowed"
 )
 
 // TargetSimulator simulates a prepared target claim and inspects bounded safety signals.
@@ -44,6 +52,7 @@ type TargetSimulator interface {
 type SimulationResult struct {
 	GasUsed          uint64
 	NestedBridgeCall NestedBridgeCallStatus
+	Metadata         map[string]string
 }
 
 type basicFilterPolicy struct {
@@ -65,6 +74,40 @@ func (p basicFilterPolicy) Evaluate(
 	ctx context.Context,
 	request autoclaimtypes.AutoClaimRequest,
 ) (*autoclaimtypes.PolicyDecision, error) {
+	switch request.Bridge.LeafType {
+	case bridgesynctypes.LeafTypeMessage:
+		if !p.config.AllowMessageClaims {
+			return newDecision(
+				autoclaimconfig.PolicyNameBasicFilter,
+				autoclaimtypes.PolicyResultRejected,
+				ReasonMessageClaimsRejected,
+				nil,
+			), nil
+		}
+	case bridgesynctypes.LeafTypeAsset:
+	default:
+		return nil, fmt.Errorf("basic-filter policy unsupported bridge leaf type: %d", request.Bridge.LeafType.Uint8())
+	}
+
+	if !originAllowed(request.Bridge.OriginNetwork, p.config.AllowedOrigins) {
+		return newDecision(
+			autoclaimconfig.PolicyNameBasicFilter,
+			autoclaimtypes.PolicyResultRejected,
+			ReasonOriginRejected,
+			nil,
+		), nil
+	}
+
+	if request.Bridge.LeafType == bridgesynctypes.LeafTypeAsset &&
+		!tokenAllowed(request.Bridge.OriginAddress.String(), p.config.AllowedTokens) {
+		return newDecision(
+			autoclaimconfig.PolicyNameBasicFilter,
+			autoclaimtypes.PolicyResultRejected,
+			ReasonTokenRejected,
+			nil,
+		), nil
+	}
+
 	if p.targetSimulator == nil {
 		return nil, errors.New(ReasonTargetSimulationUnavailable)
 	}
@@ -77,10 +120,13 @@ func (p basicFilterPolicy) Evaluate(
 		return nil, fmt.Errorf("%s: empty simulation result", ReasonTargetSimulationUnavailable)
 	}
 
-	metadata := map[string]string{
-		"gas_used": strconv.FormatUint(result.GasUsed, 10),
-		"max_gas":  strconv.FormatUint(p.config.MaxGas, 10),
+	metadata := copyMetadata(result.Metadata)
+	metadata["gas_used"] = strconv.FormatUint(result.GasUsed, 10)
+	metadata["max_gas"] = strconv.FormatUint(p.config.MaxGas, 10)
+	if metadata["nested_bridge_detection"] == "" {
+		metadata["nested_bridge_detection"] = "skipped"
 	}
+	metadata["nested_bridge_call"] = string(result.NestedBridgeCall)
 	if p.config.MaxGas > 0 && result.GasUsed > p.config.MaxGas {
 		return newDecision(
 			autoclaimconfig.PolicyNameBasicFilter,
@@ -108,4 +154,41 @@ func (p basicFilterPolicy) Evaluate(
 	default:
 		return nil, fmt.Errorf("%s: %s", ReasonNestedBridgeInspectionUnsafe, result.NestedBridgeCall)
 	}
+}
+
+// RequiresPreparedProof reports that basic-filter needs the exact sender proof before policy evaluation.
+func (p basicFilterPolicy) RequiresPreparedProof() bool {
+	return true
+}
+
+func originAllowed(origin uint32, allowed []uint32) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, value := range allowed {
+		if origin == value {
+			return true
+		}
+	}
+	return false
+}
+
+func tokenAllowed(token string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, value := range allowed {
+		if strings.EqualFold(strings.TrimSpace(value), token) {
+			return true
+		}
+	}
+	return false
+}
+
+func copyMetadata(metadata map[string]string) map[string]string {
+	copied := make(map[string]string, len(metadata)+simulationMetadataCapacity)
+	for key, value := range metadata {
+		copied[key] = value
+	}
+	return copied
 }

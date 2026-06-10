@@ -9,14 +9,14 @@ policies now return deterministic names, results, and reason strings.
 The worker also added `PolicyConfig.MaxGas` parsing and focused policy tests. `basic-filter` uses a bounded
 `TargetSimulator` abstraction so later claimer or sender work can provide target-chain simulation without changing the
 policy API. Its behavior is conservative: it rejects gas usage above configured `MaxGas`, rejects detected nested bridge
-calls, and returns manual when simulation is unavailable, fails, returns nil, or cannot safely determine nested bridge
-status.
+calls, and now returns blocking policy errors when simulation is unavailable, fails, returns nil, or cannot safely
+determine nested bridge status.
 
 ## Decisions And Deviations
 
 - Added a local `TargetSimulator` abstraction for `basic-filter`; this keeps policy evaluation independent from later
   proof, RPC, claimer, and sender implementations.
-- Treated unknown or unsafe nested bridge inspection as a manual decision rather than approval.
+- Treated unknown or unsafe nested bridge inspection as a blocking policy error rather than approval or manual review.
 - Defined `PolicyConfig.MaxGas == 0` as disabling the gas ceiling check; nonzero values reject only when simulated gas is
   greater than the configured value.
 - The validator noted one narrow non-`autoclaim/*` touch: a repository-level config parsing test assertion for `MaxGas`,
@@ -75,10 +75,10 @@ Policy tests cover all required outcomes:
   `TestBasicFilterApprovesWhenGasAndNestedBridgeChecksPass`.
 - Rejected: `TestNoMessageRejectsMessageClaims`, `TestBasicFilterRejectsGasOverMaxGas`,
   `TestBasicFilterRejectsDetectedNestedBridgeCalls`.
-- Manual: `TestAPIApproveRequiresManualDecision`,
-  `TestBasicFilterReturnsManualWhenTargetSimulationUnavailable`,
-  `TestBasicFilterReturnsManualWhenTargetSimulationFails`,
-  `TestBasicFilterReturnsManualWhenNestedBridgeInspectionIsUnsafe`.
+- Manual: `TestAPIApproveRequiresManualDecision`.
+- Blocking errors: `TestBasicFilterReturnsErrorWhenTargetSimulationUnavailable`,
+  `TestBasicFilterReturnsErrorWhenTargetSimulationFails`,
+  `TestBasicFilterReturnsErrorWhenNestedBridgeInspectionIsUnsafe`.
 
 The validator also confirmed that `config/config_test.go` parses `MaxGas = 500000` and asserts
 `claimer.Policy.MaxGas == 500000`.
@@ -91,7 +91,7 @@ None.
 
 - Later claimer or runtime code can construct policies with `policy.NewRegistry(policy.WithTargetSimulator(simulator))`.
 - `basic-filter` expects a simulator implementing `SimulateClaim(ctx, request)` and returning
-  `SimulationResult{GasUsed, NestedBridgeCall}`.
-- `NestedBridgeCallUnknown` or any unrecognized nested-call status causes a manual decision.
+  `SimulationResult{GasUsed, NestedBridgeCall, Metadata}`.
+- `NestedBridgeCallUnknown` or any unrecognized nested-call status causes a blocking policy error.
 - `PolicyConfig.MaxGas == 0` disables the gas ceiling check; nonzero `MaxGas` rejects only when simulated gas is greater
   than the configured value.

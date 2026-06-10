@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	autoclaimconfig "github.com/agglayer/aggkit/autoclaim/config"
+	autoclaimpolicy "github.com/agglayer/aggkit/autoclaim/policy"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/e2e/envs"
@@ -32,15 +34,23 @@ const (
 )
 
 type autoClaimRequestResponse struct {
-	ID                 string  `json:"id"`
-	Status             string  `json:"status"`
-	OriginNetwork      uint32  `json:"origin_network"`
-	DestinationNetwork uint32  `json:"destination_network"`
-	DepositCount       uint32  `json:"deposit_count"`
-	BridgeTxHash       string  `json:"bridge_tx_hash"`
-	ClaimTxHash        *string `json:"claim_tx_hash"`
-	PolicyStatus       string  `json:"policy_status"`
-	LastError          string  `json:"last_error"`
+	ID                 string                     `json:"id"`
+	Status             string                     `json:"status"`
+	OriginNetwork      uint32                     `json:"origin_network"`
+	DestinationNetwork uint32                     `json:"destination_network"`
+	DepositCount       uint32                     `json:"deposit_count"`
+	BridgeTxHash       string                     `json:"bridge_tx_hash"`
+	ClaimTxHash        *string                    `json:"claim_tx_hash"`
+	PolicyStatus       string                     `json:"policy_status"`
+	PolicyDecision     *autoClaimDecisionResponse `json:"policy_decision"`
+	LastError          string                     `json:"last_error"`
+}
+
+type autoClaimDecisionResponse struct {
+	PolicyName string            `json:"policy_name"`
+	Result     string            `json:"result"`
+	Reason     string            `json:"reason"`
+	Metadata   map[string]string `json:"metadata"`
 }
 
 func TestAutoClaimL1ToL2AllowAll(t *testing.T) {
@@ -51,7 +61,24 @@ func TestAutoClaimL1ToL2APIApprove(t *testing.T) {
 	testAutoClaimL1ToL2(t, "api-approve", true)
 }
 
-func testAutoClaimL1ToL2(t *testing.T, policyName string, approveThroughAPI bool) {
+func TestAutoClaimL1ToL2BasicFilter(t *testing.T) {
+	confirmed := testAutoClaimL1ToL2(t, string(autoclaimconfig.PolicyNameBasicFilter), false)
+
+	require.NotNil(t, confirmed.PolicyDecision)
+	require.Equal(t, string(autoclaimconfig.PolicyNameBasicFilter), confirmed.PolicyDecision.PolicyName)
+	require.Equal(t, autoclaimtypes.PolicyResultApproved.String(), confirmed.PolicyDecision.Result)
+	require.Equal(t, autoclaimpolicy.ReasonBasicFilterApproved, confirmed.PolicyDecision.Reason)
+	require.NotEmpty(t, confirmed.PolicyDecision.Metadata["gas_used"])
+	require.Equal(t, "500000", confirmed.PolicyDecision.Metadata["max_gas"])
+	require.Equal(t, "skipped", confirmed.PolicyDecision.Metadata["nested_bridge_detection"])
+	require.Equal(
+		t,
+		string(autoclaimpolicy.NestedBridgeCallNotDetected),
+		confirmed.PolicyDecision.Metadata["nested_bridge_call"],
+	)
+}
+
+func testAutoClaimL1ToL2(t *testing.T, policyName string, approveThroughAPI bool) autoClaimRequestResponse {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
@@ -96,6 +123,7 @@ func testAutoClaimL1ToL2(t *testing.T, policyName string, approveThroughAPI bool
 	finalBalance, err := env.Clients.L2.BalanceAt(ctx, result.DestinationAddr, nil)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, new(big.Int).Sub(finalBalance, initialBalance).Cmp(bridgeAmount), 0)
+	return confirmed
 }
 
 func loadAutoClaimTestEnv(t *testing.T, ctx context.Context) *envs.Env {

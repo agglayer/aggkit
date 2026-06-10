@@ -82,6 +82,7 @@ func TestPolicyErrorBlocksRequestUntilRecoveryRetrySucceeds(t *testing.T) {
 	bridge := makeBridge(33, 10)
 
 	err := claimer.Enqueue(ctx, bridge)
+	require.ErrorIs(t, err, ErrPolicyBlocked)
 	require.ErrorIs(t, err, policyErr)
 
 	request := storage.mustRequest(t, bridge)
@@ -98,6 +99,55 @@ func TestPolicyErrorBlocksRequestUntilRecoveryRetrySucceeds(t *testing.T) {
 	require.NotNil(t, request.PolicyDecision)
 	require.Equal(t, autoclaimtypes.PolicyResultApproved, request.PolicyDecision.Result)
 	require.Equal(t, 1, sender.submitCalls)
+}
+
+func TestRecoverStopsAtFirstBlockingPolicyError(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	policyErr := errors.New("target simulation unavailable")
+	claimer := newTestClaimer(
+		t,
+		storage,
+		fakePolicy{result: autoclaimtypes.PolicyResultApproved, err: policyErr},
+		readyProof(),
+		sender,
+	)
+	firstBridge := makeBridge(34, 10)
+	secondBridge := makeBridge(35, 10)
+	insertStoredRequest(t, ctx, storage, firstBridge, autoclaimtypes.RequestStatusDetected)
+	insertStoredRequest(t, ctx, storage, secondBridge, autoclaimtypes.RequestStatusPolicyApproved)
+
+	err := claimer.Recover(ctx)
+
+	require.ErrorIs(t, err, ErrPolicyBlocked)
+	require.Equal(t, autoclaimtypes.RequestStatusDetected, storage.mustRequest(t, firstBridge).Status)
+	require.Equal(t, autoclaimtypes.RequestStatusPolicyApproved, storage.mustRequest(t, secondBridge).Status)
+	require.Equal(t, 0, sender.submitCalls)
+}
+
+func TestStartExitsAfterBlockingPolicyError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	claimer := newTestClaimer(
+		t,
+		storage,
+		fakePolicy{result: autoclaimtypes.PolicyResultApproved, err: errors.New("target simulation unavailable")},
+		readyProof(),
+		sender,
+		WithPollPeriod(time.Millisecond),
+	)
+	insertStoredRequest(t, ctx, storage, makeBridge(36, 10), autoclaimtypes.RequestStatusDetected)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		claimer.Start(ctx)
+	}()
+
+	requireClosed(t, done)
 }
 
 func TestManualFlowStaysIdleUntilApproved(t *testing.T) {
@@ -165,6 +215,45 @@ func TestProofNotReadyLeavesRequestQueued(t *testing.T) {
 	request := storage.mustRequest(t, bridge)
 	require.Equal(t, autoclaimtypes.RequestStatusQueued, request.Status)
 	require.Nil(t, request.Proof)
+	require.Equal(t, 0, sender.submitCalls)
+}
+
+func TestProofNotReadyBeforeProofPolicyLeavesRequestDetected(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	claimer := newTestClaimer(t, storage, proofRequiredPolicy{
+		result: autoclaimtypes.PolicyResultApproved,
+	}, pendingProof(), sender)
+	bridge := makeBridge(37, 10)
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusDetected, request.Status)
+	require.Nil(t, request.PolicyDecision)
+	require.Nil(t, request.Proof)
+	require.Equal(t, 0, sender.submitCalls)
+}
+
+func TestProofErrorBeforeProofPolicyBlocksRequest(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	proofErr := errors.New("proof unavailable")
+	claimer := newTestClaimer(t, storage, proofRequiredPolicy{
+		result: autoclaimtypes.PolicyResultApproved,
+	}, fakeProofPreparer{err: proofErr}, sender)
+	bridge := makeBridge(38, 10)
+
+	err := claimer.Enqueue(ctx, bridge)
+
+	require.ErrorIs(t, err, ErrPolicyBlocked)
+	require.ErrorIs(t, err, proofErr)
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusDetected, request.Status)
+	require.Equal(t, proofErr.Error(), request.LastError)
+	require.Nil(t, request.PolicyDecision)
 	require.Equal(t, 0, sender.submitCalls)
 }
 
@@ -503,6 +592,18 @@ func manualPolicy() autoclaimtypes.Policy {
 	return fakePolicy{result: autoclaimtypes.PolicyResultManual}
 }
 
+func requireClosed(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		select {
+		case <-ch:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, time.Millisecond)
+}
+
 type fakePolicy struct {
 	result autoclaimtypes.PolicyResult
 	err    error
@@ -522,6 +623,19 @@ func (p fakePolicy) Evaluate(
 		CreatedAt:  testNow,
 		UpdatedAt:  testNow,
 	}, nil
+}
+
+type proofRequiredPolicy fakePolicy
+
+func (p proofRequiredPolicy) RequiresPreparedProof() bool {
+	return true
+}
+
+func (p proofRequiredPolicy) Evaluate(
+	ctx context.Context,
+	request autoclaimtypes.AutoClaimRequest,
+) (*autoclaimtypes.PolicyDecision, error) {
+	return fakePolicy(p).Evaluate(ctx, request)
 }
 
 type blockingPolicy struct {

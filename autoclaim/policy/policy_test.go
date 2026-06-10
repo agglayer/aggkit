@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/require"
-
 	autoclaimconfig "github.com/agglayer/aggkit/autoclaim/config"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegistryRejectsInvalidPolicyName(t *testing.T) {
@@ -109,6 +108,9 @@ func TestBasicFilterApprovesWhenGasAndNestedBridgeChecksPass(t *testing.T) {
 		WithTargetSimulator(staticSimulator(SimulationResult{
 			GasUsed:          100,
 			NestedBridgeCall: NestedBridgeCallNotDetected,
+			Metadata: map[string]string{
+				"nested_bridge_detection": "skipped",
+			},
 		})),
 	)
 	require.NoError(t, err)
@@ -119,6 +121,87 @@ func TestBasicFilterApprovesWhenGasAndNestedBridgeChecksPass(t *testing.T) {
 	require.Equal(t, string(autoclaimconfig.PolicyNameBasicFilter), decision.PolicyName)
 	require.Equal(t, autoclaimtypes.PolicyResultApproved, decision.Result)
 	require.Equal(t, ReasonBasicFilterApproved, decision.Reason)
+	require.Equal(t, "skipped", decision.Metadata["nested_bridge_detection"])
+	require.Equal(t, string(NestedBridgeCallNotDetected), decision.Metadata["nested_bridge_call"])
+}
+
+func TestBasicFilterRejectsMessageClaimsWhenNotAllowed(t *testing.T) {
+	policy, err := NewPolicy(
+		autoclaimconfig.PolicyNameBasicFilter,
+		autoclaimconfig.PolicyConfig{AllowMessageClaims: false},
+		WithTargetSimulator(errorSimulator{err: errors.New("should not be called")}),
+	)
+	require.NoError(t, err)
+
+	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeMessage))
+	require.NoError(t, err)
+
+	require.Equal(t, autoclaimtypes.PolicyResultRejected, decision.Result)
+	require.Equal(t, ReasonMessageClaimsRejected, decision.Reason)
+}
+
+func TestBasicFilterSimulatesMessageClaimsWhenAllowed(t *testing.T) {
+	policy, err := NewPolicy(
+		autoclaimconfig.PolicyNameBasicFilter,
+		autoclaimconfig.PolicyConfig{AllowMessageClaims: true},
+		WithTargetSimulator(staticSimulator(SimulationResult{
+			GasUsed:          100,
+			NestedBridgeCall: NestedBridgeCallNotDetected,
+		})),
+	)
+	require.NoError(t, err)
+
+	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeMessage))
+	require.NoError(t, err)
+
+	require.Equal(t, autoclaimtypes.PolicyResultApproved, decision.Result)
+}
+
+func TestBasicFilterRejectsDisallowedOrigin(t *testing.T) {
+	policy, err := NewPolicy(
+		autoclaimconfig.PolicyNameBasicFilter,
+		autoclaimconfig.PolicyConfig{AllowedOrigins: []uint32{1}},
+		WithTargetSimulator(errorSimulator{err: errors.New("should not be called")}),
+	)
+	require.NoError(t, err)
+
+	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeAsset))
+	require.NoError(t, err)
+
+	require.Equal(t, autoclaimtypes.PolicyResultRejected, decision.Result)
+	require.Equal(t, ReasonOriginRejected, decision.Reason)
+}
+
+func TestBasicFilterRejectsDisallowedAssetToken(t *testing.T) {
+	policy, err := NewPolicy(
+		autoclaimconfig.PolicyNameBasicFilter,
+		autoclaimconfig.PolicyConfig{
+			AllowedOrigins: []uint32{autoclaimtypes.L1OriginNetwork},
+			AllowedTokens:  []string{"0x9000000000000000000000000000000000000009"},
+		},
+		WithTargetSimulator(errorSimulator{err: errors.New("should not be called")}),
+	)
+	require.NoError(t, err)
+
+	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafTypeAsset))
+	require.NoError(t, err)
+
+	require.Equal(t, autoclaimtypes.PolicyResultRejected, decision.Result)
+	require.Equal(t, ReasonTokenRejected, decision.Reason)
+}
+
+func TestBasicFilterReturnsErrorForUnsupportedLeafType(t *testing.T) {
+	policy, err := NewPolicy(
+		autoclaimconfig.PolicyNameBasicFilter,
+		autoclaimconfig.PolicyConfig{},
+		WithTargetSimulator(errorSimulator{err: errors.New("should not be called")}),
+	)
+	require.NoError(t, err)
+
+	decision, err := policy.Evaluate(context.Background(), makeRequest(bridgesynctypes.LeafType(99)))
+
+	require.Nil(t, decision)
+	require.ErrorContains(t, err, "unsupported bridge leaf type")
 }
 
 func TestBasicFilterRejectsDetectedNestedBridgeCalls(t *testing.T) {
