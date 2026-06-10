@@ -18,6 +18,10 @@ const (
 	L1OriginNetwork uint32 = 0
 	// LegacyZkEVMRollupNetwork is the legacy zkEVM rollup network ID used for pre-Etrog global indexes.
 	LegacyZkEVMRollupNetwork uint32 = 1
+	// DefaultRequestPageSize is used when request-list callers omit a page size.
+	DefaultRequestPageSize uint32 = 100
+	// MaxRequestPageSize bounds list allocations and SQL LIMIT values derived from caller input.
+	MaxRequestPageSize uint32 = 1000
 )
 
 // RequestKey uniquely identifies an Auto Claim request across origin, destination, and deposit count.

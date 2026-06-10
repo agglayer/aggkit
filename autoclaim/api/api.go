@@ -25,16 +25,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/gin-gonic/gin"
-	swaggerfiles "github.com/swaggo/files"
-	ginswagger "github.com/swaggo/gin-swagger"
-
 	_ "github.com/agglayer/aggkit/autoclaim/api/docs"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 )
 
 const (
@@ -43,8 +42,8 @@ const (
 
 	swaggerInstanceName = "autoclaim"
 
-	defaultPageSize = uint32(100)
-	manualPolicy    = "manual"
+	manualPolicy            = "manual"
+	shutdownTimeoutDuration = 5 * time.Second
 )
 
 // Config configures the optional Auto Claim REST API.
@@ -185,7 +184,8 @@ func (a *API) Start(ctx context.Context) error {
 	}
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Use a fresh context so cancellation of the parent context starts, rather than aborts, graceful shutdown.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeoutDuration)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
 	}()
@@ -214,7 +214,7 @@ func (a *API) Start(ctx context.Context) error {
 // @Param from_block query uint64 false "Filter by minimum bridge block number"
 // @Param to_block query uint64 false "Filter by maximum bridge block number"
 // @Param page_number query uint32 false "Page number (default 0)"
-// @Param page_size query uint32 false "Page size (default 100)"
+// @Param page_size query uint32 false "Page size (default 100, max 1000)"
 // @Produce json
 // @Success 200 {object} ListResponse
 // @Failure 400 {object} ErrorResponse "Bad Request"
@@ -430,6 +430,10 @@ func parseRequestFilter(c *gin.Context) (autoclaimtypes.RequestFilter, error) {
 		return filter, err
 	}
 	if pageSize != nil {
+		if *pageSize > autoclaimtypes.MaxRequestPageSize {
+			return filter, fmt.Errorf("page_size parameter must be less than or equal to %d",
+				autoclaimtypes.MaxRequestPageSize)
+		}
 		filter.PageSize = *pageSize
 	}
 	return filter, nil
@@ -549,7 +553,7 @@ func defaultDecisionReason(result autoclaimtypes.PolicyResult, reason string) st
 
 func effectivePageSize(pageSize uint32) uint32 {
 	if pageSize == 0 {
-		return defaultPageSize
+		return autoclaimtypes.DefaultRequestPageSize
 	}
 	return pageSize
 }

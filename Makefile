@@ -14,6 +14,8 @@ GOBIN := $(GOBASE)/target
 GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
 GOBINARY := aggkit
 GOCMD := $(GOBASE)/cmd
+SWAG_VERSION ?= v1.16.6
+SWAG := $(shell command -v swag 2>/dev/null || echo "$$(go env GOPATH)/bin/swag")
 
 LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.GitRev=$(GITREV)'
@@ -51,10 +53,14 @@ check-golangci-lint:
 # Check for Swag
 .PHONY: check-swag
 check-swag:
-	@command -v swag >/dev/null 2>&1 || { \
-		echo >&2 "Error: swag not installed. Please install it: https://github.com/swaggo/swag"; \
+	@test -x "$(SWAG)" || { \
+		echo >&2 "Error: swag not installed. Run: make install-swag"; \
 		exit 1; \
 	}
+
+.PHONY: install-swag
+install-swag: check-go ## Install swag for swagger generation
+	GOBIN=$$(go env GOPATH)/bin go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
 
 # Targets that require the checks
 build: check-go
@@ -116,8 +122,8 @@ lint: ## Runs the linter
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
-	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim
-	@swag init -g api.go -d autoclaim/api -o autoclaim/api/docs --instanceName autoclaim
+	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim
+	@$(SWAG) init -g api.go -d autoclaim/api -o autoclaim/api/docs --instanceName autoclaim
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"

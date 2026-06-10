@@ -18,15 +18,17 @@ import (
 	"github.com/russross/meddler"
 )
 
-const (
-	defaultPageSize = uint32(100)
-)
-
 var (
 	// ErrInvalidTransition is returned when a stored request cannot move from one status to another.
 	ErrInvalidTransition = errors.New("invalid autoclaim request transition")
 	// ErrPreconditionFailed is returned when an atomic update precondition does not match the stored row.
 	ErrPreconditionFailed = errors.New("autoclaim request precondition failed")
+)
+
+const (
+	recoveryFilterClauseCapacity = 2
+	requestFilterClauseCapacity  = 8
+	base10                       = 10
 )
 
 var _ autoclaimtypes.Storage = (*Storage)(nil)
@@ -349,7 +351,7 @@ func (s *Storage) ListRecoverableRequests(
 		}
 	}
 
-	clauses := make([]string, 0, 2)
+	clauses := make([]string, 0, recoveryFilterClauseCapacity)
 	args := make([]any, 0, len(statuses)+1)
 	if filter.DestinationNetwork != nil {
 		clauses = append(clauses, "destination_network = ?")
@@ -661,10 +663,22 @@ func (s *Storage) recordDecision(
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	query := fmt.Sprintf(`
-		UPDATE autoclaim_request
-		SET %s = ?, policy_result = ?, updated_at = ?
-		WHERE request_key = ?`, column)
+	var query string
+	switch column {
+	case "policy_decision_json":
+		query = `
+			UPDATE autoclaim_request
+			SET policy_decision_json = ?, policy_result = ?, updated_at = ?
+			WHERE request_key = ?`
+	case "manual_decision_json":
+		query = `
+			UPDATE autoclaim_request
+			SET manual_decision_json = ?, policy_result = ?, updated_at = ?
+			WHERE request_key = ?`
+	default:
+		return fmt.Errorf("record decision for autoclaim request %s: unsupported decision column %s", key, column)
+	}
+
 	result, err := s.database.ExecContext(dbCtx, query, decisionJSON, decision.Result.String(), now, key)
 	if err != nil {
 		return fmt.Errorf("record decision for autoclaim request %s: %w", key, err)
@@ -735,16 +749,18 @@ func (s *Storage) listRequests(
 	pageNumber uint32,
 	pageSize uint32,
 ) (*autoclaimtypes.RequestPage, error) {
-	if pageSize == 0 {
-		pageSize = defaultPageSize
+	pageSize, err := validatePageSize(pageSize)
+	if err != nil {
+		return nil, err
 	}
-	offset := int(pageNumber * pageSize)
+	offset := int64(pageNumber) * int64(pageSize)
 
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
 	var count int
 	countArgs := append([]any(nil), args...)
+	// The WHERE fragment is built only by the helpers below and must contain placeholders only.
 	countQuery := "SELECT COUNT(*) FROM autoclaim_request" + where
 	if err := s.database.QueryRowContext(dbCtx, countQuery, countArgs...).Scan(&count); err != nil {
 		return nil, fmt.Errorf("count autoclaim requests: %w", err)
@@ -753,6 +769,7 @@ func (s *Storage) listRequests(
 		return &autoclaimtypes.RequestPage{Requests: []*autoclaimtypes.AutoClaimRequest{}, Count: 0}, nil
 	}
 
+	// The WHERE fragment is built only by the helpers below and must contain placeholders only.
 	query := selectRequestSQL() + where + " ORDER BY block_num DESC, block_pos DESC, created_at DESC LIMIT ? OFFSET ?"
 	queryArgs := append(append([]any(nil), args...), pageSize, offset)
 	rows, err := s.database.QueryContext(dbCtx, query, queryArgs...)
@@ -760,7 +777,7 @@ func (s *Storage) listRequests(
 		return nil, fmt.Errorf("list autoclaim requests: %w", err)
 	}
 
-	requestRows := make([]*requestRow, 0, pageSize)
+	var requestRows []*requestRow
 	if err := meddler.ScanAll(rows, &requestRows); err != nil {
 		return nil, fmt.Errorf("scan autoclaim request rows: %w", err)
 	}
@@ -777,9 +794,20 @@ func (s *Storage) listRequests(
 	return &autoclaimtypes.RequestPage{Requests: requests, Count: count}, nil
 }
 
+func validatePageSize(pageSize uint32) (uint32, error) {
+	if pageSize == 0 {
+		return autoclaimtypes.DefaultRequestPageSize, nil
+	}
+	if pageSize > autoclaimtypes.MaxRequestPageSize {
+		return 0, fmt.Errorf("autoclaim request page size %d exceeds maximum %d",
+			pageSize, autoclaimtypes.MaxRequestPageSize)
+	}
+	return pageSize, nil
+}
+
 func buildRequestWhereClause(filter autoclaimtypes.RequestFilter) (string, []any) {
-	clauses := make([]string, 0, 8)
-	args := make([]any, 0, 8)
+	clauses := make([]string, 0, requestFilterClauseCapacity)
+	args := make([]any, 0, requestFilterClauseCapacity)
 
 	if filter.OriginNetwork != nil {
 		clauses = append(clauses, "origin_network = ?")
@@ -1003,7 +1031,7 @@ func nullTime(value *time.Time) sql.NullTime {
 }
 
 func parseBigInt(value string) (*big.Int, bool) {
-	return new(big.Int).SetString(value, 10)
+	return new(big.Int).SetString(value, base10)
 }
 
 func requireUpdated(result sql.Result, action string, key autoclaimtypes.RequestKey) error {

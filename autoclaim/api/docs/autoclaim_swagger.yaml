@@ -179,7 +179,7 @@ paths:
         in: query
         name: page_number
         type: integer
-      - description: Page size (default 100)
+      - description: Page size (default 100, max 1000)
         format: int32
         in: query
         name: page_size

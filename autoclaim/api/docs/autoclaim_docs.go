@@ -101,7 +101,7 @@ const docTemplateautoclaim = `{
                     {
                         "type": "integer",
                         "format": "int32",
-                        "description": "Page size (default 100)",
+                        "description": "Page size (default 100, max 1000)",
                         "name": "page_size",
                         "in": "query"
                     }

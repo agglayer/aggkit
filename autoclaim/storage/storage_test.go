@@ -228,6 +228,17 @@ func TestListRequestsFiltersAndPagination(t *testing.T) {
 	require.Len(t, page.Requests, 1)
 }
 
+func TestListRequestsRejectsOversizedPageSize(t *testing.T) {
+	storage, _ := newTestStorage(t)
+	defer storage.Close()
+
+	_, err := storage.ListRequests(context.Background(), autoclaimtypes.RequestFilter{
+		PageSize: autoclaimtypes.MaxRequestPageSize + 1,
+	})
+
+	require.ErrorContains(t, err, "exceeds maximum")
+}
+
 func TestTransitionRequestPreconditions(t *testing.T) {
 	storage, _ := newTestStorage(t)
 	defer storage.Close()

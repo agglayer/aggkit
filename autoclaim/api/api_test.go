@@ -14,14 +14,13 @@ import (
 	"time"
 
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
-
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	logger "github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 var testNow = time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
@@ -196,6 +195,16 @@ func TestListPagination(t *testing.T) {
 	require.Equal(t, uint32(1), second.PageNumber)
 	require.Len(t, second.Bridges, 1)
 	require.Equal(t, "0:10:1", second.Bridges[0].ID)
+}
+
+func TestListRejectsOversizedPageSize(t *testing.T) {
+	api := newTestAPI(t, newTestStorage(t), nil)
+	path := fmt.Sprintf("%s/bridges?page_size=%d", Prefix, autoclaimtypes.MaxRequestPageSize+1)
+
+	response := performRequest(t, api, http.MethodGet, path, nil)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "page_size")
 }
 
 func TestResponseJSONFields(t *testing.T) {
