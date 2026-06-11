@@ -14,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/api"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
-	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	"github.com/agglayer/aggkit/autoclaim/policy"
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/simulator"
@@ -25,6 +24,8 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/agglayer/aggkit/reorgdetector"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -395,16 +396,24 @@ func testFactories(hooks *factoryHooks) Factories {
 		) {
 			return fakeTargetClaimReader{}, nil
 		},
-		NewProofPreparer: func(
+		NewGERSyncer: func(
+			_ context.Context,
 			_ autoclaimcfg.ClaimerConfig,
+			_ l2gersync.Config,
+			_ reorgdetector.Config,
+			_ string,
 			_ aggkittypes.EthClienter,
+			_ l2gersync.L1InfoTreeQuerier,
+			_ aggkittypes.EthClienter,
+		) (proof.L2GERSyncer, func(context.Context), error) {
+			return nil, nil, nil
+		},
+		NewProofPreparer: func(
 			l1BridgeSync proof.L1BridgeSyncer,
-			l1InfoTreeSync interface {
-				proof.L1InfoTreeSyncer
-				gertracker.L1InfoTreeSyncer
-			},
+			l1InfoTreeSync proof.L1InfoTreeSyncer,
+			gerSyncer proof.L2GERSyncer,
 		) (autoclaimtypes.ProofPreparer, error) {
-			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, nil), nil
+			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer), nil
 		},
 		NewTargetSimulator: func(
 			client simulator.Client,
@@ -519,6 +528,14 @@ func (fakeL1InfoTreeSync) GetFirstInfoAfterBlock(uint64) (*l1infotreesync.L1Info
 
 func (fakeL1InfoTreeSync) GetInfoByGlobalExitRoot(common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error) {
 	return nil, nil
+}
+
+func (fakeL1InfoTreeSync) GetLastL1InfoTreeRoot(context.Context) (treetypes.Root, error) {
+	return treetypes.Root{}, nil
+}
+
+func (fakeL1InfoTreeSync) IsUpToDate(context.Context, aggkittypes.BaseEthereumClienter) (bool, error) {
+	return true, nil
 }
 
 type fakeStorage struct{}

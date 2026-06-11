@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -256,7 +256,7 @@ func TestPreparePendingWhenNoGERInjectedYet(t *testing.T) {
 	l1InfoTree := &fakeL1InfoTreeSyncer{}
 	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
 
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeGERTracker{ger: nil})
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{err: db.ErrNotFound})
 	result, err := preparer.Prepare(ctx, testRequest(depositCount))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -264,16 +264,15 @@ func TestPreparePendingWhenNoGERInjectedYet(t *testing.T) {
 	require.Empty(t, bridge.proofCalls)
 }
 
-func TestPreparePendingWhenBridgeIndexAheadOfLatestInjectedGER(t *testing.T) {
+func TestPreparePendingWhenNoInjectedGERCoversBridge(t *testing.T) {
 	ctx := context.Background()
 	depositCount := uint32(12)
 	bridge := &fakeL1BridgeSyncer{}
 	l1InfoTree := &fakeL1InfoTreeSyncer{}
 	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
 
-	// bridge deposit count == 12, so bridge L1InfoTreeIndex == 12; latestLeafIndex == 11 => not ready
-	latestGER := common.HexToHash("0xabcd")
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeGERTracker{ger: &latestGER, index: depositCount - 1})
+	// No injected GER has a leaf index >= the bridge index, so the syncer reports not-found => not ready.
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{err: db.ErrNotFound})
 	result, err := preparer.Prepare(ctx, testRequest(depositCount))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -281,7 +280,7 @@ func TestPreparePendingWhenBridgeIndexAheadOfLatestInjectedGER(t *testing.T) {
 	require.Empty(t, bridge.proofCalls)
 }
 
-func TestPrepareUsesLatestInjectedGERIndex(t *testing.T) {
+func TestPrepareUsesFirstCoveringGERIndex(t *testing.T) {
 	ctx := context.Background()
 	depositCount := uint32(12)
 	injectedIndex := uint32(20)
@@ -293,8 +292,9 @@ func TestPrepareUsesLatestInjectedGERIndex(t *testing.T) {
 	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
 	l1InfoTree.infoByIndex[injectedIndex] = injectedInfo
 
-	latestGER := common.HexToHash("0x9999")
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeGERTracker{ger: &latestGER, index: injectedIndex})
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{
+		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: injectedIndex},
+	})
 	result, err := preparer.Prepare(ctx, testRequest(depositCount))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -303,23 +303,23 @@ func TestPrepareUsesLatestInjectedGERIndex(t *testing.T) {
 	require.Equal(t, injectedInfo.MainnetExitRoot, bridge.proofCalls[0].localExitRoot)
 }
 
-func TestPrepareGERTrackerErrorPropagated(t *testing.T) {
+func TestPrepareGERSyncerErrorPropagated(t *testing.T) {
 	ctx := context.Background()
 	depositCount := uint32(12)
 	bridge := &fakeL1BridgeSyncer{}
 	l1InfoTree := &fakeL1InfoTreeSyncer{}
 	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
 
-	trackerErr := errors.New("rpc failure")
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeGERTracker{err: trackerErr})
+	syncerErr := errors.New("rpc failure")
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{err: syncerErr})
 	result, err := preparer.Prepare(ctx, testRequest(depositCount))
 	require.Nil(t, result)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "get latest injected GER")
-	require.ErrorContains(t, err, trackerErr.Error())
+	require.ErrorContains(t, err, "get first injected GER after index")
+	require.ErrorContains(t, err, syncerErr.Error())
 }
 
-func TestPrepareNilTrackerUsesOldPath(t *testing.T) {
+func TestPrepareNilGERSyncerUsesOldPath(t *testing.T) {
 	ctx := context.Background()
 	depositCount := uint32(12)
 	localProof := testProof("0xaa")
@@ -453,19 +453,20 @@ func testProof(values ...string) treetypes.Proof {
 	return proof
 }
 
-// fakeGERTracker implements gertracker.GERTracker for tests.
-type fakeGERTracker struct {
-	ger   *common.Hash
-	index uint32
-	err   error
+// fakeL2GERSyncer implements L2GERSyncer for tests.
+type fakeL2GERSyncer struct {
+	info l2gersync.GlobalExitRootInfo
+	err  error
 }
 
-func (f *fakeGERTracker) LatestInjectedGER(_ context.Context) (*common.Hash, uint32, error) {
-	return f.ger, f.index, f.err
+func (f *fakeL2GERSyncer) GetFirstGERAfterL1InfoTreeIndex(
+	_ context.Context, _ uint32,
+) (l2gersync.GlobalExitRootInfo, error) {
+	return f.info, f.err
 }
 
-// Compile-time assertion: fakeGERTracker implements gertracker.GERTracker.
-var _ gertracker.GERTracker = (*fakeGERTracker)(nil)
+// Compile-time assertion: fakeL2GERSyncer implements L2GERSyncer.
+var _ L2GERSyncer = (*fakeL2GERSyncer)(nil)
 
 type fakeL1BridgeSyncer struct {
 	rootsByLER map[common.Hash]*treetypes.Root

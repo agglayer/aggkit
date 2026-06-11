@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -15,7 +17,6 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/api"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
-	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	"github.com/agglayer/aggkit/autoclaim/policy"
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/sender"
@@ -27,13 +28,26 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 const defaultAutoClaimDBQueryTimeout = 5 * time.Minute
+
+// gerSyncerDirName is the subdirectory (under the AutoClaim storage directory) that holds each
+// claimer's isolated l2gersync and reorg detector databases.
+const gerSyncerDirName = "autoclaim-gersync"
+
+// defaultGERSyncBlockChunkSize is used when the shared l2gersync template leaves SyncBlockChunkSize
+// unset (l2gersync.New rejects a zero chunk size). It mirrors the [L2GERSync] config default.
+const defaultGERSyncBlockChunkSize = 100
+
+// gerSyncerDirPerm is the permission used for the per-claimer GER syncer storage directories.
+const gerSyncerDirPerm os.FileMode = 0o750
 
 // Dependencies contains runtime dependencies created by cmd startup before Auto Claim starts.
 type Dependencies struct {
@@ -47,9 +61,17 @@ type Dependencies struct {
 	}
 	L1InfoTreeSync interface {
 		proof.L1InfoTreeSyncer
-		gertracker.L1InfoTreeSyncer
+		l2gersync.L1InfoTreeQuerier
 	}
-	Logger aggkitcommon.Logger
+	// L1Client is the L1 JSON-RPC client shared by every per-claimer l2gersync instance.
+	L1Client aggkittypes.EthClienter
+	// L2GERSyncConfig is the shared l2gersync template; per-claimer DB path and L2 GER manager
+	// address are overridden when each claimer's l2gersync instance is built.
+	L2GERSyncConfig l2gersync.Config
+	// ReorgDetectorL2Config is the shared L2 reorg detector template; the DB path is overridden
+	// per claimer so each destination L2 gets an isolated reorg detector.
+	ReorgDetectorL2Config reorgdetector.Config
+	Logger                aggkitcommon.Logger
 }
 
 // Runtime owns the started Auto Claim components.
@@ -99,14 +121,22 @@ type Factories struct {
 		...policy.RegistryOption,
 	) (autoclaimtypes.Policy, error)
 	NewTargetClaimReader func(common.Address, aggkittypes.BaseEthereumClienter) (autoclaimtypes.TargetClaimReader, error)
-	NewProofPreparer     func(
+	// NewGERSyncer builds the per-claimer destination-L2 GER syncer and returns a start function that
+	// runs its reorg detector and sync loop (the start function blocks and is meant to run in a goroutine).
+	NewGERSyncer func(
+		ctx context.Context,
 		cfg autoclaimcfg.ClaimerConfig,
-		rpcClient aggkittypes.EthClienter,
+		sharedGERCfg l2gersync.Config,
+		sharedRDCfg reorgdetector.Config,
+		storageBaseDir string,
+		l2Client aggkittypes.EthClienter,
+		l1InfoTreeSync l2gersync.L1InfoTreeQuerier,
+		l1Client aggkittypes.EthClienter,
+	) (proof.L2GERSyncer, func(context.Context), error)
+	NewProofPreparer func(
 		l1BridgeSync proof.L1BridgeSyncer,
-		l1InfoTreeSync interface {
-			proof.L1InfoTreeSyncer
-			gertracker.L1InfoTreeSyncer
-		},
+		l1InfoTreeSync proof.L1InfoTreeSyncer,
+		gerSyncer proof.L2GERSyncer,
 	) (autoclaimtypes.ProofPreparer, error)
 	NewTargetSimulator func(
 		simulator.Client,
@@ -179,28 +209,13 @@ func DefaultFactories(logConfig log.Config) Factories {
 		},
 		NewPolicy:            policy.NewPolicy,
 		NewTargetClaimReader: newTargetClaimReader,
+		NewGERSyncer:         newGERSyncer,
 		NewProofPreparer: func(
-			cfg autoclaimcfg.ClaimerConfig,
-			rpcClient aggkittypes.EthClienter,
 			l1BridgeSync proof.L1BridgeSyncer,
-			l1InfoTreeSync interface {
-				proof.L1InfoTreeSyncer
-				gertracker.L1InfoTreeSyncer
-			},
+			l1InfoTreeSync proof.L1InfoTreeSyncer,
+			gerSyncer proof.L2GERSyncer,
 		) (autoclaimtypes.ProofPreparer, error) {
-			bridgeBinding, err := agglayerbridgel2.NewAgglayerbridgel2(cfg.BridgeAddr, rpcClient)
-			if err != nil {
-				return nil, fmt.Errorf("create bridge binding for claimer %s: %w", cfg.ID, err)
-			}
-			gerManagerAddr, err := bridgeBinding.GlobalExitRootManager(nil)
-			if err != nil {
-				return nil, fmt.Errorf("resolve GER manager address for claimer %s: %w", cfg.ID, err)
-			}
-			tracker, err := gertracker.NewGERTracker(gerManagerAddr, rpcClient, l1InfoTreeSync)
-			if err != nil {
-				return nil, fmt.Errorf("create GER tracker for claimer %s: %w", cfg.ID, err)
-			}
-			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, tracker), nil
+			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer), nil
 		},
 		NewTargetSimulator: func(
 			client simulator.Client,
@@ -288,18 +303,21 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 	}
 
 	runtime := &Runtime{Storage: storage}
+	storageBaseDir := filepath.Dir(cfg.StoragePath)
 	claimers := make([]autoclaimtypes.Claimer, 0, len(cfg.Claimers))
+	gerSyncerStarts := make([]func(context.Context), 0, len(cfg.Claimers))
 	for _, claimerCfg := range cfg.Claimers {
 		if !claimerCfg.Enabled {
 			continue
 		}
-		claimer, txManager, err := createClaimer(
-			ctx, claimerCfg, storage, deps.L1BridgeSync, deps.L1InfoTreeSync, logger, factories)
+		claimer, txManager, gerSyncerStart, err := createClaimer(
+			ctx, claimerCfg, storage, deps, storageBaseDir, logger, factories)
 		if err != nil {
 			return nil, err
 		}
 		claimers = append(claimers, claimer)
 		runtime.EthTxManagers = append(runtime.EthTxManagers, txManager)
+		gerSyncerStarts = append(gerSyncerStarts, gerSyncerStart)
 	}
 
 	registry, err := factories.NewRegistry(claimers...)
@@ -332,6 +350,15 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		txManager := txManager
 		factories.Go(func() {
 			factories.StartEthTxManager(ctx, txManager)
+		})
+	}
+	for _, gerSyncerStart := range gerSyncerStarts {
+		gerSyncerStart := gerSyncerStart
+		if gerSyncerStart == nil {
+			continue
+		}
+		factories.Go(func() {
+			gerSyncerStart(ctx)
 		})
 	}
 	for _, claimer := range claimers {
@@ -368,41 +395,46 @@ func createClaimer(
 	ctx context.Context,
 	cfg autoclaimcfg.ClaimerConfig,
 	storage autoclaimtypes.Storage,
-	l1BridgeSync proof.L1BridgeSyncer,
-	l1InfoTreeSync interface {
-		proof.L1InfoTreeSyncer
-		gertracker.L1InfoTreeSyncer
-	},
+	deps Dependencies,
+	storageBaseDir string,
 	logger aggkitcommon.Logger,
 	factories Factories,
-) (autoclaimtypes.Claimer, EthTxManager, error) {
+) (autoclaimtypes.Claimer, EthTxManager, func(context.Context), error) {
 	target := targetFromConfig(cfg)
 	rpcClientCfg := targetRPCClientConfig(cfg.URLRPC)
 	rpcClient, err := factories.NewRPCClient(ctx, logger, rpcClientCfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim RPC client for claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create AutoClaim RPC client for claimer %s: %w", cfg.ID, err)
 	}
 
-	proofPreparer, err := factories.NewProofPreparer(cfg, rpcClient, l1BridgeSync, l1InfoTreeSync)
+	gerSyncer, gerSyncerStart, err := factories.NewGERSyncer(
+		ctx, cfg, deps.L2GERSyncConfig, deps.ReorgDetectorL2Config, storageBaseDir,
+		rpcClient, deps.L1InfoTreeSync, deps.L1Client,
+	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create proof preparer for claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create GER syncer for claimer %s: %w", cfg.ID, err)
+	}
+
+	proofPreparer, err := factories.NewProofPreparer(deps.L1BridgeSync, deps.L1InfoTreeSync, gerSyncer)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("create proof preparer for claimer %s: %w", cfg.ID, err)
 	}
 
 	txManager, err := factories.NewEthTxManager(ctx, cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim EthTxManager for claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create AutoClaim EthTxManager for claimer %s: %w", cfg.ID, err)
 	}
 	claimReader, err := factories.NewTargetClaimReader(cfg.BridgeAddr, rpcClient)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim target claim reader for claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create AutoClaim target claim reader for claimer %s: %w", cfg.ID, err)
 	}
 	claimSender, err := factories.NewSender(storage, txManager, claimReader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim sender for claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create AutoClaim sender for claimer %s: %w", cfg.ID, err)
 	}
 	claimPolicy, err := newRuntimePolicy(ctx, cfg, rpcClient, proofPreparer, target, claimSender, factories)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim policy for claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create AutoClaim policy for claimer %s: %w", cfg.ID, err)
 	}
 	targetClaimer, err := factories.NewClaimer(
 		target,
@@ -415,10 +447,10 @@ func createClaimer(
 		claimer.WithLogger(logger),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create AutoClaim claimer %s: %w", cfg.ID, err)
+		return nil, nil, nil, fmt.Errorf("create AutoClaim claimer %s: %w", cfg.ID, err)
 	}
 
-	return targetClaimer, txManager, nil
+	return targetClaimer, txManager, gerSyncerStart, nil
 }
 
 func withDefaultFactories(factories Factories, logConfig log.Config) Factories {
@@ -440,6 +472,9 @@ func withDefaultFactories(factories Factories, logConfig log.Config) Factories {
 	}
 	if factories.NewTargetClaimReader == nil {
 		factories.NewTargetClaimReader = defaults.NewTargetClaimReader
+	}
+	if factories.NewGERSyncer == nil {
+		factories.NewGERSyncer = defaults.NewGERSyncer
 	}
 	if factories.NewProofPreparer == nil {
 		factories.NewProofPreparer = defaults.NewProofPreparer
@@ -557,6 +592,69 @@ type targetClaimReader struct {
 
 type targetBridgeContract interface {
 	IsClaimed(opts *bind.CallOpts, leafIndex uint32, sourceBridgeNetwork uint32) (bool, error)
+}
+
+// newGERSyncer builds the per-claimer destination-L2 GER syncer — an l2gersync.L2GERSync instance with
+// its own reorg detector and SQLite databases — and returns a start function that runs the reorg
+// detector and the GER sync loop. The start function blocks and is intended to run in a goroutine.
+//
+// The L2 GER manager address is auto-resolved from the destination bridge contract's
+// GlobalExitRootManager() getter, so no additional configuration is required. Shared sync settings come
+// from sharedGERCfg / sharedRDCfg; the database paths are namespaced per claimer under storageBaseDir so
+// each destination L2 gets isolated storage that never collides with the global L2GERSync component.
+func newGERSyncer(
+	ctx context.Context,
+	cfg autoclaimcfg.ClaimerConfig,
+	sharedGERCfg l2gersync.Config,
+	sharedRDCfg reorgdetector.Config,
+	storageBaseDir string,
+	l2Client aggkittypes.EthClienter,
+	l1InfoTreeSync l2gersync.L1InfoTreeQuerier,
+	l1Client aggkittypes.EthClienter,
+) (proof.L2GERSyncer, func(context.Context), error) {
+	bridgeBinding, err := agglayerbridgel2.NewAgglayerbridgel2(cfg.BridgeAddr, l2Client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create bridge binding for claimer %s: %w", cfg.ID, err)
+	}
+	gerManagerAddr, err := bridgeBinding.GlobalExitRootManager(nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve GER manager address for claimer %s: %w", cfg.ID, err)
+	}
+
+	claimerDir := filepath.Join(storageBaseDir, gerSyncerDirName, cfg.ID)
+	if err := os.MkdirAll(claimerDir, gerSyncerDirPerm); err != nil {
+		return nil, nil, fmt.Errorf("create GER syncer storage dir for claimer %s: %w", cfg.ID, err)
+	}
+
+	gerCfg := sharedGERCfg
+	gerCfg.GlobalExitRootL2Addr = gerManagerAddr
+	gerCfg.DBPath = filepath.Join(claimerDir, "l2gersync.sqlite")
+	if gerCfg.SyncBlockChunkSize == 0 {
+		gerCfg.SyncBlockChunkSize = defaultGERSyncBlockChunkSize
+	}
+
+	rdCfg := sharedRDCfg
+	rdCfg.DBPath = filepath.Join(claimerDir, "reorgdetector.sqlite")
+
+	reorgDetector, err := reorgdetector.New(l2Client, rdCfg, reorgdetector.L2)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create L2 reorg detector for claimer %s: %w", cfg.ID, err)
+	}
+
+	gerSync, err := l2gersync.New(ctx, gerCfg, reorgDetector, l2Client, l1InfoTreeSync, l1Client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create l2gersync for claimer %s: %w", cfg.ID, err)
+	}
+
+	start := func(ctx context.Context) {
+		if err := reorgDetector.Start(ctx); err != nil {
+			log.Errorf("AutoClaim L2 reorg detector for claimer %s stopped with error: %v", cfg.ID, err)
+			return
+		}
+		gerSync.Start(ctx)
+	}
+
+	return gerSync, start, nil
 }
 
 func newTargetClaimReader(

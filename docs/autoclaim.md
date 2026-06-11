@@ -11,8 +11,9 @@ Claim is not implemented and must remain disabled.
 ## Architecture
 
 Auto Claim runs inside the Aggkit process and reuses the existing syncers. One watchdog discovers L1 bridge exits for
-all destinations, and one claimer (with its own policy, sender, and `EthTxManager`) owns each destination network. All
-components share a single Auto Claim SQLite database.
+all destinations, and one claimer (with its own policy, sender, `EthTxManager`, and `l2gersync` instance) owns each
+destination network. All Auto Claim request/cursor state lives in a single Auto Claim SQLite database; each claimer's
+`l2gersync` and reorg detector keep their own isolated databases.
 
 ```mermaid
 flowchart LR
@@ -29,7 +30,7 @@ flowchart LR
             CL["Claim engine"]
             POL["Policy"]
             PP["Proof preparer"]
-            GT["GER tracker"]
+            GER["l2gersync<br/>(one per destination L2)"]
             SND["Sender"]
         end
     end
@@ -40,13 +41,13 @@ flowchart LR
 
     L1BS -->|bridge exits| WD
     L1IT -->|inclusion index, proofs| PP
-    L1IT -->|GER leaf lookup| GT
+    L1IT -->|GER leaf lookup| GER
     WD -->|enqueue immediately| DB
     CL <--> DB
     CL --> POL
     CL --> PP
-    PP --> GT
-    GT -->|FilterUpdateHashChainValue events| GERC
+    PP -->|first injected GER covering bridge| GER
+    GER -->|events (sovereign) / GlobalExitRootMap (legacy)| GERC
     CL --> SND
     SND -->|claimAsset / claimMessage| ETM
     ETM --> L2
@@ -63,9 +64,9 @@ Package layout (for contributors):
 | `autoclaim/runtime` | Wires storage, watchdog, claimers, senders, transaction managers, and the API at startup. |
 | `autoclaim/watchdog` | L1 to L2 bridge discovery, durable cursor, idempotent enqueue. |
 | `autoclaim/claimer` | Per-destination engine: policy evaluation, proof preparation, send orchestration, recovery. |
-| `autoclaim/gertracker` | Per-claimer GER tracker: reads the latest GER injected on the target L2 by scanning L2 GER manager contract events. |
+| `l2gersync` (reused) | Per-claimer GER syncer: tracks GERs injected on the target L2, correctly supporting both legacy (`GlobalExitRootMap` polling) and sovereign (event-based) L2 GER managers. |
 | `autoclaim/policy` | Named policy registry and the `allow-all`, `api-approve`, `no-message`, `basic-filter` implementations. |
-| `autoclaim/proof` | L1 info tree index selection and claim proof construction from `l1infotreesync` and `l1bridgesync`; uses the GER tracker to gate proof readiness. |
+| `autoclaim/proof` | L1 info tree index selection and claim proof construction from `l1infotreesync` and `l1bridgesync`; uses the per-claimer `l2gersync` to gate proof readiness. |
 | `autoclaim/sender` | Claim submission through `EthTxManager`, transaction attempt tracking, status mapping, retries. |
 | `autoclaim/claimtx` | ABI packing of `claimAsset` and `claimMessage` calldata. |
 | `autoclaim/simulator` | `eth_estimateGas` claim simulation on the target chain, used by `basic-filter`. |
@@ -83,12 +84,17 @@ sequenceDiagram
     participant DB as Storage
     participant CL as Claimer
     participant PP as Proof preparer
-    participant GT as GER tracker
+    participant GER as l2gersync
     participant GERC as L2 GER manager contract
     participant L1IT as l1infotreesync
     participant SND as Sender
     participant ETM as EthTxManager
     participant L2 as Destination bridge
+
+    loop Background (per claimer)
+        GER->>GERC: Sync injected GERs (events for sovereign, GlobalExitRootMap for legacy)
+        GER->>L1IT: Resolve GER hash to L1InfoTree leaf index
+    end
 
     loop Every PollInterval
         WD->>L1BS: Get bridge exits (origin_network = 0)
@@ -99,10 +105,8 @@ sequenceDiagram
         CL->>DB: Load pending requests for its network
         CL->>CL: Evaluate policy (approve / reject / manual)
         CL->>PP: Build claim proof
-        PP->>GT: LatestInjectedGER()
-        GT->>GERC: FilterUpdateHashChainValue / FilterUpdateRemovalHashChainValue events
-        GT->>L1IT: Resolve GER hash to L1InfoTree leaf index
-        alt Bridge L1InfoTreeIndex > latest injected leaf index
+        PP->>GER: GetFirstGERAfterL1InfoTreeIndex(bridge index)
+        alt No injected GER covers the bridge yet
             PP-->>CL: not ready (nil proof)
             CL->>DB: Stay `detected` / return to `queued`, retry next cycle
         else GER covers the bridge
@@ -124,12 +128,15 @@ sequenceDiagram
 
 The watchdog enqueues detected bridge exits immediately as `detected` requests — it imposes no GER precondition and
 does not hold its cursor waiting for GER injection. GER readiness is checked per-claimer during proof preparation:
-each claimer has its own GER tracker (`autoclaim/gertracker`) that reads the latest GER injected on the target L2 by
-scanning `FilterUpdateHashChainValue` and `FilterUpdateRemovalHashChainValue` events on the L2 GER manager contract
-via the claimer's RPC client. The GER manager address is discovered at startup from the bridge contract's
-`GlobalExitRootManager()` getter — no additional configuration is required. If the bridge's L1 info tree index is
-newer than the latest injected GER leaf, the proof preparer returns "not ready" and the claimer retries on the next
-cycle without consuming retry budget.
+each claimer runs its own `l2gersync` instance that continuously syncs the GERs injected on the target L2. Because
+`l2gersync` resolves the GER manager flavor at startup, it works on both **legacy** (`PolygonZkEVMGlobalExitRootV2`,
+which is polled through `GlobalExitRootMap`) and **sovereign** (`GlobalExitRootManagerL2SovereignChain`, which is
+tracked through `UpdateHashChainValue` events) chains — unlike the previous event-only GER tracker, which silently
+failed on legacy chains that never emit those events. The L2 GER manager address is discovered at startup from the
+bridge contract's `GlobalExitRootManager()` getter — no additional configuration is required. During proof
+preparation the preparer asks `l2gersync` for the first injected GER whose L1 info tree leaf index is at or after the
+bridge's inclusion index (`GetFirstGERAfterL1InfoTreeIndex`); if none is found yet, it returns "not ready" and the
+claimer retries on the next cycle without consuming retry budget.
 
 ## Request lifecycle
 
@@ -181,9 +188,9 @@ Step by step:
    `manual-approval-required`. For `basic-filter`, the claimer prepares and stores the exact claim proof before policy
    evaluation so simulation uses the same calldata as the later send path; if proof data is not ready (GER not yet
    injected), the request stays `detected` and is retried next claimer cycle without burning retry budget.
-3. During proof preparation the claimer's GER tracker queries the L2 GER manager contract events to find the latest
-   injected GER. It resolves that GER hash to an L1 info tree leaf index via `l1infotreesync`. If the bridge's
-   inclusion index is newer than the latest injected leaf, preparation returns "not ready" and the claimer retries.
+3. During proof preparation the claimer queries its `l2gersync` instance for the first GER injected on the target L2
+   whose L1 info tree leaf index is at or after the bridge's inclusion index. If no injected GER covers the bridge yet,
+   preparation returns "not ready" and the claimer retries.
 4. Once the GER covers the bridge, the proof is built from `l1infotreesync` and L1 bridge sync data using the resolved
    L1 info tree index. The `l1_info_tree_index` is written to the stored request at this point.
 5. Approved requests move to `queued` and then `sending`. If proof data is no longer available the request returns to
@@ -205,7 +212,10 @@ also requires:
   tree proofs in-process.
 
 Each claimer discovers its target L2's GER manager address automatically by calling `GlobalExitRootManager()` on the
-configured destination bridge contract at startup — no additional configuration is needed.
+configured destination bridge contract at startup — no additional configuration is needed. Each claimer's `l2gersync`
+instance reuses the shared `[L2GERSync]` and `[ReorgDetectorL2]` settings (block finality, chunk size, etc.); only the
+non-sharable values are overridden per claimer — the resolved L2 GER manager address and isolated database paths
+derived automatically under the Auto Claim storage directory (`<storage-dir>/autoclaim-gersync/<claimer-id>/`).
 
 The optional REST API is not needed to submit claims. Enable it only when operators need request inspection or use the
 `api-approve` policy, which requires manual decisions through the API.
@@ -404,7 +414,9 @@ Auto Claim owns one SQLite database (`AutoClaim.StoragePath`) with three tables,
 | `autoclaim_transaction_attempt` | `(request_key, attempt_number)` | One row per claim transaction attempt with transaction-manager ID, claim transaction hash, status, and timestamps. |
 | `autoclaim_bridge_cursor` | `cursor_name` | Durable watchdog cursor (block window and position) per destination network. |
 
-Each claimer's `EthTxManager` keeps its own independent database at `Claimers.EthTxManager.StoragePath`.
+Each claimer's `EthTxManager` keeps its own independent database at `Claimers.EthTxManager.StoragePath`. Each claimer's
+`l2gersync` instance and its L2 reorg detector also keep isolated SQLite databases, created automatically under
+`<storage-dir>/autoclaim-gersync/<claimer-id>/` (where `<storage-dir>` is the directory of `AutoClaim.StoragePath`).
 
 ## Operational notes
 
@@ -414,10 +426,10 @@ Each claimer's `EthTxManager` keeps its own independent database at `Claimers.Et
 - Use separate `StoragePath` values for Auto Claim storage and each claimer's `EthTxManager.StoragePath`.
 - The watchdog advances its cursor unconditionally after each poll window. Duplicate bridge exits are deduplicated by
   the request key; enqueue is idempotent.
-- GER readiness is checked per-claimer during proof preparation, not by the watchdog. Each claimer's GER tracker scans
-  the L2 GER manager contract events via the claimer's own RPC client. If the bridge is not yet covered by an injected
-  GER, the proof preparer returns "not ready" and the request is retried next claimer cycle without consuming retry
-  budget.
+- GER readiness is checked per-claimer during proof preparation, not by the watchdog. Each claimer's `l2gersync`
+  instance syncs the GERs injected on the target L2 via the claimer's own RPC client, supporting both legacy and
+  sovereign GER managers. If the bridge is not yet covered by an injected GER, the proof preparer returns "not ready"
+  and the request is retried next claimer cycle without consuming retry budget.
 - Auto Claim logs startup, API startup, watchdog polling errors, claimer recovery errors, and per-request errors
   through the standard Aggkit logger. Request-level error details are also stored in `last_error` and exposed by the
   API. The component does not export Prometheus metrics.

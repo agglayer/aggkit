@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	"github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,11 +34,20 @@ type L1InfoTreeSyncer interface {
 	GetFirstInfoAfterBlock(blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
+// L2GERSyncer exposes the destination-L2 GER injection state needed to gate proof readiness.
+// It is satisfied by the per-claimer l2gersync.L2GERSync instance, which correctly tracks injected
+// GERs on both legacy (GlobalExitRootMap polling) and sovereign (event-based) L2 GER managers.
+type L2GERSyncer interface {
+	GetFirstGERAfterL1InfoTreeIndex(
+		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
+	) (l2gersync.GlobalExitRootInfo, error)
+}
+
 // Preparer prepares bridge claim proof inputs for Auto Claim.
 type Preparer struct {
 	bridgeL1   L1BridgeSyncer
 	l1InfoTree L1InfoTreeSyncer
-	gerTracker gertracker.GERTracker
+	gerSyncer  L2GERSyncer
 	now        func() time.Time
 }
 
@@ -49,11 +58,11 @@ type Result struct {
 }
 
 // NewPreparer creates an L1-origin proof preparer.
-func NewPreparer(bridgeL1 L1BridgeSyncer, l1InfoTree L1InfoTreeSyncer, gerTracker gertracker.GERTracker) *Preparer {
+func NewPreparer(bridgeL1 L1BridgeSyncer, l1InfoTree L1InfoTreeSyncer, gerSyncer L2GERSyncer) *Preparer {
 	return &Preparer{
 		bridgeL1:   bridgeL1,
 		l1InfoTree: l1InfoTree,
-		gerTracker: gerTracker,
+		gerSyncer:  gerSyncer,
 		now:        time.Now,
 	}
 }
@@ -147,8 +156,9 @@ func (p *Preparer) Prepare(ctx context.Context, request types.AutoClaimRequest) 
 
 // selectL1InfoTreeIndex chooses the L1 info tree leaf index to use for a bridge claim.
 // When the watchdog supplied a preset index, that exact index is used.
-// Otherwise the selector computes the bridge inclusion index and, if a gerTracker is available,
-// waits until the latest injected GER on the destination L2 covers that index.
+// Otherwise the selector computes the bridge inclusion index and, if a gerSyncer is available,
+// waits until an injected GER on the destination L2 covers that index. It then returns the first
+// (smallest) injected GER leaf index at or after the bridge index — the tightest valid leaf.
 func (p *Preparer) selectL1InfoTreeIndex(
 	ctx context.Context,
 	bridge types.BridgeExit,
@@ -169,24 +179,20 @@ func (p *Preparer) selectL1InfoTreeIndex(
 		return 0, false, fmt.Errorf("get first L1 info tree index for L1 bridge: %w", err)
 	}
 
-	if p.gerTracker == nil {
+	if p.gerSyncer == nil {
 		return bridgeL1InfoTreeIndex, true, nil
 	}
 
-	latestGER, latestLeafIndex, err := p.gerTracker.LatestInjectedGER(ctx)
+	gerInfo, err := p.gerSyncer.GetFirstGERAfterL1InfoTreeIndex(ctx, bridgeL1InfoTreeIndex)
+	if errors.Is(err, db.ErrNotFound) {
+		// No injected GER on the target L2 covers this bridge yet — not ready.
+		return 0, false, nil
+	}
 	if err != nil {
-		return 0, false, fmt.Errorf("get latest injected GER: %w", err)
-	}
-	if latestGER == nil {
-		// No GER injected yet on the target L2 — not ready.
-		return 0, false, nil
-	}
-	if bridgeL1InfoTreeIndex > latestLeafIndex {
-		// Bridge is newer than the latest injected GER — not ready.
-		return 0, false, nil
+		return 0, false, fmt.Errorf("get first injected GER after index %d: %w", bridgeL1InfoTreeIndex, err)
 	}
 
-	return latestLeafIndex, true, nil
+	return gerInfo.L1InfoTreeIndex, true, nil
 }
 
 func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(
