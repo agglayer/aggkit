@@ -392,7 +392,7 @@ Host = "0.0.0.0"
 Port = 5579
 
 [AutoClaim.L1ToL2Watchdog]
-Enabled = false
+Enabled = true
 StartBlock = 0
 PollInterval = "3s"
 RetryAfterErrorPeriod = "1s"

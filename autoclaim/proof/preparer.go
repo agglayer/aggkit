@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -171,11 +172,16 @@ func (p *Preparer) selectL1InfoTreeIndex(
 		bridge.BlockNum,
 	)
 	if errors.Is(err, bridgeservice.ErrNotOnL1Info) {
+		log.Debugf("autoclaim proof: deposit=%d block=%d: l1InfoTree not yet past bridge block (ErrNotOnL1Info)",
+			bridge.DepositCount, bridge.BlockNum)
 		return 0, false, nil
 	}
 	if err != nil {
 		return 0, false, fmt.Errorf("get first L1 info tree index for L1 bridge: %w", err)
 	}
+
+	log.Debugf("autoclaim proof: deposit=%d block=%d: bridgeL1InfoTreeIndex=%d",
+		bridge.DepositCount, bridge.BlockNum, bridgeL1InfoTreeIndex)
 
 	if p.gerSyncer == nil {
 		return bridgeL1InfoTreeIndex, true, nil
@@ -184,6 +190,8 @@ func (p *Preparer) selectL1InfoTreeIndex(
 	gerInfo, err := p.gerSyncer.GetFirstGERAfterL1InfoTreeIndex(ctx, bridgeL1InfoTreeIndex)
 	if errors.Is(err, db.ErrNotFound) {
 		// No injected GER on the target L2 covers this bridge yet — not ready.
+		log.Debugf("autoclaim proof: deposit=%d: gerSyncer has no GER with l1InfoTreeIndex>=%d yet",
+			bridge.DepositCount, bridgeL1InfoTreeIndex)
 		return 0, false, nil
 	}
 	if err != nil {

@@ -429,12 +429,14 @@ func (c *Claimer) sendWhenReady(ctx context.Context, request autoclaimtypes.Auto
 			return fmt.Errorf("prepare proof for autoclaim request %s: %w", current.Key, err)
 		}
 		if proof == nil {
+			c.logInfof("autoclaim request %s: proof not ready yet (waiting for L2 GER injection)", current.Key)
 			if current.Status == autoclaimtypes.RequestStatusSending {
 				_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
 			}
 			return err
 		}
 		if !proofReadyForRequest(*proof, *current) {
+			c.logInfof("autoclaim request %s: proof not ready for request constraints", current.Key)
 			if current.Status == autoclaimtypes.RequestStatusSending {
 				_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
 			}
@@ -540,5 +542,11 @@ func (c *Claimer) requireDestination(request autoclaimtypes.AutoClaimRequest) er
 func (c *Claimer) logErrorf(format string, args ...interface{}) {
 	if c.log != nil {
 		c.log.Errorf(format, args...)
+	}
+}
+
+func (c *Claimer) logInfof(format string, args ...interface{}) {
+	if c.log != nil {
+		c.log.Infof(format, args...)
 	}
 }

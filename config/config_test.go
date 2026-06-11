@@ -8,9 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-	"github.com/urfave/cli/v2"
-
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -18,6 +15,8 @@ import (
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/multidownloader"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/stretchr/testify/require"
+	"github.com/urfave/cli/v2"
 )
 
 func TestLExploratorySetConfigFlag(t *testing.T) {
