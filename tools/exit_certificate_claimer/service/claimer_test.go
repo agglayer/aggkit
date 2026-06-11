@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	exitcertificate "github.com/agglayer/aggkit/tools/exit_certificate"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -14,13 +15,19 @@ import (
 // fakeLocalTree is an in-memory LocalExitTreeReader: it maps the certificate leaves to deposit
 // counts by their position in the certificate.
 type fakeLocalTree struct {
-	depositByHash map[common.Hash]uint32
-	proof         treetypes.Proof
+	depositByHash  map[common.Hash]uint32
+	metadataByHash map[common.Hash][]byte
+	proof          treetypes.Proof
 }
 
 func (f *fakeLocalTree) DepositCount(leafHash common.Hash) (uint32, bool) {
 	dc, ok := f.depositByHash[leafHash]
 	return dc, ok
+}
+
+func (f *fakeLocalTree) Metadata(leafHash common.Hash) ([]byte, bool) {
+	m, ok := f.metadataByHash[leafHash]
+	return m, ok
 }
 
 func (f *fakeLocalTree) Proof(_ context.Context, _ uint32, _ common.Hash) (treetypes.Proof, error) {
@@ -34,7 +41,7 @@ type fakeL1 struct {
 	rollupProof treetypes.Proof
 }
 
-func (f *fakeL1) GetLatestL1InfoLeaf(_ context.Context) (*l1infotreesync.L1InfoTreeLeaf, error) {
+func (f *fakeL1) GetInfoByGlobalExitRoot(_ common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error) {
 	return f.leaf, nil
 }
 
@@ -55,11 +62,13 @@ func buildTestClaimer(t *testing.T, settledRoot common.Hash) (*Claimer, common.A
 	require.NoError(t, err)
 
 	depositByHash := make(map[common.Hash]uint32, len(cert.Leaves))
+	metadataByHash := make(map[common.Hash][]byte, len(cert.Leaves))
 	for i, leaf := range cert.Leaves {
 		depositByHash[leaf.Hash()] = uint32(i + 5) // offset to prove the count is carried through
+		metadataByHash[leaf.Hash()] = []byte{0xab, 0xcd}
 	}
 
-	localTree := &fakeLocalTree{depositByHash: depositByHash}
+	localTree := &fakeLocalTree{depositByHash: depositByHash, metadataByHash: metadataByHash}
 	l1 := &fakeL1{
 		leaf: &l1infotreesync.L1InfoTreeLeaf{
 			L1InfoTreeIndex: 9,
@@ -69,7 +78,14 @@ func buildTestClaimer(t *testing.T, settledRoot common.Hash) (*Claimer, common.A
 		localRoot: settledRoot,
 	}
 
-	claimer := NewClaimer(log.GetDefaultLogger(), cert, localTree, l1, 0, nil)
+	waitResult := &exitcertificate.StepWaitResult{
+		UpdateL1InfoTree: &exitcertificate.L1InfoTreeUpdate{
+			MainnetExitRoot: common.HexToHash("0x1111"),
+			RollupExitRoot:  common.HexToHash("0x2222"),
+		},
+	}
+
+	claimer := NewClaimer(log.GetDefaultLogger(), cert, localTree, l1, 0, waitResult)
 	return claimer, cert.Leaves[0].DestinationAddress
 }
 
@@ -107,6 +123,8 @@ func TestBuildClaimParams(t *testing.T) {
 	require.Equal(t, common.HexToHash("0x1111").Hex(), got.MainnetExitRoot)
 	require.Equal(t, common.HexToHash("0x2222").Hex(), got.RollupExitRoot)
 	require.Equal(t, "20000005400000000", got.Amount)
+	// Raw on-chain metadata from the local exit tree, not the certificate's metadata hash.
+	require.Equal(t, "0xabcd", got.Metadata)
 	// globalIndex for a rollup (networkID=1 → rollupIndex 0) with deposit count 5.
 	require.Equal(t, "5", got.GlobalIndex)
 }

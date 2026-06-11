@@ -67,7 +67,7 @@ func TestLoadCertificate(t *testing.T) {
 		common.HexToAddress("0x0b68058e5b2592b1f472adfe106305295a332a7c"),
 		first.DestinationAddress)
 	require.Equal(t, "20000005400000000", first.Amount.String())
-	require.Len(t, first.Metadata, 32)
+	require.Len(t, first.MetadataHash, 32)
 
 	// Leaf hashes must be deterministic and distinct.
 	require.NotEqual(t, first.Hash(), cert.Leaves[1].Hash())

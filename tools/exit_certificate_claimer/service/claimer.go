@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	exitcertificate "github.com/agglayer/aggkit/tools/exit_certificate"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -16,6 +17,7 @@ import (
 // satisfies it; tests can supply a fake.
 type LocalExitTreeReader interface {
 	DepositCount(leafHash common.Hash) (uint32, bool)
+	Metadata(leafHash common.Hash) ([]byte, bool)
 	Proof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (treetypes.Proof, error)
 }
 
@@ -86,15 +88,18 @@ func (c *Claimer) ListBridges(destAddr common.Address) ([]BridgeExitView, error)
 }
 
 // BuildClaimParams returns the set of claimAsset arguments for the bridge exits destined to
-// destAddr. The proofs are anchored to the latest indexed L1 info tree leaf. When depositCount is
-// non-nil only the exit with that deposit count is returned (an address may have more than one
-// pending deposit); when nil every matching exit is returned.
+// destAddr. The proofs are anchored to the L1 info tree leaf the certificate settled at (the leaf
+// carrying the GER recorded by the WAIT step), not the latest leaf: the certificate's
+// NewLocalExitRoot is only present in the rollup exit tree of that settlement leaf, and a later leaf
+// would carry a newer rollup exit root that no longer contains it. When depositCount is non-nil only
+// the exit with that deposit count is returned (an address may have more than one pending deposit);
+// when nil every matching exit is returned.
 func (c *Claimer) BuildClaimParams(
 	ctx context.Context, destAddr common.Address, depositCount *uint32,
 ) ([]ClaimAssetParams, error) {
-	leaf, err := c.l1.GetLatestL1InfoLeaf(ctx)
+	leaf, err := c.settlementLeaf()
 	if err != nil {
-		return nil, fmt.Errorf("reading latest L1 info tree leaf: %w", err)
+		return nil, err
 	}
 
 	// Verify the certificate's new local exit root is the one settled for this network in the
@@ -122,14 +127,23 @@ func (c *Claimer) BuildClaimParams(
 			continue
 		}
 
-		dc, ok := c.localTree.DepositCount(certLeaf.Hash())
+		leafHash := certLeaf.Hash()
+		dc, ok := c.localTree.DepositCount(leafHash)
 		if !ok {
 			return nil, fmt.Errorf("bridge exit %d (leaf %s) not found in local exit tree",
-				i, certLeaf.Hash().Hex())
+				i, leafHash.Hex())
 		}
 
 		if depositCount != nil && dc != *depositCount {
 			continue
+		}
+
+		// The claim needs the raw metadata (the bridge contract hashes it itself); the certificate
+		// only carries its hash, so take the on-chain bytes recorded in the local exit tree.
+		rawMetadata, ok := c.localTree.Metadata(leafHash)
+		if !ok {
+			return nil, fmt.Errorf("bridge exit %d (leaf %s) has no metadata in local exit tree",
+				i, leafHash.Hex())
 		}
 
 		localProof, err := c.localTree.Proof(ctx, dc, c.cert.NewLocalExitRoot)
@@ -150,7 +164,7 @@ func (c *Claimer) BuildClaimParams(
 			DestinationNetwork:     certLeaf.DestinationNetwork,
 			DestinationAddress:     addrHex(certLeaf.DestinationAddress),
 			Amount:                 bigToString(certLeaf.Amount),
-			Metadata:               metadataHex(certLeaf.Metadata),
+			Metadata:               metadataHex(rawMetadata),
 			LeafType:               certLeaf.LeafType,
 			DepositCount:           dc,
 			L1InfoTreeIndex:        leaf.L1InfoTreeIndex,
@@ -158,6 +172,24 @@ func (c *Claimer) BuildClaimParams(
 	}
 
 	return claims, nil
+}
+
+// settlementLeaf returns the L1 info tree leaf the certificate settled at — the leaf carrying the
+// Global Exit Root recorded by the WAIT step (keccak256(mainnetExitRoot, rollupExitRoot)). Claim
+// proofs must be anchored to this leaf rather than the latest one (see BuildClaimParams).
+func (c *Claimer) settlementLeaf() (*l1infotreesync.L1InfoTreeLeaf, error) {
+	if c.waitResult == nil {
+		return nil, errors.New("wait result is nil; cannot locate the settlement L1 info tree leaf")
+	}
+	ger, err := SettlementGER(c.waitResult)
+	if err != nil {
+		return nil, err
+	}
+	leaf, err := c.l1.GetInfoByGlobalExitRoot(ger)
+	if err != nil {
+		return nil, fmt.Errorf("reading settlement L1 info tree leaf for GER %s: %w", ger.Hex(), err)
+	}
+	return leaf, nil
 }
 
 // Check verifies the claimer's data sources are consistent with the certificate's recorded L1
@@ -182,7 +214,7 @@ func (c *Claimer) Check(ctx context.Context) error {
 			settledLER.Hex(), c.cert.NewLocalExitRoot.Hex())
 	}
 
-	c.logger.Infof("settlement check OK: network %d new local exit root %s settled in rollup exit root %s",
+	c.logger.Infof("✅ settlement check OK: network %d new local exit root %s settled in rollup exit root %s",
 		c.networkID, c.cert.NewLocalExitRoot.Hex(), rollupExitRoot.Hex())
 	return nil
 }

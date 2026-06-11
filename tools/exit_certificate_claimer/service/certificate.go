@@ -1,6 +1,7 @@
 package claimer
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -8,8 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/agglayer/aggkit/tools/exit_certificate/bridgesyncerlite"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // decimalBase is the base used to parse decimal amount strings from the certificate.
@@ -56,22 +58,50 @@ type CertificateLeaf struct {
 	DestinationNetwork uint32
 	DestinationAddress common.Address
 	Amount             *big.Int
-	Metadata           []byte
+	// MetadataHash is the keccak256 hash of the raw bridge metadata, not the raw metadata itself
+	// (the certificate stores it already hashed — see Hash). It is used directly as the leaf's
+	// metadata-hash slot.
+	MetadataHash []byte
 }
 
-// Hash returns the exit-tree leaf hash, byte-for-byte identical to the canonical bridge leaf hash
-// (reusing bridgesyncerlite.BridgeLeaf.Hash so it matches the tree built from the L2 bridge DB).
+// Hash returns the exit-tree leaf hash of the bridge exit. It mirrors the on-chain bridge leaf
+// hashing (bridgesync.Bridge.Hash / bridgesyncerlite.BridgeLeaf.Hash) with one crucial difference:
+// those compute the metadata-hash slot as crypto.Keccak256(rawMetadata), whereas the certificate's
+// Metadata field is ALREADY that hash. exit_certificate Step I applies crypto.Keccak256 to the raw
+// BridgeEvent metadata before storing it in BridgeExit.Metadata (matching aggsender, so that
+// agglayer's BridgeExit.Hash matches). We therefore use Metadata directly as the metadata-hash slot
+// — re-hashing it here would double-hash and never match the local exit tree. This replicates
+// agglayer BridgeExit.Hash, including the empty-metadata → EmptyBytesHash fallback.
 func (l CertificateLeaf) Hash() common.Hash {
-	bl := bridgesyncerlite.BridgeLeaf{
-		LeafType:           l.LeafType,
-		OriginNetwork:      l.OriginNetwork,
-		OriginAddress:      l.OriginTokenAddress,
-		DestinationNetwork: l.DestinationNetwork,
-		DestinationAddress: l.DestinationAddress,
-		Amount:             l.Amount,
-		Metadata:           l.Metadata,
+	const (
+		uint32ByteSize = 4
+		bigIntSize     = 32
+	)
+	origNet := make([]byte, uint32ByteSize)
+	binary.BigEndian.PutUint32(origNet, l.OriginNetwork)
+	destNet := make([]byte, uint32ByteSize)
+	binary.BigEndian.PutUint32(destNet, l.DestinationNetwork)
+
+	metaHash := l.MetadataHash
+	if len(metaHash) == 0 {
+		metaHash = aggkitcommon.EmptyBytesHash
 	}
-	return bl.Hash()
+
+	amount := l.Amount
+	if amount == nil {
+		amount = new(big.Int)
+	}
+	var buf [bigIntSize]byte
+
+	return crypto.Keccak256Hash(
+		[]byte{l.LeafType},
+		origNet,
+		l.OriginTokenAddress[:],
+		destNet,
+		l.DestinationAddress[:],
+		amount.FillBytes(buf[:]),
+		metaHash,
+	)
 }
 
 // view converts a leaf into its public representation, enriched with the resolved deposit count.
@@ -83,7 +113,7 @@ func (l CertificateLeaf) view(depositCount uint32) BridgeExitView {
 		DestinationNetwork: l.DestinationNetwork,
 		DestinationAddress: addrHex(l.DestinationAddress),
 		Amount:             bigToString(l.Amount),
-		Metadata:           metadataHex(l.Metadata),
+		Metadata:           metadataHex(l.MetadataHash),
 		DepositCount:       depositCount,
 	}
 }
@@ -117,7 +147,7 @@ func LoadCertificate(path string) (*Certificate, error) {
 			return nil, fmt.Errorf("bridge exit %d: invalid amount %q", i, be.Amount)
 		}
 
-		metadata, err := parseMetadata(be.Metadata)
+		metadataHash, err := parseMetadata(be.Metadata)
 		if err != nil {
 			return nil, fmt.Errorf("bridge exit %d: %w", i, err)
 		}
@@ -129,7 +159,7 @@ func LoadCertificate(path string) (*Certificate, error) {
 			DestinationNetwork: be.DestinationNetwork,
 			DestinationAddress: be.DestinationAddress,
 			Amount:             amount,
-			Metadata:           metadata,
+			MetadataHash:       metadataHash,
 		})
 	}
 

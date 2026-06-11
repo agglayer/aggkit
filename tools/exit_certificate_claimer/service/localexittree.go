@@ -20,6 +20,10 @@ type LocalExitTree struct {
 	db           *sql.DB
 	tree         treetypes.ReadTreer
 	depositCount map[common.Hash]uint32
+	// metadata maps a leaf hash to the raw bridge metadata of that exit. The claim needs the raw
+	// bytes (the bridge contract hashes them itself to rebuild the leaf), whereas the certificate
+	// only carries the already-hashed metadata.
+	metadata map[common.Hash][]byte
 }
 
 // OpenLocalExitTree opens the local exit tree database in read-only fashion: it builds the
@@ -43,9 +47,12 @@ func OpenLocalExitTree(ctx context.Context, dbPath string, logger *log.Logger) (
 	}
 
 	index := make(map[common.Hash]uint32, len(bridges))
+	metadata := make(map[common.Hash][]byte, len(bridges))
 	for i := range bridges {
 		b := bridges[i]
-		index[b.Hash()] = b.DepositCount
+		h := b.Hash()
+		index[h] = b.DepositCount
+		metadata[h] = b.Metadata
 	}
 
 	// Open a dedicated connection for the tree. The lite syncer uses an empty tree prefix.
@@ -58,6 +65,7 @@ func OpenLocalExitTree(ctx context.Context, dbPath string, logger *log.Logger) (
 		db:           database,
 		tree:         tree.NewAppendOnlyTree(database, ""),
 		depositCount: index,
+		metadata:     metadata,
 	}, nil
 }
 
@@ -65,6 +73,15 @@ func OpenLocalExitTree(ctx context.Context, dbPath string, logger *log.Logger) (
 func (l *LocalExitTree) DepositCount(leafHash common.Hash) (uint32, bool) {
 	dc, ok := l.depositCount[leafHash]
 	return dc, ok
+}
+
+// Metadata returns the raw bridge metadata for a given leaf hash, as recorded on-chain in the
+// BridgeEvent. The claim needs these raw bytes: the bridge contract hashes them itself to rebuild
+// the exit leaf, so passing the certificate's already-hashed metadata would double-hash and fail
+// the SMT proof.
+func (l *LocalExitTree) Metadata(leafHash common.Hash) ([]byte, bool) {
+	m, ok := l.metadata[leafHash]
+	return m, ok
 }
 
 // Proof returns the merkle proof of the leaf at depositCount against the given local exit root.

@@ -34,7 +34,7 @@ const gerSyncPollInterval = 2 * time.Second
 // L1InfoTreeQuerier is the subset of the l1infotreesync API the claimer needs to assemble the
 // rollup-side claimAsset parameters. *l1infotreesync.L1InfoTreeSync satisfies it.
 type L1InfoTreeQuerier interface {
-	GetLatestL1InfoLeaf(ctx context.Context) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLocalExitRoot(ctx context.Context, networkID uint32, rollupExitRoot common.Hash) (common.Hash, error)
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (treetypes.Proof, error)
 }

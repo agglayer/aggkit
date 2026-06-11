@@ -10,7 +10,11 @@
 #   CLAIMER_URL     Base URL of the claimer service (default: http://localhost:8080)
 #   L1_RPC_URL      L1 RPC endpoint where AgglayerBridge lives (required to send)
 #   BRIDGE_ADDRESS  AgglayerBridge contract address on L1 (required to send)
-#   PRIVATE_KEY     Signing key for the claimAsset transaction (required to send)
+#   Signing (one of the following is required to send):
+#     PRIVATE_KEY            Raw hex signing key for the claimAsset transaction
+#     KEYSTORE               Path to an encrypted keystore JSON; unlocked with the password below
+#     KEYSTORE_PASSWORD      Password for KEYSTORE (read interactively if neither var is set)
+#     KEYSTORE_PASSWORD_FILE File containing the password for KEYSTORE
 #   DRY_RUN         When set to 1, only print the parameters and the cast command (no tx)
 #   ASSUME_YES      When set to 1, skip the interactive confirmation prompt
 #
@@ -31,9 +35,18 @@ CLAIM_ASSET_SIG="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint
 
 usage() {
 	echo "Usage: $0 <dest_address> <deposit_count>" >&2
-	echo "  CLAIMER_URL (env)    defaults to http://localhost:8080" >&2
-	echo "  L1_RPC_URL, BRIDGE_ADDRESS, PRIVATE_KEY (env) required to submit the tx" >&2
-	echo "  DRY_RUN=1 (env)      only print params and the cast command" >&2
+	echo "" >&2
+	echo "Environment variables:" >&2
+	echo "  CLAIMER_URL              base URL of the claimer service (default: http://localhost:8080)" >&2
+	echo "  L1_RPC_URL               L1 RPC endpoint where AgglayerBridge lives (required to submit)" >&2
+	echo "  BRIDGE_ADDRESS           AgglayerBridge contract address on L1 (required to submit)" >&2
+	echo "  Signing (one is required to submit):" >&2
+	echo "    PRIVATE_KEY            raw hex signing key for the claimAsset transaction" >&2
+	echo "    KEYSTORE               path to an encrypted keystore JSON (unlocked with the password below)" >&2
+	echo "    KEYSTORE_PASSWORD      password for KEYSTORE (read interactively if neither var is set)" >&2
+	echo "    KEYSTORE_PASSWORD_FILE file containing the password for KEYSTORE" >&2
+	echo "  DRY_RUN=1                only print params and the cast command (no tx)" >&2
+	echo "  ASSUME_YES=1             skip the interactive confirmation prompt" >&2
 	exit 2
 }
 
@@ -74,6 +87,11 @@ if [ "$http_code" != "200" ]; then
 	exit 1
 fi
 
+# Persist the raw response for later inspection and log its location.
+params_file="/tmp/claim-params-${DEST_ADDRESS}-${DEPOSIT_COUNT}.json"
+echo "$body" >"$params_file"
+
+
 n_claims="$(echo "$body" | jq '.claims | length')"
 if [ "$n_claims" -eq 0 ]; then
 	echo "error: no claim found for deposit_count=${DEPOSIT_COUNT} at ${DEST_ADDRESS}" >&2
@@ -111,6 +129,8 @@ echo "  amount:              ${amount}"
 echo "  metadata:            ${metadata}"
 echo "  l1_info_tree_index:  $(echo "$claim" | jq -r '.l1_info_tree_index')"
 echo
+echo "  --- 🔎 saved claim params to:  ${params_file}" >&2
+echo 
 
 # Assemble the cast send argument vector once; reused for the printed command and execution.
 cast_args=(
@@ -130,8 +150,13 @@ cast_args=(
 
 if [ "$DRY_RUN" = "1" ]; then
 	echo "DRY_RUN=1 — not submitting. Equivalent cast command:"
+	if [ -n "${KEYSTORE:-}" ]; then
+		signer_display='--keystore "'"$KEYSTORE"'" --password "<KEYSTORE_PASSWORD>"'
+	else
+		signer_display='--private-key "<PRIVATE_KEY>"'
+	fi
 	printf 'cast send "%s" \\\n' "${BRIDGE_ADDRESS:-<BRIDGE_ADDRESS>}"
-	printf '  --rpc-url "%s" --private-key "<PRIVATE_KEY>" \\\n' "${L1_RPC_URL:-<L1_RPC_URL>}"
+	printf '  --rpc-url "%s" %s \\\n' "${L1_RPC_URL:-<L1_RPC_URL>}" "$signer_display"
 	printf "  '%s' \\\\\n" "${cast_args[0]}"
 	for ((i = 1; i < ${#cast_args[@]}; i++)); do
 		printf "  '%s'" "${cast_args[$i]}"
@@ -148,7 +173,35 @@ if ! command -v cast >/dev/null 2>&1; then
 fi
 : "${L1_RPC_URL:?error: L1_RPC_URL is required to submit the transaction}"
 : "${BRIDGE_ADDRESS:?error: BRIDGE_ADDRESS is required to submit the transaction}"
-: "${PRIVATE_KEY:?error: PRIVATE_KEY is required to submit the transaction}"
+
+# Resolve the signer: an encrypted keystore (unlocked with a password) takes precedence
+# over a raw PRIVATE_KEY.
+signer_args=()
+if [ -n "${KEYSTORE:-}" ]; then
+	[ -f "$KEYSTORE" ] || {
+		echo "error: KEYSTORE file '$KEYSTORE' not found" >&2
+		exit 1
+	}
+	signer_args=(--keystore "$KEYSTORE")
+	if [ -n "${KEYSTORE_PASSWORD_FILE:-}" ]; then
+		[ -f "$KEYSTORE_PASSWORD_FILE" ] || {
+			echo "error: KEYSTORE_PASSWORD_FILE '$KEYSTORE_PASSWORD_FILE' not found" >&2
+			exit 1
+		}
+		signer_args+=(--password-file "$KEYSTORE_PASSWORD_FILE")
+	else
+		if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
+			read -r -s -p "Keystore password: " KEYSTORE_PASSWORD
+			echo >&2
+		fi
+		signer_args+=(--password "$KEYSTORE_PASSWORD")
+	fi
+elif [ -n "${PRIVATE_KEY:-}" ]; then
+	signer_args=(--private-key "$PRIVATE_KEY")
+else
+	echo "error: provide KEYSTORE (encrypted keystore) or PRIVATE_KEY to sign the transaction" >&2
+	exit 1
+fi
 
 if [ "$ASSUME_YES" != "1" ]; then
 	read -r -p "Submit claimAsset to ${BRIDGE_ADDRESS} via ${L1_RPC_URL}? [y/N] " reply
@@ -161,7 +214,26 @@ if [ "$ASSUME_YES" != "1" ]; then
 	esac
 fi
 
-cast send "$BRIDGE_ADDRESS" \
+# Submit and wait for the transaction to be mined. cast send blocks until the
+# receipt is available; --json gives us a machine-readable receipt to inspect.
+receipt=$(cast send "$BRIDGE_ADDRESS" \
 	--rpc-url "$L1_RPC_URL" \
-	--private-key "$PRIVATE_KEY" \
-	"${cast_args[@]}"
+	"${signer_args[@]}" \
+	"${cast_args[@]}" \
+	--json)
+
+echo "$receipt" | jq .
+
+tx_hash=$(echo "$receipt" | jq -r '.transactionHash')
+status=$(echo "$receipt" | jq -r '.status')
+
+# Receipt status is "0x1" on success and "0x0" when the transaction reverted.
+case "$status" in
+	0x1 | 1)
+		echo "claimAsset succeeded: $tx_hash"
+		;;
+	*)
+		echo "error: claimAsset transaction $tx_hash reverted (status=$status)" >&2
+		exit 1
+		;;
+esac
