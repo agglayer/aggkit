@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultAddress             = "0.0.0.0"
-	defaultPort                = 8080
+	defaultPort                = 7080
 	defaultReadTimeoutSeconds  = 30
 	defaultWriteTimeoutSeconds = 30
 )
