@@ -17,6 +17,8 @@ import (
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	logger "github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
@@ -24,6 +26,48 @@ import (
 )
 
 var testNow = time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+
+func TestNewAPIWithNilStorageWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	_, err := New(Config{Enabled: true}, nil, nil)
+	require.ErrorContains(t, err, "storage is nil")
+}
+
+func TestAPIWithLoggerOption(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var log aggkitcommon.Logger
+	api, err := New(Config{Enabled: false}, nil, nil, WithLogger(log))
+	require.NoError(t, err)
+	require.Nil(t, api.log)
+}
+
+func TestAPIStartWhenDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	api, err := New(Config{Enabled: false}, nil, nil)
+	require.NoError(t, err)
+
+	err = api.Start(context.Background())
+	require.NoError(t, err)
+}
+
+func TestConfigFromRESTConfig(t *testing.T) {
+	rest := aggkitcommon.RESTConfig{
+		Host:         "0.0.0.0",
+		Port:         8080,
+		ReadTimeout:  cfgtypes.Duration{Duration: 15 * time.Second},
+		WriteTimeout: cfgtypes.Duration{Duration: 30 * time.Second},
+	}
+
+	cfg := ConfigFromRESTConfig(true, rest)
+
+	require.True(t, cfg.Enabled)
+	require.Equal(t, "0.0.0.0:8080", cfg.Address)
+	require.Equal(t, 15*time.Second, cfg.ReadTimeout)
+	require.Equal(t, 30*time.Second, cfg.WriteTimeout)
+}
 
 func TestDisabledAPIDoesNotExposeRoutesOrRequireDependencies(t *testing.T) {
 	gin.SetMode(gin.TestMode)

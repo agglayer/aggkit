@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -95,6 +96,73 @@ func TestNewBridgeExitFromSyncWithEtrogKeepsEtrogGlobalIndexAfterUpgrade(t *test
 
 	require.False(t, exit.PreEtrog)
 	require.Equal(t, 0, DeriveL1GlobalIndex(42).Cmp(exit.GlobalIndex))
+}
+
+func TestDeriveGlobalIndex(t *testing.T) {
+	const originNetwork uint32 = 5
+	const depositCount uint32 = 99
+
+	expected := bridgesync.GenerateGlobalIndexForNetworkID(originNetwork, depositCount)
+	actual := DeriveGlobalIndex(originNetwork, depositCount)
+
+	require.Equal(t, 0, expected.Cmp(actual))
+}
+
+func TestNewBridgeExitFromSyncWrapsWithEtrogZero(t *testing.T) {
+	bridge := bridgesync.Bridge{
+		BlockNum:           50,
+		TxHash:             common.HexToHash("0xdef"),
+		OriginNetwork:      L1OriginNetwork,
+		DestinationNetwork: 10,
+		DepositCount:       7,
+		Amount:             big.NewInt(500),
+		Metadata:           []byte{0x01},
+	}
+
+	exit := NewBridgeExitFromSync(bridge)
+
+	require.False(t, exit.PreEtrog)
+	require.Equal(t, bridge.DepositCount, exit.DepositCount)
+	require.Equal(t, bridge.DestinationNetwork, exit.DestinationNetwork)
+	require.Equal(t, 0, DeriveL1GlobalIndex(bridge.DepositCount).Cmp(exit.GlobalIndex))
+}
+
+func TestNewRequestFromBridgeExitNilGlobalIndex(t *testing.T) {
+	bridge := BridgeExit{
+		OriginNetwork:      L1OriginNetwork,
+		DestinationNetwork: 1101,
+		DepositCount:       42,
+		GlobalIndex:        nil,
+	}
+
+	request := NewRequestFromBridgeExit(bridge, time.Unix(1, 0))
+
+	require.NotNil(t, request.GlobalIndex)
+	require.Equal(t, 0, DeriveL1GlobalIndex(bridge.DepositCount).Cmp(request.GlobalIndex))
+}
+
+func TestProofToABIProof(t *testing.T) {
+	var proof treetypes.Proof
+	proof[0] = common.HexToHash("0x01")
+	proof[1] = common.HexToHash("0x02")
+
+	abiProof := ProofToABIProof(proof)
+
+	require.Len(t, abiProof, int(treetypes.DefaultHeight))
+	require.Equal(t, proof[0], common.Hash(abiProof[0]))
+	require.Equal(t, proof[1], common.Hash(abiProof[1]))
+	require.Equal(t, common.Hash{}, common.Hash(abiProof[2]))
+}
+
+func TestCopyBigIntNilInput(t *testing.T) {
+	result := copyBigInt(nil)
+	require.Nil(t, result)
+
+	value := big.NewInt(12345)
+	copied := copyBigInt(value)
+	require.NotNil(t, copied)
+	require.Equal(t, 0, value.Cmp(copied))
+	require.NotSame(t, value, copied)
 }
 
 func TestNewRequestFromBridgeExitCopiesSelectedL1InfoTreeIndex(t *testing.T) {

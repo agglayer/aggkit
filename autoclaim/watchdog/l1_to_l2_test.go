@@ -12,6 +12,7 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -279,6 +280,111 @@ func TestPollOnceIgnoresAlreadyClaimedBridgeBeforeEnqueue(t *testing.T) {
 	require.True(t, result.CursorAdvanced)
 	require.Empty(t, claimer.enqueued)
 	require.Len(t, claimer.claimChecks, 1)
+}
+
+func TestNewL1ToL2NilArgs(t *testing.T) {
+	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
+	store := newMemoryCursorStore()
+	registry := newFakeRegistry()
+
+	_, err := NewL1ToL2(nil, store, registry)
+	require.ErrorContains(t, err, "bridge source is nil")
+
+	_, err = NewL1ToL2(source, nil, registry)
+	require.ErrorContains(t, err, "cursor store is nil")
+
+	_, err = NewL1ToL2(source, store, nil)
+	require.ErrorContains(t, err, "claimer registry is nil")
+}
+
+func TestWithCursorNameOption(t *testing.T) {
+	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
+	store := newMemoryCursorStore()
+	registry := newFakeRegistry()
+
+	w, err := NewL1ToL2(source, store, registry, WithCursorName("custom-cursor"))
+	require.NoError(t, err)
+	require.Equal(t, "custom-cursor", w.cursorName)
+
+	// Empty string should be ignored, keeping the default.
+	w2, err := NewL1ToL2(source, store, registry, WithCursorName(""))
+	require.NoError(t, err)
+	require.Equal(t, defaultCursorName, w2.cursorName)
+}
+
+func TestWithPollPeriodOption(t *testing.T) {
+	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
+	store := newMemoryCursorStore()
+	registry := newFakeRegistry()
+
+	w, err := NewL1ToL2(source, store, registry, WithPollPeriod(5*time.Second))
+	require.NoError(t, err)
+	require.Equal(t, 5*time.Second, w.pollPeriod)
+
+	// Zero or negative period should be ignored, keeping the default.
+	w2, err := NewL1ToL2(source, store, registry, WithPollPeriod(0))
+	require.NoError(t, err)
+	require.Equal(t, defaultPollPeriod, w2.pollPeriod)
+}
+
+func TestWithEnabledOption(t *testing.T) {
+	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
+	store := newMemoryCursorStore()
+	registry := newFakeRegistry()
+
+	w, err := NewL1ToL2(source, store, registry, WithEnabled(false))
+	require.NoError(t, err)
+	require.False(t, w.enabled)
+}
+
+func TestWithLoggerOption(t *testing.T) {
+	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
+	store := newMemoryCursorStore()
+	registry := newFakeRegistry()
+
+	var log aggkitcommon.Logger
+	w, err := NewL1ToL2(source, store, registry, WithLogger(log))
+	require.NoError(t, err)
+	require.Nil(t, w.log)
+}
+
+func TestPollOnceDisabledWatchdog(t *testing.T) {
+	ctx := context.Background()
+	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
+	store := newMemoryCursorStore()
+	w, err := NewL1ToL2(source, store, newFakeRegistry(), WithEnabled(false))
+	require.NoError(t, err)
+
+	result, err := w.PollOnce(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, uint64(0), result.LastProcessedBlock)
+	require.Empty(t, source.ranges)
+}
+
+func TestPollOnceGetLastBlockError(t *testing.T) {
+	ctx := context.Background()
+	sourceErr := errors.New("bridge sync unavailable")
+	source := &fakeBridgeSource{lastProcessedErr: sourceErr}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	w := newTestWatchdog(t, source, store, newFakeRegistry(claimer))
+
+	_, err := w.PollOnce(ctx)
+	require.ErrorIs(t, err, sourceErr)
+}
+
+func TestPollOnceNotFoundReturnsEmpty(t *testing.T) {
+	ctx := context.Background()
+	source := &fakeBridgeSource{lastProcessedBlock: 0, found: false}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	w := newTestWatchdog(t, source, store, newFakeRegistry(claimer))
+
+	result, err := w.PollOnce(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, source.ranges)
 }
 
 func TestClaimerErrorDoesNotAdvanceCursor(t *testing.T) {

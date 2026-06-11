@@ -15,12 +15,138 @@ import (
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
 var testNow = time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+
+func TestNewClaimerNilAndEmptyArgs(t *testing.T) {
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	policy := approvedPolicy()
+	proof := readyProof()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+
+	_, err := New(autoclaimtypes.ClaimerTarget{}, storage, policy, proof, sender)
+	require.ErrorContains(t, err, "target ID is empty")
+
+	_, err = New(target, nil, policy, proof, sender)
+	require.ErrorContains(t, err, "storage is nil")
+
+	_, err = New(target, storage, nil, proof, sender)
+	require.ErrorContains(t, err, "policy is nil")
+
+	_, err = New(target, storage, policy, nil, sender)
+	require.ErrorContains(t, err, "proof preparer is nil")
+
+	_, err = New(target, storage, policy, proof, nil)
+	require.ErrorContains(t, err, "sender is nil")
+}
+
+func TestNewClaimerOptionsApplied(t *testing.T) {
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	var logSink aggkitcommon.Logger
+
+	c, err := New(
+		target,
+		storage,
+		approvedPolicy(),
+		readyProof(),
+		&fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed},
+		WithEnabled(false),
+		WithPollPeriod(42*time.Second),
+		WithRecoverPageSize(7),
+		WithLogger(logSink),
+	)
+	require.NoError(t, err)
+	require.False(t, c.enabled)
+	require.Equal(t, 42*time.Second, c.pollPeriod)
+	require.Equal(t, uint32(7), c.recoverPageSize)
+	require.Nil(t, c.log)
+}
+
+func TestNewClaimerDefaultClock(t *testing.T) {
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+
+	c, err := New(target, storage, approvedPolicy(), readyProof(), sender)
+	require.NoError(t, err)
+	require.NotNil(t, c.now)
+	now := c.now()
+	require.False(t, now.IsZero())
+}
+
+func TestClaimerIsClaimedNilReader(t *testing.T) {
+	ctx := context.Background()
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+
+	c, err := New(target, storage, approvedPolicy(), readyProof(), sender)
+	require.NoError(t, err)
+
+	bridge := makeBridge(1, 10)
+	_, err = c.IsClaimed(ctx, bridge)
+	require.ErrorContains(t, err, "target claim reader is nil")
+}
+
+func TestClaimerIsClaimedWithReader(t *testing.T) {
+	ctx := context.Background()
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	reader := &fakeTargetClaimReader{claimed: true}
+
+	c, err := New(target, storage, approvedPolicy(), readyProof(), sender,
+		WithTargetClaimReader(reader))
+	require.NoError(t, err)
+
+	bridge := makeBridge(1, 10)
+	claimed, err := c.IsClaimed(ctx, bridge)
+	require.NoError(t, err)
+	require.True(t, claimed)
+}
+
+func TestClaimerIsClaimedWithReaderNilGlobalIndex(t *testing.T) {
+	ctx := context.Background()
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	reader := &fakeTargetClaimReader{claimed: false}
+
+	c, err := New(target, storage, approvedPolicy(), readyProof(), sender,
+		WithTargetClaimReader(reader))
+	require.NoError(t, err)
+
+	bridge := makeBridge(1, 10)
+	bridge.GlobalIndex = nil
+	claimed, err := c.IsClaimed(ctx, bridge)
+	require.NoError(t, err)
+	require.False(t, claimed)
+}
+
+func TestClaimerStartDisabled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+
+	c, err := New(target, storage, approvedPolicy(), readyProof(), sender, WithEnabled(false))
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.Start(ctx)
+	}()
+	requireClosed(t, done)
+}
 
 func TestEnqueueIsIdempotent(t *testing.T) {
 	ctx := context.Background()
@@ -1011,6 +1137,15 @@ func (s *memoryStorage) update(
 	fn(&request)
 	s.requests[key] = request
 	return nil
+}
+
+type fakeTargetClaimReader struct {
+	claimed bool
+	err     error
+}
+
+func (r *fakeTargetClaimReader) IsClaimed(_ context.Context, _ *big.Int) (bool, error) {
+	return r.claimed, r.err
 }
 
 func copyRequest(request autoclaimtypes.AutoClaimRequest) *autoclaimtypes.AutoClaimRequest {

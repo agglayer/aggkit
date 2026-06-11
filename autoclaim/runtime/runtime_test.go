@@ -25,6 +25,7 @@ import (
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -282,6 +283,54 @@ func TestStartFailsWhenBasicFilterSimulatorConstructionFails(t *testing.T) {
 
 	require.ErrorContains(t, err, "create basic-filter target simulator")
 	require.ErrorContains(t, err, "simulator unavailable")
+}
+
+func TestEthTxManagerAdapterMethods(t *testing.T) {
+	startCalled := false
+	stopCalled := false
+
+	adapter := ethTxManagerAdapter{
+		start: func() { startCalled = true },
+		stop:  func() { stopCalled = true },
+	}
+
+	adapter.Start()
+	require.True(t, startCalled)
+
+	adapter.Stop()
+	require.True(t, stopCalled)
+
+	// Stop with nil stop func should not panic.
+	adapterNoStop := ethTxManagerAdapter{
+		start: func() {},
+		stop:  nil,
+	}
+	require.NotPanics(t, func() { adapterNoStop.Stop() })
+}
+
+func TestDefaultFactoriesSimpleConstructors(t *testing.T) {
+	factories := DefaultFactories(log.Config{})
+
+	// NewProofPreparer wraps proof.NewPreparer.
+	preparer, err := factories.NewProofPreparer(fakeL1BridgeSync{}, fakeL1InfoTreeSync{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, preparer)
+
+	// NewTargetSimulator delegates to simulator.New and propagates nil-client error.
+	_, err = factories.NewTargetSimulator(nil, nil, autoclaimtypes.ClaimerTarget{}, common.Address{})
+	require.Error(t, err)
+
+	// NewSender delegates to sender.New and propagates nil-storage error.
+	_, err = factories.NewSender(nil, nil, nil)
+	require.Error(t, err)
+
+	// NewClaimer delegates to claimer.New and propagates empty-ID error.
+	_, err = factories.NewClaimer(autoclaimtypes.ClaimerTarget{}, nil, nil, nil, nil)
+	require.Error(t, err)
+
+	// NewRegistry delegates to claimer.NewRegistry and propagates nil-claimer error.
+	_, err = factories.NewRegistry(nil)
+	require.Error(t, err)
 }
 
 func requireClosed(t *testing.T, ch <-chan struct{}) {

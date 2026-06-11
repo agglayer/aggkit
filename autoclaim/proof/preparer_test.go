@@ -18,6 +18,83 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPrepareNilBridgeL1Error(t *testing.T) {
+	preparer := &Preparer{}
+	_, err := preparer.Prepare(context.Background(), testRequest(1))
+	require.ErrorContains(t, err, "L1 bridge syncer is not available")
+}
+
+func TestPrepareNilL1InfoTreeError(t *testing.T) {
+	preparer := &Preparer{bridgeL1: &fakeL1BridgeSyncer{}}
+	_, err := preparer.Prepare(context.Background(), testRequest(1))
+	require.ErrorContains(t, err, "L1 info tree syncer is not available")
+}
+
+func TestPrepareProofPropagatesError(t *testing.T) {
+	ctx := context.Background()
+	preparer := &Preparer{}
+
+	proof, err := preparer.PrepareProof(ctx, testRequest(1))
+	require.Nil(t, proof)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "L1 bridge syncer is not available")
+}
+
+func TestPrepareGetInfoByIndexNonErrNotFoundError(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	infoErr := errors.New("unexpected RPC failure")
+	bridge := &fakeL1BridgeSyncer{}
+	l1InfoTree := &fakeL1InfoTreeSyncer{infoByIndexErr: infoErr}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, infoErr)
+	require.ErrorContains(t, err, "get L1 info tree leaf at index")
+}
+
+func TestPrepareGetInfoByIndexNilResultError(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	bridge := &fakeL1BridgeSyncer{}
+	l1InfoTree := &fakeL1InfoTreeSyncer{}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+	// Insert a nil entry to trigger the nil info error path.
+	l1InfoTree.infoByIndex[depositCount] = nil
+
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "empty result")
+}
+
+func TestPrepareWithRequestL1InfoTreeIndex(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	selectedIndex := uint32(77)
+	selectedInfo := testL1InfoTreeLeaf(20, selectedIndex, "0x7700")
+	bridge := &fakeL1BridgeSyncer{proof: testProof("0xaa")}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		infoByIndex: map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+			selectedIndex: selectedInfo,
+		},
+		rollupProof: testProof("0xbb"),
+	}
+
+	request := testRequest(depositCount)
+	request.L1InfoTreeIndex = &selectedIndex
+
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+	result, err := preparer.Prepare(ctx, request)
+	require.NoError(t, err)
+	require.True(t, result.Ready)
+	require.Equal(t, selectedIndex, result.Proof.L1InfoTreeIndex)
+}
+
 func TestPreparePendingWhenBridgeNotYetIncludedOnL1InfoTree(t *testing.T) {
 	ctx := context.Background()
 	depositCount := uint32(42)

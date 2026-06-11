@@ -44,6 +44,36 @@ func TestPackClaimCalldataForMessage(t *testing.T) {
 	requireClaimInputs(t, inputs, request, proof)
 }
 
+func TestPackClaimUnsupportedLeafType(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafType(99))
+	_, err := PackClaim(request, makeProof())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unsupported bridge leaf type")
+}
+
+func TestPackClaimNilAmount(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	request.Bridge.Amount = nil
+	data, err := PackClaim(request, makeProof())
+	require.NoError(t, err)
+	require.NotEmpty(t, data)
+}
+
+func TestGlobalIndexFromBridgeGlobalIndex(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	request.GlobalIndex = nil
+	request.Bridge.GlobalIndex = new(big.Int).SetUint64(42)
+	require.Zero(t, GlobalIndex(request).Cmp(request.Bridge.GlobalIndex))
+}
+
+func TestGlobalIndexDerived(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	request.GlobalIndex = nil
+	request.Bridge.GlobalIndex = nil
+	expected := autoclaimtypes.DeriveL1GlobalIndex(request.Bridge.DepositCount)
+	require.Zero(t, GlobalIndex(request).Cmp(expected))
+}
+
 func TestGlobalIndexPreservesPreEtrogRawIndex(t *testing.T) {
 	request := makeRequest(bridgesynctypes.LeafTypeAsset)
 	request.Bridge.DestinationNetwork = autoclaimtypes.LegacyZkEVMRollupNetwork

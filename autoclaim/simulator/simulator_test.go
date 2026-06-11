@@ -113,6 +113,24 @@ func TestSimulateClaimReturnsEstimateGasError(t *testing.T) {
 	require.ErrorContains(t, err, "estimate claim gas")
 }
 
+func TestNewSimulatorNilArgs(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x5000000000000000000000000000000000000005")
+	from := common.HexToAddress("0x6000000000000000000000000000000000000006")
+	target := autoclaimtypes.ClaimerTarget{BridgeAddr: bridgeAddr}
+
+	_, err := New(nil, fakeProofPreparer{}, target, from)
+	require.ErrorContains(t, err, "client is nil")
+
+	_, err = New(&fakeClient{}, nil, target, from)
+	require.ErrorContains(t, err, "proof preparer is nil")
+
+	_, err = New(&fakeClient{}, fakeProofPreparer{}, autoclaimtypes.ClaimerTarget{}, from)
+	require.ErrorContains(t, err, "bridge address is empty")
+
+	_, err = New(&fakeClient{}, fakeProofPreparer{}, target, common.Address{})
+	require.ErrorContains(t, err, "sender address is empty")
+}
+
 func newTestSimulator(
 	t *testing.T,
 	client Client,

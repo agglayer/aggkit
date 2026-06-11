@@ -20,6 +20,46 @@ import (
 
 var fixedNow = time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
 
+func TestNewSenderNilArgs(t *testing.T) {
+	storage := newFakeStorage(makeRequest(bridgesynctypes.LeafTypeAsset))
+	txManager := &fakeEthTxManager{}
+	reader := &fakeClaimReader{}
+
+	_, err := New(nil, txManager, reader)
+	require.ErrorContains(t, err, "storage is nil")
+
+	_, err = New(storage, nil, reader)
+	require.ErrorContains(t, err, "eth tx manager is nil")
+
+	_, err = New(storage, txManager, nil)
+	require.ErrorContains(t, err, "target claim reader is nil")
+}
+
+func TestSenderEthTxManagerGetter(t *testing.T) {
+	txManager := &fakeEthTxManager{}
+	sender := newTestSender(
+		t,
+		newFakeStorage(makeRequest(bridgesynctypes.LeafTypeAsset)),
+		txManager,
+		&fakeClaimReader{},
+	)
+
+	got := sender.EthTxManager()
+	require.Equal(t, txManager, got)
+}
+
+func TestSubmitClaimContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	sender := newTestSender(t, storage, &fakeEthTxManager{}, &fakeClaimReader{})
+
+	_, err := sender.SubmitClaim(ctx, request, makeProof(), makeTarget(1))
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestPackClaimCalldataForAsset(t *testing.T) {
 	sender := newTestSender(
 		t,
