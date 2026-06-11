@@ -14,7 +14,9 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/api"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
+	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	"github.com/agglayer/aggkit/autoclaim/policy"
+	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/autoclaim/watchdog"
@@ -23,7 +25,6 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -73,13 +74,6 @@ func TestStartEnabledAutoClaimMissingDependencies(t *testing.T) {
 		L1InfoTreeSync: typedNilL1InfoTreeSync,
 	}, Factories{})
 	require.ErrorContains(t, err, "AutoClaim requires l1infotreesync")
-
-	_, err = Start(context.Background(), Dependencies{
-		Config:         cfg,
-		L1BridgeSync:   fakeL1BridgeSync{},
-		L1InfoTreeSync: fakeL1InfoTreeSync{},
-	}, Factories{})
-	require.ErrorContains(t, err, "AutoClaim L1-to-L2 watchdog requires l2gersync")
 }
 
 func TestStartRejectsInvalidClaimerConfig(t *testing.T) {
@@ -116,7 +110,6 @@ func TestStartBuildsAndStartsOneTransactionManagerPerEnabledClaimer(t *testing.T
 		Config:         cfg,
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
-		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		newRPCClient: func(_ context.Context, _ aggkitcommon.Logger, cfg ethermanconfig.RPCClientConfig) (
 			aggkittypes.EthClienter, error,
@@ -190,7 +183,6 @@ func TestStartStopsBackgroundWorkOnContextCancellation(t *testing.T) {
 		Config:         validConfig(),
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
-		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		startEthTxManager: func(ctx context.Context, _ EthTxManager) {
 			<-ctx.Done()
@@ -223,7 +215,6 @@ func TestStartDoesNotCreateAPIWhenDisabled(t *testing.T) {
 		Config:         cfg,
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
-		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		newAPI: func() {
 			apiCreated = true
@@ -252,7 +243,6 @@ func TestStartCreatesTargetSimulatorOnlyForBasicFilter(t *testing.T) {
 		Config:         cfg,
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
-		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		newTargetSimulator: func(
 			_ simulator.Client,
@@ -285,7 +275,6 @@ func TestStartFailsWhenBasicFilterSimulatorConstructionFails(t *testing.T) {
 		Config:         cfg,
 		L1BridgeSync:   fakeL1BridgeSync{},
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
-		L2GERSync:      fakeL2GERSync{},
 	}, testFactories(&factoryHooks{
 		targetSimulatorErr: errors.New("simulator unavailable"),
 	}))
@@ -406,6 +395,17 @@ func testFactories(hooks *factoryHooks) Factories {
 		) {
 			return fakeTargetClaimReader{}, nil
 		},
+		NewProofPreparer: func(
+			_ autoclaimcfg.ClaimerConfig,
+			_ aggkittypes.EthClienter,
+			l1BridgeSync proof.L1BridgeSyncer,
+			l1InfoTreeSync interface {
+				proof.L1InfoTreeSyncer
+				gertracker.L1InfoTreeSyncer
+			},
+		) (autoclaimtypes.ProofPreparer, error) {
+			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, nil), nil
+		},
 		NewTargetSimulator: func(
 			client simulator.Client,
 			proofPreparer autoclaimtypes.ProofPreparer,
@@ -517,13 +517,8 @@ func (fakeL1InfoTreeSync) GetFirstInfoAfterBlock(uint64) (*l1infotreesync.L1Info
 	return nil, nil
 }
 
-type fakeL2GERSync struct{}
-
-func (fakeL2GERSync) GetFirstGERAfterL1InfoTreeIndex(
-	_ context.Context,
-	atOrAfterL1InfoTreeIndex uint32,
-) (l2gersync.GlobalExitRootInfo, error) {
-	return l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: atOrAfterL1InfoTreeIndex}, nil
+func (fakeL1InfoTreeSync) GetInfoByGlobalExitRoot(common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	return nil, nil
 }
 
 type fakeStorage struct{}

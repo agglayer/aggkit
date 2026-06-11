@@ -225,7 +225,6 @@ func start(cliCtx *cli.Context) error {
 			RESTConfig:     cfg.REST,
 			L1BridgeSync:   l1BridgeSync,
 			L1InfoTreeSync: l1InfoTreeSync,
-			L2GERSync:      l2GERSync,
 		}, autoclaimruntime.Factories{}); err != nil {
 			return err
 		}
@@ -791,7 +790,7 @@ func runL2GERSyncIfNeeded(
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 ) *l2gersync.L2GERSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC, aggkitcommon.AUTOCLAIM}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC}, components) {
 		return nil
 	}
 	l2GERSync, err := l2gersync.New(

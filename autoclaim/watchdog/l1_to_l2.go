@@ -23,11 +23,6 @@ type CursorStore interface {
 	SaveBridgeCursor(ctx context.Context, name string, cursor autoclaimtypes.BridgeCursor, now time.Time) error
 }
 
-// ClaimAnchorSelector chooses the destination-injected L1 info tree leaf to anchor a claim request.
-type ClaimAnchorSelector interface {
-	SelectL1InfoTreeIndex(ctx context.Context, exit autoclaimtypes.BridgeExit) (uint32, bool, error)
-}
-
 // Option configures an L1ToL2 watchdog.
 type Option func(*L1ToL2)
 
@@ -86,13 +81,6 @@ func WithEtrogL1UpgradeBlock(block uint64) Option {
 	}
 }
 
-// WithClaimAnchorSelector configures the selector used to wait for destination-injected GERs.
-func WithClaimAnchorSelector(selector ClaimAnchorSelector) Option {
-	return func(w *L1ToL2) {
-		w.claimAnchorSelector = selector
-	}
-}
-
 // WithNow configures the clock used for cursor timestamps.
 func WithNow(now func() time.Time) Option {
 	return func(w *L1ToL2) {
@@ -119,7 +107,6 @@ type PollResult struct {
 	EnqueuedBridgeCount int
 	IgnoredBridgeCount  int
 	SkippedBridgeCount  int
-	PendingBridgeCount  int
 	CursorAdvanced      bool
 }
 
@@ -135,7 +122,6 @@ type L1ToL2 struct {
 	pollPeriod          time.Duration
 	enabled             bool
 	etrogL1UpgradeBlock uint64
-	claimAnchorSelector ClaimAnchorSelector
 	now                 func() time.Time
 	log                 aggkitcommon.Logger
 }
@@ -147,7 +133,6 @@ type destinationCursorState struct {
 	cursorFound  bool
 	fromBlock    uint64
 	nextCursor   autoclaimtypes.BridgeCursor
-	holdCursor   bool
 	eligiblePoll bool
 }
 
@@ -281,10 +266,6 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 			continue
 		}
 		state.nextCursor = maxCursorPosition(state.nextCursor, exit.BlockNum, exit.BlockPos)
-		if state.holdCursor {
-			result.PendingBridgeCount++
-			continue
-		}
 
 		key := autoclaimtypes.DeriveRequestKey(
 			exit.OriginNetwork,
@@ -307,18 +288,6 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		}
 
 		result.MatchedBridgeCount++
-		if w.claimAnchorSelector != nil {
-			l1InfoTreeIndex, ready, err := w.claimAnchorSelector.SelectL1InfoTreeIndex(ctx, exit)
-			if err != nil {
-				return result, fmt.Errorf("select L1 info tree index for l1 bridge %s: %w", key, err)
-			}
-			if !ready {
-				result.PendingBridgeCount++
-				state.holdCursor = true
-				continue
-			}
-			exit.L1InfoTreeIndex = &l1InfoTreeIndex
-		}
 		if err := state.claimer.Enqueue(ctx, exit); err != nil {
 			return result, fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w",
 				key, state.claimer.Target().ID, err)
@@ -327,7 +296,7 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	}
 
 	for _, state := range orderedStates(states) {
-		if !state.eligiblePoll || state.holdCursor {
+		if !state.eligiblePoll {
 			continue
 		}
 		if err := w.cursorStore.SaveBridgeCursor(ctx, state.cursorName, state.nextCursor, w.now()); err != nil {

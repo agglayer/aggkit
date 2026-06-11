@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/api"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
+	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	"github.com/agglayer/aggkit/autoclaim/policy"
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/sender"
@@ -44,9 +45,11 @@ type Dependencies struct {
 		autoclaimtypes.BridgeSource
 		proof.L1BridgeSyncer
 	}
-	L1InfoTreeSync proof.L1InfoTreeSyncer
-	L2GERSync      proof.InjectedGERSyncer
-	Logger         aggkitcommon.Logger
+	L1InfoTreeSync interface {
+		proof.L1InfoTreeSyncer
+		gertracker.L1InfoTreeSyncer
+	}
+	Logger aggkitcommon.Logger
 }
 
 // Runtime owns the started Auto Claim components.
@@ -96,7 +99,16 @@ type Factories struct {
 		...policy.RegistryOption,
 	) (autoclaimtypes.Policy, error)
 	NewTargetClaimReader func(common.Address, aggkittypes.BaseEthereumClienter) (autoclaimtypes.TargetClaimReader, error)
-	NewTargetSimulator   func(
+	NewProofPreparer     func(
+		cfg autoclaimcfg.ClaimerConfig,
+		rpcClient aggkittypes.EthClienter,
+		l1BridgeSync proof.L1BridgeSyncer,
+		l1InfoTreeSync interface {
+			proof.L1InfoTreeSyncer
+			gertracker.L1InfoTreeSyncer
+		},
+	) (autoclaimtypes.ProofPreparer, error)
+	NewTargetSimulator func(
 		simulator.Client,
 		autoclaimtypes.ProofPreparer,
 		autoclaimtypes.ClaimerTarget,
@@ -167,6 +179,29 @@ func DefaultFactories(logConfig log.Config) Factories {
 		},
 		NewPolicy:            policy.NewPolicy,
 		NewTargetClaimReader: newTargetClaimReader,
+		NewProofPreparer: func(
+			cfg autoclaimcfg.ClaimerConfig,
+			rpcClient aggkittypes.EthClienter,
+			l1BridgeSync proof.L1BridgeSyncer,
+			l1InfoTreeSync interface {
+				proof.L1InfoTreeSyncer
+				gertracker.L1InfoTreeSyncer
+			},
+		) (autoclaimtypes.ProofPreparer, error) {
+			bridgeBinding, err := agglayerbridgel2.NewAgglayerbridgel2(cfg.BridgeAddr, rpcClient)
+			if err != nil {
+				return nil, fmt.Errorf("create bridge binding for claimer %s: %w", cfg.ID, err)
+			}
+			gerManagerAddr, err := bridgeBinding.GlobalExitRootManager(nil)
+			if err != nil {
+				return nil, fmt.Errorf("resolve GER manager address for claimer %s: %w", cfg.ID, err)
+			}
+			tracker, err := gertracker.NewGERTracker(gerManagerAddr, rpcClient, l1InfoTreeSync)
+			if err != nil {
+				return nil, fmt.Errorf("create GER tracker for claimer %s: %w", cfg.ID, err)
+			}
+			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, tracker), nil
+		},
 		NewTargetSimulator: func(
 			client simulator.Client,
 			proofPreparer autoclaimtypes.ProofPreparer,
@@ -236,9 +271,6 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 	if isNil(deps.L1InfoTreeSync) {
 		return nil, fmt.Errorf("AutoClaim requires l1infotreesync / L1 info tree sync when enabled")
 	}
-	if cfg.L1ToL2Watchdog.Enabled && isNil(deps.L2GERSync) {
-		return nil, fmt.Errorf("AutoClaim L1-to-L2 watchdog requires l2gersync / destination injected GER sync when enabled")
-	}
 
 	factories = withDefaultFactories(factories, deps.LogConfig)
 	logger := deps.Logger
@@ -255,14 +287,14 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		return nil, fmt.Errorf("open AutoClaim storage: %w", err)
 	}
 
-	proofPreparer := proof.NewPreparer(deps.L1BridgeSync, deps.L1InfoTreeSync, deps.L2GERSync)
 	runtime := &Runtime{Storage: storage}
 	claimers := make([]autoclaimtypes.Claimer, 0, len(cfg.Claimers))
 	for _, claimerCfg := range cfg.Claimers {
 		if !claimerCfg.Enabled {
 			continue
 		}
-		claimer, txManager, err := createClaimer(ctx, claimerCfg, storage, proofPreparer, logger, factories)
+		claimer, txManager, err := createClaimer(
+			ctx, claimerCfg, storage, deps.L1BridgeSync, deps.L1InfoTreeSync, logger, factories)
 		if err != nil {
 			return nil, err
 		}
@@ -289,7 +321,6 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		watchdog.WithStartBlock(cfg.L1ToL2Watchdog.StartBlock),
 		watchdog.WithPollPeriod(cfg.L1ToL2Watchdog.PollInterval.Duration),
 		watchdog.WithEtrogL1UpgradeBlock(cfg.L1ToL2Watchdog.EtrogL1UpgradeBlock),
-		watchdog.WithClaimAnchorSelector(proofPreparer),
 		watchdog.WithLogger(logger),
 	)
 	if err != nil {
@@ -337,7 +368,11 @@ func createClaimer(
 	ctx context.Context,
 	cfg autoclaimcfg.ClaimerConfig,
 	storage autoclaimtypes.Storage,
-	proofPreparer autoclaimtypes.ProofPreparer,
+	l1BridgeSync proof.L1BridgeSyncer,
+	l1InfoTreeSync interface {
+		proof.L1InfoTreeSyncer
+		gertracker.L1InfoTreeSyncer
+	},
 	logger aggkitcommon.Logger,
 	factories Factories,
 ) (autoclaimtypes.Claimer, EthTxManager, error) {
@@ -347,6 +382,12 @@ func createClaimer(
 	if err != nil {
 		return nil, nil, fmt.Errorf("create AutoClaim RPC client for claimer %s: %w", cfg.ID, err)
 	}
+
+	proofPreparer, err := factories.NewProofPreparer(cfg, rpcClient, l1BridgeSync, l1InfoTreeSync)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create proof preparer for claimer %s: %w", cfg.ID, err)
+	}
+
 	txManager, err := factories.NewEthTxManager(ctx, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create AutoClaim EthTxManager for claimer %s: %w", cfg.ID, err)
@@ -399,6 +440,9 @@ func withDefaultFactories(factories Factories, logConfig log.Config) Factories {
 	}
 	if factories.NewTargetClaimReader == nil {
 		factories.NewTargetClaimReader = defaults.NewTargetClaimReader
+	}
+	if factories.NewProofPreparer == nil {
+		factories.NewProofPreparer = defaults.NewProofPreparer
 	}
 	if factories.NewTargetSimulator == nil {
 		factories.NewTargetSimulator = defaults.NewTargetSimulator

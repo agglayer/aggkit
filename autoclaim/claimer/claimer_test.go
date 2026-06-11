@@ -236,6 +236,65 @@ func TestProofNotReadyBeforeProofPolicyLeavesRequestDetected(t *testing.T) {
 	require.Equal(t, 0, sender.submitCalls)
 }
 
+// TestNilL1InfoTreeIndexPersistsAfterProofReady verifies that a request enqueued with a nil
+// L1InfoTreeIndex gets the index assigned from the prepared proof and persisted to storage.
+func TestNilL1InfoTreeIndexPersistsAfterProofReady(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	const expectedIndex = uint32(5)
+	proof := &autoclaimtypes.ClaimProof{
+		L1InfoTreeIndex: expectedIndex,
+		L1InfoTreeLeaf:  &l1infotreesync.L1InfoTreeLeaf{BlockNumber: 1_000_000},
+		MainnetExitRoot: common.HexToHash("0x100"),
+		GlobalExitRoot:  common.HexToHash("0x102"),
+		PreparedAt:      testNow,
+	}
+	claimer := newTestClaimer(t, storage, proofRequiredPolicy{
+		result: autoclaimtypes.PolicyResultApproved,
+	}, fakeProofPreparer{proof: proof}, sender)
+	bridge := makeBridge(60, 10)
+	// Bridge has no L1InfoTreeIndex set — simulates watchdog enqueuing with nil index.
+	require.Nil(t, bridge.L1InfoTreeIndex)
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusConfirmed, request.Status)
+	require.NotNil(t, request.L1InfoTreeIndex,
+		"L1InfoTreeIndex must be persisted from the proof after a successful proof build")
+	require.Equal(t, expectedIndex, *request.L1InfoTreeIndex)
+	require.NotNil(t, request.Proof)
+	require.Equal(t, expectedIndex, request.Proof.L1InfoTreeIndex)
+	require.Equal(t, 1, sender.submitCalls)
+}
+
+// TestNilL1InfoTreeIndexNotReadyNoRetryBudgetConsumed verifies that a not-ready proof result
+// (preparer returns nil) leaves the request in the detected state and does not increment the retry
+// count.
+func TestNilL1InfoTreeIndexNotReadyNoRetryBudgetConsumed(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	// pendingProof returns nil, nil — the "not ready" signal.
+	claimer := newTestClaimer(t, storage, proofRequiredPolicy{
+		result: autoclaimtypes.PolicyResultApproved,
+	}, pendingProof(), sender)
+	bridge := makeBridge(61, 10)
+	require.Nil(t, bridge.L1InfoTreeIndex)
+
+	require.NoError(t, claimer.Enqueue(ctx, bridge))
+
+	request := storage.mustRequest(t, bridge)
+	require.Equal(t, autoclaimtypes.RequestStatusDetected, request.Status,
+		"request must stay in detected when proof is not ready")
+	require.Nil(t, request.L1InfoTreeIndex, "L1InfoTreeIndex must remain nil when not ready")
+	require.Nil(t, request.Proof, "proof must remain nil when not ready")
+	require.Equal(t, uint64(0), request.RetryCount,
+		"retry count must not be incremented for a not-ready proof")
+	require.Equal(t, 0, sender.submitCalls)
+}
+
 func TestProofErrorBeforeProofPolicyBlocksRequest(t *testing.T) {
 	ctx := context.Background()
 	storage := newMemoryStorage()

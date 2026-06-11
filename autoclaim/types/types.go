@@ -227,18 +227,17 @@ type ClaimerTarget struct {
 
 // ClaimProof contains the selected L1 info tree leaf and proofs required to submit a target claim.
 type ClaimProof struct {
-	L1InfoTreeIndex      uint32
-	L1InfoTreeLeaf       *l1infotreesync.L1InfoTreeLeaf
-	MainnetExitRoot      common.Hash
-	RollupExitRoot       common.Hash
-	GlobalExitRoot       common.Hash
-	ProofLocalExitRoot   treetypes.Proof
-	ProofRollupExitRoot  treetypes.Proof
-	ABILocalExitRoot     ABIProof
-	ABIRollupExitRoot    ABIProof
-	PreparedAt           time.Time
-	LastTargetCheckedAt  *time.Time
-	LastInjectedGERCheck *time.Time
+	L1InfoTreeIndex     uint32
+	L1InfoTreeLeaf      *l1infotreesync.L1InfoTreeLeaf
+	MainnetExitRoot     common.Hash
+	RollupExitRoot      common.Hash
+	GlobalExitRoot      common.Hash
+	ProofLocalExitRoot  treetypes.Proof
+	ProofRollupExitRoot treetypes.Proof
+	ABILocalExitRoot    ABIProof
+	ABIRollupExitRoot   ABIProof
+	PreparedAt          time.Time
+	LastTargetCheckedAt *time.Time
 }
 
 // ABIProof is the fixed-size proof shape expected by bridge contract claim methods.

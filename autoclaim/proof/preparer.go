@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agglayer/aggkit/autoclaim/gertracker"
 	"github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,20 +34,12 @@ type L1InfoTreeSyncer interface {
 	GetFirstInfoAfterBlock(blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
-// InjectedGERSyncer exposes destination GER injections needed to choose a claimable L1 info tree leaf.
-type InjectedGERSyncer interface {
-	GetFirstGERAfterL1InfoTreeIndex(ctx context.Context, atOrAfterL1InfoTreeIndex uint32) (
-		l2gersync.GlobalExitRootInfo,
-		error,
-	)
-}
-
 // Preparer prepares bridge claim proof inputs for Auto Claim.
 type Preparer struct {
-	bridgeL1    L1BridgeSyncer
-	l1InfoTree  L1InfoTreeSyncer
-	injectedGER InjectedGERSyncer
-	now         func() time.Time
+	bridgeL1   L1BridgeSyncer
+	l1InfoTree L1InfoTreeSyncer
+	gerTracker gertracker.GERTracker
+	now        func() time.Time
 }
 
 // Result is the proof preparation outcome. Ready=false means the request should remain pending.
@@ -57,16 +49,13 @@ type Result struct {
 }
 
 // NewPreparer creates an L1-origin proof preparer.
-func NewPreparer(bridgeL1 L1BridgeSyncer, l1InfoTree L1InfoTreeSyncer, injectedGERs ...InjectedGERSyncer) *Preparer {
-	preparer := &Preparer{
+func NewPreparer(bridgeL1 L1BridgeSyncer, l1InfoTree L1InfoTreeSyncer, gerTracker gertracker.GERTracker) *Preparer {
+	return &Preparer{
 		bridgeL1:   bridgeL1,
 		l1InfoTree: l1InfoTree,
+		gerTracker: gerTracker,
 		now:        time.Now,
 	}
-	if len(injectedGERs) > 0 {
-		preparer.injectedGER = injectedGERs[0]
-	}
-	return preparer
 }
 
 // PrepareProof implements types.ProofPreparer. It returns nil, nil when the bridge is not ready yet.
@@ -99,7 +88,8 @@ func (p *Preparer) Prepare(ctx context.Context, request types.AutoClaimRequest) 
 		l1InfoTreeIndex := *request.L1InfoTreeIndex
 		bridge.L1InfoTreeIndex = &l1InfoTreeIndex
 	}
-	l1InfoTreeIndex, ready, err := p.SelectL1InfoTreeIndex(ctx, bridge)
+
+	l1InfoTreeIndex, ready, err := p.selectL1InfoTreeIndex(ctx, bridge)
 	if err != nil {
 		return nil, err
 	}
@@ -155,12 +145,11 @@ func (p *Preparer) Prepare(ctx context.Context, request types.AutoClaimRequest) 
 	}, nil
 }
 
-// SelectL1InfoTreeIndex chooses the L1 info tree leaf to use for a bridge claim.
-// When the watchdog supplied an injected-GER-backed index, that exact index is used.
-// Otherwise the selector follows bridge-service behavior: find the bridge inclusion
-// index and, if destination GER sync is available, wait for the first injected GER at
-// or after that index.
-func (p *Preparer) SelectL1InfoTreeIndex(
+// selectL1InfoTreeIndex chooses the L1 info tree leaf index to use for a bridge claim.
+// When the watchdog supplied a preset index, that exact index is used.
+// Otherwise the selector computes the bridge inclusion index and, if a gerTracker is available,
+// waits until the latest injected GER on the destination L2 covers that index.
+func (p *Preparer) selectL1InfoTreeIndex(
 	ctx context.Context,
 	bridge types.BridgeExit,
 ) (uint32, bool, error) {
@@ -168,7 +157,7 @@ func (p *Preparer) SelectL1InfoTreeIndex(
 		return *bridge.L1InfoTreeIndex, true, nil
 	}
 
-	l1InfoTreeIndex, err := p.firstL1InfoTreeIndexForL1Bridge(
+	bridgeL1InfoTreeIndex, err := p.firstL1InfoTreeIndexForL1Bridge(
 		ctx,
 		bridge.DepositCount,
 		bridge.BlockNum,
@@ -179,19 +168,25 @@ func (p *Preparer) SelectL1InfoTreeIndex(
 	if err != nil {
 		return 0, false, fmt.Errorf("get first L1 info tree index for L1 bridge: %w", err)
 	}
-	if p.injectedGER == nil {
-		return l1InfoTreeIndex, true, nil
+
+	if p.gerTracker == nil {
+		return bridgeL1InfoTreeIndex, true, nil
 	}
 
-	injectedGER, err := p.injectedGER.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
-	if errors.Is(err, db.ErrNotFound) {
+	latestGER, latestLeafIndex, err := p.gerTracker.LatestInjectedGER(ctx)
+	if err != nil {
+		return 0, false, fmt.Errorf("get latest injected GER: %w", err)
+	}
+	if latestGER == nil {
+		// No GER injected yet on the target L2 — not ready.
 		return 0, false, nil
 	}
-	if err != nil {
-		return 0, false, fmt.Errorf("get destination injected GER after L1 info tree index %d: %w",
-			l1InfoTreeIndex, err)
+	if bridgeL1InfoTreeIndex > latestLeafIndex {
+		// Bridge is newer than the latest injected GER — not ready.
+		return 0, false, nil
 	}
-	return injectedGER.L1InfoTreeIndex, true, nil
+
+	return latestLeafIndex, true, nil
 }
 
 func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(
