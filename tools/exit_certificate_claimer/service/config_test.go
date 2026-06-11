@@ -106,6 +106,11 @@ func TestLoadConfigErrors(t *testing.T) {
 
 	_, err = LoadConfig(writeConfig(t, "bad.toml", "= invalid toml"))
 	require.ErrorContains(t, err, "parsing TOML config")
+
+	// Parses fine but fails validation (required path missing).
+	const incomplete = `{"localExitTreeDBPath": "/l.sqlite"}`
+	_, err = LoadConfig(writeConfig(t, "incomplete.json", incomplete))
+	require.ErrorContains(t, err, "signedCertificatePath is required")
 }
 
 func TestConfigValidate(t *testing.T) {
