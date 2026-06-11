@@ -641,16 +641,20 @@ func newGERSyncer(
 		return nil, nil, fmt.Errorf("create L2 reorg detector for claimer %s: %w", cfg.ID, err)
 	}
 
+	// Start the reorg detector before creating l2gersync (which calls Subscribe internally).
+	// reorgDetector.Start runs loadTrackedHeaders, which replaces the in-memory trackedBlocks map
+	// from the DB. If Subscribe ran first, that entry would be wiped, causing every
+	// AddBlockToTrack call to fail with "subscriber not subscribed" forever.
+	if err := reorgDetector.Start(ctx); err != nil {
+		return nil, nil, fmt.Errorf("start L2 reorg detector for claimer %s: %w", cfg.ID, err)
+	}
+
 	gerSync, err := l2gersync.New(ctx, gerCfg, reorgDetector, l2Client, l1InfoTreeSync, l1Client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create l2gersync for claimer %s: %w", cfg.ID, err)
 	}
 
 	start := func(ctx context.Context) {
-		if err := reorgDetector.Start(ctx); err != nil {
-			log.Errorf("AutoClaim L2 reorg detector for claimer %s stopped with error: %v", cfg.ID, err)
-			return
-		}
 		gerSync.Start(ctx)
 	}
 
