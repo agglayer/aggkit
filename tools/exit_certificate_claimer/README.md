@@ -56,7 +56,10 @@ Relative paths resolve against the directory containing the config file.
 > settlement and no L1 sync is started (regardless of `l1Sync.enabled`). If it is **not** indexed it
 > must be synced from L1: with `l1Sync.enabled=true` the claimer syncs from L1 **only until the
 > settlement GER is indexed**, then stops the sync and serves from that state; with sync disabled it
-> **fails fast** with an error pointing at `l1Sync`.
+> **fails fast** with an error pointing at `l1Sync`. The HTTP server is started **only after** this
+> sync completes — it does not bind until the L1 Info Tree is caught up to the settlement GER, so any
+> reachable endpoint is already ready to serve claim requests (which is why `/health` always returns
+> `ok`).
 
 ### Deriving the config from the exit_certificate tool
 
