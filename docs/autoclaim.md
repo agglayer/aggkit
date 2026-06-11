@@ -47,7 +47,7 @@ flowchart LR
     CL --> POL
     CL --> PP
     PP -->|first injected GER covering bridge| GER
-    GER -->|events (sovereign) / GlobalExitRootMap (legacy)| GERC
+    GER -->|events for sovereign / GlobalExitRootMap for legacy| GERC
     CL --> SND
     SND -->|claimAsset / claimMessage| ETM
     ETM --> L2
