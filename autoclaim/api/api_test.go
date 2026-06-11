@@ -53,6 +53,14 @@ func TestAPIStartWhenDisabled(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAPIDefaultClock(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	storage := newTestStorage(t)
+	api, err := New(Config{Enabled: true}, storage, nil)
+	require.NoError(t, err)
+	require.False(t, api.now().IsZero())
+}
+
 func TestConfigFromRESTConfig(t *testing.T) {
 	rest := aggkitcommon.RESTConfig{
 		Host:         "0.0.0.0",

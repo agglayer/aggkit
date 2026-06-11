@@ -35,6 +35,13 @@ func TestNewSenderNilArgs(t *testing.T) {
 	require.ErrorContains(t, err, "target claim reader is nil")
 }
 
+func TestSenderDefaultClock(t *testing.T) {
+	storage := newFakeStorage(makeRequest(bridgesynctypes.LeafTypeAsset))
+	sender, err := New(storage, &fakeEthTxManager{}, &fakeClaimReader{})
+	require.NoError(t, err)
+	require.False(t, sender.now().IsZero())
+}
+
 func TestSenderEthTxManagerGetter(t *testing.T) {
 	txManager := &fakeEthTxManager{}
 	sender := newTestSender(
@@ -58,6 +65,90 @@ func TestSubmitClaimContextCancelled(t *testing.T) {
 
 	_, err := sender.SubmitClaim(ctx, request, makeProof(), makeTarget(1))
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestSubmitClaimIsClaimedError(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	reader := &fakeClaimReader{err: errors.New("claim check failed")}
+	sender := newTestSender(t, storage, &fakeEthTxManager{}, reader)
+
+	_, err := sender.SubmitClaim(context.Background(), request, makeProof(), makeTarget(1))
+	require.ErrorContains(t, err, "check target claim state")
+}
+
+func TestSubmitClaimResultError(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	ethTxManager := &fakeEthTxManager{
+		addID: common.HexToHash("0xabc9"),
+		// no results → Result() returns an error covering the pollResult error path
+	}
+	sender := newTestSender(t, storage, ethTxManager, &fakeClaimReader{})
+
+	_, err := sender.SubmitClaim(context.Background(), request, makeProof(), makeTarget(1))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "get claim transaction result")
+}
+
+func TestSubmitClaimWithZeroWaitPeriod(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	txManagerID := common.HexToHash("0xabcD")
+	ethTxManager := &fakeEthTxManager{
+		addID: txManagerID,
+		results: []ethtxtypes.MonitoredTxResult{{
+			ID:     txManagerID,
+			Status: ethtxtypes.MonitoredTxStatusFinalized,
+		}},
+	}
+	sender := newTestSender(t, storage, ethTxManager, &fakeClaimReader{})
+
+	target := makeTarget(1)
+	target.WaitPeriod = 0 // forces pollResult to fall back to s.pollPeriod
+	_, err := sender.SubmitClaim(context.Background(), request, makeProof(), target)
+	require.NoError(t, err)
+}
+
+func TestNewAttemptUsesRequestMaxRetriesWhenTargetMaxRetriesIsZero(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	txManagerID := common.HexToHash("0xabcE")
+	ethTxManager := &fakeEthTxManager{
+		addID: txManagerID,
+		results: []ethtxtypes.MonitoredTxResult{{
+			ID:     txManagerID,
+			Status: ethtxtypes.MonitoredTxStatusFinalized,
+		}},
+	}
+	sender := newTestSender(t, storage, ethTxManager, &fakeClaimReader{})
+
+	target := makeTarget(0) // MaxRetries=0 → newAttempt falls back to request.MaxRetries
+	_, err := sender.SubmitClaim(context.Background(), request, makeProof(), target)
+	require.NoError(t, err)
+	require.Equal(t, request.MaxRetries, storage.attempts[0].MaxRetries)
+}
+
+func TestClaimTxHashFromNilTxWithNonZeroHash(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	txManagerID := common.HexToHash("0xabcF")
+	knownHash := common.HexToHash("0xdeadbeef")
+	ethTxManager := &fakeEthTxManager{
+		addID: txManagerID,
+		results: []ethtxtypes.MonitoredTxResult{{
+			ID:     txManagerID,
+			Status: ethtxtypes.MonitoredTxStatusMined,
+			Txs: map[common.Hash]ethtxtypes.TxResult{
+				knownHash: {Tx: nil},
+			},
+		}},
+	}
+	sender := newTestSender(t, storage, ethTxManager, &fakeClaimReader{})
+
+	attempt, err := sender.SubmitClaim(context.Background(), request, makeProof(), makeTarget(1))
+	require.NoError(t, err)
+	require.Equal(t, knownHash, attempt.ClaimTxHash)
 }
 
 func TestPackClaimCalldataForAsset(t *testing.T) {
