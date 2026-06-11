@@ -110,7 +110,7 @@ type PollResult struct {
 	CursorAdvanced      bool
 }
 
-// L1ToL2 discovers L1-origin bridge exits and routes them to destination claimers.
+// L1ToL2 discovers L1-initiated bridge exits and routes them to destination claimers.
 type L1ToL2 struct {
 	bridgeSource        autoclaimtypes.BridgeSource
 	cursorStore         CursorStore
@@ -248,12 +248,11 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	result.BridgeCount = len(bridges)
 
 	seen := make(map[autoclaimtypes.RequestKey]struct{}, len(bridges))
+	// Every bridge exit returned by l1bridgesync was initiated on L1, so there is no
+	// bridge-origin filter to apply here. exit.OriginNetwork is the network of the bridged
+	// token (used later in the claim calldata), not the network where the bridge originated.
 	for _, bridge := range bridges {
 		exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
-		if exit.OriginNetwork != autoclaimtypes.L1OriginNetwork {
-			result.IgnoredBridgeCount++
-			continue
-		}
 
 		state, ok := states[exit.DestinationNetwork]
 		if !ok || !state.eligiblePoll {

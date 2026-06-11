@@ -79,12 +79,10 @@ func (p *Preparer) PrepareProof(ctx context.Context, request types.AutoClaimRequ
 	return result.Proof, nil
 }
 
-// Prepare prepares an L1-origin claim proof and reports whether it is ready for submission.
+// Prepare prepares a claim proof for an L1-initiated bridge and reports whether it is ready for
+// submission. All requests in the current scope originate on L1, so the bridged token's origin
+// network (request.Bridge.OriginNetwork) is not constrained here.
 func (p *Preparer) Prepare(ctx context.Context, request types.AutoClaimRequest) (*Result, error) {
-	if request.Bridge.OriginNetwork != types.L1OriginNetwork {
-		return nil, fmt.Errorf("l1 proof preparer only supports origin network %d, got %d",
-			types.L1OriginNetwork, request.Bridge.OriginNetwork)
-	}
 	if p.bridgeL1 == nil {
 		return nil, fmt.Errorf("L1 bridge syncer is not available")
 	}

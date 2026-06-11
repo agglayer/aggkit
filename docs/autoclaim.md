@@ -5,8 +5,11 @@ L1 bridge exits from `l1bridgesync`, stores each one as a request in a local SQL
 policy, prepares the L1 claim proof in-process, submits the destination-chain claim transaction through `EthTxManager`,
 and tracks the request through confirmation or failure.
 
-Auto Claim is disabled by default. The supported scope is L1 to L2 only, where `origin_network` is `0`. L2 to Lx Auto
-Claim is not implemented and must remain disabled.
+Auto Claim is disabled by default. The supported scope is L1 to L2 only: every bridge exit is discovered from
+`l1bridgesync`, so it was necessarily initiated on L1. Note that `origin_network` on a bridge exit is the origin
+network of the bridged token (used in the claim calldata), not the network where the bridge was initiated; it can be
+non-zero (for example an L2-origin token bridged from L1). L2 to Lx Auto Claim is not implemented and must remain
+disabled.
 
 ## Architecture
 
@@ -97,7 +100,7 @@ sequenceDiagram
     end
 
     loop Every PollInterval
-        WD->>L1BS: Get bridge exits (origin_network = 0)
+        WD->>L1BS: Get L1-initiated bridge exits (any token origin_network)
         WD->>DB: Enqueue request as `detected` (idempotent, no GER precondition)
     end
 
@@ -141,7 +144,8 @@ claimer retries on the next cycle without consuming retry budget.
 ## Request lifecycle
 
 Requests are uniquely keyed by `origin_network:destination_network:deposit_count` (for example `0:1:42`); this key is
-also the request ID used by the API. For the current L1 to L2 scope, `origin_network` is always `0`.
+also the request ID used by the API. Here `origin_network` is the bridged token's origin network, so it can be non-zero
+even though every request in the current L1 to L2 scope was initiated on L1.
 
 ```mermaid
 stateDiagram-v2
@@ -181,9 +185,9 @@ Terminal statuses are `policy-rejected`, `confirmed`, and `failed`. Policy resul
 
 Step by step:
 
-1. The watchdog polls `l1bridgesync` and keeps only bridge exits with `origin_network = 0` whose destination matches an
-   enabled claimer. Each matched bridge exit is enqueued immediately as `detected` with no GER precondition. Enqueue is
-   idempotent and deduplicated by the request key.
+1. The watchdog polls `l1bridgesync` (so every bridge exit was initiated on L1) and keeps those whose destination
+   matches an enabled claimer, regardless of the bridged token's `origin_network`. Each matched bridge exit is enqueued
+   immediately as `detected` with no GER precondition. Enqueue is idempotent and deduplicated by the request key.
 2. The claimer evaluates the configured policy and moves the request to `policy-approved`, `policy-rejected`, or
    `manual-approval-required`. For `basic-filter`, the claimer prepares and stores the exact claim proof before policy
    evaluation so simulation uses the same calldata as the later send path; if proof data is not ready (GER not yet

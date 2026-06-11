@@ -94,6 +94,8 @@ func TestDestinationFilteringAndUnknownDestinations(t *testing.T) {
 			{from: 0, to: 12}: {
 				makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 10, 1, 0),
 				makeSyncBridge(2, autoclaimtypes.L1OriginNetwork, 11, 2, 0),
+				// Token origin network 1 (an L2-origin token bridged from L1): still processed,
+				// because every l1bridgesync exit is L1-initiated regardless of the token origin.
 				makeSyncBridge(3, 1, 10, 3, 0),
 				makeSyncBridge(4, autoclaimtypes.L1OriginNetwork, 99, 4, 0),
 			},
@@ -108,12 +110,13 @@ func TestDestinationFilteringAndUnknownDestinations(t *testing.T) {
 	result, err := watchdog.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 4, result.BridgeCount)
-	require.Equal(t, 2, result.MatchedBridgeCount)
-	require.Equal(t, 2, result.EnqueuedBridgeCount)
-	require.Equal(t, 2, result.IgnoredBridgeCount)
-	require.Len(t, claimer10.enqueued, 1)
+	require.Equal(t, 3, result.MatchedBridgeCount)
+	require.Equal(t, 3, result.EnqueuedBridgeCount)
+	require.Equal(t, 1, result.IgnoredBridgeCount, "only the bridge to unknown destination 99 is ignored")
+	require.Len(t, claimer10.enqueued, 2)
 	require.Len(t, claimer11.enqueued, 1)
 	require.Equal(t, uint32(10), claimer10.enqueued[0].DestinationNetwork)
+	require.Equal(t, uint32(10), claimer10.enqueued[1].DestinationNetwork)
 	require.Equal(t, uint32(11), claimer11.enqueued[0].DestinationNetwork)
 }
 

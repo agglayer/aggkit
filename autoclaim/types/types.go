@@ -313,7 +313,9 @@ func NewBridgeExitFromSync(bridge bridgesync.Bridge) BridgeExit {
 // NewBridgeExitFromSyncWithEtrog converts a bridge sync record using Etrog-upgrade awareness.
 func NewBridgeExitFromSyncWithEtrog(bridge bridgesync.Bridge, etrogL1UpgradeBlock uint64) BridgeExit {
 	preEtrog := isPreEtrogBridge(bridge, etrogL1UpgradeBlock)
-	globalIndex := DeriveGlobalIndex(bridge.OriginNetwork, bridge.DepositCount)
+	// These bridges were initiated on L1, so their global index always encodes the L1 (mainnet)
+	// network. bridge.OriginNetwork is the bridged token's origin network, not the bridge origin.
+	globalIndex := DeriveL1GlobalIndex(bridge.DepositCount)
 	if preEtrog {
 		globalIndex = new(big.Int).SetUint64(uint64(bridge.DepositCount))
 	}
@@ -351,7 +353,7 @@ func NewRequestFromBridgeExit(bridge BridgeExit, now time.Time) AutoClaimRequest
 	key := DeriveRequestKey(bridge.OriginNetwork, bridge.DestinationNetwork, bridge.DepositCount)
 	globalIndex := copyBigInt(bridge.GlobalIndex)
 	if globalIndex == nil {
-		globalIndex = DeriveGlobalIndex(bridge.OriginNetwork, bridge.DepositCount)
+		globalIndex = DeriveL1GlobalIndex(bridge.DepositCount)
 	}
 	var l1InfoTreeIndex *uint32
 	if bridge.L1InfoTreeIndex != nil {

@@ -219,7 +219,7 @@ func (s *Storage) EnqueueRequest(
 		request.UpdatedAt = request.CreatedAt
 	}
 	if request.GlobalIndex == nil {
-		request.GlobalIndex = autoclaimtypes.DeriveGlobalIndex(request.Bridge.OriginNetwork, request.Bridge.DepositCount)
+		request.GlobalIndex = autoclaimtypes.DeriveL1GlobalIndex(request.Bridge.DepositCount)
 	}
 
 	row, err := makeRequestRow(request)
