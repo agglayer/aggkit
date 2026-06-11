@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/db"
-	"github.com/ethereum/go-ethereum/common"
-
 	"github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const binarySearchDivider = 2

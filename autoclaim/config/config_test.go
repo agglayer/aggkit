@@ -5,10 +5,9 @@ import (
 	"time"
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
-
-	cfgtypes "github.com/agglayer/aggkit/config/types"
 )
 
 func TestConfigValidateDisabledSkipsRequiredFields(t *testing.T) {

@@ -454,7 +454,7 @@ func (s *Storage) RecordTransactionAttempt(
 	ctx context.Context,
 	key autoclaimtypes.RequestKey,
 	attempt autoclaimtypes.TransactionAttempt,
-) error {
+) (err error) {
 	attempt.RequestKey = key
 	now := time.Now().UTC()
 	if attempt.CreatedAt.IsZero() {
@@ -476,7 +476,18 @@ func (s *Storage) RecordTransactionAttempt(
 	if err != nil {
 		return fmt.Errorf("record transaction attempt for autoclaim request %s: begin tx: %w", key, err)
 	}
-	defer rollback(tx)
+	committed := false
+	defer func() {
+		if !committed {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				err = errors.Join(
+					err,
+					fmt.Errorf("record transaction attempt for autoclaim request %s: rollback: %w", key, rollbackErr),
+				)
+			}
+		}
+	}()
 
 	result, err := tx.ExecContext(dbCtx, `
 		INSERT INTO autoclaim_transaction_attempt (
@@ -572,6 +583,7 @@ func (s *Storage) RecordTransactionAttempt(
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("record transaction attempt for autoclaim request %s: commit: %w", key, err)
 	}
+	committed = true
 
 	return nil
 }
@@ -1043,10 +1055,6 @@ func requireUpdated(result sql.Result, action string, key autoclaimtypes.Request
 		return fmt.Errorf("%s for autoclaim request %s: %w", action, key, db.ErrNotFound)
 	}
 	return nil
-}
-
-func rollback(tx *sql.Tx) {
-	_ = tx.Rollback()
 }
 
 func (s *Storage) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {

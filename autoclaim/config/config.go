@@ -5,9 +5,8 @@ import (
 	"strings"
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
-	gethcommon "github.com/ethereum/go-ethereum/common"
-
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 // NetworkType identifies the destination chain family a claimer targets.
