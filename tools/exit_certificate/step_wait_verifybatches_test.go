@@ -49,9 +49,15 @@ func topicLogsResult(t *testing.T, txHash common.Hash, topics []common.Hash, dat
 }
 
 // getLogsTopic0 returns the topics[0] filter of an eth_getLogs request.
-func getLogsTopic0(params []any) string {
-	filter := params[0].(map[string]any)
-	return filter["topics"].([]any)[0].(string)
+func getLogsTopic0(t *testing.T, params []any) string {
+	t.Helper()
+	filter, ok := params[0].(map[string]any)
+	require.True(t, ok)
+	topics, ok := filter["topics"].([]any)
+	require.True(t, ok)
+	topic0, ok := topics[0].(string)
+	require.True(t, ok)
+	return topic0
 }
 
 // v2Data builds the data of an UpdateL1InfoTreeV2 log: currentL1InfoRoot ++ blockhash ++ minTimestamp.
@@ -83,8 +89,9 @@ func TestResolveRollupManagerAddress(t *testing.T) {
 	t.Run("resolves from sovereignRollupAddr", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
-			require.Equal(t, "eth_call", method)
-			call := params[0].(map[string]any)
+			require.Equal(t, rpcMethodEthCall, method)
+			call, ok := params[0].(map[string]any)
+			require.True(t, ok)
 			require.Equal(t, sovereign.Hex(), call["to"])
 			require.Equal(t, rollupManagerSelector, call["data"])
 			return hexResult(common.LeftPadBytes(rollupManager.Bytes(), 32)), nil
@@ -148,10 +155,12 @@ func TestQueryVerifyBatches(t *testing.T) {
 	t.Run("matching exit root is found", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
-			require.Equal(t, "eth_getLogs", method)
-			filter := params[0].(map[string]any)
+			require.Equal(t, rpcMethodEthGetLogs, method)
+			filter, ok := params[0].(map[string]any)
+			require.True(t, ok)
 			require.Equal(t, contract.Hex(), filter["address"])
-			topics := filter["topics"].([]any)
+			topics, ok := filter["topics"].([]any)
+			require.True(t, ok)
 			require.Equal(t, verifyBatchesTrustedAggregatorTopic.Hex(), topics[0])
 			// topics[1] is the indexed rollupID (5) as a 32-byte value.
 			require.Equal(t, common.BigToHash(big.NewInt(5)).Hex(), topics[1])
@@ -222,12 +231,12 @@ func TestConfirmVerifyBatchesOnL1(t *testing.T) {
 
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
 			switch method {
-			case "eth_call":
+			case rpcMethodEthCall:
 				return hexResult(common.LeftPadBytes(rollupManager.Bytes(), 32)), nil
-			case "eth_getBlockByNumber":
+			case rpcMethodEthGetBlockByNumber:
 				return json.RawMessage(`{"number":"0x64"}`), nil // finalized = 100
-			case "eth_getLogs":
-				switch getLogsTopic0(params) {
+			case rpcMethodEthGetLogs:
+				switch getLogsTopic0(t, params) {
 				case verifyBatchesTrustedAggregatorTopic.Hex():
 					return logsResult(t, 50, txHash, verifyBatchesData(1, common.Hash{}, exitRoot)), nil
 				case updateL1InfoTreeTopic.Hex():
@@ -271,11 +280,11 @@ func TestConfirmVerifyBatchesOnL1(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
 			switch method {
-			case "eth_call":
+			case rpcMethodEthCall:
 				return hexResult(common.LeftPadBytes(rollupManager.Bytes(), 32)), nil
-			case "eth_getBlockByNumber":
+			case rpcMethodEthGetBlockByNumber:
 				return json.RawMessage(`{"number":"0x64"}`), nil
-			case "eth_getLogs":
+			case rpcMethodEthGetLogs:
 				return logsResult(t, 50, txHash, verifyBatchesData(1, common.Hash{}, exitRoot)), nil
 			}
 			return nil, nil
@@ -301,8 +310,8 @@ func TestFetchGERUpdatesInBlock(t *testing.T) {
 	t.Run("takes the last event of each type", func(t *testing.T) {
 		t.Parallel()
 		srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
-			require.Equal(t, "eth_getLogs", method)
-			switch getLogsTopic0(params) {
+			require.Equal(t, rpcMethodEthGetLogs, method)
+			switch getLogsTopic0(t, params) {
 			case updateL1InfoTreeTopic.Hex():
 				// Two events; the last one must win.
 				out, err := json.Marshal([]map[string]any{

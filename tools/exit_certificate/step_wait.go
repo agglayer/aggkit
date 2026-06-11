@@ -23,6 +23,9 @@ const (
 	// consensus contract (PolygonConsensusBase, i.e. sovereignRollupAddr) that returns the
 	// address of the PolygonRollupManager it belongs to.
 	rollupManagerSelector = "0x49b7b802"
+	// updateL1InfoTreeMinTopics is the minimum number of topics an UpdateL1InfoTree log must carry:
+	// topics[0] (event signature) + the indexed mainnetExitRoot and rollupExitRoot.
+	updateL1InfoTreeMinTopics = 3
 )
 
 // verifyBatchesTrustedAggregatorTopic is keccak256 of the event signature. The RollupManager
@@ -255,7 +258,7 @@ func fetchLastUpdateL1InfoTree(ctx context.Context, cfg *Config, blockNumber uin
 
 	// mainnetExitRoot and rollupExitRoot are both indexed (topics[1], topics[2]).
 	last := logs[len(logs)-1]
-	if len(last.Topics) < 3 {
+	if len(last.Topics) < updateL1InfoTreeMinTopics {
 		return nil, fmt.Errorf("UpdateL1InfoTree log has only %d topics", len(last.Topics))
 	}
 	return &L1InfoTreeUpdate{

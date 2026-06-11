@@ -281,7 +281,6 @@ func runStepG2(
 	if onChainMetadataShadowFork != nil {
 		log.Debug("step G2: comparing generated metadata with on-chain metadata...")
 		if err := compareMetadata(certificate, onChainMetadataShadowFork, generatedMetadata); err != nil {
-
 			log.Infof("❌ generated metadata mismath on-chain metadata recovered from the shadow-fork: err %w", err)
 			return nil, fmt.Errorf("compare metadata: %w", err)
 		}
