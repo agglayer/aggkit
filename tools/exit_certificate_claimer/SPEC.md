@@ -120,15 +120,8 @@ Liveness/readiness probe.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `status` | string | Service status. One of `ok` or `syncing` (see below). |
+| `status` | string | Always `ok`. The HTTP server only starts after the L1 Info Tree has been synced up to the certificate's settlement GER, so a reachable endpoint is always ready to serve claim requests. |
 | `network_id` | number | The source network ID the claimer is serving. |
-
-**`status` values:**
-
-| Value | Meaning |
-| ----- | ------- |
-| `ok` | The service is fully ready to serve claim requests. |
-| `syncing` | The service is still syncing the L1 Info Tree from L1; claim parameters may not yet be available. |
 
 ### `GET /bridges`
 
