@@ -46,9 +46,8 @@ go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e
 `manual-approval-required`, approves the request through `POST /autoclaim/v1/bridges/{id}/approve`, and then waits for
 `confirmed`.
 
-The e2e environment must be able to start the docker compose stack. If the host kills `docker compose up` with
-`signal: killed` before the tests start, record that as an environment blocker and rerun the command on a host with
-enough resources.
+The e2e environment must be able to start the docker compose stack, which requires enough host resources. If the host
+kills `docker compose up` (`signal: killed`) before the tests start, rerun the command on a host with more memory.
 
 ## Two L2 networks
 
