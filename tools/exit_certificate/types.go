@@ -14,9 +14,36 @@ type StepWaitResult struct {
 	FinalStatus      agglayertypes.CertificateStatus `json:"finalStatus"`
 	SettlementTxHash *common.Hash                    `json:"settlementTxHash,omitempty"`
 	ElapsedSeconds   float64                         `json:"elapsedSeconds"`
-	// PendingCertWaited is set when a pre-existing pending certificate was found on the
-	// network and waited for before polling our submitted certificate.
-	PendingCertWaited *common.Hash `json:"pendingCertWaited,omitempty"`
+	// VerifyBatchesL1Block and VerifyBatchesTxHash record where on L1 the RollupManager emitted
+	// the VerifyBatchesTrustedAggregator event matching this certificate's rollupID and exit root
+	// (the L1 block where the agglayer settled the certificate). Set only when rollupManagerAddress
+	// is configured and the event was found.
+	VerifyBatchesL1Block uint64       `json:"verifyBatchesL1Block,omitempty"`
+	VerifyBatchesTxHash  *common.Hash `json:"verifyBatchesTxHash,omitempty"`
+	// UpdateL1InfoTree and UpdateL1InfoTreeV2 are the last respective events emitted by the L1
+	// GlobalExitRoot contract in VerifyBatchesL1Block (the L1 info tree update that accompanies the
+	// certificate's settlement on L1).
+	UpdateL1InfoTree   *L1InfoTreeUpdate   `json:"updateL1InfoTree,omitempty"`
+	UpdateL1InfoTreeV2 *L1InfoTreeV2Update `json:"updateL1InfoTreeV2,omitempty"`
+}
+
+// L1InfoTreeUpdate captures an UpdateL1InfoTree(bytes32 indexed mainnetExitRoot,
+// bytes32 indexed rollupExitRoot) event from the L1 GlobalExitRoot contract.
+type L1InfoTreeUpdate struct {
+	MainnetExitRoot common.Hash `json:"mainnetExitRoot"`
+	RollupExitRoot  common.Hash `json:"rollupExitRoot"`
+	TxHash          common.Hash `json:"txHash"`
+}
+
+// L1InfoTreeV2Update captures an UpdateL1InfoTreeV2(bytes32 currentL1InfoRoot,
+// uint32 indexed leafCount, uint256 blockhash, uint64 minTimestamp) event from the L1
+// GlobalExitRoot contract.
+type L1InfoTreeV2Update struct {
+	CurrentL1InfoRoot common.Hash `json:"currentL1InfoRoot"`
+	LeafCount         uint32      `json:"leafCount"`
+	Blockhash         common.Hash `json:"blockhash"`
+	MinTimestamp      uint64      `json:"minTimestamp"`
+	TxHash            common.Hash `json:"txHash"`
 }
 
 // WrappedToken describes a wrapped token deployed on L2 by the bridge contract.

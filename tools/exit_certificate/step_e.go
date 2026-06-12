@@ -68,6 +68,7 @@ func RunStepE(
 		len(unclaimed), len(unclaimedAssets), len(unclaimedMessages))
 
 	if cfg.Options.BridgeServiceURL != "" {
+		log.Infof("step E: checking pending bridges from bridge service %s", cfg.Options.BridgeServiceURL)
 		if err := checkBridgeServicePendingBridges(ctx, cfg, unclaimedAssets); err != nil {
 			return nil, fmt.Errorf("bridge service pending bridges check: %w", err)
 		}

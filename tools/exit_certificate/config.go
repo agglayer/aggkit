@@ -35,6 +35,10 @@ type Options struct {
 	// --audiences=<AUDIENCE> --include-email
 	AgglayerAdminToken string                `json:"agglayerAdminToken"`
 	AgglayerClient     agglayer.ClientConfig `json:"agglayerClient"`
+	// UseAgglayerAdminToStepFCheck, when true (the default), runs Step F: it queries the agglayer
+	// admin API (admin_getTokenBalance) and verifies the per-token balances against the certificate
+	// and LBT. When false, Step F is skipped entirely (no agglayer admin query, no balance check).
+	UseAgglayerAdminToStepFCheck bool `json:"useAgglayerAdminToStepFCheck"`
 	// IgnoreGenesisBalance, when true, suppresses the abort that fires when any EOA or contract has a
 	// non-zero ETH balance at block 0 (a genesis preload that would inflate the exit certificate
 	// totals): the check still runs and warns, but the run continues. Defaults to false (abort); set
@@ -89,9 +93,14 @@ type Config struct {
 	SovereignRollupAddr common.Address                  `json:"sovereignRollupAddr"`
 	// L1GlobalExitRootAddress is the address of the PolygonZkEVMGlobalExitRootV2 contract on L1.
 	// Required for Step I to fetch the L1InfoTreeLeafCount from UpdateL1InfoTreeV2 events.
-	L1GlobalExitRootAddress common.Address           `json:"l1GlobalExitRootAddress"`
-	Options                 Options                  `json:"options"`
-	SignerConfig            signertypes.SignerConfig `json:"-"`
+	L1GlobalExitRootAddress common.Address `json:"l1GlobalExitRootAddress"`
+	// RollupManagerAddress is the optional address of the PolygonRollupManager (AgglayerManager)
+	// contract on L1. Used by Step WAIT to confirm the certificate was settled on L1 by scanning for
+	// the VerifyBatchesTrustedAggregator event matching the rollupID and the certificate's exit root.
+	// When unset it is resolved on-chain from SovereignRollupAddr.rollupManager() (PolygonConsensusBase).
+	RollupManagerAddress common.Address           `json:"rollupManagerAddress"`
+	Options              Options                  `json:"options"`
+	SignerConfig         signertypes.SignerConfig `json:"-"`
 }
 
 const (
@@ -110,6 +119,7 @@ var defaultOptions = Options{
 	OutputDir:                             "output",
 	L1StartBlock:                          0,
 	L2StartBlock:                          0,
+	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
@@ -171,7 +181,25 @@ func validateRawConfig(raw *rawConfig) error {
 		return fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")
 	}
+	// Step F (the agglayer admin balance check) needs agglayerAdminURL. When the check is enabled
+	// (useAgglayerAdminToStepFCheck, default true), the URL must be set; otherwise set the flag to
+	// false to skip Step F entirely.
+	if useAgglayerAdminToStepFCheckEnabled(raw.Options) &&
+		(raw.Options == nil || raw.Options.AgglayerAdminURL == "") {
+		return fmt.Errorf("options.agglayerAdminURL is required when options.useAgglayerAdminToStepFCheck " +
+			"is true (the default); set agglayerAdminURL, or set useAgglayerAdminToStepFCheck=false to skip Step F")
+	}
 	return nil
+}
+
+// useAgglayerAdminToStepFCheckEnabled reports the effective value of
+// options.useAgglayerAdminToStepFCheck, mirroring the default applied by mergeOptions: it is true
+// when the option is absent (nil rawOpts or unset tri-state flag) and otherwise takes the explicit value.
+func useAgglayerAdminToStepFCheckEnabled(raw *rawOpts) bool {
+	if raw == nil || raw.UseAgglayerAdminToStepFCheck == nil {
+		return defaultOptions.UseAgglayerAdminToStepFCheck
+	}
+	return *raw.UseAgglayerAdminToStepFCheck
 }
 
 // buildConfig assembles a *Config from an already-validated rawConfig, applying defaults
@@ -192,6 +220,7 @@ func buildConfig(raw *rawConfig, configDir string) (*Config, error) {
 		TargetBlock:             targetBlock,
 		SovereignRollupAddr:     common.HexToAddress(raw.SovereignRollupAddr),
 		L1GlobalExitRootAddress: common.HexToAddress(raw.L1GlobalExitRootAddress),
+		RollupManagerAddress:    common.HexToAddress(raw.RollupManagerAddress),
 	}
 
 	if raw.L1BridgeAddress != "" {
@@ -347,6 +376,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 
 // mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
 func mergeFlagOptions(opts *Options, raw *rawOpts) {
+	if raw.UseAgglayerAdminToStepFCheck != nil {
+		opts.UseAgglayerAdminToStepFCheck = *raw.UseAgglayerAdminToStepFCheck
+	}
 	if raw.IgnoreGenesisBalance != nil {
 		opts.IgnoreGenesisBalance = *raw.IgnoreGenesisBalance
 	}
@@ -405,6 +437,7 @@ type rawConfig struct {
 	DestinationNetwork      uint32          `json:"destinationNetwork"`
 	SovereignRollupAddr     string          `json:"sovereignRollupAddr"`
 	L1GlobalExitRootAddress string          `json:"l1GlobalExitRootAddress"`
+	RollupManagerAddress    string          `json:"rollupManagerAddress"`
 	Options                 *rawOpts        `json:"options"`
 	SignerConfig            json.RawMessage `json:"signerConfig"`
 }
@@ -421,6 +454,7 @@ type rawOpts struct {
 	AgglayerAdminURL                      string                 `json:"agglayerAdminURL"`
 	AgglayerAdminToken                    string                 `json:"agglayerAdminToken"`
 	AgglayerClient                        *agglayer.ClientConfig `json:"agglayerClient"`
+	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
 	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`

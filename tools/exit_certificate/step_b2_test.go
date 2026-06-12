@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	rpcMethodEthCall       = "eth_call"
-	rpcMethodEthGetBalance = "eth_getBalance"
+	rpcMethodEthCall             = "eth_call"
+	rpcMethodEthGetBalance       = "eth_getBalance"
+	rpcMethodEthGetLogs          = "eth_getLogs"
+	rpcMethodEthGetBlockByNumber = "eth_getBlockByNumber"
 )
 
 // rpcTestCall holds the decoded parts of a single JSON-RPC request

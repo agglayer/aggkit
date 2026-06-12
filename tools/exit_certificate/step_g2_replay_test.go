@@ -23,6 +23,8 @@ import (
 type mockForkBackend struct {
 	localExitRoot func(ctx context.Context, blockTag string) (common.Hash, error)
 	tokenWrapped  func(ctx context.Context, net uint32, addr common.Address) (common.Address, error)
+	tokenMeta     func(ctx context.Context, l2Token common.Address) ([]byte, error)
+	gasTokenMeta  func(ctx context.Context) ([]byte, error)
 	setBalance    func(ctx context.Context, sender common.Address) error
 	prepareERC20  func(ctx context.Context, sender, token common.Address) error
 	sendTx        func(ctx context.Context, e *agglayertypes.BridgeExit, isNative bool, token common.Address) (common.Hash, error)
@@ -53,6 +55,20 @@ func (m *mockForkBackend) TokenWrappedAddress(
 		return m.tokenWrapped(ctx, net, addr)
 	}
 	return common.Address{}, nil
+}
+
+func (m *mockForkBackend) TokenMetadata(ctx context.Context, l2Token common.Address) ([]byte, error) {
+	if m.tokenMeta != nil {
+		return m.tokenMeta(ctx, l2Token)
+	}
+	return nil, nil
+}
+
+func (m *mockForkBackend) GasTokenMetadata(ctx context.Context) ([]byte, error) {
+	if m.gasTokenMeta != nil {
+		return m.gasTokenMeta(ctx)
+	}
+	return nil, nil
 }
 
 func (m *mockForkBackend) SetSenderBalance(ctx context.Context, sender common.Address) error {
@@ -135,7 +151,11 @@ func bridgeEventReceipt(depositCount uint32, blockNum, logIndex uint64) []rpcLog
 
 func replayTestConfig(t *testing.T) *Config {
 	t.Helper()
-	return &Config{Options: Options{OutputDir: t.TempDir(), ConcurrencyLimit: 2}}
+	return &Config{Options: Options{
+		OutputDir:                             t.TempDir(),
+		ConcurrencyLimit:                      2,
+		VerifyNewLocalExitRootUsingShadowFork: true, // these tests exercise the shadow-fork orchestration
+	}}
 }
 
 // nativeAssetExit builds a native (gas-token) exit the way step_d does: a non-nil TokenInfo with a
@@ -148,6 +168,25 @@ func nativeAssetExit(dest common.Address, amount int64) *agglayertypes.BridgeExi
 		DestinationAddress: dest,
 		Amount:             big.NewInt(amount),
 	}
+}
+
+func TestVerifyReplayMetadata(t *testing.T) {
+	t.Parallel()
+
+	exits := []*agglayertypes.BridgeExit{
+		{DestinationAddress: common.HexToAddress("0x1"), Metadata: nil},
+		{DestinationAddress: common.HexToAddress("0x2"), Metadata: []byte{0xab, 0xcd}},
+	}
+
+	// nil and an empty slice compare equal; matching metadata passes.
+	require.NoError(t, verifyReplayMetadata(exits, [][]byte{{}, {0xab, 0xcd}}))
+
+	// a per-exit divergence names the offending exit and both metadata blobs.
+	err := verifyReplayMetadata(exits, [][]byte{{}, {0xab, 0xff}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bridge exit 1")
+	require.Contains(t, err.Error(), "abcd")
+	require.Contains(t, err.Error(), "abff")
 }
 
 // --- resolveTokenAddresses -----------------------------------------------------------------------
@@ -393,7 +432,7 @@ func TestRunStepG2ShadowForkLauncherError(t *testing.T) {
 	t.Parallel()
 	cfg := replayTestConfig(t)
 	launcher := &mockForkLauncher{err: errors.New("anvil not found")}
-	_, err := runStepG2ShadowFork(context.Background(), cfg, launcher, 100,
+	_, err := runStepG2(context.Background(), cfg, launcher, 100,
 		&agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{nativeAssetExit(common.HexToAddress("0x1"), 1)}}, nil)
 	require.Error(t, err)
 }
@@ -413,16 +452,19 @@ func TestRunStepG2ShadowForkRootMismatchAborts(t *testing.T) {
 	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
 		nativeAssetExit(common.HexToAddress("0x01"), 100),
 	}}
-	_, err := runStepG2ShadowFork(context.Background(), cfg, launcher, 100, cert, nil)
+	_, err := runStepG2(context.Background(), cfg, launcher, 100, cert, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match contract getRoot")
 	require.True(t, launcher.started)
 }
 
-func TestRunStepG2ShadowForkRootMismatchToleratedWhenIgnoring(t *testing.T) {
+// TestRunStepG2ShadowForkRootMismatchAbortsEvenWithIgnoreOption verifies that a root mismatch is a
+// hard error regardless of ignoreUnsupportedL2Events: that option only affects Step G1's lite syncer,
+// not the Step G2 root cross-check against the contract.
+func TestRunStepG2ShadowForkRootMismatchAbortsEvenWithIgnoreOption(t *testing.T) {
 	t.Parallel()
 	cfg := replayTestConfig(t)
-	cfg.Options.IgnoreUnsupportedL2Events = true // divergence is expected, warn only
+	cfg.Options.IgnoreUnsupportedL2Events = true
 	makeG1LiteDB(t, cfg, 2)
 
 	backend := newMockBackend()
@@ -436,9 +478,7 @@ func TestRunStepG2ShadowForkRootMismatchToleratedWhenIgnoring(t *testing.T) {
 		nativeAssetExit(common.HexToAddress("0x01"), 100),
 		nativeAssetExit(common.HexToAddress("0x02"), 200),
 	}}
-	res, err := runStepG2ShadowFork(context.Background(), cfg, launcher, 100, cert, nil)
-	require.NoError(t, err)
-	require.Equal(t, uint64(2), res.BridgeExitCount)
-	require.Equal(t, common.HexToHash("0xdeadbeef"), res.NewLocalExitRoot)
-	require.Len(t, res.BridgeExitMetadata, 2)
+	_, err := runStepG2(context.Background(), cfg, launcher, 100, cert, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match contract getRoot")
 }

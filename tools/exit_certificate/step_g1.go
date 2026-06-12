@@ -39,7 +39,7 @@ func g2LiteDBPath(cfg *Config) string {
 // state at that block.
 func RunStepG1(ctx context.Context, cfg *Config, targetBlock uint64) (*StepG1Result, error) {
 	log.Info("═══════════════════════════════════════════")
-	log.Info(" STEP G1 - Resolve shadow-fork block and sync l2 bridges")
+	log.Infof(" STEP G1 -  sync l2 bridges till targetBlock = %d", targetBlock)
 	log.Info("═══════════════════════════════════════════")
 
 	// Build the bridge history from genesis up to targetBlock with the lite bridge syncer, persisting

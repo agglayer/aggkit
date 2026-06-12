@@ -24,6 +24,8 @@ func TestParseStepList(t *testing.T) {
 		{"closed range", "f-i", []string{"f", "g1", "g2", "h", "i"}, false},
 		{"open range", "f-", []string{"f", "g1", "g2", "h", "i", "sign"}, false},
 		{"open range from sign", "sign-", []string{"sign"}, false},
+		{"open range from submit includes wait", "submit-", []string{"submit", "wait"}, false},
+		{"open range from wait", "wait-", []string{"wait"}, false},
 		{"single-step range", "g-g", []string{"g1", "g2"}, false},
 		{"g alias expands to g1 g2", "g", []string{"g1", "g2"}, false},
 		{"g-h range expands g to g1 g2", "g-h", []string{"g1", "g2", "h"}, false},

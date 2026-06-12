@@ -24,6 +24,9 @@ targetBlock = "LatestBlock"
 #exitAddress = "<PUBLIC_ADDRESS_TO_RECEIVE_SC_EXIT>"
 sovereignRollupAddr = "0x519E42c24163192Dca44CD3fBDCEBF6be9130987"
 l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
+# OPTIONAL — PolygonRollupManager on Ethereum mainnet, used by Step WAIT to confirm L1 settlement.
+# If omitted it is resolved on-chain from sovereignRollupAddr.rollupManager().
+rollupManagerAddress = "0x5132A183E9F3CB7C848b0AAC5Ae0c4f0491B7aB2"
 destinationNetwork = 0
 
 # REQUIRED to sign — signer for Step SIGN (same format as aggsender's AggsenderPrivateKey). Other
@@ -47,10 +50,21 @@ ignoreGenesisBalance = false
 ignoreUnclaimed = false
 ignoreBalanceMismatch = false
 extraErc20Contracts = ["0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9"]
-bridgeServiceURL = ""
+
+# Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and
+# errors on discrepancies. Default: "" (disabled).
+bridgeServiceURL = "https://bridge-api.zkevm-rpc.com"
+
+# Bridge service API flavour for the cross-check: "aggkit" or "zkevm". Default: "aggkit".
 bridgeServiceType = "zkevm"
 
-# REQUIRED for Step F — agglayer admin RPC endpoint (admin_getTokenBalance). If omitted, Step F is skipped.
+# When true (default), Step F runs the agglayer admin balance check (three-way: LBT == agglayer ==
+# certificate). When false, it skips the agglayer query and compares LBT (step 0) vs certificate sums
+# offline (no agglayerAdminURL needed; skipped only if no LBT data exists).
+useAgglayerAdminToStepFCheck = true
+
+# REQUIRED for Step F in agglayer mode — agglayer admin RPC endpoint (admin_getTokenBalance). Step F
+# errors if it runs in agglayer mode without this set. Not needed when useAgglayerAdminToStepFCheck = false.
 agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"
 # REQUIRED for Step F when the admin endpoint is behind Google Cloud IAP — Bearer token for
 # agglayerAdminURL (see the "Authenticating with IAP" section of the README).

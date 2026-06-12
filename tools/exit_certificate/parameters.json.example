@@ -9,6 +9,7 @@
     "destinationNetwork": 0,
     "sovereignRollupAddr": "<SOVEREIGN_ROLLUP_ADDR>",
     "l1GlobalExitRootAddress": "<L1_GLOBAL_EXIT_ROOT_ADDRESS>",
+    "rollupManagerAddress": "<ROLLUP_MANAGER_ADDRESS>",
     "options": {
         "blockRange": 10000,
         "stepAWindowSize": 150000,
@@ -31,6 +32,7 @@
                 "UseTLS": false
             }
         },
+        "useAgglayerAdminToStepFCheck": true,
         "agglayerAdminURL": "<AGGLAYER_ADMIN_URL>",
         "agglayerAdminToken": "<JWT>"
     },
