@@ -401,6 +401,14 @@ Test files: `*_test.go` beside each step file. Use `require` (not `assert`). No 
 
 ## Build
 
+From the repo root, using the top-level Makefile (binary is written to `target/exit_certificate`):
+
+```bash
+make build-exit_certificate
+```
+
+Or directly with `go`:
+
 ```bash
 cd tools/exit_certificate
 go build -o exit-certificate ./cmd
