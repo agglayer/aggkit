@@ -56,8 +56,6 @@ func RunStepWait(ctx context.Context, cfg *Config, submitResult *StepSubmitResul
 	log.Info(" STEP WAIT - Wait for certificate settlement")
 	log.Info("═══════════════════════════════════════════")
 
-	certHash := submitResult.CertificateHash
-
 	agglayerClientCfg := cfg.Options.AgglayerClient
 	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
 		return nil, fmt.Errorf("agglayerClient.grpc.url is required for step wait")
@@ -67,6 +65,17 @@ func RunStepWait(ctx context.Context, cfg *Config, submitResult *StepSubmitResul
 	if err != nil {
 		return nil, fmt.Errorf("create agglayer gRPC client: %w", err)
 	}
+
+	return runStepWait(ctx, cfg, client, submitResult)
+}
+
+// runStepWait is the client-injectable core of RunStepWait (tests pass an agglayer client mock in
+// place of the real gRPC client). It polls the certificate until it is final, errors if it settled
+// InError, and then confirms the settlement on L1.
+func runStepWait(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface, submitResult *StepSubmitResult,
+) (*StepWaitResult, error) {
+	certHash := submitResult.CertificateHash
 
 	start := time.Now()
 	result := &StepWaitResult{CertificateHash: certHash}

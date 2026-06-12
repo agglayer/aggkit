@@ -25,7 +25,7 @@ func TestConfirmVerifyBatchesOnL1Success(t *testing.T) {
 
 	srv := newRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
-		case "eth_getBlockByNumber":
+		case rpcMethodEthGetBlockByNumber:
 			return json.RawMessage(`{"number":"0xa"}`), nil // finalized block 10
 		case rpcMethodEthGetLogs:
 			switch getLogsTopic0(t, params) {
