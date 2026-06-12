@@ -28,9 +28,18 @@ func RunStepH(ctx context.Context, cfg *Config, gResult *StepGResult) (*StepHRes
 		return nil, fmt.Errorf("create agglayer client: %w", err)
 	}
 
+	return runStepH(ctx, cfg, client, gResult)
+}
+
+// runStepH is the client-injectable core of RunStepH (tests pass an agglayer client mock in place of
+// the real gRPC client). It queries the network info, refuses to proceed on a pending certificate,
+// and derives the PreviousLocalExitRoot / next height (optionally cross-checking gResult).
+func runStepH(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface, gResult *StepGResult,
+) (*StepHResult, error) {
 	info, err := client.GetNetworkInfo(ctx, cfg.L2NetworkID)
 	if err != nil {
-		return nil, fmt.Errorf("get network info (network %d) from %s: %w", cfg.L2NetworkID, agglayerClientCfg.GRPC.URL, err)
+		return nil, fmt.Errorf("get network info (network %d): %w", cfg.L2NetworkID, err)
 	}
 
 	// Refuse to proceed when the agglayer still has a non-settled (open) certificate for this
