@@ -8,30 +8,55 @@ Generate exit certificates for a chain migration — scans L2 state, computes ba
 
 **When to use it:** Use when an aggchain needs to exit the Agglayer ecosystem. The tool ensures all value on the L2 is accounted for and packaged into a single certificate.
 
+## Requirements
+
+The chain being deprecated must meet **all** of the following conditions for the tool to produce a valid certificate. The first two are verified automatically by [Step CHECK](#step-check--verify-prerequisites); the last two are operational prerequisites you must ensure yourself.
+
+- **The network must be Pessimistic Proof (PP).** FEP (Finality by Execution Proof) chains are not supported. Step CHECK queries `AGGCHAINTYPE()` and aborts if the network is FEP.
+- **The committee threshold must be 1.** Exactly one committee member must be required to approve certificates. Step CHECK queries the multisig threshold and aborts if it is greater than 1.
+- **The network must have settled at least one certificate.** The tool needs a prior certificate to derive the `PreviousLocalExitRoot` (Step H); a chain that has never settled a certificate cannot be exited with this tool.
+- **The network's sequencer must be stopped.** Halt the sequencer before running the tool so that no new bridges (or other state changes) are produced while the certificate is being built. New activity after the target block would not be reflected in the certificate.
+
 ## Known limitations
 
-- **FEP (Finality by Execution Proof) is not supported.** The tool only handles Pessimistic Proof (PP) certificates. Chains running FEP mode cannot use this tool as-is.
+- **No unclaimed L1→L2 bridges are allowed.** Every bridge towards L2 must be claimed before starting the process. Outstanding (unclaimed) deposits must be claimed first; otherwise the generated certificate will not reflect them correctly.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not supported.** Transactions that emit these events on the bridge contract ([see contracts](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3)) are not detected or accounted for. Value associated with these flows may be missing from the generated certificate.
 
 ## Quick start
 
 ```bash
-cd tools/exit_certificate
-
-# Build
-go build -o exit-certificate ./cmd
+# Build from the repo root — the binary is written to target/exit_certificate
+make build-exit_certificate
 
 # Create your config from the example
-cp parameters.json.example parameters.json
+cp tools/exit_certificate/parameters.json.example parameters.json
 
 # Edit parameters.json with your RPC URLs, bridge address, etc.
 # Then run the tool
-./exit-certificate --config parameters.json
+./target/exit_certificate --config parameters.json
+```
+
+There are also ready-to-use config files for the zkEVM networks in
+[config-examples/](config-examples/) (`zkevm-cardona.toml`, `zkevm-mainnet.toml`). Copy the one that
+matches your chain and fill in the fields documented in [config-examples/README.md](config-examples/README.md):
+
+```bash
+# Use a prepared zkEVM config as a starting point
+cp tools/exit_certificate/config-examples/zkevm-mainnet.toml parameters.toml
+
+# Edit parameters.toml (l1RpcUrl, exitAddress, signerConfig, etc.), then run
+./target/exit_certificate --config parameters.toml
 ```
 
 ## Building
 
-From `tools/exit_certificate/`:
+From the repo root, using the top-level Makefile (binary is written to `target/exit_certificate`):
+
+```bash
+make build-exit_certificate
+```
+
+Alternatively, build directly with `go` from `tools/exit_certificate/`:
 
 ```bash
 go build -o exit-certificate ./cmd
@@ -96,6 +121,8 @@ The field names are identical in both formats. Pass whichever you created with `
 | `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 | `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. For each address the tool calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
+| `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
+| `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, reorders the certificate to the on-chain deposit order, and verifies the computed `NewLocalExitRoot` against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 computes the `NewLocalExitRoot` off-chain from the lite exit tree (no Anvil) — much faster, but it trusts the off-chain leaf encoding/metadata. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
 
@@ -156,29 +183,6 @@ Without this field, Step SIGN is skipped when running the full pipeline and you 
 
 The example above uses a local keystore file. Other backends (GCP KMS, AWS KMS, etc.) are also supported. For the full list of signer methods and their configuration options see the [go_signer](https://github.com/agglayer/go_signer) repository.
 
-#### Authenticating with IAP
-
-When `agglayerAdminURL` points to a production endpoint protected by Google Cloud IAP (Identity-Aware Proxy), requests must include a Bearer token. Obtain it with `gcloud`:
-
-```bash
-export JWT=$(gcloud auth print-identity-token \
-  --impersonate-service-account=<SERVICE_ACCOUNT_EMAIL> \
-  --audiences=<AUDIENCE> \
-  --include-email)
-```
-
-Then set `agglayerAdminToken` in your config to the value of `$JWT`.
-
-Environment-specific values:
-
-| Environment | `SERVICE_ACCOUNT_EMAIL` | `AUDIENCE` | `agglayerAdminURL` |
-| ----------- | ----------------------- | ---------- | ------------------ |
-| spec | `agglayer-spec-admin-iap@prj-polygonlabs-cdk-dev.iam.gserviceaccount.com` | `593545957356-gnjisnf3rad64es8uh4isj8lindaa05f.apps.googleusercontent.com` | `https://admin-agglayer-spec.polygon.technology` |
-| bali | `agglayer-bali-admin-iap@prj-polygonlabs-cdk-dev.iam.gserviceaccount.com` | `593545957356-hi10sk8kqkm8aee4qe6n0rbad4krjla0.apps.googleusercontent.com` | `https://admin-agglayer-dev.polygon.technology` |
-| cardona | `agglayer-cardona-admin-iap@prj-polygonlabs-cdk-test.iam.gserviceaccount.com` | `515506276380-m2s53r0hfd0ppfjh7kdv92rc1g3taet8.apps.googleusercontent.com` | `https://admin-agglayer-test.polygon.technology` |
-| mainnet | `agglayer-mainnet-admin-iap@prj-polygonlabs-cdk-prod.iam.gserviceaccount.com` | `837347663102-9et4sc5kokg8rdbrehcut9bl3qpg2gc6.apps.googleusercontent.com` | `https://admin-agglayer.polygon.technology` |
-
-The IAP token expires after ~1 hour. If Step F returns an `Invalid IAP credentials` error, regenerate the token and update the config.
 
 #### Options to skip failing checks
 
@@ -195,27 +199,37 @@ Some options let you continue past conditions that would otherwise abort the pip
 ### Run full pipeline
 
 ```bash
-./exit-certificate --config parameters.json
+./target/exit_certificate --config parameters.json
 ```
 
 Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN (if `signerConfig` is set).
+
+This produces and signs the certificate but **does not submit it**. SUBMIT and WAIT are intentionally left out of the default pipeline — once you have reviewed the signed certificate, run them explicitly:
+
+```bash
+# Send the signed certificate to the agglayer
+./target/exit_certificate --config parameters.json --step submit
+
+# Wait for it to settle (on the agglayer and on L1)
+./target/exit_certificate --config parameters.json --step wait
+```
 
 | Step | Name | What it does |
 | :--: | ---- | ------------ |
 | CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
 | 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. |
-| A | Collect addresses | Traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. |
+| A | Collect addresses | A1: traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. A2: for any transaction whose trace failed in A1, recovers its addresses from the tx receipt (`eth_getTransactionReceipt`). |
 | B | EOA balances + ERC-20 detection | B1: classifies addresses and fetches ETH/token balances for EOAs. B2: probes contracts for the ERC-20 interface and checks if they hold tracked wrapped tokens. B3: fetches holder breakdowns for `extraErc20Contracts` (skips any already processed by B2). |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
 | D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
 | E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2. Message deposits (`leaf_type=1`) are saved to `step-e-unclaimed-messages.json` and never added to the certificate. Asset deposits (`leaf_type=0`): if none are found the certificate is passed through unchanged; if any are found and `ignoreUnclaimed=true` they are logged but the certificate remains unchanged; if found and `ignoreUnclaimed=false` the pipeline errors (Merkle proof support not yet implemented). Optionally cross-checks against a bridge service. |
 | F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `ignoreBalanceMismatch=true` produces a proportionally capped certificate. With `useAgglayerAdminToStepFCheck=false` it skips the agglayer query and does an offline LBT-vs-certificate comparison instead. |
-| G | NewLocalExitRoot | Shadow-forks L2 at `targetBlock` via Anvil, replays all bridge exits, and reads the resulting `localExitRoot` from the forked bridge contract. |
+| G | NewLocalExitRoot | G1: syncs the L2 bridge history from genesis up to `targetBlock` into a lite DB and resolves the shadow-fork block. G2: computes the `NewLocalExitRoot` — by default shadow-forks L2 via Anvil, replays all bridge exits, and reads the resulting root from the forked bridge contract (or computes it off-chain when `verifyNewLocalExitRootUsingShadowFork=false`). |
 | H | PreviousLocalExitRoot | Fetches `settled_ler` from the agglayer gRPC to obtain the previous LER and the next certificate height. |
 | I | Assemble final cert | Applies `NewLocalExitRoot` (G), `PreviousLocalExitRoot` + height (H), bridge exit metadata, and `L1InfoTreeLeafCount` (from the latest `UpdateL1InfoTreeV2` event on L1). |
 | SIGN | Sign certificate | Hashes the certificate and signs it with the configured keystore; wraps the signature in `AggchainDataMultisig`. |
 | SUBMIT | Send to agglayer | Sends the signed certificate to the agglayer via gRPC. **Not part of the default pipeline.** |
-| WAIT | Wait for settlement | Polls `GetCertificateHeader` every 5 s until the certificate is `Settled` or `InError`. **Not part of the default pipeline.** |
+| WAIT | Wait for settlement | Polls `GetCertificateHeader` every 5 s until the certificate is `Settled` or `InError`, then confirms the settlement on L1 (`VerifyBatchesTrustedAggregator` on the RollupManager + the accompanying `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` events). **Not part of the default pipeline.** |
 
 Steps SUBMIT and WAIT are **not** part of the default pipeline — they must be triggered explicitly.
 
@@ -223,22 +237,29 @@ Steps SUBMIT and WAIT are **not** part of the default pipeline — they must be 
 
 ```bash
 # Single step
-./exit-certificate --config parameters.json --step h
+./target/exit_certificate --config parameters.json --step h
 
 # Multiple steps (comma-separated, run in the given order)
-./exit-certificate --config parameters.json --step h,i,sign
-./exit-certificate --config parameters.json --step "sign, submit"
+./target/exit_certificate --config parameters.json --step h,i,sign
+./target/exit_certificate --config parameters.json --step "sign, submit"
+
+# Ranges (inclusive)
+./target/exit_certificate --config parameters.json --step a-c     # a, b, c
+./target/exit_certificate --config parameters.json --step g-      # g, h, i, sign (open range stops at sign)
+./target/exit_certificate --config parameters.json --step 0-wait  # every step, including submit and wait
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
 Spaces around commas are ignored. Execution stops at the first step that fails.
+
+Ranges use `from-to` (inclusive). An open-ended `from-` runs through `sign`; `submit` and `wait` are left out of open ranges and must be named explicitly (e.g. `0-wait` to run the entire flow end to end).
 
 ### CLI flags
 
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Step(s) to run: `all`, a single step name, or a comma-separated list (e.g. `h,i,sign`). Valid names: `check`, `0`, `a`, `a1`, `a2`, `b`, `b1`, `b2`, `b3`, `c`–`i`, `sign`, `submit`, `wait`. The aliases `a` and `b` expand to their sub-steps. |
+| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` runs through `sign` (e.g. `g-` → `g,h,i,sign`); `submit`/`wait` are excluded from open ranges and must be named explicitly — use `0-wait` to run every step. Valid names: `check`, `0`, `a`/`a1`/`a2`, `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`. The aliases `a`, `b`, `g` expand to their sub-steps and also work as range bounds. |
 | `--verbose` | — | `false` | Enable debug logging. Without this flag only `info`, `warn` and `error` messages are shown. |
 
 ## Pipeline steps
@@ -248,7 +269,7 @@ Spaces around commas are ignored. Execution stops at the first step that fails.
 Runs automatically as the first step of the full pipeline. Can also be run individually:
 
 ```bash
-./exit-certificate --config parameters.json --step check
+./target/exit_certificate --config parameters.json --step check
 ```
 
 All checks run regardless of individual failures; a combined error lists every failed check.
@@ -281,22 +302,32 @@ The `targetBlock` config field accepts a finality keyword, an optional offset, o
 
 The resolved number is written to `step-0-l2_target_block.json` and used as a fixed reference by all subsequent steps (A, B, G). When running individual steps the file must exist (produced by a prior Step 0 run).
 
-#### LBT generation
+#### Step 0 — LBT generation
 
 After resolution, Step 0 scans the L2 bridge contract for `NewWrappedToken` events and fetches the `totalSupply` of each wrapped token at the resolved block. It also applies any `SetSovereignTokenAddress` overrides (remapped wrapped addresses), computes the unlocked native token balance, and checks for a WETH entry if the chain has a custom gas token.
-
-This step replaces the need for the external [`getLBT`](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3/tools/getLBT) tool.
 
 **Output:** `step-0-l2_target_block.json` (resolved block number), `step-0-lbt.json` (LBT entries)
 
 ### Step A — Collect addresses
 
-Scans all blocks from `l2StartBlock` to `targetBlock` and collects every address that participated in any transaction, using `debug_traceTransaction` (prestateTracer, diffMode).
+Scans all blocks from `l2StartBlock` to `targetBlock` and collects every address that participated in any transaction. Step A runs two sub-steps in sequence: A1 and A2. Running `--step a` executes both.
+
+#### Step A1 — Collect addresses via tracing
+
+Collects touched addresses using `debug_traceTransaction` (prestateTracer, diffMode). Blocks are scanned in windows of `options.stepAWindowSize` to bound peak memory usage.
 
 1. Scan — `eth_getBlockByNumber` (headers only, `false`) across all blocks → tx hashes are included directly in the response
 2. Trace — `debug_traceTransaction` (prestateTracer, diffMode) per hash to extract pre/post state addresses
 
-**Output:** `step-a-addresses.json`
+Transactions whose trace fails are recorded as failed traces (unless `ignoreOnTraceError` aborts the run; see the options table).
+
+**Output:** `step-a1-addresses.json`, `step-a1-failed-traces.json`
+
+#### Step A2 — Recover addresses from receipts
+
+For each trace that failed in A1, calls `eth_getTransactionReceipt` and extracts every address found in the receipt (sender, recipient, created contract, and log emitters). Failed receipt fetches are logged as warnings and skipped rather than aborting. The recovered addresses are merged with the A1 set to produce the combined address list.
+
+**Output:** `step-a2-addresses.json`, `step-a-addresses.json` (combined A1 + A2 addresses — the file consumed by later steps)
 
 ### Step B — EOA balance checking + ERC-20 detection
 
@@ -446,33 +477,46 @@ Requires `signerConfig` in config (same format as aggsender's `AggsenderPrivateK
 
 Sends `exit-certificate-signed.json` to the agglayer via gRPC and returns the certificate hash. **Not part of the default pipeline** — must be triggered with `--step submit`.
 
-Requires `agglayerClient.GRPC.URL` in options.
+Before submitting, it:
+
+1. Checks for a pending certificate on the network (`GetLatestPendingCertificateHeader`). If one exists and is **not closed**, the step **errors** — you must wait for it to settle before submitting a new one.
+2. Captures the **latest L1 block right before submission** (`eth_blockNumber` on `l1RpcUrl`). This is recorded in the result and marks the L1 starting point from which Step WAIT looks for the certificate's L1 settlement.
+
+Requires `agglayerClient.GRPC.URL` and `l1RpcUrl` in config.
 
 **Reads:** `exit-certificate-signed.json`
 
-**Output:** `step-submit-result.json`
+**Output:** `step-submit-result.json` (`certificateHash` + `l1LatestBlockBeforeSubmittingCertificate`)
 
 ### Step WAIT — Wait for certificate settlement
 
-Polls the agglayer until the submitted certificate reaches a final state. **Not part of the default pipeline** — must be triggered with `--step wait`.
-
-Requires `agglayerClient.GRPC.URL` in options. Reads `step-submit-result.json` for the certificate hash.
+Polls the agglayer until the submitted certificate reaches a final state, then confirms the settlement on L1. **Not part of the default pipeline** — must be triggered with `--step wait`.
 
 Two phases:
 
-1. If a different pending certificate is already in flight on the network, waits for it to settle (or enter error) before proceeding.
-2. Polls `GetCertificateHeader` every 5 seconds until the submitted certificate is `Settled` or `InError`. Returns an error if `InError`.
+1. **Agglayer settlement** — polls `GetCertificateHeader` by hash every 5 seconds until the submitted certificate is `Settled` (success) or `InError` (returns an error). Logs the settlement tx hash on success.
+2. **L1 settlement confirmation** — scans the RollupManager contract on L1 from `l1LatestBlockBeforeSubmittingCertificate` (from the submit result) to the **finalized** block for the `VerifyBatchesTrustedAggregator` event matching the rollupID (`l2NetworkId`) and the certificate's `NewLocalExitRoot`. The RollupManager address is `rollupManagerAddress` if set, otherwise resolved on-chain from `sovereignRollupAddr.rollupManager()`. It re-resolves the finalized block and re-scans every 5 seconds until found. In that same L1 block it then reads the last `UpdateL1InfoTree` and `UpdateL1InfoTreeV2` events emitted by `l1GlobalExitRootAddress` (the global-exit-root update accompanying the settlement).
 
-**Reads:** `step-submit-result.json`
+Requires `agglayerClient.GRPC.URL`, `l1RpcUrl`, and `l1GlobalExitRootAddress` in config, plus either `rollupManagerAddress` or `sovereignRollupAddr` to resolve the RollupManager.
 
-**Output:** `step-wait-result.json`
+**Reads:** `step-submit-result.json` (certificate hash + the captured pre-submission L1 block)
 
-## Output
+**Output:** `step-wait-result.json` (final status, settlement tx hash, the L1 `VerifyBatchesTrustedAggregator` block/tx, and the `UpdateL1InfoTree` / `UpdateL1InfoTreeV2` events in that block)
 
-The final output is `exit-certificate-final.json` in the output directory. It is a standard agglayer `Certificate` JSON object with:
+## Result
 
-- `bridge_exits` — all value to be exited from the chain: EOA balances (Step B/D) and SC-locked value (Step C/D).
-- `imported_bridge_exits` — empty unless a future implementation adds Merkle-proof-backed unclaimed L1→L2 deposits (Step E does not populate this field today).
+After the full flow completes (the certificate is built and signed, then SUBMIT and WAIT succeed):
+
+- **The agglayer holds every bridge exit in the certificate.** Once the certificate settles, the agglayer accounts for all of the certificate's `bridge_exits` — the value has been bridged out of the L2 and is ready to be claimed on the destination network.
+- **The files needed to claim those bridges have been generated.** Claiming each exit requires calling `claimAsset` on the bridge contract with Merkle proofs and the exit roots. The companion [`exit_certificate_claimer`](../exit_certificate_claimer/README.md) tool consumes the exit_certificate output and produces the parameters for each `claimAsset` call.
+
+The output files the claimer needs are:
+
+| File | Used for |
+| ---- | -------- |
+| `exit-certificate-signed.json` | The signed certificate — source of each exit's `originNetwork`, `originTokenAddress`, `destinationNetwork`, `destinationAddress`, `amount`, `metadata`. |
+| `step-g-l2bridgesyncerlite.sqlite` | The L2 local exit tree — used to build the `smtProofLocalExitRoot` proof of each leaf against `new_local_exit_root`. |
+| `step-wait-result.json` | The WAIT step's L1 settlement record (`VerifyBatchesTrustedAggregator` + the `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` events) used to anchor the claim to the settled global exit root. |
 
 ## Testing
 
