@@ -101,6 +101,7 @@ sequenceDiagram
 
     loop Every PollInterval
         WD->>L1BS: Get L1-initiated bridge exits (any token origin_network)
+        WD->>L2: Already claimed (isClaimed)? Skip if so
         WD->>DB: Enqueue request as `detected` (idempotent, no GER precondition)
     end
 
@@ -130,7 +131,9 @@ sequenceDiagram
 ```
 
 The watchdog enqueues detected bridge exits immediately as `detected` requests — it imposes no GER precondition and
-does not hold its cursor waiting for GER injection. GER readiness is checked per-claimer during proof preparation:
+does not hold its cursor waiting for GER injection. The only watchdog-side filter is an already-claimed pre-check:
+before enqueueing, it asks the destination claimer whether the target bridge already reports the global index as
+claimed (`isClaimed`), and skips such bridges without storing a request. GER readiness is checked per-claimer during proof preparation:
 each claimer runs its own `l2gersync` instance that continuously syncs the GERs injected on the target L2. Because
 `l2gersync` resolves the GER manager flavor at startup, it works on both **legacy** (`PolygonZkEVMGlobalExitRootV2`,
 which is polled through `GlobalExitRootMap`) and **sovereign** (`GlobalExitRootManagerL2SovereignChain`, which is
@@ -186,8 +189,10 @@ Terminal statuses are `policy-rejected`, `confirmed`, and `failed`. Policy resul
 Step by step:
 
 1. The watchdog polls `l1bridgesync` (so every bridge exit was initiated on L1) and keeps those whose destination
-   matches an enabled claimer, regardless of the bridged token's `origin_network`. Each matched bridge exit is enqueued
-   immediately as `detected` with no GER precondition. Enqueue is idempotent and deduplicated by the request key.
+   matches an enabled claimer, regardless of the bridged token's `origin_network`. Bridges the target bridge contract
+   already reports as claimed (`isClaimed`) are skipped without being stored. Each remaining matched bridge exit is
+   enqueued immediately as `detected` with no GER precondition. Enqueue is idempotent and deduplicated by the request
+   key.
 2. The claimer evaluates the configured policy and moves the request to `policy-approved`, `policy-rejected`, or
    `manual-approval-required`. For `basic-filter`, the claimer prepares and stores the exact claim proof before policy
    evaluation so simulation uses the same calldata as the later send path; if proof data is not ready (GER not yet
@@ -306,7 +311,7 @@ configuration.
 | `AutoClaim.API.Enabled` | `false` | No | Starts the optional REST API for inspection and manual decisions. |
 | `AutoClaim.API.Host` | `0.0.0.0` | When API enabled | API listen host. |
 | `AutoClaim.API.Port` | `5579` | When API enabled | API listen port. |
-| `AutoClaim.L1ToL2Watchdog.Enabled` | `false` | No | Enables L1 bridge discovery for configured L2 claimers. |
+| `AutoClaim.L1ToL2Watchdog.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
 | `AutoClaim.L1ToL2Watchdog.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
 | `AutoClaim.L1ToL2Watchdog.PollInterval` | `3s` | Yes | How often the watchdog polls `l1bridgesync`. Must be greater than zero. |
 | `AutoClaim.L1ToL2Watchdog.RetryAfterErrorPeriod` | `1s` | Yes | Reserved retry delay for watchdog errors. Must be greater than zero. |
@@ -341,10 +346,11 @@ Each enabled `[[AutoClaim.Claimers]]` entry owns one destination network.
 | `allow-all` | Approves every eligible L1 to L2 request automatically. |
 | `api-approve` | Stores the request as `manual-approval-required`; an operator must approve or reject through the API. |
 | `no-message` | Rejects message bridge leaves and approves asset bridge leaves. |
-| `basic-filter` | Simulates the claim with `eth_estimateGas` on the destination chain for asset claims and, when `AllowMessageClaims = true`, message claims. It rejects claims whose simulated gas exceeds `MaxGas`, rejects disallowed origins or asset tokens, and returns a blocking policy error when proof preparation, calldata packing, or simulation fails. |
+| `basic-filter` | Simulates the claim with `eth_estimateGas` on the destination chain for asset claims and, when `AllowMessageClaims = true`, message claims. It rejects claims whose simulated gas exceeds `MaxGas` (`MaxGas = 0` disables the gas cap), rejects disallowed origins or asset tokens, and returns a blocking policy error when proof preparation, calldata packing, or simulation fails. |
 
 `Policy.AllowMessageClaims`, `Policy.AllowedOrigins`, `Policy.AllowedTokens`, `Policy.ManualFallback`, and
-`Policy.MaxGas` are policy configuration inputs. Notes on `basic-filter`:
+`Policy.MaxGas` are policy configuration inputs. An empty `AllowedOrigins` or `AllowedTokens` list allows all origins
+or tokens respectively; token matching is case-insensitive. Notes on `basic-filter`:
 
 - It does not honor `ManualFallback`; operational errors remain blocked with `last_error` instead of becoming
   manual-review requests, and claimer recovery stops until the process is restarted after the underlying issue is
@@ -428,8 +434,9 @@ Each claimer's `EthTxManager` keeps its own independent database at `Claimers.Et
 - Disable the API independently with `[AutoClaim.API].Enabled = false`; automatic claiming continues for non-manual
   policies.
 - Use separate `StoragePath` values for Auto Claim storage and each claimer's `EthTxManager.StoragePath`.
-- The watchdog advances its cursor unconditionally after each poll window. Duplicate bridge exits are deduplicated by
-  the request key; enqueue is idempotent.
+- The watchdog advances its cursor after each successfully processed poll window, even when nothing was enqueued.
+  Bridges already claimed on the target bridge are skipped before enqueue; duplicate bridge exits are deduplicated by
+  the request key and enqueue is idempotent.
 - GER readiness is checked per-claimer during proof preparation, not by the watchdog. Each claimer's `l2gersync`
   instance syncs the GERs injected on the target L2 via the claimer's own RPC client, supporting both legacy and
   sovereign GER managers. If the bridge is not yet covered by an injected GER, the proof preparer returns "not ready"
@@ -455,9 +462,10 @@ make test-unit
 The focused end-to-end tests run against the dockerized e2e environment (see [End-to-end tests](./e2e_tests.md)):
 
 ```bash
-go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e2e
+go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove|BasicFilter)' -timeout 30m ./test/e2e
 ```
 
 `TestAutoClaimL1ToL2AllowAll` exercises the fully automatic flow with the `allow-all` policy;
-`TestAutoClaimL1ToL2APIApprove` exercises the manual flow, approving the request through the API. Mocks for the
+`TestAutoClaimL1ToL2APIApprove` exercises the manual flow, approving the request through the API;
+`TestAutoClaimL1ToL2BasicFilter` exercises the `basic-filter` policy with target-chain gas simulation. Mocks for the
 interfaces in `autoclaim/types` are generated with `make generate-mocks`.
