@@ -17,7 +17,8 @@ func bigIntKey(v *big.Int) string {
 }
 
 // reorderCertificateByDepositCount reorders certificate.BridgeExits to the canonical exit-tree order
-// and returns the matching reordered metadatas. leaves[i] is the BridgeEvent the replay of
+// and returns the replay's on-chain metadata aligned to the reordered exits, so the caller can
+// cross-check it against each exit's own metadata. leaves[i] is the BridgeEvent the replay of
 // certificate.BridgeExits[i] emitted; its DepositCount is the on-chain leaf index. The parallel
 // replay assigns deposit counts non-deterministically across exits, so the exits must be sorted by
 // that count for the certificate to be consistent with the computed NewLocalExitRoot (agglayer
@@ -41,12 +42,12 @@ func reorderCertificateByDepositCount(
 	})
 
 	newExits := make([]*agglayertypes.BridgeExit, len(exits))
-	newMetadatas := make([][]byte, len(exits))
+	onChainMetadata := make([][]byte, len(exits))
 	for pos, idx := range order {
 		newExits[pos] = exits[idx]
-		newMetadatas[pos] = leaves[idx].Metadata
+		onChainMetadata[pos] = leaves[idx].Metadata
 	}
 
 	certificate.BridgeExits = newExits
-	return newMetadatas, nil
+	return onChainMetadata, nil
 }

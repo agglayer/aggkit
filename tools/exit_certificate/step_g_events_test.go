@@ -147,17 +147,29 @@ func TestBuildLiteTreeFromCertificate(t *testing.T) {
 		},
 	}
 
-	root, metadatas, err := buildLiteTreeFromCertificate(context.Background(), cfg, cert, 1000, gasNet, gasAddr)
+	genMeta := [][]byte{{0x01}, {0x02, 0x03}}
+	root, metadatas, err := buildLiteTreeFromCertificate(context.Background(), cfg, cert, 1000, gasNet, gasAddr, genMeta)
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash{}, root)
 	require.Len(t, metadatas, 2)
+	// the returned metadata is the (raw) generated metadata, used verbatim for the leaf encoding.
 	require.Equal(t, []byte{0x01}, metadatas[0])
 	require.Equal(t, []byte{0x02, 0x03}, metadatas[1])
 
 	// deterministic: same inputs produce the same root
-	root2, _, err := buildLiteTreeFromCertificate(context.Background(), cfg, cert, 1000, gasNet, gasAddr)
+	root2, _, err := buildLiteTreeFromCertificate(context.Background(), cfg, cert, 1000, gasNet, gasAddr, genMeta)
 	require.NoError(t, err)
 	require.Equal(t, root, root2)
+
+	// different metadata → different leaves → different root
+	changedMeta := [][]byte{{0xff}, {0x02, 0x03}}
+	rootChanged, _, err := buildLiteTreeFromCertificate(context.Background(), cfg, cert, 1000, gasNet, gasAddr, changedMeta)
+	require.NoError(t, err)
+	require.NotEqual(t, root, rootChanged)
+
+	// a metadata count mismatch is an error
+	_, _, err = buildLiteTreeFromCertificate(context.Background(), cfg, cert, 1000, gasNet, gasAddr, [][]byte{{0x01}})
+	require.Error(t, err)
 }
 
 func TestRunStepG2NilCertificate(t *testing.T) {
