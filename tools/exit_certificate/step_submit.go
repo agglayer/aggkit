@@ -38,6 +38,15 @@ func RunStepSubmit(ctx context.Context, cfg *Config, cert *agglayertypes.Certifi
 		return nil, fmt.Errorf("create agglayer gRPC client: %w", err)
 	}
 
+	return runStepSubmit(ctx, cfg, client, cert)
+}
+
+// runStepSubmit is the client-injectable core of RunStepSubmit (tests pass an agglayer client mock in
+// place of the real gRPC client). It rejects submission while a non-closed certificate is pending,
+// captures the latest L1 block right before submitting, and sends the certificate.
+func runStepSubmit(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface, cert *agglayertypes.Certificate,
+) (*StepSubmitResult, error) {
 	log.Infof("Checking for pending certificate on network %d...", cfg.L2NetworkID)
 	pending, err := client.GetLatestPendingCertificateHeader(ctx, cfg.L2NetworkID)
 	if err != nil {
