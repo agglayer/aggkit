@@ -30,10 +30,16 @@ type tokenKey struct {
 	OriginTokenAddress common.Address
 }
 
-// RunStepF queries the agglayer admin API for token balances and performs a three-way comparison:
-// LBT (Step 0 total supplies) == agglayer balance == sum of certificate bridge exits.
-// lbtEntries may be nil when LBT data is unavailable; the check then falls back to two-way comparison.
-// agglayerAdminURL is required; returns an error when not set.
+// RunStepF verifies the certificate's per-token bridge-exit sums.
+//
+// When useAgglayerAdminToStepFCheck is true (the default) it queries the agglayer admin API for token
+// balances and performs a three-way comparison: LBT (Step 0 total supplies) == agglayer balance ==
+// sum of certificate bridge exits. agglayerAdminURL is required. lbtEntries may be nil, in which case
+// it falls back to a two-way agglayer-vs-certificate comparison.
+//
+// When useAgglayerAdminToStepFCheck is false it skips the agglayer admin query and instead runs an
+// offline two-way comparison of the LBT (Step 0) totals against the certificate bridge-exit sums (see
+// runStepFOfflineLBT). When no LBT data is available there is nothing to compare and the step is skipped.
 func RunStepF(
 	ctx context.Context, cfg *Config,
 	certificate *agglayertypes.Certificate,
@@ -42,6 +48,12 @@ func RunStepF(
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP F — Agglayer token balance check")
 	log.Info("═══════════════════════════════════════════")
+
+	// The agglayer admin query is opt-out. When disabled we still run an offline LBT vs certificate
+	// comparison instead of skipping the step outright.
+	if !cfg.Options.UseAgglayerAdminToStepFCheck {
+		return runStepFOfflineLBT(cfg, certificate, lbtEntries)
+	}
 
 	if cfg.Options.AgglayerAdminURL == "" {
 		return nil, fmt.Errorf("step F requires agglayerAdminURL to be set in options")
@@ -106,30 +118,80 @@ func RunStepF(
 
 	log.Info("STEP F complete")
 
+	return finalizeStepFResult(cfg, certificate, checks, raw, allMatch)
+}
+
+// runStepFOfflineLBT runs Step F without contacting the agglayer admin API
+// (useAgglayerAdminToStepFCheck=false): it compares the LBT (Step 0) totals against the certificate
+// bridge-exit sums per token. When no LBT data is available there is nothing to compare and the step
+// is skipped with a benign all-match result.
+func runStepFOfflineLBT(
+	cfg *Config, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) (*StepFResult, error) {
+	if len(lbtEntries) == 0 {
+		log.Warn("STEP F skipped: useAgglayerAdminToStepFCheck=false and no LBT data available for the offline check")
+		return &StepFResult{AllMatch: true}, nil
+	}
+
+	log.Info("useAgglayerAdminToStepFCheck=false — comparing LBT (step 0) vs certificate bridge exits (no agglayer query)")
+	groups := groupBridgeExitsByToken(certificate)
+	checks := compareCertificateToLBT(groups, lbtEntries)
+
+	allMatch := true
+	for _, c := range checks {
+		if !c.Match {
+			allMatch = false
+			log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s",
+				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount)
+			for i, e := range c.CertificateEntries {
+				log.Infof("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
+					i, e.DestinationNetwork, e.DestinationAddress, e.Amount)
+			}
+		} else {
+			log.Infof("✅ (network=%d addr=%s): lbt=%s  certificate=%s",
+				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount)
+		}
+	}
+	if allMatch {
+		log.Infof("All %d token balances match ✅ LBT = certificate", len(checks))
+	}
+	log.Info("STEP F complete (offline LBT check)")
+
+	return finalizeStepFResult(cfg, certificate, checks, nil, allMatch)
+}
+
+// finalizeStepFResult assembles the StepFResult from the comparison checks, applying the
+// ignoreBalanceMismatch policy: on a mismatch it either caps the certificate's bridge exits to each
+// token's RemainingBalance (ignoreBalanceMismatch=true) or returns an error. raw is the agglayer admin
+// response when available (nil for the offline LBT-only check).
+func finalizeStepFResult(
+	cfg *Config, certificate *agglayertypes.Certificate,
+	checks []TokenBalanceCheck, raw json.RawMessage, allMatch bool,
+) (*StepFResult, error) {
 	result := &StepFResult{
 		AllMatch:      allMatch,
 		TokenBalances: raw,
 		Checks:        checks,
 	}
-	if !allMatch {
-		if cfg.Options.IgnoreBalanceMismatch {
-			log.Warn("Balance mismatches detected — continuing anyway (ignoreBalanceMismatch=true)")
-			for _, c := range checks {
-				if !c.Match {
-					log.Debugf("  ⚠️ check: network=%d addr=%s lbt=%s certificate=%s agglayer=%s match=%v",
-						c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount, c.Match)
-				}
-			}
+	if allMatch {
+		return result, nil
+	}
+	if !cfg.Options.IgnoreBalanceMismatch {
+		return result, fmt.Errorf("token balance mismatches detected (set options.ignoreBalanceMismatch=true to ignore)")
+	}
 
-			capped := *certificate
-			capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks)
-			result.CappedCertificate = &capped
-			log.Infof("🔧 Capped certificate: %d → %d bridge exits",
-				len(certificate.BridgeExits), len(capped.BridgeExits))
-		} else {
-			return result, fmt.Errorf("token balance mismatches detected (set options.ignoreBalanceMismatch=true to ignore)")
+	log.Warn("Balance mismatches detected — continuing anyway (ignoreBalanceMismatch=true)")
+	for _, c := range checks {
+		if !c.Match {
+			log.Debugf("  ⚠️ check: network=%d addr=%s lbt=%s certificate=%s agglayer=%s match=%v",
+				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount, c.Match)
 		}
 	}
+	capped := *certificate
+	capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks)
+	result.CappedCertificate = &capped
+	log.Infof("🔧 Capped certificate: %d → %d bridge exits",
+		len(certificate.BridgeExits), len(capped.BridgeExits))
 	return result, nil
 }
 
@@ -230,6 +292,78 @@ func compareTokenBalances(
 		} else {
 			check.Match = certAmt.Cmp(agglAmt) == 0
 			check.RemainingBalance = new(big.Int).Set(agglAmt)
+		}
+
+		if !check.Match {
+			check.CertificateEntries = make([]CertificateEntry, len(exits))
+			for i, e := range exits {
+				check.CertificateEntries[i] = CertificateEntry{
+					DestinationNetwork: e.DestinationNetwork,
+					DestinationAddress: e.DestinationAddress.Hex(),
+					Amount:             e.Amount.String(),
+				}
+			}
+		}
+		checks = append(checks, check)
+	}
+
+	sort.Slice(checks, func(i, j int) bool {
+		if checks[i].OriginNetwork != checks[j].OriginNetwork {
+			return checks[i].OriginNetwork < checks[j].OriginNetwork
+		}
+		return checks[i].OriginTokenAddress < checks[j].OriginTokenAddress
+	})
+	return checks
+}
+
+// compareCertificateToLBT builds a per-token comparison of the certificate bridge-exit sums against
+// the LBT (Step 0) totals, without any agglayer data (used when useAgglayerAdminToStepFCheck=false).
+// Match requires certificate sum == LBT total per token; AgglayerAmount is left empty. RemainingBalance
+// is the LBT total, used as the cap budget when ignoreBalanceMismatch is set. CertificateEntries is
+// populated only on mismatch.
+func compareCertificateToLBT(
+	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry,
+) []TokenBalanceCheck {
+	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
+	for _, e := range lbtEntries {
+		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
+		amount, ok := new(big.Int).SetString(e.Balance, decimalBase)
+		if !ok {
+			log.Warnf("Could not parse LBT balance %q for token (network=%d addr=%s)",
+				e.Balance, e.OriginNetwork, e.OriginTokenAddress.Hex())
+			continue
+		}
+		lbtMap[k] = amount
+	}
+
+	seen := make(map[tokenKey]struct{}, len(groups)+len(lbtMap))
+	for k := range groups {
+		seen[k] = struct{}{}
+	}
+	for k := range lbtMap {
+		seen[k] = struct{}{}
+	}
+
+	checks := make([]TokenBalanceCheck, 0, len(seen))
+	for k := range seen {
+		exits := groups[k]
+		certAmt := new(big.Int)
+		for _, e := range exits {
+			certAmt.Add(certAmt, e.Amount)
+		}
+
+		lbtAmt := lbtMap[k]
+		if lbtAmt == nil {
+			lbtAmt = new(big.Int)
+		}
+
+		check := TokenBalanceCheck{
+			OriginNetwork:      k.OriginNetwork,
+			OriginTokenAddress: k.OriginTokenAddress.Hex(),
+			LBTAmount:          lbtAmt.String(),
+			CertificateAmount:  certAmt.String(),
+			Match:              certAmt.Cmp(lbtAmt) == 0,
+			RemainingBalance:   new(big.Int).Set(lbtAmt),
 		}
 
 		if !check.Match {

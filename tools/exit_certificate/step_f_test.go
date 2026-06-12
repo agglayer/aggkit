@@ -30,8 +30,9 @@ func TestRunStepF_WithBearerToken(t *testing.T) {
 	cfg := &Config{
 		L2NetworkID: 1,
 		Options: Options{
-			AgglayerAdminURL:   server.URL,
-			AgglayerAdminToken: "my-iap-token",
+			UseAgglayerAdminToStepFCheck: true,
+			AgglayerAdminURL:             server.URL,
+			AgglayerAdminToken:           "my-iap-token",
 		},
 	}
 	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
@@ -42,9 +43,95 @@ func TestRunStepF_WithBearerToken(t *testing.T) {
 func TestRunStepF_MissingAdminURL_Error(t *testing.T) {
 	t.Parallel()
 
-	_, err := RunStepF(context.Background(), &Config{}, &agglayertypes.Certificate{}, nil)
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: true}}
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "agglayerAdminURL")
+}
+
+func TestRunStepF_DisabledNoLBT_Skips(t *testing.T) {
+	t.Parallel()
+
+	// useAgglayerAdminToStepFCheck=false and no LBT data: nothing to compare, so the step is
+	// skipped with a benign all-match result and no RPC call (no agglayerAdminURL set).
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.AllMatch)
+	require.Nil(t, result.CappedCertificate)
+	require.Nil(t, result.TokenBalances)
+}
+
+func TestRunStepF_DisabledWithLBT_MatchOffline(t *testing.T) {
+	t.Parallel()
+
+	// useAgglayerAdminToStepFCheck=false but LBT data is available: compare LBT (step 0) totals
+	// against the certificate bridge-exit sums, with no agglayer query and no agglayerAdminURL.
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(1000),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "1000"}}
+
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch)
+	require.Nil(t, result.TokenBalances)
+	require.Len(t, result.Checks, 1)
+	require.Equal(t, "1000", result.Checks[0].LBTAmount)
+	require.Equal(t, "1000", result.Checks[0].CertificateAmount)
+	require.Empty(t, result.Checks[0].AgglayerAmount)
+}
+
+func TestRunStepF_DisabledWithLBT_MismatchAborts(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(1000),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "500"}}
+
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
+	_, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mismatch")
+}
+
+func TestRunStepF_DisabledWithLBT_MismatchCaps(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(1000),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "500"}}
+
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, IgnoreBalanceMismatch: true}}
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.False(t, result.AllMatch)
+	require.NotNil(t, result.CappedCertificate)
 }
 
 func TestRunStepF_AllMatch(t *testing.T) {
@@ -72,7 +159,7 @@ func TestRunStepF_AllMatch(t *testing.T) {
 	}
 	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "1000"}}
 
-	cfg := &Config{L2NetworkID: 0, Options: Options{AgglayerAdminURL: server.URL}}
+	cfg := &Config{L2NetworkID: 0, Options: Options{UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: server.URL}}
 	result, err := RunStepF(context.Background(), cfg, cert, lbt)
 	require.NoError(t, err)
 	require.True(t, result.AllMatch)
@@ -102,7 +189,7 @@ func TestRunStepF_MismatchAborts(t *testing.T) {
 			},
 		},
 	}
-	cfg := &Config{L2NetworkID: 0, Options: Options{AgglayerAdminURL: server.URL}}
+	cfg := &Config{L2NetworkID: 0, Options: Options{UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: server.URL}}
 	_, err := RunStepF(context.Background(), cfg, cert, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mismatch")
@@ -134,8 +221,9 @@ func TestRunStepF_MismatchContinues(t *testing.T) {
 	cfg := &Config{
 		L2NetworkID: 0,
 		Options: Options{
-			AgglayerAdminURL:      server.URL,
-			IgnoreBalanceMismatch: true,
+			UseAgglayerAdminToStepFCheck: true,
+			AgglayerAdminURL:             server.URL,
+			IgnoreBalanceMismatch:        true,
 		},
 	}
 	result, err := RunStepF(context.Background(), cfg, cert, nil)
@@ -152,7 +240,7 @@ func TestRunStepF_RPCError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := &Config{L2NetworkID: 1, Options: Options{AgglayerAdminURL: server.URL}}
+	cfg := &Config{L2NetworkID: 1, Options: Options{UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: server.URL}}
 	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
 	require.Error(t, err)
 }

@@ -155,6 +155,11 @@ func expandStepRange(token string) ([]string, error) {
 			break
 		}
 	}
+	// When the range starts at or after submit/wait (i.e. past lastAutoStep), the user has
+	// explicitly opted into those steps, so an open range extends to the last step instead.
+	if fromIdx > toIdx {
+		toIdx = len(orderedSteps) - 1
+	}
 	if to != "" {
 		toIdx = -1
 		for i, s := range orderedSteps {
@@ -340,11 +345,15 @@ func runAllStepF(
 	stepDCert *agglayertypes.Certificate,
 	finalCert *agglayertypes.Certificate,
 ) (*agglayertypes.Certificate, error) {
+	// RunStepF itself honours useAgglayerAdminToStepFCheck: when false it runs the offline LBT vs
+	// certificate comparison instead of the agglayer admin query.
 	result, err := RunStepF(ctx, cfg, stepDCert, lbtEntries)
 	if err != nil {
 		return nil, fmt.Errorf("step F: %w", err)
 	}
-	saveJSON(dir, fileStepFTokenBalances, result.TokenBalances)
+	if result.TokenBalances != nil {
+		saveJSON(dir, fileStepFTokenBalances, result.TokenBalances)
+	}
 	saveJSON(dir, fileStepFChecks, result.Checks)
 	if result.CappedCertificate != nil {
 		// Apply the same per-token caps to the final certificate (which may include step E exits).
@@ -817,7 +826,7 @@ func runSingleWait(ctx context.Context, cfg *Config, dir string) error {
 	if err := loadJSON(dir, fileStepSubmitResult, &submitResult); err != nil {
 		return fmt.Errorf("load step submit result: %w", err)
 	}
-	result, err := RunStepWait(ctx, cfg, submitResult.CertificateHash)
+	result, err := RunStepWait(ctx, cfg, &submitResult)
 	if err != nil {
 		return err
 	}
@@ -831,7 +840,8 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 		return fmt.Errorf("load step D certificate: %w", err)
 	}
 
-	// Try to load LBT entries for three-way comparison; nil disables LBT check.
+	// Load LBT entries: used for the three-way comparison (agglayer mode) or the offline LBT vs
+	// certificate comparison (useAgglayerAdminToStepFCheck=false). nil disables the LBT check.
 	var lbtEntries []LBTEntry
 	lbtPath := filepath.Join(dir, fileStep0LBT)
 	if entries, err := LoadLBTEntries(lbtPath); err == nil {
@@ -844,7 +854,9 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 	if err != nil {
 		return err
 	}
-	saveJSON(dir, fileStepFTokenBalances, result.TokenBalances)
+	if result.TokenBalances != nil {
+		saveJSON(dir, fileStepFTokenBalances, result.TokenBalances)
+	}
 	saveJSON(dir, fileStepFChecks, result.Checks)
 	if result.CappedCertificate != nil {
 		saveJSON(dir, fileStepFCappedCertificate, result.CappedCertificate)

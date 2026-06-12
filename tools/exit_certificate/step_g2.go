@@ -1,6 +1,7 @@
 package exit_certificate
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -184,18 +185,30 @@ func isTransientForkError(err error) bool {
 
 // RunStepG2 computes Certificate.NewLocalExitRoot and the per-exit metadata.
 //
-// By default (options.verifyNewLocalExitRootUsingShadowFork is true — see defaultOptions) it spins
-// up the Anvil shadow-fork, replays every exit against the real bridge contract, recovers the
-// on-chain deposit order and metadata, and verifies the lite tree root against the contract's
-// getRoot(). When the option is set to false it instead computes the root purely off-chain: it
-// builds the lite exit tree from Step G1's genesis→fork bridges plus the certificate's bridge exits
-// (in their given order, with each exit's own metadata) and takes the tree root as the
-// NewLocalExitRoot — no Anvil.
+// The flow is the same in both modes: optionally run the shadow-fork, then build the local exit tree
+// from the certificate, then compare the roots when both exist.
+//
+//   - By default (options.verifyNewLocalExitRootUsingShadowFork is true — see defaultOptions) it spins
+//     up the Anvil shadow-fork, replays every exit against the real bridge contract, and takes the
+//     contract's getRoot() as the NewLocalExitRoot, having reordered the certificate to the on-chain
+//     deposit order and recovered the on-chain metadata. The off-chain tree built next must match it.
+//   - When the option is false it skips Anvil, leaves the certificate as-is, and takes the off-chain
+//     lite tree root as the NewLocalExitRoot (trusting the off-chain leaf encoding — nothing to verify
+//     against).
 //
 // forkBlock is the block resolved by Step G1. lbtEntries (Step 0 output) is used only by the
 // shadow-fork path as a wrapped-token lookup so getTokenWrappedAddress RPC calls are avoided.
 func RunStepG2(
 	ctx context.Context, cfg *Config, forkBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) (*StepGResult, error) {
+	return runStepG2(ctx, cfg, anvilLauncher{}, forkBlock, certificate, lbtEntries)
+}
+
+// runStepG2 is the launcher-injectable orchestrator behind RunStepG2 (tests pass a mock fork
+// launcher in place of anvilLauncher{}). See RunStepG2 for the flow.
+func runStepG2(
+	ctx context.Context, cfg *Config, launcher forkLauncher, forkBlock uint64,
+	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (*StepGResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP G2 - Calculate NewLocalExitRoot")
@@ -219,38 +232,105 @@ func RunStepG2(
 		}, nil
 	}
 
-	if !cfg.Options.VerifyNewLocalExitRootUsingShadowFork {
-		return runStepG2LiteOnly(ctx, cfg, forkBlock, certificate)
+	// Optionally run the shadow-fork. It replays every exit against the real bridge contract and
+	// returns the authoritative LER (the contract's getRoot()) and the LER at the fork block, having
+	// reordered certificate.BridgeExits to the on-chain deposit order. When disabled, the certificate
+	// is left as-is and there is no contract LER to compare to.
+	var (
+		shadowForkLER             *common.Hash
+		initialLERShadowFork      common.Hash
+		err                       error
+		onChainMetadataShadowFork [][]byte
+	)
+	// metadataBackend is the bridge contract endpoint generateMetadata queries getTokenMetadata against:
+	// the Anvil shadow-fork when it runs (already at forkBlock), otherwise a backend over the real L2.
+	var metadataBackend forkBackend
+	if cfg.Options.VerifyNewLocalExitRootUsingShadowFork {
+		backend, cleanup, startErr := launcher.Start(ctx, cfg.L2RPCURL, forkBlock, cfg.L2BridgeAddress)
+		if startErr != nil {
+			return nil, startErr
+		}
+		defer cleanup()
+		metadataBackend = backend
+
+		var lerShadowFork common.Hash
+		lerShadowFork, initialLERShadowFork, onChainMetadataShadowFork, err =
+			runStepG2ShadowFork(ctx, cfg, backend, certificate, lbtEntries)
+		if err != nil {
+			return nil, err
+		}
+		shadowForkLER = &lerShadowFork
+	} else {
+		log.Info("Shadow-fork verification disabled; building the local exit tree off-chain only")
+		metadataBackend = &anvilForkBackend{url: cfg.L2RPCURL, bridgeAddr: cfg.L2BridgeAddress}
+		// InitialLocalExitRoot (the LER at the fork block) is informational here; read it from the real L2.
+		initialLERShadowFork, err = readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(forkBlock))
+		if err != nil {
+			log.Warnf("Could not read initial LocalExitRoot: %v", err)
+		}
+		log.Infof("InitialLocalExitRoot: %s", initialLERShadowFork.Hex())
 	}
-	return runStepG2ShadowFork(ctx, cfg, anvilLauncher{}, forkBlock, certificate, lbtEntries)
-}
-
-// runStepG2LiteOnly computes the NewLocalExitRoot off-chain (no Anvil): it appends the certificate's
-// bridge exits — in their given order, each with its own metadata — onto Step G1's genesis→fork
-// lite tree and takes the resulting root. It trusts the off-chain leaf encoding rather than
-// verifying it against the contract; use the shadow-fork path to verify.
-func runStepG2LiteOnly(
-	ctx context.Context, cfg *Config, forkBlock uint64, certificate *agglayertypes.Certificate,
-) (*StepGResult, error) {
-	log.Info("Computing NewLocalExitRoot off-chain from the lite exit tree (shadow-fork verification disabled)")
-
-	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
-
-	// InitialLocalExitRoot (the LER at the fork block) is informational here; read it from the real L2.
-	initialLER, err := readLocalExitRoot(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(forkBlock))
+	// Reconstruct each exit's metadata the way the bridge contract does (and set it on the exits so the
+	// lite tree built below encodes the same leaves). When the shadow-fork ran, cross-check it against
+	// the on-chain metadata the replay recovered before relying on it.
+	log.Info("step G2: generating metadata for each bridge exit...")
+	generatedMetadata, err := generateMetadata(ctx, metadataBackend, cfg, certificate, lbtEntries)
 	if err != nil {
-		log.Warnf("Could not read initial LocalExitRoot: %v", err)
+		return nil, fmt.Errorf("generate metadata: %w", err)
 	}
-	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
+	if onChainMetadataShadowFork != nil {
+		log.Debug("step G2: comparing generated metadata with on-chain metadata...")
+		if err := compareMetadata(certificate, onChainMetadataShadowFork, generatedMetadata); err != nil {
+			log.Infof("❌ generated metadata mismath on-chain metadata recovered from the shadow-fork: err %w", err)
+			return nil, fmt.Errorf("compare metadata: %w", err)
+		}
+		log.Infof("✅ generated metadata matches on-chain metadata recovered from the shadow-fork replay for all %d exits")
+	}
+	// When the shadow-fork ran we have two on-chain anchors to verify the off-chain reconstruction
+	// against: the LER at the fork block (initialLER) and getRoot() after the replay (shadowForkLER).
+	// Build the genesis→fork lite tree (Step G1's bridges, no cert exits) first; its root must equal
+	// initialLER. This validates Step G1's bridge-history reconstruction on its own before the cert
+	// exits are added.
+	var genesisForkRoot common.Hash
+	if shadowForkLER != nil {
+		if genesisForkRoot, err = buildLiteTreeWithReplayed(ctx, cfg, nil); err != nil {
+			return nil, err
+		}
+	}
 
-	ler, metadatas, err := buildLiteTreeFromCertificate(ctx, cfg, certificate, forkBlock, gasTokenNetwork, gasTokenAddress)
+	// Always build the local exit tree from the (possibly reordered) certificate bridge exits. This is
+	// the sqlite the claimer later reads for its proofs, so it must be built last (overwriting the
+	// genesis→fork tree above with the full tree) and from the certificate exits themselves, using each
+	// exit's own metadata.
+	treeRoot, metadatas, err := runStepG2BuildLocalExitTree(ctx, cfg, forkBlock, certificate, generatedMetadata)
 	if err != nil {
 		return nil, err
 	}
 
+	// The NewLocalExitRoot is the contract's getRoot() when the shadow-fork ran, otherwise the
+	// off-chain tree root. When the shadow-fork ran, the off-chain BridgeEvent-only reconstruction must
+	// match the real on-chain exit tree at both anchors — genesis→fork root vs initialLER and full tree
+	// root vs getRoot() — or the certificate would carry a wrong LER, so any divergence aborts.
+	newLER := treeRoot
+	if shadowForkLER != nil {
+		newLER = *shadowForkLER
+		if treeRoot != *shadowForkLER {
+			return nil, fmt.Errorf("lite exit tree root %s does not match contract getRoot %s: "+
+				"the BridgeEvent-only reconstruction diverged from the on-chain exit tree",
+				treeRoot.Hex(), shadowForkLER.Hex())
+		}
+		if genesisForkRoot != initialLERShadowFork {
+			return nil, fmt.Errorf("genesis→fork lite tree root %s does not match contract initial LER %s: "+
+				"Step G1's bridge-history reconstruction diverged from the on-chain exit tree at the fork block",
+				genesisForkRoot.Hex(), initialLERShadowFork.Hex())
+		}
+		log.Infof("✅ lite exit tree matches contract: initial LER %s, getRoot %s",
+			initialLERShadowFork.Hex(), shadowForkLER.Hex())
+	}
+
 	result := &StepGResult{
-		InitialLocalExitRoot: initialLER,
-		NewLocalExitRoot:     ler,
+		InitialLocalExitRoot: initialLERShadowFork,
+		NewLocalExitRoot:     newLER,
 		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
 		BridgeExitMetadata:   metadatas,
 	}
@@ -260,24 +340,130 @@ func runStepG2LiteOnly(
 	return result, nil
 }
 
-// runStepG2ShadowFork computes the NewLocalExitRoot by replaying every bridge exit against an Anvil
-// shadow-fork of the L2 chain at forkBlock, then verifies the lite exit tree (rebuilt from the
-// replayed bridges on top of Step G1's genesis→fork bridges) against the contract's getRoot().
-func runStepG2ShadowFork(
-	ctx context.Context, cfg *Config, launcher forkLauncher,
-	forkBlock uint64, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
-) (*StepGResult, error) {
-	backend, cleanup, err := launcher.Start(ctx, cfg.L2RPCURL, forkBlock, cfg.L2BridgeAddress)
-	if err != nil {
-		return nil, err
+// generateMetadata reconstructs, for every bridge exit, the metadata the bridge contract embeds in
+// the exit-tree leaf when bridgeAsset is called — replicating AgglayerBridge.bridgeAsset exactly:
+//
+//   - native exit (gas token / zero token address): metadata is the contract's stored gasTokenMetadata.
+//     With no custom gas token (enforced by Step CHECK) the gas token is ETH and this is empty bytes.
+//   - ERC-20 exit (wrapped from another network OR L2-native): metadata is bridgeLib.getTokenMetadata
+//     of the L2 token — the ABI-encoded (name, symbol, decimals) of the token being bridged.
+//
+// (The contract's WETH branch — empty metadata — cannot occur here: it only applies when a custom gas
+// token is set, which Step CHECK rejects, so WETHToken is the zero address and falls into the native
+// branch above.)
+//
+// It queries the bridge contract through backend (the Anvil shadow-fork when it runs, otherwise a
+// backend over the real L2), so it works in both Step G2 modes. Step D builds the L2 exits with empty
+// metadata, so without this the off-chain lite tree would diverge from the real exit tree for any
+// token whose leaf carries non-empty metadata. The returned (raw) metadata is what the lite tree is
+// built from; the certificate's Metadata field is set to its keccak256 hash later, when the tree is
+// built (see runStepG2BuildLocalExitTree).
+//
+// params:
+//   - backend: the bridge contract endpoint queried for getTokenMetadata / gasTokenMetadata
+//   - certificate: the certificate whose bridge exits' metadata is generated (in their current order)
+//   - lbtEntries: Step 0 output, used as a wrapped-token lookup so most getTokenWrappedAddress RPC
+//     calls are avoided
+//
+// returns:
+//   - [][]byte: the raw metadata generated for each bridge exit, aligned by index with certificate.BridgeExits
+//   - error: if any error occurs during the metadata generation process
+func generateMetadata(
+	ctx context.Context, backend forkBackend, cfg *Config,
+	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) ([][]byte, error) {
+	exits := certificate.BridgeExits
+	metadatas := make([][]byte, len(exits))
+	if len(exits) == 0 {
+		return metadatas, nil
 	}
-	defer cleanup()
 
+	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+
+	// Resolve each ERC-20 exit's L2 token address; the bridge's getTokenMetadata is keyed by that
+	// address, exactly as bridgeAsset(token) is.
+	l2Tokens, err := resolveTokenAddresses(
+		ctx, backend, exits, cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress, buildLBTTokenMap(lbtEntries),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve token addresses: %w", err)
+	}
+
+	// Metadata is identical for every exit of the same L2 token, so resolve each token once.
+	tokenMetaCache := make(map[common.Address][]byte)
+	var (
+		gasTokenMeta        []byte
+		gasTokenMetaFetched bool
+	)
+	for i, be := range exits {
+		if isNativeBridgeExit(be.TokenInfo, gasTokenNetwork, gasTokenAddress) {
+			if !gasTokenMetaFetched {
+				if gasTokenMeta, err = backend.GasTokenMetadata(ctx); err != nil {
+					return nil, fmt.Errorf("get gas token metadata: %w", err)
+				}
+				gasTokenMetaFetched = true
+			}
+			metadatas[i] = gasTokenMeta
+			continue
+		}
+		l2TokenAddr, err := findTokenAddress(be, l2Tokens)
+		if err != nil {
+			return nil, fmt.Errorf("find token address: %w", err)
+		}
+		md, ok := tokenMetaCache[l2TokenAddr]
+		if !ok {
+			if md, err = backend.TokenMetadata(ctx, l2TokenAddr); err != nil {
+				return nil, fmt.Errorf("get token metadata for L2 token %s: %w", l2TokenAddr.Hex(), err)
+			}
+			tokenMetaCache[l2TokenAddr] = md
+		}
+		metadatas[i] = md
+	}
+	return metadatas, nil
+}
+
+// compareMetadata checks the generated metadata matches the shadow-fork metadata when the shadow-fork
+// ran (shadowForkMetadata is nil in off-chain mode, where there is nothing on-chain to compare to). A
+// mismatch means generateMetadata's contract replica diverged from the real on-chain metadata the
+// replay recovered, which would diverge the lite tree from the contract's getRoot(); failing here
+// names the offending exit instead of surfacing only as an opaque root mismatch.
+func compareMetadata(
+	certificate *agglayertypes.Certificate, shadowForkMetadata [][]byte, generatedMetadata [][]byte,
+) error {
+	if shadowForkMetadata == nil {
+		return nil
+	}
+	exits := certificate.BridgeExits
+	if len(shadowForkMetadata) != len(exits) || len(generatedMetadata) != len(exits) {
+		return fmt.Errorf("metadata length mismatch: exits=%d generated=%d shadow-fork=%d",
+			len(exits), len(generatedMetadata), len(shadowForkMetadata))
+	}
+	for i := range exits {
+		if !bytes.Equal(generatedMetadata[i], shadowForkMetadata[i]) {
+			return fmt.Errorf(
+				"bridge exit %d (dest %s): generated metadata 0x%x does not match on-chain metadata 0x%x "+
+					"recovered from the shadow-fork replay",
+				i, exits[i].DestinationAddress.Hex(), generatedMetadata[i], shadowForkMetadata[i])
+		}
+	}
+	return nil
+}
+
+// runStepG2ShadowFork replays every bridge exit against the shadow-fork backend (an Anvil fork of the
+// L2 chain at the Step G1 block) and returns the authoritative NewLocalExitRoot (the contract's
+// getRoot() after the replay) and the initial LER at the fork block. As a side effect it reorders
+// certificate.BridgeExits to the on-chain deposit order so callers build the local exit tree in the
+// same order agglayer rebuilds the LER from. It does not build the tree or verify the root — that is
+// the orchestrator's job (RunStepG2). The backend's lifecycle is owned by the caller.
+func runStepG2ShadowFork(
+	ctx context.Context, cfg *Config, backend forkBackend,
+	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+) (common.Hash, common.Hash, [][]byte, error) {
 	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
 
 	initialLER, err := backend.LocalExitRoot(ctx, "latest")
 	if err != nil {
-		return nil, fmt.Errorf("read initial local exit root: %w", err)
+		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("read initial local exit root: %w", err)
 	}
 	log.Infof("InitialLocalExitRoot: %s", initialLER.Hex())
 
@@ -287,7 +473,7 @@ func runStepG2ShadowFork(
 		cfg.L2NetworkID, gasTokenNetwork, gasTokenAddress, lbtMap,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("resolve token addresses: %w", err)
+		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("resolve token addresses: %w", err)
 	}
 	for k, v := range l2Tokens {
 		log.Debugf("token map: origin(network=%d addr=%s) -> L2 wrapped %s", k.network, k.addr.Hex(), v.Hex())
@@ -301,58 +487,72 @@ func runStepG2ShadowFork(
 		ctx, cfg, backend, certificate.BridgeExits, l2Tokens, gasTokenNetwork, gasTokenAddress,
 	)
 	if err != nil {
-		return nil, err
+		return common.Hash{}, common.Hash{}, nil, err
 	}
 
 	// The bridge contract's getRoot() after replaying every exit is the authoritative NewLocalExitRoot.
 	ler, err := backend.LocalExitRoot(ctx, "latest")
 	if err != nil {
-		return nil, fmt.Errorf("read local exit root: %w", err)
+		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("read local exit root: %w", err)
 	}
 
 	// Reorder the certificate to the canonical exit-tree order. The parallel replay assigned
 	// depositCounts non-deterministically across exits; each replayed BridgeEvent carries the
 	// depositCount the contract gave it, so sorting the exits by it aligns Certificate.BridgeExits with
-	// the leaf order agglayer rebuilds the LER from. The reordered metadatas come from the same leaves.
-	metadatas, err := reorderCertificateByDepositCount(certificate, leaves)
+	// the leaf order agglayer rebuilds the LER from. The returned metadata is the replay's on-chain
+	// metadata aligned to the reordered exits.
+	onChainMetadata, err := reorderCertificateByDepositCount(certificate, leaves)
 	if err != nil {
-		return nil, fmt.Errorf("reorder certificate by deposit order: %w", err)
+		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("reorder certificate by deposit order: %w", err)
 	}
 	log.Infof("Reordered %d bridge exits to match the replay deposit order", len(certificate.BridgeExits))
 
-	// Insert the replayed bridges into the lite DB directly (no further Anvil calls), on top of the
-	// genesis→fork bridges Step G1 stored, build the whole exit tree once, and verify its root equals
-	// the contract's getRoot — i.e. our BridgeEvent-only reconstruction matches the real exit tree. A
-	// mismatch means the certificate would carry a wrong LER, so abort — except when
-	// ignoreUnsupportedL2Events=true, where the lite syncer deliberately skipped events the contract
-	// processed, so divergence is accepted (warn only).
-	treeRoot, err := buildLiteTreeWithReplayed(ctx, cfg, leaves)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case treeRoot == ler:
-		log.Infof("✅ lite exit tree root matches contract getRoot: %s", ler.Hex())
-	case cfg.Options.IgnoreUnsupportedL2Events:
-		log.Warnf("lite exit tree root %s does not match contract getRoot %s "+
-			"(expected: ignoreUnsupportedL2Events=true skipped events the contract processed)",
-			treeRoot.Hex(), ler.Hex())
-	default:
-		return nil, fmt.Errorf("lite exit tree root %s does not match contract getRoot %s: "+
-			"the BridgeEvent-only reconstruction diverged from the on-chain exit tree",
-			treeRoot.Hex(), ler.Hex())
-	}
+	return ler, initialLER, onChainMetadata, nil
+}
 
-	result := &StepGResult{
-		InitialLocalExitRoot: initialLER,
-		NewLocalExitRoot:     ler,
-		BridgeExitCount:      uint64(len(certificate.BridgeExits)),
-		BridgeExitMetadata:   metadatas,
+// verifyReplayMetadata checks that each bridge exit's own metadata equals the on-chain metadata the
+// replay recovered for it (aligned by index after reordering). The local exit tree is built from the
+// exits' own metadata, so a mismatch means the certificate carries wrong metadata for that exit and
+// the off-chain tree would diverge from the contract's getRoot(); failing here names the offending
+// exit instead of surfacing only as an opaque root mismatch.
+func verifyReplayMetadata(exits []*agglayertypes.BridgeExit, onChainMetadata [][]byte) error {
+	for i, be := range exits {
+		if !bytes.Equal(be.Metadata, onChainMetadata[i]) {
+			return fmt.Errorf(
+				"bridge exit %d (dest %s): certificate metadata 0x%x does not match on-chain metadata 0x%x "+
+					"recovered from the replay",
+				i, be.DestinationAddress.Hex(), be.Metadata, onChainMetadata[i])
+		}
 	}
-	log.Infof("Bridge exits processed: %d", result.BridgeExitCount)
-	log.Infof("NewLocalExitRoot: %s", result.NewLocalExitRoot.Hex())
-	log.Info("STEP G complete")
-	return result, nil
+	return nil
+}
+
+// runStepG2BuildLocalExitTree builds the local exit tree from the certificate's bridge exits (in
+// their current order) on top of Step G1's genesis→fork bridges, using the raw generatedMetadata for
+// each leaf, and returns the tree root and that per-exit raw metadata. It produces the sqlite the
+// claimer later reads for its proofs.
+//
+// As a side effect it updates each exit's Metadata field to the keccak256 hash of its raw metadata.
+// The leaf encoding hashes the raw metadata (mirroring the contract's keccak256(metadata)), but
+// agglayer's BridgeExit.Hash() plugs the Metadata field straight into the leaf hash — so the
+// certificate must carry that hash, not the raw bytes, for its recomputed LER to match
+// NewLocalExitRoot. This matches what Step I does when applying StepGResult.BridgeExitMetadata.
+func runStepG2BuildLocalExitTree(
+	ctx context.Context, cfg *Config, forkBlock uint64,
+	certificate *agglayertypes.Certificate, generatedMetadata [][]byte,
+) (common.Hash, [][]byte, error) {
+	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+	root, metadatas, err := buildLiteTreeFromCertificate(
+		ctx, cfg, certificate, forkBlock, gasTokenNetwork, gasTokenAddress, generatedMetadata,
+	)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
+	// Store the metadata hash on the certificate (raw metadata stays in metadatas for StepGResult).
+	for i, be := range certificate.BridgeExits {
+		be.Metadata = crypto.Keccak256(generatedMetadata[i])
+	}
+	return root, metadatas, nil
 }
 
 // fetchGasTokenInfoOrDefault returns the L2 gas token (network, address), falling back to standard
@@ -376,6 +576,12 @@ type forkBackend interface {
 	LocalExitRoot(ctx context.Context, blockTag string) (common.Hash, error)
 	// TokenWrappedAddress resolves an origin token to its L2 wrapped ERC-20 address via the bridge.
 	TokenWrappedAddress(ctx context.Context, originNetwork uint32, originTokenAddr common.Address) (common.Address, error)
+	// TokenMetadata returns the metadata blob the bridge embeds in a leaf for l2Token (ABI-encoded
+	// name/symbol/decimals), via getTokenMetadata.
+	TokenMetadata(ctx context.Context, l2Token common.Address) ([]byte, error)
+	// GasTokenMetadata returns the metadata blob the bridge embeds in a native (gas token) leaf, via
+	// gasTokenMetadata (empty when the gas token is ETH).
+	GasTokenMetadata(ctx context.Context) ([]byte, error)
 	// SetSenderBalance funds a sender so its bridgeAsset calls never fail on insufficient funds.
 	SetSenderBalance(ctx context.Context, sender common.Address) error
 	// PrepareERC20Token patches a large balance for sender and approves the bridge for l2TokenAddr.
@@ -404,6 +610,14 @@ func (b *anvilForkBackend) TokenWrappedAddress(
 	ctx context.Context, originNetwork uint32, originTokenAddr common.Address,
 ) (common.Address, error) {
 	return callGetTokenWrappedAddress(ctx, b.url, b.bridgeAddr, originNetwork, originTokenAddr)
+}
+
+func (b *anvilForkBackend) TokenMetadata(ctx context.Context, l2Token common.Address) ([]byte, error) {
+	return callGetTokenMetadata(ctx, b.url, b.bridgeAddr, l2Token)
+}
+
+func (b *anvilForkBackend) GasTokenMetadata(ctx context.Context) ([]byte, error) {
+	return callGasTokenMetadata(ctx, b.url, b.bridgeAddr)
 }
 
 func (b *anvilForkBackend) SetSenderBalance(ctx context.Context, sender common.Address) error {
@@ -969,13 +1183,14 @@ func resolveTokenAddresses(
 
 	for _, be := range exits {
 		ti := be.TokenInfo
+		// Skip native tokens — no ERC-20 address to look up. Checked before building the key because a
+		// native exit may carry a nil TokenInfo (isNativeBridgeExit handles that).
+		if isNativeBridgeExit(ti, gasTokenNetwork, gasTokenAddress) {
+			continue
+		}
 		key := tokenOriginKey{ti.OriginNetwork, ti.OriginTokenAddress}
 		if _, ok := result[key]; ok {
 			continue // already resolved
-		}
-		// Skip native tokens — no ERC-20 address to look up.
-		if isNativeBridgeExit(ti, gasTokenNetwork, gasTokenAddress) {
-			continue
 		}
 		// L2-native token — its L2 address is the origin address itself.
 		if ti.OriginNetwork == l2NetworkID {
@@ -1038,6 +1253,61 @@ func callGetTokenWrappedAddress(
 		return common.Address{}, fmt.Errorf("unexpected return type for getTokenWrappedAddress")
 	}
 	return addr, nil
+}
+
+// callGetTokenMetadata calls getTokenMetadata(token) on the bridge contract at rpcURL and returns the
+// metadata blob the contract embeds in a bridgeAsset leaf for that token (the ABI-encoded name,
+// symbol and decimals).
+func callGetTokenMetadata(
+	ctx context.Context, rpcURL string, bridgeAddr, token common.Address,
+) ([]byte, error) {
+	callData, err := bridgeABI.Pack("getTokenMetadata", token)
+	if err != nil {
+		return nil, fmt.Errorf("pack getTokenMetadata: %w", err)
+	}
+	return ethCallBytes(ctx, rpcURL, bridgeAddr, callData, "getTokenMetadata")
+}
+
+// callGasTokenMetadata calls gasTokenMetadata() on the bridge contract at rpcURL and returns the
+// metadata the contract embeds in a leaf for a native (gas token) bridge — empty when the gas token
+// is ETH (no custom gas token).
+func callGasTokenMetadata(ctx context.Context, rpcURL string, bridgeAddr common.Address) ([]byte, error) {
+	callData, err := bridgeABI.Pack("gasTokenMetadata")
+	if err != nil {
+		return nil, fmt.Errorf("pack gasTokenMetadata: %w", err)
+	}
+	return ethCallBytes(ctx, rpcURL, bridgeAddr, callData, "gasTokenMetadata")
+}
+
+// ethCallBytes eth_calls bridgeAddr with callData at latest and unpacks the single `bytes` return
+// value of method. Shared by callGetTokenMetadata and callGasTokenMetadata.
+func ethCallBytes(
+	ctx context.Context, rpcURL string, bridgeAddr common.Address, callData []byte, method string,
+) ([]byte, error) {
+	raw, err := singleRPC(ctx, rpcURL, "eth_call", []any{
+		map[string]any{"to": bridgeAddr.Hex(), "data": "0x" + hex.EncodeToString(callData)},
+		"latest",
+	}, defaultRetries)
+	if err != nil {
+		return nil, err
+	}
+	var hexStr string
+	if err := json.Unmarshal(raw, &hexStr); err != nil {
+		return nil, fmt.Errorf("parse %s result: %w", method, err)
+	}
+	b, err := hex.DecodeString(strings.TrimPrefix(hexStr, "0x"))
+	if err != nil {
+		return nil, fmt.Errorf("decode %s hex: %w", method, err)
+	}
+	results, err := bridgeABI.Unpack(method, b)
+	if err != nil {
+		return nil, fmt.Errorf("unpack %s: %w", method, err)
+	}
+	metadata, ok := results[0].([]byte)
+	if !ok {
+		return nil, fmt.Errorf("unexpected return type for %s", method)
+	}
+	return metadata, nil
 }
 
 // erc20NamespacedStorageLocation is the ERC-20 storage namespace for OZ v5 upgradeable tokens.

@@ -28,9 +28,32 @@ func RunStepH(ctx context.Context, cfg *Config, gResult *StepGResult) (*StepHRes
 		return nil, fmt.Errorf("create agglayer client: %w", err)
 	}
 
+	return runStepH(ctx, cfg, client, gResult)
+}
+
+// runStepH is the client-injectable core of RunStepH (tests pass an agglayer client mock in place of
+// the real gRPC client). It queries the network info, refuses to proceed on a pending certificate,
+// and derives the PreviousLocalExitRoot / next height (optionally cross-checking gResult).
+func runStepH(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface, gResult *StepGResult,
+) (*StepHResult, error) {
 	info, err := client.GetNetworkInfo(ctx, cfg.L2NetworkID)
 	if err != nil {
-		return nil, fmt.Errorf("get network info (network %d) from %s: %w", cfg.L2NetworkID, agglayerClientCfg.GRPC.URL, err)
+		return nil, fmt.Errorf("get network info (network %d): %w", cfg.L2NetworkID, err)
+	}
+
+	// Refuse to proceed when the agglayer still has a non-settled (open) certificate for this
+	// network: building a new exit certificate on top of a pending one would conflict.
+	if info.LatestPendingStatus != nil && info.LatestPendingStatus.IsOpen() {
+		pendingHeight := "unknown"
+		if info.LatestPendingHeight != nil {
+			pendingHeight = fmt.Sprintf("%d", *info.LatestPendingHeight)
+		}
+		return nil, fmt.Errorf(
+			"network %d has a pending certificate (status %s, height %s) that is not settled yet — "+
+				"wait for it to settle before generating a new exit certificate",
+			cfg.L2NetworkID, info.LatestPendingStatus, pendingHeight,
+		)
 	}
 
 	var prevLER common.Hash
@@ -51,8 +74,11 @@ func RunStepH(ctx context.Context, cfg *Config, gResult *StepGResult) (*StepHRes
 		log.Infof("InitialLocalExitRoot  (L2 chain): %s", gResult.InitialLocalExitRoot.Hex())
 		if gResult.InitialLocalExitRoot != prevLER {
 			return nil, fmt.Errorf(
-				"LocalExitRoot mismatch: L2 chain has %s but agglayer settled %s — "+
-					"the chain may have unaccounted bridge exits",
+				"LocalExitRoot mismatch: Step G started from %s (read from bridgeContract) but agglayer last settled %s — "+
+					"this situation should not happen: the sequencer must be stopped before starting to generate "+
+					"the certificate, so that the L2 state (and its LER) stays frozen throughout the whole pipeline; "+
+					"if you see this, the chain advanced or a new certificate was settled while the certificate was "+
+					"being generated — stop the sequencer and re-run from the beginning",
 				gResult.InitialLocalExitRoot.Hex(), prevLER.Hex(),
 			)
 		}

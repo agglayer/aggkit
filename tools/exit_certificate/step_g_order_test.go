@@ -58,13 +58,14 @@ func TestReorderCertificateByDepositCount(t *testing.T) {
 		leafWithDepositCount(0, []byte{0xC}),
 	}
 
-	newMeta, err := reorderCertificateByDepositCount(cert, leaves)
+	onChainMeta, err := reorderCertificateByDepositCount(cert, leaves)
 	require.NoError(t, err)
 
 	require.Equal(t, destC, cert.BridgeExits[0].DestinationAddress)
 	require.Equal(t, destA, cert.BridgeExits[1].DestinationAddress)
 	require.Equal(t, destB, cert.BridgeExits[2].DestinationAddress)
-	require.Equal(t, [][]byte{{0xC}, {0xA}, {0xB}}, newMeta)
+	// the returned on-chain metadata is aligned to the reordered exits.
+	require.Equal(t, [][]byte{{0xC}, {0xA}, {0xB}}, onChainMeta)
 }
 
 func TestReorderCertificateByDepositCountCountMismatch(t *testing.T) {

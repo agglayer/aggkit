@@ -85,9 +85,10 @@ The field names are identical in both formats. Pass whichever you created with `
 | `outputDir` | `./output` | Directory for intermediate and final output files. Relative paths resolve from the config file directory. |
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
-| `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F. If omitted, Step F is skipped. |
+| `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F in agglayer mode (Step F errors if it runs without this set). Not needed when `useAgglayerAdminToStepFCheck: false` (offline LBT mode). |
 | `agglayerAdminToken` | `""` | Bearer token for authenticating requests to `agglayerAdminURL`. Required when the admin endpoint is protected by Google Cloud IAP. See [Authenticating with IAP](#authenticating-with-iap) for how to obtain it. |
 | `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
+| `useAgglayerAdminToStepFCheck` | `true` | Selects the Step F comparison source. When `true` (default), Step F queries the agglayer admin API (`admin_getTokenBalance`) and does a three-way check (LBT == agglayer == certificate; requires `agglayerAdminURL`). When `false`, it skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). |
 | `ignoreGenesisBalance` | `false` | When `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis or test environments. |
 | `ignoreOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
 | `ignoreBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
@@ -208,7 +209,7 @@ Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F →
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
 | D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
 | E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2. Message deposits (`leaf_type=1`) are saved to `step-e-unclaimed-messages.json` and never added to the certificate. Asset deposits (`leaf_type=0`): if none are found the certificate is passed through unchanged; if any are found and `ignoreUnclaimed=true` they are logged but the certificate remains unchanged; if found and `ignoreUnclaimed=false` the pipeline errors (Merkle proof support not yet implemented). Optionally cross-checks against a bridge service. |
-| F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `ignoreBalanceMismatch=true` produces a proportionally capped certificate. |
+| F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `ignoreBalanceMismatch=true` produces a proportionally capped certificate. With `useAgglayerAdminToStepFCheck=false` it skips the agglayer query and does an offline LBT-vs-certificate comparison instead. |
 | G | NewLocalExitRoot | Shadow-forks L2 at `targetBlock` via Anvil, replays all bridge exits, and reads the resulting `localExitRoot` from the forked bridge contract. |
 | H | PreviousLocalExitRoot | Fetches `settled_ler` from the agglayer gRPC to obtain the previous LER and the next certificate height. |
 | I | Assemble final cert | Applies `NewLocalExitRoot` (G), `PreviousLocalExitRoot` + height (H), bridge exit metadata, and `L1InfoTreeLeafCount` (from the latest `UpdateL1InfoTreeV2` event on L1). |
@@ -363,7 +364,12 @@ Requires `l1RpcUrl`.
 
 ### Step F — Agglayer token balance verification
 
-Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and performs a **three-way comparison** per token:
+Step F has two modes selected by `options.useAgglayerAdminToStepFCheck` (default `true`):
+
+- **Agglayer mode (`true`):** queries the agglayer admin API (`admin_getTokenBalance`) and performs a **three-way comparison** per token (requires `agglayerAdminURL`).
+- **Offline mode (`false`):** **no agglayer query** — performs a **two-way LBT (Step 0) vs certificate** comparison per token. No `agglayerAdminURL` needed; when no LBT data is available there is nothing to compare and the step is skipped. `step-f-token-balances.json` is not written in this mode.
+
+The three-way comparison (agglayer mode):
 
 | Source | What it represents |
 | ------ | ------------------ |
@@ -371,7 +377,7 @@ Queries the agglayer admin API (`admin_getTokenBalance`) for the L2 network and 
 | **Agglayer** | What the agglayer believes is locked for this L2 network |
 | **Certificate** | Sum of all `BridgeExit` amounts for that token |
 
-All three values must be equal. Each token is logged with ✅ or ❌:
+All compared values must be equal. Each token is logged with ✅ or ❌:
 
 ```text
 ✅ (network=1 addr=0xabc...): lbt=1000  certificate=1000  agglayer=1000
@@ -385,9 +391,9 @@ All three values must be equal. Each token is logged with ✅ or ❌:
 
 When running Step G individually it also prefers `step-f-capped-certificate.json` over `step-e-exit-certificate.json` if the capped file exists (logged with ⚠️).
 
-LBT data comes from `step-0-lbt.json`. If not available, the comparison falls back to two-way (certificate vs agglayer only).
+LBT data comes from `step-0-lbt.json`. In agglayer mode, if it is not available the comparison falls back to two-way (certificate vs agglayer only); in offline mode, missing LBT means there is nothing to compare and the step is skipped.
 
-Skipped automatically when `agglayerAdminURL` is not set in options.
+In agglayer mode `agglayerAdminURL` must be set (errors otherwise); offline mode needs no admin endpoint.
 
 **Reads:** `step-d-exit-certificate.json`, `step-0-lbt.json`
 

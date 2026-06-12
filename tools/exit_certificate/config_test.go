@@ -2,6 +2,7 @@ package exit_certificate
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -114,7 +115,10 @@ func TestLoadConfig_MinimalValid(t *testing.T) {
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
 		"exitAddress": "0x0000000000000000000000000000000000000001",
-		"targetBlock": "100"
+		"targetBlock": "100",
+		"options": {
+			"agglayerAdminURL": "https://admin.example.com"
+		}
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
 
@@ -142,6 +146,7 @@ func TestLoadConfig_FullConfig(t *testing.T) {
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"destinationNetwork": 0,
 		"options": {
+			"agglayerAdminURL": "https://admin.example.com",
 			"blockRange": 10000,
 			"concurrencyLimit": 200,
 			"rpcBatchSize": 200,
@@ -181,6 +186,7 @@ exitAddress = "0x0000000000000000000000000000000000000001"
 destinationNetwork = 0
 
 [options]
+agglayerAdminURL = "https://admin.example.com"
 blockRange = 10000
 concurrencyLimit = 200
 rpcBatchSize = 200
@@ -233,7 +239,10 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
 		"exitAddress": "0x0000000000000000000000000000000000000001",
-		"targetBlock": "100"
+		"targetBlock": "100",
+		"options": {
+			"agglayerAdminURL": "https://admin.example.com"
+		}
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
 
@@ -245,6 +254,7 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	require.Equal(t, 200, cfg.Options.RPCBatchSize)
 	require.Equal(t, 0, cfg.Options.RPCDelayMs)
 	require.Equal(t, uint64(0), cfg.Options.L1StartBlock)
+	require.True(t, cfg.Options.UseAgglayerAdminToStepFCheck)
 }
 
 func TestLoadConfig_StepAWindowSize(t *testing.T) {
@@ -260,6 +270,7 @@ func TestLoadConfig_StepAWindowSize(t *testing.T) {
 			"exitAddress": "0x0000000000000000000000000000000000000001",
 			"targetBlock": "100",
 			"options": {
+				"agglayerAdminURL": "https://admin.example.com",
 				"stepAWindowSize": 2000
 			}
 		}`
@@ -278,7 +289,10 @@ func TestLoadConfig_StepAWindowSize(t *testing.T) {
 			"l2RpcUrl": "http://localhost:8545",
 			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
 			"exitAddress": "0x0000000000000000000000000000000000000001",
-			"targetBlock": "100"
+			"targetBlock": "100",
+			"options": {
+				"agglayerAdminURL": "https://admin.example.com"
+			}
 		}`
 		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
 
@@ -299,6 +313,7 @@ func TestLoadConfig_RelativeOutputDir(t *testing.T) {
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
+			"agglayerAdminURL": "https://admin.example.com",
 			"outputDir": "./output"
 		}
 	}`
@@ -411,6 +426,7 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
+			"agglayerAdminURL": "https://admin.example.com",
 			"ignoreGenesisBalance": true,
 			"ignoreOnTraceError": true,
 			"ignoreBalanceMismatch": true,
@@ -427,6 +443,81 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 	require.True(t, cfg.Options.IgnoreUnclaimed)
 }
 
+func TestMergeOptions_UseAgglayerAdminToStepFCheck(t *testing.T) {
+	t.Parallel()
+
+	const base = `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
+		"targetBlock": "100"%s
+	}`
+
+	t.Run("defaults to true when absent (with agglayerAdminURL)", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "cfg.json")
+		opts := `,
+		"options": { "agglayerAdminURL": "https://admin.example.com" }`
+		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, base, opts), 0o600))
+
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.True(t, cfg.Options.UseAgglayerAdminToStepFCheck)
+	})
+
+	t.Run("explicit false is honored and does not require agglayerAdminURL", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "cfg.json")
+		opts := `,
+		"options": { "useAgglayerAdminToStepFCheck": false }`
+		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, base, opts), 0o600))
+
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.False(t, cfg.Options.UseAgglayerAdminToStepFCheck)
+	})
+
+	t.Run("explicit true is honored", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "cfg.json")
+		opts := `,
+		"options": { "useAgglayerAdminToStepFCheck": true, "agglayerAdminURL": "https://admin.example.com" }`
+		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, base, opts), 0o600))
+
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.True(t, cfg.Options.UseAgglayerAdminToStepFCheck)
+	})
+
+	t.Run("errors when enabled by default without agglayerAdminURL", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "cfg.json")
+		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, base, ""), 0o600))
+
+		_, err := LoadConfig(path)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "agglayerAdminURL")
+		require.Contains(t, err.Error(), "useAgglayerAdminToStepFCheck")
+	})
+
+	t.Run("errors when explicitly enabled without agglayerAdminURL", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "cfg.json")
+		opts := `,
+		"options": { "useAgglayerAdminToStepFCheck": true }`
+		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, base, opts), 0o600))
+
+		_, err := LoadConfig(path)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "agglayerAdminURL")
+	})
+}
+
 func TestLoadConfig_AgglayerClient(t *testing.T) {
 	t.Parallel()
 
@@ -437,6 +528,7 @@ func TestLoadConfig_AgglayerClient(t *testing.T) {
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
+			"agglayerAdminURL": "https://admin.example.com",
 			"agglayerClient": {
 				"GRPC": {
 					"URL": "agglayer.example.com:50051",
@@ -464,6 +556,7 @@ func TestMergeOptions_BridgeService(t *testing.T) {
 		"exitAddress": "0x0000000000000000000000000000000000000001",
 		"targetBlock": "100",
 		"options": {
+			"agglayerAdminURL": "https://admin.example.com",
 			"bridgeServiceURL": "http://bridge:8080",
 			"bridgeServiceType": "zkevm"
 		}
@@ -550,7 +643,10 @@ func TestLoadConfig_InvalidTargetBlock(t *testing.T) {
 		"l2RpcUrl": "http://localhost:8545",
 		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
 		"exitAddress": "0x0000000000000000000000000000000000000001",
-		"targetBlock": "FinalizedBock"
+		"targetBlock": "FinalizedBock",
+		"options": {
+			"agglayerAdminURL": "https://admin.example.com"
+		}
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
 
