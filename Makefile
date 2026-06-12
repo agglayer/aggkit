@@ -102,12 +102,8 @@ build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no o
 	docker build -t aggkit:local-debug -f ./Dockerfile.debug .
 
 .PHONY: test-unit
-test-unit: ## Runs the unit tests
+test-unit: ## Runs the short unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
-
-.PHONY: test-unit-short
-test-unit-short: ## Runs only the fast unit tests (skips integration tests). Suitable for editor on-save runs.
-	go test -count=1 -short -timeout 2m ./...
 
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
