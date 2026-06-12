@@ -39,6 +39,12 @@ type L1InfoTreeQuerier interface {
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (treetypes.Proof, error)
 }
 
+// gerProber is the minimal surface gerIndexed/waitForGER need to check whether a GER is indexed.
+// *l1infotreesync.L1InfoTreeSync satisfies it.
+type gerProber interface {
+	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
+}
+
 // OpenL1InfoTree opens the L1 Info Tree syncer, anchored on the certificate's settlement GER.
 //
 // It first checks, read-only, whether settlementGER is already indexed in the local DB. If it is,
@@ -78,13 +84,9 @@ func OpenL1InfoTree(
 
 	logger.Infof("settlement GER %s not yet indexed; starting L1 info tree sync from L1", settlementGER.Hex())
 
-	finality := aggkittypes.LatestBlock
-	if cfg.BlockFinality != "" {
-		f, err := aggkittypes.NewBlockNumberFinality(cfg.BlockFinality)
-		if err != nil {
-			return nil, fmt.Errorf("invalid l1Sync.blockFinality %q: %w", cfg.BlockFinality, err)
-		}
-		finality = *f
+	finality, err := resolveBlockFinality(cfg.BlockFinality)
+	if err != nil {
+		return nil, err
 	}
 
 	l1Client, err := etherman.NewRPCClient(ctx, logger, ethermanconfig.RPCClientConfig{
@@ -161,11 +163,25 @@ func OpenL1InfoTree(
 	return syncer, nil
 }
 
+// resolveBlockFinality maps the configured l1Sync.blockFinality string to a BlockNumberFinality,
+// defaulting to LatestBlock when the string is empty. An unparseable value is a hard error.
+func resolveBlockFinality(blockFinality string) (aggkittypes.BlockNumberFinality, error) {
+	if blockFinality == "" {
+		return aggkittypes.LatestBlock, nil
+	}
+	f, err := aggkittypes.NewBlockNumberFinality(blockFinality)
+	if err != nil {
+		return aggkittypes.BlockNumberFinality{},
+			fmt.Errorf("invalid l1Sync.blockFinality %q: %w", blockFinality, err)
+	}
+	return *f, nil
+}
+
 // waitForGER polls the L1 info tree DB until the given GER is indexed, returning nil once it is.
 // It returns the context error if ctx is cancelled (e.g. the operator interrupts the process)
 // before the GER appears, or any query error from the probe.
 func waitForGER(
-	ctx context.Context, syncer *l1infotreesync.L1InfoTreeSync, ger common.Hash, logger *log.Logger,
+	ctx context.Context, syncer gerProber, ger common.Hash, logger *log.Logger,
 ) error {
 	ticker := time.NewTicker(gerSyncPollInterval)
 	defer ticker.Stop()
@@ -188,7 +204,7 @@ func waitForGER(
 
 // gerIndexed reports whether the given Global Exit Root is already present in the L1 info tree DB.
 // A missing GER (db.ErrNotFound) is reported as not indexed; any other error is propagated.
-func gerIndexed(syncer *l1infotreesync.L1InfoTreeSync, ger common.Hash) (bool, error) {
+func gerIndexed(syncer gerProber, ger common.Hash) (bool, error) {
 	_, err := syncer.GetInfoByGlobalExitRoot(ger)
 	switch {
 	case err == nil:
