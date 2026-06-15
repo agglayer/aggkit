@@ -132,6 +132,34 @@ func TestBuildAccumulated(t *testing.T) {
 	require.Equal(t, uint32(2), got[1].OriginNetwork)
 }
 
+func TestSubtractGenesisBalances(t *testing.T) {
+	t.Parallel()
+	a := common.HexToAddress("0xa") // live > genesis → reduced
+	b := common.HexToAddress("0xb") // live == genesis → dropped to 0
+	c := common.HexToAddress("0xc") // genesis > live → capped to 0, errored
+	d := common.HexToAddress("0xd") // genesis preload but no live balance → errored
+
+	eth := map[common.Address]*big.Int{
+		a: big.NewInt(100),
+		b: big.NewInt(40),
+		c: big.NewInt(30),
+	}
+	genesis := map[common.Address]*big.Int{
+		a: big.NewInt(40),
+		b: big.NewInt(40),
+		c: big.NewInt(100),
+		d: big.NewInt(5),
+	}
+
+	errored := subtractGenesisBalances(eth, genesis)
+
+	require.ElementsMatch(t, []common.Address{c, d}, errored)
+	require.Equal(t, big.NewInt(60), eth[a]) // 100 - 40
+	require.NotContains(t, eth, b)           // 40 - 40 = 0 → removed
+	require.NotContains(t, eth, c)           // capped to 0 → removed
+	require.NotContains(t, eth, d)           // never had a balance
+}
+
 // --- RPC fan-out functions via a batch JSON-RPC stub ---------------------------------------------
 
 // newBatchRPCServer answers JSON-RPC requests, batched (array) or single (object), dispatching each
@@ -327,15 +355,45 @@ func TestRunStepB1HappyPath(t *testing.T) {
 	require.Equal(t, "100", res.Accumulated[0].TotalBalance)
 }
 
-func TestRunStepB1GenesisPreloadAborts(t *testing.T) {
+func TestRunStepB1GenesisPreloadSubtracted(t *testing.T) {
 	t.Parallel()
 	addr := common.HexToAddress("0x01")
+	// Live balance 100, genesis preload 40 → certificate balance is 100-40 = 60.
 	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
 		switch method {
 		case rpcMethodEthGetCode:
 			return "0x"
 		case rpcMethodEthGetBalance:
-			return "0x64" // non-zero everywhere, including genesis → guard trips
+			if blockTagOf(t, params) == genesisTag {
+				return "0x28" // 40 preloaded at genesis
+			}
+			return "0x64" // 100 live
+		default:
+			return "0x0"
+		}
+	})
+
+	stepA := &StepAResult{Addresses: []common.Address{addr}}
+	res, err := RunStepB1(t.Context(), stepBConfig(url), 100, stepA)
+	require.NoError(t, err)
+	require.Len(t, res.EOABalances, 1)
+	require.Equal(t, "60", res.EOABalances[0].ETHBalance)
+	require.Equal(t, "60", res.Accumulated[0].TotalBalance) // native ETH accumulation, genesis removed
+}
+
+func TestRunStepB1GenesisPreloadExceedsBalanceAborts(t *testing.T) {
+	t.Parallel()
+	addr := common.HexToAddress("0x01")
+	// Genesis preload (100) exceeds the live balance (50) → subtraction would go negative.
+	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
+		switch method {
+		case rpcMethodEthGetCode:
+			return "0x"
+		case rpcMethodEthGetBalance:
+			if blockTagOf(t, params) == genesisTag {
+				return "0x64" // 100 at genesis
+			}
+			return "0x32" // 50 live
 		default:
 			return "0x0"
 		}
@@ -343,16 +401,17 @@ func TestRunStepB1GenesisPreloadAborts(t *testing.T) {
 
 	stepA := &StepAResult{Addresses: []common.Address{addr}}
 
-	// default: a genesis preload aborts Step B1
+	// default: an EOA driven negative by the genesis subtraction aborts Step B1
 	_, err := RunStepB1(t.Context(), stepBConfig(url), 100, stepA)
 	require.Error(t, err)
 
-	// ignoreGenesisBalance downgrades it to a warning and continues
+	// ignoreGenesisBalance caps the EOA to 0 and continues
 	cfg := stepBConfig(url)
 	cfg.Options.IgnoreGenesisBalance = true
 	res, err := RunStepB1(t.Context(), cfg, 100, stepA)
 	require.NoError(t, err)
 	require.NotNil(t, res)
+	require.Empty(t, res.EOABalances) // capped to 0 → dropped
 }
 
 func TestRunStepB(t *testing.T) {

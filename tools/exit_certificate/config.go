@@ -39,10 +39,11 @@ type Options struct {
 	// admin API (admin_getTokenBalance) and verifies the per-token balances against the certificate
 	// and LBT. When false, Step F is skipped entirely (no agglayer admin query, no balance check).
 	UseAgglayerAdminToStepFCheck bool `json:"useAgglayerAdminToStepFCheck"`
-	// IgnoreGenesisBalance, when true, suppresses the abort that fires when any EOA or contract has a
-	// non-zero ETH balance at block 0 (a genesis preload that would inflate the exit certificate
-	// totals): the check still runs and warns, but the run continues. Defaults to false (abort); set
-	// to true only for Kurtosis or test environments.
+	// IgnoreGenesisBalance controls what happens when an EOA's genesis (block 0) ETH balance, which
+	// is always subtracted from its live balance so a genesis preload does not inflate the exit
+	// certificate totals, exceeds that live balance (the subtraction would go negative). When false
+	// (default) such an EOA aborts Step B; when true the EOA is capped to 0 and the run continues
+	// with a warning. Set to true only for Kurtosis or test environments.
 	IgnoreGenesisBalance bool `json:"ignoreGenesisBalance"`
 	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
@@ -121,7 +122,7 @@ var defaultOptions = Options{
 	L2StartBlock:                          0,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
-	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
+	// IgnoreGenesisBalance defaults to false (abort when a genesis preload exceeds the live balance).
 }
 
 // LoadConfig reads and validates the config file. The format is selected by file extension:

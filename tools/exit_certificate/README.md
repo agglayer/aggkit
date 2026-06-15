@@ -114,7 +114,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `agglayerAdminToken` | `""` | Bearer token for authenticating requests to `agglayerAdminURL`. Required when the admin endpoint is protected by Google Cloud IAP. See [Authenticating with IAP](#authenticating-with-iap) for how to obtain it. |
 | `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
 | `useAgglayerAdminToStepFCheck` | `true` | Selects the Step F comparison source. When `true` (default), Step F queries the agglayer admin API (`admin_getTokenBalance`) and does a three-way check (LBT == agglayer == certificate; requires `agglayerAdminURL`). When `false`, it skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). |
-| `ignoreGenesisBalance` | `false` | When `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis or test environments. |
+| `ignoreGenesisBalance` | `false` | Step B always subtracts each EOA's genesis (block 0) ETH balance from its live balance (preloaded ETH was never bridged in and would inflate the certificate). This flag only controls what happens when the genesis balance exceeds the live balance (the subtraction goes negative): when `false` (default) Step B aborts; when `true` the EOA is capped to 0 and the run continues with a warning. Set `true` only for Kurtosis or test environments. |
 | `ignoreOnTraceError` | `false` | When `true`, Step A skips transactions whose `debug_traceTransaction` call fails instead of aborting. Failed tx hashes are saved to `step-a-failed-traces.json`. |
 | `ignoreBalanceMismatch` | `false` | When `true`, Step F does not abort the pipeline on token balance mismatches. Instead it produces a capped certificate (`step-f-capped-certificate.json`) where each token's bridge exits are proportionally scaled down to `min(agglayer, lbt)`. See [Step F](#step-f--agglayer-token-balance-verification) for details. |
 | `ignoreUnclaimed` | `false` | When `true`, Step E detects and logs unclaimed deposits but leaves the certificate unchanged. When `false` (default), any unclaimed asset deposit causes the pipeline to error. |
@@ -191,7 +191,7 @@ Some options let you continue past conditions that would otherwise abort the pip
 | Option | Default | When to change |
 | ------ | ------- | -------------- |
 | `ignoreOnTraceError` | `false` | Set to `true` if some transactions fail `debug_traceTransaction` (e.g. the node does not have full archive traces for old blocks). Failed hashes are saved to `step-a-failed-traces.json` — review them to confirm the missing value is acceptable. |
-| `ignoreGenesisBalance` | `false` | Set to `true` only for Kurtosis or test environments where addresses are pre-funded at genesis. In production, a non-zero genesis balance indicates a misconfiguration, so leave it `false` to abort. |
+| `ignoreGenesisBalance` | `false` | Genesis-preloaded ETH is always subtracted from the live balances. Set to `true` only for Kurtosis or test environments where addresses pre-funded at genesis may have spent below their preload — it caps those EOAs to 0 instead of aborting. In production, leave it `false`: a genesis balance exceeding the live balance indicates a misconfiguration and should abort. |
 | `ignoreUnclaimed` | `false` | Set to `true` to proceed even when unclaimed L1→L2 asset deposits are detected. The deposits are logged with a warning but the certificate is left unchanged. Only safe if you have independently verified the unclaimed deposits are negligible or already handled. |
 
 ## Commands
@@ -341,7 +341,8 @@ Classifies addresses as EOA vs contract, then queries ETH balance and every wrap
 
 1. `eth_getCode` to classify EOA vs contract
 2. `eth_getBalance` for all EOAs
-3. `balanceOf` calls per token × per EOA (token list from LBT)
+3. **Genesis preload subtraction** — fetch each EOA's ETH balance at block 0 and subtract it from the live balance, since genesis-preloaded ETH was never bridged in and would inflate the certificate. EOAs reduced to 0 are dropped. An EOA whose genesis balance exceeds its live balance is capped to 0 and aborts Step B1 unless `ignoreGenesisBalance=true` (then it just warns). The balances and accumulations are written genesis-adjusted.
+4. `balanceOf` calls per token × per EOA (token list from LBT)
 
 **Output:** `step-b-eoa-balances.json`, `step-b-accumulated.json`, `step-b-contract-addresses.json`
 

@@ -79,6 +79,26 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 	}
 	log.Infof("ETH: %d EOAs with non-zero balance", len(eoaEthBalances))
 
+	// Phase 2b: detect a genesis preload and subtract it from the live ETH balances so the
+	// preloaded (never-bridged) ETH does not inflate the certificate totals.
+	genesisBalances, err := checkGenesisBalances(
+		ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("check genesis balances: %w", err)
+	}
+	if erroredEOAs := subtractGenesisBalances(eoaEthBalances, genesisBalances); len(erroredEOAs) > 0 {
+		if !cfg.Options.IgnoreGenesisBalance {
+			return nil, fmt.Errorf(
+				"genesis ETH preload exceeds the live balance for %d EOAs (would go negative): "+
+					"set ignoreGenesisBalance=true to cap them to 0 and continue: %v",
+				len(erroredEOAs), erroredEOAs,
+			)
+		}
+		log.Warnf("Genesis subtraction drove %d EOAs negative (ignoreGenesisBalance=true, capped to 0): %v",
+			len(erroredEOAs), erroredEOAs)
+	}
+
 	// Phase 3: fetch wrapped token balances (parallel across tokens)
 	tokenBalances, err := fetchAllTokenBalances(
 		ctx, rpcURL, stepA.WrappedTokens, eoaAddrs, blockTag, batchSize, concurrency,
@@ -87,7 +107,7 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 		return nil, fmt.Errorf("fetch token balances: %w", err)
 	}
 
-	// Build outputs
+	// Build outputs (from the genesis-adjusted ETH balances)
 	tokenLookup := make(map[common.Address]WrappedToken, len(stepA.WrappedTokens))
 	for _, t := range stepA.WrappedTokens {
 		tokenLookup[t.WrappedTokenAddress] = t
@@ -95,15 +115,6 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 
 	eoaBalances := buildEOABalances(eoaAddrs, eoaEthBalances, tokenBalances, tokenLookup)
 	accumulated := buildAccumulated(eoaEthBalances, tokenBalances, tokenLookup)
-
-	if err := checkGenesisBalances(
-		ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency,
-	); err != nil {
-		if !cfg.Options.IgnoreGenesisBalance {
-			return nil, err
-		}
-		log.Warnf("Genesis balance check failed (ignoreGenesisBalance=true, continuing): %v", err)
-	}
 
 	log.Infof("STEP B1 complete: %d EOAs with balances, %d token accumulations",
 		len(eoaBalances), len(accumulated))
@@ -146,25 +157,29 @@ func sumBalances(balances map[common.Address]*big.Int) *big.Int {
 	return total
 }
 
-// checkGenesisBalances fetches ETH balances at block 0 for EOAs and contracts and returns
-// an error if any account has a non-zero genesis balance, since that indicates a genesis
-// preload that would inflate the exit certificate totals.
+// checkGenesisBalances fetches ETH balances at block 0 for all EOAs and returns the per-EOA
+// genesis balances (only non-zero entries). A non-zero genesis balance indicates a genesis
+// preload that would inflate the exit certificate totals, since that ETH was never bridged in.
+// The returned map is the set of EOAs that held funds at genesis; the caller removes those funds
+// from the live balances via subtractGenesisBalances. A diagnostic breakdown against the live
+// EOA/contract balances is logged when any preload is found. The error is reserved for RPC
+// failures.
 func checkGenesisBalances(
 	ctx context.Context, rpcURL string,
 	eoaAddrs, contractAddrs []common.Address,
 	eoaEthBalances map[common.Address]*big.Int,
 	blockTag string, batchSize, concurrency int,
-) error {
+) (map[common.Address]*big.Int, error) {
 	scBalances, err := fetchETHBalances(ctx, rpcURL, contractAddrs, blockTag, batchSize, concurrency)
 	if err != nil {
-		return fmt.Errorf("fetch contract ETH balances: %w", err)
+		return nil, fmt.Errorf("fetch contract ETH balances: %w", err)
 	}
 	genesisBalances, err := fetchETHBalances(ctx, rpcURL, eoaAddrs, toBlockTag(0), batchSize, concurrency)
 	if err != nil {
-		return fmt.Errorf("fetch genesis ETH balances: %w", err)
+		return nil, fmt.Errorf("fetch genesis ETH balances: %w", err)
 	}
 	if len(genesisBalances) == 0 {
-		return nil
+		return genesisBalances, nil
 	}
 	for addr, bal := range genesisBalances {
 		log.Infof("🚨🚨🚨 Genesis ETH preload detected for %s: %s wei", addr.Hex(), bal.String())
@@ -180,11 +195,42 @@ func checkGenesisBalances(
 	log.Infof("Total contract ETH       : %s wei (%d accounts)", padLeft(scBalancesStr, maxLen), len(scBalances))
 	log.Infof("                           -------------------------------")
 	log.Infof("Total genesis subtraction: %s wei (%d accounts)", padLeft(diffStr, maxLen), len(eoaEthBalances))
-	return fmt.Errorf(
-		"genesis ETH preload detected in %d accounts: "+
-			"balances at block 0 are non-zero, indicating this is not a real network",
-		len(genesisBalances),
-	)
+	return genesisBalances, nil
+}
+
+// subtractGenesisBalances removes each EOA's genesis (block 0) balance from its live ETH balance,
+// since genesis-preloaded ETH was never bridged in and must not inflate the exit certificate.
+// Live balances are mutated in place: an EOA whose balance drops to 0 is removed from the map
+// (matching fetchETHBalances, which only keeps non-zero balances). When an EOA's genesis balance
+// exceeds its live balance the result is capped to 0 and the address is appended to the returned
+// list of errored EOAs; the caller decides whether to abort or ignore them based on
+// options.ignoreGenesisBalance.
+func subtractGenesisBalances(
+	eoaEthBalances, genesisBalances map[common.Address]*big.Int,
+) []common.Address {
+	var errored []common.Address
+	for addr, genesisBal := range genesisBalances {
+		if genesisBal.Sign() == 0 {
+			continue
+		}
+		live := eoaEthBalances[addr]
+		if live == nil {
+			live = new(big.Int)
+		}
+		remaining := new(big.Int).Sub(live, genesisBal)
+		if remaining.Sign() < 0 {
+			log.Warnf("Genesis ETH preload (%s wei) exceeds live balance (%s wei) for %s: capping to 0",
+				genesisBal.String(), live.String(), addr.Hex())
+			errored = append(errored, addr)
+			remaining.SetInt64(0)
+		}
+		if remaining.Sign() == 0 {
+			delete(eoaEthBalances, addr)
+		} else {
+			eoaEthBalances[addr] = remaining
+		}
+	}
+	return errored
 }
 
 // classifyAddresses separates addresses into EOA and contract via eth_getCode.

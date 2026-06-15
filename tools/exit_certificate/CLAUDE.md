@@ -81,7 +81,8 @@ Three sub-steps: B1, B2, B3. Running `--step b` executes all three.
 
 1. `eth_getCode` → classify each address as EOA or contract
 2. `eth_getBalance` for all EOAs at `targetBlock`
-3. `balanceOf(address)` per wrapped token × per EOA (token list from LBT)
+3. **Genesis preload subtraction** — `checkGenesisBalances` fetches each EOA's ETH balance at block 0 (the set of EOAs preloaded at genesis) and `subtractGenesisBalances` removes it from the live balance, since genesis-preloaded ETH was never bridged in and would otherwise inflate the certificate. An EOA reduced to 0 is dropped. When an EOA's genesis balance **exceeds** its live balance (the subtraction would go negative) it is capped to 0 and flagged: by default Step B1 aborts; with `options.ignoreGenesisBalance=true` it logs a warning and continues. The subtraction always runs (even when no EOA goes negative), so the EOA balances and accumulations below are already genesis-adjusted.
+4. `balanceOf(address)` per wrapped token × per EOA (token list from LBT)
 
 - **Output:** `step-b-eoa-balances.json` (`[]EOABalance`), `step-b-accumulated.json` (`[]AccumulatedBalance`), `step-b-contract-addresses.json` (`[]common.Address`)
 
@@ -353,7 +354,7 @@ Defaults applied by `LoadConfig`:
 - `l1BridgeAddress` defaults to `l2BridgeAddress`
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
-- `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.
+- `options.ignoreGenesisBalance` = `false` — Step B1 always subtracts each EOA's genesis (block 0) ETH balance from its live balance (a genesis preload was never bridged in and would inflate the certificate). This option only controls what happens when an EOA's genesis balance **exceeds** its live balance (the subtraction would go negative): when `false` (default) that aborts Step B1; when `true` the EOA is capped to 0 and the run continues with a warning. Set `true` only for Kurtosis/test environments.
 - `options.ignoreBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
 - `options.useAgglayerAdminToStepFCheck` = `true` — when `false`, Step F skips the agglayer admin query and compares LBT (Step 0) vs certificate sums offline instead.
 - Relative paths in `options.outputDir` and `signerConfig.Path` resolve from the directory containing the config file.
@@ -377,7 +378,7 @@ Defaults applied by `LoadConfig`:
 - **Step F reads from `step-d-exit-certificate.json`** for the balance check (not the final certificate), so the comparison reflects pure L2 exits before Step E additions. When capping is triggered, the caps are also applied to the final (Step E) certificate's `BridgeExits` in `runAll`, and saved as `step-f-capped-certificate.json`.
 - **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
 - **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
-- **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — the genesis-balance guard (`ignoreGenesisBalance=false`, the default) catches this early.
+- **Genesis preload is subtracted, not just guarded:** Step B1 removes each EOA's block-0 ETH balance from its live balance so preloaded (never-bridged) ETH does not inflate the certificate. `ignoreGenesisBalance` only governs the case where the genesis balance exceeds the live balance (negative result): abort (default) vs cap-to-0-and-continue. SC-locked value can still be negative when the LBT is stale.
 - **`debug_traceTransaction` must be available** on the L2 RPC (Step A). Archive node required.
 - **Step G2 requires Anvil only in shadow-fork mode** (`options.verifyNewLocalExitRootUsingShadowFork=true`; `anvil` binary in `$PATH`, from the Foundry toolchain). The default off-chain mode needs no Anvil.
 - **FEP chains are not supported.** Only Pessimistic Proof certificates are generated.
