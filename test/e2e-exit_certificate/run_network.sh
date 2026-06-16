@@ -163,15 +163,9 @@ start_environment() {
 stop_environment() {
     log_info "Stopping exit-certificate Kurtosis environment..."
 
-    if ! enclave_exists; then
-        log_warn "Enclave '$ENCLAVE_NAME' does not exist. Nothing to do."
-        return
-    fi
-
-    log_info "Removing enclave '$ENCLAVE_NAME'..."
-    kurtosis enclave rm --force "$ENCLAVE_NAME"
-    kurtosis clean
-    log_info "Enclave '$ENCLAVE_NAME' removed successfully."
+    log_info "Removing all enclaves"
+    kurtosis clean --all
+    log_info "All enclaves removed successfully."
 }
 
 restart_environment() {

@@ -378,6 +378,9 @@ elif [[ "$TX_STATUS" == *"success"* ]]; then
 else
     log_error "Receipt: status=REVERTED blockNumber=$TX_BLOCK"
     log_error "Replaying transaction to get revert reason..."
+    echo "---- execution ---- " 
+    cast run --rpc-url "$L1_RPC_URL" "$TX_HASH" 2>&1
+    echo "---- revert reason ---- "  
     cast run --rpc-url "$L1_RPC_URL" "$TX_HASH" 2>&1 | grep -E "revert|Revert|error|Error|←" | head -20 >&2
     exit 1
 fi
