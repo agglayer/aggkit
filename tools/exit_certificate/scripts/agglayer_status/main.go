@@ -78,8 +78,7 @@ func main() {
 	}
 }
 
-// printStatus shows the latest certificate (pending if any, otherwise settled) plus
-// a settled/pending summary from GetNetworkInfo.
+// printStatus shows the latest certificate (pending if any, otherwise settled).
 func printStatus(ctx context.Context, client agglayer.AgglayerClientInterface, netID uint32) error {
 	header, label, err := latestHeader(ctx, client, netID)
 	if err != nil {
@@ -90,7 +89,6 @@ func printStatus(ctx context.Context, client agglayer.AgglayerClientInterface, n
 	} else {
 		printHeader(header, label)
 	}
-	printNetworkInfo(ctx, client, netID)
 	return nil
 }
 
@@ -134,25 +132,6 @@ func printHeader(h *agglayertypes.CertificateHeader, label string) {
 	}
 }
 
-func printNetworkInfo(ctx context.Context, client agglayer.AgglayerClientInterface, netID uint32) {
-	info, err := client.GetNetworkInfo(ctx, netID)
-	if err != nil {
-		// Non-fatal: the header above is the primary output.
-		fmt.Fprintf(os.Stderr, "WARN: get network info: %v\n", err)
-		return
-	}
-	fmt.Printf("Network info (network %d):\n", netID)
-	fmt.Printf("  Settled height:       %s\n", u64ptr(info.SettledHeight))
-	pendingStatus := "—"
-	if info.LatestPendingStatus != nil {
-		pendingStatus = info.LatestPendingStatus.String()
-	}
-	fmt.Printf("  Pending height:       %s (status: %s)\n", u64ptr(info.LatestPendingHeight), pendingStatus)
-	if info.LatestPendingError != "" {
-		fmt.Printf("  Pending error:        %s\n", info.LatestPendingError)
-	}
-}
-
 // waitForSettled polls GetNetworkInfo until the latest certificate is settled (no open
 // pending certificate). Returns an error if a pending certificate is in error state or
 // the timeout elapses.
@@ -182,7 +161,6 @@ func waitForSettled(
 			height := u64ptr(info.LatestPendingHeight)
 			switch {
 			case status.IsInError():
-				printNetworkInfo(ctx, client, netID)
 				return fmt.Errorf("latest certificate (height %s) is in error state", height)
 			case status.IsSettled():
 				fmt.Printf("Certificate settled (height %s).\n", height)
