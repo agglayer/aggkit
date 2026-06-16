@@ -1,0 +1,221 @@
+// Command agglayer_status prints the status and height of the latest agglayer
+// certificate for an L2 network, using the same agglayer gRPC client as the
+// exit_certificate tool. With -wait it polls until the latest certificate settles.
+//
+// Connection info is taken from the environment (AGGLAYER_GRPC_URL) so it composes
+// with tools/exit_certificate/scripts/export_kurtosis_env.sh. It is normally invoked
+// through the agglayer_certificate_status.sh wrapper.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
+
+	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/log"
+)
+
+func main() {
+	defGRPC := os.Getenv("AGGLAYER_GRPC_URL")
+	defNetwork := uint(1)
+	if v := os.Getenv("NETWORK_INDEX"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+			defNetwork = uint(n)
+		}
+	}
+
+	grpcURL := flag.String("grpc", defGRPC, "agglayer gRPC endpoint (default: $AGGLAYER_GRPC_URL)")
+	networkID := flag.Uint("network", defNetwork, "L2 network id (default: $NETWORK_INDEX or 1)")
+	useTLS := flag.Bool("tls", false, "use TLS for the gRPC connection")
+	wait := flag.Bool("wait", false, "poll until the latest certificate is Settled")
+	interval := flag.Duration("interval", 5*time.Second, "poll interval when -wait is set")
+	timeout := flag.Duration("timeout", 10*time.Minute, "max time to wait with -wait (0 = no limit)")
+	flag.Parse()
+
+	if *grpcURL == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: agglayer gRPC URL is required (set AGGLAYER_GRPC_URL or pass -grpc)")
+		os.Exit(1)
+	}
+
+	logger := log.WithFields("module", "agglayer_status")
+
+	grpcCfg := aggkitgrpc.DefaultConfig()
+	grpcCfg.URL = *grpcURL
+	grpcCfg.UseTLS = *useTLS
+
+	client, err := agglayer.NewAgglayerClient(agglayer.ClientConfig{GRPC: grpcCfg}, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: create agglayer client: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	netID := uint32(*networkID)
+	fmt.Printf("Agglayer gRPC: %s\n", *grpcURL)
+	fmt.Printf("Network id:    %d\n", netID)
+
+	if !*wait {
+		if err := printStatus(ctx, client, netID); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if err := waitForSettled(ctx, client, netID, *interval, *timeout); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// printStatus shows the latest certificate (pending if any, otherwise settled) plus
+// a settled/pending summary from GetNetworkInfo.
+func printStatus(ctx context.Context, client agglayer.AgglayerClientInterface, netID uint32) error {
+	header, label, err := latestHeader(ctx, client, netID)
+	if err != nil {
+		return err
+	}
+	if header == nil {
+		fmt.Printf("No certificate found for network %d yet.\n", netID)
+	} else {
+		printHeader(header, label)
+	}
+	printNetworkInfo(ctx, client, netID)
+	return nil
+}
+
+// latestHeader returns the latest pending certificate header if one exists, else the
+// latest settled one. The returned label describes which was found.
+func latestHeader(
+	ctx context.Context, client agglayer.AgglayerClientInterface, netID uint32,
+) (*agglayertypes.CertificateHeader, string, error) {
+	pending, err := client.GetLatestPendingCertificateHeader(ctx, netID)
+	if err != nil {
+		return nil, "", fmt.Errorf("get latest pending certificate header: %w", err)
+	}
+	if pending != nil {
+		return pending, "Latest certificate (pending):", nil
+	}
+	settled, err := client.GetLatestSettledCertificateHeader(ctx, netID)
+	if err != nil {
+		return nil, "", fmt.Errorf("get latest settled certificate header: %w", err)
+	}
+	if settled != nil {
+		return settled, "Latest certificate (settled):", nil
+	}
+	return nil, "", nil
+}
+
+func printHeader(h *agglayertypes.CertificateHeader, label string) {
+	fmt.Println(label)
+	fmt.Printf("  Status:               %s\n", h.Status.String())
+	fmt.Printf("  Height:               %d\n", h.Height)
+	fmt.Printf("  Certificate ID:       %s\n", h.CertificateID.Hex())
+	fmt.Printf("  Epoch / Index:        %s / %s\n", u64ptr(h.EpochNumber), u64ptr(h.CertificateIndex))
+	fmt.Printf("  New local exit root:  %s\n", h.NewLocalExitRoot.Hex())
+	if h.PreviousLocalExitRoot != nil {
+		fmt.Printf("  Prev local exit root: %s\n", h.PreviousLocalExitRoot.Hex())
+	}
+	if h.SettlementTxHash != nil {
+		fmt.Printf("  Settlement tx hash:   %s\n", h.SettlementTxHash.Hex())
+	}
+	if h.Error != nil {
+		fmt.Printf("  Error:                %s\n", h.Error.Error())
+	}
+}
+
+func printNetworkInfo(ctx context.Context, client agglayer.AgglayerClientInterface, netID uint32) {
+	info, err := client.GetNetworkInfo(ctx, netID)
+	if err != nil {
+		// Non-fatal: the header above is the primary output.
+		fmt.Fprintf(os.Stderr, "WARN: get network info: %v\n", err)
+		return
+	}
+	fmt.Printf("Network info (network %d):\n", netID)
+	fmt.Printf("  Settled height:       %s\n", u64ptr(info.SettledHeight))
+	pendingStatus := "—"
+	if info.LatestPendingStatus != nil {
+		pendingStatus = info.LatestPendingStatus.String()
+	}
+	fmt.Printf("  Pending height:       %s (status: %s)\n", u64ptr(info.LatestPendingHeight), pendingStatus)
+	if info.LatestPendingError != "" {
+		fmt.Printf("  Pending error:        %s\n", info.LatestPendingError)
+	}
+}
+
+// waitForSettled polls GetNetworkInfo until the latest certificate is settled (no open
+// pending certificate). Returns an error if a pending certificate is in error state or
+// the timeout elapses.
+func waitForSettled(
+	ctx context.Context, client agglayer.AgglayerClientInterface,
+	netID uint32, interval, timeout time.Duration,
+) error {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	fmt.Printf("Waiting until the latest certificate is settled (interval=%s, timeout=%s)...\n",
+		interval, durStr(timeout))
+
+	start := time.Now()
+	for {
+		info, err := client.GetNetworkInfo(ctx, netID)
+		if err != nil {
+			return fmt.Errorf("get network info: %w", err)
+		}
+
+		elapsed := time.Since(start).Round(time.Second)
+		if info.LatestPendingStatus != nil {
+			status := *info.LatestPendingStatus
+			height := u64ptr(info.LatestPendingHeight)
+			switch {
+			case status.IsInError():
+				printNetworkInfo(ctx, client, netID)
+				return fmt.Errorf("latest certificate (height %s) is in error state", height)
+			case status.IsSettled():
+				fmt.Printf("Certificate settled (height %s).\n", height)
+				printStatus(ctx, client, netID)
+				return nil
+			default:
+				fmt.Printf("  height=%s status=%s — still waiting... (%s elapsed)\n", height, status.String(), elapsed)
+			}
+		} else {
+			// No open pending certificate: whatever was submitted has settled.
+			fmt.Printf("No pending certificate — latest is settled. (%s elapsed)\n", elapsed)
+			printStatus(ctx, client, netID)
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for settlement after %s", durStr(timeout))
+		case <-time.After(interval):
+		}
+	}
+}
+
+func u64ptr(p *uint64) string {
+	if p == nil {
+		return "—"
+	}
+	return strconv.FormatUint(*p, 10)
+}
+
+func durStr(d time.Duration) string {
+	if d == 0 {
+		return "none"
+	}
+	return d.String()
+}
