@@ -45,6 +45,8 @@ jobs:
           kurtosis version
 
       - name: Run exit-certificate E2E test
+        env:
+          VERBOSE: "1"
         run: ./test/e2e-exit_certificate/run_e2e_test.sh
 
       - name: Stop Kurtosis enclave
