@@ -20,6 +20,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 )
@@ -31,14 +32,20 @@ const (
 	defaultWaitTimeout = 10 * time.Minute
 )
 
+// clientFactory builds an agglayer client. It matches agglayer.NewAgglayerClient and is
+// injectable so run can be exercised in tests without a live endpoint.
+type clientFactory func(agglayer.ClientConfig, aggkitcommon.Logger) (agglayer.AgglayerClientInterface, error)
+
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:], agglayer.NewAgglayerClient); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(args []string, newClient clientFactory) error {
+	fs := flag.NewFlagSet("agglayer_status", flag.ContinueOnError)
+
 	defGRPC := os.Getenv("AGGLAYER_GRPC_URL")
 	defNetwork := uint(1)
 	if v := os.Getenv("NETWORK_INDEX"); v != "" {
@@ -47,13 +54,15 @@ func run() error {
 		}
 	}
 
-	grpcURL := flag.String("grpc", defGRPC, "agglayer gRPC endpoint (default: $AGGLAYER_GRPC_URL)")
-	networkID := flag.Uint("network", defNetwork, "L2 network id (default: $NETWORK_INDEX or 1)")
-	useTLS := flag.Bool("tls", false, "use TLS for the gRPC connection")
-	wait := flag.Bool("wait", false, "poll until the latest certificate is Settled")
-	interval := flag.Duration("interval", defaultPollInterval, "poll interval when -wait is set")
-	timeout := flag.Duration("timeout", defaultWaitTimeout, "max time to wait with -wait (0 = no limit)")
-	flag.Parse()
+	grpcURL := fs.String("grpc", defGRPC, "agglayer gRPC endpoint (default: $AGGLAYER_GRPC_URL)")
+	networkID := fs.Uint("network", defNetwork, "L2 network id (default: $NETWORK_INDEX or 1)")
+	useTLS := fs.Bool("tls", false, "use TLS for the gRPC connection")
+	wait := fs.Bool("wait", false, "poll until the latest certificate is Settled")
+	interval := fs.Duration("interval", defaultPollInterval, "poll interval when -wait is set")
+	timeout := fs.Duration("timeout", defaultWaitTimeout, "max time to wait with -wait (0 = no limit)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
 	if *grpcURL == "" {
 		return errors.New("agglayer gRPC URL is required (set AGGLAYER_GRPC_URL or pass -grpc)")
@@ -65,7 +74,7 @@ func run() error {
 	grpcCfg.URL = *grpcURL
 	grpcCfg.UseTLS = *useTLS
 
-	client, err := agglayer.NewAgglayerClient(agglayer.ClientConfig{GRPC: grpcCfg}, logger)
+	client, err := newClient(agglayer.ClientConfig{GRPC: grpcCfg}, logger)
 	if err != nil {
 		return fmt.Errorf("create agglayer client: %w", err)
 	}

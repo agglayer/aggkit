@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -226,6 +228,60 @@ func TestWaitForSettled(t *testing.T) {
 		err := waitForSettled(context.Background(), client, 1, interval, 20*time.Millisecond)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "timed out waiting for settlement")
+	})
+}
+
+func TestRun(t *testing.T) {
+	// okFactory returns a clientFactory that always yields the given mock client,
+	// ignoring the config/logger so run can be driven without a live endpoint.
+	okFactory := func(c agglayer.AgglayerClientInterface) clientFactory {
+		return func(agglayer.ClientConfig, aggkitcommon.Logger) (agglayer.AgglayerClientInterface, error) {
+			return c, nil
+		}
+	}
+
+	t.Run("missing grpc url", func(t *testing.T) {
+		t.Setenv("AGGLAYER_GRPC_URL", "")
+		err := run(nil, func(agglayer.ClientConfig, aggkitcommon.Logger) (agglayer.AgglayerClientInterface, error) {
+			t.Fatal("client factory must not be called when the URL is missing")
+			return nil, nil
+		})
+		require.EqualError(t, err, "agglayer gRPC URL is required (set AGGLAYER_GRPC_URL or pass -grpc)")
+	})
+
+	t.Run("invalid flag", func(t *testing.T) {
+		err := run([]string{"-does-not-exist"}, okFactory(mocks.NewAgglayerClientMock(t)))
+		require.Error(t, err)
+	})
+
+	t.Run("client factory fails", func(t *testing.T) {
+		err := run([]string{"-grpc", "localhost:1"},
+			func(agglayer.ClientConfig, aggkitcommon.Logger) (agglayer.AgglayerClientInterface, error) {
+				return nil, errors.New("dial boom")
+			})
+		require.EqualError(t, err, "create agglayer client: dial boom")
+	})
+
+	t.Run("status path without wait", func(t *testing.T) {
+		client := mocks.NewAgglayerClientMock(t)
+		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(fullHeader(), nil)
+		require.NoError(t, run([]string{"-grpc", "localhost:1"}, okFactory(client)))
+	})
+
+	t.Run("network index from env", func(t *testing.T) {
+		t.Setenv("NETWORK_INDEX", "2")
+		client := mocks.NewAgglayerClientMock(t)
+		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(2)).Return(fullHeader(), nil)
+		require.NoError(t, run([]string{"-grpc", "localhost:1"}, okFactory(client)))
+	})
+
+	t.Run("wait path settles", func(t *testing.T) {
+		client := mocks.NewAgglayerClientMock(t)
+		client.EXPECT().GetNetworkInfo(mockCtx(), uint32(1)).
+			Return(agglayertypes.NetworkInfo{LatestPendingStatus: nil}, nil)
+		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
+		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
+		require.NoError(t, run([]string{"-grpc", "localhost:1", "-wait", "-interval", "5ms"}, okFactory(client)))
 	})
 }
 
