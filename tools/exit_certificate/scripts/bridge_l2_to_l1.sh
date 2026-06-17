@@ -379,7 +379,12 @@ TX_STATUS=$(cast receipt --rpc-url "$L2_RPC_URL" "$TX_HASH" status 2>/dev/null |
 TX_BLOCK=$(cast receipt --rpc-url "$L2_RPC_URL" "$TX_HASH" blockNumber 2>/dev/null || true)
 if [[ -z "$TX_STATUS" ]]; then
     log_warn "Could not fetch receipt for $TX_HASH"
-elif [[ "$TX_STATUS" == *"success"* ]]; then
+# `cast receipt <hash> status` formats the status differently across versions:
+# foundry <=1.5 prints "1 (success)" / "0 (failed)", foundry >=1.7 prints the raw
+# bool "true" / "false". Accept every success spelling so a healthy tx is never
+# misreported as REVERTED.
+elif [[ "$TX_STATUS" == *"success"* || "$TX_STATUS" == "true" \
+     || "$TX_STATUS" == "1" || "$TX_STATUS" == "0x1" ]]; then
     log_info "Receipt: status=success blockNumber=$TX_BLOCK"
 else
     log_error "Receipt: status=REVERTED blockNumber=$TX_BLOCK"
