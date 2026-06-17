@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -23,7 +24,21 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
+const (
+	// defaultPollInterval is how often -wait polls the agglayer for settlement.
+	defaultPollInterval = 5 * time.Second
+	// defaultWaitTimeout is the maximum time -wait blocks before giving up.
+	defaultWaitTimeout = 10 * time.Minute
+)
+
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	defGRPC := os.Getenv("AGGLAYER_GRPC_URL")
 	defNetwork := uint(1)
 	if v := os.Getenv("NETWORK_INDEX"); v != "" {
@@ -36,13 +51,12 @@ func main() {
 	networkID := flag.Uint("network", defNetwork, "L2 network id (default: $NETWORK_INDEX or 1)")
 	useTLS := flag.Bool("tls", false, "use TLS for the gRPC connection")
 	wait := flag.Bool("wait", false, "poll until the latest certificate is Settled")
-	interval := flag.Duration("interval", 5*time.Second, "poll interval when -wait is set")
-	timeout := flag.Duration("timeout", 10*time.Minute, "max time to wait with -wait (0 = no limit)")
+	interval := flag.Duration("interval", defaultPollInterval, "poll interval when -wait is set")
+	timeout := flag.Duration("timeout", defaultWaitTimeout, "max time to wait with -wait (0 = no limit)")
 	flag.Parse()
 
 	if *grpcURL == "" {
-		fmt.Fprintln(os.Stderr, "ERROR: agglayer gRPC URL is required (set AGGLAYER_GRPC_URL or pass -grpc)")
-		os.Exit(1)
+		return errors.New("agglayer gRPC URL is required (set AGGLAYER_GRPC_URL or pass -grpc)")
 	}
 
 	logger := log.WithFields("module", "agglayer_status")
@@ -53,8 +67,7 @@ func main() {
 
 	client, err := agglayer.NewAgglayerClient(agglayer.ClientConfig{GRPC: grpcCfg}, logger)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: create agglayer client: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("create agglayer client: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -65,17 +78,10 @@ func main() {
 	fmt.Printf("Network id:    %d\n", netID)
 
 	if !*wait {
-		if err := printStatus(ctx, client, netID); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-			os.Exit(1)
-		}
-		return
+		return printStatus(ctx, client, netID)
 	}
 
-	if err := waitForSettled(ctx, client, netID, *interval, *timeout); err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-		os.Exit(1)
-	}
+	return waitForSettled(ctx, client, netID, *interval, *timeout)
 }
 
 // printStatus shows the latest certificate (pending if any, otherwise settled).
@@ -164,16 +170,14 @@ func waitForSettled(
 				return fmt.Errorf("latest certificate (height %s) is in error state", height)
 			case status.IsSettled():
 				fmt.Printf("Certificate settled (height %s).\n", height)
-				printStatus(ctx, client, netID)
-				return nil
+				return printStatus(ctx, client, netID)
 			default:
 				fmt.Printf("  height=%s status=%s — still waiting... (%s elapsed)\n", height, status.String(), elapsed)
 			}
 		} else {
 			// No open pending certificate: whatever was submitted has settled.
 			fmt.Printf("No pending certificate — latest is settled. (%s elapsed)\n", elapsed)
-			printStatus(ctx, client, netID)
-			return nil
+			return printStatus(ctx, client, netID)
 		}
 
 		select {
