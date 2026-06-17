@@ -23,7 +23,4 @@ run_quiet "${EXIT_CETIFICATE_SCRIPT_DIR}/bridge_l2_to_l1.sh" --amount 1
 log_info "⏳ Wait for the certificate to be settled"
 run_quiet "${EXIT_CETIFICATE_SCRIPT_DIR}/agglayer_certificate_status.sh" --wait
 
-log_info "🛑 Stop aggsender to avoid new certificates to be produced"
-kurtosis service stop aggkit aggkit-001
-
 log_info "✅ Done, the network is ready for exit-certificate tests"
