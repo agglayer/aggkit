@@ -22,6 +22,14 @@ docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/lo
 mv -f LogEmitter.abi abi/logemitter.abi
 mv -f LogEmitter.bin bin/logemitter.bin
 
+docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/rollupmanagermock/RollupManagerMock.sol -o /contracts --abi --bin --overwrite --optimize --via-ir
+mv -f RollupManagerMock.abi abi/rollupmanagermock.abi
+mv -f RollupManagerMock.bin bin/rollupmanagermock.bin
+
+docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/sequencerurlrollupmock/SequencerURLRollupMock.sol -o /contracts --abi --bin --overwrite --optimize --via-ir
+mv -f SequencerURLRollupMock.abi abi/sequencerurlrollupmock.abi
+mv -f SequencerURLRollupMock.bin bin/sequencerurlrollupmock.bin
+
 docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/mintableerc20/MintableERC20.sol -o /contracts --abi --bin --overwrite --optimize
 mv -f MintableERC20.abi abi/mintableerc20.abi
 mv -f MintableERC20.bin bin/mintableerc20.bin

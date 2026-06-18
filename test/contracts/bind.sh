@@ -13,4 +13,6 @@ gen claimmock
 gen claimmockcaller
 gen claimmocktest
 gen logemitter
+gen rollupmanagermock
+gen sequencerurlrollupmock
 gen mintableerc20
