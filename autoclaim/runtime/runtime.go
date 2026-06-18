@@ -271,14 +271,25 @@ func DefaultFactories(logConfig log.Config) Factories {
 	}
 }
 
+func hasEnabledClaimer(cfg autoclaimcfg.Config) bool {
+	for _, claimer := range cfg.Claimers {
+		if claimer.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
 // Start creates and starts the Auto Claim runtime when enabled.
 func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtime, error) {
 	cfg := deps.Config
-	if !cfg.Enabled {
-		return nil, nil
-	}
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid AutoClaim config: %w", err)
+	}
+	// With no enabled claimer there is nothing to run, so the runtime is a no-op (it does not even
+	// open storage). Whether Auto Claim runs at all is decided by the process components list.
+	if !hasEnabledClaimer(cfg) {
+		return nil, nil
 	}
 	if isNil(deps.L1BridgeSync) {
 		return nil, fmt.Errorf("AutoClaim requires l1bridgesync / L1 bridge sync when enabled")
@@ -401,6 +412,7 @@ func createClaimer(
 	factories Factories,
 ) (autoclaimtypes.Claimer, EthTxManager, func(context.Context), error) {
 	target := targetFromConfig(cfg)
+	target.DryRun = deps.Config.DryRun
 	rpcClientCfg := targetRPCClientConfig(cfg.URLRPC)
 	rpcClient, err := factories.NewRPCClient(ctx, logger, rpcClientCfg)
 	if err != nil {
@@ -631,6 +643,13 @@ func newGERSyncer(
 	gerCfg.DBPath = filepath.Join(claimerDir, "l2gersync.sqlite")
 	if gerCfg.SyncBlockChunkSize == 0 {
 		gerCfg.SyncBlockChunkSize = defaultGERSyncBlockChunkSize
+	}
+	// Per-claimer overrides of the shared [L2GERSync] values, applied when explicitly set.
+	if cfg.BlockFinality != (aggkittypes.BlockNumberFinality{}) {
+		gerCfg.BlockFinality = cfg.BlockFinality
+	}
+	if cfg.InitialBlockNum != 0 {
+		gerCfg.InitialBlockNum = cfg.InitialBlockNum
 	}
 
 	rdCfg := sharedRDCfg

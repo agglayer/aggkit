@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 
+	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctype "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -11,6 +12,14 @@ import (
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+// AutoClaimQuerier is the read-only view of Auto Claim request state needed to serve the public
+// Auto Claim endpoints. It is satisfied by *autoclaim/storage.Storage and is nil when the autoclaim
+// component is not running.
+type AutoClaimQuerier interface {
+	GetRequest(ctx context.Context, key autoclaimtypes.RequestKey) (*autoclaimtypes.AutoClaimRequest, error)
+	ListRequests(ctx context.Context, filter autoclaimtypes.RequestFilter) (*autoclaimtypes.RequestPage, error)
+}
 
 type Bridger interface {
 	GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error)

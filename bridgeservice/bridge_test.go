@@ -40,26 +40,28 @@ const (
 )
 
 type bridgeWithMocks struct {
-	bridge         *BridgeService
-	upgradeQuerier *mocks.AgglayerManagerUpgradeQuerier
-	l1InfoTree     *mocks.L1InfoTreeSyncer
-	injectedGERs   *mocks.L2GERSyncer
-	bridgeL1       *mocks.Bridger
-	claimL1        *mocks.Claimer
-	bridgeL2       *mocks.Bridger
-	claimL2        *mocks.Claimer
+	bridge           *BridgeService
+	upgradeQuerier   *mocks.AgglayerManagerUpgradeQuerier
+	l1InfoTree       *mocks.L1InfoTreeSyncer
+	injectedGERs     *mocks.L2GERSyncer
+	bridgeL1         *mocks.Bridger
+	claimL1          *mocks.Claimer
+	bridgeL2         *mocks.Bridger
+	claimL2          *mocks.Claimer
+	autoClaimQuerier *mocks.AutoClaimQuerier
 }
 
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
-		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
-		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
-		injectedGERs:   mocks.NewL2GERSyncer(t),
-		bridgeL1:       mocks.NewBridger(t),
-		claimL1:        mocks.NewClaimer(t),
-		bridgeL2:       mocks.NewBridger(t),
-		claimL2:        mocks.NewClaimer(t),
+		upgradeQuerier:   mocks.NewAgglayerManagerUpgradeQuerier(t),
+		l1InfoTree:       mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs:     mocks.NewL2GERSyncer(t),
+		bridgeL1:         mocks.NewBridger(t),
+		claimL1:          mocks.NewClaimer(t),
+		bridgeL2:         mocks.NewBridger(t),
+		claimL2:          mocks.NewClaimer(t),
+		autoClaimQuerier: mocks.NewAutoClaimQuerier(t),
 	}
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
@@ -69,7 +71,8 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
+		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2, b.autoClaimQuerier)
 	return b
 }
 

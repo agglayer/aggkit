@@ -1,5 +1,108 @@
 basePath: /bridge/v1
 definitions:
+  apitypes.DecisionResponse:
+    properties:
+      created_at:
+        type: string
+      decider:
+        type: string
+      decider_id:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      policy_name:
+        type: string
+      reason:
+        type: string
+      result:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  apitypes.ErrorResponse:
+    properties:
+      error:
+        example: request 0:1:42 not found
+        type: string
+    type: object
+  apitypes.ListResponse:
+    properties:
+      bridges:
+        items:
+          $ref: '#/definitions/apitypes.RequestResponse'
+        type: array
+      count:
+        type: integer
+      page_number:
+        type: integer
+      page_size:
+        type: integer
+    type: object
+  apitypes.RequestResponse:
+    properties:
+      amount:
+        type: string
+      block_num:
+        type: integer
+      block_pos:
+        type: integer
+      block_timestamp:
+        type: integer
+      bridge_tx_hash:
+        type: string
+      claim_tx_hash:
+        type: string
+      created_at:
+        type: string
+      deposit_count:
+        type: integer
+      destination_address:
+        type: string
+      destination_network:
+        type: integer
+      global_index:
+        type: string
+      id:
+        type: string
+      l1_info_tree_index:
+        type: integer
+      last_error:
+        type: string
+      last_observed_result_at:
+        type: string
+      last_observed_send_at:
+        type: string
+      leaf_type:
+        type: integer
+      manual_decision:
+        $ref: '#/definitions/apitypes.DecisionResponse'
+      max_retries:
+        type: integer
+      metadata:
+        type: string
+      origin_address:
+        type: string
+      origin_network:
+        type: integer
+      policy_decision:
+        $ref: '#/definitions/apitypes.DecisionResponse'
+      policy_status:
+        type: string
+      retry_count:
+        type: integer
+      status:
+        type: string
+      to_address:
+        type: string
+      tx_manager_id:
+        type: string
+      txn_sender:
+        type: string
+      updated_at:
+        type: string
+    type: object
   bridgesync.LastReorg:
     properties:
       detected_at:
@@ -8,6 +111,32 @@ definitions:
         type: integer
       to_block:
         type: integer
+    type: object
+  github_com_agglayer_aggkit_bridgeservice_types.ClaimProof:
+    description: Claim proof structure for verifying claims in the bridge
+    properties:
+      l1_info_tree_leaf:
+        allOf:
+        - $ref: '#/definitions/types.L1InfoTreeLeafResponse'
+        description: L1 info tree leaf data associated with the claim
+      proof_local_exit_root:
+        description: Merkle proof for the local exit root
+        example:
+        - '[0x1'
+        - ' 0x2'
+        - ' 0x3...]'
+        items:
+          type: string
+        type: array
+      proof_rollup_exit_root:
+        description: Merkle proof for the rollup exit root
+        example:
+        - '[0x4'
+        - ' 0x5'
+        - ' 0x6...]'
+        items:
+          type: string
+        type: array
     type: object
   github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse:
     description: Contains basic health‐check information for the bridge service
@@ -120,32 +249,6 @@ definitions:
         description: Total number of bridge events
         example: 42
         type: integer
-    type: object
-  types.ClaimProof:
-    description: Claim proof structure for verifying claims in the bridge
-    properties:
-      l1_info_tree_leaf:
-        allOf:
-        - $ref: '#/definitions/types.L1InfoTreeLeafResponse'
-        description: L1 info tree leaf data associated with the claim
-      proof_local_exit_root:
-        description: Merkle proof for the local exit root
-        example:
-        - '[0x1'
-        - ' 0x2'
-        - ' 0x3...]'
-        items:
-          type: string
-        type: array
-      proof_rollup_exit_root:
-        description: Merkle proof for the rollup exit root
-        example:
-        - '[0x4'
-        - ' 0x5'
-        - ' 0x6...]'
-        items:
-          type: string
-        type: array
     type: object
   types.ClaimResponse:
     description: Detailed information about a claim event
@@ -584,6 +687,109 @@ paths:
       summary: Get health status
       tags:
       - health
+  /autoclaim/bridges:
+    get:
+      description: |-
+        Returns tracked Auto Claim requests with optional filters and pagination. Available
+        only when the autoclaim component is running.
+      parameters:
+      - description: Filter by origin network ID
+        format: int32
+        in: query
+        name: origin_network
+        type: integer
+      - description: Filter by destination network ID
+        format: int32
+        in: query
+        name: destination_network
+        type: integer
+      - description: Filter by request status
+        in: query
+        name: status
+        type: string
+      - description: Filter by policy result
+        in: query
+        name: policy_status
+        type: string
+      - description: Alias for policy_status
+        in: query
+        name: policy_result
+        type: string
+      - description: Filter by 0x-prefixed bridge transaction hash
+        in: query
+        name: bridge_tx_hash
+        type: string
+      - description: Filter by 0x-prefixed claim transaction hash
+        in: query
+        name: claim_tx_hash
+        type: string
+      - description: Filter by minimum bridge block number
+        format: int64
+        in: query
+        name: from_block
+        type: integer
+      - description: Filter by maximum bridge block number
+        format: int64
+        in: query
+        name: to_block
+        type: integer
+      - description: Page number (default 0)
+        format: int32
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size (default 100, max 1000)
+        format: int32
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apitypes.ListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+      summary: List Auto Claim bridge requests
+      tags:
+      - autoclaim
+  /autoclaim/bridges/{id}:
+    get:
+      description: |-
+        Returns one tracked Auto Claim request by request ID. Available only when the
+        autoclaim component is running.
+      parameters:
+      - description: Auto Claim request ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apitypes.RequestResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+      summary: Get Auto Claim bridge request
+      tags:
+      - autoclaim
   /bridge-by-deposit-count:
     get:
       description: Returns the bridge by deposit count for the specified network (checks
@@ -776,7 +982,7 @@ paths:
         "200":
           description: Merkle proofs and L1 info tree leaf
           schema:
-            $ref: '#/definitions/types.ClaimProof'
+            $ref: '#/definitions/github_com_agglayer_aggkit_bridgeservice_types.ClaimProof'
         "400":
           description: Bad Request
           schema:

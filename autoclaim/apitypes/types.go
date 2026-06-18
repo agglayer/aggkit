@@ -1,18 +1,22 @@
-package api
+// Package apitypes holds the shared Auto Claim REST DTOs and query parsing used by both the
+// public bridge-service endpoints and the standalone Auto Claim admin API.
+package apitypes
 
 import (
 	"encoding/hex"
+	"math/big"
 	"time"
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
-// ErrorResponse is returned when the Auto Claim API cannot complete a request.
+// ErrorResponse is returned when an Auto Claim request cannot be completed.
 type ErrorResponse struct {
 	Error string `json:"error" example:"request 0:1:42 not found"`
 }
 
-// ListResponse is returned by GET /autoclaim/v1/bridges.
+// ListResponse is returned by the Auto Claim bridge request listing endpoint.
 type ListResponse struct {
 	Bridges    []RequestResponse `json:"bridges"`
 	Count      int               `json:"count"`
@@ -74,7 +78,8 @@ type DecisionRequest struct {
 	DeciderID string            `json:"decider_id,omitempty" example:"alice"`
 }
 
-func newRequestResponse(request autoclaimtypes.AutoClaimRequest) RequestResponse {
+// NewRequestResponse maps a domain Auto Claim request into its stable REST representation.
+func NewRequestResponse(request autoclaimtypes.AutoClaimRequest) RequestResponse {
 	response := RequestResponse{
 		ID:                 string(request.Key),
 		Status:             request.Status.String(),
@@ -125,4 +130,19 @@ func newDecisionResponse(decision autoclaimtypes.PolicyDecision) *DecisionRespon
 		CreatedAt:  decision.CreatedAt,
 		UpdatedAt:  decision.UpdatedAt,
 	}
+}
+
+func hashPtrHex(hash *common.Hash) *string {
+	if hash == nil {
+		return nil
+	}
+	value := hash.Hex()
+	return &value
+}
+
+func bigIntString(value *big.Int) string {
+	if value == nil {
+		return ""
+	}
+	return value.String()
 }

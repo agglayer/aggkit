@@ -1,6 +1,6 @@
 basePath: /autoclaim/v1
 definitions:
-  api.DecisionRequest:
+  apitypes.DecisionRequest:
     properties:
       decider:
         example: operator
@@ -16,7 +16,7 @@ definitions:
         example: approved by operator
         type: string
     type: object
-  api.DecisionResponse:
+  apitypes.DecisionResponse:
     properties:
       created_at:
         type: string
@@ -37,26 +37,13 @@ definitions:
       updated_at:
         type: string
     type: object
-  api.ErrorResponse:
+  apitypes.ErrorResponse:
     properties:
       error:
         example: request 0:1:42 not found
         type: string
     type: object
-  api.ListResponse:
-    properties:
-      bridges:
-        items:
-          $ref: '#/definitions/api.RequestResponse'
-        type: array
-      count:
-        type: integer
-      page_number:
-        type: integer
-      page_size:
-        type: integer
-    type: object
-  api.RequestResponse:
+  apitypes.RequestResponse:
     properties:
       amount:
         type: string
@@ -93,7 +80,7 @@ definitions:
       leaf_type:
         type: integer
       manual_decision:
-        $ref: '#/definitions/api.DecisionResponse'
+        $ref: '#/definitions/apitypes.DecisionResponse'
       max_retries:
         type: integer
       metadata:
@@ -103,7 +90,7 @@ definitions:
       origin_network:
         type: integer
       policy_decision:
-        $ref: '#/definitions/api.DecisionResponse'
+        $ref: '#/definitions/apitypes.DecisionResponse'
       policy_status:
         type: string
       retry_count:
@@ -123,112 +110,13 @@ info:
   contact:
     name: API Support
     url: https://polygon.technology/
-  description: API documentation for the Auto Claim service
+  description: Admin API for the Auto Claim service (manual approval and rejection).
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
-  title: Auto Claim API
+  title: Auto Claim Admin API
   version: "1.0"
 paths:
-  /bridges:
-    get:
-      description: Returns tracked Auto Claim requests with optional filters and pagination.
-      parameters:
-      - description: Filter by origin network ID
-        format: int32
-        in: query
-        name: origin_network
-        type: integer
-      - description: Filter by destination network ID
-        format: int32
-        in: query
-        name: destination_network
-        type: integer
-      - description: Filter by request status
-        in: query
-        name: status
-        type: string
-      - description: Filter by policy result
-        in: query
-        name: policy_status
-        type: string
-      - description: Alias for policy_status
-        in: query
-        name: policy_result
-        type: string
-      - description: Filter by 0x-prefixed bridge transaction hash
-        in: query
-        name: bridge_tx_hash
-        type: string
-      - description: Filter by 0x-prefixed claim transaction hash
-        in: query
-        name: claim_tx_hash
-        type: string
-      - description: Filter by minimum bridge block number
-        format: int64
-        in: query
-        name: from_block
-        type: integer
-      - description: Filter by maximum bridge block number
-        format: int64
-        in: query
-        name: to_block
-        type: integer
-      - description: Page number (default 0)
-        format: int32
-        in: query
-        name: page_number
-        type: integer
-      - description: Page size (default 100, max 1000)
-        format: int32
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.ListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: List Auto Claim bridge requests
-      tags:
-      - autoclaim
-  /bridges/{id}:
-    get:
-      description: Returns one tracked Auto Claim request by request ID.
-      parameters:
-      - description: Auto Claim request ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.RequestResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Get Auto Claim bridge request
-      tags:
-      - autoclaim
   /bridges/{id}/approve:
     post:
       consumes:
@@ -245,30 +133,30 @@ paths:
         in: body
         name: decision
         schema:
-          $ref: '#/definitions/api.DecisionRequest'
+          $ref: '#/definitions/apitypes.DecisionRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.RequestResponse'
+            $ref: '#/definitions/apitypes.RequestResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
       summary: Approve Auto Claim bridge request
       tags:
       - autoclaim
@@ -288,30 +176,30 @@ paths:
         in: body
         name: decision
         schema:
-          $ref: '#/definitions/api.DecisionRequest'
+          $ref: '#/definitions/apitypes.DecisionRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.RequestResponse'
+            $ref: '#/definitions/apitypes.RequestResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/apitypes.ErrorResponse'
       summary: Reject Auto Claim bridge request
       tags:
       - autoclaim

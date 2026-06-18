@@ -7,10 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShouldRunAutoClaimRequiresComponentAndEnabledConfig(t *testing.T) {
-	require.False(t, shouldRunAutoClaim([]string{aggkitcommon.AUTOCLAIM}, false))
-	require.False(t, shouldRunAutoClaim([]string{aggkitcommon.BRIDGE}, true))
-	require.True(t, shouldRunAutoClaim([]string{aggkitcommon.AUTOCLAIM}, true))
+func TestShouldRunAutoClaimRequiresComponent(t *testing.T) {
+	require.False(t, shouldRunAutoClaim([]string{aggkitcommon.BRIDGE}))
+	require.True(t, shouldRunAutoClaim([]string{aggkitcommon.AUTOCLAIM}))
 }
 
 func TestAutoClaimSelectsOnlyL1RuntimeDependencies(t *testing.T) {

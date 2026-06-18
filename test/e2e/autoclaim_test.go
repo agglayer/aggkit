@@ -23,6 +23,7 @@ import (
 
 const (
 	autoClaimAPIBaseURL      = "http://127.0.0.1:11579"
+	bridgeServiceBaseURL     = "http://127.0.0.1:11577"
 	autoClaimKeystorePass    = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 	autoClaimBridgeAddr      = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
 	autoClaimL2RPC           = "http://op-geth-001:8545"
@@ -234,10 +235,11 @@ func getAutoClaimRequest(
 	ctx context.Context,
 	key autoclaimtypes.RequestKey,
 ) (autoClaimRequestResponse, bool, error) {
+	// Public request inspection is served by the bridge service, not the admin Auto Claim API.
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("%s/autoclaim/v1/bridges/%s", autoClaimAPIBaseURL, key),
+		fmt.Sprintf("%s/bridge/v1/autoclaim/bridges/%s", bridgeServiceBaseURL, key),
 		nil,
 	)
 	if err != nil {
@@ -310,7 +312,6 @@ func autoClaimConfig(policyName string, networkID uint32) string {
 	suffix := strings.ReplaceAll(policyName, "-", "_")
 	return fmt.Sprintf(`
 [AutoClaim]
-Enabled = true
 StoragePath = "/tmp/autoclaim-e2e-%s.sqlite"
 
 [AutoClaim.API]

@@ -29,6 +29,8 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	autoclaimruntime "github.com/agglayer/aggkit/autoclaim/runtime"
+	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
+	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
@@ -184,6 +186,24 @@ func start(cliCtx *cli.Context) error {
 		}
 	}
 
+	// Open the Auto Claim storage once when the autoclaim component runs, so the bridge service can
+	// serve the public read endpoints and the autoclaim runtime can share the same handle (avoiding a
+	// second open / migration run). run.go owns this handle for the process lifetime.
+	var autoClaimQuerier bridgeservice.AutoClaimQuerier
+	var autoClaimStorage autoclaimtypes.Storage
+	if shouldRunAutoClaim(components) {
+		storage, err := autoclaimstorage.NewStandalone(
+			log.WithFields("module", aggkitcommon.AUTOCLAIM),
+			cfg.AutoClaim.StoragePath,
+			cfg.BridgeL1Sync.DBQueryTimeout.Duration,
+		)
+		if err != nil {
+			return err
+		}
+		autoClaimStorage = storage
+		autoClaimQuerier = storage
+	}
+
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
 			cfg.REST,
@@ -195,6 +215,7 @@ func start(cliCtx *cli.Context) error {
 			l2BridgeSync,
 			l1ClaimSync,
 			l2ClaimSync,
+			autoClaimQuerier,
 		)
 		go b.Start(ctx)
 		log.Info("Bridge service started")
@@ -217,7 +238,9 @@ func start(cliCtx *cli.Context) error {
 		log.Info("starting L1 Info Tree Syncer...")
 		go l1InfoTreeSync.Start(ctx)
 	}
-	if shouldRunAutoClaim(components, cfg.AutoClaim.Enabled) {
+	if shouldRunAutoClaim(components) {
+		// Share the storage handle opened above so the runtime does not re-open / re-migrate the DB.
+		sharedAutoClaimStorage := autoClaimStorage
 		if _, err := autoclaimruntime.Start(ctx, autoclaimruntime.Dependencies{
 			Config:                cfg.AutoClaim,
 			LogConfig:             cfg.Log,
@@ -228,7 +251,11 @@ func start(cliCtx *cli.Context) error {
 			L1Client:              l1Client,
 			L2GERSyncConfig:       cfg.L2GERSync,
 			ReorgDetectorL2Config: cfg.ReorgDetectorL2,
-		}, autoclaimruntime.Factories{}); err != nil {
+		}, autoclaimruntime.Factories{
+			OpenStorage: func(aggkitcommon.Logger, string, time.Duration) (autoclaimtypes.Storage, error) {
+				return sharedAutoClaimStorage, nil
+			},
+		}); err != nil {
 			return err
 		}
 	}
@@ -600,8 +627,8 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	return false
 }
 
-func shouldRunAutoClaim(components []string, enabled bool) bool {
-	return enabled && isNeeded([]string{aggkitcommon.AUTOCLAIM}, components)
+func shouldRunAutoClaim(components []string) bool {
+	return isNeeded([]string{aggkitcommon.AUTOCLAIM}, components)
 }
 
 func l1InfoTreeMustRun(components []string) bool {
@@ -1070,6 +1097,7 @@ func createBridgeService(
 	bridgeL2 bridgeservice.Bridger,
 	claimL1 bridgeservice.Claimer,
 	claimL2 bridgeservice.Claimer,
+	autoClaimQuerier bridgeservice.AutoClaimQuerier,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
@@ -1090,6 +1118,7 @@ func createBridgeService(
 		claimL1,
 		bridgeL2,
 		claimL2,
+		autoClaimQuerier,
 	)
 }
 

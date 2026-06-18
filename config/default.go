@@ -382,7 +382,7 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 
 [AutoClaim]
-Enabled = false
+DryRun = false
 StoragePath = "{{PathRWData}}/autoclaim.sqlite"
 Claimers = []
 

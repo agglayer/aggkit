@@ -110,6 +110,22 @@ func TestSubmitClaimWithZeroWaitPeriod(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSubmitClaimDryRunSkipsSubmission(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	storage := newFakeStorage(request)
+	ethTxManager := &fakeEthTxManager{}
+	sender := newTestSender(t, storage, ethTxManager, &fakeClaimReader{})
+
+	target := makeTarget(1)
+	target.DryRun = true
+	attempt, err := sender.SubmitClaim(context.Background(), request, makeProof(), target)
+	require.NoError(t, err)
+	require.NotNil(t, attempt)
+	require.Equal(t, 0, ethTxManager.addCalls)
+	require.Empty(t, storage.attempts)
+	require.Equal(t, autoclaimtypes.RequestStatusDryRun, storage.request.Status)
+}
+
 func TestNewAttemptUsesRequestMaxRetriesWhenTargetMaxRetriesIsZero(t *testing.T) {
 	request := makeRequest(bridgesynctypes.LeafTypeAsset)
 	storage := newFakeStorage(request)

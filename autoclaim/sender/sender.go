@@ -12,6 +12,7 @@ import (
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/autoclaim/claimtx"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -134,6 +135,16 @@ func (s *Sender) SubmitClaim(
 	data, err := s.packClaim(*latest, proof, globalIndex)
 	if err != nil {
 		return nil, err
+	}
+
+	if target.DryRun {
+		if err := s.transitionTo(ctx, latest.Key, autoclaimtypes.RequestStatusDryRun); err != nil {
+			return nil, err
+		}
+		log.Infof("AutoClaim dry-run: prepared but did not submit claim for request %s (global index %s)",
+			latest.Key, globalIndex)
+		return noOpAttempt(*latest, target, ethtxtypes.MonitoredTxStatusCreated,
+			"dry run: claim transaction not submitted"), nil
 	}
 
 	attempt := s.newAttempt(*latest, target, data)

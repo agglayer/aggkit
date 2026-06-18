@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
@@ -31,9 +32,12 @@ const (
 	PolicyNameBasicFilter PolicyName = "basic-filter"
 )
 
-// Config is the top-level Auto Claim configuration.
+// Config is the top-level Auto Claim configuration. Whether Auto Claim runs is decided by the
+// process components list (the "autoclaim" component), not by a config flag.
 type Config struct {
-	Enabled        bool             `mapstructure:"Enabled"`
+	// DryRun runs the full Auto Claim pipeline (discovery, policy, proof preparation) but skips
+	// submitting the claim transaction; matching requests end in the "dry-run" terminal status.
+	DryRun         bool             `mapstructure:"DryRun"`
 	StoragePath    string           `mapstructure:"StoragePath"`
 	API            APIConfig        `mapstructure:"API"`
 	Claimers       []ClaimerConfig  `mapstructure:"Claimers"`
@@ -78,6 +82,12 @@ type ClaimerConfig struct {
 	RetryAfter   cfgtypes.Duration   `mapstructure:"RetryAfter"`
 	MaxRetries   uint64              `mapstructure:"MaxRetries"`
 	EthTxManager ethtxmanager.Config `mapstructure:"EthTxManager"`
+	// BlockFinality optionally overrides the shared [L2GERSync] block finality for this claimer's
+	// destination-L2 GER syncer. Empty means inherit the shared value.
+	BlockFinality aggkittypes.BlockNumberFinality `mapstructure:"BlockFinality"`
+	// InitialBlockNum optionally overrides the shared [L2GERSync] initial sync block for this
+	// claimer's destination-L2 GER syncer. Zero means inherit the shared value.
+	InitialBlockNum uint64 `mapstructure:"InitialBlockNum"`
 }
 
 // PolicyConfig configures named policy behavior.
@@ -89,9 +99,17 @@ type PolicyConfig struct {
 	MaxGas             uint64   `mapstructure:"MaxGas"`
 }
 
-// Validate checks whether the Auto Claim config is usable when enabled.
+// Validate checks whether the Auto Claim config is usable. When no claimer is enabled the component
+// is effectively inert (e.g. the default config), so validation is skipped.
 func (c Config) Validate() error {
-	if !c.Enabled {
+	hasEnabledClaimer := false
+	for _, claimer := range c.Claimers {
+		if claimer.Enabled {
+			hasEnabledClaimer = true
+			break
+		}
+	}
+	if !hasEnabledClaimer {
 		return nil
 	}
 	if strings.TrimSpace(c.StoragePath) == "" {

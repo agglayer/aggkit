@@ -86,7 +86,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
 	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
-	require.False(t, cfg.AutoClaim.Enabled)
+	require.False(t, cfg.AutoClaim.DryRun)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.Empty(t, cfg.AutoClaim.Claimers)
 	require.True(t, cfg.AutoClaim.L1ToL2Watchdog.Enabled)
@@ -191,7 +191,7 @@ InitialLER = "` + zeroHash + `"
 func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
 	cfg, err := LoadFile([]FileData{{Name: "autoclaim.toml", Content: validAutoClaimConfig()}}, "", true, false)
 	require.NoError(t, err)
-	require.True(t, cfg.AutoClaim.Enabled)
+	require.True(t, cfg.AutoClaim.DryRun)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.True(t, cfg.AutoClaim.API.Enabled)
 	require.Equal(t, uint64(1234), cfg.AutoClaim.L1ToL2Watchdog.StartBlock)
@@ -305,13 +305,14 @@ func TestLoadConfigWithInvalidAutoClaim(t *testing.T) {
 }
 
 func TestLoadConfigWithDisabledInvalidAutoClaim(t *testing.T) {
+	// With no enabled claimer the AutoClaim config is inert, so an otherwise invalid claimer config
+	// must not fail validation at load time.
 	cfg, err := LoadFile([]FileData{{Name: "autoclaim.toml", Content: `
 [AutoClaim]
-Enabled = false
 StoragePath = ""
 
 [[AutoClaim.Claimers]]
-Enabled = true
+Enabled = false
 ID = "invalid-disabled"
 NetworkType = "unsupported"
 NetworkID = 1
@@ -322,7 +323,7 @@ WaitPeriod = "0s"
 `}}, "", true, false)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	require.False(t, cfg.AutoClaim.Enabled)
+	require.False(t, cfg.AutoClaim.DryRun)
 }
 
 func TestAutoClaimDefaultRender(t *testing.T) {
@@ -333,7 +334,7 @@ func TestAutoClaimDefaultRender(t *testing.T) {
 	}, EnvVarPrefix).Render()
 	require.NoError(t, err)
 	require.Contains(t, rendered, "[AutoClaim]")
-	require.Contains(t, rendered, "Enabled = false")
+	require.Contains(t, rendered, "DryRun = false")
 	require.Contains(t, rendered, `StoragePath = "/tmp/aggkit/autoclaim.sqlite"`)
 	require.Contains(t, rendered, "[AutoClaim.L2ToLxWatchdog]")
 }
@@ -341,7 +342,7 @@ func TestAutoClaimDefaultRender(t *testing.T) {
 func validAutoClaimConfig() string {
 	return `
 [AutoClaim]
-Enabled = true
+DryRun = true
 StoragePath = "/tmp/aggkit/autoclaim.sqlite"
 
 [AutoClaim.API]

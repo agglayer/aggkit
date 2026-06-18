@@ -8,12 +8,11 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
 
-	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
+	apitypes "github.com/agglayer/aggkit/autoclaim/apitypes"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
@@ -83,76 +82,7 @@ func TestDisabledAPIDoesNotExposeRoutesOrRequireDependencies(t *testing.T) {
 	api, err := New(Config{Enabled: false}, nil, nil)
 	require.NoError(t, err)
 
-	response := performRequest(t, api, http.MethodGet, Prefix+"/bridges", nil)
-	require.Equal(t, http.StatusNotFound, response.Code)
-}
-
-func TestListBridgesFilters(t *testing.T) {
-	ctx := context.Background()
-	storage := newTestStorage(t)
-	api := newTestAPI(t, storage, nil)
-
-	requests := []autoclaimtypes.AutoClaimRequest{
-		makeRequest(1, 10, autoclaimtypes.RequestStatusDetected),
-		makeRequest(2, 10, autoclaimtypes.RequestStatusDetected),
-		makeRequest(3, 11, autoclaimtypes.RequestStatusDetected),
-	}
-	for _, request := range requests {
-		enqueueRequest(t, ctx, storage, request)
-	}
-
-	decision := autoclaimtypes.PolicyDecision{
-		PolicyName: "allow-all",
-		Result:     autoclaimtypes.PolicyResultApproved,
-		Reason:     "allowed",
-		CreatedAt:  testNow,
-		UpdatedAt:  testNow,
-	}
-	require.NoError(t, storage.RecordPolicyDecision(ctx, requests[1].Key, decision))
-
-	attempt := autoclaimtypes.TransactionAttempt{
-		RequestKey:       requests[1].Key,
-		ClaimerID:        "claimer-10",
-		AttemptNumber:    1,
-		TxManagerID:      common.HexToHash("0x1001"),
-		ClaimTxHash:      common.HexToHash("0x2002"),
-		Status:           ethtxtypes.MonitoredTxStatusSent,
-		RetryCount:       1,
-		MaxRetries:       4,
-		CreatedAt:        testNow,
-		UpdatedAt:        testNow,
-		TargetBridgeAddr: common.HexToAddress("0x5000000000000000000000000000000000000005"),
-	}
-	require.NoError(t, storage.RecordTransactionAttempt(ctx, requests[1].Key, attempt))
-
-	query := url.Values{}
-	query.Set("origin_network", "0")
-	query.Set("destination_network", "10")
-	query.Set("status", autoclaimtypes.RequestStatusDetected.String())
-	query.Set("policy_status", autoclaimtypes.PolicyResultApproved.String())
-	query.Set("bridge_tx_hash", requests[1].Bridge.TxHash.Hex())
-	query.Set("claim_tx_hash", attempt.ClaimTxHash.Hex())
-	query.Set("from_block", "101")
-	query.Set("to_block", "103")
-
-	response := performRequest(t, api, http.MethodGet, Prefix+"/bridges?"+query.Encode(), nil)
-	require.Equal(t, http.StatusOK, response.Code)
-
-	var result ListResponse
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
-	require.Equal(t, 1, result.Count)
-	require.Len(t, result.Bridges, 1)
-	require.Equal(t, string(requests[1].Key), result.Bridges[0].ID)
-	require.Equal(t, autoclaimtypes.PolicyResultApproved.String(), result.Bridges[0].PolicyStatus)
-	require.NotNil(t, result.Bridges[0].ClaimTxHash)
-	require.Equal(t, attempt.ClaimTxHash.Hex(), *result.Bridges[0].ClaimTxHash)
-}
-
-func TestGetMissingBridge(t *testing.T) {
-	storage := newTestStorage(t)
-	api := newTestAPI(t, storage, nil)
-
-	response := performRequest(t, api, http.MethodGet, Prefix+"/bridges/0:10:404", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/0:10:1/approve", nil)
 	require.Equal(t, http.StatusNotFound, response.Code)
 }
 
@@ -173,7 +103,7 @@ func TestApproveManualRequest(t *testing.T) {
 	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
 	require.Equal(t, http.StatusOK, response.Code)
 
-	var result RequestResponse
+	var result apitypes.RequestResponse
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 	require.Equal(t, autoclaimtypes.RequestStatusPolicyApproved.String(), result.Status)
 	require.NotNil(t, result.ManualDecision)
@@ -199,7 +129,7 @@ func TestRejectManualRequest(t *testing.T) {
 	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/reject", nil)
 	require.Equal(t, http.StatusOK, response.Code)
 
-	var result RequestResponse
+	var result apitypes.RequestResponse
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 	require.Equal(t, autoclaimtypes.RequestStatusPolicyRejected.String(), result.Status)
 	require.NotNil(t, result.ManualDecision)
@@ -218,79 +148,19 @@ func TestInvalidManualTransition(t *testing.T) {
 	require.Equal(t, http.StatusConflict, response.Code)
 }
 
-func TestListPagination(t *testing.T) {
+func TestManualDecisionRejectsOversizedFields(t *testing.T) {
 	ctx := context.Background()
 	storage := newTestStorage(t)
 	api := newTestAPI(t, storage, nil)
-	for i := uint32(1); i <= 3; i++ {
-		enqueueRequest(t, ctx, storage, makeRequest(i, 10, autoclaimtypes.RequestStatusDetected))
-	}
-
-	response := performRequest(t, api, http.MethodGet, Prefix+"/bridges?page_size=2", nil)
-	require.Equal(t, http.StatusOK, response.Code)
-
-	var first ListResponse
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &first))
-	require.Equal(t, 3, first.Count)
-	require.Equal(t, uint32(0), first.PageNumber)
-	require.Equal(t, uint32(2), first.PageSize)
-	require.Len(t, first.Bridges, 2)
-	require.Equal(t, "0:10:3", first.Bridges[0].ID)
-	require.Equal(t, "0:10:2", first.Bridges[1].ID)
-
-	response = performRequest(t, api, http.MethodGet, Prefix+"/bridges?page_size=2&page_number=1", nil)
-	require.Equal(t, http.StatusOK, response.Code)
-
-	var second ListResponse
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &second))
-	require.Equal(t, 3, second.Count)
-	require.Equal(t, uint32(1), second.PageNumber)
-	require.Len(t, second.Bridges, 1)
-	require.Equal(t, "0:10:1", second.Bridges[0].ID)
-}
-
-func TestListRejectsOversizedPageSize(t *testing.T) {
-	api := newTestAPI(t, newTestStorage(t), nil)
-	path := fmt.Sprintf("%s/bridges?page_size=%d", Prefix, autoclaimtypes.MaxRequestPageSize+1)
-
-	response := performRequest(t, api, http.MethodGet, path, nil)
-
-	require.Equal(t, http.StatusBadRequest, response.Code)
-	require.Contains(t, response.Body.String(), "page_size")
-}
-
-func TestResponseJSONFields(t *testing.T) {
-	ctx := context.Background()
-	storage := newTestStorage(t)
-	api := newTestAPI(t, storage, nil)
-	request := makeManualRequest(4, 10)
-	request.LastError = "last problem"
+	request := makeManualRequest(7, 10)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRequest(t, api, http.MethodGet, Prefix+"/bridges/"+string(request.Key), nil)
-	require.Equal(t, http.StatusOK, response.Code)
-
-	var result RequestResponse
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
-	require.Equal(t, string(request.Key), result.ID)
-	require.Equal(t, autoclaimtypes.RequestStatusManualApprovalRequired.String(), result.Status)
-	require.Equal(t, uint32(0), result.OriginNetwork)
-	require.Equal(t, uint32(10), result.DestinationNetwork)
-	require.Equal(t, uint32(4), result.DepositCount)
-	require.NotEmpty(t, result.GlobalIndex)
-	require.Equal(t, request.Bridge.TxHash.Hex(), result.BridgeTxHash)
-	require.Equal(t, request.Bridge.OriginAddress.Hex(), result.OriginAddress)
-	require.Equal(t, request.Bridge.DestinationAddress.Hex(), result.DestinationAddress)
-	require.Equal(t, request.Bridge.ToAddress.Hex(), result.ToAddress)
-	require.Equal(t, request.Bridge.TxnSender.Hex(), result.TxnSender)
-	require.Equal(t, request.Bridge.Amount.String(), result.Amount)
-	require.Equal(t, "0x04", result.Metadata)
-	require.Equal(t, request.Bridge.BlockNum, result.BlockNum)
-	require.Equal(t, request.RetryCount, result.RetryCount)
-	require.Equal(t, request.MaxRetries, result.MaxRetries)
-	require.NotNil(t, result.PolicyDecision)
-	require.Equal(t, autoclaimtypes.PolicyResultManual.String(), result.PolicyDecision.Result)
-	require.Equal(t, "last problem", result.LastError)
+	body := map[string]any{
+		"decider": string(make([]byte, 300)),
+	}
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "decider exceeds maximum length")
 }
 
 func TestSwaggerRoutes(t *testing.T) {
@@ -310,10 +180,9 @@ func TestSwaggerRoutes(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &doc))
 	require.Equal(t, Prefix, doc.BasePath)
-	require.Contains(t, doc.Paths, "/bridges")
-	require.Contains(t, doc.Paths, "/bridges/{id}")
 	require.Contains(t, doc.Paths, "/bridges/{id}/approve")
 	require.Contains(t, doc.Paths, "/bridges/{id}/reject")
+	require.NotContains(t, doc.Paths, "/bridges")
 }
 
 func TestClaimingPathIsIndependentWhenAPIDisabled(t *testing.T) {

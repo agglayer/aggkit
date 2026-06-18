@@ -22,153 +22,6 @@ const docTemplateautoclaim = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/bridges": {
-            "get": {
-                "description": "Returns tracked Auto Claim requests with optional filters and pagination.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "autoclaim"
-                ],
-                "summary": "List Auto Claim bridge requests",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Filter by origin network ID",
-                        "name": "origin_network",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Filter by destination network ID",
-                        "name": "destination_network",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by request status",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by policy result",
-                        "name": "policy_status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Alias for policy_status",
-                        "name": "policy_result",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by 0x-prefixed bridge transaction hash",
-                        "name": "bridge_tx_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by 0x-prefixed claim transaction hash",
-                        "name": "claim_tx_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int64",
-                        "description": "Filter by minimum bridge block number",
-                        "name": "from_block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int64",
-                        "description": "Filter by maximum bridge block number",
-                        "name": "to_block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Page number (default 0)",
-                        "name": "page_number",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Page size (default 100, max 1000)",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.ListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/bridges/{id}": {
-            "get": {
-                "description": "Returns one tracked Auto Claim request by request ID.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "autoclaim"
-                ],
-                "summary": "Get Auto Claim bridge request",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Auto Claim request ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.RequestResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/bridges/{id}/approve": {
             "post": {
                 "description": "Approves a request currently in manual-approval-required and advances the matching claimer when present.",
@@ -195,7 +48,7 @@ const docTemplateautoclaim = `{
                         "name": "decision",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/api.DecisionRequest"
+                            "$ref": "#/definitions/apitypes.DecisionRequest"
                         }
                     }
                 ],
@@ -203,31 +56,31 @@ const docTemplateautoclaim = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.RequestResponse"
+                            "$ref": "#/definitions/apitypes.RequestResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     }
                 }
@@ -259,7 +112,7 @@ const docTemplateautoclaim = `{
                         "name": "decision",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/api.DecisionRequest"
+                            "$ref": "#/definitions/apitypes.DecisionRequest"
                         }
                     }
                 ],
@@ -267,31 +120,31 @@ const docTemplateautoclaim = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.RequestResponse"
+                            "$ref": "#/definitions/apitypes.RequestResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
                     }
                 }
@@ -299,7 +152,7 @@ const docTemplateautoclaim = `{
         }
     },
     "definitions": {
-        "api.DecisionRequest": {
+        "apitypes.DecisionRequest": {
             "type": "object",
             "properties": {
                 "decider": {
@@ -322,7 +175,7 @@ const docTemplateautoclaim = `{
                 }
             }
         },
-        "api.DecisionResponse": {
+        "apitypes.DecisionResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -354,7 +207,7 @@ const docTemplateautoclaim = `{
                 }
             }
         },
-        "api.ErrorResponse": {
+        "apitypes.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
@@ -363,27 +216,7 @@ const docTemplateautoclaim = `{
                 }
             }
         },
-        "api.ListResponse": {
-            "type": "object",
-            "properties": {
-                "bridges": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/api.RequestResponse"
-                    }
-                },
-                "count": {
-                    "type": "integer"
-                },
-                "page_number": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "api.RequestResponse": {
+        "apitypes.RequestResponse": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -438,7 +271,7 @@ const docTemplateautoclaim = `{
                     "type": "integer"
                 },
                 "manual_decision": {
-                    "$ref": "#/definitions/api.DecisionResponse"
+                    "$ref": "#/definitions/apitypes.DecisionResponse"
                 },
                 "max_retries": {
                     "type": "integer"
@@ -453,7 +286,7 @@ const docTemplateautoclaim = `{
                     "type": "integer"
                 },
                 "policy_decision": {
-                    "$ref": "#/definitions/api.DecisionResponse"
+                    "$ref": "#/definitions/apitypes.DecisionResponse"
                 },
                 "policy_status": {
                     "type": "string"
@@ -487,8 +320,8 @@ var SwaggerInfoautoclaim = &swag.Spec{
 	Host:             "",
 	BasePath:         "/autoclaim/v1",
 	Schemes:          []string{},
-	Title:            "Auto Claim API",
-	Description:      "API documentation for the Auto Claim service",
+	Title:            "Auto Claim Admin API",
+	Description:      "Admin API for the Auto Claim service (manual approval and rejection).",
 	InfoInstanceName: "autoclaim",
 	SwaggerTemplate:  docTemplateautoclaim,
 	LeftDelim:        "{{",

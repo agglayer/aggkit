@@ -38,7 +38,8 @@ func TestStartDisabledAutoClaimNoop(t *testing.T) {
 	ctx := context.Background()
 	called := false
 
-	runtime, err := Start(ctx, Dependencies{Config: autoclaimcfg.Config{Enabled: false}}, Factories{
+	// No enabled claimer => the runtime is a no-op and must not open storage.
+	runtime, err := Start(ctx, Dependencies{Config: autoclaimcfg.Config{}}, Factories{
 		OpenStorage: func(aggkitcommon.Logger, string, time.Duration) (autoclaimtypes.Storage, error) {
 			called = true
 			return nil, nil
@@ -347,7 +348,6 @@ func requireClosed(t *testing.T, ch <-chan struct{}) {
 
 func validConfig() autoclaimcfg.Config {
 	return autoclaimcfg.Config{
-		Enabled:     true,
 		StoragePath: "/tmp/autoclaim.sqlite",
 		API: autoclaimcfg.APIConfig{
 			Enabled: false,

@@ -74,7 +74,8 @@ Package layout (for contributors):
 | `autoclaim/claimtx` | ABI packing of `claimAsset` and `claimMessage` calldata. |
 | `autoclaim/simulator` | `eth_estimateGas` claim simulation on the target chain, used by `basic-filter`. |
 | `autoclaim/storage` | SQLite repository and migrations for requests, attempts, and cursors. |
-| `autoclaim/api` | Optional REST handlers for inspection and manual decisions, plus generated swagger docs. |
+| `autoclaim/api` | Optional standalone admin REST handlers for manual approve/reject decisions, plus generated swagger docs. |
+| `autoclaim/apitypes` | Shared REST DTOs and query parsing used by the admin API and the bridge-service public endpoints. |
 | `autoclaim/types` | Request lifecycle state machine, domain records, and shared interfaces. |
 | `autoclaim/config` | Configuration structs, defaults, and validation. |
 
@@ -182,9 +183,9 @@ stateDiagram-v2
 ```
 
 Status values: `detected`, `policy-approved`, `policy-rejected`, `manual-approval-required`, `queued`, `sending`,
-`sent`, `confirmed`, `failed` (the diagram uses underscores because hyphens are not valid in mermaid state names).
-Terminal statuses are `policy-rejected`, `confirmed`, and `failed`. Policy results are `approved`, `rejected`, and
-`manual`.
+`sent`, `confirmed`, `failed`, `dry-run` (the diagram uses underscores because hyphens are not valid in mermaid state
+names). Terminal statuses are `policy-rejected`, `confirmed`, `failed`, and `dry-run`. Policy results are `approved`,
+`rejected`, and `manual`.
 
 Step by step:
 
@@ -214,8 +215,9 @@ Step by step:
 
 ## Running Auto Claim
 
-Run Aggkit with the `autoclaim` component selected and set `[AutoClaim].Enabled = true`; both are required. Startup
-also requires:
+Run Aggkit with the `autoclaim` component selected; that alone enables Auto Claim (there is no separate enable flag).
+Set `[AutoClaim].DryRun = true` to run the full pipeline (discovery, policy evaluation, proof preparation) while
+skipping claim transaction submission — matching requests end in the terminal `dry-run` status. Startup also requires:
 
 - `l1bridgesync` and `l1infotreesync`, always: the watchdog reads L1 bridge exits and the claimer prepares L1 info
   tree proofs in-process.
@@ -224,10 +226,13 @@ Each claimer discovers its target L2's GER manager address automatically by call
 configured destination bridge contract at startup — no additional configuration is needed. Each claimer's `l2gersync`
 instance reuses the shared `[L2GERSync]` and `[ReorgDetectorL2]` settings (block finality, chunk size, etc.); only the
 non-sharable values are overridden per claimer — the resolved L2 GER manager address and isolated database paths
-derived automatically under the Auto Claim storage directory (`<storage-dir>/autoclaim-gersync/<claimer-id>/`).
+derived automatically under the Auto Claim storage directory (`<storage-dir>/autoclaim-gersync/<claimer-id>/`). A
+claimer may additionally override the shared L2 GER `BlockFinality` and `InitialBlockNum` via its own
+`[[AutoClaim.Claimers]]` keys when its destination L2 needs a different finality or sync start than the shared default.
 
-The optional REST API is not needed to submit claims. Enable it only when operators need request inspection or use the
-`api-approve` policy, which requires manual decisions through the API.
+Public request inspection (`will / will not claim`) is served by the bridge service when the `autoclaim` component runs
+(see [API](#api)); the standalone Auto Claim admin API only needs to be enabled for the manual `approve` / `reject`
+endpoints used by the `api-approve` policy, so operators can keep admin controls off the public surface.
 
 ## Configuration
 
@@ -235,9 +240,11 @@ Minimal L1 to L2 configuration:
 
 ```toml
 [AutoClaim]
-Enabled = true
+# DryRun = true   # optional: prepare claims but do not submit them (requests end as "dry-run")
 StoragePath = "/var/lib/aggkit/autoclaim.sqlite"
 
+# Optional admin API for manual approve / reject (api-approve policy). Public request inspection is
+# served by the bridge service instead — see the API section.
 [AutoClaim.API]
 Enabled = true
 Host = "0.0.0.0"
@@ -266,6 +273,9 @@ GasOffset = 100000
 WaitPeriod = "1s"
 RetryAfter = "1s"
 MaxRetries = 30
+# Optional per-claimer overrides of the shared [L2GERSync] settings:
+# BlockFinality = "LatestBlock"
+# InitialBlockNum = 0
 
 [AutoClaim.Claimers.Policy]
 AllowMessageClaims = false
@@ -306,9 +316,9 @@ configuration.
 
 | Key | Default | Required when enabled | Description |
 | --- | --- | --- | --- |
-| `AutoClaim.Enabled` | `false` | Yes | Enables Auto Claim runtime startup. The `autoclaim` component must also be selected. |
+| `AutoClaim.DryRun` | `false` | No | Runs the full pipeline but skips submitting claim transactions; matching requests end in the terminal `dry-run` status. Auto Claim is enabled by selecting the `autoclaim` component (there is no separate enable flag). |
 | `AutoClaim.StoragePath` | `{{PathRWData}}/autoclaim.sqlite` | Yes | SQLite database for requests, cursors, decisions, proofs, and transaction attempts. |
-| `AutoClaim.API.Enabled` | `false` | No | Starts the optional REST API for inspection and manual decisions. |
+| `AutoClaim.API.Enabled` | `false` | No | Starts the optional standalone admin API for manual `approve` / `reject` decisions. Public request inspection is served by the bridge service. |
 | `AutoClaim.API.Host` | `0.0.0.0` | When API enabled | API listen host. |
 | `AutoClaim.API.Port` | `5579` | When API enabled | API listen port. |
 | `AutoClaim.L1ToL2Watchdog.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
@@ -337,6 +347,8 @@ Each enabled `[[AutoClaim.Claimers]]` entry owns one destination network.
 | `WaitPeriod` | Yes | Claimer poll period and transaction-result polling interval. Must be greater than zero. |
 | `RetryAfter` | No | Retry delay after a failed claim attempt. Defaults to `WaitPeriod` when omitted or zero. |
 | `MaxRetries` | No | Maximum claim submission retries before the request is marked failed. `0` means failures are immediately final. |
+| `BlockFinality` | No | Overrides the shared `[L2GERSync]` block finality for this claimer's destination-L2 GER syncer. Inherits the shared value when omitted. |
+| `InitialBlockNum` | No | Overrides the shared `[L2GERSync]` initial sync block for this claimer's destination-L2 GER syncer. Inherits the shared value (`0`) when omitted. |
 | `EthTxManager` | Yes | Independent transaction-manager configuration and storage path for this claimer. |
 
 ## Policies
@@ -362,14 +374,20 @@ or tokens respectively; token matching is case-insensitive. Notes on `basic-filt
 
 ## API
 
-The optional API uses the `/autoclaim/v1` prefix and is independent from the bridge service `/bridge/v1` prefix.
+Auto Claim endpoints are split by audience so operators can expose request status publicly without exposing admin
+controls:
 
-| Method and path | Purpose |
-| --- | --- |
-| `GET /autoclaim/v1/bridges` | List tracked requests. |
-| `GET /autoclaim/v1/bridges/{id}` | Inspect one request by Auto Claim request ID (`origin:destination:deposit_count`). |
-| `POST /autoclaim/v1/bridges/{id}/approve` | Approve a request currently in `manual-approval-required`. |
-| `POST /autoclaim/v1/bridges/{id}/reject` | Reject a request currently in `manual-approval-required`. |
+- **Public, read-only** request inspection is served by the **bridge service** under its `/bridge/v1` prefix (the shared
+  `[REST]` host/port). These routes are registered only when the `autoclaim` component is running.
+- **Admin** manual decisions stay on the **standalone Auto Claim API** under the `/autoclaim/v1` prefix, gated by
+  `[AutoClaim.API].Enabled` on its own host/port (`[AutoClaim.API].Host` / `Port`), so it can be firewalled off.
+
+| Method and path | Audience | Purpose |
+| --- | --- | --- |
+| `GET /bridge/v1/autoclaim/bridges` | Public (bridge service) | List tracked requests. |
+| `GET /bridge/v1/autoclaim/bridges/{id}` | Public (bridge service) | Inspect one request by Auto Claim request ID (`origin:destination:deposit_count`). |
+| `POST /autoclaim/v1/bridges/{id}/approve` | Admin (Auto Claim API) | Approve a request currently in `manual-approval-required`. |
+| `POST /autoclaim/v1/bridges/{id}/reject` | Admin (Auto Claim API) | Reject a request currently in `manual-approval-required`. |
 
 List query parameters: `origin_network`, `destination_network`, `status`, `policy_status` (alias: `policy_result`),
 `bridge_tx_hash`, `claim_tx_hash`, `from_block`, `to_block`, `page_number`, and `page_size` (maximum 1000).
@@ -394,8 +412,10 @@ metadata, timestamps, and `last_error`.
 Example workflow for `api-approve`:
 
 ```bash
-curl "http://localhost:5579/autoclaim/v1/bridges?status=manual-approval-required"
-curl "http://localhost:5579/autoclaim/v1/bridges/0:1:42"
+# Inspect via the bridge service (public, shared [REST] port, e.g. 5577).
+curl "http://localhost:5577/bridge/v1/autoclaim/bridges?status=manual-approval-required"
+curl "http://localhost:5577/bridge/v1/autoclaim/bridges/0:1:42"
+# Approve via the admin Auto Claim API (its own [AutoClaim.API] port).
 curl -X POST "http://localhost:5579/autoclaim/v1/bridges/0:1:42/approve" \
   -H "Content-Type: application/json" \
   -d '{"reason":"approved after bridge review","decider":"operator","decider_id":"alice"}'

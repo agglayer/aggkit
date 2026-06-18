@@ -108,6 +108,9 @@ type BridgeService struct {
 	bridgeL2                    Bridger
 	claimL1                     Claimer
 	claimL2                     Claimer
+	// autoClaimQuerier is the optional read-only view of Auto Claim request state. It is non-nil
+	// only when the autoclaim component is running, which is what gates the public Auto Claim routes.
+	autoClaimQuerier AutoClaimQuerier
 
 	router *gin.Engine
 }
@@ -122,6 +125,7 @@ func New(
 	claimL1 Claimer,
 	bridgeL2 Bridger,
 	claimL2 Claimer,
+	autoClaimQuerier AutoClaimQuerier,
 ) *BridgeService {
 	cfg.Logger.Infof("starting bridge service (network id=%d, address=%s)", cfg.NetworkID, cfg.Address)
 
@@ -155,6 +159,7 @@ func New(
 		bridgeL2:                    bridgeL2,
 		claimL1:                     claimL1,
 		claimL2:                     claimL2,
+		autoClaimQuerier:            autoClaimQuerier,
 		router:                      router,
 	}
 
@@ -222,6 +227,12 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/claims-by-ger", b.GetClaimsByGERHandler)
 		bridgeGroup.GET("/bridge-by-deposit-count", b.GetBridgeByDepositCountHandler)
 		bridgeGroup.GET("/bridges-by-content", b.GetBridgesByContentHandler)
+
+		// Auto Claim public read endpoints, served only when the autoclaim component is running.
+		if b.autoClaimQuerier != nil {
+			bridgeGroup.GET("/autoclaim/bridges", b.GetAutoClaimBridgesHandler)
+			bridgeGroup.GET("/autoclaim/bridges/:id", b.GetAutoClaimBridgeHandler)
+		}
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))

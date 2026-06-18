@@ -49,6 +49,9 @@ const (
 	RequestStatusConfirmed RequestStatus = "confirmed"
 	// RequestStatusFailed means the request cannot progress without operator or retry intervention.
 	RequestStatusFailed RequestStatus = "failed"
+	// RequestStatusDryRun means the request was fully prepared but the claim transaction was not
+	// submitted because Auto Claim is running in dry-run mode.
+	RequestStatusDryRun RequestStatus = "dry-run"
 )
 
 // String returns the deterministic string value for the request status.
@@ -59,7 +62,7 @@ func (s RequestStatus) String() string {
 // IsTerminal returns true when the status is a terminal lifecycle state.
 func (s RequestStatus) IsTerminal() bool {
 	switch s {
-	case RequestStatusPolicyRejected, RequestStatusConfirmed, RequestStatusFailed:
+	case RequestStatusPolicyRejected, RequestStatusConfirmed, RequestStatusFailed, RequestStatusDryRun:
 		return true
 	default:
 		return false
@@ -104,12 +107,14 @@ var allowedStatusTransitions = map[RequestStatus][]RequestStatus{
 	RequestStatusQueued: {
 		RequestStatusSending,
 		RequestStatusConfirmed,
+		RequestStatusDryRun,
 		RequestStatusFailed,
 	},
 	RequestStatusSending: {
 		RequestStatusQueued,
 		RequestStatusSent,
 		RequestStatusConfirmed,
+		RequestStatusDryRun,
 		RequestStatusFailed,
 	},
 	RequestStatusSent: {
@@ -223,6 +228,8 @@ type ClaimerTarget struct {
 	WaitPeriod         time.Duration
 	RetryAfter         time.Duration
 	MaxRetries         uint64
+	// DryRun, when true, makes the sender prepare the claim but skip submitting the transaction.
+	DryRun bool
 }
 
 // ClaimProof contains the selected L1 info tree leaf and proofs required to submit a target claim.
@@ -312,13 +319,10 @@ func NewBridgeExitFromSync(bridge bridgesync.Bridge) BridgeExit {
 
 // NewBridgeExitFromSyncWithEtrog converts a bridge sync record using Etrog-upgrade awareness.
 func NewBridgeExitFromSyncWithEtrog(bridge bridgesync.Bridge, etrogL1UpgradeBlock uint64) BridgeExit {
-	preEtrog := isPreEtrogBridge(bridge, etrogL1UpgradeBlock)
 	// These bridges were initiated on L1, so their global index always encodes the L1 (mainnet)
 	// network. bridge.OriginNetwork is the bridged token's origin network, not the bridge origin.
-	globalIndex := DeriveL1GlobalIndex(bridge.DepositCount)
-	if preEtrog {
-		globalIndex = new(big.Int).SetUint64(uint64(bridge.DepositCount))
-	}
+	globalIndex, preEtrog := bridgesync.GlobalIndexForBridge(
+		bridge.DestinationNetwork, bridge.BlockNum, bridge.DepositCount, L1OriginNetwork, etrogL1UpgradeBlock)
 
 	return BridgeExit{
 		BlockNum:           bridge.BlockNum,
@@ -340,12 +344,6 @@ func NewBridgeExitFromSyncWithEtrog(bridge bridgesync.Bridge, etrogL1UpgradeBloc
 		GlobalIndex:        globalIndex,
 		PreEtrog:           preEtrog,
 	}
-}
-
-func isPreEtrogBridge(bridge bridgesync.Bridge, etrogL1UpgradeBlock uint64) bool {
-	return etrogL1UpgradeBlock > 0 &&
-		bridge.DestinationNetwork == LegacyZkEVMRollupNetwork &&
-		bridge.BlockNum <= etrogL1UpgradeBlock
 }
 
 // NewRequestFromBridgeExit builds a detected Auto Claim request from a discovered bridge exit.

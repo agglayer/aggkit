@@ -163,7 +163,6 @@ func TestClaimerConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 
 func validConfig() Config {
 	return Config{
-		Enabled:     true,
 		StoragePath: "/tmp/autoclaim.sqlite",
 		L1ToL2Watchdog: L1ToL2Watchdog{
 			Enabled:                    true,
