@@ -16,9 +16,6 @@ concurrency:
 jobs:
   test-unit:
     name: test-unit
-    permissions:
-      contents: read
-      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
