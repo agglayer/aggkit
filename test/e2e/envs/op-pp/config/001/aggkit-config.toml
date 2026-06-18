@@ -652,7 +652,7 @@ EtrogL1UpgradeBlock = 0
 Enabled = false
 
 [[AutoClaim.Claimers]]
-Enabled = true
+Enabled = false
 ID = "l2-autoclaim-e2e"
 NetworkType = "EVM"
 NetworkID = 1
