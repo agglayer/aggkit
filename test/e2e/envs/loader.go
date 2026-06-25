@@ -101,13 +101,6 @@ type EnvCapabilities struct {
 // declared so the constants compile and the conditional code branches are
 // reachable; their snapshots/runtime paths are completed in later plan steps.
 var envCapabilities = map[ENVName]EnvCapabilities{
-	EnvOpPP: {
-		NativeGas:           true,
-		Sequencer:           SequencerOpStack,
-		MultiNetwork:        false,
-		MultiAggkit:         false,
-		SettlementSupported: true,
-	},
 	EnvOpFEP: {
 		NativeGas:    true,
 		Sequencer:    SequencerOpStack,

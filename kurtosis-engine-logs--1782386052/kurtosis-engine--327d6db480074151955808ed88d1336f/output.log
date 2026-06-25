@@ -1,0 +1,156 @@
+[37mDEBU[0m[2026-06-25T10:52:45Z][backend_creator.go:getLocalDockerKurtosisBackend] Connecting to Docker daemon via unix socket '/var/run/docker.sock' 
+[36mINFO[0m[2026-06-25T10:52:45Z][main.go:getLogsDatabaseClient] Setting log retention period to '1' week(s). 
+[37mDEBU[0m[2026-06-25T10:52:45Z][log_file_manager.go:func1] Scheduling log removal for log retention every '6h0m0s' hours... 
+[36mINFO[0m[2026-06-25T10:52:45Z][main.go:restApiServer] Running REST API server...                   
+[36mINFO[0m[2026-06-25T10:52:45Z][main.go:restApiServer] Setting-up CORS policy to accept requests from origins: [*] 
+[37mDEBU[0m[2026-06-25T10:52:45Z][main.go:func1] Created environment js file with content: 
+window.env = {}; 
+[37mDEBU[0m[2026-06-25T10:52:45Z][log_file_manager.go:func2] Scheduling log file path creation every '1m0s' minutes... 
+[37mDEBU[0m[2026-06-25T10:52:45Z][log_file_manager.go:RemoveLogsBeyondRetentionPeriod] Successfully removed the following logs beyond retention period at the following path: '[]' 
+[36mINFO[0m[2026-06-25T10:52:45Z][server.go:RunEnclaveManagerApiServer] Web server running and listening on port 8081 
+
+   ____    __
+  / __/___/ /  ___
+ / _// __/ _ \/ _ \
+/___/\__/_//_/\___/ v4.11.3
+High performance, minimalist Go web framework
+https://echo.labstack.com
+____________________________________O/_______
+                                    O\
+⇨ http server started on [::]:9779
+[37mDEBU[0m[2026-06-25T10:53:01Z][engine_connect_server_service.go:CreateEnclave] args: enclave_name:"aggkit-e2e-op-pp" api_container_version_tag:"" api_container_log_level:"debug" mode:TEST should_apic_run_in_debug_mode:false 
+[37mDEBU[0m[2026-06-25T10:53:01Z][docker_kurtosis_backend_enclave_functions.go:CreateEnclave] Creating Docker network for enclave 'f1347488737e4037bbee4c778cbcf81c'... 
+[37mDEBU[0m[2026-06-25T10:53:01Z][docker_kurtosis_backend_enclave_functions.go:CreateEnclave] Docker network for enclave 'f1347488737e4037bbee4c778cbcf81c' created successfully with ID '470ecebc1ce3f470a9bbc5f83ea93ca2a5889368c714632f33888c0bb8f74d37' 
+[37mDEBU[0m[2026-06-25T10:53:01Z][shared_helpers.go:getReverseProxyObjectFromContainerInfo] Enclave networks: 'map[]'                    
+[37mDEBU[0m[2026-06-25T10:53:01Z][create_logs_collector.go:CreateLogsCollectorForEnclave] Creating logs collector for enclave 'f1347488737e4037bbee4c778cbcf81c' 
+[37mDEBU[0m[2026-06-25T10:53:01Z][docker_manager.go:FetchImage] Fetching image 'alpine:3.17' with image download mode: missing 
+[37mDEBU[0m[2026-06-25T10:53:01Z][docker_manager.go:getContainerHostConfig] Binds: [kurtosis-logs-collector-vol--f1347488737e4037bbee4c778cbcf81c:/fluent-bit/etc] 
+[37mDEBU[0m[2026-06-25T10:53:01Z][docker_manager.go:CreateAndStartContainer] Created container with ID '0987c407c683deef851b479459de884c891c7ae93e7be1f8327c852ff1ecc6c8' from image 'alpine:3.17' 
+[37mDEBU[0m[2026-06-25T10:53:01Z][docker_manager.go:didContainerStartSuccessfully] Container with id '0987c407c683deef851b479459de884c891c7ae93e7be1f8327c852ff1ecc6c8' has status 'running' and exited with exit code '0' 
+[37mDEBU[0m[2026-06-25T10:53:01Z][fluentbit_configuration_creator.go:getConfigFileContent] Generated fluent bit config string: 
+[SERVICE]
+	log_level debug
+	http_server On
+	http_listen 0.0.0.0
+	http_port 9712
+	storage.path /fluent-bit/etc/storage/
+	parsers_file /fluent-bit/etc/parsers.conf
+	parsers_file /fluent-bit/etc/kurtosis-parsers.conf
+[INPUT]
+	name forward
+	listen 0.0.0.0
+	port 9713
+	storage.type filesystem
+[OUTPUT]
+	name forward
+	match *
+	host 172.17.0.2
+	port 9714 
+[37mDEBU[0m[2026-06-25T10:53:01Z][fluentbit_configuration_creator.go:getParserConfigFileContent] Generated fluent bit parser config string:   
+[37mDEBU[0m[2026-06-25T10:53:01Z][fluentbit_configuration_creator.go:createFluentbitConfigFileInVolume] The Fluentbit config file with content '
+[SERVICE]
+	log_level debug
+	http_server On
+	http_listen 0.0.0.0
+	http_port 9712
+	storage.path /fluent-bit/etc/storage/
+	parsers_file /fluent-bit/etc/parsers.conf
+	parsers_file /fluent-bit/etc/kurtosis-parsers.conf
+[INPUT]
+	name forward
+	listen 0.0.0.0
+	port 9713
+	storage.type filesystem
+[OUTPUT]
+	name forward
+	match *
+	host 172.17.0.2
+	port 9714
+' and parser config file with content '
+' was successfully added into the volume 
+[37mDEBU[0m[2026-06-25T10:53:02Z][docker_manager.go:FetchImage] Fetching image 'fluent/fluent-bit:4.0.0' with image download mode: missing 
+[37mDEBU[0m[2026-06-25T10:53:02Z][docker_manager.go:getContainerHostConfig] Binds: [kurtosis-logs-collector-vol--f1347488737e4037bbee4c778cbcf81c:/fluent-bit/etc] 
+[37mDEBU[0m[2026-06-25T10:53:02Z][docker_manager.go:CreateAndStartContainer] Created container with ID '2933f5e8023d4000ffe9e88e53ade9a65fc9eafca8588bb17cbc75553bee804f' from image 'fluent/fluent-bit:4.0.0' 
+[37mDEBU[0m[2026-06-25T10:53:02Z][docker_manager.go:didContainerStartSuccessfully] Container with id '2933f5e8023d4000ffe9e88e53ade9a65fc9eafca8588bb17cbc75553bee804f' has status 'running' and exited with exit code '0' 
+[37mDEBU[0m[2026-06-25T10:53:02Z][create_logs_collector.go:CreateLogsCollectorForEnclave] Checking for logs collector availability in enclave 'f1347488737e4037bbee4c778cbcf81c'... 
+[37mDEBU[0m[2026-06-25T10:53:03Z][create_logs_collector.go:CreateLogsCollectorForEnclave] ...logs collector is available in enclave 'f1347488737e4037bbee4c778cbcf81c' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][create_logs_collector.go:CreateLogsCollectorForEnclave] Logs collector successfully created with container ID '2933f5e8023d4000ffe9e88e53ade9a65fc9eafca8588bb17cbc75553bee804f' for enclave 'f1347488737e4037bbee4c778cbcf81c' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][api_container_launcher.go:LaunchWithCustomVersion] Launching Kurtosis API container...          
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_kurtosis_backend_api_container_functions.go:CreateAPIContainer] Creating the APIC for enclave 'f1347488737e4037bbee4c778cbcf81c' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][shared_helpers.go:getReverseProxyObjectFromContainerInfo] Enclave networks: 'map[470ecebc1ce3f470a9bbc5f83ea93ca2a5889368c714632f33888c0bb8f74d37:172.16.0.2]' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_manager.go:FetchImage] Fetching image 'kurtosistech/core:1.15.2' with image download mode: missing 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_manager.go:getContainerHostConfig] Binds: [/var/run/docker.sock:/var/run/docker.sock f1347488737e4037bbee4c778cbcf81c:/kurtosis-data kurtosis-github-auth-storage:/kurtosis-data/github-auth/ kurtosis-docker-config-storage:/root/.docker/] 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_manager.go:CreateAndStartContainer] Created container with ID 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' from image 'kurtosistech/core:1.15.2' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_manager.go:didContainerStartSuccessfully] Container with id 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' has status 'running' and exited with exit code '0' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_kurtosis_backend_api_container_functions.go:CreateAPIContainer] Checking for the APIC availability in enclave 'f1347488737e4037bbee4c778cbcf81c'... 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_kurtosis_backend_api_container_functions.go:CreateAPIContainer] ...APIC is available in enclave 'f1347488737e4037bbee4c778cbcf81c' 
+[37mDEBU[0m[2026-06-25T10:53:03Z][docker_kurtosis_backend_api_container_functions.go:CreateAPIContainer] APIC for enclave 'f1347488737e4037bbee4c778cbcf81c' successfully created 
+[37mDEBU[0m[2026-06-25T10:53:09Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T10:53:48Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T10:53:48Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T10:53:53Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T11:02:45Z][segment_callback.go:Success] Metrics Client success callback executed with message '{Type:track MessageId:7bc5c980-a762-4906-8cca-896aed9de0c6 AnonymousId: UserId:44afcb6427e496f61712cd2237e063e3c4244e8aa08ab1fc3bba2082ade3d46a Event:enclave-create Timestamp:2026-06-25 10:53:01.409930566 +0000 UTC m=+16.162143322 Context:0xc000502b08 Properties:map[arch:amd64 backend:docker cloud_instance_id: cloud_user_id: enclave_id:150cda2b6a5023df1b1b7f5e25f3f6688a9b45c3806b12a6bac5b0cc12ea9c63 is_ci:false is_cloud:false is_subnetworking_enabled:false os:linux] Integrations:map[]}' 
+[37mDEBU[0m[2026-06-25T11:14:03Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T11:14:03Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T11:14:03Z][docker_kurtosis_backend_api_container_functions.go:getApiContainerObjectFromContainerInfo] Received empty bridge network IP address for API container 'ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4' when attempting to convert to APIC info to object. This APIContainer is likely not connected to the bridge network. 
+[37mDEBU[0m[2026-06-25T11:14:03Z][docker_object_parallelizer.go:RunDockerOperationInParallel] Called RunDockerOperationInParallel on the following Docker object IDs: map[2933f5e8023d4000ffe9e88e53ade9a65fc9eafca8588bb17cbc75553bee804f:true ca7da8799677dacf69121cdb2d526806e14cc75bc84df8b0fa4b8bb93cb51ca4:true] 
+[37mDEBU[0m[2026-06-25T11:14:04Z][docker_object_parallelizer.go:RunDockerOperationInParallel] Called RunDockerOperationInParallel on the following Docker object IDs: map[f1347488737e4037bbee4c778cbcf81c:true kurtosis-logs-collector-vol--f1347488737e4037bbee4c778cbcf81c:true] 
+[37mDEBU[0m[2026-06-25T11:14:04Z][docker_object_parallelizer.go:RunDockerOperationInParallel] Called RunDockerOperationInParallel on the following Docker object IDs: map[470ecebc1ce3f470a9bbc5f83ea93ca2a5889368c714632f33888c0bb8f74d37:true] 
+[37mDEBU[0m[2026-06-25T11:14:04Z][docker_object_parallelizer.go:RunDockerOperationInParallel] Called RunDockerOperationInParallel on the following Docker object IDs: map[470ecebc1ce3f470a9bbc5f83ea93ca2a5889368c714632f33888c0bb8f74d37:true] 
+[33mWARN[0m[2026-06-25T11:14:11Z][enclave_manager.go:getEnclavesByUuidWithoutMutex] Requested enclave '[f1347488737e4037bbee4c778cbcf81c]' not found. This is likely because the enclave is not running or has been destroyed. 
+[33mWARN[0m[2026-06-25T11:14:11Z][enclave_manager.go:getEnclavesByUuidWithoutMutex] Requested enclave '[f1347488737e4037bbee4c778cbcf81c]' not found. This is likely because the enclave is not running or has been destroyed. 
+[37mDEBU[0m[2026-06-25T11:14:11Z][engine_connect_server_service.go:CreateEnclave] args: enclave_name:"aggkit-e2e-op-pp" api_container_version_tag:"" api_container_log_level:"debug" mode:TEST should_apic_run_in_debug_mode:false 
+[37mDEBU[0m[2026-06-25T11:14:11Z][docker_kurtosis_backend_enclave_functions.go:CreateEnclave] Creating Docker network for enclave 'bb948ca8d19f4f10b8ce1ec5082397ba'... 
+[37mDEBU[0m[2026-06-25T11:14:11Z][docker_kurtosis_backend_enclave_functions.go:CreateEnclave] Docker network for enclave 'bb948ca8d19f4f10b8ce1ec5082397ba' created successfully with ID '1ed257ecfa92e6561d47f397ca4b5a762a0e5b6f9ea4ca4146eaf4bedb2bf54c' 
+[37mDEBU[0m[2026-06-25T11:14:11Z][shared_helpers.go:getReverseProxyObjectFromContainerInfo] Enclave networks: 'map[]'                    
+[37mDEBU[0m[2026-06-25T11:14:11Z][create_logs_collector.go:CreateLogsCollectorForEnclave] Creating logs collector for enclave 'bb948ca8d19f4f10b8ce1ec5082397ba' 
+[37mDEBU[0m[2026-06-25T11:14:11Z][docker_manager.go:FetchImage] Fetching image 'alpine:3.17' with image download mode: missing 
+[37mDEBU[0m[2026-06-25T11:14:11Z][docker_manager.go:getContainerHostConfig] Binds: [kurtosis-logs-collector-vol--bb948ca8d19f4f10b8ce1ec5082397ba:/fluent-bit/etc] 
+[37mDEBU[0m[2026-06-25T11:14:11Z][docker_manager.go:CreateAndStartContainer] Created container with ID '2c01c5ec03ecbf7f9c54b7e59160b3b8d07313540c37d10f7058de16286ff230' from image 'alpine:3.17' 
+[37mDEBU[0m[2026-06-25T11:14:11Z][docker_manager.go:didContainerStartSuccessfully] Container with id '2c01c5ec03ecbf7f9c54b7e59160b3b8d07313540c37d10f7058de16286ff230' has status 'running' and exited with exit code '0' 
+[37mDEBU[0m[2026-06-25T11:14:11Z][fluentbit_configuration_creator.go:getConfigFileContent] Generated fluent bit config string: 
+[SERVICE]
+	log_level debug
+	http_server On
+	http_listen 0.0.0.0
+	http_port 9712
+	storage.path /fluent-bit/etc/storage/
+	parsers_file /fluent-bit/etc/parsers.conf
+	parsers_file /fluent-bit/etc/kurtosis-parsers.conf
+[INPUT]
+	name forward
+	listen 0.0.0.0
+	port 9713
+	storage.type filesystem
+[OUTPUT]
+	name forward
+	match *
+	host 172.17.0.2
+	port 9714 
+[37mDEBU[0m[2026-06-25T11:14:11Z][fluentbit_configuration_creator.go:getParserConfigFileContent] Generated fluent bit parser config string:   
+[37mDEBU[0m[2026-06-25T11:14:11Z][fluentbit_configuration_creator.go:createFluentbitConfigFileInVolume] The Fluentbit config file with content '
+[SERVICE]
+	log_level debug
+	http_server On
+	http_listen 0.0.0.0
+	http_port 9712
+	storage.path /fluent-bit/etc/storage/
+	parsers_file /fluent-bit/etc/parsers.conf
+	parsers_file /fluent-bit/etc/kurtosis-parsers.conf
+[INPUT]
+	name forward
+	listen 0.0.0.0
+	port 9713
+	storage.type filesystem
+[OUTPUT]
+	name forward
+	match *
+	host 172.17.0.2
+	port 9714
+' and parser config file with content '
+' was successfully added into the volume 
+[37mDEBU[0m[2026-06-25T11:14:12Z][docker_manager.go:FetchImage] Fetching image 'fluent/fluent-bit:4.0.0' with image download mode: missing 
+[37mDEBU[0m[2026-06-25T11:14:12Z][docker_manager.go:getContainerHostConfig] Binds: [kurtosis-logs-collector-vol--bb948ca8d19f4f10b8ce1ec5082397ba:/fluent-bit/etc] 
+[37mDEBU[0m[2026-06-25T11:14:12Z][docker_manager.go:CreateAndStartContainer] Created container with ID '58e02c6c1d8eb9ec483edd1a7b92d1db436e97d079e7e10bd11ae7e01ed28cba' from image 'fluent/fluent-bit:4.0.0' 
+[37mDEBU[0m[2026-06-25T11:14:12Z][docker_manager.go:didContainerStartSuccessfully] Container with id '58e02c6c1d8eb9ec483edd1a7b92d1db436e97d079e7e10bd11ae7e01ed28cba' has status 'running' and exited with exit code '0' 
+[37mDEBU[0m[2026-06-25T11:14:12Z][create_logs_collector.go:CreateLogsCollectorForEnclave] Checking for logs collector availability in enclave 'bb948ca8d19f4f10b8ce1ec5082397ba'... 

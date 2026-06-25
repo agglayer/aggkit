@@ -218,46 +218,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  postgres-001:
-    image: postgres:16-alpine
-    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-postgres-001
-    hostname: postgres-001
-    environment:
-      - POSTGRES_USER=op_succinct_user
-      - POSTGRES_PASSWORD=op_succinct_password
-      - POSTGRES_DB=op_succinct_db
-    volumes:
-      - op-succinct-pg-001:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U op_succinct_user -d op_succinct_db"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-
-  op-succinct-proposer-001:
-    image: ghcr.io/agglayer/op-succinct/op-succinct-agglayer:v3.5.0-agglayer
-    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-op-succinct-proposer-001
-    hostname: op-succinct-proposer-001
-    # env_file restores the captured proposer wiring (L2OO addr, prover mode,
-    # agglayer gateway). Generated from proposer-env.json during restore.
-    env_file:
-      - ./config/001/op-succinct/proposer.env
-    volumes:
-      # Writable: the validity-proposer writes derived config/workspace files
-      # under /app/configs at startup; a read-only mount makes it fail with
-      # "Read-only file system (os error 30)" before it can run.
-      - ./config/001/op-succinct/configs:/app/configs:rw
-    ports:
-      - "11080:8080"    # Prometheus metrics
-    depends_on:
-      geth:
-        condition: service_healthy
-      postgres-001:
-        condition: service_healthy
-    restart: unless-stopped
-
   aggkit-001:
     image: aggkit:local
     container_name: aggkit-e2e-op-pp-2chains-20260625-130534-aggkit-001
@@ -394,6 +354,5 @@ services:
 
 volumes:
   l2-shared-001:
-  op-succinct-pg-001:
 # L1 state is baked in, L2 starts fresh with config-only mounts
 # Agglayer and AggKit use host-mounted config files (read-only)
