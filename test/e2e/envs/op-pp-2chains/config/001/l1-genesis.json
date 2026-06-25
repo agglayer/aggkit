@@ -14,7 +14,7 @@
     "mergeNetsplitBlock": 0,
     "terminalTotalDifficulty": 0,
     "shanghaiTime": 0,
-    "cancunTime": 1780438815,
+    "cancunTime": 1782403576,
     "blobSchedule": {
       "cancun": {
         "target": 3,
@@ -38,9 +38,9 @@
       }
     },
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
-    "pragueTime": 1780438831,
-    "osakaTime": 1780438847,
-    "bpo1Time": 1780438847
+    "pragueTime": 1782403592,
+    "osakaTime": 1782403608,
+    "bpo1Time": 1782403608
   },
   "alloc": {
     "0x0000000000000000000000000000000000000000": {
@@ -945,5 +945,5 @@
   "nonce": "0x1234",
   "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
   "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-  "timestamp": "1780438799"
+  "timestamp": "1782403560"
 }
