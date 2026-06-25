@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	// Select the env to run via E2E_ENV (defaults to op-pp when unset/empty) so an env
+	// Select the env to run via E2E_ENV (defaults to op-pp-2chains when unset/empty) so an env
 	// with no migrated tests yet still boots + sanity-checks. Unknown values fail fast
 	// with the list of valid env names.
 	envName, err := envs.ParseENVName(os.Getenv("E2E_ENV"))
@@ -37,10 +37,10 @@ func TestMain(m *testing.M) {
 	}
 
 	// LoadEnv brings the docker-compose stack up and blocks until the L2 EL
-	// dependency chain is healthy. op-geth-backed envs (op-pp) settle in well
+	// dependency chain is healthy. op-geth-backed envs (op-pp-2chains) settle in well
 	// under a minute, but op-reth-backed FEP envs (op-fep) take ~75s (op-reth
 	// init + L1 must produce up to the L2 origin block), so use the loader's own
-	// service-ready budget rather than a tight 1-minute cap. op-pp is unaffected.
+	// service-ready budget rather than a tight 1-minute cap. op-pp-2chains is unaffected.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 
 	env, err := envs.LoadEnv(ctx, envName)

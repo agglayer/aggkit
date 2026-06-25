@@ -109,10 +109,10 @@ test-unit: ## Runs the unit tests
 test-e2e: ## Runs the e2e tests
 	# Timeout raised to 90m to accommodate heavier multi-container envs (op-pp-2chains,
 	# cdk-erigon-3chains) so a heavier env is not killed by the Go test timeout before the
-	# CI job timeout. Env selection is via E2E_ENV (inherited from the environment); unset = op-pp.
+	# CI job timeout. Env selection is via E2E_ENV (inherited from the environment); unset = op-pp-2chains.
 	# -p 1 serializes package execution so the test/e2e suite (TestMain) and the test/e2e/envs probe
 	# tests never boot their docker envs concurrently and collide on host ports (e.g. :8545).
-	# Optional E2E_RUN restricts to a -run group (used by the CI matrix to shard op-pp into separate,
+	# Optional E2E_RUN restricts to a -run group (used by the CI matrix to shard op-pp-2chains into separate,
 	# fresh-env legs for the non-destructive bridge tests vs the destructive BFL/removeGER/committee
 	# tests, which manipulate aggsender/GER state and must not share an env with the rest).
 	go test -v -timeout 90m -p 1 $(if $(E2E_RUN),-run '$(E2E_RUN)',) ./test/e2e/...

@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	opPPEnvName      = "op-pp"
+	opPPEnvName      = "op-pp-2chains"
 	keystorePassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 	backoffInitial   = 500 * time.Millisecond
 	backoffMax       = 10 * time.Second

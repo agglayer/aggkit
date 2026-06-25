@@ -1,8 +1,8 @@
 {
   "genesis": {
     "l1": {
-      "hash": "0xdee954a69a44acbbe77f48189610208090cd501ccd83e35863344ca5289b6832",
-      "number": 177
+      "hash": "0x9d2a3193d6b4c34f19a72502bb385d8a0e11e9a7c385c0ee39343c5370038d6b",
+      "number": 186
     },
     "l2": {
       "hash": "0x20b437dca7012df45368bdbba23e710b1326e5cada89b038d2bdeb0a49ff57fd",

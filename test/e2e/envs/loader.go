@@ -33,8 +33,8 @@ import (
 type ENVName string
 
 const (
-	// EnvOpPP is a testing env that has a single OP-PP network deployed
-	EnvOpPP ENVName = "op-pp"
+	// EnvOpPP is an alias for op-pp-2chains (consolidated to single OP-PP env)
+	EnvOpPP ENVName = "op-pp-2chains"
 
 	// EnvOpFEP is a testing env that runs an OP network in Full Execution Proof (FEP) mode.
 	EnvOpFEP ENVName = "op-fep"
