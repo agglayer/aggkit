@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Bridges ETH (or an ERC-20) from L1 to L2 by calling bridgeAsset on the L1 bridge
+# Bridges ETH (or an ERC-20) from L2 to L1 by calling bridgeAsset on the L2 bridge
 # contract. Connection info is taken entirely from the environment — this script
 # never talks to Kurtosis. Populate the variables first with:
 #   source <(tools/exit_certificate/scripts/export_kurtosis_env.sh 1)
 # Requires: cast (Foundry).
 #
 # Required environment variables:
-#   L1_RPC_URL    L1 JSON-RPC URL
-#   BRIDGE_ADDR   Bridge contract address on L1
-#   L2_RPC_URL    L2 JSON-RPC URL (only required with --wait)
+#   L2_RPC_URL    L2 JSON-RPC URL (where bridgeAsset is sent)
+#   BRIDGE_ADDR   Bridge contract address (same address on L1 and L2)
+#   L1_RPC_URL    L1 JSON-RPC URL (only required with --wait)
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -22,40 +22,44 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 usage() {
     cat >&2 <<EOF
-Usage: $0 [OPTIONS] [NETWORK_INDEX]
+Usage: $0 [OPTIONS] [L2_NETWORK_INDEX]
 
-Bridges ETH from L1 to L2 by calling bridgeAsset on the L1 bridge contract.
-Connection info comes from the environment (see export_kurtosis_env.sh).
+Bridges ETH from L2 to L1 by calling bridgeAsset on the L2 bridge contract.
+The destination network is L1 (network 0). Connection info comes from the
+environment (see export_kurtosis_env.sh).
 
 Arguments:
-  NETWORK_INDEX   Destination L2 network index (default: 1)
+  L2_NETWORK_INDEX   Source L2 network index (default: 1). Used as the source
+                     network when checking isClaimed on L1 with --wait.
 
 Options:
   -a, --amount    AMOUNT_WEI   Amount to bridge in wei (default: 1234567890)
-  -d, --dest      ADDRESS      Destination address on L2 (default: sender address)
+  -d, --dest      ADDRESS      Destination address on L1 (default: sender address)
   -t, --token     ADDRESS      ERC-20 token address to bridge (default: 0x0 = native ETH)
   -k, --key       PRIVATE_KEY  Sender private key (default: \$PRIVATE_KEY or Foundry test key)
-  -w, --wait                   Wait for the deposit to be claimed on L2 (polls isClaimed)
-  -T, --timeout   SECS         Seconds to wait for the claim with --wait (default: 300)
+  -w, --wait                   Wait for the deposit to be claimed on L1 (polls isClaimed)
   -h, --help                   Show this help
 
 Required environment variables:
-  L1_RPC_URL                  L1 JSON-RPC URL
-  BRIDGE_ADDR                 Bridge contract address on L1
-  L2_RPC_URL                  L2 JSON-RPC URL (only required with --wait)
-  Tip: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh NETWORK_INDEX)
+  L2_RPC_URL                  L2 JSON-RPC URL (where bridgeAsset is sent)
+  BRIDGE_ADDR                 Bridge contract address (same on L1 and L2)
+  L1_RPC_URL                  L1 JSON-RPC URL (only required with --wait)
+  Tip: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh L2_NETWORK_INDEX)
 
 Optional environment variables (override defaults):
   PRIVATE_KEY                 Sender private key
-  DEST_ADDRESS                Destination address on L2
+  DEST_ADDRESS                Destination address on L1
   TOKEN_ADDRESS               ERC-20 token address (0x0 for ETH)
 
 Examples:
   source <(tools/exit_certificate/scripts/export_kurtosis_env.sh 1)
-  $0                              # Bridge 0.01 ETH to network 1
-  $0 2                            # Bridge to network 2
+  $0                              # Bridge 0.01 ETH from L2 network 1 to L1
+  $0 2                            # Bridge from L2 network 2 to L1
   $0 --amount 1000000000000000000 # Bridge 1 ETH
   $0 --dest 0xABCD... --wait      # Bridge to specific address and wait for claim
+
+Note: L2 -> L1 deposits usually require a manual claim with a proof from the
+agglayer, so --wait may never observe an auto-claim in most setups.
 EOF
     exit 1
 }
@@ -64,8 +68,8 @@ EOF
 # Defaults
 # ---------------------------------------------------------------------------
 
-# Default sender is the Kurtosis L1 faucet (1,000,000,000 ETH on L1 in local
-# enclaves). Override with PRIVATE_KEY env var or --key flag for other environments.
+# Default sender is the Kurtosis prefunded test account. Override with the
+# PRIVATE_KEY env var or --key flag for other environments.
 PRIVATE_KEY="${PRIVATE_KEY:-0x04b9f63ecf84210c5366c66d68fa1f5da1fa4f634fad6dfc86178e4d79ff9e59}"
 
 # Default amount in wei; override with --amount on the command line.
@@ -75,9 +79,10 @@ BRIDGE_AMOUNT="1234567890"
 TOKEN_ADDRESS="${TOKEN_ADDRESS:-0x0000000000000000000000000000000000000000}"
 
 DEST_ADDRESS="${DEST_ADDRESS:-}"
-NETWORK_INDEX=1
+L2_NETWORK_INDEX=1
+# bridgeAsset destinationNetwork: L1 is always network 0.
+DEST_NETWORK=0
 WAIT_FOR_CLAIM=false
-CLAIM_TIMEOUT_SECS=300
 
 # Connection info: provided by the environment (e.g. via export_kurtosis_env.sh).
 L1_RPC_URL="${L1_RPC_URL:-}"
@@ -105,12 +110,8 @@ while [[ $# -gt 0 ]]; do
             PRIVATE_KEY="$2"; shift 2 ;;
         -w|--wait)
             WAIT_FOR_CLAIM=true; shift ;;
-        -T|--timeout)
-            [[ $# -lt 2 ]] && { log_error "--timeout requires a value"; usage; }
-            [[ "$2" =~ ^[0-9]+$ ]] || { log_error "--timeout must be a positive integer (seconds)"; usage; }
-            CLAIM_TIMEOUT_SECS="$2"; shift 2 ;;
         [0-9]*)
-            NETWORK_INDEX="$1"; shift ;;
+            L2_NETWORK_INDEX="$1"; shift ;;
         *)
             log_error "Unknown argument: $1"; usage ;;
     esac
@@ -130,12 +131,12 @@ check_deps() {
 
 check_env() {
     local missing=()
-    [[ -z "$L1_RPC_URL" ]]  && missing+=("L1_RPC_URL")
+    [[ -z "$L2_RPC_URL" ]]  && missing+=("L2_RPC_URL")
     [[ -z "$BRIDGE_ADDR" ]] && missing+=("BRIDGE_ADDR")
-    [[ "$WAIT_FOR_CLAIM" == "true" && -z "$L2_RPC_URL" ]] && missing+=("L2_RPC_URL (required with --wait)")
+    [[ "$WAIT_FOR_CLAIM" == "true" && -z "$L1_RPC_URL" ]] && missing+=("L1_RPC_URL (required with --wait)")
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required environment variables: ${missing[*]}"
-        log_error "Populate them with: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh $NETWORK_INDEX)"
+        log_error "Populate them with: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh $L2_NETWORK_INDEX)"
         exit 1
     fi
 }
@@ -153,41 +154,44 @@ check_env() {
 # ) external payable
 # ---------------------------------------------------------------------------
 
-# wait_for_claim polls isClaimed(depositCount, sourceBridgeNetwork=0) on the L2 bridge.
+# wait_for_claim polls isClaimed(depositCount, sourceBridgeNetwork) on the L1 bridge.
+# For an L2 -> L1 bridge the source network is the L2 network index.
 # depositCount is extracted from the DepositCount field of the BridgeEvent emitted in the tx.
 wait_for_claim() {
-    local l2_rpc="$1"
-    local l2_bridge="$2"
+    local l1_rpc="$1"
+    local l1_bridge="$2"
     local deposit_count="$3"
-    local timeout_secs="${4:-300}"
+    local source_network="$4"
+    local timeout_secs="${5:-300}"
     local poll_secs=5
 
     # isClaimed(uint32 leafIndex, uint32 sourceBridgeNetwork) — selector: 0xcc461632
     local leaf_idx_hex
     local src_net_hex
     leaf_idx_hex=$(printf '%064x' "$deposit_count")
-    src_net_hex=$(printf '%064x' 0)
+    src_net_hex=$(printf '%064x' "$source_network")
     local calldata="0xcc461632${leaf_idx_hex}${src_net_hex}"
 
-    log_info "Waiting for claim on L2 (depositCount=$deposit_count, timeout=${timeout_secs}s)..."
+    log_info "Waiting for claim on L1 (depositCount=$deposit_count, sourceNetwork=$source_network, timeout=${timeout_secs}s)..."
 
     local elapsed=0
     while [[ $elapsed -lt $timeout_secs ]]; do
         local result
-        result=$(cast call --rpc-url "$l2_rpc" "$l2_bridge" "$calldata" 2>/dev/null || true)
+        result=$(cast call --rpc-url "$l1_rpc" "$l1_bridge" "$calldata" 2>/dev/null || true)
         # isClaimed returns a non-zero uint256 when claimed
         local val
         val=$(cast --to-dec "${result:-0x0}" 2>/dev/null || echo "0")
         if [[ "$val" != "0" ]]; then
-            log_info "Deposit claimed on L2! (depositCount=$deposit_count)"
+            log_info "Deposit claimed on L1! (depositCount=$deposit_count)"
             return 0
         fi
         sleep "$poll_secs"
         elapsed=$((elapsed + poll_secs))
-        log_info "  Still waiting auto-claim (depositCount=$deposit_count)... ${elapsed}s / ${timeout_secs}s"
+        log_info "  Still waiting... ${elapsed}s / ${timeout_secs}s"
     done
 
     log_warn "Timed out waiting for claim after ${timeout_secs}s"
+    log_warn "L2 -> L1 deposits usually require a manual claim with an agglayer proof."
     return 1
 }
 
@@ -195,12 +199,12 @@ wait_for_claim() {
 # BridgeEvent topic: keccak256("BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)")
 extract_deposit_count() {
     local tx_hash="$1"
-    local l1_rpc="$2"
+    local rpc="$2"
 
     local bridge_event_topic="0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39366cb62f9b"
 
     local receipt
-    receipt=$(cast receipt --rpc-url "$l1_rpc" "$tx_hash" --json 2>/dev/null || true)
+    receipt=$(cast receipt --rpc-url "$rpc" "$tx_hash" --json 2>/dev/null || true)
     if [[ -z "$receipt" ]]; then
         log_warn "Could not fetch receipt for $tx_hash — skipping claim wait"
         echo ""
@@ -242,11 +246,12 @@ for log in receipt.get('logs', []):
 check_deps
 check_env
 
-log_info "Network index:    $NETWORK_INDEX"
-log_info "Amount:           $BRIDGE_AMOUNT wei"
-log_info "Token:            $TOKEN_ADDRESS"
-log_info "L1 RPC URL:       $L1_RPC_URL"
-log_info "Bridge address:   $BRIDGE_ADDR"
+log_info "Source L2 network: $L2_NETWORK_INDEX"
+log_info "Destination:       L1 (network $DEST_NETWORK)"
+log_info "Amount:            $BRIDGE_AMOUNT wei"
+log_info "Token:             $TOKEN_ADDRESS"
+log_info "L2 RPC URL:        $L2_RPC_URL"
+log_info "Bridge address:    $BRIDGE_ADDR"
 
 # Derive sender address from private key
 SENDER_ADDR=$(cast wallet address --private-key "$PRIVATE_KEY")
@@ -256,33 +261,34 @@ log_info "Sender address: $SENDER_ADDR"
 if [[ -z "$DEST_ADDRESS" ]]; then
     DEST_ADDRESS="$SENDER_ADDR"
 fi
-log_info "Destination:      $DEST_ADDRESS (network $NETWORK_INDEX)"
+log_info "Destination:       $DEST_ADDRESS (network $DEST_NETWORK)"
 
-# Check sender balance
-SENDER_BALANCE=$(cast balance --rpc-url "$L1_RPC_URL" "$SENDER_ADDR")
+# Check sender balance on L2
+SENDER_BALANCE=$(cast balance --rpc-url "$L2_RPC_URL" "$SENDER_ADDR")
 SENDER_BALANCE_ETH=$(cast --from-wei "$SENDER_BALANCE" ether)
-log_info "Sender L1 balance: $SENDER_BALANCE_ETH ETH ($SENDER_BALANCE wei)"
+log_info "Sender L2 balance: $SENDER_BALANCE_ETH ETH ($SENDER_BALANCE wei)"
 
 IS_ETH_BRIDGE="false"
 if [[ "$TOKEN_ADDRESS" == "0x0000000000000000000000000000000000000000" ]]; then
     IS_ETH_BRIDGE="true"
 fi
 
-# The sender always needs some L1 gas-token balance to pay fees, regardless of
+# The sender always needs some L2 gas-token balance to pay fees, regardless of
 # whether it bridges native ETH or an ERC-20. A balance of 0 is the usual cause
-# of "gas required exceeds allowance (0)".
+# of "gas required exceeds allowance (0)" — e.g. using the L1 faucet key (which
+# is unfunded on L2) for an L2 -> L1 bridge.
 if [[ "$SENDER_BALANCE" == "0" ]]; then
-    log_error "Sender has 0 balance on L1 — cannot pay transaction fees."
+    log_error "Sender has 0 gas-token balance on L2 — cannot pay transaction fees."
     log_error "  Sender: $SENDER_ADDR"
-    log_error "This causes 'gas required exceeds allowance (0)'. Use an L1-funded"
-    log_error "account with --key (or \$PRIVATE_KEY), or fund this address on L1 first."
+    log_error "This causes 'gas required exceeds allowance (0)'. Use an L2-funded"
+    log_error "account with --key (or \$PRIVATE_KEY), or fund this address on L2 first."
     exit 1
 fi
 
 # Estimate the gas headroom the tx needs so we can fail early with a clear message
 # instead of a raw 'gas required exceeds allowance (0)' from the node. bridgeAsset
 # (plus an approve for ERC-20) fits comfortably under ~300k gas.
-GAS_PRICE=$(cast gas-price --rpc-url "$L1_RPC_URL" 2>/dev/null || echo "0")
+GAS_PRICE=$(cast gas-price --rpc-url "$L2_RPC_URL" 2>/dev/null || echo "0")
 GAS_RESERVE=$(python3 -c "print($GAS_PRICE * 300000)" 2>/dev/null || echo "0")
 
 # bash integer arithmetic overflows for wei values > 2^63; use python3 for comparisons.
@@ -301,7 +307,7 @@ elif python3 -c "import sys; sys.exit(0 if int('$SENDER_BALANCE') < int('$GAS_RE
     # sender still needs native gas-token balance for approve + bridgeAsset.
     GAS_RESERVE_ETH=$(cast --from-wei "$GAS_RESERVE" ether)
     log_error "Insufficient gas-token balance: sender has $SENDER_BALANCE_ETH ETH,"
-    log_error "  needs ~$GAS_RESERVE_ETH ETH to cover approve + bridgeAsset gas on L1."
+    log_error "  needs ~$GAS_RESERVE_ETH ETH to cover approve + bridgeAsset gas on L2."
     exit 1
 fi
 
@@ -312,7 +318,7 @@ fi
 if [[ "$IS_ETH_BRIDGE" != "true" ]]; then
     log_info "ERC-20 bridge: approving bridge contract to spend $BRIDGE_AMOUNT of $TOKEN_ADDRESS..."
     APPROVE_TX=$(cast send \
-        --rpc-url "$L1_RPC_URL" \
+        --rpc-url "$L2_RPC_URL" \
         --private-key "$PRIVATE_KEY" \
         "$TOKEN_ADDRESS" \
         "approve(address,uint256)" \
@@ -325,7 +331,7 @@ fi
 # Call bridgeAsset
 #
 #   bridgeAsset(
-#     uint32  destinationNetwork,   → NETWORK_INDEX
+#     uint32  destinationNetwork,   → DEST_NETWORK (0 = L1)
 #     address destinationAddress,   → DEST_ADDRESS
 #     uint256 amount,               → BRIDGE_AMOUNT
 #     address token,                → TOKEN_ADDRESS (0x0 for ETH)
@@ -335,17 +341,17 @@ fi
 #   msg.value = BRIDGE_AMOUNT for ETH; 0 for ERC-20
 # ---------------------------------------------------------------------------
 
-log_info "Calling bridgeAsset on L1 bridge..."
+log_info "Calling bridgeAsset on L2 bridge..."
 
 if [[ "$IS_ETH_BRIDGE" == "true" ]]; then
     TX_HASH=$(cast send \
-        --rpc-url "$L1_RPC_URL" \
+        --rpc-url "$L2_RPC_URL" \
         --private-key "$PRIVATE_KEY" \
         --value "$BRIDGE_AMOUNT" \
         --json \
         "$BRIDGE_ADDR" \
         "bridgeAsset(uint32,address,uint256,address,bool,bytes)" \
-        "$NETWORK_INDEX" \
+        "$DEST_NETWORK" \
         "$DEST_ADDRESS" \
         "$BRIDGE_AMOUNT" \
         "0x0000000000000000000000000000000000000000" \
@@ -353,12 +359,12 @@ if [[ "$IS_ETH_BRIDGE" == "true" ]]; then
         "0x" | python3 -c "import sys,json; print(json.load(sys.stdin)['transactionHash'])")
 else
     TX_HASH=$(cast send \
-        --rpc-url "$L1_RPC_URL" \
+        --rpc-url "$L2_RPC_URL" \
         --private-key "$PRIVATE_KEY" \
         --json \
         "$BRIDGE_ADDR" \
         "bridgeAsset(uint32,address,uint256,address,bool,bytes)" \
-        "$NETWORK_INDEX" \
+        "$DEST_NETWORK" \
         "$DEST_ADDRESS" \
         "$BRIDGE_AMOUNT" \
         "$TOKEN_ADDRESS" \
@@ -369,8 +375,8 @@ fi
 log_info "Bridge tx hash: $TX_HASH"
 
 log_info "Waiting for receipt..."
-TX_STATUS=$(cast receipt --rpc-url "$L1_RPC_URL" "$TX_HASH" status 2>/dev/null || true)
-TX_BLOCK=$(cast receipt --rpc-url "$L1_RPC_URL" "$TX_HASH" blockNumber 2>/dev/null || true)
+TX_STATUS=$(cast receipt --rpc-url "$L2_RPC_URL" "$TX_HASH" status 2>/dev/null || true)
+TX_BLOCK=$(cast receipt --rpc-url "$L2_RPC_URL" "$TX_HASH" blockNumber 2>/dev/null || true)
 if [[ -z "$TX_STATUS" ]]; then
     log_warn "Could not fetch receipt for $TX_HASH"
 # `cast receipt <hash> status` formats the status differently across versions:
@@ -383,30 +389,27 @@ elif [[ "$TX_STATUS" == *"success"* || "$TX_STATUS" == "true" \
 else
     log_error "Receipt: status=REVERTED blockNumber=$TX_BLOCK"
     log_error "Replaying transaction to get revert reason..."
-    echo "---- execution ---- " 
-    cast run --rpc-url "$L1_RPC_URL" "$TX_HASH" 2>&1
-    echo "---- revert reason ---- "  
-    cast run --rpc-url "$L1_RPC_URL" "$TX_HASH" 2>&1 | grep -E "revert|Revert|error|Error|←" | head -20 >&2
+    cast run --rpc-url "$L2_RPC_URL" "$TX_HASH" 2>&1 | grep -E "revert|Revert|error|Error|←" | head -20 >&2
     exit 1
 fi
 
-log_info "Bridge from L1 to L2 network $NETWORK_INDEX submitted successfully."
+log_info "Bridge from L2 network $L2_NETWORK_INDEX to L1 submitted successfully."
 log_info "  Sender:       $SENDER_ADDR"
-log_info "  Destination:  $DEST_ADDRESS"
+log_info "  Destination:  $DEST_ADDRESS (network $DEST_NETWORK)"
 log_info "  Amount:       $BRIDGE_AMOUNT wei"
 log_info "  Token:        $TOKEN_ADDRESS"
 log_info "  Bridge:       $BRIDGE_ADDR"
 
 # ---------------------------------------------------------------------------
-# Optionally wait for the deposit to be auto-claimed on L2
+# Optionally wait for the deposit to be claimed on L1
 # ---------------------------------------------------------------------------
 
 if [[ "$WAIT_FOR_CLAIM" == "true" ]]; then
-    log_info "L2 RPC URL: $L2_RPC_URL"
+    log_info "L1 RPC URL: $L1_RPC_URL"
 
-    DEPOSIT_COUNT=$(extract_deposit_count "$TX_HASH" "$L1_RPC_URL")
+    DEPOSIT_COUNT=$(extract_deposit_count "$TX_HASH" "$L2_RPC_URL")
     if [[ -n "$DEPOSIT_COUNT" ]]; then
-        wait_for_claim "$L2_RPC_URL" "$BRIDGE_ADDR" "$DEPOSIT_COUNT" "$CLAIM_TIMEOUT_SECS"
+        wait_for_claim "$L1_RPC_URL" "$BRIDGE_ADDR" "$DEPOSIT_COUNT" "$L2_NETWORK_INDEX" 300
     else
         log_warn "Could not determine depositCount — skipping claim check"
     fi
