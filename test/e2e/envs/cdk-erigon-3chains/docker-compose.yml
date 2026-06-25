@@ -5,7 +5,7 @@
 
 services:
   geth:
-    image: snapshot-geth:aggkit-e2e-cdk-erigon-3chains-20260625-131021
+    image: arnaubennassar/snapshot-geth:20260625-131021
     container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-geth
     hostname: geth
     # Alias the restored L1 EL under its original kurtosis service name so
@@ -60,7 +60,7 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:aggkit-e2e-cdk-erigon-3chains-20260625-131021
+    image: arnaubennassar/snapshot-beacon:20260625-131021
     container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
@@ -81,7 +81,7 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:aggkit-e2e-cdk-erigon-3chains-20260625-131021
+    image: arnaubennassar/snapshot-validator:20260625-131021
     container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
