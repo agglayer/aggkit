@@ -1,12 +1,12 @@
 # Ethereum L1 Snapshot Environment
-# Enclave: cdk-erigon
-# Tag: cdk-erigon-20260529-225403
-# Genesis: 0xf5583157f40aa01faf85f01632768bc98062f55ef3a88ccee3f647d206ba379c
+# Enclave: aggkit-e2e-cdk-erigon-3chains
+# Tag: aggkit-e2e-cdk-erigon-3chains-20260625-131021
+# Genesis: 0x82d431336933bbd5ed64865279e1c0b31fe7c88ffdf9905199313fc401b44955
 
 services:
   geth:
-    image: snapshot-geth:cdk-erigon-20260529-225403
-    container_name: cdk-erigon-20260529-225318-geth
+    image: snapshot-geth:aggkit-e2e-cdk-erigon-3chains-20260625-131021
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-geth
     hostname: geth
     # Alias the restored L1 EL under its original kurtosis service name so
     # components that hardcode the kurtosis L1 RPC hostname keep resolving it.
@@ -60,8 +60,8 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:cdk-erigon-20260529-225403
-    container_name: cdk-erigon-20260529-225318-beacon
+    image: snapshot-beacon:aggkit-e2e-cdk-erigon-3chains-20260625-131021
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -81,8 +81,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:cdk-erigon-20260529-225403
-    container_name: cdk-erigon-20260529-225318-validator
+    image: snapshot-validator:aggkit-e2e-cdk-erigon-3chains-20260625-131021
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -98,7 +98,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: cdk-erigon-20260529-225318-agglayer
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -128,7 +128,7 @@ services:
 
   cdk-erigon-001:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/cdk-erigon:v2.65.0-RC1
-    container_name: cdk-erigon-20260529-225318-cdk-erigon-001
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-cdk-erigon-001
     hostname: cdk-erigon-001
     # Alias the restored EL under the kurtosis RPC service name as well, since
     # the captured aggkit config dials the L2 over http://cdk-erigon-rpc-<prefix>:8545.
@@ -137,9 +137,16 @@ services:
       default:
         aliases:
           - cdk-erigon-rpc-001
+    # Run as root (uid/gid 0), matching how kurtosis launches cdk-erigon
+    # (user=User(uid=0, gid=0)). The image's default user is "erigon", which
+    # cannot create its datadir under the root-owned named volume, so without
+    # this the node panics with "mkdir /home/erigon/data/...: permission denied".
     user: "0:0"
     environment:
       - CDK_ERIGON_SEQUENCER=1
+    # The image ENTRYPOINT is already ["cdk-erigon"]; pass only the flags so we
+    # don't turn "cdk-erigon" into an (invalid) subcommand. Set entrypoint
+    # explicitly for clarity/robustness across image variants.
     entrypoint: ["cdk-erigon"]
     command: ["--config", "/etc/cdk-erigon/config.yaml"]
     volumes:
@@ -159,9 +166,49 @@ services:
       retries: 3
       start_period: 180s
 
+  postgres-001:
+    image: postgres:16-alpine
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-postgres-001
+    hostname: postgres-001
+    environment:
+      - POSTGRES_USER=op_succinct_user
+      - POSTGRES_PASSWORD=op_succinct_password
+      - POSTGRES_DB=op_succinct_db
+    volumes:
+      - op-succinct-pg-001:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U op_succinct_user -d op_succinct_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  op-succinct-proposer-001:
+    image: ghcr.io/agglayer/op-succinct/op-succinct-agglayer:v3.5.0-agglayer
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-op-succinct-proposer-001
+    hostname: op-succinct-proposer-001
+    # env_file restores the captured proposer wiring (L2OO addr, prover mode,
+    # agglayer gateway). Generated from proposer-env.json during restore.
+    env_file:
+      - ./config/001/op-succinct/proposer.env
+    volumes:
+      # Writable: the validity-proposer writes derived config/workspace files
+      # under /app/configs at startup; a read-only mount makes it fail with
+      # "Read-only file system (os error 30)" before it can run.
+      - ./config/001/op-succinct/configs:/app/configs:rw
+    ports:
+      - "11080:8080"    # Prometheus metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+      postgres-001:
+        condition: service_healthy
+    restart: unless-stopped
+
   aggkit-001:
     image: aggkit:local
-    container_name: cdk-erigon-20260529-225318-aggkit-001
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
@@ -187,60 +234,21 @@ services:
     environment:
       - RUST_BACKTRACE=1
 
-  cdk-erigon-002:
-    image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/cdk-erigon:v2.65.0-RC1
-    container_name: cdk-erigon-20260529-225318-cdk-erigon-002
-    hostname: cdk-erigon-002
-    # Alias the restored EL under the kurtosis RPC service name as well, since
-    # the captured aggkit config dials the L2 over http://cdk-erigon-rpc-<prefix>:8545.
-    # In the snapshot the single restored erigon node serves both roles.
-    networks:
-      default:
-        aliases:
-          - cdk-erigon-rpc-002
-    user: "0:0"
-    environment:
-      - CDK_ERIGON_SEQUENCER=1
-    entrypoint: ["cdk-erigon"]
-    command: ["--config", "/etc/cdk-erigon/config.yaml"]
-    volumes:
-      - ./config/002/cdk-erigon/etc:/etc/cdk-erigon:ro
-      - cdk-erigon-data-002:/home/erigon/data
-    ports:
-      - "12545:8545"    # HTTP RPC
-      - "12546:8546"    # WebSocket RPC
-    depends_on:
-      geth:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 180s
-
-  aggkit-002:
+  aggkit-001-aggoracle-committee-000:
     image: aggkit:local
-    container_name: cdk-erigon-20260529-225318-aggkit-002
-    hostname: aggkit-002
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-aggkit-001-aggoracle-committee-000
+    hostname: aggkit-001-aggoracle-committee-000
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,bridge"
+      - "--components=aggoracle"
     volumes:
-      - ./config/002/aggkit-config.toml:/etc/aggkit/config.toml:ro
-      - ./config/002/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
-      - ./config/002/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
-      - ./config/002/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+      - ./config/001/committee/000/etc:/etc/aggkit:ro
     ports:
-      - "12576:5576"    # RPC
-      - "12577:5577"    # REST API
+      - "11600:5576"    # committee member RPC
     depends_on:
       geth:
-        condition: service_healthy
-      cdk-erigon-002:
         condition: service_healthy
       agglayer:
         condition: service_healthy
@@ -248,60 +256,65 @@ services:
     environment:
       - RUST_BACKTRACE=1
 
-  cdk-erigon-003:
-    image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/cdk-erigon:v2.65.0-RC1
-    container_name: cdk-erigon-20260529-225318-cdk-erigon-003
-    hostname: cdk-erigon-003
-    # Alias the restored EL under the kurtosis RPC service name as well, since
-    # the captured aggkit config dials the L2 over http://cdk-erigon-rpc-<prefix>:8545.
-    # In the snapshot the single restored erigon node serves both roles.
-    networks:
-      default:
-        aliases:
-          - cdk-erigon-rpc-003
-    user: "0:0"
-    environment:
-      - CDK_ERIGON_SEQUENCER=1
-    entrypoint: ["cdk-erigon"]
-    command: ["--config", "/etc/cdk-erigon/config.yaml"]
-    volumes:
-      - ./config/003/cdk-erigon/etc:/etc/cdk-erigon:ro
-      - cdk-erigon-data-003:/home/erigon/data
-    ports:
-      - "13545:8545"    # HTTP RPC
-      - "13546:8546"    # WebSocket RPC
-    depends_on:
-      geth:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 180s
-
-  aggkit-003:
+  aggkit-001-aggoracle-committee-001:
     image: aggkit:local
-    container_name: cdk-erigon-20260529-225318-aggkit-003
-    hostname: aggkit-003
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-aggkit-001-aggoracle-committee-001
+    hostname: aggkit-001-aggoracle-committee-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,bridge"
+      - "--components=aggoracle"
     volumes:
-      - ./config/003/aggkit-config.toml:/etc/aggkit/config.toml:ro
-      - ./config/003/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
-      - ./config/003/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
-      - ./config/003/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+      - ./config/001/committee/001/etc:/etc/aggkit:ro
     ports:
-      - "13576:5576"    # RPC
-      - "13577:5577"    # REST API
+      - "11601:5576"    # committee member RPC
     depends_on:
       geth:
         condition: service_healthy
-      cdk-erigon-003:
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggsender-validator-002:
+    image: aggkit:local
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-aggkit-001-aggsender-validator-002
+    hostname: aggkit-001-aggsender-validator-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator/000/etc:/etc/aggkit:ro
+    ports:
+      - "11700:5578"    # aggsender-validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggsender-validator-003:
+    image: aggkit:local
+    container_name: aggkit-e2e-cdk-erigon-3chains-20260625-130900-aggkit-001-aggsender-validator-003
+    hostname: aggkit-001-aggsender-validator-003
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator/001/etc:/etc/aggkit:ro
+    ports:
+      - "11701:5578"    # aggsender-validator gRPC
+    depends_on:
+      geth:
         condition: service_healthy
       agglayer:
         condition: service_healthy
@@ -311,7 +324,6 @@ services:
 
 volumes:
   cdk-erigon-data-001:
-  cdk-erigon-data-002:
-  cdk-erigon-data-003:
+  op-succinct-pg-001:
 # L1 state is baked in, L2 starts fresh with config-only mounts
 # Agglayer and AggKit use host-mounted config files (read-only)

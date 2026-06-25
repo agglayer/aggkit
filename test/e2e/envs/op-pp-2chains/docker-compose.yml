@@ -1,12 +1,12 @@
 # Ethereum L1 Snapshot Environment
-# Enclave: op-pp2c
-# Tag: op-pp2c-20260602-222805
-# Genesis: 0x55b8a098eae2d7e0bf967fb179fd1d5d73ac30a0f754b9527aea40a5bfc873cb
+# Enclave: aggkit-e2e-op-pp-2chains
+# Tag: aggkit-e2e-op-pp-2chains-20260625-130705
+# Genesis: 0xe6e05f027ee7a0080d21a61330c4c427006a66f02f755db18d6154272a98df25
 
 services:
   geth:
-    image: snapshot-geth:op-pp2c-20260602-222805
-    container_name: op-pp2c-20260602-222717-geth
+    image: snapshot-geth:aggkit-e2e-op-pp-2chains-20260625-130705
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-geth
     hostname: geth
     # Alias the restored L1 EL under its original kurtosis service name so
     # components that hardcode the kurtosis L1 RPC hostname keep resolving it.
@@ -60,8 +60,8 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:op-pp2c-20260602-222805
-    container_name: op-pp2c-20260602-222717-beacon
+    image: snapshot-beacon:aggkit-e2e-op-pp-2chains-20260625-130705
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -81,8 +81,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:op-pp2c-20260602-222805
-    container_name: op-pp2c-20260602-222717-validator
+    image: snapshot-validator:aggkit-e2e-op-pp-2chains-20260625-130705
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -98,7 +98,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: op-pp2c-20260602-222717-agglayer
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -128,7 +128,7 @@ services:
 
   op-geth-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
-    container_name: op-pp2c-20260602-222717-op-geth-001
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-op-geth-001
     hostname: op-geth-001
     entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
     volumes:
@@ -154,7 +154,7 @@ services:
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-pp2c-20260602-222717-op-node-001
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -185,7 +185,7 @@ services:
 
   op-batcher-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
-    container_name: op-pp2c-20260602-222717-op-batcher-001
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-op-batcher-001
     hostname: op-batcher-001
     command:
       - "op-batcher"
@@ -218,9 +218,49 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  postgres-001:
+    image: postgres:16-alpine
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-postgres-001
+    hostname: postgres-001
+    environment:
+      - POSTGRES_USER=op_succinct_user
+      - POSTGRES_PASSWORD=op_succinct_password
+      - POSTGRES_DB=op_succinct_db
+    volumes:
+      - op-succinct-pg-001:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U op_succinct_user -d op_succinct_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  op-succinct-proposer-001:
+    image: ghcr.io/agglayer/op-succinct/op-succinct-agglayer:v3.5.0-agglayer
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-op-succinct-proposer-001
+    hostname: op-succinct-proposer-001
+    # env_file restores the captured proposer wiring (L2OO addr, prover mode,
+    # agglayer gateway). Generated from proposer-env.json during restore.
+    env_file:
+      - ./config/001/op-succinct/proposer.env
+    volumes:
+      # Writable: the validity-proposer writes derived config/workspace files
+      # under /app/configs at startup; a read-only mount makes it fail with
+      # "Read-only file system (os error 30)" before it can run.
+      - ./config/001/op-succinct/configs:/app/configs:rw
+    ports:
+      - "11080:8080"    # Prometheus metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+      postgres-001:
+        condition: service_healthy
+    restart: unless-stopped
+
   aggkit-001:
     image: aggkit:local
-    container_name: op-pp2c-20260602-222717-aggkit-001
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
@@ -248,121 +288,103 @@ services:
     environment:
       - RUST_BACKTRACE=1
 
-  op-geth-002:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
-    container_name: op-pp2c-20260602-222717-op-geth-002
-    hostname: op-geth-002
-    entrypoint: ["/bin/sh", "/entrypoint/op-geth-entrypoint.sh"]
-    volumes:
-      - ./config/002/jwt.hex:/jwt/jwtsecret:ro
-      - ./config/002/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
-      - ./config/002/rollup.json:/rollup-ro/rollup.json:ro
-      - ./config/002/op-geth-entrypoint.sh:/entrypoint/op-geth-entrypoint.sh:ro
-      - l2-shared-002:/shared
-    ports:
-      - "12545:8545"    # HTTP RPC
-      - "12546:8546"    # WebSocket RPC
-      - "12551:8551"    # Engine API
-    depends_on:
-      geth:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 180s
-
-  op-node-002:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-pp2c-20260602-222717-op-node-002
-    hostname: op-node-002
-    entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
-    environment:
-      - OP_GETH_HOST=op-geth-002
-    volumes:
-      - ./config/002/rollup.json:/rollup-ro/rollup.json:ro
-      - ./config/002/l1-genesis.json:/network-configs/l1-genesis.json:ro
-      - ./config/002/jwt.hex:/jwt/jwtsecret:ro
-      - ./config/002/op-node-entrypoint.sh:/entrypoint/op-node-entrypoint.sh:ro
-      - l2-shared-002:/shared:ro
-    ports:
-      - "12547:8547"    # RPC
-      - "12300:7300"    # Metrics
-    depends_on:
-      geth:
-        condition: service_healthy
-      beacon:
-        condition: service_healthy
-      op-geth-002:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 240s
-
-  op-batcher-002:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
-    container_name: op-pp2c-20260602-222717-op-batcher-002
-    hostname: op-batcher-002
-    command:
-      - "op-batcher"
-      - "--l2-eth-rpc=http://op-geth-002:8545"
-      - "--rollup-rpc=http://op-node-002:8547"
-      - "--poll-interval=1s"
-      - "--sub-safety-margin=6"
-      - "--num-confirmations=1"
-      - "--safe-abort-nonce-too-low-count=3"
-      - "--resubmission-timeout=30s"
-      - "--rpc.addr=0.0.0.0"
-      - "--rpc.port=8548"
-      - "--rpc.enable-admin"
-      - "--max-channel-duration=1"
-      - "--l1-eth-rpc=http://geth:8545"
-      - "--private-key=0x441ee527c854d6ecf1cac3ea055b37c7563dcf7ed185ef4257f059b3c8172037"
-      - "--data-availability-type=blobs"
-      - "--altda.enabled=false"
-      - "--altda.da-server="
-      - "--altda.da-service"
-      - "--data-availability-type=calldata"
-    ports:
-      - "12548:8548"    # batcher RPC/admin
-    depends_on:
-      geth:
-        condition: service_healthy
-      op-geth-002:
-        condition: service_healthy
-      op-node-002:
-        condition: service_healthy
-    restart: unless-stopped
-
-  aggkit-002:
+  aggkit-001-aggoracle-committee-000:
     image: aggkit:local
-    container_name: op-pp2c-20260602-222717-aggkit-002
-    hostname: aggkit-002
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-aggkit-001-aggoracle-committee-000
+    hostname: aggkit-001-aggoracle-committee-000
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,aggoracle,bridge"
+      - "--components=aggoracle"
     volumes:
-      - ./config/002/aggkit-config.toml:/etc/aggkit/config.toml:ro
-      - ./config/002/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
-      - ./config/002/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
-      - ./config/002/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+      - ./config/001/committee/000/etc:/etc/aggkit:ro
     ports:
-      - "12576:5576"    # RPC
-      - "12577:5577"    # REST API
+      - "11600:5576"    # committee member RPC
     depends_on:
       geth:
         condition: service_healthy
-      op-geth-002:
+      op-geth-001:
         condition: service_healthy
-      op-node-002:
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggoracle-committee-001:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-aggkit-001-aggoracle-committee-001
+    hostname: aggkit-001-aggoracle-committee-001
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggoracle"
+    volumes:
+      - ./config/001/committee/001/etc:/etc/aggkit:ro
+    ports:
+      - "11601:5576"    # committee member RPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggsender-validator-002:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-aggkit-001-aggsender-validator-002
+    hostname: aggkit-001-aggsender-validator-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator/000/etc:/etc/aggkit:ro
+    ports:
+      - "11700:5578"    # aggsender-validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggsender-validator-003:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-pp-2chains-20260625-130534-aggkit-001-aggsender-validator-003
+    hostname: aggkit-001-aggsender-validator-003
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator/001/etc:/etc/aggkit:ro
+    ports:
+      - "11701:5578"    # aggsender-validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
         condition: service_healthy
       agglayer:
         condition: service_healthy
@@ -372,6 +394,6 @@ services:
 
 volumes:
   l2-shared-001:
-  l2-shared-002:
+  op-succinct-pg-001:
 # L1 state is baked in, L2 starts fresh with config-only mounts
 # Agglayer and AggKit use host-mounted config files (read-only)

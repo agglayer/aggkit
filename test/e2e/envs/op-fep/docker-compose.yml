@@ -1,12 +1,12 @@
 # Ethereum L1 Snapshot Environment
-# Enclave: op-fep
-# Tag: op-fep-20260603-012740
-# Genesis: 0x5db5e3c972816a3c649b0889a84fe60301edc6945f5cd81b2c9dfb4c2750740b
+# Enclave: aggkit-e2e-op-fep
+# Tag: aggkit-e2e-op-fep-20260625-130843
+# Genesis: 0xa1f157c25c16ff0cc8ed434e3b3af386d21c360988c5d4959e0e891e6283e3b8
 
 services:
   geth:
-    image: snapshot-geth:op-fep-20260603-012740
-    container_name: op-fep-20260603-001746-geth
+    image: snapshot-geth:aggkit-e2e-op-fep-20260625-130843
+    container_name: aggkit-e2e-op-fep-20260625-130720-geth
     hostname: geth
     # Alias the restored L1 EL under its original kurtosis service name so
     # components that hardcode the kurtosis L1 RPC hostname keep resolving it.
@@ -60,8 +60,8 @@ services:
       start_period: 10s
 
   beacon:
-    image: snapshot-beacon:op-fep-20260603-012740
-    container_name: op-fep-20260603-001746-beacon
+    image: snapshot-beacon:aggkit-e2e-op-fep-20260625-130843
+    container_name: aggkit-e2e-op-fep-20260625-130720-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
     ports:
@@ -81,8 +81,8 @@ services:
       start_period: 30s
 
   validator:
-    image: snapshot-validator:op-fep-20260603-012740
-    container_name: op-fep-20260603-001746-validator
+    image: snapshot-validator:aggkit-e2e-op-fep-20260625-130843
+    container_name: aggkit-e2e-op-fep-20260625-130720-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
     depends_on:
@@ -98,7 +98,7 @@ services:
 
   agglayer:
     image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
-    container_name: op-fep-20260603-001746-agglayer
+    container_name: aggkit-e2e-op-fep-20260625-130720-agglayer
     hostname: agglayer
     entrypoint: ["/usr/local/bin/agglayer"]
     command:
@@ -128,7 +128,7 @@ services:
 
   op-geth-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.2.5
-    container_name: op-fep-20260603-001746-op-geth-001
+    container_name: aggkit-e2e-op-fep-20260625-130720-op-geth-001
     hostname: op-geth-001
     entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
     volumes:
@@ -154,7 +154,7 @@ services:
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
-    container_name: op-fep-20260603-001746-op-node-001
+    container_name: aggkit-e2e-op-fep-20260625-130720-op-node-001
     hostname: op-node-001
     entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
     environment:
@@ -185,7 +185,7 @@ services:
 
   op-batcher-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.16.9
-    container_name: op-fep-20260603-001746-op-batcher-001
+    container_name: aggkit-e2e-op-fep-20260625-130720-op-batcher-001
     hostname: op-batcher-001
     command:
       - "op-batcher"
@@ -220,7 +220,7 @@ services:
 
   postgres-001:
     image: postgres:16-alpine
-    container_name: op-fep-20260603-001746-postgres-001
+    container_name: aggkit-e2e-op-fep-20260625-130720-postgres-001
     hostname: postgres-001
     environment:
       - POSTGRES_USER=op_succinct_user
@@ -238,7 +238,7 @@ services:
 
   op-succinct-proposer-001:
     image: ghcr.io/agglayer/op-succinct/op-succinct-agglayer:v3.5.0-agglayer
-    container_name: op-fep-20260603-001746-op-succinct-proposer-001
+    container_name: aggkit-e2e-op-fep-20260625-130720-op-succinct-proposer-001
     hostname: op-succinct-proposer-001
     # env_file restores the captured proposer wiring (L2OO addr, prover mode,
     # agglayer gateway). Generated from proposer-env.json during restore.
@@ -260,7 +260,7 @@ services:
 
   aggkit-001:
     image: aggkit:local
-    container_name: op-fep-20260603-001746-aggkit-001
+    container_name: aggkit-e2e-op-fep-20260625-130720-aggkit-001
     hostname: aggkit-001
     entrypoint: ["/usr/local/bin/aggkit"]
     command:
@@ -275,6 +275,110 @@ services:
     ports:
       - "11576:5576"    # RPC
       - "11577:5577"    # REST API
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggoracle-committee-000:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-fep-20260625-130720-aggkit-001-aggoracle-committee-000
+    hostname: aggkit-001-aggoracle-committee-000
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggoracle"
+    volumes:
+      - ./config/001/committee/000/etc:/etc/aggkit:ro
+    ports:
+      - "11600:5576"    # committee member RPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggoracle-committee-001:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-fep-20260625-130720-aggkit-001-aggoracle-committee-001
+    hostname: aggkit-001-aggoracle-committee-001
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggoracle"
+    volumes:
+      - ./config/001/committee/001/etc:/etc/aggkit:ro
+    ports:
+      - "11601:5576"    # committee member RPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggsender-validator-002:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-fep-20260625-130720-aggkit-001-aggsender-validator-002
+    hostname: aggkit-001-aggsender-validator-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator/000/etc:/etc/aggkit:ro
+    ports:
+      - "11700:5578"    # aggsender-validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-geth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  aggkit-001-aggsender-validator-003:
+    image: aggkit:local
+    container_name: aggkit-e2e-op-fep-20260625-130720-aggkit-001-aggsender-validator-003
+    hostname: aggkit-001-aggsender-validator-003
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator/001/etc:/etc/aggkit:ro
+    ports:
+      - "11701:5578"    # aggsender-validator gRPC
     depends_on:
       geth:
         condition: service_healthy
