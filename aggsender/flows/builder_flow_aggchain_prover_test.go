@@ -687,6 +687,60 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 	}
 }
 
+func Test_AggchainProverFlow_AdjustmentOptionsUsesConfiguredMaxL2BlockNumber(t *testing.T) {
+	t.Parallel()
+
+	const maxL2BlockNumber = uint64(2700000)
+
+	flow := NewAggchainProverBuilderFlow(
+		log.WithFields("flowManager", "Test_AggchainProverFlow_AdjustmentOptionsUsesConfiguredMaxL2BlockNumber"),
+		NewAggchainProverFlowConfig(maxL2BlockNumber),
+		nil, // baseFlow
+		nil, // storage
+		nil, // l1InfoTreeQuerier
+		nil, // l2BridgeQuerier
+		nil, // signer
+		nil, // optimisticModeQuerier
+		nil, // aggchainProofQuerier
+	)
+
+	tests := []struct {
+		name                string
+		validateRootToProve bool
+		expectedOptions     types.BlockRangeAdjustmentOptions
+	}{
+		{
+			name:                "builder path",
+			validateRootToProve: false,
+			expectedOptions: types.BlockRangeAdjustmentOptions{
+				MaxL2BlockNumber:              maxL2BlockNumber,
+				AllowResizeRetryCert:          false,
+				RequireOneBridgeInCertificate: false,
+			},
+		},
+		{
+			name:                "validator path",
+			validateRootToProve: true,
+			expectedOptions: types.BlockRangeAdjustmentOptions{
+				MaxL2BlockNumber:              maxL2BlockNumber,
+				AllowResizeRetryCert:          false,
+				RequireOneBridgeInCertificate: false,
+				ValidateRootToProve:           true,
+				DisableSizeLimit:              true,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.expectedOptions, flow.adjustmentOptions(tc.validateRootToProve))
+		})
+	}
+}
+
 func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 	t.Parallel()
 
