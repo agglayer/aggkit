@@ -370,6 +370,40 @@ services:
     environment:
       - RUST_BACKTRACE=1
 
+  # aggsender-validator-004 is an OPTIONAL, on-demand committee validator used only by
+  # TestCommitteeUpdates (P10). It is gated behind the "committee" compose profile, so a plain
+  # `docker compose up -d` (the default the loader runs in ensureDockerComposeRunning) SKIPS it
+  # entirely. It is started imperatively by the loader helper StartAggsenderValidator
+  # (`docker compose --profile committee up -d aggsender-validator-004`) and torn down by
+  # StopAggsenderValidator (`docker compose rm -sf aggsender-validator-004`).
+  #
+  # The hostname `aggkit-001-aggsender-validator-004` exactly matches the on-chain committee
+  # member Url (`http://aggkit-001-aggsender-validator-004:5578`) that the test adds, so the
+  # aggsender-001 container resolves it on the default compose network and dials its gRPC :5578.
+  # It signs with aggsendervalidator-4.keystore (address
+  # 0x77A21F79994876973BeF5bbcbbd617a5B32B2f57), which is the same address added on-chain, so the
+  # signatures it returns recover to the committee member and certificates settle at threshold 2.
+  #
+  # It is NOT part of waitForServices and NOT listed in summary.json, so no other test or the
+  # post-suite health check ever waits on or is affected by it.
+  aggsender-validator-004:
+    image: aggkit:local
+    container_name: aggkit-001-aggsender-validator-004
+    hostname: aggkit-001-aggsender-validator-004
+    profiles: ["committee"]
+    user: "${UID:-0}:${GID:-0}"
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/validator-004/config.toml:/etc/aggkit/config.toml:ro
+      - ./config/validator-004/aggsendervalidator-4.keystore:/etc/aggkit/aggsendervalidator-4.keystore:ro
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
 volumes:
   l2-shared-001:
   l2-shared-002:
