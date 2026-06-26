@@ -90,6 +90,7 @@ func NewAggchainProverBuilderFlow(
 		optimisticModeQuerier: optimisticModeQuerier,
 		aggchainProofQuerier:  aggchainProofQuerier,
 		baseFlow:              baseFlow,
+		config:                aggChainProverConfig,
 	}
 }
 
