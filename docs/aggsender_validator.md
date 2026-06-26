@@ -170,6 +170,7 @@ The validator is configured using a `.toml` file. Check the default values in th
 
 | Name                          | Type    | Description                                                                                                                              |
 |-------------------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------|
+| MaxL2BlockRange               | uint64  | Maximum L2 block range allowed in a certificate, computed as `ToBlock - FromBlock`. 0 means disabled                                     |
 | UnsetClaimsMaxLogBlockRange   | uint64  | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error) |
 
 ### Running the Validator

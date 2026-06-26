@@ -691,10 +691,11 @@ func Test_AggchainProverFlow_AdjustmentOptionsUsesConfiguredMaxL2BlockNumber(t *
 	t.Parallel()
 
 	const maxL2BlockNumber = uint64(2700000)
+	const maxL2BlockRange = uint64(500)
 
 	flow := NewAggchainProverBuilderFlow(
 		log.WithFields("flowManager", "Test_AggchainProverFlow_AdjustmentOptionsUsesConfiguredMaxL2BlockNumber"),
-		NewAggchainProverFlowConfig(maxL2BlockNumber),
+		NewAggchainProverFlowConfig(maxL2BlockNumber, maxL2BlockRange),
 		nil, // baseFlow
 		nil, // storage
 		nil, // l1InfoTreeQuerier
@@ -714,6 +715,7 @@ func Test_AggchainProverFlow_AdjustmentOptionsUsesConfiguredMaxL2BlockNumber(t *
 			validateRootToProve: false,
 			expectedOptions: types.BlockRangeAdjustmentOptions{
 				MaxL2BlockNumber:              maxL2BlockNumber,
+				MaxL2BlockRange:               maxL2BlockRange,
 				AllowResizeRetryCert:          false,
 				RequireOneBridgeInCertificate: false,
 			},
@@ -723,6 +725,7 @@ func Test_AggchainProverFlow_AdjustmentOptionsUsesConfiguredMaxL2BlockNumber(t *
 			validateRootToProve: true,
 			expectedOptions: types.BlockRangeAdjustmentOptions{
 				MaxL2BlockNumber:              maxL2BlockNumber,
+				MaxL2BlockRange:               maxL2BlockRange,
 				AllowResizeRetryCert:          false,
 				RequireOneBridgeInCertificate: false,
 				ValidateRootToProve:           true,

@@ -51,20 +51,25 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.Ba
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
 	maxL2BlockNumber uint64
+	maxL2BlockRange  uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		maxL2BlockNumber: 0,
+		maxL2BlockRange:  0,
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
 func NewAggchainProverFlowConfig(
-	maxL2BlockNumber uint64) AggchainProverFlowConfig {
+	maxL2BlockNumber uint64,
+	maxL2BlockRange uint64,
+) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		maxL2BlockNumber: maxL2BlockNumber,
+		maxL2BlockRange:  maxL2BlockRange,
 	}
 }
 
@@ -390,6 +395,7 @@ func (a *AggchainProverBuilderFlow) UpdateAggchainData(
 func (a *AggchainProverBuilderFlow) adjustmentOptions(validateRootToProve bool) types.BlockRangeAdjustmentOptions {
 	return types.BlockRangeAdjustmentOptions{
 		MaxL2BlockNumber:              a.config.maxL2BlockNumber,
+		MaxL2BlockRange:               a.config.maxL2BlockRange,
 		AllowResizeRetryCert:          false,
 		RequireOneBridgeInCertificate: false,
 		ValidateRootToProve:           validateRootToProve,

@@ -59,6 +59,7 @@ func NewVerifierFlow(
 			commonFlowComponents.Signer,
 			cfg.PPConfig.RequireOneBridgeInPPCertificate,
 			cfg.MaxL2BlockNumber,
+			cfg.MaxL2BlockRange,
 		)
 
 		return NewPPVerifierFlow(builderFlow), commonFlowComponents, nil
@@ -94,7 +95,7 @@ func NewVerifierFlow(
 
 		builderFlow := NewAggchainProverBuilderFlow(
 			logger,
-			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
+			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber, cfg.MaxL2BlockRange),
 			commonFlowComponents.BaseFlow,
 			nil, // storage is not used in validator
 			commonFlowComponents.L1InfoTreeDataQuerier,

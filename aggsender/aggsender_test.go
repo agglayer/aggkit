@@ -253,7 +253,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, bridgetypes.EmptyLER, nil, flows.NewBaseFlowConfigDefault()),
-			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
+			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0, 0),
 	}
 
 	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
@@ -869,7 +869,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		flow: flows.NewPPBuilderFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
 				l1InfoTreeQuerierMock, bridgetypes.EmptyLER, nil, flows.NewBaseFlowConfigDefault()),
-			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
+			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0, 0),
 	}
 	var flowMock *mocks.AggsenderBuilderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {
