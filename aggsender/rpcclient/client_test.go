@@ -1,10 +1,12 @@
 package rpcclient
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -22,7 +24,7 @@ func TestGetCertificateHeaderPerHeight(t *testing.T) {
 	response := rpc.Response{
 		Result: responseCertJSON,
 	}
-	jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+	jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 		return response, nil
 	}
 	cert, err := sut.GetCertificateHeaderPerHeight(&height)
@@ -47,7 +49,7 @@ func TestGetCertificateBridgeExits(t *testing.T) {
 	response := rpc.Response{
 		Result: responseExitsJSON,
 	}
-	jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+	jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 		return response, nil
 	}
 	exits, err := sut.GetCertificateBridgeExits(&height)
@@ -65,7 +67,7 @@ func TestGetStatus(t *testing.T) {
 	response := rpc.Response{
 		Result: responseDataJSON,
 	}
-	jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+	jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 		return response, nil
 	}
 	result, err := sut.GetStatus()
@@ -74,11 +76,33 @@ func TestGetStatus(t *testing.T) {
 	require.Equal(t, responseData, *result)
 }
 
+func TestClientCallUsesTimeout(t *testing.T) {
+	sut := NewClient("url")
+	sut.requestTimeout = 50 * time.Millisecond
+
+	responseData := types.AggsenderInfo{}
+	responseDataJSON, err := json.Marshal(responseData)
+	require.NoError(t, err)
+	response := rpc.Response{
+		Result: responseDataJSON,
+	}
+	jSONRPCCallWithContext = func(ctx context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.Positive(t, time.Until(deadline))
+		require.LessOrEqual(t, time.Until(deadline), 50*time.Millisecond)
+		return response, nil
+	}
+
+	_, err = sut.GetStatus()
+	require.NoError(t, err)
+}
+
 func TestGetStatus_Errors(t *testing.T) {
 	sut := NewClient("url")
 
 	t.Run("rpc call error", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{}, fmt.Errorf("network error")
 		}
 		_, err := sut.GetStatus()
@@ -86,7 +110,7 @@ func TestGetStatus_Errors(t *testing.T) {
 	})
 
 	t.Run("response error field set", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
 		}
 		_, err := sut.GetStatus()
@@ -95,7 +119,7 @@ func TestGetStatus_Errors(t *testing.T) {
 	})
 
 	t.Run("unmarshal error", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{Result: json.RawMessage("not-json")}, nil
 		}
 		_, err := sut.GetStatus()
@@ -109,7 +133,7 @@ func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
 	height := uint64(1)
 
 	t.Run("rpc call error", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{}, fmt.Errorf("network error")
 		}
 		_, err := sut.GetCertificateHeaderPerHeight(&height)
@@ -117,7 +141,7 @@ func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
 	})
 
 	t.Run("response error field set", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
 		}
 		_, err := sut.GetCertificateHeaderPerHeight(&height)
@@ -126,7 +150,7 @@ func TestGetCertificateHeaderPerHeight_Errors(t *testing.T) {
 	})
 
 	t.Run("unmarshal error", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{Result: json.RawMessage("not-json")}, nil
 		}
 		_, err := sut.GetCertificateHeaderPerHeight(&height)
@@ -140,7 +164,7 @@ func TestGetCertificateBridgeExits_Errors(t *testing.T) {
 	height := uint64(5)
 
 	t.Run("rpc call error", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{}, fmt.Errorf("network error")
 		}
 		_, err := sut.GetCertificateBridgeExits(&height)
@@ -148,7 +172,7 @@ func TestGetCertificateBridgeExits_Errors(t *testing.T) {
 	})
 
 	t.Run("response error field set", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{Error: &rpc.ErrorObject{Message: "rpc error"}}, nil
 		}
 		_, err := sut.GetCertificateBridgeExits(&height)
@@ -157,7 +181,7 @@ func TestGetCertificateBridgeExits_Errors(t *testing.T) {
 	})
 
 	t.Run("unmarshal error", func(t *testing.T) {
-		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		jSONRPCCallWithContext = func(_ context.Context, _, _ string, _ ...interface{}) (rpc.Response, error) {
 			return rpc.Response{Result: json.RawMessage("not-json")}, nil
 		}
 		_, err := sut.GetCertificateBridgeExits(&height)

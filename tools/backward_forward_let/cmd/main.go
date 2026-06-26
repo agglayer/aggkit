@@ -25,79 +25,23 @@ func main() {
 			Name:  "yes",
 			Usage: "Skip interactive confirmation and execute the recovery plan immediately",
 		},
+		&cli.BoolFlag{
+			Name:  "diagnose-only",
+			Usage: "Print diagnosis and recovery plan, then stop without prompting or sending recovery transactions",
+		},
 		&cli.StringFlag{
 			Name:    "cert-exits-file",
 			Aliases: []string{"f"},
-			Usage: "Path to a JSON override file containing pre-extracted bridge exits keyed by certificate height." +
-				" Use when the aggsender DB is empty and the tool reports missing cert IDs.",
+			Usage: "Path to a JSON fallback file containing either raw AggLayer certificates or pre-extracted" +
+				" bridge exits keyed by certificate height." +
+				" Use when the aggsender DB is empty and the tool reports missing certificate exits.",
 		},
 	}
 	app.Action = backward_forward_let.Run
 	app.Commands = []*cli.Command{
 		{
-			Name:  "craft-cert",
-			Usage: "Build a signed malicious certificate JSON for staging drills",
-			Flags: []cli.Flag{
-				&cli.StringFlag{
-					Name:  "signer-key-path",
-					Usage: "Path to the keystore file used to sign the crafted certificate (overrides AggSender.AggsenderPrivateKey)",
-				},
-				&cli.StringFlag{
-					Name:  "signer-key-password",
-					Usage: "Password for the keystore file used to sign the crafted certificate (used with --signer-key-path)",
-				},
-				&cli.StringFlag{
-					Name:  "out",
-					Usage: "Write the crafted certificate JSON to this file instead of stdout",
-				},
-				&cli.StringFlag{
-					Name:  "db-path",
-					Usage: "Optional path to the aggsender SQLite DB when aggsender RPC is unavailable",
-				},
-				&cli.IntFlag{
-					Name:  "num-fake-exits",
-					Usage: "Number of fake bridge exits to include in the crafted certificate",
-					Value: 1,
-				},
-				&cli.IntFlag{
-					Name:  "starting-exit-index",
-					Usage: "Starting index used to derive unique fake destination addresses",
-					Value: 0,
-				},
-				&cli.StringFlag{
-					Name:  "nonce",
-					Usage: "Optional nonce used to derive deterministic fake destination addresses",
-				},
-				&cli.UintFlag{
-					Name:  "origin-network",
-					Usage: "Origin network for fake bridge exits",
-					Value: 0,
-				},
-				&cli.StringFlag{
-					Name:  "origin-token-address",
-					Usage: "Origin token address for fake bridge exits",
-					Value: "0x0000000000000000000000000000000000000000",
-				},
-				&cli.UintFlag{
-					Name:  "destination-network",
-					Usage: "Destination network for fake bridge exits",
-					Value: 0,
-				},
-				&cli.StringFlag{
-					Name:  "amount",
-					Usage: "Amount for each fake bridge exit, encoded as a decimal string",
-					Value: "0",
-				},
-				&cli.BoolFlag{
-					Name:  "staging-only",
-					Usage: "Acknowledge that crafted malicious certificates are only for staging drills",
-				},
-			},
-			Action: backward_forward_let.RunCraftCert,
-		},
-		{
 			Name:  "send-cert",
-			Usage: "Send a certificate to the agglayer and record it in the aggsender DB",
+			Usage: "Send a certificate to the agglayer and optionally record it in the aggsender DB",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:  "cert-json",
@@ -114,7 +58,11 @@ func main() {
 				},
 				&cli.BoolFlag{
 					Name:  "no-db",
-					Usage: "Send the certificate to the agglayer without storing it in the aggsender DB",
+					Usage: "Staging-only: send the certificate without recording it in the aggsender DB",
+				},
+				&cli.BoolFlag{
+					Name:  "staging-only",
+					Usage: "Required when using staging-only send modes such as --no-db",
 				},
 				&cli.StringFlag{
 					Name:  "signer-key-path",
@@ -126,6 +74,63 @@ func main() {
 				},
 			},
 			Action: backward_forward_let.RunSendCert,
+		},
+		{
+			Name:  "craft-cert",
+			Usage: "Staging-only: craft a testing certificate for a backward/forward LET drill",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "staging-only", Usage: "Required safety confirmation for testing certificate crafting"},
+				&cli.UintFlag{Name: "num-fake-exits", Usage: "Number of fake bridge exits to include"},
+				&cli.StringFlag{Name: "amount", Value: "0", Usage: "Fake bridge exit amount"},
+				&cli.UintFlag{Name: "starting-exit-index", Usage: "Starting index for deterministic fake exit uniqueness"},
+				&cli.StringFlag{Name: "nonce", Usage: "Optional nonce used to derive fake exit destination addresses"},
+				&cli.Uint64Flag{
+					Name:  "l1-info-tree-leaf-count",
+					Usage: "Override L1 info tree leaf count when aggsender header data is unavailable",
+				},
+				&cli.Uint64Flag{Name: "signer-index", Usage: "Multisig signer index to write into the crafted certificate"},
+				&cli.StringFlag{Name: "out", Usage: "Output path for the crafted certificate JSON", Required: true},
+			},
+			Action: backward_forward_let.RunCraftCert,
+		},
+		{
+			Name:  "cert-status",
+			Usage: "Print AggLayer certificate settlement and pending status",
+			Flags: []cli.Flag{
+				&cli.Uint64Flag{Name: "height", Usage: "Certificate height to check"},
+				&cli.BoolFlag{Name: "wait-no-pending", Usage: "Wait until AggLayer has no open pending certificate"},
+				&cli.BoolFlag{Name: "wait-settled", Usage: "Wait until --height is settled"},
+				&cli.DurationFlag{
+					Name:  "timeout",
+					Value: backward_forward_let.DefaultCertStatusTimeout,
+					Usage: "Maximum wait duration",
+				},
+			},
+			Action: backward_forward_let.RunCertStatus,
+		},
+		{
+			Name:  "export-cert-exits",
+			Usage: "Export a certificate-exits override from an authoritative height-to-cert-ID map",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "agglayer-admin-url", Usage: "Read-only AggLayer admin JSON-RPC URL", Required: true},
+				&cli.StringFlag{Name: "cert-ids-file", Usage: "JSON file mapping certificate heights to cert IDs", Required: true},
+				&cli.StringFlag{Name: "out", Usage: "Output certificate exits override JSON path", Required: true},
+				&cli.StringFlag{
+					Name:  "manifest-out",
+					Usage: "Output source manifest JSON path (default: <out>.manifest.json)",
+				},
+				&cli.Uint64Flag{
+					Name:  "max-certs",
+					Value: backward_forward_let.DefaultExportCertExitsMaxCerts,
+					Usage: "Maximum certificates to export in one batch",
+				},
+				&cli.DurationFlag{
+					Name:  "timeout",
+					Value: backward_forward_let.DefaultExportCertExitsTimeout,
+					Usage: "Maximum export duration",
+				},
+			},
+			Action: backward_forward_let.RunExportCertExits,
 		},
 	}
 

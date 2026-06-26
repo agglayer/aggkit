@@ -1426,6 +1426,66 @@ func (_c *EthClienter_TransactionReceipt_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// RetrieveBlockHeaders provides a mock function with given fields: ctx, blockNumbers, maxConcurrency
+func (_m *EthClienter) RetrieveBlockHeaders(ctx context.Context, blockNumbers []uint64, maxConcurrency int) (*types.BlockHeadersResult, error) {
+	ret := _m.Called(ctx, blockNumbers, maxConcurrency)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RetrieveBlockHeaders")
+	}
+
+	var r0 *types.BlockHeadersResult
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, []uint64, int) (*types.BlockHeadersResult, error)); ok {
+		return rf(ctx, blockNumbers, maxConcurrency)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, []uint64, int) *types.BlockHeadersResult); ok {
+		r0 = rf(ctx, blockNumbers, maxConcurrency)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.BlockHeadersResult)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, []uint64, int) error); ok {
+		r1 = rf(ctx, blockNumbers, maxConcurrency)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EthClienter_RetrieveBlockHeaders_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RetrieveBlockHeaders'
+type EthClienter_RetrieveBlockHeaders_Call struct {
+	*mock.Call
+}
+
+// RetrieveBlockHeaders is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blockNumbers []uint64
+//   - maxConcurrency int
+func (_e *EthClienter_Expecter) RetrieveBlockHeaders(ctx interface{}, blockNumbers interface{}, maxConcurrency interface{}) *EthClienter_RetrieveBlockHeaders_Call {
+	return &EthClienter_RetrieveBlockHeaders_Call{Call: _e.mock.On("RetrieveBlockHeaders", ctx, blockNumbers, maxConcurrency)}
+}
+
+func (_c *EthClienter_RetrieveBlockHeaders_Call) Run(run func(ctx context.Context, blockNumbers []uint64, maxConcurrency int)) *EthClienter_RetrieveBlockHeaders_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]uint64), args[2].(int))
+	})
+	return _c
+}
+
+func (_c *EthClienter_RetrieveBlockHeaders_Call) Return(_a0 *types.BlockHeadersResult, _a1 error) *EthClienter_RetrieveBlockHeaders_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *EthClienter_RetrieveBlockHeaders_Call) RunAndReturn(run func(context.Context, []uint64, int) (*types.BlockHeadersResult, error)) *EthClienter_RetrieveBlockHeaders_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewEthClienter creates a new instance of EthClienter. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewEthClienter(t interface {

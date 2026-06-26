@@ -64,6 +64,23 @@ const (
 	bridgeLeafTypeAsset   = uint8(bridgesynctypes.LeafTypeAsset)
 )
 
+const (
+	// CallTypeCall is a callTracer CALL frame.
+	CallTypeCall = "CALL"
+	// CallTypeDelegateCall is a callTracer DELEGATECALL frame.
+	CallTypeDelegateCall = "DELEGATECALL"
+	// CallTypeStaticCall is a callTracer STATICCALL frame.
+	CallTypeStaticCall = "STATICCALL"
+	// CallTypeCallCode is a callTracer CALLCODE frame.
+	CallTypeCallCode = "CALLCODE"
+	// CallTypeCreate is a callTracer CREATE frame.
+	CallTypeCreate = "CREATE"
+	// CallTypeCreate2 is a callTracer CREATE2 frame.
+	CallTypeCreate2 = "CREATE2"
+	// CallTypeSelfDestruct is a callTracer SELFDESTRUCT frame.
+	CallTypeSelfDestruct = "SELFDESTRUCT"
+)
+
 func buildAppender(
 	ctx context.Context,
 	client aggkittypes.EthClienter,
@@ -522,6 +539,7 @@ func buildForwardLETEventHandler(contract *agglayerbridgel2.Agglayerbridgel2) fu
 }
 
 type Call struct {
+	Type  string            `json:"type"`
 	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
 	Value *rpctypes.ArgBig  `json:"value"`
@@ -554,7 +572,7 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 			continue
 		}
 
-		if currentCall.To == targetAddr {
+		if currentCall.To == targetAddr && currentCall.Type == CallTypeCall {
 			if callback != nil {
 				found, err := callback(currentCall)
 				if err != nil {

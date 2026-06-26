@@ -169,6 +169,120 @@ func TestLoadBridgeExitsOverride_RoundTrip(t *testing.T) {
 	require.Nil(t, exits[0].Metadata)
 }
 
+func TestLoadBridgeExitsOverride_AgglayerCertificateObject(t *testing.T) {
+	t.Parallel()
+
+	originAddr := "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	destAddr := "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	path := writeOverrideFile(t, `{
+		"network_id": 7,
+		"description": "raw agglayer certificates",
+		"certificates": {
+			"42": {
+				"network_id": 7,
+				"height": 42,
+				"prev_local_exit_root": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"new_local_exit_root": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"bridge_exits": [
+					{
+						"leaf_type": 0,
+						"token_info": {
+							"origin_network": 1,
+							"origin_token_address": "`+originAddr+`"
+						},
+						"dest_network": 2,
+						"dest_address": "`+destAddr+`",
+						"amount": "100",
+						"metadata": null
+					}
+				],
+				"imported_bridge_exits": [],
+				"metadata": "0x0000000000000000000000000000000000000000000000000000000000000000"
+			},
+			"43": {
+				"network_id": 7,
+				"height": 43,
+				"prev_local_exit_root": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"new_local_exit_root": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"bridge_exits": [],
+				"imported_bridge_exits": [],
+				"metadata": "0x0000000000000000000000000000000000000000000000000000000000000000"
+			}
+		}
+	}`)
+
+	result, err := LoadBridgeExitsOverride(path)
+	require.NoError(t, err)
+	require.Equal(t, uint32(7), result.NetworkID)
+	require.Equal(t, "raw agglayer certificates", result.Description)
+
+	exits42, ok := result.GetExits(42)
+	require.True(t, ok)
+	require.Len(t, exits42, 1)
+	require.Equal(t, uint32(2), exits42[0].DestinationNetwork)
+	require.Equal(t, common.HexToAddress(destAddr), exits42[0].DestinationAddress)
+	require.Equal(t, big.NewInt(100), exits42[0].Amount)
+
+	exits43, ok := result.GetExits(43)
+	require.True(t, ok)
+	require.Empty(t, exits43)
+}
+
+func TestLoadBridgeExitsOverride_AgglayerAdminGetCertificateResponse(t *testing.T) {
+	t.Parallel()
+
+	path := writeOverrideFile(t, `{
+		"network_id": 7,
+		"certificates": {
+			"42": {
+				"jsonrpc": "2.0",
+				"id": 1,
+				"result": [
+					{
+						"network_id": 7,
+						"height": 42,
+						"prev_local_exit_root": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+						"new_local_exit_root": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+						"bridge_exits": [],
+						"imported_bridge_exits": [],
+						"metadata": "0x0000000000000000000000000000000000000000000000000000000000000000"
+					},
+					null
+				]
+			}
+		}
+	}`)
+
+	result, err := LoadBridgeExitsOverride(path)
+	require.NoError(t, err)
+	require.Equal(t, "generated from agglayer admin_getCertificate responses", result.Description)
+	exits, ok := result.GetExits(42)
+	require.True(t, ok)
+	require.Empty(t, exits)
+}
+
+func TestLoadBridgeExitsOverride_AgglayerCertificateRejectsMismatchedHeight(t *testing.T) {
+	t.Parallel()
+
+	path := writeOverrideFile(t, `{
+		"network_id": 7,
+		"certificates": {
+			"42": {
+				"network_id": 7,
+				"height": 43,
+				"prev_local_exit_root": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"new_local_exit_root": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"bridge_exits": [],
+				"imported_bridge_exits": [],
+				"metadata": "0x0000000000000000000000000000000000000000000000000000000000000000"
+			}
+		}
+	}`)
+
+	_, err := LoadBridgeExitsOverride(path)
+	require.ErrorContains(t, err, "height key 42 does not match certificate height 43")
+}
+
 // TestLoadBridgeExitsOverride_NonNumericKey verifies that a non-numeric height key
 // causes an error.
 func TestLoadBridgeExitsOverride_NonNumericKey(t *testing.T) {
