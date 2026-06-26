@@ -22,6 +22,7 @@ type PPBuilderFlow struct {
 
 	forceOneBridgeExit bool
 	maxL2BlockNumber   uint64
+	maxL2BlockRange    uint64
 }
 
 // NewPPBuilderFlow returns a new instance of the PPBuilderFlow
@@ -32,7 +33,8 @@ func NewPPBuilderFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer,
 	forceOneBridgeExit bool,
-	maxL2BlockNumber uint64) *PPBuilderFlow {
+	maxL2BlockNumber uint64,
+	maxL2BlockRange uint64) *PPBuilderFlow {
 	return &PPBuilderFlow{
 		certificateSigner:     signer,
 		log:                   log,
@@ -40,6 +42,7 @@ func NewPPBuilderFlow(log types.Logger,
 		baseFlow:              baseFlow,
 		forceOneBridgeExit:    forceOneBridgeExit,
 		maxL2BlockNumber:      maxL2BlockNumber,
+		maxL2BlockRange:       maxL2BlockRange,
 	}
 }
 
@@ -147,6 +150,7 @@ func (p *PPBuilderFlow) Signer() signertypes.Signer {
 func (p *PPBuilderFlow) adjustmentOptions(validateRootToProve bool) types.BlockRangeAdjustmentOptions {
 	return types.BlockRangeAdjustmentOptions{
 		MaxL2BlockNumber:              p.maxL2BlockNumber,
+		MaxL2BlockRange:               p.maxL2BlockRange,
 		AllowResizeRetryCert:          true,
 		RequireOneBridgeInCertificate: p.forceOneBridgeExit,
 		ValidateRootToProve:           validateRootToProve,

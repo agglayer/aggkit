@@ -252,6 +252,7 @@ RequireOneBridgeInPPCertificate = false
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
+MaxL2BlockRange = 0
 StopOnFinishedSendingAllCertificates = false
 RequireCommitteeMembershipCheck = false
 AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
@@ -342,6 +343,7 @@ EnableRPC = false
 Signer = {{AggsenderPrivateKey}}
 MaxCertSize = "{{AggSender.MaxCertSize}}"
 MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
+MaxL2BlockRange = "{{AggSender.MaxL2BlockRange}}"
 DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 # PessimisticProof, AggchainProof or Auto
 Mode = "{{AggSender.Mode}}"
